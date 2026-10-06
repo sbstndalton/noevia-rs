@@ -33,7 +33,11 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{watch, Semaphore};
+use tokio::sync::{watch, OwnedSemaphorePermit, Semaphore};
+
+/// A connection slot. Held by the client connection and, after an upgrade or while a forward
+/// is in flight, by the tunnel / upstream task too, so a slot frees only when all are gone.
+type Slot = Arc<OwnedSemaphorePermit>;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 type Body = BoxBody<Bytes, hyper::Error>;
@@ -105,6 +109,8 @@ pub struct Limits {
     pub header_timeout: Duration,
     pub resolve_timeout: Duration,
     pub connect_timeout: Duration,
+    /// A CONNECT tunnel with no bytes in either direction for this long is closed.
+    pub tunnel_idle_timeout: Duration,
 }
 
 impl Default for Limits {
@@ -116,6 +122,7 @@ impl Default for Limits {
             header_timeout: Duration::from_secs(30),
             resolve_timeout: Duration::from_secs(10),
             connect_timeout: Duration::from_secs(10),
+            tunnel_idle_timeout: Duration::from_secs(10 * 60),
         }
     }
 }
@@ -460,17 +467,18 @@ impl Proxy {
             };
             let proxy = self.clone();
             tokio::spawn(async move {
-                let _permit = permit;
-                proxy.serve_connection(stream).await;
+                proxy.serve_connection(stream, Arc::new(permit)).await;
             });
         }
     }
 
-    async fn serve_connection(self: Arc<Self>, stream: TcpStream) {
+    async fn serve_connection(self: Arc<Self>, stream: TcpStream, slot: Slot) {
         let proxy = self.clone();
+        let conn_slot = slot.clone();
         let service = hyper::service::service_fn(move |req| {
             let proxy = proxy.clone();
-            async move { Ok::<_, Infallible>(proxy.handle(req).await) }
+            let slot = conn_slot.clone();
+            async move { Ok::<_, Infallible>(proxy.handle(req, slot).await) }
         });
         let mut builder = hyper::server::conn::http1::Builder::new();
         builder
@@ -484,17 +492,21 @@ impl Proxy {
             .await;
     }
 
-    async fn handle(self: Arc<Self>, req: Request<Incoming>) -> Response<Body> {
+    async fn handle(self: Arc<Self>, req: Request<Incoming>, slot: Slot) -> Response<Body> {
         if req.method() == Method::CONNECT {
-            self.handle_connect(req).await
+            self.handle_connect(req, slot).await
         } else {
-            self.handle_forward(req).await
+            self.handle_forward(req, slot).await
         }
     }
 
     /// HTTPS: a CONNECT tunnel to the checked address. Refusals are a bodiless response that
     /// closes the connection, as curl, npm and pip expect.
-    async fn handle_connect(self: Arc<Self>, mut req: Request<Incoming>) -> Response<Body> {
+    async fn handle_connect(
+        self: Arc<Self>,
+        mut req: Request<Incoming>,
+        slot: Slot,
+    ) -> Response<Body> {
         let auth = req
             .headers()
             .get(hyper::header::PROXY_AUTHORIZATION)
@@ -521,10 +533,14 @@ impl Proxy {
         let on_upgrade = hyper::upgrade::on(&mut req);
         let proxy = self.clone();
         let grant = allowed.grant;
+        let task_id = allowed.task_id.clone();
         tokio::spawn(async move {
+            // The tunnel keeps the connection's slot: hyper's connection future ends at the
+            // upgrade, and an upgraded tunnel must still count against max_connections.
+            let _slot = slot;
             if let Ok(upgraded) = on_upgrade.await {
                 proxy
-                    .tunnel(TokioIo::new(upgraded), upstream, grant, cancel)
+                    .tunnel(TokioIo::new(upgraded), upstream, grant, &task_id, cancel)
                     .await;
             }
         });
@@ -541,22 +557,43 @@ impl Proxy {
         client: C,
         upstream: TcpStream,
         grant: GrantId,
+        task_id: &str,
         mut cancel: watch::Receiver<bool>,
     ) where
         C: AsyncRead + AsyncWrite + Unpin,
     {
         let (mut cr, mut cw) = tokio::io::split(client);
         let (mut ur, mut uw) = upstream.into_split();
-        let up = self.pump(&mut cr, &mut uw, grant);
-        let down = self.pump(&mut ur, &mut cw, grant);
+        let last = Mutex::new(tokio::time::Instant::now());
+        let up = self.pump(&mut cr, &mut uw, grant, &last);
+        let down = self.pump(&mut ur, &mut cw, grant, &last);
+        let idle = self.limits.tunnel_idle_timeout;
+        let watchdog = async {
+            loop {
+                let deadline = *last.lock().unwrap_or_else(|p| p.into_inner()) + idle;
+                if tokio::time::Instant::now() >= deadline {
+                    return;
+                }
+                tokio::time::sleep_until(deadline).await;
+            }
+        };
         tokio::select! {
             _ = async { tokio::try_join!(up, down) } => {}
             _ = cancel.wait_for(|dropped| *dropped) => {}
+            _ = watchdog => {
+                self.record(json!({ "event": "egress.tunnel_idle", "taskId": task_id }));
+            }
         }
     }
 
-    /// Copies one direction, refreshing the grant's idle clock on every chunk.
-    async fn pump<R, W>(&self, r: &mut R, w: &mut W, grant: GrantId) -> io::Result<()>
+    /// Copies one direction, refreshing the grant's and the tunnel's idle clocks per chunk.
+    async fn pump<R, W>(
+        &self,
+        r: &mut R,
+        w: &mut W,
+        grant: GrantId,
+        last: &Mutex<tokio::time::Instant>,
+    ) -> io::Result<()>
     where
         R: AsyncRead + Unpin,
         W: AsyncWrite + Unpin,
@@ -568,13 +605,14 @@ impl Proxy {
                 return w.shutdown().await;
             }
             self.touch(grant);
+            *last.lock().unwrap_or_else(|p| p.into_inner()) = tokio::time::Instant::now();
             w.write_all(buf.get(..n).unwrap_or_default()).await?;
         }
     }
 
     /// Plain HTTP: an absolute `http://` URI, forwarded to the checked address with the proxy's
     /// own credentials and every hop-by-hop header removed.
-    async fn handle_forward(self: Arc<Self>, req: Request<Incoming>) -> Response<Body> {
+    async fn handle_forward(self: Arc<Self>, req: Request<Incoming>, slot: Slot) -> Response<Body> {
         let uri = req.uri().clone();
         if let Some(scheme) = uri.scheme_str() {
             // `https://` in absolute form would be forwarded as plaintext to port 80 by the JS
@@ -640,6 +678,7 @@ impl Proxy {
             return upstream_failed();
         };
         tokio::spawn(async move {
+            let _slot = slot;
             tokio::select! {
                 _ = conn => {}
                 _ = cancel.wait_for(|dropped| *dropped) => {}
@@ -649,7 +688,13 @@ impl Proxy {
             Ok(up) => {
                 self.touch(allowed.grant);
                 let (mut parts, body) = up.into_parts();
+                // Same framing rule as the request side: a chunked body's Content-Length is a
+                // lie (or a smuggling attempt), and hyper re-frames what it relays.
+                let had_te = parts.headers.contains_key(hyper::header::TRANSFER_ENCODING);
                 strip_hop_by_hop(&mut parts.headers);
+                if had_te {
+                    parts.headers.remove(hyper::header::CONTENT_LENGTH);
+                }
                 Response::from_parts(parts, body.boxed())
             }
             Err(_) => upstream_failed(),

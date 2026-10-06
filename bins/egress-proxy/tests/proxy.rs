@@ -185,6 +185,14 @@ async fn read_head(s: &mut TcpStream) -> String {
 
 /// An HTTP upstream that records each request head and answers `ok`.
 async fn http_upstream() -> (SocketAddr, Arc<Mutex<Vec<String>>>) {
+    http_upstream_answering(
+        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\nX-Upstream: 1\r\n\r\nok",
+    )
+    .await
+}
+
+/// An HTTP upstream that records each request head and sends `answer` verbatim.
+async fn http_upstream_answering(answer: &'static [u8]) -> (SocketAddr, Arc<Mutex<Vec<String>>>) {
     let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = l.local_addr().unwrap();
     let seen = Arc::new(Mutex::new(Vec::new()));
@@ -196,9 +204,7 @@ async fn http_upstream() -> (SocketAddr, Arc<Mutex<Vec<String>>>) {
             tokio::spawn(async move {
                 let head = read_head(&mut s).await;
                 seen.lock().unwrap().push(head);
-                s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\nX-Upstream: 1\r\n\r\nok")
-                    .await
-                    .ok();
+                s.write_all(answer).await.ok();
                 s.shutdown().await.ok();
             });
         }
@@ -698,5 +704,140 @@ fn grants_file_is_strict() {
         "not json",
     ] {
         assert!(parse_grants(bad).is_err(), "accepted {bad}");
+    }
+}
+
+/// Opens an authorised CONNECT tunnel to the echo upstream and proves it carries bytes.
+async fn open_tunnel(addr: SocketAddr) -> TcpStream {
+    let a = auth(TOKEN);
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    s.write_all(format!("CONNECT allowed.test:443 HTTP/1.1\r\n{a}\r\n").as_bytes())
+        .await
+        .unwrap();
+    let head = read_head(&mut s).await;
+    assert!(head.starts_with("HTTP/1.1 200 "), "{head}");
+    s.write_all(b"ping").await.unwrap();
+    let mut buf = [0u8; 4];
+    tokio::time::timeout(Duration::from_secs(5), s.read_exact(&mut buf))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(&buf, b"ping");
+    s
+}
+
+#[tokio::test]
+async fn an_upgraded_tunnel_keeps_its_connection_slot() {
+    let echo = echo_upstream().await;
+    let h = start(
+        vec![grant(&["allowed.test"], 60_000)],
+        vec![vec![ip(PUBLIC)]],
+        Some(echo),
+        Limits {
+            max_connections: 1,
+            ..Limits::default()
+        },
+    )
+    .await;
+    let tunnel = open_tunnel(h.addr).await;
+    // hyper's connection future has finished (upgrade); the tunnel must still hold the slot.
+    let a = auth(TOKEN);
+    let r = roundtrip(
+        h.addr,
+        &format!("CONNECT allowed.test:443 HTTP/1.1\r\n{a}\r\n"),
+    )
+    .await;
+    assert!(r.is_empty(), "second connection was served: {r}");
+    assert!(h
+        .logs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|v| v["event"] == "egress.connection_limit"));
+    assert_eq!(h.connector.asked.lock().unwrap().len(), 1);
+
+    // Closing the tunnel frees the slot.
+    drop(tunnel);
+    let mut served = false;
+    for _ in 0..100 {
+        let r = roundtrip(h.addr, "CONNECT allowed.test:443 HTTP/1.1\r\n\r\n").await;
+        if r.starts_with("HTTP/1.1 407 ") {
+            served = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(served, "slot never freed after the tunnel closed");
+}
+
+#[tokio::test]
+async fn an_idle_tunnel_is_closed_after_the_idle_timeout() {
+    let echo = echo_upstream().await;
+    let h = start(
+        vec![grant(&["allowed.test"], 60_000)],
+        vec![vec![ip(PUBLIC)]],
+        Some(echo),
+        Limits {
+            tunnel_idle_timeout: Duration::from_millis(300),
+            ..Limits::default()
+        },
+    )
+    .await;
+    let mut s = open_tunnel(h.addr).await;
+    // Traffic inside the timeout keeps it open.
+    for _ in 0..3 {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        s.write_all(b"pong").await.unwrap();
+        let mut buf = [0u8; 4];
+        s.read_exact(&mut buf).await.unwrap();
+        assert_eq!(&buf, b"pong");
+    }
+    // Then silence: closed by the proxy, well before the grant's own TTL.
+    let started = std::time::Instant::now();
+    let mut rest = Vec::new();
+    let r = tokio::time::timeout(Duration::from_secs(5), s.read_to_end(&mut rest))
+        .await
+        .expect("idle tunnel was never closed");
+    assert!(r.is_err() || rest.is_empty());
+    assert!(started.elapsed() >= Duration::from_millis(200));
+    assert!(h
+        .logs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|v| v["event"] == "egress.tunnel_idle" && v["taskId"] == "task-synthetic-1"));
+}
+
+#[tokio::test]
+async fn a_chunked_response_loses_its_conflicting_content_length() {
+    // Upstream claims both framings; the chunked body is the real one.
+    let (up, _) = http_upstream_answering(
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 999\r\nConnection: close\r\n\r\n2\r\nok\r\n0\r\n\r\n",
+    )
+    .await;
+    let h = start(
+        vec![grant(&["allowed.test"], 60_000)],
+        vec![vec![ip(PUBLIC)]],
+        Some(up),
+        Limits::default(),
+    )
+    .await;
+    let a = auth(TOKEN);
+    let r = roundtrip(
+        h.addr,
+        &format!("GET http://allowed.test/ HTTP/1.1\r\n{a}Connection: close\r\n\r\n"),
+    )
+    .await;
+    assert!(r.starts_with("HTTP/1.1 200 OK\r\n"), "{r}");
+    let lower = r.to_ascii_lowercase();
+    assert!(!lower.contains("content-length: 999"), "{r}");
+    let (head, body) = r.split_once("\r\n\r\n").unwrap();
+    if head
+        .to_ascii_lowercase()
+        .contains("transfer-encoding: chunked")
+    {
+        assert_eq!(body, "2\r\nok\r\n0\r\n\r\n");
+    } else {
+        assert_eq!(body, "ok");
     }
 }

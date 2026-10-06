@@ -2,9 +2,11 @@
 //!
 //! ```text
 //! egress-proxy --grants <file.json> [--listen <addr:port>] [--max-connections <n>]
+//!              [--tunnel-idle-ms <ms>]
 //! ```
 //! Environment fallbacks (the JS proxy's names): `CODE_EGRESS_GRANTS_FILE`,
-//! `CODE_EGRESS_BIND` (default 127.0.0.1) + `CODE_EGRESS_PORT`, `CODE_EGRESS_MAX_CONNECTIONS`.
+//! `CODE_EGRESS_BIND` (default 127.0.0.1) + `CODE_EGRESS_PORT`, `CODE_EGRESS_MAX_CONNECTIONS`,
+//! `CODE_EGRESS_TUNNEL_IDLE_MS` (default 600000: an idle CONNECT tunnel closes after 10 min).
 //! The grants file is `{"token","task","domains":[...],"expiresIdleMs"?}` or an array of them.
 //! Dark: nothing deploys this yet; the web-side signed grant contract is a later slice.
 #![forbid(unsafe_code)]
@@ -19,22 +21,25 @@ struct Args {
     grants: String,
     listen: SocketAddr,
     max_connections: usize,
+    tunnel_idle: Duration,
 }
 
 fn parse_args() -> Result<Args, String> {
     let mut grants = std::env::var("CODE_EGRESS_GRANTS_FILE").ok();
     let mut listen: Option<String> = None;
     let mut max_connections = std::env::var("CODE_EGRESS_MAX_CONNECTIONS").ok();
+    let mut tunnel_idle = std::env::var("CODE_EGRESS_TUNNEL_IDLE_MS").ok();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
             "--grants" => grants = it.next(),
             "--listen" => listen = it.next(),
             "--max-connections" => max_connections = it.next(),
+            "--tunnel-idle-ms" => tunnel_idle = it.next(),
             "-h" | "--help" => {
                 return Err(
                     "usage: egress-proxy --grants <file.json> [--listen <addr:port>] \
-                     [--max-connections <n>]"
+                     [--max-connections <n>] [--tunnel-idle-ms <ms>]"
                         .into(),
                 )
             }
@@ -67,10 +72,21 @@ fn parse_args() -> Result<Args, String> {
             .filter(|&n| n > 0)
             .ok_or("max connections must be a positive integer")?,
     };
+    let tunnel_idle = match tunnel_idle {
+        None => Limits::default().tunnel_idle_timeout,
+        Some(n) => n
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .filter(|&n| n > 0)
+            .map(Duration::from_millis)
+            .ok_or("tunnel idle timeout must be a positive integer (ms)")?,
+    };
     Ok(Args {
         grants,
         listen,
         max_connections,
+        tunnel_idle,
     })
 }
 
@@ -121,6 +137,7 @@ fn main() -> ExitCode {
         log(serde_json::json!({ "event": "egress.listening", "bind": bound, "grants": grants.len() }));
         let limits = Limits {
             max_connections: args.max_connections,
+            tunnel_idle_timeout: args.tunnel_idle,
             ..Limits::default()
         };
         let proxy = ProxyBuilder::new(grants).limits(limits).log(log).build();
