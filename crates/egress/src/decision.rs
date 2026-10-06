@@ -17,7 +17,9 @@ pub fn status_text(status: u16) -> &'static str {
         400 => "Bad Request",
         403 => "Forbidden",
         407 => "Proxy Authentication Required",
+        429 => "Too Many Requests",
         502 => "Bad Gateway",
+        503 => "Service Unavailable",
         _ => "Forbidden",
     }
 }

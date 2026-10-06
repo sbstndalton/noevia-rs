@@ -103,6 +103,10 @@ pub fn stderr_log() -> LogSink {
 pub struct Limits {
     /// Concurrent client connections; extra ones are closed on accept.
     pub max_connections: usize,
+    /// Concurrent CONNECT tunnels and in-flight forwarded requests per task; the next one is
+    /// refused with 429. npm keeps at most 15 sockets per registry and pip a pool of 10, so 64
+    /// is generous, yet four busy tasks still fit under `max_connections`.
+    pub max_connections_per_task: usize,
     /// Request head buffer (hyper's minimum, 8192, is enforced).
     pub max_header_bytes: usize,
     pub max_headers: usize,
@@ -117,6 +121,7 @@ impl Default for Limits {
     fn default() -> Self {
         Self {
             max_connections: 256,
+            max_connections_per_task: 64,
             max_header_bytes: 16 * 1024,
             max_headers: 100,
             header_timeout: Duration::from_secs(30),
@@ -131,6 +136,27 @@ struct State {
     store: TokenStore,
     /// Fires (true) when a grant is dropped, closing every connection it owns.
     cancels: HashMap<GrantId, watch::Sender<bool>>,
+    /// Open tunnels / in-flight forwards per task id (keyed by task, so a re-grant does not
+    /// reset the count).
+    open_by_task: HashMap<String, usize>,
+}
+
+/// One of a task's connection slots; frees itself on drop, exactly once.
+struct TaskSlot {
+    proxy: Arc<Proxy>,
+    task_id: String,
+}
+
+impl Drop for TaskSlot {
+    fn drop(&mut self) {
+        let mut st = self.proxy.lock();
+        if let Some(n) = st.open_by_task.get_mut(&self.task_id) {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                st.open_by_task.remove(&self.task_id);
+            }
+        }
+    }
 }
 
 pub struct Proxy {
@@ -195,7 +221,11 @@ impl ProxyBuilder {
             cancels.insert(id, watch::channel(false).0);
         }
         Arc::new(Proxy {
-            state: Mutex::new(State { store, cancels }),
+            state: Mutex::new(State {
+                store,
+                cancels,
+                open_by_task: HashMap::new(),
+            }),
             resolver: self.resolver,
             connector: self.connector,
             clock: self.clock,
@@ -271,7 +301,8 @@ pub fn parse_grants(text: &str) -> Result<Vec<Grant>, String> {
     Ok(out)
 }
 
-const HOP_BY_HOP: [&str; 8] = [
+const HOP_BY_HOP: [&str; 9] = [
+    "proxy-authenticate",
     "proxy-authorization",
     "proxy-connection",
     "connection",
@@ -282,8 +313,11 @@ const HOP_BY_HOP: [&str; 8] = [
     "upgrade",
 ];
 
-/// Removes `Proxy-Authorization` and every hop-by-hop header, including any the `Connection`
-/// header names (RFC 9110 §7.6.1).
+/// Removes `Proxy-Authorization`, `Proxy-Authenticate` and every hop-by-hop header, including
+/// any the `Connection` header names (RFC 9110 §7.6.1). Applied to requests and to upstream
+/// responses alike, as `stripHopByHop` in code-egress.cjs. `Content-Length` and `Host` are
+/// exempt from `Connection`: naming them must not unframe a body (smuggling) or drop the Host
+/// the proxy sets.
 pub fn strip_hop_by_hop(headers: &mut HeaderMap) {
     let named: Vec<HeaderName> = headers
         .get_all(hyper::header::CONNECTION)
@@ -293,7 +327,9 @@ pub fn strip_hop_by_hop(headers: &mut HeaderMap) {
         .filter_map(|t| HeaderName::from_bytes(t.trim().as_bytes()).ok())
         .collect();
     for n in named {
-        headers.remove(n);
+        if n != hyper::header::CONTENT_LENGTH && n != hyper::header::HOST {
+            headers.remove(n);
+        }
     }
     for h in HOP_BY_HOP {
         headers.remove(h);
@@ -416,6 +452,26 @@ impl Proxy {
         }
     }
 
+    /// Takes one of the task's slots, or refuses with 429 when it is at its cap.
+    fn take_task_slot(self: &Arc<Self>, allowed: &Allowed) -> Result<TaskSlot, Refusal> {
+        let cap = self.limits.max_connections_per_task.max(1);
+        let mut st = self.lock();
+        let open = st.open_by_task.entry(allowed.task_id.clone()).or_insert(0);
+        if *open >= cap {
+            return Err(Refusal {
+                status: 429,
+                reason: format!("task has {cap} connections open"),
+                task_id: Some(allowed.task_id.clone()),
+                host: Some(allowed.host.clone()),
+            });
+        }
+        *open += 1;
+        Ok(TaskSlot {
+            proxy: self.clone(),
+            task_id: allowed.task_id.clone(),
+        })
+    }
+
     fn refused(&self, r: &Refusal) {
         self.record(json!({
             "event": "egress.refused",
@@ -519,6 +575,13 @@ impl Proxy {
                 return connect_refusal(r.status);
             }
         };
+        let task_slot = match self.take_task_slot(&allowed) {
+            Ok(t) => t,
+            Err(r) => {
+                self.refused(&r);
+                return connect_refusal(r.status);
+            }
+        };
         self.allowed(&allowed, "CONNECT");
         let upstream = match self.connect_upstream(&allowed).await {
             Ok(s) => s,
@@ -538,6 +601,7 @@ impl Proxy {
             // The tunnel keeps the connection's slot: hyper's connection future ends at the
             // upgrade, and an upgraded tunnel must still count against max_connections.
             let _slot = slot;
+            let _task_slot = task_slot;
             if let Ok(upgraded) = on_upgrade.await {
                 proxy
                     .tunnel(TokioIo::new(upgraded), upstream, grant, &task_id, cancel)
@@ -615,12 +679,17 @@ impl Proxy {
     async fn handle_forward(self: Arc<Self>, req: Request<Incoming>, slot: Slot) -> Response<Body> {
         let uri = req.uri().clone();
         if let Some(scheme) = uri.scheme_str() {
-            // `https://` in absolute form would be forwarded as plaintext to port 80 by the JS
-            // reference; here it is refused like any other protocol (clients use CONNECT).
+            // `https://` in absolute form would go out as plaintext to port 80: the task
+            // believes it has TLS and gets none. TLS goes through CONNECT only (#930).
             if scheme != "http" {
+                let reason = if scheme == "https" {
+                    "https:// must be requested with CONNECT".to_owned()
+                } else {
+                    format!("unsupported protocol \"{scheme}:\"")
+                };
                 let r = Refusal {
                     status: 400,
-                    reason: format!("unsupported protocol \"{scheme}:\""),
+                    reason,
                     task_id: None,
                     host: None,
                 };
@@ -640,6 +709,13 @@ impl Proxy {
         let (allowed, mut cancel) = match self.decide(auth.as_deref(), target.as_deref(), 80).await
         {
             Ok(v) => v,
+            Err(r) => {
+                self.refused(&r);
+                return text_refusal(&r);
+            }
+        };
+        let task_slot = match self.take_task_slot(&allowed) {
+            Ok(t) => t,
             Err(r) => {
                 self.refused(&r);
                 return text_refusal(&r);
@@ -679,6 +755,7 @@ impl Proxy {
         };
         tokio::spawn(async move {
             let _slot = slot;
+            let _task_slot = task_slot;
             tokio::select! {
                 _ = conn => {}
                 _ = cancel.wait_for(|dropped| *dropped) => {}
