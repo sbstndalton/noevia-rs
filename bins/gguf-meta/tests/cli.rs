@@ -77,9 +77,20 @@ fn non_gguf_file_fails_with_a_message() {
 
 #[test]
 fn summarize_failure_exits_nonzero() {
-    let out = run(&[fixture("nan_context_raises.gguf").as_os_str()]);
+    let out = run(&[fixture("quant_list_raises.gguf").as_os_str()]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("NaN"));
+    assert!(out.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("unhashable"));
+}
+
+#[test]
+fn non_finite_int_field_exits_zero_with_null() {
+    // noevia#913: NaN/Inf in an integer-coerced field is null, as in gguf_meta.py since #901.
+    let out = run(&[fixture("nonfinite_context_length_nan.gguf").as_os_str()]);
+    assert_eq!(out.status.code(), Some(0));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v["model"]["context_length"].is_null());
+    assert_eq!(v["arch"], "llama");
 }
 
 #[test]

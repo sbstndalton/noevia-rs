@@ -189,9 +189,64 @@ def cases() -> dict[str, bytes]:
         kv("llama.rope.scaling.type", F32, 0.1),
         kv("llama.attention.head_count", I64, -(1 << 63)),
     )
-    c["nan_context_raises"] = gguf(kv("general.architecture", STRING, "llama"),
-                                   kv("llama.context_length", F64, float("nan")))
-    c["nan_param_count_raises"] = gguf(kv("general.parameter_count", F64, float("nan")))
+    # non-finite floats become None before any int()/float() coercion (noevia#901, #913)
+    nan, inf = float("nan"), float("inf")
+    nonfinite = [("nan", nan), ("inf", inf), ("neginf", -inf)]
+    int_fields = ["context_length", "embedding_length", "block_count", "feed_forward_length",
+                  "attention.head_count", "rope.scaling.original_context_length", "vocab_size",
+                  "expert_count", "nextn_predict_layers", "expert_used_count",
+                  "attention.key_length", "attention.value_length", "full_attention_interval",
+                  "attention.sliding_window", "attention.key_length_swa",
+                  "attention.value_length_swa", "attention.shared_kv_layers", "ssm.state_size",
+                  "ssm.inner_size"]
+    for field in int_fields:
+        slug = field.replace(".", "_")
+        key = f"llama.{field}"
+        for tag, v in nonfinite:
+            c[f"nonfinite_{slug}_{tag}"] = gguf(kv("general.architecture", STRING, "llama"),
+                                                kv(key, F64, v))
+        c[f"nonfinite_{slug}_f32_inf"] = gguf(kv("general.architecture", STRING, "llama"),
+                                              kv(key, F32, inf))
+        c[f"nonfinite_{slug}_list_first"] = gguf(kv("general.architecture", STRING, "llama"),
+                                                 kv_arr(key, F64, [nan, 4.0]))
+        c[f"nonfinite_{slug}_sample_mode"] = gguf(
+            kv("general.architecture", STRING, "llama"),
+            kv_arr(key, F32, [inf, -inf, nan, nan, inf, 6.0, 7.0, 7.0, 1.0]))
+        c[f"nonfinite_{slug}_sample_all"] = gguf(
+            kv("general.architecture", STRING, "llama"),
+            kv_arr(key, F64, [nan, inf, -inf, nan, inf, -inf, nan, inf, 3.0]))
+    for tag, v in nonfinite:
+        c[f"nonfinite_params_{tag}"] = gguf(kv("general.parameter_count", F64, v))
+        c[f"nonfinite_quant_{tag}"] = gguf(kv("general.file_type", F64, v))
+        c[f"nonfinite_arch_{tag}"] = gguf(kv("general.architecture", F64, v),
+                                          kv(".block_count", U32, 3), kv("nan.block_count", U32, 4),
+                                          kv("inf.block_count", U32, 5))
+        c[f"nonfinite_rope_{tag}"] = gguf(kv("general.architecture", STRING, "llama"),
+                                          kv("llama.rope.freq_base", F64, v),
+                                          kv("llama.rope.scaling.factor", F32, v),
+                                          kv_arr("llama.rope.scaling.type", F64, [v, 1.0]))
+    c["nonfinite_quant_list"] = gguf(kv_arr("general.file_type", F64, [nan]))
+    c["nonfinite_arch_list"] = gguf(kv_arr("general.architecture", F64, [nan, 1.5]),
+                                    kv("[None, 1.5].block_count", U32, 6),
+                                    kv("[nan, 1.5].block_count", U32, 7))
+    c["nonfinite_arch_sample"] = gguf(kv_arr("general.architecture", F32, [inf] * 9),
+                                      kv("{'_array': True, 'count': 9, 'sample': "
+                                         "[None, None, None, None, None, None, None, None]}"
+                                         ".block_count", U32, 8))
+    c["nonfinite_passthrough"] = gguf(
+        kv("general.architecture", STRING, "llama"),
+        kv("general.name", F64, nan),
+        kv("general.quantization_version", F32, inf),
+        kv("tokenizer.chat_template", F64, -inf),
+        kv("tokenizer.ggml.bos_token_id", F64, nan),
+        kv("tokenizer.ggml.eos_token_id", F32, inf),
+        kv_arr("llama.attention.head_count_kv", F32, [nan, 8.0, inf]),
+        kv_arr("llama.attention.sliding_window_pattern", F64, [nan] * 10),
+        kv_arr("tokenizer.ggml.tokens", F32, [nan] * 12),
+    )
+    c["nonfinite_vocab_list"] = gguf(kv("general.architecture", STRING, "llama"),
+                                     kv_arr("tokenizer.ggml.tokens", F32, [nan, 1.0]),
+                                     kv("llama.vocab_size", F64, inf))
     # dict semantics
     c["duplicate_keys_last_wins"] = gguf(kv("general.name", STRING, "first"), kv("general.name", STRING, "second"))
     c["file_overrides_internal_keys"] = gguf(kv("_gguf_version", STRING, "spoof"), kv("_error", U32, 7),

@@ -127,6 +127,7 @@ impl From<&Value> for Json {
             Value::Int(i) => Json::Int(PyInt::Small(*i)),
             Value::Float(f) => Json::Float(*f),
             Value::Str(s) => Json::Str(s.clone()),
+            Value::None => Json::Null,
             Value::List(items) => Json::Array(items.iter().map(Json::from).collect()),
             Value::ArraySummary { count, sample } => Json::object([
                 ("_array", Json::Bool(true)),

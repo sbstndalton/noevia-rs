@@ -65,6 +65,9 @@ pub enum Value {
         count: u64,
         sample: Vec<Value>,
     },
+    /// Python `None`. The parser never produces it; [`crate::summarize`] maps every NaN/±Inf
+    /// float to it first, as gguf_meta.py's `_finite` does (sbstndalton/noevia#901).
+    None,
 }
 
 /// Raw metadata: every KV pair plus `_gguf_version`, `_tensor_count`, `_kv_count` and, when

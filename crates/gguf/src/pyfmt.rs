@@ -107,6 +107,7 @@ pub fn py_repr(v: &Value) -> String {
         Value::Int(i) => i.to_string(),
         Value::Float(f) => py_float_repr(*f),
         Value::Str(s) => py_str_repr(s),
+        Value::None => "None".into(),
         Value::List(items) => {
             let parts: Vec<String> = items.iter().map(py_repr).collect();
             format!("[{}]", parts.join(", "))
@@ -138,6 +139,7 @@ pub fn truthy(v: &Value) -> bool {
         Value::Str(s) => !s.is_empty(),
         Value::List(l) => !l.is_empty(),
         Value::ArraySummary { .. } => true,
+        Value::None => false,
     }
 }
 
