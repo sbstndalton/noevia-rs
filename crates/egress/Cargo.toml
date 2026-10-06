@@ -1,0 +1,14 @@
+[package]
+name = "egress"
+version = "0.1.0"
+description = "Code-task egress policy core matching noevia's code-egress.cjs + ssrf.cjs isPrivateIp"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+serde_json = "1"
