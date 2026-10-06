@@ -20,6 +20,11 @@ one slice at a time.
   reader. `gguf-meta <path>` prints the same summary JSON as model-manager's
   `gguf_meta.py`. Its differential corpus is regenerated from the Python reference with
   `NOEVIA_GGUF_META=<noevia>/services/model-manager/app/gguf_meta.py python3 tools/gen-fixtures.py`.
+- `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
+  proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
+  `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
+  regenerated with
+  `NOEVIA_CHECKOUT=<noevia> node tools/egress-diff.cjs > crates/egress/tests/fixtures/egress-diff.json`.
 
 ## Checks
 

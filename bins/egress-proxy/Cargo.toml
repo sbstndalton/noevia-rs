@@ -1,0 +1,20 @@
+[package]
+name = "egress-proxy"
+version = "0.1.0"
+description = "Deny-by-default HTTP CONNECT + forward proxy for sandboxed coding tasks (noevia code-egress port)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+egress = { path = "../../crates/egress" }
+bytes = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server", "client"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync"] }
