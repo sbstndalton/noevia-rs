@@ -1,0 +1,6 @@
+{
+ "__error__": {
+  "kind": "GgufMetaError",
+  "message": "not a GGUF file (magic=b'')"
+ }
+}

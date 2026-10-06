@@ -1,0 +1,63 @@
+{
+ "arch": "llama",
+ "chat_template": "{% for m in messages %}{{ '<|im_start|>' + m.role }}{% endfor %}{% if enable_thinking %}<think>{% endif %}",
+ "chat_template_features": {
+  "accepts_enable_thinking": true,
+  "accepts_preserve_thinking": false,
+  "accepts_reasoning_effort": false,
+  "uses_channel_thought": false,
+  "uses_think_tags": true
+ },
+ "general": {
+  "author": "noevia tests",
+  "description": "fixture",
+  "gguf_version": 3,
+  "header_error": null,
+  "kv_count": 31,
+  "license": "mit",
+  "name": "Synthetic Llama 8B",
+  "params": "8.0 B",
+  "params_raw": 8030261248,
+  "quant": "Q4_K_M",
+  "quant_version": 2,
+  "tensor_count": 0,
+  "url": "https://example.invalid/m"
+ },
+ "model": {
+  "arch": "llama",
+  "attention_head_count": 32,
+  "attention_head_count_kv": 8,
+  "block_count": 32,
+  "context_length": 131072,
+  "embedding_length": 4096,
+  "expert_count": null,
+  "expert_used_count": null,
+  "feed_forward_length": 14336,
+  "full_attention_interval": null,
+  "key_length": 128,
+  "key_length_swa": null,
+  "nextn_predict_layers": null,
+  "rope_freq_base": 500000.0,
+  "rope_scaling_factor": 8.0,
+  "rope_scaling_original_context": 8192,
+  "rope_scaling_type": "yarn",
+  "shared_kv_layers": null,
+  "sliding_window": null,
+  "sliding_window_pattern": null,
+  "ssm_inner_size": null,
+  "ssm_state_size": null,
+  "value_length": 128,
+  "value_length_swa": null,
+  "vocab_size": 40
+ },
+ "tokenizer": {
+  "add_bos_token": true,
+  "add_eos_token": false,
+  "bos_token_id": 1,
+  "eos_token_id": 2,
+  "model": "gpt2",
+  "padding_token_id": 0,
+  "pre": "llama-bpe",
+  "unknown_token_id": -1
+ }
+}

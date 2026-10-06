@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = []
+members = ["crates/gguf", "crates/gguf-memtest", "bins/gguf-meta"]
 
 [workspace.package]
 edition = "2021"

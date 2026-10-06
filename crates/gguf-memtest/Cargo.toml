@@ -1,0 +1,22 @@
+[package]
+name = "gguf-memtest"
+version = "0.0.0"
+description = "Test-only: peak-heap and hostile-input tests for crates/gguf, using a counting global allocator"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# Deliberately NOT `lints.workspace = true`: the workspace forbids unsafe_code, and the
+# counting allocator in tests/ needs an `unsafe impl GlobalAlloc`. This crate ships nothing.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+
+[dev-dependencies]
+gguf = { path = "../gguf" }
