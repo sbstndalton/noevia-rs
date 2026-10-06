@@ -1,7 +1,7 @@
 {
- "reference": "761df0f45af8634f2c597c85972e52d65df020d6",
+ "reference": "e9efa32e514aa23e43187fb9a7cfde0455de9cb0",
  "node": "v26.10.0",
- "count": 3276,
+ "count": 3412,
  "cases": [
   {
    "fn": "isIP",
@@ -41,7 +41,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::8.8.8.8",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -51,7 +51,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:8.8.8.8",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -101,7 +101,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::1.1.1.1",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -111,7 +111,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:1.1.1.1",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -161,7 +161,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::93.184.216.34",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -171,7 +171,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:93.184.216.34",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -221,26 +221,626 @@
   {
    "fn": "isPrivateIp",
    "input": "::151.101.1.1",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "0:0:0:0:0:ffff:151.101.1.1",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "0:0:0:0:0:ffff:151.101.1.1",
    "expect": true
   },
   {
    "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:151.101.1.1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:151.101.1.1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
    "input": "64:ff9b::151.101.1.1",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
    "input": "64:ff9b::151.101.1.1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "192.0.1.1",
+   "expect": 4
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "192.0.1.1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:192.0.1.1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:192.0.1.1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:192.0.1.1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:192.0.1.1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::192.0.1.1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::192.0.1.1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:192.0.1.1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:192.0.1.1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::192.0.1.1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::192.0.1.1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "192.0.3.0",
+   "expect": 4
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "192.0.3.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:192.0.3.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:192.0.3.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:192.0.3.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:192.0.3.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::192.0.3.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::192.0.3.0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:192.0.3.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:192.0.3.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::192.0.3.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::192.0.3.0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "192.0.78.9",
+   "expect": 4
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "192.0.78.9",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:192.0.78.9",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:192.0.78.9",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:192.0.78.9",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:192.0.78.9",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::192.0.78.9",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::192.0.78.9",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:192.0.78.9",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:192.0.78.9",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::192.0.78.9",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::192.0.78.9",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "192.0.255.255",
+   "expect": 4
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "192.0.255.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:192.0.255.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:192.0.255.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:192.0.255.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:192.0.255.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::192.0.255.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::192.0.255.255",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:192.0.255.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:192.0.255.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::192.0.255.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::192.0.255.255",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "192.88.98.255",
+   "expect": 4
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "192.88.98.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:192.88.98.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:192.88.98.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:192.88.98.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:192.88.98.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::192.88.98.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::192.88.98.255",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:192.88.98.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:192.88.98.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::192.88.98.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::192.88.98.255",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "192.88.100.0",
+   "expect": 4
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "192.88.100.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:192.88.100.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:192.88.100.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:192.88.100.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:192.88.100.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::192.88.100.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::192.88.100.0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:192.88.100.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:192.88.100.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::192.88.100.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::192.88.100.0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "198.51.99.255",
+   "expect": 4
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "198.51.99.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:198.51.99.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:198.51.99.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:198.51.99.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:198.51.99.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::198.51.99.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::198.51.99.255",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:198.51.99.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:198.51.99.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::198.51.99.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::198.51.99.255",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "198.51.101.0",
+   "expect": 4
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "198.51.101.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:198.51.101.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:198.51.101.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:198.51.101.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:198.51.101.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::198.51.101.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::198.51.101.0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:198.51.101.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:198.51.101.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::198.51.101.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::198.51.101.0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "203.0.112.255",
+   "expect": 4
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "203.0.112.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:203.0.112.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:203.0.112.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:203.0.112.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:203.0.112.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::203.0.112.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::203.0.112.255",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:203.0.112.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:203.0.112.255",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::203.0.112.255",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::203.0.112.255",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "203.0.114.0",
+   "expect": 4
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "203.0.114.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:203.0.114.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:203.0.114.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:203.0.114.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:203.0.114.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::203.0.114.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::203.0.114.0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:203.0.114.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:203.0.114.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::203.0.114.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::203.0.114.0",
    "expect": true
   },
   {
@@ -401,7 +1001,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::1.0.0.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -411,7 +1011,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:1.0.0.0",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -461,7 +1061,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::9.255.255.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -471,7 +1071,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:9.255.255.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -641,7 +1241,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::11.0.0.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -651,7 +1251,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:11.0.0.0",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -701,7 +1301,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::100.63.255.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -711,7 +1311,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:100.63.255.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -881,7 +1481,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::100.128.0.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -891,7 +1491,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:100.128.0.0",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -941,7 +1541,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::126.255.255.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -951,7 +1551,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:126.255.255.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -1121,7 +1721,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::128.0.0.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -1131,7 +1731,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:128.0.0.0",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -1181,7 +1781,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::169.253.255.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -1191,7 +1791,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:169.253.255.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -1361,7 +1961,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::169.255.0.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -1371,7 +1971,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:169.255.0.0",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -1421,7 +2021,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::172.15.255.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -1431,7 +2031,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:172.15.255.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -1601,7 +2201,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::172.32.0.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -1611,7 +2211,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:172.32.0.0",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -1661,7 +2261,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::191.255.255.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -1671,7 +2271,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:191.255.255.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -1745,122 +2345,122 @@
   },
   {
    "fn": "isIP",
-   "input": "192.0.255.255",
+   "input": "192.0.0.255",
    "expect": 4
   },
   {
    "fn": "isPrivateIp",
-   "input": "192.0.255.255",
+   "input": "192.0.0.255",
    "expect": true
   },
   {
    "fn": "isIP",
-   "input": "::ffff:192.0.255.255",
+   "input": "::ffff:192.0.0.255",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
-   "input": "::ffff:192.0.255.255",
+   "input": "::ffff:192.0.0.255",
    "expect": true
   },
   {
    "fn": "isIP",
-   "input": "::FFFF:192.0.255.255",
+   "input": "::FFFF:192.0.0.255",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
-   "input": "::FFFF:192.0.255.255",
+   "input": "::FFFF:192.0.0.255",
    "expect": true
   },
   {
    "fn": "isIP",
-   "input": "::192.0.255.255",
+   "input": "::192.0.0.255",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
-   "input": "::192.0.255.255",
+   "input": "::192.0.0.255",
    "expect": true
   },
   {
    "fn": "isIP",
-   "input": "0:0:0:0:0:ffff:192.0.255.255",
+   "input": "0:0:0:0:0:ffff:192.0.0.255",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
-   "input": "0:0:0:0:0:ffff:192.0.255.255",
+   "input": "0:0:0:0:0:ffff:192.0.0.255",
    "expect": true
   },
   {
    "fn": "isIP",
-   "input": "64:ff9b::192.0.255.255",
+   "input": "64:ff9b::192.0.0.255",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
-   "input": "64:ff9b::192.0.255.255",
+   "input": "64:ff9b::192.0.0.255",
    "expect": true
   },
   {
    "fn": "isIP",
-   "input": "192.1.0.0",
+   "input": "192.0.1.0",
    "expect": 4
   },
   {
    "fn": "isPrivateIp",
-   "input": "192.1.0.0",
+   "input": "192.0.1.0",
    "expect": false
   },
   {
    "fn": "isIP",
-   "input": "::ffff:192.1.0.0",
+   "input": "::ffff:192.0.1.0",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
-   "input": "::ffff:192.1.0.0",
+   "input": "::ffff:192.0.1.0",
    "expect": false
   },
   {
    "fn": "isIP",
-   "input": "::FFFF:192.1.0.0",
+   "input": "::FFFF:192.0.1.0",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
-   "input": "::FFFF:192.1.0.0",
+   "input": "::FFFF:192.0.1.0",
    "expect": false
   },
   {
    "fn": "isIP",
-   "input": "::192.1.0.0",
+   "input": "::192.0.1.0",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
-   "input": "::192.1.0.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "0:0:0:0:0:ffff:192.1.0.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "0:0:0:0:0:ffff:192.1.0.0",
+   "input": "::192.0.1.0",
    "expect": true
   },
   {
    "fn": "isIP",
-   "input": "64:ff9b::192.1.0.0",
+   "input": "0:0:0:0:0:ffff:192.0.1.0",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
-   "input": "64:ff9b::192.1.0.0",
+   "input": "0:0:0:0:0:ffff:192.0.1.0",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "64:ff9b::192.0.1.0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "64:ff9b::192.0.1.0",
    "expect": true
   },
   {
@@ -1901,7 +2501,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::192.167.255.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -1911,7 +2511,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:192.167.255.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -2081,7 +2681,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::192.169.0.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2091,7 +2691,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:192.169.0.0",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -2141,7 +2741,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::198.17.255.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2151,7 +2751,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:198.17.255.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -2321,7 +2921,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::198.20.0.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2331,7 +2931,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:198.20.0.0",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -2381,7 +2981,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::223.255.255.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2391,7 +2991,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:223.255.255.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -2531,7 +3131,7 @@
   {
    "fn": "isPrivateIp",
    "input": "192.0.1.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -2541,7 +3141,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::ffff:192.0.1.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -2551,7 +3151,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::FFFF:192.0.1.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -2571,7 +3171,7 @@
   {
    "fn": "isPrivateIp",
    "input": "0:0:0:0:0:ffff:192.0.1.255",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -2705,133 +3305,13 @@
   },
   {
    "fn": "isIP",
-   "input": "192.0.3.0",
-   "expect": 4
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "192.0.3.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "::ffff:192.0.3.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::ffff:192.0.3.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "::FFFF:192.0.3.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::FFFF:192.0.3.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "::192.0.3.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::192.0.3.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "0:0:0:0:0:ffff:192.0.3.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "0:0:0:0:0:ffff:192.0.3.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "64:ff9b::192.0.3.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "64:ff9b::192.0.3.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "198.51.99.255",
-   "expect": 4
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "198.51.99.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::ffff:198.51.99.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::ffff:198.51.99.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::FFFF:198.51.99.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::FFFF:198.51.99.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::198.51.99.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::198.51.99.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "0:0:0:0:0:ffff:198.51.99.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "0:0:0:0:0:ffff:198.51.99.255",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "64:ff9b::198.51.99.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "64:ff9b::198.51.99.255",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
    "input": "198.51.100.0",
    "expect": 4
   },
   {
    "fn": "isPrivateIp",
    "input": "198.51.100.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2841,7 +3321,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::ffff:198.51.100.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2851,7 +3331,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::FFFF:198.51.100.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2861,7 +3341,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::198.51.100.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2891,7 +3371,7 @@
   {
    "fn": "isPrivateIp",
    "input": "198.51.100.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2901,7 +3381,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::ffff:198.51.100.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2911,7 +3391,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::FFFF:198.51.100.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2921,7 +3401,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::198.51.100.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -2945,133 +3425,13 @@
   },
   {
    "fn": "isIP",
-   "input": "198.51.101.0",
-   "expect": 4
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "198.51.101.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::ffff:198.51.101.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::ffff:198.51.101.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::FFFF:198.51.101.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::FFFF:198.51.101.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::198.51.101.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::198.51.101.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "0:0:0:0:0:ffff:198.51.101.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "0:0:0:0:0:ffff:198.51.101.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "64:ff9b::198.51.101.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "64:ff9b::198.51.101.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "203.0.112.255",
-   "expect": 4
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "203.0.112.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::ffff:203.0.112.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::ffff:203.0.112.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::FFFF:203.0.112.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::FFFF:203.0.112.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::203.0.112.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::203.0.112.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "0:0:0:0:0:ffff:203.0.112.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "0:0:0:0:0:ffff:203.0.112.255",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "64:ff9b::203.0.112.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "64:ff9b::203.0.112.255",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
    "input": "203.0.113.0",
    "expect": 4
   },
   {
    "fn": "isPrivateIp",
    "input": "203.0.113.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3081,7 +3441,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::ffff:203.0.113.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3091,7 +3451,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::FFFF:203.0.113.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3101,7 +3461,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::203.0.113.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3131,7 +3491,7 @@
   {
    "fn": "isPrivateIp",
    "input": "203.0.113.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3141,7 +3501,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::ffff:203.0.113.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3151,7 +3511,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::FFFF:203.0.113.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3161,7 +3521,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::203.0.113.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3185,133 +3545,13 @@
   },
   {
    "fn": "isIP",
-   "input": "203.0.114.0",
-   "expect": 4
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "203.0.114.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::ffff:203.0.114.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::ffff:203.0.114.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::FFFF:203.0.114.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::FFFF:203.0.114.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::203.0.114.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::203.0.114.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "0:0:0:0:0:ffff:203.0.114.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "0:0:0:0:0:ffff:203.0.114.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "64:ff9b::203.0.114.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "64:ff9b::203.0.114.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "192.88.98.255",
-   "expect": 4
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "192.88.98.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::ffff:192.88.98.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::ffff:192.88.98.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::FFFF:192.88.98.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::FFFF:192.88.98.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::192.88.98.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::192.88.98.255",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "0:0:0:0:0:ffff:192.88.98.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "0:0:0:0:0:ffff:192.88.98.255",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "64:ff9b::192.88.98.255",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "64:ff9b::192.88.98.255",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
    "input": "192.88.99.0",
    "expect": 4
   },
   {
    "fn": "isPrivateIp",
    "input": "192.88.99.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3321,7 +3561,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::ffff:192.88.99.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3331,7 +3571,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::FFFF:192.88.99.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3341,7 +3581,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::192.88.99.0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3371,7 +3611,7 @@
   {
    "fn": "isPrivateIp",
    "input": "192.88.99.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3381,7 +3621,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::ffff:192.88.99.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3391,7 +3631,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::FFFF:192.88.99.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3401,7 +3641,7 @@
   {
    "fn": "isPrivateIp",
    "input": "::192.88.99.255",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -3421,66 +3661,6 @@
   {
    "fn": "isPrivateIp",
    "input": "64:ff9b::192.88.99.255",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "192.88.100.0",
-   "expect": 4
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "192.88.100.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::ffff:192.88.100.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::ffff:192.88.100.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::FFFF:192.88.100.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::FFFF:192.88.100.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "::192.88.100.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::192.88.100.0",
-   "expect": false
-  },
-  {
-   "fn": "isIP",
-   "input": "0:0:0:0:0:ffff:192.88.100.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "0:0:0:0:0:ffff:192.88.100.0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "64:ff9b::192.88.100.0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "64:ff9b::192.88.100.0",
    "expect": true
   },
   {
@@ -4021,7 +4201,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001::1",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -4031,7 +4211,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001:0::1",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -4041,7 +4221,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001:db8::1",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -4061,7 +4241,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2002:7f00:1::",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -4071,7 +4251,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2002:a00:1::1",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -4091,7 +4271,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2606:4700:4700::1111%1",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -4181,7 +4361,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001:0db8:0000:0000:0000:0000:0000:0001",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -4191,6 +4371,536 @@
   {
    "fn": "isPrivateIp",
    "input": "2001:DB8::1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2001::",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001::",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2001:0:ffff:ffff:ffff:ffff:ffff:ffff",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001:0:ffff:ffff:ffff:ffff:ffff:ffff",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2001:1::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001:1::1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "2001:2::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001:2::1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "2001:db7:ffff::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001:db7:ffff::1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "2001:db8::",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001:db8::",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2001:db9::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001:db9::1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "2001:4860::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001:4860::1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "2001:ffff::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2001:ffff::1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "2002::",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2002::",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2002::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2002::1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2002:c0a8:101::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2002:c0a8:101::1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2002:808:808::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2002:808:808::1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2002:7f00:1::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2002:7f00:1::1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2003::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2003::1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "2a02:db8::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2a02:db8::1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "3fff::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "3fff::1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "3ffe::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "3ffe::1",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "fe7f::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "fe7f::1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "fe80:0:0:0:0:0:0:0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "fe80:0:0:0:0:0:0:0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "fe81::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "fe81::1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "fea0::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "fea0::1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "febf:ffff::1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "febf:ffff::1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "fec0::",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "fec0::",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "fe80::1%1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "fe80::1%1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2606:4700::1%eth0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2606:4700::1%eth0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "2606:4700::1%1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "2606:4700::1%1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::1.2.3.4",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::1.2.3.4",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::0.0.0.1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::0.0.0.1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::0:808:808",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::0:808:808",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::1:0:0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::1:0:0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:0:808:808",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:0:808:808",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:1:0:0:0:0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:1:0:0:0:0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::1:0:0:0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::1:0:0:0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:1::",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:1::",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:fffe:808:808",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:fffe:808:808",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:a00:1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:a00:1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:0a00:0001",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:0a00:0001",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:c0a8:101",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:c0a8:101",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:808:808",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:808:808",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:c000:201",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:c000:201",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:c000:4e09",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:c000:4e09",
+   "expect": false
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:cb00:7101",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:cb00:7101",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:c633:6401",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:c633:6401",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:c058:6301",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:c058:6301",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::FFFF:0A00:1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::FFFF:0A00:1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0:0:0:0:0:ffff:0a00:0001",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0:0:0:0:0:ffff:0a00:0001",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:0:0",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:0:0",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "::ffff:0:1",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "::ffff:0:1",
+   "expect": true
+  },
+  {
+   "fn": "isIP",
+   "input": "0::ffff:8.8.8.8",
+   "expect": 6
+  },
+  {
+   "fn": "isPrivateIp",
+   "input": "0::ffff:8.8.8.8",
    "expect": false
   },
   {
@@ -4255,16 +4965,6 @@
   },
   {
    "fn": "isIP",
-   "input": "::ffff:0:0",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::ffff:0:0",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
    "input": "::ffff:7f00:1",
    "expect": 6
   },
@@ -4275,23 +4975,13 @@
   },
   {
    "fn": "isIP",
-   "input": "::ffff:808:808",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::ffff:808:808",
-   "expect": true
-  },
-  {
-   "fn": "isIP",
    "input": "::ffff:0808:0808",
    "expect": 6
   },
   {
    "fn": "isPrivateIp",
    "input": "::ffff:0808:0808",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",
@@ -4372,16 +5062,6 @@
    "fn": "isPrivateIp",
    "input": "::8.8.8.8%1",
    "expect": true
-  },
-  {
-   "fn": "isIP",
-   "input": "::1.2.3.4",
-   "expect": 6
-  },
-  {
-   "fn": "isPrivateIp",
-   "input": "::1.2.3.4",
-   "expect": false
   },
   {
    "fn": "isIP",
@@ -4471,7 +5151,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001:db8::1.2.3.4",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -10541,7 +11221,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2000::327:16c9:8a82:7c09:1a25%1",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -10761,7 +11441,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001::a87f:3a5e:1a87:4d5d:973c",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -11081,7 +11761,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001:0:20ec:a72e:e323:9301:4b16:2f65",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -11451,7 +12131,7 @@
   {
    "fn": "isPrivateIp",
    "input": "3fff::da09:0:cb97:31e4:0%eth0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -11521,7 +12201,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001:0:5300:0:6077:4a53:cb9f:5233",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -11531,7 +12211,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001:0:365a:0:f60c:20a3:0:60ea",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -12021,7 +12701,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001:0:0:6fbf:9a52:23e7:9e49:0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -12031,7 +12711,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2000:de71:a21f:0:c8ac:0:45ab:a7a4%a.b",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -12251,7 +12931,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2400:b000:5cd2:0:4177:f014:0:56db%eth0",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -12671,7 +13351,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2400:58c8:645f:7e8c:5151:593d:d616:58a7%a.b",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -12751,7 +13431,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001::8ed1:f61d:94dc:0:eecd",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -12811,7 +13491,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2001:0:c901:92e1:0:0:bae2:2251",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -13041,7 +13721,7 @@
   {
    "fn": "isPrivateIp",
    "input": "2000:0:6a03:458b:0:a284:0:239a%a.b",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -13191,7 +13871,7 @@
   {
    "fn": "isPrivateIp",
    "input": "3FFF:9A04:DE0F:6000:C9F7:0:E798:183C%a.b",
-   "expect": false
+   "expect": true
   },
   {
    "fn": "isIP",
@@ -13501,7 +14181,7 @@
   {
    "fn": "isPrivateIp",
    "input": "192.0.192.10",
-   "expect": true
+   "expect": false
   },
   {
    "fn": "isIP",

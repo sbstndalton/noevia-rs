@@ -603,7 +603,13 @@ async fn malformed_and_unsupported_requests_are_bad_requests() {
     let r = roundtrip(h.addr, &format!("GET https://allowed.test/ HTTP/1.1\r\nHost: allowed.test\r\n{a}Connection: close\r\n\r\n")).await;
     assert!(r.starts_with("HTTP/1.1 400 Bad Request\r\n"), "{r}");
     assert!(
-        r.ends_with("Refused: unsupported protocol \"https:\"\n"),
+        r.ends_with("Refused: https:// must be requested with CONNECT\n"),
+        "{r}"
+    );
+    // Any other scheme is named as unsupported.
+    let r = roundtrip(h.addr, &format!("GET ftp://allowed.test/ HTTP/1.1\r\nHost: allowed.test\r\n{a}Connection: close\r\n\r\n")).await;
+    assert!(
+        r.ends_with("Refused: unsupported protocol \"ftp:\"\n"),
         "{r}"
     );
     // Garbage never reaches the policy.
@@ -839,5 +845,198 @@ async fn a_chunked_response_loses_its_conflicting_content_length() {
         assert_eq!(body, "2\r\nok\r\n0\r\n\r\n");
     } else {
         assert_eq!(body, "ok");
+    }
+}
+
+#[tokio::test]
+async fn connection_cannot_unframe_a_body_or_drop_the_host() {
+    let (up, seen) = http_upstream().await;
+    let h = start(
+        vec![grant(&["allowed.test"], 60_000)],
+        vec![vec![ip(PUBLIC)]],
+        Some(up),
+        Limits::default(),
+    )
+    .await;
+    let a = auth(TOKEN);
+    let r = roundtrip(
+        h.addr,
+        &format!(
+            "POST http://allowed.test/up HTTP/1.1\r\nHost: allowed.test\r\n{a}\
+             Proxy-Authenticate: Basic realm=\"x\"\r\n\
+             Connection: close, Content-Length, Host, X-Strip-Me\r\nX-Strip-Me: 1\r\n\
+             Content-Length: 4\r\n\r\nabcd"
+        ),
+    )
+    .await;
+    assert!(r.starts_with("HTTP/1.1 200 OK\r\n"), "{r}");
+    let seen = seen.lock().unwrap();
+    let head = seen[0].to_ascii_lowercase();
+    assert!(head.contains("\r\ncontent-length: 4\r\n"), "{head}");
+    assert!(head.contains("\r\nhost: allowed.test\r\n"), "{head}");
+    for gone in ["x-strip-me", "proxy-authenticate", "proxy-authorization"] {
+        assert!(!head.contains(gone), "{gone} reached upstream: {head}");
+    }
+}
+
+#[tokio::test]
+async fn hop_by_hop_headers_of_the_response_stay_on_the_upstream_hop() {
+    let (up, _) = http_upstream_answering(
+        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close, X-Hop\r\nX-Hop: 1\r\n\
+          Keep-Alive: timeout=5\r\nProxy-Connection: keep-alive\r\n\
+          Proxy-Authenticate: Basic realm=\"origin\"\r\nUpgrade: h2c\r\nTrailer: X-T\r\n\
+          X-Keep: yes\r\n\r\nok",
+    )
+    .await;
+    let h = start(
+        vec![grant(&["allowed.test"], 60_000)],
+        vec![vec![ip(PUBLIC)]],
+        Some(up),
+        Limits::default(),
+    )
+    .await;
+    let a = auth(TOKEN);
+    let r = roundtrip(
+        h.addr,
+        &format!("GET http://allowed.test/ HTTP/1.1\r\n{a}Connection: close\r\n\r\n"),
+    )
+    .await;
+    assert!(r.starts_with("HTTP/1.1 200 OK\r\n"), "{r}");
+    assert!(r.ends_with("ok"), "{r}");
+    let head = r.split_once("\r\n\r\n").unwrap().0.to_ascii_lowercase();
+    assert!(head.contains("\r\nx-keep: yes"), "{head}");
+    for gone in [
+        "x-hop",
+        "keep-alive",
+        "proxy-connection",
+        "proxy-authenticate",
+        "upgrade",
+        "trailer",
+    ] {
+        assert!(!head.contains(gone), "{gone} reached the task: {head}");
+    }
+}
+
+fn second_task() -> Grant {
+    Grant {
+        token: "tok-synthetic-second-0123456789".into(),
+        task_id: "task-synthetic-2".into(),
+        domains: vec!["allowed.test".into()],
+        idle_ttl_ms: 60_000,
+    }
+}
+
+#[test]
+fn default_limits_match_the_js_proxy() {
+    let l = Limits::default();
+    assert_eq!(l.max_connections_per_task, 64);
+    assert_eq!(l.max_connections, 256);
+    assert_eq!(l.tunnel_idle_timeout, Duration::from_secs(600));
+}
+
+#[tokio::test]
+async fn a_task_over_its_connection_cap_gets_429_and_others_are_unaffected() {
+    let echo = echo_upstream().await;
+    let h = start(
+        vec![grant(&["allowed.test"], 60_000), second_task()],
+        vec![vec![ip(PUBLIC)]],
+        Some(echo),
+        Limits {
+            max_connections_per_task: 2,
+            ..Limits::default()
+        },
+    )
+    .await;
+    let t1 = open_tunnel(h.addr).await;
+    let t2 = open_tunnel(h.addr).await;
+    let a = auth(TOKEN);
+
+    // A third CONNECT is refused, bodiless, with the reason logged.
+    let r = roundtrip(
+        h.addr,
+        &format!("CONNECT allowed.test:443 HTTP/1.1\r\n{a}\r\n"),
+    )
+    .await;
+    assert!(r.starts_with("HTTP/1.1 429 Too Many Requests\r\n"), "{r}");
+    assert!(r.to_ascii_lowercase().contains("content-length: 0"), "{r}");
+    // So is a forwarded plain request.
+    let r = roundtrip(
+        h.addr,
+        &format!("GET http://allowed.test/ HTTP/1.1\r\n{a}Connection: close\r\n\r\n"),
+    )
+    .await;
+    assert!(r.starts_with("HTTP/1.1 429 Too Many Requests\r\n"), "{r}");
+    assert!(r.ends_with("Refused: task has 2 connections open\n"), "{r}");
+    let refused: Vec<Value> = refusals(&h)
+        .into_iter()
+        .filter(|v| v["status"] == 429)
+        .collect();
+    assert_eq!(refused.len(), 2, "{refused:?}");
+    assert!(
+        refused
+            .iter()
+            .all(|v| v["taskId"] == "task-synthetic-1"
+                && v["reason"] == "task has 2 connections open")
+    );
+    // Only the two real tunnels reached the upstream connector.
+    assert_eq!(h.connector.asked.lock().unwrap().len(), 2);
+
+    // Another task has its own count.
+    let other = auth("tok-synthetic-second-0123456789");
+    let mut s = TcpStream::connect(h.addr).await.unwrap();
+    s.write_all(format!("CONNECT allowed.test:443 HTTP/1.1\r\n{other}\r\n").as_bytes())
+        .await
+        .unwrap();
+    assert!(read_head(&mut s).await.starts_with("HTTP/1.1 200 "));
+
+    // Closing a tunnel frees its slot.
+    drop(t1);
+    let mut freed = false;
+    for _ in 0..100 {
+        let mut s = TcpStream::connect(h.addr).await.unwrap();
+        s.write_all(format!("CONNECT allowed.test:443 HTTP/1.1\r\n{a}\r\n").as_bytes())
+            .await
+            .unwrap();
+        if read_head(&mut s).await.starts_with("HTTP/1.1 200 ") {
+            freed = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(freed, "slot never freed after a tunnel closed");
+    drop(t2);
+}
+
+#[tokio::test]
+async fn finished_plain_requests_release_their_task_slot() {
+    let (up, _) = http_upstream().await;
+    let h = start(
+        vec![grant(&["allowed.test"], 60_000)],
+        vec![vec![ip(PUBLIC)]],
+        Some(up),
+        Limits {
+            max_connections_per_task: 1,
+            ..Limits::default()
+        },
+    )
+    .await;
+    let a = auth(TOKEN);
+    for i in 0..5 {
+        let mut ok = false;
+        // The slot frees when the response is done; allow the close to propagate.
+        for _ in 0..100 {
+            let r = roundtrip(
+                h.addr,
+                &format!("GET http://allowed.test/ HTTP/1.1\r\n{a}Connection: close\r\n\r\n"),
+            )
+            .await;
+            if r.starts_with("HTTP/1.1 200 OK\r\n") {
+                ok = true;
+                break;
+            }
+            assert!(r.starts_with("HTTP/1.1 429 "), "{r}");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(ok, "request {i} never got a slot");
     }
 }
