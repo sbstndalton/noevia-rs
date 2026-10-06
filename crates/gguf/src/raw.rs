@@ -27,6 +27,11 @@ pub const MAX_ARRAY_DEPTH: u32 = 1;
 /// Total bytes actually read (skips excluded). Not in gguf_meta.py, whose other caps bound
 /// reads only implicitly; real headers read a few MB at most.
 pub const MAX_BYTES_READ: u64 = 256 * 1024 * 1024;
+/// Total values kept across the whole header (every scalar, string, list and array summary,
+/// nested ones included). Not in gguf_meta.py: without it ~100,000 KV pairs each holding
+/// eight lists of eight bytes build several hundred MB of values. Real headers keep a few
+/// thousand.
+pub const MAX_RETAINED_VALUES: u64 = 500_000;
 
 const BUF_CAPACITY: usize = 64 * 1024;
 
@@ -83,12 +88,15 @@ enum Fault {
     Meta(String),
     /// [`MAX_BYTES_READ`] reached.
     ReadLimit,
+    /// The underlying reader failed (Python's OSError); never mistaken for running out of
+    /// data while skipping an array.
+    Io(String),
 }
 
 impl Fault {
     fn message(&self) -> String {
         match self {
-            Fault::Meta(m) => m.clone(),
+            Fault::Meta(m) | Fault::Io(m) => m.clone(),
             Fault::ReadLimit => format!("header read limit of {MAX_BYTES_READ} bytes exceeded"),
         }
     }
@@ -103,6 +111,7 @@ struct Source<R: Read + Seek> {
     pos: u64,
     size: u64,
     retained: u64,
+    values: u64,
     ran_out: bool,
     bytes_read: u64,
 }
@@ -117,6 +126,7 @@ impl<R: Read + Seek> Source<R> {
             pos: start,
             size,
             retained: 0,
+            values: 0,
             ran_out: false,
             bytes_read: 0,
         })
@@ -152,7 +162,7 @@ impl<R: Read + Seek> Source<R> {
         let mut buf = [0u8; N];
         self.r
             .read_exact(&mut buf)
-            .map_err(|e| Fault::Meta(e.to_string()))?;
+            .map_err(|e| Fault::Io(e.to_string()))?;
         self.pos = self.pos.saturating_add(N as u64);
         Ok(buf)
     }
@@ -164,7 +174,7 @@ impl<R: Read + Seek> Source<R> {
         let mut buf = vec![0u8; len];
         self.r
             .read_exact(&mut buf)
-            .map_err(|e| Fault::Meta(e.to_string()))?;
+            .map_err(|e| Fault::Io(e.to_string()))?;
         self.pos = self.pos.saturating_add(n);
         Ok(buf)
     }
@@ -176,7 +186,7 @@ impl<R: Read + Seek> Source<R> {
         let off = i64::try_from(n).map_err(|_| truncated())?;
         self.r
             .seek_relative(off)
-            .map_err(|e| Fault::Meta(e.to_string()))?;
+            .map_err(|e| Fault::Io(e.to_string()))?;
         self.pos = self.pos.saturating_add(n);
         Ok(())
     }
@@ -228,6 +238,13 @@ impl<R: Read + Seek> Source<R> {
     }
 
     fn read_value(&mut self, vtype: u32, depth: u32) -> Result<Value, Fault> {
+        // Counted before the value is read, so the cap bounds what gets allocated.
+        self.values += 1;
+        if self.values > MAX_RETAINED_VALUES {
+            return Err(Fault::Meta(
+                "header holds implausibly many values".to_string(),
+            ));
+        }
         if let Some(v) = self.read_scalar(vtype)? {
             return Ok(v);
         }
@@ -390,7 +407,7 @@ pub fn read_raw(path: &Path) -> Result<Raw, GgufError> {
     let file = File::open(path).map_err(|e| GgufError(e.to_string()))?;
     let meta = file.metadata().map_err(|e| GgufError(e.to_string()))?;
     if meta.is_dir() {
-        return Err(GgufError(format!("{} is a directory", path.display())));
+        return Err(GgufError("is a directory".into()));
     }
     read_raw_stream(file)
 }

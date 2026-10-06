@@ -2,8 +2,8 @@
 //! hostile or corrupt metadata degrades to `_error`, never to memory exhaustion or a hang.
 //! Synthetic bytes only.
 //!
-//! The counting allocator below is the only `unsafe` in the workspace; it is test-only and
-//! measures peak heap use the way the Python tests use tracemalloc.
+//! The counting allocator below is the only `unsafe` in the workspace. It lives in this
+//! test-only crate so the shipped crates can keep `#![forbid(unsafe_code)]`.
 #![allow(unsafe_code)]
 #![allow(
     clippy::unwrap_used,
@@ -12,6 +12,7 @@
     clippy::indexing_slicing
 )]
 
+#[path = "../../gguf/tests/common/mod.rs"]
 mod common;
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -20,7 +21,10 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use common::*;
-use gguf::{read_raw, read_raw_bytes, summarize, Raw, Value, MAX_STRING_LEN};
+use gguf::{
+    read_raw, read_raw_bytes, summarize, Raw, Value, MAX_KV_COUNT, MAX_RETAINED_VALUES,
+    MAX_STRING_LEN,
+};
 
 struct Counting;
 
@@ -306,4 +310,69 @@ fn total_bytes_read_is_capped_for_endless_empty_strings() {
     assert!(err_of(&raw).contains("read limit"), "{raw:?}");
     assert!(peak < MB2);
     eprintln!("read-cap walk took {:?}", t0.elapsed());
+}
+
+/// Peak-heap budget for the worst shapes below; DaServer has no swap (noevia#697).
+const MB64: usize = 64 * 1024 * 1024;
+
+#[test]
+fn many_kv_pairs_of_nested_byte_lists_stay_under_the_value_cap() {
+    let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    // MAX_KV_COUNT pairs, each a list of 8 lists of 8 u8: 73 values per pair, 7.3M in all.
+    // Without a cap on retained values this builds several hundred MB.
+    let mut inner = iq(0, 8); // u8 subtype, 8 elements
+    inner.extend_from_slice(&[7u8; 8]);
+    let mut value = u32le(ARRAY);
+    value.extend_from_slice(&iq(ARRAY, 8));
+    for _ in 0..8 {
+        value.extend_from_slice(&inner);
+    }
+    let mut buf = header(MAX_KV_COUNT, 0);
+    for i in 0..MAX_KV_COUNT {
+        buf.extend_from_slice(&s(&format!("k{i:06}")));
+        buf.extend_from_slice(&value);
+    }
+    let t0 = Instant::now();
+    let (raw, peak) = peak_of(|| read_raw_bytes(&buf).unwrap());
+    let elapsed = t0.elapsed();
+    let kept = raw.len();
+    let (summary, summary_peak) = peak_of(|| summarize(&raw).unwrap().to_string());
+    drop(raw);
+    eprintln!(
+        "worst-case nested lists: {} input bytes, {kept} keys kept, peak heap {} bytes \
+         ({:.1} MiB) in {elapsed:?}; summarize peak {} bytes",
+        buf.len(),
+        peak,
+        peak as f64 / 1048576.0,
+        summary_peak
+    );
+    assert!(
+        summary.contains("header holds implausibly many values"),
+        "{summary}"
+    );
+    // ~MAX_RETAINED_VALUES / 73 pairs fit before the cap.
+    assert!(kept < (MAX_RETAINED_VALUES / 73) as usize + 10);
+    assert!(peak < MB64, "peak {peak}");
+    assert!(elapsed < Duration::from_secs(5));
+}
+
+#[test]
+fn many_kv_pairs_of_byte_array_summaries_stay_under_the_value_cap() {
+    let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    // MAX_KV_COUNT pairs, each a u8 array of 9 (summarised: 1 summary + 8 sample values).
+    let mut value = u32le(ARRAY);
+    value.extend_from_slice(&iq(0, 9));
+    value.extend_from_slice(&[1u8; 9]);
+    let mut buf = header(MAX_KV_COUNT, 0);
+    for i in 0..MAX_KV_COUNT {
+        buf.extend_from_slice(&s(&format!("k{i:06}")));
+        buf.extend_from_slice(&value);
+    }
+    let (raw, peak) = peak_of(|| read_raw_bytes(&buf).unwrap());
+    eprintln!(
+        "worst-case array summaries: peak heap {peak} bytes ({:.1} MiB), {} keys kept",
+        peak as f64 / 1048576.0,
+        raw.len()
+    );
+    assert!(peak < MB64, "peak {peak}");
 }
