@@ -1,0 +1,6 @@
+{
+ "__error__": {
+  "kind": "GgufMetaError",
+  "message": "header is truncated or declares a length past the end of the data"
+ }
+}

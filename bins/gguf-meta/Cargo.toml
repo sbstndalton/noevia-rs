@@ -1,0 +1,17 @@
+[package]
+name = "gguf-meta"
+version = "0.1.0"
+description = "Print a GGUF file's metadata summary as JSON"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gguf = { path = "../../crates/gguf" }
+
+[dev-dependencies]
+serde_json = "1"

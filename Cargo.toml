@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = []
+members = ["crates/gguf", "bins/gguf-meta"]
 
 [workspace.package]
 edition = "2021"
@@ -9,7 +9,7 @@ license = "MIT"
 publish = false
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
 unwrap_used = "deny"

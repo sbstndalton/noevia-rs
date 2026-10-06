@@ -1,0 +1,6 @@
+{
+ "__error__": {
+  "kind": "ValueError",
+  "message": "cannot convert float NaN to integer"
+ }
+}

@@ -14,6 +14,13 @@ one slice at a time.
 - `crates/` — libraries
 - `bins/` — command-line binaries
 
+## Slices
+
+- `crates/gguf` + `bins/gguf-meta` (sbstndalton/noevia#896): bounded GGUF metadata
+  reader. `gguf-meta <path>` prints the same summary JSON as model-manager's
+  `gguf_meta.py`. Its differential corpus is regenerated from the Python reference with
+  `NOEVIA_GGUF_META=<noevia>/services/model-manager/app/gguf_meta.py python3 tools/gen-fixtures.py`.
+
 ## Checks
 
 ```sh
