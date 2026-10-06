@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust fmt, clippy, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check if the workspace has any packages
+        id: pkgs
+        run: |
+          if ls crates/*/Cargo.toml bins/*/Cargo.toml >/dev/null 2>&1; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: cargo fmt --check
+        if: steps.pkgs.outputs.any == 'true'
+        run: cargo fmt --all --check
+      - name: cargo clippy
+        if: steps.pkgs.outputs.any == 'true'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: cargo test
+        if: steps.pkgs.outputs.any == 'true'
+        run: cargo test --workspace
