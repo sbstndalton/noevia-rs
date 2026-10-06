@@ -5,8 +5,7 @@ use crate::json::{Json, PyInt};
 use crate::pyfmt::{py_float_repr, py_str, truthy};
 use crate::raw::{Raw, Value};
 
-/// Raised where Python's `summarize()` itself raises (e.g. `int(nan)`, an unhashable
-/// `general.file_type`). The message follows Python's.
+/// Raised where Python's `summarize()` itself raises (an unhashable `general.file_type`). The message follows Python's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryError(pub String);
 
@@ -60,7 +59,8 @@ pub fn file_type_name(n: i128) -> Option<&'static str> {
     })
 }
 
-/// `int(f)` for a float: truncates toward zero; NaN and infinities raise as in Python.
+/// `int(f)` for a float: truncates toward zero. [`summarize`] maps NaN/±Inf to `None` before
+/// any conversion, so the non-finite arms only guard direct misuse.
 fn float_to_int(f: f64) -> Result<PyInt, SummaryError> {
     if f.is_nan() {
         return Err(SummaryError("cannot convert float NaN to integer".into()));
@@ -151,7 +151,7 @@ fn scalar_int(v: Option<&Value>) -> Result<Option<PyInt>, SummaryError> {
             Some(first) => numeric_int(first),
             None => Ok(None),
         },
-        Value::Str(_) => Ok(None),
+        Value::Str(_) | Value::None => Ok(None),
     }
 }
 
@@ -213,7 +213,7 @@ fn quant_name(v: Option<&Value>) -> Result<Json, SummaryError> {
     let named =
         |n: i128, fallback: String| Json::Str(file_type_name(n).map_or(fallback, str::to_string));
     Ok(match v {
-        None => Json::Null,
+        None | Some(Value::None) => Json::Null,
         Some(Value::Bool(b)) => named(i128::from(*b), if *b { "True" } else { "False" }.into()),
         Some(Value::Int(i)) => named(*i, i.to_string()),
         Some(Value::Float(f)) => {
@@ -263,8 +263,23 @@ pub fn scan_chat_template_features(template: Option<&Value>) -> Json {
     ])
 }
 
+/// `_finite`: a copy with every NaN/±Infinity float replaced by `None` (noevia#901).
+fn finite(v: &Value) -> Value {
+    match v {
+        Value::Float(f) if !f.is_finite() => Value::None,
+        Value::List(items) => Value::List(items.iter().map(finite).collect()),
+        Value::ArraySummary { count, sample } => Value::ArraySummary {
+            count: *count,
+            sample: sample.iter().map(finite).collect(),
+        },
+        other => other.clone(),
+    }
+}
+
 /// Build the summary gguf_meta.py's `summarize(raw)` returns.
 pub fn summarize(raw: &Raw) -> Result<Json, SummaryError> {
+    let finite_raw: Raw = raw.iter().map(|(k, v)| (k.clone(), finite(v))).collect();
+    let raw = &finite_raw;
     let empty = Value::Str(String::new());
     let arch: &Value = match raw.get("general.architecture") {
         Some(v) if truthy(v) => v,

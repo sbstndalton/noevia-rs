@@ -16,13 +16,15 @@ fn raw(pairs: &[(&str, Value)]) -> Raw {
 }
 
 #[test]
-fn infinite_parameter_count_formats_like_python() {
-    let r = raw(&[("general.parameter_count", Value::Float(f64::INFINITY))]);
-    let s = summarize(&r).unwrap();
-    let g = s.get("general").unwrap();
-    assert_eq!(g.get("params"), Some(&Json::Str("inf T".into())));
-    // Python's json.dumps would print the non-JSON token Infinity; we print null.
-    assert!(s.to_string().contains("\"params_raw\":null"));
+fn infinite_parameter_count_is_none_like_python() {
+    // gguf_meta.py maps non-finite floats to None before formatting (noevia#901, #913).
+    for f in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+        let r = raw(&[("general.parameter_count", Value::Float(f))]);
+        let s = summarize(&r).unwrap();
+        let g = s.get("general").unwrap();
+        assert_eq!(g.get("params"), Some(&Json::Null), "{f}");
+        assert_eq!(g.get("params_raw"), Some(&Json::Null), "{f}");
+    }
 }
 
 #[test]
@@ -37,17 +39,49 @@ fn nan_rope_freq_base_serialises_as_null() {
 }
 
 #[test]
-fn nan_in_an_array_sample_raises_like_python() {
-    let sample = vec![Value::Float(f64::NAN); 8];
+fn non_finite_in_int_fields_is_none_not_an_error() {
+    let mut sample = vec![Value::Float(f64::NAN); 7];
+    sample.push(Value::Float(4.0));
     let r = raw(&[
         ("general.architecture", Value::Str("llama".into())),
         (
             "llama.block_count",
             Value::ArraySummary { count: 9, sample },
         ),
+        ("llama.context_length", Value::Float(f64::INFINITY)),
+        (
+            "llama.embedding_length",
+            Value::List(vec![Value::Float(f64::NEG_INFINITY), Value::Int(3)]),
+        ),
+        (
+            "llama.feed_forward_length",
+            Value::ArraySummary {
+                count: 9,
+                sample: vec![Value::Float(f64::NAN); 8],
+            },
+        ),
     ]);
-    let e = summarize(&r).unwrap_err();
-    assert_eq!(e.0, "cannot convert float NaN to integer");
+    let s = summarize(&r).unwrap();
+    let m = s.get("model").unwrap();
+    assert_eq!(
+        m.get("block_count"),
+        Some(&Json::Int(gguf::PyInt::Small(4)))
+    );
+    assert_eq!(m.get("context_length"), Some(&Json::Null));
+    assert_eq!(m.get("embedding_length"), Some(&Json::Null));
+    assert_eq!(m.get("feed_forward_length"), Some(&Json::Null));
+}
+
+#[test]
+fn non_finite_architecture_is_empty() {
+    let r = raw(&[
+        ("general.architecture", Value::Float(f64::NAN)),
+        ("nan.block_count", Value::Int(3)),
+    ]);
+    let s = summarize(&r).unwrap();
+    assert_eq!(s.get("arch"), Some(&Json::Str(String::new())));
+    let m = s.get("model").unwrap();
+    assert_eq!(m.get("block_count"), Some(&Json::Null));
 }
 
 #[test]
