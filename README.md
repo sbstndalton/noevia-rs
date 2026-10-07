@@ -57,6 +57,21 @@ one slice at a time.
   noevia-core (`node tools/gen-storage-fixtures.cjs s3|path`); copy them to
   `crates/s3-list-parse/tests/fixtures/s3-list.v1.json` and
   `crates/storage-path/tests/fixtures/storage-path.v1.json` byte-for-byte when they change.
+- `crates/docx-text` + `bins/docx-text` (sbstndalton/noevia#981): the OCR service's DOCX
+  text front. `docx-text extract < upload.docx` checks the ZIP container (EOCD, member
+  count/sizes, encryption, compression ratio) and prints `{"text", "truncated", "scope"}`
+  exactly as noevia-services' `ocr/docx_text.py` `extract_docx` does; refusals print
+  `docx-text: refused: <class>` and exit 1. Same limits as Python (1000 members, 64 MiB,
+  8 MiB XML, 200k characters, 25 MiB input), a strict streaming XML reader with no DTD or
+  entities, and a ZIP reader stricter than `zipfile` (the crate docs list each difference).
+  The differential corpus is regenerated with
+  `uv run --python 3.12 tools/gen-docx-text.py --ocr <noevia-services>/ocr --bin target/release/docx-text`;
+  copy `crates/docx-text/tests/fixtures/docx-text.v1.json` into noevia-services'
+  `ocr/tests/fixtures/` when it changes. Producer compatibility (python-docx, pandoc,
+  LibreOffice headless, macOS textutil, Info-ZIP/ditto/zipfile re-packs, synthetic content) is
+  `crates/docx-text/tests/fixtures/docx-producers.v1.json`, regenerated on a Mac with
+  `uv run --python 3.12 --with python-docx tools/gen-docx-producers.py --ocr <noevia-services>/ocr --bin target/release/docx-text`
+  (copied into noevia-services the same way).
 
 ## Checks
 
