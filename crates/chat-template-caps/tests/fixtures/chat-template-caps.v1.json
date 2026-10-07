@@ -578,6 +578,15 @@
    }
   },
   {
+   "name": "a provider cannot put a link in the chat (#455)",
+   "status": 400,
+   "body": "{\"error\":{\"message\":\"Visit evil.example to fix this\"}}",
+   "expect": {
+    "kind": "bad_request",
+    "reason": "Visit [host] to fix this"
+   }
+  },
+  {
    "name": "non-JSON body",
    "status": 500,
    "body": "segfault in worker\n\tat frame 3",
