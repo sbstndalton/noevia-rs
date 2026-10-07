@@ -35,3 +35,40 @@ jobs:
       - name: cargo test
         if: steps.pkgs.outputs.any == 'true'
         run: cargo test --locked --workspace
+
+  dav-parse-wasm:
+    # noevia#967: dav-parse.wasm is consumed by noevia-core at a pinned sha256, so the build must be
+    # reproducible. Build it twice from clean target dirs, require identical bytes, and record the
+    # digest in the job summary (compare it with DAV_PARSE_WASM_SHA256 in noevia-core's
+    # server/dav-parse.lock when re-pinning).
+    name: dav-parse.wasm (reproducible build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build twice and compare
+        run: |
+          set -euo pipefail
+          rustup target add wasm32-unknown-unknown
+          tools/build-dav-parse-wasm.sh "$RUNNER_TEMP/a.wasm"
+          rm -rf target
+          tools/build-dav-parse-wasm.sh "$RUNNER_TEMP/b.wasm"
+          cmp "$RUNNER_TEMP/a.wasm" "$RUNNER_TEMP/b.wasm"
+          sha=$(sha256sum "$RUNNER_TEMP/a.wasm" | cut -d' ' -f1)
+          echo "dav-parse.wasm sha256: \`$sha\` ($(stat -c %s "$RUNNER_TEMP/a.wasm") bytes)" >> "$GITHUB_STEP_SUMMARY"
+          echo "dav-parse.wasm sha256 $sha"
+      - name: No imports, expected exports
+        run: |
+          node -e '
+            const m = new WebAssembly.Module(require("fs").readFileSync(process.argv[1]));
+            const imports = WebAssembly.Module.imports(m), exports = WebAssembly.Module.exports(m).map((e) => e.name);
+            if (imports.length) { console.error("unexpected imports", imports); process.exit(1); }
+            for (const n of ["memory", "dav_input", "dav_list", "dav_output_ptr", "dav_output_len"])
+              if (!exports.includes(n)) { console.error("missing export", n); process.exit(1); }
+          ' "$RUNNER_TEMP/a.wasm"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dav-parse-wasm
+          path: ${{ runner.temp }}/a.wasm

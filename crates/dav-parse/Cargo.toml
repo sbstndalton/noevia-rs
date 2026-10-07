@@ -1,0 +1,18 @@
+[package]
+name = "dav-parse"
+version = "0.1.0"
+description = "Bounded WebDAV PROPFIND (Depth: 1) listing parser, matching noevia-core's server/dav-listing.cjs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+url = "2"
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"

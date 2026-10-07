@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/gguf", "crates/gguf-memtest", "crates/egress", "bins/gguf-meta", "bins/egress-proxy", "crates/model-files", "bins/model-files"]
+members = ["crates/gguf", "crates/gguf-memtest", "crates/egress", "bins/gguf-meta", "bins/egress-proxy", "crates/model-files", "bins/model-files", "crates/dav-parse", "bins/dav-parse-wasm"]
 
 [workspace.package]
 edition = "2021"
@@ -16,3 +16,14 @@ unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
 indexing_slicing = "deny"
+
+# The dav-parse WebAssembly module (noevia#967) is built with this profile by
+# tools/build-dav-parse-wasm.sh; its sha256 is pinned by noevia-core.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
