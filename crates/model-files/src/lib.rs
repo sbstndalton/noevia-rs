@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod backups;
 mod bigint;
 pub mod json;
 #[rustfmt::skip]

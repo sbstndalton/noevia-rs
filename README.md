@@ -114,6 +114,15 @@ one slice at a time.
   `autotune_plan`. Table from noevia-core (`node tools/gen-autotune-plan-fixtures.cjs`, seeded
   simulated runs over synthetic model layouts, expectations from an independent JS reference),
   copied byte-for-byte to `crates/autotune-plan/tests/fixtures/autotune-plan.v1.json`.
+- `model-files backups` (`crates/model-files/src/backups.rs`, sbstndalton/noevia#1021): which
+  recovery copies of models.ini a model-manager write makes and which old ones it removes. The
+  rotating `<file>.bak-*` copies keep ini.py's rule (newest 10 by name); the
+  `<file>.noevia-backup-<revision>` copies, never removed before, keep the newest
+  `keepRevisions` (default 10) by mtime, this write's copy always among them; a write with
+  noevia-core's `backup: false` hint (#1003, one copy per auto-tune run) makes neither. Only
+  listed names of the two patterns are ever returned. Table from `python3
+  tools/gen-model-backups.py` (an independent reference of the specification), copied
+  byte-for-byte to noevia-services `model-manager/tests/fixtures/model-backups.v1.json`.
 - `crates/docx-text` + `bins/docx-text` (sbstndalton/noevia#981): the OCR service's DOCX
   text front. `docx-text extract < upload.docx` checks the ZIP container (EOCD, member
   count/sizes, encryption, compression ratio) and prints `{"text", "truncated", "scope"}`
