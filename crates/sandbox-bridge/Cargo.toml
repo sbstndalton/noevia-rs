@@ -1,0 +1,15 @@
+[package]
+name = "sandbox-bridge"
+version = "0.1.0"
+description = "The code-sandbox bridge's untrusted-input rules (line framing, toolCallFor, start-message parsing, workspace containment), matching noevia-core's code-sandbox/*.cjs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"

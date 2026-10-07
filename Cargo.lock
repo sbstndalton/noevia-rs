@@ -795,6 +795,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sandbox-bridge"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+]
+
+[[package]]
+name = "sandbox-bridge-wasm"
+version = "0.1.0"
+dependencies = [
+ "sandbox-bridge",
+]
+
+[[package]]
 name = "secret-envelope"
 version = "0.1.0"
 dependencies = [
