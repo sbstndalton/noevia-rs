@@ -1,0 +1,18 @@
+[package]
+name = "storage-path"
+version = "0.1.0"
+description = "Storage path rules (safeRelativePath, cleanRoot, joinRoot, plain upload filenames), matching noevia-core's server/storage-path.cjs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+dav-parse = { path = "../dav-parse" }
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"

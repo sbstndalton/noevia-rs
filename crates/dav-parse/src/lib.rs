@@ -418,7 +418,8 @@ pub fn list_entries(body: &str, target: &str) -> Result<Vec<Entry>, Error> {
     Ok(entries)
 }
 
-fn push_json_string(out: &mut String, s: &str) {
+/// Append `s` as a JSON string literal (quotes, backslashes and C0 controls escaped).
+pub fn push_json_string(out: &mut String, s: &str) {
     out.push('"');
     for c in s.chars() {
         match c {

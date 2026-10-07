@@ -1,0 +1,18 @@
+[package]
+name = "s3-list-parse"
+version = "0.1.0"
+description = "Bounded S3 ListObjectsV2 page parser, matching noevia-core's server/s3-listing.cjs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+dav-parse = { path = "../dav-parse" }
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"
