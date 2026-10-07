@@ -1,0 +1,17 @@
+[package]
+name = "tune-contention"
+version = "0.1.0"
+description = "Auto-tune and another client of the llama.cpp router: is a model that is not being tuned loaded, busy or loading, and should the tune wait, unload it (idle) or give up (noevia#1062)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+proptest = "1"
