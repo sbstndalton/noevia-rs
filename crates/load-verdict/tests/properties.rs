@@ -44,11 +44,13 @@ fn evidence() -> impl Strategy<Value = Evidence> {
         prop::option::of(0u16..1000),
         prop::option::of(-1024i32..1024),
         text(),
+        any::<bool>(),
     )
-        .prop_map(|(status, exit_code, text)| Evidence {
+        .prop_map(|(status, exit_code, text, crash)| Evidence {
             status,
             exit_code,
             text,
+            crash,
         })
 }
 
@@ -79,12 +81,14 @@ proptest! {
             Some(ev) => {
                 let (rule, _) = classify(ev);
                 prop_assert_eq!(v.rule, rule);
+                if ev.crash { prop_assert!(rule != Label::Timeout); }
                 if let Some(o) = rule.outcome() {
                     prop_assert_eq!(v.source, Source::Rule);
                     prop_assert_eq!(v.outcome, o);
                 } else if v.advice_used {
                     let a = a.unwrap();
                     prop_assert!(a.permille >= MIN_ADVICE_PERMILLE);
+                    prop_assert!(a.label != Label::Timeout);
                     prop_assert_eq!(Some(v.outcome), a.label.outcome());
                     prop_assert_eq!(v.source, Source::Advisor);
                 } else {

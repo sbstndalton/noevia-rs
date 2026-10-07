@@ -2669,13 +2669,13 @@
      "label": "timeout",
      "permille": 600
     },
-    "adviceUsed": true,
+    "adviceUsed": false,
     "ask": false,
-    "outcome": "timeout",
-    "reason": "The engine did not finish in time at this setting (no rule matched the engine's error; the decision service's reading was used).",
+    "outcome": "load_failed",
+    "reason": "The engine could not load the model at this setting (no rule matched the engine's error).",
     "rule": "unknown",
     "ruleId": null,
-    "source": "advisor"
+    "source": "fallback"
    }
   },
   {
@@ -2725,13 +2725,13 @@
      "label": "timeout",
      "permille": 600
     },
-    "adviceUsed": true,
+    "adviceUsed": false,
     "ask": false,
-    "outcome": "timeout",
-    "reason": "The engine did not finish in time at this setting (no rule matched the engine's error; the decision service's reading was used).",
+    "outcome": "load_failed",
+    "reason": "The engine could not load the model at this setting (no rule matched the engine's error).",
     "rule": "unknown",
     "ruleId": null,
-    "source": "advisor"
+    "source": "fallback"
    }
   },
   {
@@ -2781,13 +2781,13 @@
      "label": "timeout",
      "permille": 600
     },
-    "adviceUsed": true,
+    "adviceUsed": false,
     "ask": false,
-    "outcome": "timeout",
-    "reason": "The engine did not finish in time at this setting (no rule matched the engine's error; the decision service's reading was used).",
+    "outcome": "load_failed",
+    "reason": "The engine could not load the model at this setting (no rule matched the engine's error).",
     "rule": "unknown",
     "ruleId": null,
-    "source": "advisor"
+    "source": "fallback"
    }
   },
   {
@@ -2837,13 +2837,13 @@
      "label": "timeout",
      "permille": 750
     },
-    "adviceUsed": true,
+    "adviceUsed": false,
     "ask": false,
-    "outcome": "timeout",
-    "reason": "The engine did not finish in time at this setting (no rule matched the engine's error; the decision service's reading was used).",
+    "outcome": "load_failed",
+    "reason": "The engine could not load the model at this setting (no rule matched the engine's error).",
     "rule": "unknown",
     "ruleId": null,
-    "source": "advisor"
+    "source": "fallback"
    }
   },
   {
@@ -2893,13 +2893,13 @@
      "label": "timeout",
      "permille": 1000
     },
-    "adviceUsed": true,
+    "adviceUsed": false,
     "ask": false,
-    "outcome": "timeout",
-    "reason": "The engine did not finish in time at this setting (no rule matched the engine's error; the decision service's reading was used).",
+    "outcome": "load_failed",
+    "reason": "The engine could not load the model at this setting (no rule matched the engine's error).",
     "rule": "unknown",
     "ruleId": null,
-    "source": "advisor"
+    "source": "fallback"
    }
   },
   {
@@ -4150,6 +4150,140 @@
    }
   },
   {
+   "name": "advice-timeout-ignored",
+   "input": {
+    "cause": "oom",
+    "evidence": {
+     "text": "odd"
+    },
+    "advice": {
+     "label": "timeout",
+     "confidence": 0.9
+    }
+   },
+   "expect": {
+    "advice": {
+     "label": "timeout",
+     "permille": 900
+    },
+    "adviceUsed": false,
+    "ask": false,
+    "outcome": "oom",
+    "reason": "The engine ran out of memory at this setting (no rule matched the engine's error).",
+    "rule": "unknown",
+    "ruleId": null,
+    "source": "fallback"
+   }
+  },
+  {
+   "name": "crash-text-timed-out",
+   "input": {
+    "cause": "oom",
+    "evidence": {
+     "text": "The model server request timed out.",
+     "crash": true
+    }
+   },
+   "expect": {
+    "advice": null,
+    "adviceUsed": false,
+    "ask": true,
+    "outcome": "oom",
+    "reason": "The engine ran out of memory at this setting (no rule matched the engine's error).",
+    "rule": "unknown",
+    "ruleId": null,
+    "source": "fallback"
+   }
+  },
+  {
+   "name": "crash-text-deadline-advice-timeout",
+   "input": {
+    "cause": "oom",
+    "evidence": {
+     "text": "deadline exceeded",
+     "crash": true
+    },
+    "advice": {
+     "label": "timeout",
+     "confidence": 1
+    }
+   },
+   "expect": {
+    "advice": {
+     "label": "timeout",
+     "permille": 1000
+    },
+    "adviceUsed": false,
+    "ask": false,
+    "outcome": "oom",
+    "reason": "The engine ran out of memory at this setting (no rule matched the engine's error).",
+    "rule": "unknown",
+    "ruleId": null,
+    "source": "fallback"
+   }
+  },
+  {
+   "name": "crash-status-504",
+   "input": {
+    "cause": "oom",
+    "evidence": {
+     "status": 504,
+     "text": "",
+     "crash": true
+    }
+   },
+   "expect": {
+    "advice": null,
+    "adviceUsed": false,
+    "ask": false,
+    "outcome": "oom",
+    "reason": "The engine ran out of memory at this setting (no rule matched the engine's error).",
+    "rule": "unknown",
+    "ruleId": null,
+    "source": "fallback"
+   }
+  },
+  {
+   "name": "crash-text-oom",
+   "input": {
+    "cause": "oom",
+    "evidence": {
+     "text": "timed out: out of memory",
+     "crash": true
+    }
+   },
+   "expect": {
+    "advice": null,
+    "adviceUsed": false,
+    "ask": false,
+    "outcome": "oom",
+    "reason": "The engine ran out of memory at this setting (from the engine's error).",
+    "rule": "oom",
+    "ruleId": "text_oom",
+    "source": "rule"
+   }
+  },
+  {
+   "name": "crash-false-timed-out",
+   "input": {
+    "cause": "load",
+    "evidence": {
+     "text": "timed out",
+     "crash": false
+    }
+   },
+   "expect": {
+    "advice": null,
+    "adviceUsed": false,
+    "ask": false,
+    "outcome": "timeout",
+    "reason": "The engine did not finish in time at this setting (from the engine's error).",
+    "rule": "timeout",
+    "ruleId": "text_timeout",
+    "source": "rule"
+   }
+  },
+  {
    "name": "evidence-null-text",
    "input": {
     "cause": "load",
@@ -4238,7 +4372,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "ERROR_OUT_OF_HOST_MEMORY | "
+     "text": "ERROR_OUT_OF_HOST_MEMORY | ",
+     "crash": true
     }
    },
    "expect": {
@@ -4329,7 +4464,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "gguf_init_from_file_impl: invalid magic characters: 'xxxx', expected 'GGUF' | common_chat_templates_init: failed to parse chat template (Jinja syntax error near line 3)"
+     "text": "gguf_init_from_file_impl: invalid magic characters: 'xxxx', expected 'GGUF' | common_chat_templates_init: failed to parse chat template (Jinja syntax error near line 3)",
+     "crash": true
     },
     "advice": {
      "label": "timeout",
@@ -4434,7 +4570,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer | llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight'"
+     "text": "llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer | llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight'",
+     "crash": true
     },
     "advice": {
      "label": "timeout",
@@ -4539,7 +4676,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": " | common_chat_templates_init: failed to parse chat template (Jinja syntax error near line 3)"
+     "text": " | common_chat_templates_init: failed to parse chat template (Jinja syntax error near line 3)",
+     "crash": true
     }
    },
    "expect": {
@@ -4637,7 +4775,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "gguf_init_from_file_impl: invalid magic characters: 'xxxx', expected 'GGUF' | {\"error\":{\"code\":500,\"message\":\"Internal server error\",\"type\":\"server_error\"}}"
+     "text": "gguf_init_from_file_impl: invalid magic characters: 'xxxx', expected 'GGUF' | {\"error\":{\"code\":500,\"message\":\"Internal server error\",\"type\":\"server_error\"}}",
+     "crash": true
     }
    },
    "expect": {
@@ -4728,7 +4867,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "context shift is disabled, cannot continue | ERROR_OUT_OF_HOST_MEMORY"
+     "text": "context shift is disabled, cannot continue | ERROR_OUT_OF_HOST_MEMORY",
+     "crash": true
     },
     "advice": {
      "label": "oom",
@@ -4819,7 +4959,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "context shift is disabled, cannot continue | llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight'"
+     "text": "context shift is disabled, cannot continue | llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight'",
+     "crash": true
     }
    },
    "expect": {
@@ -4910,7 +5051,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight' | common_chat_templates_init: failed to parse chat template (Jinja syntax error near line 3)"
+     "text": "llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight' | common_chat_templates_init: failed to parse chat template (Jinja syntax error near line 3)",
+     "crash": true
     }
    },
    "expect": {
@@ -4994,7 +5136,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "ggml_vulkan: Device memory allocation of size 6442450944 failed.\nggml_vulkan: vk::Device::allocateMemory: ErrorOutOfDeviceMemory | The engine rejected the long prompt (HTTP 500)."
+     "text": "ggml_vulkan: Device memory allocation of size 6442450944 failed.\nggml_vulkan: vk::Device::allocateMemory: ErrorOutOfDeviceMemory | The engine rejected the long prompt (HTTP 500).",
+     "crash": true
     }
    },
    "expect": {
@@ -5078,7 +5221,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "ggml_vulkan: Device memory allocation of size 6442450944 failed.\nggml_vulkan: vk::Device::allocateMemory: ErrorOutOfDeviceMemory | llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight'"
+     "text": "ggml_vulkan: Device memory allocation of size 6442450944 failed.\nggml_vulkan: vk::Device::allocateMemory: ErrorOutOfDeviceMemory | llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight'",
+     "crash": true
     }
    },
    "expect": {
@@ -5162,7 +5306,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "common_chat_templates_init: failed to parse chat template (Jinja syntax error near line 3) | ERROR_OUT_OF_HOST_MEMORY"
+     "text": "common_chat_templates_init: failed to parse chat template (Jinja syntax error near line 3) | ERROR_OUT_OF_HOST_MEMORY",
+     "crash": true
     }
    },
    "expect": {
@@ -5246,7 +5391,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "{\"error\":{\"code\":500,\"message\":\"Internal server error\",\"type\":\"server_error\"}} | llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer"
+     "text": "{\"error\":{\"code\":500,\"message\":\"Internal server error\",\"type\":\"server_error\"}} | llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer",
+     "crash": true
     }
    },
    "expect": {
@@ -5337,7 +5483,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "failed to open /models/synthetic.gguf: No such file or directory | {\"error\":{\"code\":500,\"message\":\"Internal server error\",\"type\":\"server_error\"}}"
+     "text": "failed to open /models/synthetic.gguf: No such file or directory | {\"error\":{\"code\":500,\"message\":\"Internal server error\",\"type\":\"server_error\"}}",
+     "crash": true
     },
     "advice": {
      "label": "timeout",
@@ -5435,7 +5582,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "error: unsupported chat_template for this model | llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer"
+     "text": "error: unsupported chat_template for this model | llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer",
+     "crash": true
     }
    },
    "expect": {
@@ -5519,7 +5667,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "error: unsupported chat_template for this model | llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer"
+     "text": "error: unsupported chat_template for this model | llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer",
+     "crash": true
     }
    },
    "expect": {
@@ -5610,7 +5759,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "{\"error\":{\"code\":500,\"message\":\"Internal server error\",\"type\":\"server_error\"}} | ERROR_OUT_OF_HOST_MEMORY"
+     "text": "{\"error\":{\"code\":500,\"message\":\"Internal server error\",\"type\":\"server_error\"}} | ERROR_OUT_OF_HOST_MEMORY",
+     "crash": true
     },
     "advice": {
      "label": "template",
@@ -5708,7 +5858,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight' | error: unsupported chat_template for this model"
+     "text": "llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight' | error: unsupported chat_template for this model",
+     "crash": true
     }
    },
    "expect": {
@@ -5792,7 +5943,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": " | ÉCHEC: mémoire épuisée — Speicher voll"
+     "text": " | ÉCHEC: mémoire épuisée — Speicher voll",
+     "crash": true
     }
    },
    "expect": {
@@ -5876,7 +6028,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "gguf_init_from_file_impl: invalid magic characters: 'xxxx', expected 'GGUF' | The engine rejected the long prompt (HTTP 500)."
+     "text": "gguf_init_from_file_impl: invalid magic characters: 'xxxx', expected 'GGUF' | The engine rejected the long prompt (HTTP 500).",
+     "crash": true
     }
    },
    "expect": {
@@ -5967,18 +6120,19 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "Loading the test profile timed out. | "
+     "text": "Loading the test profile timed out. | ",
+     "crash": true
     }
    },
    "expect": {
     "advice": null,
     "adviceUsed": false,
-    "ask": false,
-    "outcome": "timeout",
-    "reason": "The engine did not finish in time at this setting (from the engine's error).",
-    "rule": "timeout",
-    "ruleId": "text_timeout",
-    "source": "rule"
+    "ask": true,
+    "outcome": "recall_failed",
+    "reason": "The engine could not serve the full context at this setting (no rule matched the engine's error).",
+    "rule": "unknown",
+    "ruleId": null,
+    "source": "fallback"
    }
   },
   {
@@ -6065,7 +6219,8 @@
     "evidence": {
      "status": 500,
      "exitCode": null,
-     "text": "Loading the test profile timed out. | ÉCHEC: mémoire épuisée — Speicher voll"
+     "text": "Loading the test profile timed out. | ÉCHEC: mémoire épuisée — Speicher voll",
+     "crash": true
     },
     "advice": {
      "label": "timeout",
@@ -6079,11 +6234,11 @@
     },
     "adviceUsed": false,
     "ask": false,
-    "outcome": "timeout",
-    "reason": "The engine did not finish in time at this setting (from the engine's error).",
-    "rule": "timeout",
-    "ruleId": "text_timeout",
-    "source": "rule"
+    "outcome": "oom",
+    "reason": "The engine ran out of memory at this setting (no rule matched the engine's error).",
+    "rule": "unknown",
+    "ruleId": null,
+    "source": "fallback"
    }
   },
   {
@@ -6170,7 +6325,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer | context shift is disabled, cannot continue"
+     "text": "llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer | context shift is disabled, cannot continue",
+     "crash": true
     },
     "advice": {
      "label": "timeout",
@@ -6261,7 +6417,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "failed to open /models/synthetic.gguf: No such file or directory | "
+     "text": "failed to open /models/synthetic.gguf: No such file or directory | ",
+     "crash": true
     }
    },
    "expect": {
@@ -6352,7 +6509,8 @@
     "evidence": {
      "status": 500,
      "exitCode": null,
-     "text": "llama_init_from_model: failed to allocate compute buffers | The engine rejected the long prompt (HTTP 500)."
+     "text": "llama_init_from_model: failed to allocate compute buffers | The engine rejected the long prompt (HTTP 500).",
+     "crash": true
     }
    },
    "expect": {
@@ -6443,7 +6601,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight' | context shift is disabled, cannot continue"
+     "text": "llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight' | context shift is disabled, cannot continue",
+     "crash": true
     },
     "advice": {
      "label": "timeout",
@@ -6548,7 +6707,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "Loading the test profile timed out. | ggml_vulkan: Device memory allocation of size 6442450944 failed.\nggml_vulkan: vk::Device::allocateMemory: ErrorOutOfDeviceMemory"
+     "text": "Loading the test profile timed out. | ggml_vulkan: Device memory allocation of size 6442450944 failed.\nggml_vulkan: vk::Device::allocateMemory: ErrorOutOfDeviceMemory",
+     "crash": true
     }
    },
    "expect": {
@@ -6639,7 +6799,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "The engine rejected the long prompt (HTTP 500). | llama_init_from_model: failed to allocate compute buffers"
+     "text": "The engine rejected the long prompt (HTTP 500). | llama_init_from_model: failed to allocate compute buffers",
+     "crash": true
     },
     "advice": {
      "label": "oom",
@@ -6737,17 +6898,18 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "Loading the test profile timed out. | failed to open /models/synthetic.gguf: No such file or directory"
+     "text": "Loading the test profile timed out. | failed to open /models/synthetic.gguf: No such file or directory",
+     "crash": true
     }
    },
    "expect": {
     "advice": null,
     "adviceUsed": false,
     "ask": false,
-    "outcome": "timeout",
-    "reason": "The engine did not finish in time at this setting (from the engine's error).",
-    "rule": "timeout",
-    "ruleId": "text_timeout",
+    "outcome": "load_failed",
+    "reason": "The engine could not load the model at this setting (from the engine's error).",
+    "rule": "load_failed",
+    "ruleId": "text_load",
     "source": "rule"
    }
   },
@@ -6821,7 +6983,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight' | common_chat_templates_init: failed to parse chat template (Jinja syntax error near line 3)"
+     "text": "llama_model_load: error loading model: missing tensor 'blk.0.attn_q.weight' | common_chat_templates_init: failed to parse chat template (Jinja syntax error near line 3)",
+     "crash": true
     }
    },
    "expect": {
@@ -6912,7 +7075,8 @@
     "evidence": {
      "status": null,
      "exitCode": null,
-     "text": "{\"error\":{\"code\":500,\"message\":\"Internal server error\",\"type\":\"server_error\"}} | llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer"
+     "text": "{\"error\":{\"code\":500,\"message\":\"Internal server error\",\"type\":\"server_error\"}} | llama_model_load: error loading model: failed to load model: unable to allocate Vulkan0 buffer",
+     "crash": true
     }
    },
    "expect": {
@@ -7059,6 +7223,14 @@
   {
    "name": "advice-extra",
    "text": "{\"cause\":\"load\",\"advice\":{\"label\":\"oom\",\"confidence\":0.9,\"why\":\"x\"}}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "evidence-crash-number",
+   "text": "{\"cause\":\"load\",\"evidence\":{\"crash\":1}}",
    "pad": 0,
    "expect": {
     "error": "input"
