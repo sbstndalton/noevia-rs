@@ -1,0 +1,2217 @@
+{
+ "version": 1,
+ "limits": {
+  "maxReasonChars": 200,
+  "maxTemplateBytes": 262144
+ },
+ "templates": [
+  {
+   "name": "google-gemma-3-12b-it",
+   "source": "huggingface.co/unsloth/gemma-3-12b-it chat_template.json (Google Gemma 3)",
+   "template": "{{ bos_token }}\n{%- if messages[0]['role'] == 'system' -%}\n    {%- if messages[0]['content'] is string -%}\n        {%- set first_user_prefix = messages[0]['content'] + '\n\n' -%}\n    {%- else -%}\n        {%- set first_user_prefix = messages[0]['content'][0]['text'] + '\n\n' -%}\n    {%- endif -%}\n    {%- set loop_messages = messages[1:] -%}\n{%- else -%}\n    {%- set first_user_prefix = \"\" -%}\n    {%- set loop_messages = messages -%}\n{%- endif -%}\n{%- for message in loop_messages -%}\n    {%- if (message['role'] == 'user') != (loop.index0 % 2 == 0) -%}\n        {{ raise_exception(\"Conversation roles must alternate user/assistant/user/assistant/...\") }}\n    {%- endif -%}\n    {%- if (message['role'] == 'assistant') -%}\n        {%- set role = \"model\" -%}\n    {%- else -%}\n        {%- set role = message['role'] -%}\n    {%- endif -%}\n    {{ '<start_of_turn>' + role + '\n' + (first_user_prefix if loop.first else \"\") }}\n    {%- if message['content'] is string -%}\n        {{ message['content'] | trim }}\n    {%- elif message['content'] is iterable -%}\n        {%- for item in message['content'] -%}\n            {%- if item['type'] == 'image' -%}\n                {{ '<start_of_image>' }}\n            {%- elif item['type'] == 'text' -%}\n                {{ item['text'] | trim }}\n            {%- endif -%}\n        {%- endfor -%}\n    {%- else -%}\n        {{ raise_exception(\"Invalid content type\") }}\n    {%- endif -%}\n    {{ '<end_of_turn>\n' }}\n{%- endfor -%}\n{%- if add_generation_prompt -%}\n    {{'<start_of_turn>model\n'}}\n{%- endif -%}\n\n",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": true,
+    "raises": true,
+    "thinking": false,
+    "sendTools": false
+   }
+  },
+  {
+   "name": "google-gemma-2-2b-it",
+   "source": "llama.cpp models/templates (google/gemma-2-2b-it)",
+   "template": "{{ bos_token }}{% if messages[0]['role'] == 'system' %}{{ raise_exception('System role not supported') }}{% endif %}{% for message in messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if (message['role'] == 'assistant') %}{% set role = 'model' %}{% else %}{% set role = message['role'] %}{% endif %}{{ '<start_of_turn>' + role + '\n' + message['content'] | trim + '<end_of_turn>\n' }}{% endfor %}{% if add_generation_prompt %}{{'<start_of_turn>model\n'}}{% endif %}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": false,
+    "strictAlternation": true,
+    "raises": true,
+    "thinking": false,
+    "sendTools": false
+   }
+  },
+  {
+   "name": "Qwen-Qwen2.5-7B-Instruct",
+   "source": "llama.cpp models/templates (Qwen/Qwen2.5-7B-Instruct)",
+   "template": "{%- if tools %}\n    {{- '<|im_start|>system\\n' }}\n    {%- if messages[0]['role'] == 'system' %}\n        {{- messages[0]['content'] }}\n    {%- else %}\n        {{- 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.' }}\n    {%- endif %}\n    {{- \"\\n\\n# Tools\\n\\nYou may call one or more functions to assist with the user query.\\n\\nYou are provided with function signatures within <tools></tools> XML tags:\\n<tools>\" }}\n    {%- for tool in tools %}\n        {{- \"\\n\" }}\n        {{- tool | tojson }}\n    {%- endfor %}\n    {{- \"\\n</tools>\\n\\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\\n<tool_call>\\n{\\\"name\\\": <function-name>, \\\"arguments\\\": <args-json-object>}\\n</tool_call><|im_end|>\\n\" }}\n{%- else %}\n    {%- if messages[0]['role'] == 'system' %}\n        {{- '<|im_start|>system\\n' + messages[0]['content'] + '<|im_end|>\\n' }}\n    {%- else %}\n        {{- '<|im_start|>system\\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\\n' }}\n    {%- endif %}\n{%- endif %}\n{%- for message in messages %}\n    {%- if (message.role == \"user\") or (message.role == \"system\" and not loop.first) or (message.role == \"assistant\" and not message.tool_calls) %}\n        {{- '<|im_start|>' + message.role + '\\n' + message.content + '<|im_end|>' + '\\n' }}\n    {%- elif message.role == \"assistant\" %}\n        {{- '<|im_start|>' + message.role }}\n        {%- if message.content %}\n            {{- '\\n' + message.content }}\n        {%- endif %}\n        {%- for tool_call in message.tool_calls %}\n            {%- if tool_call.function is defined %}\n                {%- set tool_call = tool_call.function %}\n            {%- endif %}\n            {{- '\\n<tool_call>\\n{\"name\": \"' }}\n            {{- tool_call.name }}\n            {{- '\", \"arguments\": ' }}\n            {{- tool_call.arguments | tojson }}\n            {{- '}\\n</tool_call>' }}\n        {%- endfor %}\n        {{- '<|im_end|>\\n' }}\n    {%- elif message.role == \"tool\" %}\n        {%- if (loop.index0 == 0) or (messages[loop.index0 - 1].role != \"tool\") %}\n            {{- '<|im_start|>user' }}\n        {%- endif %}\n        {{- '\\n<tool_response>\\n' }}\n        {{- message.content }}\n        {{- '\\n</tool_response>' }}\n        {%- if loop.last or (messages[loop.index0 + 1].role != \"tool\") %}\n            {{- '<|im_end|>\\n' }}\n        {%- endif %}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{- '<|im_start|>assistant\\n' }}\n{%- endif %}\n",
+   "expect": {
+    "known": true,
+    "tools": true,
+    "toolCalls": true,
+    "toolRole": true,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "Qwen-Qwen3-0.6B",
+   "source": "llama.cpp models/templates (Qwen/Qwen3-0.6B)",
+   "template": "{%- if tools %}\n    {{- '<|im_start|>system\\n' }}\n    {%- if messages[0].role == 'system' %}\n        {{- messages[0].content + '\\n\\n' }}\n    {%- endif %}\n    {{- \"# Tools\\n\\nYou may call one or more functions to assist with the user query.\\n\\nYou are provided with function signatures within <tools></tools> XML tags:\\n<tools>\" }}\n    {%- for tool in tools %}\n        {{- \"\\n\" }}\n        {{- tool | tojson }}\n    {%- endfor %}\n    {{- \"\\n</tools>\\n\\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\\n<tool_call>\\n{\\\"name\\\": <function-name>, \\\"arguments\\\": <args-json-object>}\\n</tool_call><|im_end|>\\n\" }}\n{%- else %}\n    {%- if messages[0].role == 'system' %}\n        {{- '<|im_start|>system\\n' + messages[0].content + '<|im_end|>\\n' }}\n    {%- endif %}\n{%- endif %}\n{%- set ns = namespace(multi_step_tool=true, last_query_index=messages|length - 1) %}\n{%- for message in messages[::-1] %}\n    {%- set index = (messages|length - 1) - loop.index0 %}\n    {%- if ns.multi_step_tool and message.role == \"user\" and not(message.content.startswith('<tool_response>') and message.content.endswith('</tool_response>')) %}\n        {%- set ns.multi_step_tool = false %}\n        {%- set ns.last_query_index = index %}\n    {%- endif %}\n{%- endfor %}\n{%- for message in messages %}\n    {%- if (message.role == \"user\") or (message.role == \"system\" and not loop.first) %}\n        {{- '<|im_start|>' + message.role + '\\n' + message.content + '<|im_end|>' + '\\n' }}\n    {%- elif message.role == \"assistant\" %}\n        {%- set content = message.content %}\n        {%- set reasoning_content = '' %}\n        {%- if message.reasoning_content is defined and message.reasoning_content is not none %}\n            {%- set reasoning_content = message.reasoning_content %}\n        {%- else %}\n            {%- if '</think>' in message.content %}\n                {%- set content = message.content.split('</think>')[-1].lstrip('\\n') %}\n                {%- set reasoning_content = message.content.split('</think>')[0].rstrip('\\n').split('<think>')[-1].lstrip('\\n') %}\n            {%- endif %}\n        {%- endif %}\n        {%- if loop.index0 > ns.last_query_index %}\n            {%- if loop.last or (not loop.last and reasoning_content) %}\n                {{- '<|im_start|>' + message.role + '\\n<think>\\n' + reasoning_content.strip('\\n') + '\\n</think>\\n\\n' + content.lstrip('\\n') }}\n            {%- else %}\n                {{- '<|im_start|>' + message.role + '\\n' + content }}\n            {%- endif %}\n        {%- else %}\n            {{- '<|im_start|>' + message.role + '\\n' + content }}\n        {%- endif %}\n        {%- if message.tool_calls %}\n            {%- for tool_call in message.tool_calls %}\n                {%- if (loop.first and content) or (not loop.first) %}\n                    {{- '\\n' }}\n                {%- endif %}\n                {%- if tool_call.function %}\n                    {%- set tool_call = tool_call.function %}\n                {%- endif %}\n                {{- '<tool_call>\\n{\"name\": \"' }}\n                {{- tool_call.name }}\n                {{- '\", \"arguments\": ' }}\n                {%- if tool_call.arguments is string %}\n                    {{- tool_call.arguments }}\n                {%- else %}\n                    {{- tool_call.arguments | tojson }}\n                {%- endif %}\n                {{- '}\\n</tool_call>' }}\n            {%- endfor %}\n        {%- endif %}\n        {{- '<|im_end|>\\n' }}\n    {%- elif message.role == \"tool\" %}\n        {%- if loop.first or (messages[loop.index0 - 1].role != \"tool\") %}\n            {{- '<|im_start|>user' }}\n        {%- endif %}\n        {{- '\\n<tool_response>\\n' }}\n        {{- message.content }}\n        {{- '\\n</tool_response>' }}\n        {%- if loop.last or (messages[loop.index0 + 1].role != \"tool\") %}\n            {{- '<|im_end|>\\n' }}\n        {%- endif %}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{- '<|im_start|>assistant\\n' }}\n    {%- if enable_thinking is defined and enable_thinking is false %}\n        {{- '<think>\\n\\n</think>\\n\\n' }}\n    {%- endif %}\n{%- endif %}",
+   "expect": {
+    "known": true,
+    "tools": true,
+    "toolCalls": true,
+    "toolRole": true,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": true,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "meta-llama-Meta-Llama-3-8B-Instruct",
+   "source": "huggingface.co/NousResearch/Meta-Llama-3-8B-Instruct tokenizer_config.json (Meta Llama 3)",
+   "template": "{% set loop_messages = messages %}{% for message in loop_messages %}{% set content = '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n'+ message['content'] | trim + '<|eot_id|>' %}{% if loop.index0 == 0 %}{% set content = bos_token + content %}{% endif %}{{ content }}{% endfor %}{% if add_generation_prompt %}{{ '<|start_header_id|>assistant<|end_header_id|>\n\n' }}{% endif %}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "meta-llama-Llama-3.1-8B-Instruct",
+   "source": "llama.cpp models/templates (meta-llama/Llama-3.1-8B-Instruct)",
+   "template": "{{- bos_token }}\n{%- if custom_tools is defined %}\n    {%- set tools = custom_tools %}\n{%- endif %}\n{%- if not tools_in_user_message is defined %}\n    {%- set tools_in_user_message = true %}\n{%- endif %}\n{%- if not date_string is defined %}\n    {%- set date_string = \"26 Jul 2024\" %}\n{%- endif %}\n{%- if not tools is defined %}\n    {%- set tools = none %}\n{%- endif %}\n\n{#- This block extracts the system message, so we can slot it into the right place. #}\n{%- if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content']|trim %}\n    {%- set messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = \"\" %}\n{%- endif %}\n\n{#- System message + builtin tools #}\n{{- \"<|start_header_id|>system<|end_header_id|>\\n\\n\" }}\n{%- if builtin_tools is defined or tools is not none %}\n    {{- \"Environment: ipython\\n\" }}\n{%- endif %}\n{%- if builtin_tools is defined %}\n    {{- \"Tools: \" + builtin_tools | reject('equalto', 'code_interpreter') | join(\", \") + \"\\n\\n\"}}\n{%- endif %}\n{{- \"Cutting Knowledge Date: December 2023\\n\" }}\n{{- \"Today Date: \" + date_string + \"\\n\\n\" }}\n{%- if tools is not none and not tools_in_user_message %}\n    {{- \"You have access to the following functions. To call a function, please respond with JSON for a function call.\" }}\n    {{- 'Respond in the format {\"name\": function name, \"parameters\": dictionary of argument name and its value}.' }}\n    {{- \"Do not use variables.\\n\\n\" }}\n    {%- for t in tools %}\n        {{- t | tojson(indent=4) }}\n        {{- \"\\n\\n\" }}\n    {%- endfor %}\n{%- endif %}\n{{- system_message }}\n{{- \"<|eot_id|>\" }}\n\n{#- Custom tools are passed in a user message with some extra guidance #}\n{%- if tools_in_user_message and not tools is none %}\n    {#- Extract the first user message so we can plug it in here #}\n    {%- if messages | length != 0 %}\n        {%- set first_user_message = messages[0]['content']|trim %}\n        {%- set messages = messages[1:] %}\n    {%- else %}\n        {{- raise_exception(\"Cannot put tools in the first user message when there's no first user message!\") }}\n{%- endif %}\n    {{- '<|start_header_id|>user<|end_header_id|>\\n\\n' -}}\n    {{- \"Given the following functions, please respond with a JSON for a function call \" }}\n    {{- \"with its proper arguments that best answers the given prompt.\\n\\n\" }}\n    {{- 'Respond in the format {\"name\": function name, \"parameters\": dictionary of argument name and its value}.' }}\n    {{- \"Do not use variables.\\n\\n\" }}\n    {%- for t in tools %}\n        {{- t | tojson(indent=4) }}\n        {{- \"\\n\\n\" }}\n    {%- endfor %}\n    {{- first_user_message + \"<|eot_id|>\"}}\n{%- endif %}\n\n{%- for message in messages %}\n    {%- if not (message.role == 'ipython' or message.role == 'tool' or 'tool_calls' in message) %}\n        {{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\\n\\n'+ message['content'] | trim + '<|eot_id|>' }}\n    {%- elif 'tool_calls' in message %}\n        {%- if not message.tool_calls|length == 1 %}\n            {{- raise_exception(\"This model only supports single tool-calls at once!\") }}\n        {%- endif %}\n        {%- set tool_call = message.tool_calls[0].function %}\n        {%- if builtin_tools is defined and tool_call.name in builtin_tools %}\n            {{- '<|start_header_id|>assistant<|end_header_id|>\\n\\n' -}}\n            {{- \"<|python_tag|>\" + tool_call.name + \".call(\" }}\n            {%- for arg_name, arg_val in tool_call.arguments | items %}\n                {{- arg_name + '=\"' + arg_val + '\"' }}\n                {%- if not loop.last %}\n                    {{- \", \" }}\n                {%- endif %}\n                {%- endfor %}\n            {{- \")\" }}\n        {%- else  %}\n            {{- '<|start_header_id|>assistant<|end_header_id|>\\n\\n' -}}\n            {{- '{\"name\": \"' + tool_call.name + '\", ' }}\n            {{- '\"parameters\": ' }}\n            {{- tool_call.arguments | tojson }}\n            {{- \"}\" }}\n        {%- endif %}\n        {%- if builtin_tools is defined %}\n            {#- This means we're in ipython mode #}\n            {{- \"<|eom_id|>\" }}\n        {%- else %}\n            {{- \"<|eot_id|>\" }}\n        {%- endif %}\n    {%- elif message.role == \"tool\" or message.role == \"ipython\" %}\n        {{- \"<|start_header_id|>ipython<|end_header_id|>\\n\\n\" }}\n        {%- if message.content is mapping or message.content is iterable %}\n            {{- message.content | tojson }}\n        {%- else %}\n            {{- message.content }}\n        {%- endif %}\n        {{- \"<|eot_id|>\" }}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{- '<|start_header_id|>assistant<|end_header_id|>\\n\\n' }}\n{%- endif %}\n",
+   "expect": {
+    "known": true,
+    "tools": true,
+    "toolCalls": true,
+    "toolRole": true,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": true,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "meta-llama-Llama-3.2-3B-Instruct",
+   "source": "llama.cpp models/templates (meta-llama/Llama-3.2-3B-Instruct)",
+   "template": "{{- bos_token }}\n{%- if custom_tools is defined %}\n    {%- set tools = custom_tools %}\n{%- endif %}\n{%- if not tools_in_user_message is defined %}\n    {%- set tools_in_user_message = true %}\n{%- endif %}\n{%- if not date_string is defined %}\n    {%- if strftime_now is defined %}\n        {%- set date_string = strftime_now(\"%d %b %Y\") %}\n    {%- else %}\n        {%- set date_string = \"26 Jul 2024\" %}\n    {%- endif %}\n{%- endif %}\n{%- if not tools is defined %}\n    {%- set tools = none %}\n{%- endif %}\n\n{#- This block extracts the system message, so we can slot it into the right place. #}\n{%- if messages[0]['role'] == 'system' %}\n    {%- set system_message = messages[0]['content']|trim %}\n    {%- set messages = messages[1:] %}\n{%- else %}\n    {%- set system_message = \"\" %}\n{%- endif %}\n\n{#- System message #}\n{{- \"<|start_header_id|>system<|end_header_id|>\\n\\n\" }}\n{%- if tools is not none %}\n    {{- \"Environment: ipython\\n\" }}\n{%- endif %}\n{{- \"Cutting Knowledge Date: December 2023\\n\" }}\n{{- \"Today Date: \" + date_string + \"\\n\\n\" }}\n{%- if tools is not none and not tools_in_user_message %}\n    {{- \"You have access to the following functions. To call a function, please respond with JSON for a function call.\" }}\n    {{- 'Respond in the format {\"name\": function name, \"parameters\": dictionary of argument name and its value}.' }}\n    {{- \"Do not use variables.\\n\\n\" }}\n    {%- for t in tools %}\n        {{- t | tojson(indent=4) }}\n        {{- \"\\n\\n\" }}\n    {%- endfor %}\n{%- endif %}\n{{- system_message }}\n{{- \"<|eot_id|>\" }}\n\n{#- Custom tools are passed in a user message with some extra guidance #}\n{%- if tools_in_user_message and not tools is none %}\n    {#- Extract the first user message so we can plug it in here #}\n    {%- if messages | length != 0 %}\n        {%- set first_user_message = messages[0]['content']|trim %}\n        {%- set messages = messages[1:] %}\n    {%- else %}\n        {{- raise_exception(\"Cannot put tools in the first user message when there's no first user message!\") }}\n{%- endif %}\n    {{- '<|start_header_id|>user<|end_header_id|>\\n\\n' -}}\n    {{- \"Given the following functions, please respond with a JSON for a function call \" }}\n    {{- \"with its proper arguments that best answers the given prompt.\\n\\n\" }}\n    {{- 'Respond in the format {\"name\": function name, \"parameters\": dictionary of argument name and its value}.' }}\n    {{- \"Do not use variables.\\n\\n\" }}\n    {%- for t in tools %}\n        {{- t | tojson(indent=4) }}\n        {{- \"\\n\\n\" }}\n    {%- endfor %}\n    {{- first_user_message + \"<|eot_id|>\"}}\n{%- endif %}\n\n{%- for message in messages %}\n    {%- if not (message.role == 'ipython' or message.role == 'tool' or 'tool_calls' in message) %}\n        {{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\\n\\n'+ message['content'] | trim + '<|eot_id|>' }}\n    {%- elif 'tool_calls' in message %}\n        {%- if not message.tool_calls|length == 1 %}\n            {{- raise_exception(\"This model only supports single tool-calls at once!\") }}\n        {%- endif %}\n        {%- set tool_call = message.tool_calls[0].function %}\n        {{- '<|start_header_id|>assistant<|end_header_id|>\\n\\n' -}}\n        {{- '{\"name\": \"' + tool_call.name + '\", ' }}\n        {{- '\"parameters\": ' }}\n        {{- tool_call.arguments | tojson }}\n        {{- \"}\" }}\n        {{- \"<|eot_id|>\" }}\n    {%- elif message.role == \"tool\" or message.role == \"ipython\" %}\n        {{- \"<|start_header_id|>ipython<|end_header_id|>\\n\\n\" }}\n        {%- if message.content is mapping or message.content is iterable %}\n            {{- message.content | tojson }}\n        {%- else %}\n            {{- message.content }}\n        {%- endif %}\n        {{- \"<|eot_id|>\" }}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{- '<|start_header_id|>assistant<|end_header_id|>\\n\\n' }}\n{%- endif %}\n",
+   "expect": {
+    "known": true,
+    "tools": true,
+    "toolCalls": true,
+    "toolRole": true,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": true,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "mistralai-Mistral-7B-Instruct-v0.3",
+   "source": "huggingface.co/unsloth/mistral-7b-instruct-v0.3 tokenizer_config.json (Mistral 7B v0.3)",
+   "template": "{%- if messages[0][\"role\"] == \"system\" %}\n    {%- set system_message = messages[0][\"content\"] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{%- if not tools is defined %}\n    {%- set tools = none %}\n{%- endif %}\n{%- set user_messages = loop_messages | selectattr(\"role\", \"equalto\", \"user\") | list %}\n\n{#- This block checks for alternating user/assistant messages, skipping tool calling messages #}\n{%- set ns = namespace() %}\n{%- set ns.index = 0 %}\n{%- for message in loop_messages %}\n    {%- if not (message.role == \"tool\" or message.role == \"tool_results\" or (message.tool_calls is defined and message.tool_calls is not none)) %}\n        {%- if (message[\"role\"] == \"user\") != (ns.index % 2 == 0) %}\n            {{- raise_exception(\"After the optional system message, conversation roles must alternate user/assistant/user/assistant/...\") }}\n        {%- endif %}\n        {%- set ns.index = ns.index + 1 %}\n    {%- endif %}\n{%- endfor %}\n\n{{- bos_token }}\n{%- for message in loop_messages %}\n    {%- if message[\"role\"] == \"user\" %}\n        {%- if tools is not none and (message == user_messages[-1]) %}\n            {{- \"[AVAILABLE_TOOLS] [\" }}\n            {%- for tool in tools %}\n                {%- set tool = tool.function %}\n                {{- '{\"type\": \"function\", \"function\": {' }}\n                {%- for key, val in tool.items() if key != \"return\" %}\n                    {%- if val is string %}\n                        {{- '\"' + key + '\": \"' + val + '\"' }}\n                    {%- else %}\n                        {{- '\"' + key + '\": ' + val|tojson }}\n                    {%- endif %}\n                    {%- if not loop.last %}\n                        {{- \", \" }}\n                    {%- endif %}\n                {%- endfor %}\n                {{- \"}}\" }}\n                {%- if not loop.last %}\n                    {{- \", \" }}\n                {%- else %}\n                    {{- \"]\" }}\n                {%- endif %}\n            {%- endfor %}\n            {{- \"[/AVAILABLE_TOOLS]\" }}\n            {%- endif %}\n        {%- if loop.last and system_message is defined %}\n            {{- \"[INST] \" + system_message + \"\\n\\n\" + message[\"content\"] + \"[/INST]\" }}\n        {%- else %}\n            {{- \"[INST] \" + message[\"content\"] + \"[/INST]\" }}\n        {%- endif %}\n    {%- elif message.tool_calls is defined and message.tool_calls is not none %}\n        {{- \"[TOOL_CALLS] [\" }}\n        {%- for tool_call in message.tool_calls %}\n            {%- set out = tool_call.function|tojson %}\n            {{- out[:-1] }}\n            {%- if not tool_call.id is defined or tool_call.id|length != 9 %}\n                {{- raise_exception(\"Tool call IDs should be alphanumeric strings with length 9!\") }}\n            {%- endif %}\n            {{- ', \"id\": \"' + tool_call.id + '\"}' }}\n            {%- if not loop.last %}\n                {{- \", \" }}\n            {%- else %}\n                {{- \"]\" + eos_token }}\n            {%- endif %}\n        {%- endfor %}\n    {%- elif message[\"role\"] == \"assistant\" %}\n        {{- \" \" + message[\"content\"]|trim + eos_token}}\n    {%- elif message[\"role\"] == \"tool_results\" or message[\"role\"] == \"tool\" %}\n        {%- if message.content is defined and message.content.content is defined %}\n            {%- set content = message.content.content %}\n        {%- else %}\n            {%- set content = message.content %}\n        {%- endif %}\n        {{- '[TOOL_RESULTS] {\"content\": ' + content|string + \", \" }}\n        {%- if not message.tool_call_id is defined or message.tool_call_id|length != 9 %}\n            {{- raise_exception(\"Tool call IDs should be alphanumeric strings with length 9!\") }}\n        {%- endif %}\n        {{- '\"call_id\": \"' + message.tool_call_id + '\"}[/TOOL_RESULTS]' }}\n    {%- else %}\n        {{- raise_exception(\"Only user and assistant roles are supported, with the exception of an initial optional system message!\") }}\n    {%- endif %}\n{%- endfor %}\n",
+   "expect": {
+    "known": true,
+    "tools": true,
+    "toolCalls": true,
+    "toolRole": true,
+    "systemRole": true,
+    "strictAlternation": true,
+    "raises": true,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "mistralai-Mistral-Nemo-Instruct-2407",
+   "source": "llama.cpp models/templates (mistralai/Mistral-Nemo-Instruct-2407)",
+   "template": "{%- if messages[0][\"role\"] == \"system\" %}\n    {%- set system_message = messages[0][\"content\"] %}\n    {%- set loop_messages = messages[1:] %}\n{%- else %}\n    {%- set loop_messages = messages %}\n{%- endif %}\n{%- if not tools is defined %}\n    {%- set tools = none %}\n{%- endif %}\n{%- set user_messages = loop_messages | selectattr(\"role\", \"equalto\", \"user\") | list %}\n\n{#- This block checks for alternating user/assistant messages, skipping tool calling messages #}\n{%- set ns = namespace() %}\n{%- set ns.index = 0 %}\n{%- for message in loop_messages %}\n    {%- if not (message.role == \"tool\" or message.role == \"tool_results\" or (message.tool_calls is defined and message.tool_calls is not none)) %}\n        {%- if (message[\"role\"] == \"user\") != (ns.index % 2 == 0) %}\n            {{- raise_exception(\"After the optional system message, conversation roles must alternate user/assistant/user/assistant/...\") }}\n        {%- endif %}\n        {%- set ns.index = ns.index + 1 %}\n    {%- endif %}\n{%- endfor %}\n\n{{- bos_token }}\n{%- for message in loop_messages %}\n    {%- if message[\"role\"] == \"user\" %}\n        {%- if tools is not none and (message == user_messages[-1]) %}\n            {{- \"[AVAILABLE_TOOLS][\" }}\n            {%- for tool in tools %}\n                {%- set tool = tool.function %}\n                {{- '{\"type\": \"function\", \"function\": {' }}\n                {%- for key, val in tool.items() if key != \"return\" %}\n                    {%- if val is string %}\n                        {{- '\"' + key + '\": \"' + val + '\"' }}\n                    {%- else %}\n                        {{- '\"' + key + '\": ' + val|tojson }}\n                    {%- endif %}\n                    {%- if not loop.last %}\n                        {{- \", \" }}\n                    {%- endif %}\n                {%- endfor %}\n                {{- \"}}\" }}\n                {%- if not loop.last %}\n                    {{- \", \" }}\n                {%- else %}\n                    {{- \"]\" }}\n                {%- endif %}\n            {%- endfor %}\n            {{- \"[/AVAILABLE_TOOLS]\" }}\n            {%- endif %}\n        {%- if loop.last and system_message is defined %}\n            {{- \"[INST]\" + system_message + \"\\n\\n\" + message[\"content\"] + \"[/INST]\" }}\n        {%- else %}\n            {{- \"[INST]\" + message[\"content\"] + \"[/INST]\" }}\n        {%- endif %}\n    {%- elif (message.tool_calls is defined and message.tool_calls is not none) %}\n        {{- \"[TOOL_CALLS][\" }}\n        {%- for tool_call in message.tool_calls %}\n            {%- set out = tool_call.function|tojson %}\n            {{- out[:-1] }}\n            {%- if not tool_call.id is defined or tool_call.id|length != 9 %}\n                {{- raise_exception(\"Tool call IDs should be alphanumeric strings with length 9!\") }}\n            {%- endif %}\n            {{- ', \"id\": \"' + tool_call.id + '\"}' }}\n            {%- if not loop.last %}\n                {{- \", \" }}\n            {%- else %}\n                {{- \"]\" + eos_token }}\n            {%- endif %}\n        {%- endfor %}\n    {%- elif message[\"role\"] == \"assistant\" %}\n        {{- message[\"content\"] + eos_token}}\n    {%- elif message[\"role\"] == \"tool_results\" or message[\"role\"] == \"tool\" %}\n        {%- if message.content is defined and message.content.content is defined %}\n            {%- set content = message.content.content %}\n        {%- else %}\n            {%- set content = message.content %}\n        {%- endif %}\n        {{- '[TOOL_RESULTS]{\"content\": ' + content|string + \", \" }}\n        {%- if not message.tool_call_id is defined or message.tool_call_id|length != 9 %}\n            {{- raise_exception(\"Tool call IDs should be alphanumeric strings with length 9!\") }}\n        {%- endif %}\n        {{- '\"call_id\": \"' + message.tool_call_id + '\"}[/TOOL_RESULTS]' }}\n    {%- else %}\n        {{- raise_exception(\"Only user and assistant roles are supported, with the exception of an initial optional system message!\") }}\n    {%- endif %}\n{%- endfor %}\n",
+   "expect": {
+    "known": true,
+    "tools": true,
+    "toolCalls": true,
+    "toolRole": true,
+    "systemRole": true,
+    "strictAlternation": true,
+    "raises": true,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "microsoft-Phi-3.5-mini-instruct",
+   "source": "llama.cpp models/templates (microsoft/Phi-3.5-mini-instruct)",
+   "template": "{% for message in messages %}{% if message['role'] == 'system' and message['content'] %}{{'<|system|>\n' + message['content'] + '<|end|>\n'}}{% elif message['role'] == 'user' %}{{'<|user|>\n' + message['content'] + '<|end|>\n'}}{% elif message['role'] == 'assistant' %}{{'<|assistant|>\n' + message['content'] + '<|end|>\n'}}{% endif %}{% endfor %}{% if add_generation_prompt %}{{ '<|assistant|>\n' }}{% else %}{{ eos_token }}{% endif %}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "microsoft-Phi-4-mini-instruct",
+   "source": "huggingface.co/unsloth/Phi-4-mini-instruct tokenizer_config.json (Microsoft Phi-4-mini)",
+   "template": "{% for message in messages %}{% if message['role'] == 'system' and 'tools' in message and message['tools'] is not none %}{{ '<|' + message['role'] + '|>' + message['content'] + '<|tool|>' + message['tools'] + '<|/tool|>' + '<|end|>' }}{% else %}{{ '<|' + message['role'] + '|>' + message['content'] + '<|end|>' }}{% endif %}{% endfor %}{% if add_generation_prompt %}{{ '<|assistant|>' }}{% endif %}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "adversarial: empty",
+   "source": "synthetic",
+   "template": "",
+   "expect": {
+    "known": false,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": false,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "adversarial: whitespace only",
+   "source": "synthetic",
+   "template": " \n\t ",
+   "expect": {
+    "known": false,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": false,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "adversarial: tools only in text",
+   "source": "synthetic",
+   "template": "You can use tools. {{ messages[0].content }}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "adversarial: tools only in a comment",
+   "source": "synthetic",
+   "template": "{# {% if tools %} #}{{ raise_exception(\"Roles must alternate\") }}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": true,
+    "raises": true,
+    "thinking": false,
+    "sendTools": false
+   }
+  },
+  {
+   "name": "adversarial: tools only in a string literal",
+   "source": "synthetic",
+   "template": "{{ 'tools' }}{{ raise_exception('x') }}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": true,
+    "thinking": false,
+    "sendTools": false
+   }
+  },
+  {
+   "name": "adversarial: tools as an attribute",
+   "source": "synthetic",
+   "template": "{{ message.tools }}{{ raise_exception(\"x\") }}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": true,
+    "thinking": false,
+    "sendTools": false
+   }
+  },
+  {
+   "name": "adversarial: close delimiter inside a string",
+   "source": "synthetic",
+   "template": "{{ \"}} {% if tools %}\" }}{{ raise_exception(\"y\") }}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": true,
+    "thinking": false,
+    "sendTools": false
+   }
+  },
+  {
+   "name": "adversarial: raise_exception as an attribute",
+   "source": "synthetic",
+   "template": "{{ foo.raise_exception(\"no\") }}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "adversarial: raise in text only",
+   "source": "synthetic",
+   "template": "raise_exception(\"Conversation roles must alternate\")",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "adversarial: unterminated tag",
+   "source": "synthetic",
+   "template": "{% if tools",
+   "expect": {
+    "known": true,
+    "tools": true,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "adversarial: unterminated string",
+   "source": "synthetic",
+   "template": "{{ raise_exception('System role not supported",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": false,
+    "strictAlternation": false,
+    "raises": true,
+    "thinking": false,
+    "sendTools": false
+   }
+  },
+  {
+   "name": "adversarial: alternation by index only",
+   "source": "synthetic",
+   "template": "{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ raise_exception('bad order') }}{% endif %}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": true,
+    "raises": true,
+    "thinking": false,
+    "sendTools": false
+   }
+  },
+  {
+   "name": "adversarial: native tools despite raising",
+   "source": "synthetic",
+   "template": "{% if tools %}{% for t in tools %}{{ t | tojson }}{% endfor %}{% endif %}{{ raise_exception(\"roles must alternate\") }}",
+   "expect": {
+    "known": true,
+    "tools": true,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": true,
+    "raises": true,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "adversarial: nested braces and unicode",
+   "source": "synthetic",
+   "template": "{{ {\"a\": {\"b\": \"ü}}\"}} }}{% set x = \"ツール\" %}{{ x }}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "adversarial: many open braces",
+   "source": "synthetic",
+   "template": "{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{% if tools %}",
+   "expect": {
+    "known": true,
+    "tools": true,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": false,
+    "sendTools": true
+   }
+  },
+  {
+   "name": "adversarial: thinking switch",
+   "source": "synthetic",
+   "template": "{% if enable_thinking is defined and not enable_thinking %}<think></think>{% endif %}",
+   "expect": {
+    "known": true,
+    "tools": false,
+    "toolCalls": false,
+    "toolRole": false,
+    "systemRole": true,
+    "strictAlternation": false,
+    "raises": false,
+    "thinking": true,
+    "sendTools": true
+   }
+  }
+ ],
+ "errors": [
+  {
+   "name": "gemma 3 tools 400 (#1002)",
+   "status": 400,
+   "body": "{\"error\":{\"code\":400,\"message\":\"Unable to generate parser for this template. Automatic parser generation failed: \\n------------\\nWhile executing CallExpression at line 19, column 12 in source:\\n...ndif -%}\\n    {%- if (message['role'] == 'user') != (loop.index0 % 2 == 0) -%}\\n        {{ raise_exception(\\\"Conversation roles must alternate user/assistant/user/assistant/...\\\") }}\\n           ^\\nError: Jinja Exception: Conversation roles must alternate user/assistant/user/assistant/...\",\"type\":\"invalid_request_error\"}}",
+   "expect": {
+    "kind": "template_or_tools_unsupported",
+    "reason": "Unable to generate parser for this template. Automatic parser generation failed (template: Conversation roles must alternate user/assistant/user/assistant/...)"
+   }
+  },
+  {
+   "name": "tools need --jinja",
+   "status": 500,
+   "body": "{\"error\":{\"code\":500,\"message\":\"tools param requires --jinja flag\",\"type\":\"server_error\"}}",
+   "expect": {
+    "kind": "template_or_tools_unsupported",
+    "reason": "tools param requires --jinja flag"
+   }
+  },
+  {
+   "name": "system role refused",
+   "status": 400,
+   "body": "{\"error\":\"System role not supported\"}",
+   "expect": {
+    "kind": "template_or_tools_unsupported",
+    "reason": "System role not supported"
+   }
+  },
+  {
+   "name": "context exceeded",
+   "status": 400,
+   "body": "{\"error\":{\"code\":400,\"message\":\"the request exceeds the available context size, try increasing it\",\"type\":\"exceed_context_size_error\"}}",
+   "expect": {
+    "kind": "context_full",
+    "reason": "the request exceeds the available context size, try increasing it"
+   }
+  },
+  {
+   "name": "loading",
+   "status": 503,
+   "body": "{\"error\":{\"code\":503,\"message\":\"Loading model\",\"type\":\"unavailable_error\"}}",
+   "expect": {
+    "kind": "backend_down",
+    "reason": "Loading model"
+   }
+  },
+  {
+   "name": "no response",
+   "status": 0,
+   "body": "",
+   "expect": {
+    "kind": "backend_down",
+    "reason": ""
+   }
+  },
+  {
+   "name": "gateway html",
+   "status": 502,
+   "body": "<html><body>502 Bad Gateway</body></html>",
+   "expect": {
+    "kind": "backend_down",
+    "reason": ""
+   }
+  },
+  {
+   "name": "plain 422",
+   "status": 422,
+   "body": "{\"detail\":\"temperature must be <= 2\"}",
+   "expect": {
+    "kind": "bad_request",
+    "reason": "temperature must be <= 2"
+   }
+  },
+  {
+   "name": "unknown model",
+   "status": 404,
+   "body": "{\"error\":{\"message\":\"model not found: synthetic-model\"}}",
+   "expect": {
+    "kind": "bad_request",
+    "reason": "model not found: synthetic-model"
+   }
+  },
+  {
+   "name": "secrets and internals are redacted",
+   "status": 500,
+   "body": "{\"error\":{\"message\":\"upstream http://10.9.8.7:8080/v1/chat failed for Bearer synthetic.token.value with api_key=sk-synthetic0000 at /srv/models/synthetic/x.gguf via llama:8080 (198.51.100.4) ghp_000000000000syntheticxx\"}}",
+   "expect": {
+    "kind": "other",
+    "reason": "upstream [url] failed for Bearer [redacted] with api_key=[redacted] at [path] via [address] [address] [redacted]"
+   }
+  },
+  {
+   "name": "non-JSON body",
+   "status": 500,
+   "body": "segfault in worker\n\tat frame 3",
+   "expect": {
+    "kind": "other",
+    "reason": ""
+   }
+  },
+  {
+   "name": "JSON without a message",
+   "status": 500,
+   "body": "{\"code\":7}",
+   "expect": {
+    "kind": "other",
+    "reason": ""
+   }
+  },
+  {
+   "name": "long message is capped",
+   "status": 500,
+   "body": "{\"error\":\"xxxxxxxxxx word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word\"}",
+   "expect": {
+    "kind": "other"
+   }
+  }
+ ],
+ "context": [
+  {
+   "text": "conte xtlength\rfull  -   .\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "TOO MANY tokens size full\ntokens - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "errorfullengt\rmaximum  contextcontxt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context\nEXCEEDED window\tlength ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context window lengt : conte xt - tokens ",
+   "jsContextFull": false
+  },
+  {
+   "text": "exceed\nconte xt\nfullCONTEXT ",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt - too many tokens\tfull ful ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maximum  context maximum context\tmaximum contextmaximum  context\rContext ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maximum  context too many tokensK size",
+   "jsContextFull": true
+  },
+  {
+   "text": "TOO MANY tokens\n",
+   "jsContextFull": true
+  },
+  {
+   "text": "exceed full ful\rerror ",
+   "jsContextFull": false
+  },
+  {
+   "text": "window CONTEXT",
+   "jsContextFull": false
+  },
+  {
+   "text": "contxt\tconte xt too many tokens\tful\tK\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "K   maximum context\tmaximum  context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "CONTEXT too many tokens   TOO MANY tokens\t: ",
+   "jsContextFull": true
+  },
+  {
+   "text": "error ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context\rTOO MANY tokens\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "errormaximum context lengt ",
+   "jsContextFull": true
+  },
+  {
+   "text": "TOO MANY tokens\tmaximum  contexttoo many tokens\tK\twindow ",
+   "jsContextFull": true
+  },
+  {
+   "text": "CONTEXTerror CONTEXT\tmaximum context context context",
+   "jsContextFull": true
+  },
+  {
+   "text": "too many tokens\tmaximum  context\rCONTEXT ",
+   "jsContextFull": true
+  },
+  {
+   "text": "lengt - context ful\nwindow\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context\rContext Ktoo many tokens - maximum  context\tſize ",
+   "jsContextFull": true
+  },
+  {
+   "text": "error\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "TOO MANY tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "tokens\t",
+   "jsContextFull": false
+  },
+  {
+   "text": ". window . ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context context EXCEEDED ſizecontxt",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context -  \ntoo many tokens\r. : - exceed",
+   "jsContextFull": true
+  },
+  {
+   "text": "conte xt : maximum context\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "length\ttokens size context\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context   length - size window conte xt ",
+   "jsContextFull": true
+  },
+  {
+   "text": "window CONTEXT\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "tokens lengthſize context . TOO MANY tokens\n",
+   "jsContextFull": true
+  },
+  {
+   "text": ":\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "  - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "ſizeEXCEEDED window tokens K contxt\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "exceed\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "contxt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokens\rexceedwindow\n",
+   "jsContextFull": true
+  },
+  {
+   "text": "  CONTEXT - error\nKfull tokens",
+   "jsContextFull": false
+  },
+  {
+   "text": "full",
+   "jsContextFull": false
+  },
+  {
+   "text": "Context\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "context conte xt. - Context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "full\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "ful tokens full - maximum context\rconte xt\ntokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "CONTEXT\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context maximum  context\nCONTEXT - ",
+   "jsContextFull": true
+  },
+  {
+   "text": ". - tokenserror\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum contexttokens\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "ſize\r: Context\rmaximum  contextlengt\t:\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt full\tsize - K\nK\rEXCEEDED ",
+   "jsContextFull": false
+  },
+  {
+   "text": ".\tſize ",
+   "jsContextFull": false
+  },
+  {
+   "text": "exceed K contxt :K ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  contextmaximum context - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maxımum context window\ttoo many tokens K\t. too many tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "tokens lengt - ",
+   "jsContextFull": false
+  },
+  {
+   "text": ": CONTEXTmaximum context lengt\nlengt",
+   "jsContextFull": true
+  },
+  {
+   "text": "error CONTEXTlengt\rCONTEXT ",
+   "jsContextFull": false
+  },
+  {
+   "text": "contxt - ſize\rfullfull windowmaxımum context - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "TOO MANY tokens - : ",
+   "jsContextFull": true
+  },
+  {
+   "text": "full - window - TOO MANY tokens - Context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "ful contxtContext\nK\rwindow\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "size :\rlengt\rfull tokens lengt",
+   "jsContextFull": false
+  },
+  {
+   "text": "Context\twindow EXCEEDEDsize - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "too many tokens\t.K ful . tokens\t",
+   "jsContextFull": true
+  },
+  {
+   "text": "size\rmaxımum context - K EXCEEDEDK\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "tokens\rfull - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context maximum  contextfull\rlength ",
+   "jsContextFull": true
+  },
+  {
+   "text": "length\rlengthlength - ſize\r \r",
+   "jsContextFull": false
+  },
+  {
+   "text": "context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "ſize\nTOO MANY tokensfull K\nK ",
+   "jsContextFull": true
+  },
+  {
+   "text": "lengt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "TOO MANY tokens\n",
+   "jsContextFull": true
+  },
+  {
+   "text": "too many tokensK\tful - exceed EXCEEDED .\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "maximum  context ",
+   "jsContextFull": false
+  },
+  {
+   "text": ":\rEXCEEDED\nexceedexceedconte xt\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "K ",
+   "jsContextFull": false
+  },
+  {
+   "text": "K ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "size\rlength lengt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt exceed\nfull\nsize conte xt - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "contxt too many tokens length\nlengt maximum context\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "contxt window\rtokens -   EXCEEDED\nwindow\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "EXCEEDED errorcontext\rmaxımum context. lengt",
+   "jsContextFull": false
+  },
+  {
+   "text": "fulful - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "ful K  \rtoo many tokens. ",
+   "jsContextFull": true
+  },
+  {
+   "text": "context - context",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context - ſize - length\nTOO MANY tokens - : ",
+   "jsContextFull": true
+  },
+  {
+   "text": "ful context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context conte xt Context\tful ",
+   "jsContextFull": false
+  },
+  {
+   "text": "EXCEEDED tokenstoo many tokensmaximum  context\nwindow\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "context",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt - K maxımum context -  \tfull too many tokens\n",
+   "jsContextFull": true
+  },
+  {
+   "text": "conte xt   ",
+   "jsContextFull": false
+  },
+  {
+   "text": "CONTEXT",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokens lengt window conte xt conte xt - error",
+   "jsContextFull": true
+  },
+  {
+   "text": "Context exceed ",
+   "jsContextFull": true
+  },
+  {
+   "text": "error EXCEEDED ",
+   "jsContextFull": false
+  },
+  {
+   "text": "TOO MANY tokens - conte xt - : ",
+   "jsContextFull": true
+  },
+  {
+   "text": "ſizeEXCEEDED\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "exceed - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "EXCEEDED",
+   "jsContextFull": false
+  },
+  {
+   "text": "ful\nfull error context\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context   - Contextwindow - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context\nſize",
+   "jsContextFull": false
+  },
+  {
+   "text": "fulCONTEXT\tfull ",
+   "jsContextFull": true
+  },
+  {
+   "text": "context\ntoo many tokensTOO MANY tokens - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "conte xt. exceed\terror ",
+   "jsContextFull": false
+  },
+  {
+   "text": "contxt - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "full\nwindow - TOO MANY tokens - maxımum context\tKmaximum context",
+   "jsContextFull": true
+  },
+  {
+   "text": "too many tokens windowlength\rcontext too many tokens - ",
+   "jsContextFull": true
+  },
+  {
+   "text": ". lengtEXCEEDED ",
+   "jsContextFull": false
+  },
+  {
+   "text": "size exceed tokens maxımum context ſize\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "ſize\nerror\tEXCEEDED\tmaximum  context ſize ",
+   "jsContextFull": false
+  },
+  {
+   "text": " ",
+   "jsContextFull": false
+  },
+  {
+   "text": "K\ncontext full - EXCEEDED\nmaximum context - contxt\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "EXCEEDED\nlengt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "full tokens CONTEXT ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context\tCONTEXT\rtoo many tokens window ",
+   "jsContextFull": true
+  },
+  {
+   "text": "CONTEXT:\rsize K\rEXCEEDED ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context\rfull error maximum  context\ntokens exceed",
+   "jsContextFull": false
+  },
+  {
+   "text": "window - :exceed\nTOO MANY tokens\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "CONTEXT\nmaximum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maximum  context CONTEXT ",
+   "jsContextFull": false
+  },
+  {
+   "text": "ful .\tlengt size\tmaximum context Context\n",
+   "jsContextFull": true
+  },
+  {
+   "text": "Context\rwindowlengthCONTEXT",
+   "jsContextFull": false
+  },
+  {
+   "text": " \r",
+   "jsContextFull": false
+  },
+  {
+   "text": "error",
+   "jsContextFull": false
+  },
+  {
+   "text": "tokens EXCEEDED\rmaxımum context\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "Context - maxımum context - EXCEEDED:\nCONTEXT",
+   "jsContextFull": true
+  },
+  {
+   "text": "tokens error TOO MANY tokens\n",
+   "jsContextFull": true
+  },
+  {
+   "text": "K\ntoo many tokens : - K ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maximum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "window window ",
+   "jsContextFull": false
+  },
+  {
+   "text": "CONTEXT conte xt window\rexceed\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context:window ",
+   "jsContextFull": true
+  },
+  {
+   "text": "exceed . lengt\ttoo many tokens",
+   "jsContextFull": true
+  },
+  {
+   "text": "maxımum context K exceed lengt  window ",
+   "jsContextFull": false
+  },
+  {
+   "text": "EXCEEDED CONTEXT TOO MANY tokens error\tful",
+   "jsContextFull": true
+  },
+  {
+   "text": "  exceed",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  contextTOO MANY tokens fulerror maxımum context",
+   "jsContextFull": true
+  },
+  {
+   "text": "contxtlength - lengt. - full:\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "K\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "EXCEEDED full contxt CONTEXT\nful too many tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "TOO MANY tokens\tſize\n",
+   "jsContextFull": true
+  },
+  {
+   "text": "exceed - conte xt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "full ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context\tfull - conte xt\tmaxımum context ful Context\t",
+   "jsContextFull": true
+  },
+  {
+   "text": "Context\rsize\r. - ſize ",
+   "jsContextFull": false
+  },
+  {
+   "text": "window",
+   "jsContextFull": false
+  },
+  {
+   "text": "context\terror TOO MANY tokens EXCEEDED\nContexttokens",
+   "jsContextFull": true
+  },
+  {
+   "text": "Context",
+   "jsContextFull": false
+  },
+  {
+   "text": "Context window\rmaxımum context - exceed\nfulsize\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "context lengt maxımum context maximum context window\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "ſize",
+   "jsContextFull": false
+  },
+  {
+   "text": "ſizeKK\nlength\ntoo many tokens window ",
+   "jsContextFull": true
+  },
+  {
+   "text": "error  \texceedcontext",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokens\tsize ful .\nexceed - ſize\t",
+   "jsContextFull": true
+  },
+  {
+   "text": "contxt  \nexceedfull error - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context\nsize ",
+   "jsContextFull": false
+  },
+  {
+   "text": "context tokens\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "CONTEXTsize lengt :context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context conte xt K\rmaximum  context ",
+   "jsContextFull": true
+  },
+  {
+   "text": ".  \t:\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "exceed\rcontxt :\nful ",
+   "jsContextFull": false
+  },
+  {
+   "text": ".\rful size\nsize\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "K\tmaxımum context. - .full tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "length\rmaxımum context CONTEXT ſize ful ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context - maximum  context - K\rmaximum context : ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maximum  context\tContext\rful - lengthcontxt\tK ",
+   "jsContextFull": false
+  },
+  {
+   "text": "conte xt fulEXCEEDED\nEXCEEDED - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "contxt maximum  context\rcontextexceed ",
+   "jsContextFull": true
+  },
+  {
+   "text": "exceed ſize contxt",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context\nſize\nſize\nconte xt maximum context\rsize ",
+   "jsContextFull": true
+  },
+  {
+   "text": "Context  tokens maxımum contexterror",
+   "jsContextFull": false
+  },
+  {
+   "text": "ful exceed\rlengt\nexceed",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context lengt CONTEXTfull size  ",
+   "jsContextFull": true
+  },
+  {
+   "text": ": conte xt maximum  contextcontxt TOO MANY tokens\t",
+   "jsContextFull": true
+  },
+  {
+   "text": ": ſize - contextK maximum  context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "conte xt\rlengt context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "  context\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "CONTEXT\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "size\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "tokens\nmaximum  context\nTOO MANY tokens\nTOO MANY tokens\rcontext K",
+   "jsContextFull": true
+  },
+  {
+   "text": "tokens\rEXCEEDED",
+   "jsContextFull": false
+  },
+  {
+   "text": "  conte xt - TOO MANY tokens window\tlength window",
+   "jsContextFull": true
+  },
+  {
+   "text": "context maximum context\rerror contxt context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "exceed K - length error\n ſize ",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt\tcontext length. EXCEEDED ",
+   "jsContextFull": false
+  },
+  {
+   "text": "context length ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context full :",
+   "jsContextFull": true
+  },
+  {
+   "text": "K\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "TOO MANY tokens conte xt - maximum context length Context\tconte xt ",
+   "jsContextFull": true
+  },
+  {
+   "text": "exceed - error EXCEEDED\rtokens\rlengthfull\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "fullmaxımum context size - full ",
+   "jsContextFull": false
+  },
+  {
+   "text": "size\nexceed maximum  contextexceed exceed\rmaximum  context\t",
+   "jsContextFull": true
+  },
+  {
+   "text": "conte xt\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context:\tCONTEXT full\nmaxımum context   ",
+   "jsContextFull": true
+  },
+  {
+   "text": "window - too many tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "error\nlength conte xttoo many tokens window: ",
+   "jsContextFull": true
+  },
+  {
+   "text": "full window lengt CONTEXT",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt Context - window\nwindow\nCONTEXT ",
+   "jsContextFull": false
+  },
+  {
+   "text": "tokens",
+   "jsContextFull": false
+  },
+  {
+   "text": "size\n: full .\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokens - maximum context ſize tokens",
+   "jsContextFull": true
+  },
+  {
+   "text": "  - maxımum context too many tokens - CONTEXT conte xt - . ",
+   "jsContextFull": true
+  },
+  {
+   "text": "CONTEXT CONTEXTexceed\tmaxımum context",
+   "jsContextFull": true
+  },
+  {
+   "text": "K ",
+   "jsContextFull": false
+  },
+  {
+   "text": "tokens contxt:",
+   "jsContextFull": false
+  },
+  {
+   "text": "full\ntokens\rfull conte xt CONTEXT",
+   "jsContextFull": false
+  },
+  {
+   "text": "context -  \tTOO MANY tokens error\nconte xt\rtoo many tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "error Contextfulltokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "ful ",
+   "jsContextFull": false
+  },
+  {
+   "text": "tokensſize - TOO MANY tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "window",
+   "jsContextFull": false
+  },
+  {
+   "text": "ſize conte xt\tfull ſize\rmaximum  context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "ful K - window",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokensſize ſize TOO MANY tokens conte xt\nfull",
+   "jsContextFull": true
+  },
+  {
+   "text": "lengt exceedful\tcontext - contxt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "tokenscontxt\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "ſize\tful\nTOO MANY tokens",
+   "jsContextFull": true
+  },
+  {
+   "text": ". - Context\nmaximum context - too many tokens\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "lengt CONTEXT - error conte xt\tſize\rerror ",
+   "jsContextFull": false
+  },
+  {
+   "text": "full ful\nmaximum context - . full\nerror ",
+   "jsContextFull": true
+  },
+  {
+   "text": "fullerror - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "length\nsize EXCEEDED ",
+   "jsContextFull": false
+  },
+  {
+   "text": "fulerror EXCEEDEDlength - contxt - ſize ",
+   "jsContextFull": false
+  },
+  {
+   "text": "EXCEEDED length",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt\ncontext\rCONTEXT CONTEXT maximum  context\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "window full\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context\n.",
+   "jsContextFull": true
+  },
+  {
+   "text": "too many tokens\n",
+   "jsContextFull": true
+  },
+  {
+   "text": ": window :sizemaximum  context Context ",
+   "jsContextFull": false
+  },
+  {
+   "text": ":\n CONTEXT\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "Context CONTEXT ",
+   "jsContextFull": false
+  },
+  {
+   "text": "Contexttokens conte xt",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context .conte xt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "CONTEXT  \rmaximum  context\nwindow - error - K",
+   "jsContextFull": false
+  },
+  {
+   "text": "tokens lengt\n. - TOO MANY tokens - tokens\n:\t",
+   "jsContextFull": true
+  },
+  {
+   "text": "too many tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "error CONTEXTlength full too many tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "full full - :",
+   "jsContextFull": false
+  },
+  {
+   "text": "exceed contextmaximum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "error exceed EXCEEDED TOO MANY tokens\t",
+   "jsContextFull": true
+  },
+  {
+   "text": "EXCEEDED\tcontxt\tlengthContext ",
+   "jsContextFull": false
+  },
+  {
+   "text": "K ",
+   "jsContextFull": false
+  },
+  {
+   "text": "K ",
+   "jsContextFull": false
+  },
+  {
+   "text": "CONTEXT context : EXCEEDED ſize conte xt\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "EXCEEDED",
+   "jsContextFull": false
+  },
+  {
+   "text": " \nful\rsize - . lengtlengt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "Context  \rful Context\rsizemaximum  context\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "ful context\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "window - maxımum context contxt tokens conte xt\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "contxt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "K fulcontxtſize maximum  context\rcontext ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context\nfull\ntokens ",
+   "jsContextFull": false
+  },
+  {
+   "text": "context\tmaxımum context maximum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maximum context\nEXCEEDED ",
+   "jsContextFull": true
+  },
+  {
+   "text": "size EXCEEDED tokens ſize",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt size\rmaximum context\nconte xtfulconte xt ",
+   "jsContextFull": true
+  },
+  {
+   "text": "Context maximum  context K maxımum context\rtokens\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "ful\ncontext",
+   "jsContextFull": false
+  },
+  {
+   "text": "  ful ",
+   "jsContextFull": false
+  },
+  {
+   "text": "size contxt\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum contextcontext\rcontxt\r:\nconte xt\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "length\rfulTOO MANY tokens window exceed:",
+   "jsContextFull": true
+  },
+  {
+   "text": "maxımum context lengthfull TOO MANY tokens\t",
+   "jsContextFull": true
+  },
+  {
+   "text": "K CONTEXTtokens",
+   "jsContextFull": false
+  },
+  {
+   "text": "window\nK: size  maximum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "ſize\rſize - CONTEXTK ",
+   "jsContextFull": false
+  },
+  {
+   "text": "EXCEEDED\rmaxımum context window ",
+   "jsContextFull": false
+  },
+  {
+   "text": "EXCEEDED\ntokens - Context sizetoo many tokenscontxt",
+   "jsContextFull": true
+  },
+  {
+   "text": "lengt\nmaximum context",
+   "jsContextFull": true
+  },
+  {
+   "text": "error too many tokens error ſize too many tokens - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "context\tfulsize\rconte xterror\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "context - lengtful\rCONTEXT. - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokens context contxt\rsize",
+   "jsContextFull": true
+  },
+  {
+   "text": "  too many tokens\ntokens .",
+   "jsContextFull": true
+  },
+  {
+   "text": "window - K maxımum context\rwindow\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "K error\rſize\ncontext\rexceed\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "length - error\ncontxt\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "ful size  \nmaximum context\t \t",
+   "jsContextFull": true
+  },
+  {
+   "text": ".exceed ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context\nsize - window - lengt\t \r",
+   "jsContextFull": false
+  },
+  {
+   "text": ":context\tTOO MANY tokens EXCEEDED - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "EXCEEDED conte xt: ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context context \n",
+   "jsContextFull": false
+  },
+  {
+   "text": "CONTEXT context \t",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokens contxt\nfull maximum  context - tokens\ntoo many tokens\n",
+   "jsContextFull": true
+  },
+  {
+   "text": "fulmaxımum context - full ",
+   "jsContextFull": true
+  },
+  {
+   "text": "length sizeful ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context\nTOO MANY tokens\n",
+   "jsContextFull": true
+  },
+  {
+   "text": "maxımum context\rmaximum context .contxt - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "Context too many tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "full length : ſize\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "EXCEEDEDmaximum  context\ttoo many tokens size ",
+   "jsContextFull": true
+  },
+  {
+   "text": ": K\tmaximum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "context\rtokens\t",
+   "jsContextFull": false
+  },
+  {
+   "text": ".tokens",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt\ncontxt\nmaxımum context\r \rcontext conte xt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maxımum context",
+   "jsContextFull": false
+  },
+  {
+   "text": ". too many tokens conte xt\nfulmaximum context\tcontxt ",
+   "jsContextFull": true
+  },
+  {
+   "text": "CONTEXT :",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context\nmaxımum context size\nful Context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "full tokens - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "contxt lengt\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context\rfull\tK - lengt\t",
+   "jsContextFull": false
+  },
+  {
+   "text": ": windowmaximum  context exceed ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maxımum context  \tfull ",
+   "jsContextFull": true
+  },
+  {
+   "text": "context",
+   "jsContextFull": false
+  },
+  {
+   "text": "context CONTEXT - size",
+   "jsContextFull": false
+  },
+  {
+   "text": "size K",
+   "jsContextFull": false
+  },
+  {
+   "text": ":\t: tokens",
+   "jsContextFull": false
+  },
+  {
+   "text": "fullſize too many tokens window - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "conte xt\tContext\nfull\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "  exceed - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "context too many tokens\ntoo many tokens: - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maximum context lengthcontxt\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "size maximum  context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum contextmaximum context\ttoo many tokens - : - ſize ",
+   "jsContextFull": true
+  },
+  {
+   "text": "exceed - ſize\rfull\n:\rconte xt\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "windowEXCEEDED\nful K context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt\terrorlengt\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "ful Context ſize\tlengt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokens\rsize",
+   "jsContextFull": true
+  },
+  {
+   "text": "lengt\nContext TOO MANY tokens : - Context ful",
+   "jsContextFull": true
+  },
+  {
+   "text": "tokens\tsize",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengt length exceedcontext Contextconte xt\r",
+   "jsContextFull": false
+  },
+  {
+   "text": ". tokens\rcontextmaxımum context ",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokens\rtokens fulEXCEEDEDexceed - ſize",
+   "jsContextFull": true
+  },
+  {
+   "text": "ſize\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "  -   ",
+   "jsContextFull": false
+  },
+  {
+   "text": "window\nEXCEEDED - full\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "tokens - contexterror too many tokenslengtContext\t",
+   "jsContextFull": true
+  },
+  {
+   "text": "  too many tokens - maximum  context too many tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": ". ",
+   "jsContextFull": false
+  },
+  {
+   "text": "size maximum context\tſize",
+   "jsContextFull": true
+  },
+  {
+   "text": ".\tmaxımum context full TOO MANY tokens\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "CONTEXT ",
+   "jsContextFull": false
+  },
+  {
+   "text": "lengthmaxımum context\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "exceed - tokensfull ",
+   "jsContextFull": false
+  },
+  {
+   "text": "sizewindow length tokens\nEXCEEDED\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokens\rerror  ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maxımum context\rmaximum context - ſize - conte xt\tTOO MANY tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "ful EXCEEDED - K ful\t",
+   "jsContextFull": false
+  },
+  {
+   "text": ".\nlengt\nfull EXCEEDED - contxt\n",
+   "jsContextFull": false
+  },
+  {
+   "text": "context - maxımum context TOO MANY tokens\rsize ",
+   "jsContextFull": true
+  },
+  {
+   "text": "size lengt - ſize ",
+   "jsContextFull": false
+  },
+  {
+   "text": "window\rtoo many tokens maxımum context context\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "length - full ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maximum context tokens tokens errormaximum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "size ",
+   "jsContextFull": false
+  },
+  {
+   "text": "full\nexceed ",
+   "jsContextFull": false
+  },
+  {
+   "text": "full - conte xt\nsizelength ",
+   "jsContextFull": false
+  },
+  {
+   "text": "size window - windowContextſize\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "conte xt K\r: exceed\rful error",
+   "jsContextFull": false
+  },
+  {
+   "text": ". TOO MANY tokens\n.\t",
+   "jsContextFull": true
+  },
+  {
+   "text": "ſize\ttokens - K\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "exceed\texceed error maximum  context\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "TOO MANY tokens maxımum context - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "size Context  .\nTOO MANY tokens\t",
+   "jsContextFull": true
+  },
+  {
+   "text": "length\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "contxt\nmaximum  context ful ",
+   "jsContextFull": false
+  },
+  {
+   "text": "too many tokens\nmaxımum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "conte xttokens\nK",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context - CONTEXT\r",
+   "jsContextFull": false
+  },
+  {
+   "text": ":\nexceed Context length. ",
+   "jsContextFull": true
+  },
+  {
+   "text": "Context\nerror - K\rCONTEXT\tmaximum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "lengt ful\rfull - too many tokenstoo many tokens\r.\n",
+   "jsContextFull": true
+  },
+  {
+   "text": "size conte xt maximum context\tfullerror tokens",
+   "jsContextFull": true
+  },
+  {
+   "text": "EXCEEDEDful ",
+   "jsContextFull": false
+  },
+  {
+   "text": "EXCEEDED maximum  context - length contxt -   - lengt",
+   "jsContextFull": true
+  },
+  {
+   "text": "K lengt maxımum context\t.tokenslength ",
+   "jsContextFull": true
+  },
+  {
+   "text": "exceed\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "context conte xt - lengt: - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "K maxımum context. error\t:\tmaxımum context",
+   "jsContextFull": false
+  },
+  {
+   "text": "context exceed EXCEEDED ",
+   "jsContextFull": false
+  },
+  {
+   "text": "error - ",
+   "jsContextFull": false
+  },
+  {
+   "text": "CONTEXTwindow - ſize\rful\tlength ",
+   "jsContextFull": false
+  },
+  {
+   "text": "full\rContext\tK",
+   "jsContextFull": false
+  },
+  {
+   "text": "window window\t",
+   "jsContextFull": false
+  },
+  {
+   "text": "errorful context",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "too many tokens ",
+   "jsContextFull": true
+  },
+  {
+   "text": "maximum context full context ",
+   "jsContextFull": true
+  },
+  {
+   "text": "  error too many tokens\tful K\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "CONTEXT",
+   "jsContextFull": false
+  },
+  {
+   "text": "TOO MANY tokens\tmaximum context\tlengt -   - ",
+   "jsContextFull": true
+  },
+  {
+   "text": "  - EXCEEDEDcontext contexterror\r",
+   "jsContextFull": false
+  },
+  {
+   "text": "K\nsize ",
+   "jsContextFull": false
+  },
+  {
+   "text": "maximum  context contxt ",
+   "jsContextFull": false
+  },
+  {
+   "text": "TOO MANY tokens\tEXCEEDED",
+   "jsContextFull": true
+  },
+  {
+   "text": "too many tokens\nContext\nconte xt size .\r",
+   "jsContextFull": true
+  },
+  {
+   "text": "window\nconte xt CONTEXT",
+   "jsContextFull": false
+  },
+  {
+   "text": "CONTEXT\rsize conte xt\nlength\rlength ",
+   "jsContextFull": false
+  },
+  {
+   "text": " ",
+   "jsContextFull": false
+  },
+  {
+   "text": "CONTEXT tokens\rconte xtEXCEEDED error\t",
+   "jsContextFull": false
+  }
+ ],
+ "verdicts": [
+  {
+   "name": "text reply",
+   "status": 200,
+   "body": "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Done.\"}}]}",
+   "expect": {
+    "passed": true,
+    "kind": null
+   }
+  },
+  {
+   "name": "tool call reply",
+   "status": 200,
+   "body": "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"search_files\",\"arguments\":\"{}\"}}]}}]}",
+   "expect": {
+    "passed": true,
+    "kind": null
+   }
+  },
+  {
+   "name": "no choices",
+   "status": 200,
+   "body": "{\"choices\":[]}",
+   "expect": {
+    "passed": false,
+    "kind": "other"
+   }
+  },
+  {
+   "name": "not JSON",
+   "status": 200,
+   "body": "ok",
+   "expect": {
+    "passed": false,
+    "kind": "other"
+   }
+  },
+  {
+   "name": "template 400",
+   "status": 400,
+   "body": "{\"error\":{\"code\":400,\"message\":\"Unable to generate parser for this template. Automatic parser generation failed: \\n------------\\nWhile executing CallExpression at line 19, column 12 in source:\\n...ndif -%}\\n    {%- if (message['role'] == 'user') != (loop.index0 % 2 == 0) -%}\\n        {{ raise_exception(\\\"Conversation roles must alternate user/assistant/user/assistant/...\\\") }}\\n           ^\\nError: Jinja Exception: Conversation roles must alternate user/assistant/user/assistant/...\",\"type\":\"invalid_request_error\"}}",
+   "expect": {
+    "passed": false,
+    "kind": "template_or_tools_unsupported"
+   }
+  },
+  {
+   "name": "down",
+   "status": 503,
+   "body": "Loading model",
+   "expect": {
+    "passed": false,
+    "kind": "backend_down"
+   }
+  }
+ ]
+}

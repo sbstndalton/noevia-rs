@@ -1,0 +1,18 @@
+[package]
+name = "chat-template-caps"
+version = "0.1.0"
+description = "Static capability analysis of a model's Jinja chat template (tools, strict role alternation, system role) and the serving check autotune signs off with (noevia#1002, #1003)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+provider-error = { path = "../provider-error" }
+serde_json = "1"
+
+[dev-dependencies]
+proptest = "1"

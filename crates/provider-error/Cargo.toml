@@ -1,0 +1,17 @@
+[package]
+name = "provider-error"
+version = "0.1.0"
+description = "Classifies an upstream model-provider error (HTTP status and body) and returns a short, sanitised reason (noevia#1002)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+proptest = "1"

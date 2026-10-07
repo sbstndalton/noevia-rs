@@ -93,6 +93,16 @@ one slice at a time.
   `dav-parse.wasm` as `mcp_rpc_body` and `mcp_schema_refs` (raw replies: tag byte + UTF-8 JSON).
   Table from noevia-core (`node tools/gen-mcp-fixtures.cjs`), copied byte-for-byte to
   `crates/mcp-frame/tests/fixtures/mcp-frame.v1.json`.
+- `crates/chat-template-caps` + `crates/provider-error` (sbstndalton/noevia#1002, #1003): a
+  lexical capability scan of a model's Jinja chat template (tools, tool calls, tool role, system
+  role, strict role alternation, `raise_exception`, thinking switch) and the decision noevia-core
+  makes from it (`sendTools`: native tools, or a template that never raises); a classifier for
+  upstream provider errors (context_full / template_or_tools_unsupported / bad_request /
+  backend_down / other) with a capped, redacted reason; and autotune's serving verdict. In
+  `dav-parse.wasm` as `template_caps`, `provider_error` and `serving_verdict`. Table from
+  noevia-core (`node tools/gen-chat-template-caps-fixtures.cjs`, public chat templates with
+  their sources, adversarial ones, and the JS context test's own answers), copied byte-for-byte
+  to `crates/chat-template-caps/tests/fixtures/chat-template-caps.v1.json`.
 - `crates/docx-text` + `bins/docx-text` (sbstndalton/noevia#981): the OCR service's DOCX
   text front. `docx-text extract < upload.docx` checks the ZIP container (EOCD, member
   count/sizes, encryption, compression ratio) and prints `{"text", "truncated", "scope"}`

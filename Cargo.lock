@@ -100,6 +100,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
+name = "chat-template-caps"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "provider-error",
+ "serde_json",
+]
+
+[[package]]
 name = "cipher"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -150,8 +159,10 @@ dependencies = [
 name = "dav-parse-wasm"
 version = "0.1.0"
 dependencies = [
+ "chat-template-caps",
  "dav-parse",
  "mcp-frame",
+ "provider-error",
  "s3-list-parse",
  "secret-envelope",
  "storage-path",
@@ -696,6 +707,14 @@ dependencies = [
  "rusty-fork",
  "tempfile",
  "unarray",
+]
+
+[[package]]
+name = "provider-error"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
 ]
 
 [[package]]

@@ -38,6 +38,15 @@
 //!      `mcp_frame::schema::MAX_SCHEMA_UNITS`); on status 0 the reply is a tag (0 the resolved
 //!      tree, 1 `{"code":…,"ref":…}`, what the JS throws) followed by UTF-8 JSON.
 //!
+//!    - `template_caps()`: input a model's chat template as UTF-8 (at most
+//!      `chat_template_caps::MAX_TEMPLATE_BYTES`); reply `{"known":…,"tools":…,"toolCalls":…,
+//!      "toolRole":…,"systemRole":…,"strictAlternation":…,"raises":…,"thinking":…,
+//!      "sendTools":…}` (chat-template-caps, noevia#1002); a longer one is `{"error":"too_large"}`.
+//!    - `provider_error()`: input `u32le(status) body`, body UTF-8 (status 0: no response);
+//!      reply `{"kind":"…","reason":"…"}` (provider-error, noevia#1002).
+//!    - `serving_verdict()`: same input, autotune's serving-check reply; reply
+//!      `{"passed":bool,"kind":"…"|null,"reason":"…"}` (chat-template-caps, noevia#1003).
+//!
 //!    Both secret calls wipe their input buffer (keys, user, value) and the previous reply before
 //!    returning; refusals are `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry
 //!    input bytes. The host still wipes the whole linear memory and drops the instance after each
@@ -315,6 +324,49 @@ pub fn run_mcp_schema(input: &[u8]) -> (u32, Vec<u8>) {
     }
 }
 
+/// `chat-template-caps` analyze on a UTF-8 template (noevia#1002).
+pub fn run_template_caps(input: &[u8]) -> (u32, String) {
+    let Ok(text) = std::str::from_utf8(input) else {
+        return (2, "{\"error\":\"input_not_utf8\"}".to_owned());
+    };
+    let result = chat_template_caps::analyze(text);
+    (
+        u32::from(result.is_err()),
+        chat_template_caps::reply_json(&result),
+    )
+}
+
+/// Split `u32le(status) body` (body UTF-8).
+fn status_body(input: &[u8]) -> Option<(u32, &str)> {
+    let head: [u8; 4] = input.get(..4)?.try_into().ok()?;
+    Some((
+        u32::from_le_bytes(head),
+        std::str::from_utf8(input.get(4..)?).ok()?,
+    ))
+}
+
+/// `provider-error` classify on `u32le(status) body` (noevia#1002).
+pub fn run_provider_error(input: &[u8]) -> (u32, String) {
+    let Some((status, body)) = status_body(input) else {
+        return (2, "{\"error\":\"input_shape\"}".to_owned());
+    };
+    (
+        0,
+        provider_error::reply_json(&provider_error::classify(status, body)),
+    )
+}
+
+/// Autotune's serving verdict on `u32le(status) body` (noevia#1003).
+pub fn run_serving_verdict(input: &[u8]) -> (u32, String) {
+    let Some((status, body)) = status_body(input) else {
+        return (2, "{\"error\":\"input_shape\"}".to_owned());
+    };
+    (
+        0,
+        chat_template_caps::verdict_json(&chat_template_caps::serving_verdict(status, body)),
+    )
+}
+
 /// Run a secret call: wipe the previous reply first and the input (keys, user, value) after.
 fn consume_secret(run: impl FnOnce(&[u8]) -> (u32, Vec<u8>)) -> u32 {
     OUTPUT.with(|out| out.borrow_mut().zeroize());
@@ -434,6 +486,27 @@ pub extern "C" fn mcp_rpc_body() -> u32 {
 #[no_mangle]
 pub extern "C" fn mcp_schema_refs() -> u32 {
     consume_bytes(run_mcp_schema)
+}
+
+/// Analyse a chat template from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn template_caps() -> u32 {
+    consume(run_template_caps)
+}
+
+/// Classify an upstream provider error from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn provider_error() -> u32 {
+    consume(run_provider_error)
+}
+
+/// Judge autotune's serving-check reply from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn serving_verdict() -> u32 {
+    consume(run_serving_verdict)
 }
 
 /// Address of the last reply.
@@ -644,6 +717,31 @@ mod tests {
         );
         assert_eq!(run_mcp_schema(&u16le("{")).0, 2);
         assert_eq!(run_mcp_schema(&[0x7b]).0, 2);
+    }
+
+    #[test]
+    fn caps_and_error_shapes() {
+        let (s, r) = run_template_caps(b"{{ raise_exception('roles must alternate') }}");
+        assert_eq!(s, 0);
+        assert!(r.contains("\"sendTools\":false"));
+        assert_eq!(run_template_caps(&[0xff]).0, 2);
+        let mut v = 400u32.to_le_bytes().to_vec();
+        v.extend_from_slice(br#"{"error":"System role not supported"}"#);
+        assert_eq!(
+            run_provider_error(&v),
+            (
+                0,
+                r#"{"kind":"template_or_tools_unsupported","reason":"System role not supported"}"#
+                    .to_owned()
+            )
+        );
+        assert_eq!(run_provider_error(&[1, 0]).0, 2);
+        let mut v = 200u32.to_le_bytes().to_vec();
+        v.extend_from_slice(br#"{"choices":[{"message":{"content":"ok"}}]}"#);
+        assert_eq!(
+            run_serving_verdict(&v),
+            (0, r#"{"kind":null,"passed":true,"reason":""}"#.to_owned())
+        );
     }
 
     #[test]
