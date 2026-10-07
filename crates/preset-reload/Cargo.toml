@@ -1,0 +1,17 @@
+[package]
+name = "preset-reload"
+version = "0.1.0"
+description = "Decides whether the llama.cpp router can re-read models.ini without unloading a running model: compares the file the router last read with the current one, section by section, for the loaded models, the global [*] section and the preamble (noevia#1012)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+proptest = "1"
