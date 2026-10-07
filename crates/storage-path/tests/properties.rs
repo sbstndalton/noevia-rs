@@ -84,7 +84,8 @@ proptest! {
         let rel = safe_relative_path(&raw).unwrap();
         let joined = join_root(&root, &rel).unwrap();
         let clean = clean_root(&root).unwrap();
-        prop_assert!(joined.starts_with(&clean));
+        let root_dir = format!("{clean}/");
+        prop_assert!(clean.is_empty() || joined == clean || joined.starts_with(&root_dir));
         prop_assert!(!joined.starts_with('/'));
         prop_assert!(joined.split('/').all(|s| s != ".."));
     }
