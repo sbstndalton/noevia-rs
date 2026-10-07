@@ -51,6 +51,12 @@
 //!      ladder, the allowed KV cache types and every result so far; reply the next step, e.g.
 //!      `{"step":"probe","ctx":…,"kv":"…","fill":…,"estimateMib":…}` (autotune-plan,
 //!      noevia#1003). A refused request is status 1 with `{"error":"input"|"too_large"}`.
+//!    - `preset_reload()`: input `{"baseline":"…","current":"…","loaded":["…"]}` as UTF-8 JSON (at
+//!      most `preset_reload::MAX_INPUT_BYTES`): the models.ini text the llama.cpp router last
+//!      read, the text now and the models it has loaded; reply
+//!      `{"safe":bool,"reason":"unchanged"|"changed"|"ambiguous","changed":[…],"detail":…}`
+//!      (preset-reload, noevia#1012). A refused request is status 1 with
+//!      `{"error":"input"|"too_large"}`.
 //!
 //!    Both secret calls wipe their input buffer (keys, user, value) and the previous reply before
 //!    returning; refusals are `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry
@@ -383,6 +389,17 @@ pub fn run_autotune_plan(input: &[u8]) -> (u32, String) {
     autotune_plan::plan_json(text)
 }
 
+/// Decide whether a router preset reload keeps every loaded model; see the crate docs.
+pub fn run_preset_reload(input: &[u8]) -> (u32, String) {
+    if input.len() > preset_reload::MAX_INPUT_BYTES {
+        return (1, "{\"error\":\"too_large\"}".to_owned());
+    }
+    let Ok(text) = std::str::from_utf8(input) else {
+        return (2, "{\"error\":\"input_not_utf8\"}".to_owned());
+    };
+    preset_reload::check_json(text)
+}
+
 /// Run a secret call: wipe the previous reply first and the input (keys, user, value) after.
 fn consume_secret(run: impl FnOnce(&[u8]) -> (u32, Vec<u8>)) -> u32 {
     OUTPUT.with(|out| out.borrow_mut().zeroize());
@@ -530,6 +547,13 @@ pub extern "C" fn serving_verdict() -> u32 {
 #[no_mangle]
 pub extern "C" fn autotune_plan() -> u32 {
     consume(run_autotune_plan)
+}
+
+/// Check a router preset reload from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn preset_reload() -> u32 {
+    consume(run_preset_reload)
 }
 
 /// Address of the last reply.
@@ -779,6 +803,25 @@ mod tests {
         let big = vec![b' '; autotune_plan::MAX_INPUT_BYTES + 1];
         assert_eq!(
             run_autotune_plan(&big),
+            (1, r#"{"error":"too_large"}"#.to_owned())
+        );
+    }
+
+    #[test]
+    fn preset_reload_shapes() {
+        let (s, r) = run_preset_reload(
+            br#"{"baseline":"[a]\nctx-size = 1\n","current":"[a]\nctx-size = 1\n[b]\n","loaded":["a"]}"#,
+        );
+        assert_eq!(s, 0);
+        assert_eq!(
+            r,
+            r#"{"changed":[],"detail":null,"reason":"unchanged","safe":true}"#
+        );
+        assert_eq!(run_preset_reload(b"{").0, 1);
+        assert_eq!(run_preset_reload(&[0xff]).0, 2);
+        let big = vec![b' '; preset_reload::MAX_INPUT_BYTES + 1];
+        assert_eq!(
+            run_preset_reload(&big),
             (1, r#"{"error":"too_large"}"#.to_owned())
         );
     }
