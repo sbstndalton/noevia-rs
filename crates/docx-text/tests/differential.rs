@@ -86,3 +86,38 @@ fn every_fixture_matches_and_is_never_more_lenient_than_python() {
     assert!(mutants >= 500, "mutants shrank: {mutants}");
     println!("{hand} cases, {mutants} mutants, {agreed_ok} identical extractions, {stricter} stricter refusals");
 }
+
+/// Producer compatibility (tools/gen-docx-producers.py): DOCX files written by python-docx,
+/// pandoc, LibreOffice, macOS textutil and zip re-packers (synthetic content) must all be
+/// extracted, with Python's exact text, except the recorded deliberate refusals.
+#[test]
+fn every_producer_file_is_extracted_like_python() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/docx-producers.v1.json"
+    ))
+    .unwrap();
+    let doc: Value = serde_json::from_str(&text).unwrap();
+    let cases = doc["cases"].as_array().unwrap();
+    assert!(cases.len() >= 14, "producer set shrank: {}", cases.len());
+    let mut extracted = 0;
+    for c in cases {
+        let name = c["name"].as_str().unwrap();
+        let got = record(&docx_text::extract_docx(&b64(c["docx"].as_str().unwrap())));
+        assert_eq!(got, c["rust"], "{name}: result changed");
+        assert!(
+            c["python"].get("error").is_none(),
+            "{name}: Python refused a producer file"
+        );
+        if c.get("stricter").is_some() {
+            assert!(got.get("error").is_some(), "{name}: declared refusal");
+        } else {
+            assert_eq!(
+                &got, &c["python"],
+                "{name}: producer file not extracted like Python"
+            );
+            extracted += 1;
+        }
+    }
+    println!("{extracted} producer files extracted identically");
+}

@@ -4,6 +4,11 @@
 //! `word/document.xml`'s body. Text and truncation are identical to Python; refusals agree in
 //! class (see `Refusal::class`). Nothing touches the filesystem or the network.
 //!
+//! Producer compatibility (tests/fixtures/docx-producers.v1.json): files from python-docx,
+//! pandoc, LibreOffice, macOS textutil and Info-ZIP / ditto / zipfile re-packs are all extracted
+//! with Python's text; none of the rules below fires on them. The one producer output refused
+//! on purpose is an Info-ZIP re-pack with `zip -z` (an archive comment), an explicit user action.
+//!
 //! Stricter than Python (each refused here, with the reason):
 //! - ZIP: a non-empty archive comment (can carry a second archive); a zip64 locator before the
 //!   EOCD, zip64 or Info-ZIP Unicode Path (0x7075, which renames a member in Python) extra
