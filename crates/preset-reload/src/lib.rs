@@ -19,7 +19,15 @@
 //! change. Anything the router would read differently from a plain `[name]` header (a duplicate
 //! header, which the router resets; a name with `:`, which it canonicalises; padding inside the
 //! brackets; an indented header; a `[default]` section, which the router merges with the
-//! preamble) makes the verdict [`Verdict::Ambiguous`], which is never safe.
+//! preamble; any whitespace but space/tab in a header, or anything but a comment after `]`; a
+//! line the router's grammar would reject) makes the verdict [`Verdict::Ambiguous`], which is
+//! never safe. Grammar: llama.cpp `common/preset.cpp` lines 186-217 at eafe15a5e
+//! (`header-line ::= "[" ws section-name "]" eol`, `ws ::= [ \t]*`, `eol ::= ws comment? newline`).
+//!
+//! A reload never starts a model (`tools/server/server-models.cpp` lines 960-985 add new
+//! sections as unloaded; load-on-startup is honoured only on the first load, lines 845-861), so
+//! `load-on-startup` needs no special case. A sleeping model counts as running for the reload
+//! (`server-models.h` lines 94-95): callers must include sleeping models in `loaded`.
 //!
 //! Input is untrusted JSON (see [`check_json`]); anything malformed or over a cap is refused with
 //! a fixed error code and never echoed. Nothing here panics.
@@ -46,8 +54,12 @@ pub enum Ambiguity {
     /// The same section header appears twice in one text.
     DuplicateSection,
     /// A header the router reads differently from its plain text (padding, `:`, `[default]`,
-    /// an empty name, an unclosed bracket, an indented header).
+    /// an empty name, an unclosed bracket, an indented header, any whitespace other than space or
+    /// tab in or around it, anything but a `;`/`#` comment after `]`).
     Header,
+    /// A non-header line the router's grammar does not accept as a key, comment or blank line
+    /// (e.g. a byte-order mark or other leading character), so it would reject the whole file.
+    Line,
 }
 
 impl Ambiguity {
@@ -55,6 +67,7 @@ impl Ambiguity {
         match self {
             Ambiguity::DuplicateSection => "duplicate_section",
             Ambiguity::Header => "header",
+            Ambiguity::Line => "line",
         }
     }
 }
@@ -142,6 +155,12 @@ fn split(text: &str) -> Result<Sections<'_>, Ambiguity> {
             current = Some(out.sections.len() - 1);
             continue;
         }
+        // llama.cpp common/preset.cpp (eafe15a5e) lines 186-217: a kv-line starts with an ident
+        // `[a-zA-Z_]`, a comment-line with `;` or `#` after optional space/tab.
+        if !line.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == ';' || c == '#')
+        {
+            return Err(Ambiguity::Line);
+        }
         let body = match current.and_then(|i| out.sections.get_mut(i)) {
             Some((_, body)) => body,
             None => &mut out.preamble,
@@ -165,6 +184,7 @@ fn header_name(line: &str) -> Result<&str, Ambiguity> {
     }
     if name.is_empty()
         || name != name.trim_matches(is_ws)
+        || name.chars().any(|c| c.is_whitespace() || c.is_control())
         || name.contains(':')
         || name == DEFAULT_NAME
     {
@@ -365,6 +385,17 @@ mod tests {
             "[]\n",
             "[Synthetic-A\n",
             "[Synthetic-A] trailing\n",
+            "[Synthetic-A]]\n",
+            "[Synthetic-A]\u{b}\n",
+            "[Synthetic-A]\u{a0}\n",
+            "[Synth\u{b}etic]\n",
+            "[Synth etic]\n",
+            "[\u{a0}Synthetic-A]\n",
+            "\u{feff}[Synthetic-A]\n",
+            "[Synthetic-A]\n\u{feff}ctx-size = 1\n",
+            "[Synthetic-A]\n\u{b}ctx-size = 1\n",
+            "[Synthetic-A]\n-ctx-size = 1\n",
+            "[Synthetic-A]\n= 1\n",
         ] {
             let v = check(BASE, bad, &ids(&["Synthetic-B"]));
             assert!(matches!(v, Verdict::Ambiguous(_)), "{bad:?} gave {v:?}");
@@ -375,6 +406,36 @@ mod tests {
         assert_eq!(
             check(BASE, "[a]\n[a]\n", &ids(&["x"])),
             Verdict::Ambiguous(Ambiguity::DuplicateSection)
+        );
+    }
+
+    #[test]
+    fn line_codes() {
+        assert_eq!(
+            check(BASE, "\u{feff}version = 1\n", &ids(&["x"])),
+            Verdict::Ambiguous(Ambiguity::Line)
+        );
+        assert_eq!(
+            check(
+                "[a]\t# note\n[b];x\n",
+                "[a]\t# note\n[b];x\n[c]\n",
+                &ids(&["a"])
+            ),
+            Verdict::Unchanged
+        );
+    }
+
+    #[test]
+    fn load_on_startup_is_an_ordinary_option() {
+        let cur = format!("{BASE}[Synthetic-New]\nload-on-startup = true\n");
+        assert_eq!(
+            check(BASE, &cur, &ids(&["Synthetic-A"])),
+            Verdict::Unchanged
+        );
+        let cur = BASE.replace("ctx-size = 8192", "ctx-size = 8192\nload-on-startup = true");
+        assert_eq!(
+            check(BASE, &cur, &ids(&["Synthetic-A"])),
+            Verdict::Changed(ids(&["Synthetic-A"]))
         );
     }
 

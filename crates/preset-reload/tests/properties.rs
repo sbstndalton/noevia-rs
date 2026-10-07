@@ -18,7 +18,7 @@ fn name() -> impl Strategy<Value = String> {
 fn section() -> impl Strategy<Value = (String, Vec<String>)> {
     (
         name(),
-        prop::collection::vec("[a-z-]{1,10} = [A-Za-z0-9/._-]{0,12}", 0..5),
+        prop::collection::vec("[a-z][a-z-]{0,9} = [A-Za-z0-9/._-]{0,12}", 0..5),
     )
 }
 
