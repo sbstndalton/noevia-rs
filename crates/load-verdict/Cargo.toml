@@ -1,0 +1,17 @@
+[package]
+name = "load-verdict"
+version = "0.1.0"
+description = "Why a model failed to load or serve during auto-tune: a fixed rule classifier over the engine's failure evidence, merged with an optional advisory label from the decision service (Laya) only when no rule matched (noevia#1004)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+proptest = "1"

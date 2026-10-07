@@ -114,6 +114,17 @@ one slice at a time.
   `autotune_plan`. Table from noevia-core (`node tools/gen-autotune-plan-fixtures.cjs`, seeded
   simulated runs over synthetic model layouts, expectations from an independent JS reference),
   copied byte-for-byte to `crates/autotune-plan/tests/fixtures/autotune-plan.v1.json`.
+- `crates/load-verdict` (sbstndalton/noevia#1004): why a failed auto-tune step failed, in the
+  planner's words (`oom`, `load_failed`, `timeout`, `over_time`, `recall_failed`, `template`).
+  A measured cause (memory floor, time limit, recall) stands. For a guessed one (refused load,
+  failed router row, stream error, engine gone) a fixed, ordered rule list reads the engine's
+  evidence (exit code 137, out-of-memory, chat-template, context, time-out and model-file
+  patterns); only when no rule matches may an advisory label from the decision service (Laya)
+  decide, at a confidence of at least 0.6; otherwise the calibrator's own cause stands. Fixed
+  reasons, never echoing the engine's text. In `dav-parse.wasm` as `load_verdict`. Table from
+  noevia-core (`node tools/gen-load-verdict-fixtures.cjs`, synthetic engine messages, seeded
+  combinations, expectations from an independent JS reference), copied byte-for-byte to
+  `crates/load-verdict/tests/fixtures/load-verdict.v1.json`.
 - `model-files backups` (`crates/model-files/src/backups.rs`, sbstndalton/noevia#1021): which
   recovery copies of models.ini a model-manager write makes and which old ones it removes. The
   rotating `<file>.bak-*` copies keep ini.py's rule (newest 10 by name); the

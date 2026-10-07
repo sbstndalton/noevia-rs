@@ -57,6 +57,13 @@
 //!      `{"safe":bool,"reason":"unchanged"|"changed"|"ambiguous","changed":[…],"detail":…}`
 //!      (preset-reload, noevia#1012). A refused request is status 1 with
 //!      `{"error":"input"|"too_large"}`.
+//!    - `load_verdict()`: input `{"cause":"…","evidence":{"status":…,"exitCode":…,"text":"…"}|null,
+//!      "advice":{"label":"…","confidence":…}|null}` as UTF-8 JSON (at most
+//!      `load_verdict::MAX_INPUT_BYTES`): a failed auto-tune step's cause, the engine's evidence
+//!      and the decision service's advisory label; reply `{"outcome":"…","source":"measured"|
+//!      "rule"|"advisor"|"fallback","rule":"…","ruleId":…,"ask":bool,"advice":…,
+//!      "adviceUsed":bool,"reason":"…"}` (load-verdict, noevia#1004). A refused request is
+//!      status 1 with `{"error":"input"|"too_large"}`.
 //!
 //!    Both secret calls wipe their input buffer (keys, user, value) and the previous reply before
 //!    returning; refusals are `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry
@@ -400,6 +407,17 @@ pub fn run_preset_reload(input: &[u8]) -> (u32, String) {
     preset_reload::check_json(text)
 }
 
+/// `load-verdict`: why a failed auto-tune step failed; the JSON reply described in the crate docs.
+pub fn run_load_verdict(input: &[u8]) -> (u32, String) {
+    if input.len() > load_verdict::MAX_INPUT_BYTES {
+        return (1, "{\"error\":\"too_large\"}".to_owned());
+    }
+    let Ok(text) = std::str::from_utf8(input) else {
+        return (2, "{\"error\":\"input_not_utf8\"}".to_owned());
+    };
+    load_verdict::verdict_json(text)
+}
+
 /// Run a secret call: wipe the previous reply first and the input (keys, user, value) after.
 fn consume_secret(run: impl FnOnce(&[u8]) -> (u32, Vec<u8>)) -> u32 {
     OUTPUT.with(|out| out.borrow_mut().zeroize());
@@ -554,6 +572,13 @@ pub extern "C" fn autotune_plan() -> u32 {
 #[no_mangle]
 pub extern "C" fn preset_reload() -> u32 {
     consume(run_preset_reload)
+}
+
+/// Name a failed auto-tune step's outcome from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn load_verdict() -> u32 {
+    consume(run_load_verdict)
 }
 
 /// Address of the last reply.
@@ -822,6 +847,22 @@ mod tests {
         let big = vec![b' '; preset_reload::MAX_INPUT_BYTES + 1];
         assert_eq!(
             run_preset_reload(&big),
+            (1, r#"{"error":"too_large"}"#.to_owned())
+        );
+    }
+
+    #[test]
+    fn load_verdict_shapes() {
+        let (s, r) = run_load_verdict(
+            br#"{"cause":"load","evidence":{"status":500,"text":"ErrorOutOfDeviceMemory"}}"#,
+        );
+        assert_eq!(s, 0);
+        assert!(r.contains(r#""outcome":"oom""#) && r.contains(r#""source":"rule""#));
+        assert_eq!(run_load_verdict(b"{").0, 1);
+        assert_eq!(run_load_verdict(&[0xff]).0, 2);
+        let big = vec![b' '; load_verdict::MAX_INPUT_BYTES + 1];
+        assert_eq!(
+            run_load_verdict(&big),
             (1, r#"{"error":"too_large"}"#.to_owned())
         );
     }

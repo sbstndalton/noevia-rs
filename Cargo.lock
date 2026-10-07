@@ -170,6 +170,7 @@ dependencies = [
  "autotune-plan",
  "chat-template-caps",
  "dav-parse",
+ "load-verdict",
  "mcp-frame",
  "preset-reload",
  "provider-error",
@@ -577,6 +578,14 @@ name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
+
+[[package]]
+name = "load-verdict"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+]
 
 [[package]]
 name = "mcp-frame"
