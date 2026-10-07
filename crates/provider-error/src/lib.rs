@@ -288,6 +288,24 @@ fn is_host_port(word: &str) -> bool {
         && host.chars().any(|c| c.is_ascii_alphanumeric())
 }
 
+/// `name.tld` (a bare domain, the link a provider's message could carry; noevia-core #455): dot-
+/// separated labels of letters, digits and `-`, the last one at least two letters. File names with
+/// a known extension are paths, handled elsewhere.
+fn is_host_name(word: &str) -> bool {
+    let host = word.split(['/', ':']).next().unwrap_or("");
+    let labels: Vec<&str> = host.split('.').collect();
+    labels.len() >= 2
+        && labels
+            .iter()
+            .all(|l| !l.is_empty() && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        && labels
+            .last()
+            .is_some_and(|tld| tld.len() >= 2 && tld.chars().all(|c| c.is_ascii_alphabetic()))
+        && labels
+            .first()
+            .is_some_and(|l| l.chars().any(|c| c.is_ascii_alphabetic()))
+}
+
 fn is_token_like(word: &str) -> bool {
     let lower = word.to_ascii_lowercase();
     if word.len() >= 8 && TOKEN_PREFIXES.iter().any(|p| lower.starts_with(p)) {
@@ -348,6 +366,9 @@ fn redact_word(word: &str, after_scheme: bool) -> String {
     }
     if is_ipv4(core) || is_host_port(core) {
         return "[address]".to_owned();
+    }
+    if is_host_name(core) {
+        return "[host]".to_owned();
     }
     if is_path(core) {
         return "[path]".to_owned();
@@ -440,6 +461,11 @@ mod tests {
         assert_eq!(sanitize("x a1b2c3d4e5f6a7b8c9d0e1f2"), "x [redacted]");
         assert_eq!(sanitize("line\none\ttab\u{0}"), "line one tab");
         assert_eq!(sanitize("a <b>x</b> <= 2"), "a [markup] <= 2");
+        assert_eq!(
+            sanitize("Visit evil.example to fix this, or www.x-y.co.uk/a."),
+            "Visit [host] to fix this, or [host]"
+        );
+        assert_eq!(sanitize("v1.2 costs 3.5 tokens"), "v1.2 costs 3.5 tokens");
         let long = "word ".repeat(100);
         let capped = sanitize(&long);
         assert!(capped.chars().count() <= MAX_REASON_CHARS);
