@@ -75,6 +75,16 @@ one slice at a time.
   the whole linear memory and drops the instance after each call. Table from noevia-core
   (`node tools/gen-secret-fixtures.cjs`; synthetic keys), copied byte-for-byte to
   `crates/secret-envelope/tests/fixtures/secret-envelope.v1.json`.
+- `crates/sandbox-bridge` + `bins/sandbox-bridge-wasm` (sbstndalton/noevia#999): the code
+  sandbox bridge's untrusted-input handling, a port of noevia-core's `code-sandbox/`
+  `pi-acp-bridge.cjs` (`lines()` JSONL framing, `toolCallFor()`) and `supervisor.cjs` (start-line
+  parsing, `insideRoot`'s decision on two real paths; realpath stays in Node). Its own
+  WebAssembly module, `sandbox-bridge.wasm` (`tools/build-sandbox-bridge-wasm.sh [out]`,
+  reproducible, no imports), because it ships in the code-sandbox image rather than the web one;
+  noevia-core pins its sha256 in `code-sandbox/sandbox-bridge.lock` and loads it under
+  `SANDBOX_BRIDGE_IMPL=rust`. Framing state lives in the module (one handle per stream). Table
+  from noevia-core (`node tools/gen-sandbox-bridge-fixtures.cjs`), copied byte-for-byte to
+  `crates/sandbox-bridge/tests/fixtures/sandbox-bridge.v1.json`.
 - `crates/docx-text` + `bins/docx-text` (sbstndalton/noevia#981): the OCR service's DOCX
   text front. `docx-text extract < upload.docx` checks the ZIP container (EOCD, member
   count/sizes, encryption, compression ratio) and prints `{"text", "truncated", "scope"}`
