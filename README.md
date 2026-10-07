@@ -85,6 +85,14 @@ one slice at a time.
   `SANDBOX_BRIDGE_IMPL=rust`. Framing state lives in the module (one handle per stream). Table
   from noevia-core (`node tools/gen-sandbox-bridge-fixtures.cjs`), copied byte-for-byte to
   `crates/sandbox-bridge/tests/fixtures/sandbox-bridge.v1.json`.
+- `crates/mcp-frame` (sbstndalton/noevia#980): MCP response framing, a port of noevia-core's
+  `server/mcp.cjs` `parseRpcBody` (plain JSON or `text/event-stream` bodies, id matching, server
+  requests and notifications refused as replies) and `resolveSchemaRefs` (local `$ref` inlining
+  under the same depth, node and character budget, JS corner cases included). Text crosses as
+  UTF-16 units; the JSON scanner accepts exactly what `JSON.parse` accepts, iteratively. In
+  `dav-parse.wasm` as `mcp_rpc_body` and `mcp_schema_refs` (raw replies: tag byte + UTF-8 JSON).
+  Table from noevia-core (`node tools/gen-mcp-fixtures.cjs`), copied byte-for-byte to
+  `crates/mcp-frame/tests/fixtures/mcp-frame.v1.json`.
 - `crates/docx-text` + `bins/docx-text` (sbstndalton/noevia#981): the OCR service's DOCX
   text front. `docx-text extract < upload.docx` checks the ZIP container (EOCD, member
   count/sizes, encryption, compression ratio) and prints `{"text", "truncated", "scope"}`
