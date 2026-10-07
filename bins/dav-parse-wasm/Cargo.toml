@@ -1,7 +1,7 @@
 [package]
 name = "dav-parse-wasm"
 version = "0.1.0"
-description = "WebAssembly module exposing dav-parse, s3-list-parse and storage-path to noevia-core through a minimal, unsafe-free ABI"
+description = "WebAssembly module exposing dav-parse, s3-list-parse, storage-path and upload-sniff to noevia-core through a minimal, unsafe-free ABI"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -25,3 +25,4 @@ crate-type = ["cdylib", "rlib"]
 dav-parse = { path = "../../crates/dav-parse" }
 s3-list-parse = { path = "../../crates/s3-list-parse" }
 storage-path = { path = "../../crates/storage-path" }
+upload-sniff = { path = "../../crates/upload-sniff" }

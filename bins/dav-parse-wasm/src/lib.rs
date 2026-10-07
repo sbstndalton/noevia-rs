@@ -1,7 +1,7 @@
 //! `dav-parse.wasm`: the WebAssembly face of noevia-rs's storage parsers: `dav-parse` (noevia#967),
-//! `s3-list-parse` (noevia#976) and `storage-path` (noevia#978). One module, one pin: noevia-core's
+//! `s3-list-parse` (noevia#976), `storage-path` (noevia#978) and `upload-sniff` (noevia#977). One module, one pin: noevia-core's
 //! `server/dav-parse.lock` names its sha256 and every switch (`DAV_PARSE_IMPL`, `S3_PARSE_IMPL`,
-//! `STORAGE_PATH_IMPL`) loads the same bytes.
+//! `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`) loads the same bytes.
 //!
 //! A deliberately tiny ABI with no `unsafe` block and no imports (no WASI, no wasm-bindgen glue):
 //!
@@ -14,6 +14,13 @@
 //!      `{"entries":[…],"truncated":bool,"next":"…"|null}` (s3-list-parse).
 //!    - `storage_path(op)`: input `u32le(len(a)) a b`; op 1 safeRelativePath(a), 2 cleanRoot(a),
 //!      3 joinRoot(a, b), 4 the upload filename rule on a; reply `{"value":…}` (storage-path).
+//!    - `upload_validate()`: input `u32le(len) u32le(len(name)) name head`, where `len` is the
+//!      upload's length (a host clamps it to `CAP + 1`) and `head` its first bytes (at most
+//!      `upload_sniff::SNIFF_BYTES` matter); reply `{"value":null|{"refusal":"…","status":N}}`.
+//!    - `upload_classify()`: input the UTF-8 name; reply `{"value":"Group"}`.
+//!    - `upload_decode()`: input the upload's bytes (at most `upload_sniff::MAX_DECODE_BYTES`);
+//!      on status 0 the reply is NOT JSON but one tag byte (0 = not text, 1 utf-8, 2 utf-16le,
+//!      3 utf-16be, 4 windows-1252) followed by the decoded text in UTF-8.
 //! 3. `dav_output_ptr()` / `dav_output_len()`: where the UTF-8 JSON reply is.
 //!
 //! The host must treat anything other than status 0 with a well-formed reply as a refusal; noevia
@@ -25,8 +32,16 @@
 
 use std::cell::RefCell;
 
-/// Input cap: URL + NUL + body, so a host cannot make this module grow without bound.
-pub const MAX_INPUT_BYTES: usize = dav_parse::MAX_BODY_BYTES + dav_parse::MAX_TARGET_BYTES + 1;
+/// Input cap for any call, so a host cannot make this module grow without bound: the larger of a
+/// DAV listing (URL + NUL + body) and an upload to decode. Every call also enforces its own cap.
+pub const MAX_INPUT_BYTES: usize = {
+    let dav = dav_parse::MAX_BODY_BYTES + dav_parse::MAX_TARGET_BYTES + 1;
+    if dav > upload_sniff::MAX_DECODE_BYTES {
+        dav
+    } else {
+        upload_sniff::MAX_DECODE_BYTES
+    }
+};
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -79,14 +94,66 @@ pub fn run_path(op: u32, input: &[u8]) -> (u32, String) {
     (u32::from(!ok), reply)
 }
 
+/// `upload-sniff` validate on `u32le(len) u32le(len(name)) name head`.
+pub fn run_validate(input: &[u8]) -> (u32, String) {
+    let Some(len) = input.get(..4).and_then(|h| <[u8; 4]>::try_from(h).ok()) else {
+        return (2, "{\"error\":\"input_shape\"}".to_owned());
+    };
+    let Some(rest) = input.get(4..) else {
+        return (2, "{\"error\":\"input_shape\"}".to_owned());
+    };
+    let Some(head) = rest.get(..4).and_then(|h| <[u8; 4]>::try_from(h).ok()) else {
+        return (2, "{\"error\":\"input_shape\"}".to_owned());
+    };
+    let n = u32::from_le_bytes(head) as usize;
+    let (Some(name), Some(bytes)) = (
+        rest.get(4..4usize.saturating_add(n)),
+        rest.get(4usize.saturating_add(n)..),
+    ) else {
+        return (2, "{\"error\":\"input_shape\"}".to_owned());
+    };
+    let Ok(name) = std::str::from_utf8(name) else {
+        return (2, "{\"error\":\"input_not_utf8\"}".to_owned());
+    };
+    (
+        0,
+        upload_sniff::validate_json(name, u64::from(u32::from_le_bytes(len)), bytes),
+    )
+}
+
+/// `upload-sniff` classify on a UTF-8 name.
+pub fn run_classify(input: &[u8]) -> (u32, String) {
+    match std::str::from_utf8(input) {
+        Ok(name) => (0, upload_sniff::classify_json(name)),
+        Err(_) => (2, "{\"error\":\"input_not_utf8\"}".to_owned()),
+    }
+}
+
+/// `upload-sniff` decodeText; the raw reply described in the crate docs.
+pub fn run_decode(input: &[u8]) -> (u32, Vec<u8>) {
+    match upload_sniff::decode_reply(input) {
+        Ok(reply) => (0, reply),
+        Err(e) => (1, upload_sniff::error_json(&e).into_bytes()),
+    }
+}
+
 fn consume(run: impl FnOnce(&[u8]) -> (u32, String)) -> u32 {
+    consume_bytes(|input| {
+        let (status, reply) = run(input);
+        (status, reply.into_bytes())
+    })
+}
+
+fn consume_bytes(run: impl FnOnce(&[u8]) -> (u32, Vec<u8>)) -> u32 {
+    // Drop the previous reply first, so a large one is not held while this call runs.
+    OUTPUT.with(|out| *out.borrow_mut() = Vec::new());
     let (status, reply) = INPUT.with(|buf| run(&buf.borrow()));
     INPUT.with(|buf| {
         let mut buf = buf.borrow_mut();
         buf.clear();
         buf.shrink_to_fit();
     });
-    OUTPUT.with(|out| *out.borrow_mut() = reply.into_bytes());
+    OUTPUT.with(|out| *out.borrow_mut() = reply);
     status
 }
 
@@ -126,6 +193,27 @@ pub extern "C" fn s3_list() -> u32 {
 #[no_mangle]
 pub extern "C" fn storage_path(op: u32) -> u32 {
     consume(|input| run_path(op, input))
+}
+
+/// Run upload validate on the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn upload_validate() -> u32 {
+    consume(run_validate)
+}
+
+/// Run upload classify on the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn upload_classify() -> u32 {
+    consume(run_classify)
+}
+
+/// Run upload decodeText on the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn upload_decode() -> u32 {
+    consume_bytes(run_decode)
 }
 
 /// Address of the last reply.
@@ -196,6 +284,35 @@ mod tests {
             run_path(2, &frame(&big, "")),
             (1, r#"{"error":"too_large"}"#.to_owned())
         );
+    }
+
+    #[test]
+    fn upload_shapes() {
+        let mut v = 300u32.to_le_bytes().to_vec();
+        v.extend_from_slice(&5u32.to_le_bytes());
+        v.extend_from_slice(b"a.zip");
+        assert_eq!(
+            run_validate(&v),
+            (
+                0,
+                r#"{"value":{"refusal":"archive","status":400}}"#.to_owned()
+            )
+        );
+        let mut v = 3u32.to_le_bytes().to_vec();
+        v.extend_from_slice(&5u32.to_le_bytes());
+        v.extend_from_slice(b"a.txtabc");
+        assert_eq!(run_validate(&v), (0, r#"{"value":null}"#.to_owned()));
+        assert_eq!(run_validate(&[1, 0, 0, 0, 9, 0, 0, 0, b'a']).0, 2);
+        assert_eq!(run_validate(&[1, 0]).0, 2);
+        assert_eq!(run_classify(b"x.MD"), (0, r#"{"value":"Text"}"#.to_owned()));
+        assert_eq!(run_classify(b"\xff").0, 2);
+        assert_eq!(
+            run_decode(b"\x80"),
+            (0, "\u{4}\u{20ac}".as_bytes().to_vec())
+        );
+        assert_eq!(run_decode(b"a\0"), (0, vec![0]));
+        let big = vec![b'a'; upload_sniff::MAX_DECODE_BYTES + 1];
+        assert_eq!(run_decode(&big).0, 1);
     }
 
     #[test]
