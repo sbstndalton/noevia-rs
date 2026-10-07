@@ -587,6 +587,15 @@
    }
   },
   {
+   "name": "markdown link and image syntax (#1017)",
+   "status": 400,
+   "body": "{\"error\":{\"message\":\"Fix it [here](javascript:alert) or ![x](tracker) or [a][b]; [plain] stays\"}}",
+   "expect": {
+    "kind": "bad_request",
+    "reason": "Fix it [link] or [link] or [link] [plain] stays"
+   }
+  },
+  {
    "name": "non-JSON body",
    "status": 500,
    "body": "segfault in worker\n\tat frame 3",
