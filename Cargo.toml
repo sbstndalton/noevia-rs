@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/gguf", "crates/gguf-memtest", "crates/egress", "bins/gguf-meta", "bins/egress-proxy", "crates/model-files", "bins/model-files", "crates/dav-parse", "crates/s3-list-parse", "crates/storage-path", "bins/dav-parse-wasm", "crates/docx-text", "bins/docx-text"]
+members = ["crates/gguf", "crates/gguf-memtest", "crates/egress", "bins/gguf-meta", "bins/egress-proxy", "crates/model-files", "bins/model-files", "crates/dav-parse", "crates/s3-list-parse", "crates/storage-path", "crates/upload-sniff", "bins/dav-parse-wasm", "crates/docx-text", "bins/docx-text"]
 
 [workspace.package]
 edition = "2021"

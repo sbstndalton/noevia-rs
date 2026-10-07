@@ -1,0 +1,19 @@
+[package]
+name = "upload-sniff"
+version = "0.1.0"
+description = "Upload checks (validate's size cap and archive magic numbers, classify, decodeText), matching noevia-core's server/upload-sniff.cjs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+dav-parse = { path = "../dav-parse" }
+storage-path = { path = "../storage-path" }
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"

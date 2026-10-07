@@ -97,6 +97,7 @@ dependencies = [
  "dav-parse",
  "s3-list-parse",
  "storage-path",
+ "upload-sniff",
 ]
 
 [[package]]
@@ -894,6 +895,16 @@ name = "unicode-ident"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
+
+[[package]]
+name = "upload-sniff"
+version = "0.1.0"
+dependencies = [
+ "dav-parse",
+ "proptest",
+ "serde_json",
+ "storage-path",
+]
 
 [[package]]
 name = "url"

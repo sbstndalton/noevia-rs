@@ -1,5 +1,6 @@
 #!/bin/sh
-# Build dav-parse.wasm (noevia#967; since #976/#978 it also carries s3-list-parse and storage-path)
+# Build dav-parse.wasm (noevia#967; since #976/#978/#977 it also carries s3-list-parse, storage-path
+# and upload-sniff)
 # reproducibly and print its sha256.
 #   tools/build-dav-parse-wasm.sh [OUT]   (default: target/dav-parse.wasm)
 # The same command runs in noevia-rs CI, noevia-core CI and noevia's web image build; noevia-core

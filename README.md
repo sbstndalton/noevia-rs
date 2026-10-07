@@ -57,6 +57,15 @@ one slice at a time.
   noevia-core (`node tools/gen-storage-fixtures.cjs s3|path`); copy them to
   `crates/s3-list-parse/tests/fixtures/s3-list.v1.json` and
   `crates/storage-path/tests/fixtures/storage-path.v1.json` byte-for-byte when they change.
+- `crates/upload-sniff` (sbstndalton/noevia#977): the upload checks, a port of noevia-core's
+  `server/upload-sniff.cjs`: `validate` (the storage-path filename rule, the 25 MiB cap, archive
+  names and magic numbers; only the first 262 bytes are read), `classify` and `decodeText` (BOM,
+  then NUL means binary, then strict UTF-8, then WHATWG windows-1252, byte-identical to Node's
+  `TextDecoder`). In the same `dav-parse.wasm` as `upload_validate`, `upload_classify` and
+  `upload_decode` (raw reply: tag byte + UTF-8 text). The module's input cap rises to 25 MiB for
+  `upload_decode`; every other call keeps its own smaller cap. Table from noevia-core
+  (`node tools/gen-upload-fixtures.cjs`), copied byte-for-byte to
+  `crates/upload-sniff/tests/fixtures/upload-sniff.v1.json`.
 - `crates/docx-text` + `bins/docx-text` (sbstndalton/noevia#981): the OCR service's DOCX
   text front. `docx-text extract < upload.docx` checks the ZIP container (EOCD, member
   count/sizes, encryption, compression ratio) and prints `{"text", "truncated", "scope"}`
