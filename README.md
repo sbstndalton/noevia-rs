@@ -68,7 +68,8 @@ one slice at a time.
   `uv run --python 3.12 tools/gen-docx-text.py --ocr <noevia-services>/ocr --bin target/release/docx-text`;
   copy `crates/docx-text/tests/fixtures/docx-text.v1.json` into noevia-services'
   `ocr/tests/fixtures/` when it changes. Producer compatibility (python-docx, pandoc,
-  LibreOffice headless, macOS textutil, Info-ZIP/ditto/zipfile re-packs, synthetic content) is
+  LibreOffice headless, macOS textutil, Java ZipOutputStream and Info-ZIP/ditto/zipfile re-packs,
+  synthetic content) is
   `crates/docx-text/tests/fixtures/docx-producers.v1.json`, regenerated on a Mac with
   `uv run --python 3.12 --with python-docx tools/gen-docx-producers.py --ocr <noevia-services>/ocr --bin target/release/docx-text`
   (copied into noevia-services the same way).
