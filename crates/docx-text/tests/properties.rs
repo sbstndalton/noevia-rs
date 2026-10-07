@@ -232,3 +232,58 @@ fn many_attributes_stay_linear() {
     let body = format!("<w:p{attrs}><w:r><w:t>ok</w:t></w:r></w:p>");
     assert_eq!(extract_docx(&docx(&body)).unwrap().text, "ok");
 }
+
+/// Review regression (namespace lookup): a root that binds `w` and then 200k throwaway prefixes,
+/// followed by 700k `<w:x/>`. A linear scan of the bindings per element was ~10^11
+/// comparisons; the binding map keeps it linear in the input.
+#[test]
+fn many_namespace_declarations_stay_linear() {
+    let decls: String = (0..200_000).map(|i| format!(" xmlns:p{i}=\"u\"")).collect();
+    let body = "<w:x/>".repeat(700_000);
+    let xml = format!(
+        "<w:document xmlns:w=\"{W}\"{decls}><w:body>{body}<w:p><w:r><w:t>end</w:t></w:r></w:p></w:body></w:document>"
+    );
+    assert!(xml.len() <= docx_text::XML_LIMIT);
+    let data = zip(&[("word/document.xml", xml.as_bytes())]);
+    let start = std::time::Instant::now();
+    let e = extract_docx(&data).unwrap();
+    let took = start.elapsed();
+    assert_eq!(e.text, "end");
+    // Generous for unoptimised CI builds; the quadratic version needed minutes.
+    let bound = if cfg!(debug_assertions) { 10.0 } else { 1.0 };
+    assert!(took.as_secs_f64() < bound, "took {took:?}");
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 500, failure_persistence: None, ..ProptestConfig::default() })]
+
+    /// Nested elements declaring prefixes from a small pool (so they shadow each other and
+    /// `w` itself), bound to W or to another namespace: the innermost binding decides which
+    /// `p:t` texts are extracted, and closing an element restores the outer bindings.
+    #[test]
+    fn namespace_scopes_resolve_like_a_model(
+        levels in prop::collection::vec((0usize..4, any::<bool>(), 0usize..20), 0..40),
+    ) {
+        let pool = ["w", "a", "b", "c"];
+        let mut open = String::new();
+        let mut binding: Vec<Option<bool>> = vec![Some(true), None, None, None];
+        for (p, to_w, pad) in &levels {
+            let uri = if *to_w { W } else { "urn:other" };
+            let extra: String = (0..*pad).map(|i| format!(" xmlns:z{i}=\"urn:z\"")).collect();
+            open.push_str(&format!("<e xmlns:{}=\"{uri}\"{extra}>", pool[*p]));
+            binding[*p] = Some(*to_w);
+        }
+        let mut inner = String::new();
+        let mut want = String::new();
+        for (i, p) in pool.iter().enumerate() {
+            if let Some(is_w) = binding[i] {
+                inner.push_str(&format!("<{p}:t>{p}</{p}:t>"));
+                if is_w { want.push_str(p); }
+            }
+        }
+        let close = "</e>".repeat(levels.len());
+        let body = format!("<w:p><w:r>{open}{inner}{close}<w:t>|after</w:t></w:r></w:p>");
+        let e = extract_docx(&docx(&body)).unwrap();
+        prop_assert_eq!(e.text, format!("{want}|after"));
+    }
+}

@@ -8,7 +8,7 @@
 //! The walk runs on the event stream, but its result is used only if the whole document parsed.
 
 use crate::{Refusal, MAX_DEPTH, TEXT_LIMIT};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
@@ -38,7 +38,8 @@ enum Mode {
 
 struct Frame<'a> {
     raw: &'a str,
-    ns_mark: usize,
+    /// Prefixes this element declared ("" = default), popped from `ns` when it closes.
+    declared: Vec<&'a str>,
     mode: Mode,
 }
 
@@ -94,7 +95,9 @@ struct Parser<'a> {
     s: &'a str,
     i: usize,
     frames: Vec<Frame<'a>>,
-    ns: Vec<(&'a str, Option<String>)>,
+    /// In-scope bindings: prefix -> stack of URIs (innermost last). O(1) lookup however many
+    /// prefixes are declared (a linear scan here was quadratic on hostile input).
+    ns: HashMap<&'a str, Vec<Option<String>>>,
     text: Text,
     root_ok: bool,
     body_seen: bool,
@@ -115,7 +118,7 @@ pub(crate) fn walk(xml: &[u8]) -> Result<Walked, Refusal> {
         s,
         i: 0,
         frames: Vec::new(),
-        ns: Vec::new(),
+        ns: HashMap::new(),
         text: Text {
             chunks: String::new(),
             size: 0,
@@ -386,10 +389,8 @@ impl<'a> Parser<'a> {
         if prefix == "xml" {
             return Ok(Some(XML_NS));
         }
-        for (p, uri) in self.ns.iter().rev() {
-            if *p == prefix {
-                return Ok(uri.as_deref());
-            }
+        if let Some(uri) = self.ns.get(prefix).and_then(|stack| stack.last()) {
+            return Ok(uri.as_deref());
         }
         if prefix.is_empty() {
             Ok(None)
@@ -430,7 +431,7 @@ impl<'a> Parser<'a> {
         if self.frames.len() >= MAX_DEPTH {
             return Err(Refusal::Nesting);
         }
-        let ns_mark = self.ns.len();
+        let mut declared = Vec::new();
         for (name, value) in &attrs {
             let reserved = value == XML_NS || value == XMLNS_NS;
             if *name == "xmlns" {
@@ -438,13 +439,17 @@ impl<'a> Parser<'a> {
                     return Err(BAD);
                 }
                 self.ns
-                    .push(("", (!value.is_empty()).then(|| value.clone())));
+                    .entry("")
+                    .or_default()
+                    .push((!value.is_empty()).then(|| value.clone()));
+                declared.push("");
             } else if let Some(prefix) = name.strip_prefix("xmlns:") {
                 // Stricter: expat lets `xml` be re-bound to its own namespace.
                 if prefix == "xml" || prefix == "xmlns" || value.is_empty() || reserved {
                     return Err(BAD);
                 }
-                self.ns.push((prefix, Some(value.clone())));
+                self.ns.entry(prefix).or_default().push(Some(value.clone()));
+                declared.push(prefix);
             }
         }
         let mut expanded = HashSet::new();
@@ -492,7 +497,11 @@ impl<'a> Parser<'a> {
                 }
             },
         };
-        self.frames.push(Frame { raw, ns_mark, mode });
+        self.frames.push(Frame {
+            raw,
+            declared,
+            mode,
+        });
         if empty {
             self.close();
         }
@@ -501,7 +510,11 @@ impl<'a> Parser<'a> {
 
     fn close(&mut self) {
         if let Some(frame) = self.frames.pop() {
-            self.ns.truncate(frame.ns_mark);
+            for prefix in frame.declared {
+                if let Some(stack) = self.ns.get_mut(prefix) {
+                    stack.pop();
+                }
+            }
             match frame.mode {
                 Mode::Capture(buf) => self.text.emit(&buf),
                 Mode::Walk(Some(post)) => self.text.emit(post),

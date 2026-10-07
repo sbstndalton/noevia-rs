@@ -12,6 +12,8 @@ files are not caught by them. Producers (whichever are installed; the file recor
   LibreOffice headless   (soffice --convert-to docx from HTML, and re-saving the other
                           producers' files: comments and tracked changes survive the round trip)
   macOS textutil         (-convert docx from HTML and RTF)
+  Java ZipOutputStream   (tools/JavaRepack.java: data descriptors, zero local sizes, as Java
+                          exporters such as Google Docs write them)
   zip re-packers         (Info-ZIP zip, ditto -c -k, Python zipfile, each re-packing a docx
                           with an extra non-ASCII member name; Info-ZIP with -z adds a comment)
 
@@ -133,6 +135,18 @@ def python_docx(tmp: Path) -> dict[str, bytes]:
     for i in range(1500):
         d.add_paragraph(f"Paragraph {i}: " + " ".join(rng.choice(gen.WORDS) for _ in range(12)))
     buf = io.BytesIO(); d.save(buf); out["python-docx-large"] = buf.getvalue()
+
+    # Nested tables as Word users build them: 25 levels, a picture in each cell.
+    d = docx.Document()
+    cell = d.add_table(rows=1, cols=2).cell(0, 0)
+    for lvl in range(25):
+        cell.paragraphs[0].text = f"level {lvl}"
+        cell.paragraphs[0].add_run().add_picture(str(img), width=Inches(0.3))
+        t = cell.add_table(rows=1, cols=2)
+        t.cell(0, 1).text = f"side {lvl}"
+        cell = t.cell(0, 0)
+    cell.paragraphs[0].text = "innermost"
+    buf = io.BytesIO(); d.save(buf); out["python-docx-nested-tables"] = buf.getvalue()
     return out
 
 
@@ -260,10 +274,19 @@ def main() -> None:
         lo = soffice_convert(tmp / "doc.html", tmp, "html")
         if lo:
             files.append(("libreoffice-from-html", "libreoffice", lo))
-            for name in ("python-docx-comments-tracked-changes", "pandoc-markdown", "python-docx-large"):
+            for name in ("python-docx-comments-tracked-changes", "pandoc-markdown", "python-docx-large", "python-docx-nested-tables"):
                 src = tmp / f"rt-{name}.docx"
                 src.write_bytes(next(d for n, _, d in files if n == name))
                 files.append((f"libreoffice-resave-{name}", "libreoffice", soffice_convert(src, tmp, f"rt-{name}")))
+        java = shutil.which("java")
+        if java:
+            versions["java-zipoutputstream"] = version([java, "-version"])
+            for name in ("python-docx-comments-tracked-changes", "libreoffice-resave-pandoc-markdown", "python-docx-nested-tables"):
+                src, dst = tmp / f"j-{name}.docx", tmp / f"java-{name}.docx"
+                src.write_bytes(next(d for n, _, d in files if n == name))
+                subprocess.run([java, str(Path(__file__).resolve().parent / "JavaRepack.java"), str(src), str(dst)],
+                               check=True, capture_output=True, timeout=300)
+                files.append((f"java-zipoutputstream-{name}", "java-zipoutputstream", dst.read_bytes()))
         basic = next(d for n, _, d in files if n == "python-docx-basic")
         for tool, label in (("infozip", "zip-infozip"), ("ditto", "zip-ditto"), ("zipfile", "zip-python-zipfile"),
                             ("infozip-comment", "zip-infozip-with-comment")):

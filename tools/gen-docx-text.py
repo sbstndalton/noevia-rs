@@ -279,6 +279,19 @@ def cases():
     add("empty-body", build(document("")))
     add("only-whitespace-text", build(document(para("   ") + para("\t"))))
     add("nesting-200", build(document("<w:p>" + "<w:r>" * 200 + "<w:t>deep</w:t>" + "</w:r>" * 200 + "</w:p>")))
+    # Deep but legal: 40 nested tables (tbl/tr/tc/p per level), each cell with a run holding an
+    # inline drawing (wp:inline > a:graphic > ... > pic:pic), about 175 elements deep at the
+    # innermost drawing: real nesting stays well under the 256 cap.
+    WP = 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"'
+    A = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+    PIC = 'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"'
+    drawing = (f'<w:r><w:drawing><wp:inline {WP}><wp:extent cx="1" cy="1"/><a:graphic {A}><a:graphicData uri="u">'
+               f'<pic:pic {PIC}><pic:nvPicPr><pic:cNvPr id="1" name="DRAWING TEXT NOT EXTRACTED"/></pic:nvPicPr>'
+               '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>')
+    add("deep-nested-tables-and-drawings", build(document(
+        "<w:tbl><w:tr><w:tc>" + "".join(
+            f"<w:tbl><w:tr><w:tc><w:p><w:r><w:t>level {i}</w:t></w:r>{drawing}</w:p>" for i in range(40))
+        + para("innermost") + "</w:tc></w:tr></w:tbl>" * 40 + "</w:tc></w:tr></w:tbl>")))
     add("many-paragraphs", build(document("".join(para(f"line {i}") for i in range(3000)))))
     add("exactly-limit", build(document(para(counting(200000)))))
     add("limit-then-element", build(document(para(counting(200000)) + "<w:p/>")))
