@@ -1,0 +1,23 @@
+[package]
+name = "secret-envelope"
+version = "0.1.0"
+description = "Credential envelopes (enc:v1 / enc:v2, AES-256-GCM, AAD noevia:user:<id>), matching noevia-core's server/secret-envelope.cjs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Pinned exactly: this crate opens every stored credential. No `getrandom`/`alloc` defaults: the
+# nonce is supplied by the host (Node's crypto.randomBytes), so the WebAssembly module keeps zero
+# imports. `aes/zeroize` wipes the expanded key schedule on drop.
+[dependencies]
+aes-gcm = { version = "=0.10.3", default-features = false, features = ["aes", "zeroize"] }
+aes = { version = "=0.8.4", features = ["zeroize"] }
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"
