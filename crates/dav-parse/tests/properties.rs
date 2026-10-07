@@ -7,8 +7,8 @@
 )]
 
 use dav_parse::{
-    decode_uri_component, decode_xml_entities, element_texts, list_entries, Error, MAX_BODY_BYTES,
-    MAX_RESPONSES, MAX_TARGET_BYTES,
+    decode_uri_component, decode_xml_entities, element_texts, is_forbidden_name_char, list_entries,
+    Error, MAX_BODY_BYTES, MAX_RESPONSES, MAX_TARGET_BYTES,
 };
 use proptest::prelude::*;
 
@@ -28,7 +28,7 @@ fn listing(hrefs: &[String]) -> String {
 
 /// Names a file may have: non-empty, no '/', and not a dot segment.
 fn child_name() -> impl Strategy<Value = String> {
-    "[^/]{1,24}".prop_filter("dot segment", |s| s != "." && s != "..")
+    "[^/]{1,24}".prop_filter("not listable", |s| dav_parse::is_listable_name(s))
 }
 
 proptest! {
@@ -69,6 +69,48 @@ proptest! {
     #[test]
     fn hrefs_under_another_directory_never_list(names in proptest::collection::vec(any::<String>(), 0..8)) {
         let hrefs: Vec<String> = names.iter().map(|n| format!("/remote.php/dav/files/bob/{}", pct_all(n))).collect();
+        prop_assert!(list_entries(&listing(&hrefs), T).unwrap().is_empty());
+    }
+
+    // noevia#969-#971: whatever the href, a listed name is never a dot segment, never carries a
+    // forbidden character, and never comes from another origin.
+    #[test]
+    fn listed_names_are_never_hostile(
+        parts in proptest::collection::vec(proptest::collection::vec(prop_oneof![
+            any::<char>().prop_map(|c| c.to_string()),
+            Just("..".to_owned()), Just(".".to_owned()), Just("%2e".to_owned()), Just("%2f".to_owned()), Just("%5c".to_owned()),
+            Just("%00".to_owned()), Just("%7F".to_owned()), Just("%C2%85".to_owned()), Just("%E2%80%AE".to_owned()),
+            Just("%E2%81%A6".to_owned()), Just("%D8%9C".to_owned()), Just("&#x200F;".to_owned()), Just("\\".to_owned()),
+            (0x80u32..0xa0).prop_map(|c| char::from_u32(c).unwrap().to_string()),
+            (0x2066u32..0x206a).prop_map(|c| char::from_u32(c).unwrap().to_string()),
+        ], 1..6), 0..8),
+        origins in proptest::collection::vec(prop_oneof![
+            Just(""), Just("https://dav.example.test"), Just("https://dav.example.test:443"), Just("https://evil.example.test"),
+            Just("http://dav.example.test"), Just("https://dav.example.test:8443"), Just("//evil.example.test"),
+            Just("https://dav.example.test@evil.example.test"), Just("https://xn--dv-ilb.example.test"),
+        ], 8),
+    ) {
+        let hrefs: Vec<String> = parts.iter().zip(origins.iter()).map(|(p, o)| format!("{o}{DIR}/{}", p.concat())).collect();
+        let base = url::Url::parse(T).unwrap();
+        for e in list_entries(&listing(&hrefs), T).unwrap() {
+            prop_assert!(e.name != "." && e.name != "..", "{:?}", e.name);
+            prop_assert!(!e.name.chars().any(is_forbidden_name_char), "{:?}", e.name);
+        }
+        // Every href that lists is one whose resolved origin is the target's.
+        for h in &hrefs {
+            let one = list_entries(&listing(std::slice::from_ref(h)), T).unwrap();
+            if !one.is_empty() {
+                let r = base.join(dav_parse::js_trim(&dav_parse::decode_xml_entities(h))).unwrap();
+                prop_assert_eq!(r.origin(), base.origin(), "{}", h);
+            }
+        }
+    }
+
+    #[test]
+    fn foreign_origins_never_list(names in proptest::collection::vec(child_name(), 0..8), host in "[a-z]{1,10}\\.(test|example)", port in proptest::option::of(1u16..)) {
+        prop_assume!(host != "dav.example");
+        let port = port.map(|p| format!(":{p}")).unwrap_or_default();
+        let hrefs: Vec<String> = names.iter().map(|n| format!("https://{host}{port}{DIR}/{}", pct_all(n))).collect();
         prop_assert!(list_entries(&listing(&hrefs), T).unwrap().is_empty());
     }
 
