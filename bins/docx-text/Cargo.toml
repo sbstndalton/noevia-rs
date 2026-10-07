@@ -1,0 +1,21 @@
+[package]
+name = "docx-text-cli"
+version = "0.1.0"
+description = "DOCX bytes on stdin -> main-body text JSON on stdout (noevia#981)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "docx-text"
+path = "src/main.rs"
+
+[dependencies]
+docx-text = { path = "../../crates/docx-text" }
+
+[dev-dependencies]
+serde_json = "1"
