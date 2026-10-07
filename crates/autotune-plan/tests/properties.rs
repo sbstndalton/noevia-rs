@@ -1,5 +1,7 @@
-//! Properties: no panics on any input, and a simulated run (any outcome sequence, however
-//! inconsistent) always ends within the step caps without planning a measured step twice.
+//! Properties: no panics on any input, a simulated run (any outcome sequence, however
+//! inconsistent) always ends within the step caps without planning a measured step twice, and
+//! the first probe follows the KV policy (noevia#1057): the most precise type that fits, unless a
+//! more compact one fits at least twice its context.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -87,18 +89,114 @@ fn memory() -> impl Strategy<Value = Memory> {
 fn kv_list() -> impl Strategy<Value = Vec<KvType>> {
     proptest::sample::subsequence(
         vec![
+            KvType::Bf16,
             KvType::F16,
             KvType::Q8_0,
             KvType::Q5_1,
             KvType::Q5_0,
             KvType::Q4_0,
         ],
-        1..=5,
+        1..=6,
     )
+}
+
+/// The largest ladder rung `kv` fits by the estimate, at most the trained context.
+fn ceiling(input: &Input, kv: KvType) -> Option<u64> {
+    let usable = usable_bytes(&input.memory);
+    input
+        .ladder
+        .iter()
+        .copied()
+        .filter(|&c| input.facts.n_ctx_train == 0 || c <= input.facts.n_ctx_train)
+        .filter(|&c| {
+            estimate_bytes(&input.facts, &input.memory, c, kv).is_some_and(|b| b <= usable)
+        })
+        .max()
+}
+
+/// What the measured results say about type `k` (noevia#1059): its largest rung that fits and no
+/// failure rules out, and whether it failed at every rung (no pass, nothing left to try).
+fn measured(input: &Input, k: usize) -> (Option<u64>, bool) {
+    let probes: Vec<(u64, usize, ProbeOutcome)> = input
+        .results
+        .iter()
+        .filter_map(|e| match *e {
+            Entry::Probe { ctx, kv, outcome } => Some((
+                ctx,
+                input.kv.iter().position(|&x| x == kv).unwrap(),
+                outcome,
+            )),
+            _ => None,
+        })
+        .collect();
+    let memory = |o: ProbeOutcome| matches!(o, ProbeOutcome::Oom | ProbeOutcome::LoadFailed);
+    let hard = |c: u64| {
+        probes.iter().any(|&(pc, _, o)| {
+            matches!(o, ProbeOutcome::RecallFailed | ProbeOutcome::OverTime) && c >= pc
+        })
+    };
+    let dom = |c: u64| {
+        probes
+            .iter()
+            .any(|&(pc, pk, o)| memory(o) && c >= pc && k <= pk)
+    };
+    let usable = usable_bytes(&input.memory);
+    let kv = input.kv[k];
+    let fits = |c: u64| {
+        (input.facts.n_ctx_train == 0 || c <= input.facts.n_ctx_train)
+            && estimate_bytes(&input.facts, &input.memory, c, kv).is_some_and(|b| b <= usable)
+    };
+    let ceiling = input
+        .ladder
+        .iter()
+        .copied()
+        .filter(|&c| fits(c) && !hard(c) && !dom(c))
+        .max();
+    let lo = probes
+        .iter()
+        .filter(|&&(_, pk, o)| pk == k && o == ProbeOutcome::Passed)
+        .map(|&(c, _, _)| c)
+        .max();
+    let open = input
+        .ladder
+        .iter()
+        .copied()
+        .filter(|&c| c > lo.unwrap_or(0) && fits(c))
+        .take_while(|&c| {
+            !hard(c) && !dom(c) && !probes.iter().any(|&(pc, pk, _)| pc == c && pk == k)
+        })
+        .count();
+    (ceiling, lo.is_none() && open == 0)
 }
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(512))]
+
+    #[test]
+    fn the_first_probe_is_precision_first_with_the_doubling_rule(
+        facts in facts(),
+        memory in memory(),
+        kv in kv_list(),
+    ) {
+        let input = Input { facts, memory, ladder: LADDER.to_vec(), kv, results: vec![] };
+        if let Step::Probe { ctx, kv, .. } = plan(&input) {
+            let at = input.kv.iter().position(|&k| k == kv).unwrap();
+            prop_assert_eq!(Some(ctx), ceiling(&input, kv));
+            // The most precise type that fits at all.
+            let first = input.kv.iter().position(|&k| ceiling(&input, k).is_some()).unwrap();
+            prop_assert!(at >= first);
+            let first_cap = ceiling(&input, input.kv[first]).unwrap();
+            if at > first {
+                prop_assert!(ctx >= 2 * first_cap, "{} at {} does not double {}", kv.name(), ctx, first_cap);
+            }
+            // No more compact type doubles the choice.
+            for &k in &input.kv[at + 1..] {
+                if let Some(c) = ceiling(&input, k) {
+                    prop_assert!(c < 2 * ctx, "{} at {} doubles {} at {}", k.name(), c, kv.name(), ctx);
+                }
+            }
+        }
+    }
 
     #[test]
     fn any_text_gets_a_fixed_reply(t in ".{0,300}") {
@@ -165,8 +263,25 @@ proptest! {
                     probes += 1;
                     input.results.push(Entry::Probe { ctx, kv, outcome });
                 }
-                Step::Phase { id, ctx, .. } => {
+                Step::Phase { id, ctx, kv } => {
                     prop_assert!(probes > 0);
+                    // noevia#1059: when the context search settles on a more compact type, it fits
+                    // at least twice the measured ceiling of the most precise type still in play
+                    // (one that has not failed at every rung). At the probe cap the planner settles
+                    // for what passed, so the rule is checked below it.
+                    if phases == 0 && probes < MAX_PROBES {
+                        let k = input.kv.iter().position(|&x| x == kv).unwrap();
+                        let banned = input.results.iter().filter_map(|e| match *e {
+                            Entry::Probe { kv, outcome: ProbeOutcome::QualityFailed, .. } => input.kv.iter().position(|&x| x == kv),
+                            _ => None,
+                        }).min().unwrap_or(usize::MAX);
+                        let (cap, _) = measured(&input, k);
+                        if let Some(j) = (0..k.min(banned)).find(|&j| { let (c, done) = measured(&input, j); c.is_some() && !done }) {
+                            let (precise, _) = measured(&input, j);
+                            prop_assert!(cap.unwrap_or(0) >= 2 * precise.unwrap_or(0),
+                                "{} measured {:?} does not double {} measured {:?}", kv.name(), cap, input.kv[j].name(), precise);
+                        }
+                    }
                     prop_assert!(Some(ctx) <= passed_ctx);
                     let outcome = OUTCOMES[phase_outcomes[phases % 4] * usize::from(phase_outcomes[phases % 4] < 3)];
                     phases += 1;
