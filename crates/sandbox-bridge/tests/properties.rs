@@ -173,6 +173,35 @@ proptest! {
         }
     }
 
+    /// `kind` is always a string from the tool table, never a prototype value (noevia#1000):
+    /// any name outside the table, `Object.prototype` property names included, is `other`.
+    #[test]
+    fn tool_call_kind_is_own_table_only(
+        name in prop_oneof![
+            Just("constructor".to_owned()),
+            Just("toString".to_owned()),
+            Just("__proto__".to_owned()),
+            Just("hasOwnProperty".to_owned()),
+            Just("valueOf".to_owned()),
+            Just("bash".to_owned()),
+            Just("read".to_owned()),
+            Just("ls".to_owned()),
+            any::<String>(),
+        ],
+    ) {
+        let payload = serde_json::json!({ "toolName": name, "input": {} });
+        let out = tool_call_json(&serde_json::to_string(&payload).unwrap()).unwrap();
+        let kind = serde_json::from_str::<serde_json::Value>(&out).unwrap()["kind"].clone();
+        let expected = match name.as_str() {
+            "bash" => "execute",
+            "write" | "edit" => "edit",
+            "read" => "read",
+            "grep" | "find" | "ls" => "search",
+            _ => "other",
+        };
+        prop_assert_eq!(kind, serde_json::Value::String(expected.to_owned()));
+    }
+
     #[test]
     fn arbitrary_text_never_panics(s in any::<String>()) {
         let _ = tool_call_json(&s);
