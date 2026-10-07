@@ -40,8 +40,8 @@ use std::cell::RefCell;
 /// One chunk's cap: 16 MiB UTF-16 code units at up to 3 UTF-8 bytes each, plus slack. The host
 /// never sends a chunk longer than the framing limit (it already knows that one overflows).
 pub const MAX_INPUT_BYTES: usize = 3 * 16 * 1024 * 1024 + 16;
-/// Live framing states (the bridge needs two: the client's stream and pi's).
-pub const MAX_FRAMERS: usize = 64;
+/// Live framing states (a bridge needs two: the client's stream and pi's; the host frees them).
+pub const MAX_FRAMERS: usize = 1024;
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
