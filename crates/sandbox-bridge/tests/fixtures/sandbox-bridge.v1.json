@@ -13231,84 +13231,84 @@
    "name": "kind for constructor",
    "payload": "{\"toolName\":\"constructor\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-constructor\",\"title\":\"constructor\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-constructor\",\"title\":\"constructor\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for __defineGetter__",
    "payload": "{\"toolName\":\"__defineGetter__\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__defineGetter__\",\"title\":\"__defineGetter__\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-__defineGetter__\",\"title\":\"__defineGetter__\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for __defineSetter__",
    "payload": "{\"toolName\":\"__defineSetter__\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__defineSetter__\",\"title\":\"__defineSetter__\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-__defineSetter__\",\"title\":\"__defineSetter__\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for hasOwnProperty",
    "payload": "{\"toolName\":\"hasOwnProperty\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-hasOwnProperty\",\"title\":\"hasOwnProperty\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-hasOwnProperty\",\"title\":\"hasOwnProperty\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for __lookupGetter__",
    "payload": "{\"toolName\":\"__lookupGetter__\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__lookupGetter__\",\"title\":\"__lookupGetter__\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-__lookupGetter__\",\"title\":\"__lookupGetter__\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for __lookupSetter__",
    "payload": "{\"toolName\":\"__lookupSetter__\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__lookupSetter__\",\"title\":\"__lookupSetter__\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-__lookupSetter__\",\"title\":\"__lookupSetter__\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for isPrototypeOf",
    "payload": "{\"toolName\":\"isPrototypeOf\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-isPrototypeOf\",\"title\":\"isPrototypeOf\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-isPrototypeOf\",\"title\":\"isPrototypeOf\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for propertyIsEnumerable",
    "payload": "{\"toolName\":\"propertyIsEnumerable\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-propertyIsEnumerable\",\"title\":\"propertyIsEnumerable\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-propertyIsEnumerable\",\"title\":\"propertyIsEnumerable\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for toString",
    "payload": "{\"toolName\":\"toString\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-toString\",\"title\":\"toString\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-toString\",\"title\":\"toString\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for valueOf",
    "payload": "{\"toolName\":\"valueOf\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for __proto__",
    "payload": "{\"toolName\":\"__proto__\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
    "name": "kind for toLocaleString",
    "payload": "{\"toolName\":\"toLocaleString\",\"input\":{\"path\":\"p\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-toLocaleString\",\"title\":\"toLocaleString\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
+    "json": "{\"toolCallId\":\"pi-toLocaleString\",\"title\":\"toLocaleString\",\"kind\":\"other\",\"rawInput\":{\"path\":\"p\"},\"locations\":[{\"path\":\"p\"}]}"
    }
   },
   {
@@ -13490,7 +13490,7 @@
    "name": "random 8",
    "payload": "{\"toolName\":\"__proto__\",\"toolCallId\":null,\"input\":{}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -13574,7 +13574,7 @@
    "name": "random 20",
    "payload": "{\"toolName\":\"__proto__\",\"input\":{\"path\":[[[\"read\",1e+21],[]],{\"file_path\":\"toString\",\"x\":[]}],\"input\":null,\"toolCallId\":1e+21,\"input\":{}}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{\"path\":[[[\"read\",1e+21],[]],{\"file_path\":\"toString\",\"x\":[]}],\"input\":{},\"toolCallId\":1e+21}}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{\"path\":[[[\"read\",1e+21],[]],{\"file_path\":\"toString\",\"x\":[]}],\"input\":{},\"toolCallId\":1e+21}}"
    }
   },
   {
@@ -13588,7 +13588,7 @@
    "name": "random 22",
    "payload": "{\"toolName\":\"valueOf\",\"input\":{\"outsideWorkspace\":{\"toolCallId\":0,\"noeviaOutsideWorkspace\":{\"1\":{},\"outsideWorkspace\":[\"/abs\",\"p/q\",\"/abs\"],\"command\":[false,1e+21]}}}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"rawInput\":{\"outsideWorkspace\":{\"toolCallId\":0,\"noeviaOutsideWorkspace\":{\"1\":{},\"outsideWorkspace\":[\"/abs\",\"p/q\",\"/abs\"],\"command\":[false,1e+21]}}}}"
+    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"outsideWorkspace\":{\"toolCallId\":0,\"noeviaOutsideWorkspace\":{\"1\":{},\"outsideWorkspace\":[\"/abs\",\"p/q\",\"/abs\"],\"command\":[false,1e+21]}}}}"
    }
   },
   {
@@ -13714,7 +13714,7 @@
    "name": "random 40",
    "payload": "{\"toolName\":\"valueOf\",\"input\":{\"path\":\"é😀\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"rawInput\":{\"path\":\"é😀\"},\"locations\":[{\"path\":\"é😀\"}]}"
+    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"path\":\"é😀\"},\"locations\":[{\"path\":\"é😀\"}]}"
    }
   },
   {
@@ -13798,7 +13798,7 @@
    "name": "random 52",
    "payload": "{\"toolName\":\"__proto__\",\"toolCallId\":null,\"input\":{\"toolName\":{},\"toolName\":\"\",\"0\":[0],\"path\":\"__proto__\"},\"outsideWorkspace\":\"__proto__\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{\"0\":[0],\"toolName\":\"\",\"path\":\"__proto__\"},\"locations\":[{\"path\":\"__proto__\"}]}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{\"0\":[0],\"toolName\":\"\",\"path\":\"__proto__\"},\"locations\":[{\"path\":\"__proto__\"}]}"
    }
   },
   {
@@ -13917,7 +13917,7 @@
    "name": "random 69",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"é😀\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"é😀\",\"title\":\"valueOf\",\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"é😀\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -13952,7 +13952,7 @@
    "name": "random 74",
    "payload": "{\"toolName\":\"valueOf\",\"input\":{\"file_path\":[true],\"outsideWorkspace\":{},\"path\":[{}],\"noeviaOutsideWorkspace\":\"read\"},\"outsideWorkspace\":\"__proto__\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"rawInput\":{\"file_path\":[true],\"outsideWorkspace\":{},\"path\":[{}],\"noeviaOutsideWorkspace\":\"read\"}}"
+    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"file_path\":[true],\"outsideWorkspace\":{},\"path\":[{}],\"noeviaOutsideWorkspace\":\"read\"}}"
    }
   },
   {
@@ -13987,7 +13987,7 @@
    "name": "random 79",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"c79\",\"outsideWorkspace\":\"p/q\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"c79\",\"title\":\"valueOf\",\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"c79\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -14015,7 +14015,7 @@
    "name": "random 83",
    "payload": "{\"toolName\":\"__proto__\",\"input\":{},\"outsideWorkspace\":{\"0\":{\"noeviaOutsideWorkspace\":-1,\"toolCallId\":{\"toolName\":1e+21},\"x\":\"/abs\"}}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -14078,7 +14078,7 @@
    "name": "random 92",
    "payload": "{\"toolName\":\"__proto__\",\"input\":{\"toolName\":\"__proto__\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{\"toolName\":\"__proto__\"}}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{\"toolName\":\"__proto__\"}}"
    }
   },
   {
@@ -14183,7 +14183,7 @@
    "name": "random 107",
    "payload": "{\"toolName\":\"__proto__\",\"toolCallId\":\"c107\",\"input\":{}}",
    "expect": {
-    "json": "{\"toolCallId\":\"c107\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"c107\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -14379,7 +14379,7 @@
    "name": "random 135",
    "payload": "{\"toolName\":\"valueOf\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -14449,7 +14449,7 @@
    "name": "random 145",
    "payload": "{\"toolName\":\"__proto__\",\"toolCallId\":0}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -14526,7 +14526,7 @@
    "name": "random 156",
    "payload": "{\"toolName\":\"__proto__\",\"input\":{\"toolCallId\":\"bash\",\"x\":\"/abs\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{\"toolCallId\":\"bash\",\"x\":\"/abs\"}}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{\"toolCallId\":\"bash\",\"x\":\"/abs\"}}"
    }
   },
   {
@@ -14582,7 +14582,7 @@
    "name": "random 164",
    "payload": "{\"toolName\":\"__proto__\",\"toolCallId\":\"c164\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"c164\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"c164\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -14596,7 +14596,7 @@
    "name": "random 166",
    "payload": "{\"toolName\":null,\"toolName\":\"__proto__\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -14610,7 +14610,7 @@
    "name": "random 168",
    "payload": "{\"toolName\":\"__proto__\",\"toolCallId\":\"c168\",\"input\":{\"input\":{\"path\":{\"1\":[2.5],\"noeviaOutsideWorkspace\":\"\"}},\"command\":{},\"noeviaOutsideWorkspace\":1e+21,\"path\":{}}}",
    "expect": {
-    "json": "{\"toolCallId\":\"c168\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{\"input\":{\"path\":{\"1\":[2.5],\"noeviaOutsideWorkspace\":\"\"}},\"command\":{},\"noeviaOutsideWorkspace\":1e+21,\"path\":{}}}"
+    "json": "{\"toolCallId\":\"c168\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{\"input\":{\"path\":{\"1\":[2.5],\"noeviaOutsideWorkspace\":\"\"}},\"command\":{},\"noeviaOutsideWorkspace\":1e+21,\"path\":{}}}"
    }
   },
   {
@@ -14666,7 +14666,7 @@
    "name": "random 176",
    "payload": "{\"toolName\":\"__proto__\",\"toolCallId\":{\"outsideWorkspace\":\"bash\",\"file_path\":{\"1\":[2.5,\"p/q\"],\"x\":[\"é😀\",true,\"toString\"],\"toolCallId\":\"bash\",\"noeviaOutsideWorkspace\":null},\"x\":\"/abs\"},\"input\":{}}",
    "expect": {
-    "json": "{\"toolCallId\":\"[object Object]\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"[object Object]\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -14715,7 +14715,7 @@
    "name": "random 183",
    "payload": "{\"toolName\":\"__proto__\",\"toolCallId\":{},\"input\":{\"x\":\"read\",\"1\":\"read\",\"__proto__\":2.5,\"command\":[]}}",
    "expect": {
-    "json": "{\"toolCallId\":\"[object Object]\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{\"1\":\"read\",\"x\":\"read\",\"__proto__\":2.5,\"command\":[]}}"
+    "json": "{\"toolCallId\":\"[object Object]\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{\"1\":\"read\",\"x\":\"read\",\"__proto__\":2.5,\"command\":[]}}"
    }
   },
   {
@@ -14806,7 +14806,7 @@
    "name": "random 196",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":{\"0\":\"/abs\",\"noeviaOutsideWorkspace\":0,\"input\":[{\"1\":\"é😀\",\"input\":-1},[false,true]]},\"input\":{\"__proto__\":{}}}",
    "expect": {
-    "json": "{\"toolCallId\":\"[object Object]\",\"title\":\"valueOf\",\"rawInput\":{\"__proto__\":{}}}"
+    "json": "{\"toolCallId\":\"[object Object]\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"__proto__\":{}}}"
    }
   },
   {
@@ -14848,14 +14848,14 @@
    "name": "random 202",
    "payload": "{\"toolCallId\":\"c202\",\"input\":{},\"toolName\":\"__proto__\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"c202\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"c202\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
    "name": "random 203",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"c203\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"c203\",\"title\":\"valueOf\",\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"c203\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -14925,14 +14925,14 @@
    "name": "random 213",
    "payload": "{\"toolName\":\"valueOf\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
    "name": "random 214",
    "payload": "{\"toolName\":\"valueOf\",\"input\":{\"toolName\":{}}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"rawInput\":{\"toolName\":{}}}"
+    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"toolName\":{}}}"
    }
   },
   {
@@ -14967,7 +14967,7 @@
    "name": "random 219",
    "payload": "{\"toolName\":\"valueOf\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -15002,14 +15002,14 @@
    "name": "random 224",
    "payload": "{\"toolName\":\"__proto__\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
    "name": "random 225",
    "payload": "{\"toolName\":-1,\"toolName\":\"toString\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-toString\",\"title\":\"toString\",\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-toString\",\"title\":\"toString\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -15135,7 +15135,7 @@
    "name": "random 243",
    "payload": "{\"toolName\":\"__proto__\"}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -15170,7 +15170,7 @@
    "name": "random 248",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"c248\",\"input\":{\"1\":{\"input\":\"/abs\"}}}",
    "expect": {
-    "json": "{\"toolCallId\":\"c248\",\"title\":\"valueOf\",\"rawInput\":{\"1\":{\"input\":\"/abs\"}}}"
+    "json": "{\"toolCallId\":\"c248\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"1\":{\"input\":\"/abs\"}}}"
    }
   },
   {
@@ -15184,7 +15184,7 @@
    "name": "random 250",
    "payload": "{\"toolName\":\"valueOf\",\"outsideWorkspace\":{\"toolCallId\":\"\",\"noeviaOutsideWorkspace\":{},\"toolName\":{\"0\":[\"__proto__\",\"bash\"],\"x\":{\"input\":false,\"command\":1e+21}},\"x\":\"read\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"rawInput\":{}}"
+    "json": "{\"toolCallId\":\"pi-valueOf\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{}}"
    }
   },
   {
@@ -15240,7 +15240,7 @@
    "name": "random 258",
    "payload": "{\"toolName\":\"__proto__\",\"input\":{\"x\":\"é😀\"}}",
    "expect": {
-    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":{},\"rawInput\":{\"x\":\"é😀\"}}"
+    "json": "{\"toolCallId\":\"pi-__proto__\",\"title\":\"__proto__\",\"kind\":\"other\",\"rawInput\":{\"x\":\"é😀\"}}"
    }
   },
   {
@@ -15296,7 +15296,7 @@
    "name": "random 266",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"a\",\"input\":{\"x\":1e+21}}",
    "expect": {
-    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"rawInput\":{\"x\":1e+21}}"
+    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"x\":1e+21}}"
    }
   },
   {
@@ -15394,7 +15394,7 @@
    "name": "random 280",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"a\",\"input\":{\"x\":1e+21}}",
    "expect": {
-    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"rawInput\":{\"x\":1e+21}}"
+    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"x\":1e+21}}"
    }
   },
   {
@@ -15492,7 +15492,7 @@
    "name": "random 294",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"a\",\"input\":{\"x\":1e+21}}",
    "expect": {
-    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"rawInput\":{\"x\":1e+21}}"
+    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"x\":1e+21}}"
    }
   },
   {
@@ -15590,7 +15590,7 @@
    "name": "random 308",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"a\",\"input\":{\"x\":1e+21}}",
    "expect": {
-    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"rawInput\":{\"x\":1e+21}}"
+    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"x\":1e+21}}"
    }
   },
   {
@@ -15688,7 +15688,7 @@
    "name": "random 322",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"a\",\"input\":{\"x\":1e+21}}",
    "expect": {
-    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"rawInput\":{\"x\":1e+21}}"
+    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"x\":1e+21}}"
    }
   },
   {
@@ -15786,7 +15786,7 @@
    "name": "random 336",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"a\",\"input\":{\"x\":1e+21}}",
    "expect": {
-    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"rawInput\":{\"x\":1e+21}}"
+    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"x\":1e+21}}"
    }
   },
   {
@@ -15884,7 +15884,7 @@
    "name": "random 350",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"a\",\"input\":{\"x\":1e+21}}",
    "expect": {
-    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"rawInput\":{\"x\":1e+21}}"
+    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"x\":1e+21}}"
    }
   },
   {
@@ -15982,7 +15982,7 @@
    "name": "random 364",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"a\",\"input\":{\"x\":1e+21}}",
    "expect": {
-    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"rawInput\":{\"x\":1e+21}}"
+    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"x\":1e+21}}"
    }
   },
   {
@@ -16080,7 +16080,7 @@
    "name": "random 378",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"a\",\"input\":{\"x\":1e+21}}",
    "expect": {
-    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"rawInput\":{\"x\":1e+21}}"
+    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"x\":1e+21}}"
    }
   },
   {
@@ -16178,7 +16178,7 @@
    "name": "random 392",
    "payload": "{\"toolName\":\"valueOf\",\"toolCallId\":\"a\",\"input\":{\"x\":1e+21}}",
    "expect": {
-    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"rawInput\":{\"x\":1e+21}}"
+    "json": "{\"toolCallId\":\"a\",\"title\":\"valueOf\",\"kind\":\"other\",\"rawInput\":{\"x\":1e+21}}"
    }
   },
   {

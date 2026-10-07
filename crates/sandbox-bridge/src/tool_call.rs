@@ -7,9 +7,9 @@
 //! - `name = String(payload.toolName || '')` and `String(payload.toolCallId || 'pi-' + name)`
 //!   use full JS coercion (numbers, arrays joined, `[object Object]`; an object with an own
 //!   `toString` throws a TypeError);
-//! - `KIND[name]` is a lookup on an object literal, so `Object.prototype` names leak through: a
-//!   method name (`toString`, `constructor`, …) yields a function, which `JSON.stringify` drops
-//!   (no `kind` on the wire), and `__proto__` yields `Object.prototype`, which serialises as `{}`;
+//! - `kind` comes from the tool table's own names only (`Object.hasOwn`, noevia#1000): a tool
+//!   named after an `Object.prototype` property (`toString`, `constructor`, `__proto__`, …) is
+//!   `other`, like any unknown name;
 //! - an array `input` is an object too: it is kept as is, or spread into index keys when the
 //!   call is outside the workspace.
 
@@ -46,38 +46,15 @@ impl From<CoerceError> for Error {
     }
 }
 
-/// `Object.prototype`'s own property names whose value is a function (Node 22 / V8).
-const PROTO_METHODS: [&str; 11] = [
-    "constructor",
-    "__defineGetter__",
-    "__defineSetter__",
-    "hasOwnProperty",
-    "__lookupGetter__",
-    "__lookupSetter__",
-    "isPrototypeOf",
-    "propertyIsEnumerable",
-    "toString",
-    "valueOf",
-    "toLocaleString",
-];
-
-enum Kind {
-    Text(&'static str),
-    /// A function: absent from `JSON.stringify`.
-    Omitted,
-    /// `Object.prototype`: `{}`.
-    EmptyObject,
-}
-
-fn kind_for(name: &str) -> Kind {
+/// The tool table (`KIND` in the JS reference). Unknown names, `Object.prototype` ones included,
+/// are `other`.
+fn kind_for(name: &str) -> &'static str {
     match name {
-        "bash" => Kind::Text("execute"),
-        "write" | "edit" => Kind::Text("edit"),
-        "read" => Kind::Text("read"),
-        "grep" | "find" | "ls" => Kind::Text("search"),
-        "__proto__" => Kind::EmptyObject,
-        n if PROTO_METHODS.contains(&n) => Kind::Omitted,
-        _ => Kind::Text("other"),
+        "bash" => "execute",
+        "write" | "edit" => "edit",
+        "read" => "read",
+        "grep" | "find" | "ls" => "search",
+        _ => "other",
     }
 }
 
@@ -121,27 +98,19 @@ pub fn tool_call_json(payload: &str) -> Result<String, Error> {
         }
         _ => name.clone(),
     };
-    let kind = if outside {
-        Kind::Text("other")
-    } else if String::from_utf16(&name).is_ok() {
+    let kind = if !outside && String::from_utf16(&name).is_ok() {
         kind_for(&name_text)
     } else {
-        Kind::Text("other")
+        "other"
     };
 
     let mut out = String::from("{\"toolCallId\":");
     write_str16(&id, &mut out);
     out.push_str(",\"title\":");
     write_str16(&title, &mut out);
-    match kind {
-        Kind::Text(k) => {
-            out.push_str(",\"kind\":\"");
-            out.push_str(k);
-            out.push('"');
-        }
-        Kind::EmptyObject => out.push_str(",\"kind\":{}"),
-        Kind::Omitted => {}
-    }
+    out.push_str(",\"kind\":\"");
+    out.push_str(kind);
+    out.push('"');
     out.push_str(",\"rawInput\":");
     if outside {
         // `{ ...input, noeviaOutsideWorkspace: true }`
