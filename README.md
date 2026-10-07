@@ -120,7 +120,8 @@ one slice at a time.
   failed router row, stream error, engine gone) a fixed, ordered rule list reads the engine's
   evidence (exit code 137, out-of-memory, chat-template, context, time-out and model-file
   patterns); only when no rule matches may an advisory label from the decision service (Laya)
-  decide, at a confidence of at least 0.6; otherwise the calibrator's own cause stands. Fixed
+  decide, at a confidence of at least 0.6 and never as `timeout`; a crash (`crash: true`) never
+  reads as a time out (noevia#1046); otherwise the calibrator's own cause stands. Fixed
   reasons, never echoing the engine's text. In `dav-parse.wasm` as `load_verdict`. Table from
   noevia-core (`node tools/gen-load-verdict-fixtures.cjs`, synthetic engine messages, seeded
   combinations, expectations from an independent JS reference), copied byte-for-byte to

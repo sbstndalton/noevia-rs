@@ -16,7 +16,8 @@
 //!    allocate buffer"). No match is [`Label::Unknown`].
 //! 2. **Advice only on a tie.** Only when the rules say `unknown` may an advisory label from the
 //!    decision service (Laya, which reads the same text) decide, and only at a confidence of at
-//!    least [`MIN_ADVICE_PERMILLE`]. A rule verdict is never overridden. The reply says
+//!    least [`MIN_ADVICE_PERMILLE`], and never `timeout` (noevia#1046): a time out re-runs the
+//!    same setting, so only a rule may say it. A rule verdict is never overridden. The reply says
 //!    [`Source::Advisor`] when the advice decided and records the advice either way.
 //! 3. **Otherwise the calibrator's cause stands** ([`Source::Fallback`]), exactly what auto-tune
 //!    did before this crate existed.
@@ -215,6 +216,9 @@ pub struct Evidence {
     pub exit_code: Option<i32>,
     /// The engine's error text (an excerpt), possibly empty.
     pub text: String,
+    /// The engine went away during the step (the calibrator's crash path, noevia#1046). A crash is
+    /// never read as a time out, whatever its text says: the time-out rules are skipped.
+    pub crash: bool,
 }
 
 /// The decision service's label for the same evidence, confidence in thousandths.
@@ -369,11 +373,14 @@ pub fn classify(e: &Evidence) -> (Label, Option<&'static str>) {
     }
     let text = normalize(&e.text);
     for rule in RULES {
+        if e.crash && rule.label == Label::Timeout {
+            continue;
+        }
         if rule.needles.iter().any(|n| text.contains(n)) {
             return (rule.label, Some(rule.id));
         }
     }
-    if matches!(e.status, Some(408) | Some(504)) {
+    if !e.crash && matches!(e.status, Some(408) | Some(504)) {
         return (Label::Timeout, Some("status_timeout"));
     }
     (Label::Unknown, None)
@@ -407,7 +414,7 @@ pub fn verdict(r: &Request) -> Verdict {
     }
     let usable = r
         .advice
-        .filter(|a| a.permille >= MIN_ADVICE_PERMILLE)
+        .filter(|a| a.permille >= MIN_ADVICE_PERMILLE && a.label != Label::Timeout)
         .and_then(|a| a.label.outcome());
     match usable {
         Some(outcome) => Verdict {
@@ -474,7 +481,7 @@ fn int_field(
 ///
 /// ```json
 /// {"cause":"load",
-///  "evidence":{"status":500,"exitCode":null,"text":"…"} | null,
+///  "evidence":{"status":500,"exitCode":null,"text":"…","crash":false} | null,
 ///  "advice":{"label":"oom","confidence":0.82} | null}
 /// ```
 ///
@@ -495,7 +502,12 @@ pub fn parse(text: &str) -> Result<Request, VerdictError> {
     let evidence = match o.get("evidence") {
         None | Some(Value::Null) => None,
         Some(Value::Object(e)) => {
-            only_keys(e, &["status", "exitCode", "text"])?;
+            only_keys(e, &["status", "exitCode", "text", "crash"])?;
+            let crash = match e.get("crash") {
+                None | Some(Value::Null) => false,
+                Some(Value::Bool(b)) => *b,
+                Some(_) => return Err(VerdictError::Input),
+            };
             let status = int_field(e, "status", 0, 999)?.map(|n| n as u16);
             let exit_code = int_field(e, "exitCode", -1024, 1024)?.map(|n| n as i32);
             let text = match e.get("text") {
@@ -510,6 +522,7 @@ pub fn parse(text: &str) -> Result<Request, VerdictError> {
                 status,
                 exit_code,
                 text,
+                crash,
             })
         }
         Some(_) => return Err(VerdictError::Input),
@@ -714,6 +727,39 @@ mod tests {
     }
 
     #[test]
+    fn a_crash_is_never_a_time_out() {
+        let crash = Evidence {
+            status: Some(504),
+            text: "Loading timed out; deadline exceeded".into(),
+            crash: true,
+            ..Evidence::default()
+        };
+        assert_eq!(classify(&crash), (Label::Unknown, None));
+        let r = Request {
+            cause: Cause::Oom,
+            evidence: Some(crash),
+            advice: None,
+        };
+        assert_eq!(verdict(&r).outcome, Outcome::Oom);
+        // Other rules still read a crash's text.
+        let oom = Evidence {
+            text: "timed out after: out of memory".into(),
+            crash: true,
+            ..Evidence::default()
+        };
+        assert_eq!(classify(&oom).0, Label::Oom);
+    }
+
+    #[test]
+    fn advice_never_says_timeout() {
+        let v = verdict(&req(Cause::Oom, Some("odd"), Some((Label::Timeout, 900))));
+        assert_eq!(
+            (v.outcome, v.source, v.advice_used),
+            (Outcome::Oom, Source::Fallback, false)
+        );
+    }
+
+    #[test]
     fn json_shapes() {
         let (s, r) = verdict_json(
             r#"{"cause":"load","evidence":{"status":500,"exitCode":null,"text":"SECRET-ish odd text"},"advice":{"label":"oom","confidence":0.8125}}"#,
@@ -742,6 +788,7 @@ mod tests {
             r#"{"cause":"load","advice":{"label":"over_time","confidence":0.9}}"#,
             r#"{"cause":"load","advice":{"label":"oom"}}"#,
             r#"{"cause":"load","evidence":[]}"#,
+            r#"{"cause":"load","evidence":{"crash":1}}"#,
         ] {
             assert_eq!(
                 verdict_json(bad),
