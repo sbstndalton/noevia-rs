@@ -54,6 +54,24 @@ proptest! {
     }
 
     #[test]
+    fn line_ending_style_never_changes_the_verdict(secs in prop::collection::vec(section(), 1..6), pick in 0usize..6) {
+        // llama.cpp preset.cpp:186: newline is "\r\n" / "\n" / "\r", so all three spell the same file (noevia#1043).
+        let secs = unique(secs);
+        let i = pick % secs.len();
+        let lf = render(&[], &secs);
+        let mut edited = secs.clone();
+        edited[i].1.push("ctx-size = 123457".to_owned());
+        let lf_after = render(&[], &edited);
+        let loaded: Vec<String> = secs.iter().map(|(n, _)| n.clone()).collect();
+        let want = check(&lf, &lf_after, &loaded);
+        for eol in ["\r", "\r\n"] {
+            prop_assert_eq!(check(&lf.replace('\n', eol), &lf_after.replace('\n', eol), &loaded), want.clone());
+            prop_assert_eq!(check(&lf, &lf_after.replace('\n', eol), &loaded), want.clone());
+        }
+        prop_assert_eq!(check(&lf.replace('\n', "\r"), &lf, &loaded), Verdict::Unchanged);
+    }
+
+    #[test]
     fn identical_text_is_unchanged(global in prop::collection::vec("[a-z]{1,6} = [0-9]{1,4}", 0..3), secs in prop::collection::vec(section(), 1..6)) {
         let secs = unique(secs);
         let text = render(&global, &secs);
