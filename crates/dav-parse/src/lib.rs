@@ -6,7 +6,8 @@
 //! first `<[p:]href>` in it, decodes the five predefined XML entities and numeric character
 //! references (single pass, never recursive), resolves the href against the request URL with the
 //! WHATWG URL rules, percent-decodes the path like `decodeURIComponent`, and keeps only direct
-//! children of the requested directory. Hrefs outside it (other folders, `..` traversal that
+//! children of the requested directory on the request URL's origin, skipping names that are dot
+//! segments or carry `\`, controls or bidi controls (noevia#969–#971). Hrefs outside it (other folders, `..` traversal that
 //! resolves elsewhere, encoded slashes that would add a level) are dropped, exactly like the JS.
 //!
 //! It is not an XML parser and never becomes one: there is no DTD, no entity declaration, no
@@ -337,6 +338,28 @@ fn content_length(block: &str) -> Option<String> {
     })
 }
 
+/// A name the JS reference refuses to list (noevia#970, #971): `.`/`..`, `/` or `\\`, NUL, C0/C1
+/// controls, DEL, or a bidi control (U+202A–U+202E, U+2066–U+2069, U+200E, U+200F, U+061C).
+pub fn is_forbidden_name_char(c: char) -> bool {
+    matches!(c,
+        '\u{0}'..='\u{1f}' | '\u{7f}'..='\u{9f}' | '/' | '\\' | '\u{61c}' | '\u{200e}' | '\u{200f}'
+            | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+}
+
+/// Whether a decoded child name may be listed. Hostile names are skipped, never rewritten.
+pub fn is_listable_name(name: &str) -> bool {
+    name != "." && name != ".." && !name.chars().any(is_forbidden_name_char)
+}
+
+/// Same origin for http(s) only: scheme, host and default-normalised port (noevia#969). Opaque
+/// origins never match, like the JS reference.
+pub fn same_origin(a: &url::Url, b: &url::Url) -> bool {
+    matches!(a.scheme(), "http" | "https")
+        && a.scheme() == b.scheme()
+        && a.host_str() == b.host_str()
+        && a.port() == b.port()
+}
+
 /// Parse a PROPFIND `Depth: 1` reply for the directory at `target` (the request URL) into its
 /// direct children, in body order. Matches noevia-core's `listingEntriesJs(body, target)`.
 pub fn list_entries(body: &str, target: &str) -> Result<Vec<Entry>, Error> {
@@ -367,6 +390,9 @@ pub fn list_entries(body: &str, target: &str) -> Result<Vec<Entry>, Error> {
         let Ok(resolved) = base.join(js_trim(&decoded)) else {
             continue;
         };
+        if !same_origin(&resolved, &base) {
+            continue; // noevia#969: a foreign origin, whatever its path
+        }
         let Some(href) = decoded_dir(&resolved) else {
             continue;
         };
@@ -379,6 +405,9 @@ pub fn list_entries(body: &str, target: &str) -> Result<Vec<Entry>, Error> {
         };
         if relative.is_empty() || relative.contains('/') {
             continue; // the directory itself, or not a direct child
+        }
+        if !is_listable_name(relative) {
+            continue; // noevia#970/#971: dot segment, backslash, control or bidi character
         }
         entries.push(Entry {
             name: relative.to_owned(),
