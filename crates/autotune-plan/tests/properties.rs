@@ -1,5 +1,7 @@
-//! Properties: no panics on any input, and a simulated run (any outcome sequence, however
-//! inconsistent) always ends within the step caps without planning a measured step twice.
+//! Properties: no panics on any input, a simulated run (any outcome sequence, however
+//! inconsistent) always ends within the step caps without planning a measured step twice, and
+//! the first probe follows the KV policy (noevia#1057): the most precise type that fits, unless a
+//! more compact one fits at least twice its context.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -87,18 +89,59 @@ fn memory() -> impl Strategy<Value = Memory> {
 fn kv_list() -> impl Strategy<Value = Vec<KvType>> {
     proptest::sample::subsequence(
         vec![
+            KvType::Bf16,
             KvType::F16,
             KvType::Q8_0,
             KvType::Q5_1,
             KvType::Q5_0,
             KvType::Q4_0,
         ],
-        1..=5,
+        1..=6,
     )
+}
+
+/// The largest ladder rung `kv` fits by the estimate, at most the trained context.
+fn ceiling(input: &Input, kv: KvType) -> Option<u64> {
+    let usable = usable_bytes(&input.memory);
+    input
+        .ladder
+        .iter()
+        .copied()
+        .filter(|&c| input.facts.n_ctx_train == 0 || c <= input.facts.n_ctx_train)
+        .filter(|&c| {
+            estimate_bytes(&input.facts, &input.memory, c, kv).is_some_and(|b| b <= usable)
+        })
+        .max()
 }
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(512))]
+
+    #[test]
+    fn the_first_probe_is_precision_first_with_the_doubling_rule(
+        facts in facts(),
+        memory in memory(),
+        kv in kv_list(),
+    ) {
+        let input = Input { facts, memory, ladder: LADDER.to_vec(), kv, results: vec![] };
+        if let Step::Probe { ctx, kv, .. } = plan(&input) {
+            let at = input.kv.iter().position(|&k| k == kv).unwrap();
+            prop_assert_eq!(Some(ctx), ceiling(&input, kv));
+            // The most precise type that fits at all.
+            let first = input.kv.iter().position(|&k| ceiling(&input, k).is_some()).unwrap();
+            prop_assert!(at >= first);
+            let first_cap = ceiling(&input, input.kv[first]).unwrap();
+            if at > first {
+                prop_assert!(ctx >= 2 * first_cap, "{} at {} does not double {}", kv.name(), ctx, first_cap);
+            }
+            // No more compact type doubles the choice.
+            for &k in &input.kv[at + 1..] {
+                if let Some(c) = ceiling(&input, k) {
+                    prop_assert!(c < 2 * ctx, "{} at {} doubles {} at {}", k.name(), c, kv.name(), ctx);
+                }
+            }
+        }
+    }
 
     #[test]
     fn any_text_gets_a_fixed_reply(t in ".{0,300}") {

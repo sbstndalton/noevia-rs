@@ -4,14 +4,19 @@
 //! (GGUF metadata, file sizes), the inference memory budget and every result measured so far,
 //! [`plan`] returns the one next step, always the same step for the same input:
 //!
-//! 1. **Context first.** The largest context rung (from the caller's ladder, at most the model's
-//!    trained context) whose memory estimate fits with the most compact allowed KV cache type.
-//! 2. **Then the KV cache type** for that context: the most precise allowed type that still fits.
+//! 1. **The KV cache type, precision first** (noevia#1057). The caller lists the allowed types
+//!    most precise first (the list is the floor: noevia-core offers `bf16, q8_0` by default). The
+//!    run takes the most precise type that fits the smallest rung; walking the list, a more
+//!    compact type replaces that choice only when its largest fitting rung (by the estimate, at
+//!    most the trained context) is at least twice the current choice's. So a more compact cache
+//!    is chosen only when it about doubles the context, never to win a few rungs.
+//! 2. **Then the context for that type:** its largest fitting rung first.
 //! 3. **Fill and recall.** Each `probe` fills about 90% of that context with synthetic text and a
-//!    needle, then checks recall, memory and quality. A memory failure (out of memory, refused
-//!    load) tries the next more compact type at the same context; a recall, time or quality
-//!    failure steps the context down (bisection over the rungs, at most [`MAX_PROBES`] probes).
-//!    A quality failure also rules that type and every more compact one out for the whole run.
+//!    needle, then checks recall, memory and quality. Any failure steps the context down
+//!    (bisection over the type's rungs, at most [`MAX_PROBES`] probes in all). Only when the type
+//!    has failed at every context it fits does the run step to the next more compact type (the
+//!    doubling rule then applies from there). A quality failure rules that type and every more
+//!    compact one out for the whole run, so the search goes back to a more precise type.
 //! 4. **The remaining phases** (`sampling`, `drafting`, `batch`), each once.
 //! 5. **One final fill check** (`verify`) with the finished settings, stepping down a rung at a
 //!    time on failure (at most [`MAX_VERIFY`] attempts), then the **serving check**.
@@ -439,8 +444,8 @@ fn parse_entry(v: &Value, kv: &[KvType]) -> Result<Entry, PlanError> {
 ///   "embeddingLength":4096,"modelBytes":4920000000,"slots":1, …},
 ///  "memory":{"budgetMib":16384,"memAvailableMib":30000,"reserveMib":2560,"floorMib":2048,
 ///   "cacheRamMib":1024},
-///  "ladder":[4096,8192,…],"kv":["f16","q8_0","q5_1","q5_0"],
-///  "results":[{"step":"probe","ctx":131072,"kv":"f16","outcome":"oom"}, …]}
+///  "ladder":[4096,8192,…],"kv":["bf16","q8_0"],
+///  "results":[{"step":"probe","ctx":65536,"kv":"bf16","outcome":"oom"}, …]}
 /// ```
 pub fn parse(text: &str) -> Result<Input, PlanError> {
     if text.len() > MAX_INPUT_BYTES {
@@ -720,6 +725,23 @@ struct Search {
     banned_from: usize,
 }
 
+/// Where one cache type's context search stands.
+struct TypeSearch {
+    /// The largest context that passed with this type.
+    lo: Option<u64>,
+    /// Rungs above `lo` that fit this type by the estimate.
+    above: Vec<u64>,
+    /// The prefix of `above` no measured failure rules out.
+    open: Vec<u64>,
+}
+
+impl TypeSearch {
+    /// Nothing passed and nothing is left to try: the run moves to the next type.
+    fn exhausted(&self) -> bool {
+        self.lo.is_none() && self.open.is_empty()
+    }
+}
+
 impl Search {
     fn dominated(&self, ctx: u64, kv: usize) -> bool {
         self.probes
@@ -734,27 +756,37 @@ impl Search {
             matches!(o, ProbeOutcome::RecallFailed | ProbeOutcome::OverTime) && ctx >= c
         })
     }
-    /// The most precise allowed type that fits `ctx` and is not ruled out there.
-    fn kv_for(&self, cx: &Ctx, ctx: u64) -> Option<usize> {
-        if self.hard_failed(ctx) {
-            return None;
-        }
-        (0..self.banned_from.min(cx.input.kv.len())).find(|&k| {
-            cx.input.kv.get(k).is_some_and(|&kv| {
-                cx.fits(ctx, kv) && !self.dominated(ctx, k) && !self.probed(ctx, k)
-            })
-        })
+    fn allowed(&self, cx: &Ctx) -> usize {
+        self.banned_from.min(cx.input.kv.len())
     }
-    /// The largest context that passed, with its most precise passing type still allowed.
-    fn best_pass(&self) -> Option<(u64, usize)> {
+    /// Whether `ctx` is still worth a probe with type `k`.
+    fn open_at(&self, ctx: u64, k: usize) -> bool {
+        !self.hard_failed(ctx) && !self.dominated(ctx, k) && !self.probed(ctx, k)
+    }
+    fn lo(&self, k: usize) -> Option<u64> {
         self.probes
             .iter()
-            .filter(|&&(_, k, o)| o == ProbeOutcome::Passed && k < self.banned_from)
-            .map(|&(c, k, _)| (c, k))
-            .fold(None, |best: Option<(u64, usize)>, (c, k)| match best {
-                Some((bc, bk)) if bc > c || (bc == c && bk <= k) => Some((bc, bk)),
-                _ => Some((c, k)),
-            })
+            .filter(|&&(_, pk, o)| pk == k && o == ProbeOutcome::Passed)
+            .map(|&(c, _, _)| c)
+            .max()
+    }
+    fn of_type(&self, cx: &Ctx, k: usize) -> TypeSearch {
+        let lo = self.lo(k);
+        let above: Vec<u64> = match cx.input.kv.get(k) {
+            Some(&kv) => cx
+                .rungs
+                .iter()
+                .copied()
+                .filter(|&c| c > lo.unwrap_or(0) && cx.fits(c, kv))
+                .collect(),
+            None => Vec::new(),
+        };
+        let open = above
+            .iter()
+            .copied()
+            .take_while(|&c| self.open_at(c, k))
+            .collect();
+        TypeSearch { lo, above, open }
     }
 }
 
@@ -762,6 +794,30 @@ enum Searched {
     Next(u64, usize),
     Chosen(u64, usize),
     Stop(Stop),
+}
+
+/// The largest rung type `k` fits by the estimate, or `None` when not even the smallest does.
+fn ceiling(cx: &Ctx, k: usize) -> Option<u64> {
+    let kv = *cx.input.kv.get(k)?;
+    cx.rungs.iter().copied().rfind(|&c| cx.fits(c, kv))
+}
+
+/// The type to search: precision first. The most precise allowed type still in play; each more
+/// compact one after it replaces the current choice only when it fits at least twice the
+/// context the current choice fits (by the estimate, on the ladder).
+fn preferred(cx: &Ctx, s: &Search) -> Option<(usize, TypeSearch)> {
+    let mut alive = (0..s.allowed(cx)).filter_map(|k| {
+        let cap = ceiling(cx, k)?;
+        let t = s.of_type(cx, k);
+        (!t.exhausted()).then_some((k, cap, t))
+    });
+    let (mut k, mut cap, mut t) = alive.next()?;
+    for (nk, ncap, nt) in alive {
+        if ncap >= cap.saturating_mul(2) {
+            (k, cap, t) = (nk, ncap, nt);
+        }
+    }
+    Some((k, t))
 }
 
 fn search(cx: &Ctx) -> Searched {
@@ -778,44 +834,31 @@ fn search(cx: &Ctx) -> Searched {
             s.probes.push((ctx, k, outcome));
         }
     }
-    let lo = s.best_pass();
-    let floor = lo.map_or(0, |(c, _)| c);
-    // The ceiling is the estimate's: rungs that fit with some allowed type. Only measured
-    // failures below it make the search bisect instead of starting at the largest rung.
-    let allowed = s.banned_from.min(cx.input.kv.len());
-    let above: Vec<u64> = cx
-        .rungs
-        .iter()
-        .copied()
-        .filter(|&c| c > floor && cx.input.kv.iter().take(allowed).any(|&kv| cx.fits(c, kv)))
-        .collect();
-    let open: Vec<u64> = above
-        .iter()
-        .copied()
-        .take_while(|&c| s.kv_for(cx, c).is_some())
-        .collect();
-    if s.probes.len() >= MAX_PROBES || open.is_empty() {
-        return match lo {
-            Some((c, k)) => Searched::Chosen(c, k),
-            None => Searched::Stop(Stop::NoContext),
-        };
-    }
-    // After a memory failure, the next more compact type at the same context goes first.
-    let retry = s
-        .probes
-        .last()
-        .filter(|(_, _, o)| o.memory())
-        .map(|&(c, _, _)| c)
-        .filter(|c| open.contains(c));
-    let hi_known = open.len() < above.len();
-    let ctx = match retry {
-        Some(c) => c,
-        // Nothing measured above the floor yet and nothing ruled out: the largest first.
-        None if lo.is_none() && !hi_known => open.last().copied().unwrap_or(0),
-        None => open.get(open.len() / 2).copied().unwrap_or(0),
+    // At the probe cap: the chosen type's best pass, or else the most precise type with one.
+    let settle = |s: &Search, chosen: Option<(u64, usize)>| {
+        chosen
+            .or_else(|| (0..s.allowed(cx)).find_map(|k| s.lo(k).map(|c| (c, k))))
+            .map_or(Searched::Stop(Stop::NoContext), |(c, k)| {
+                Searched::Chosen(c, k)
+            })
     };
-    match s.kv_for(cx, ctx) {
-        Some(k) => Searched::Next(ctx, k),
+    let Some((k, t)) = preferred(cx, &s) else {
+        return settle(&s, None);
+    };
+    if s.probes.len() >= MAX_PROBES || t.open.is_empty() {
+        return settle(&s, t.lo.map(|c| (c, k)));
+    }
+    // Nothing measured above the floor yet and nothing ruled out: the largest first. A memory
+    // failure with a more precise type counts as a measured ceiling, so the search bisects.
+    let hi_known =
+        t.open.len() < t.above.len() || s.probes.iter().any(|&(_, pk, o)| o.memory() && pk < k);
+    let ctx = if t.lo.is_none() && !hi_known {
+        t.open.last().copied()
+    } else {
+        t.open.get(t.open.len() / 2).copied()
+    };
+    match ctx {
+        Some(c) => Searched::Next(c, k),
         None => Searched::Stop(Stop::NoContext),
     }
 }
@@ -977,7 +1020,7 @@ mod tests {
                 cache_ram_mib: 1024,
             },
             ladder: LADDER.to_vec(),
-            kv: vec![KvType::F16, KvType::Q8_0, KvType::Q5_1, KvType::Q5_0],
+            kv: vec![KvType::Bf16, KvType::Q8_0],
             results,
         }
     }
@@ -995,27 +1038,70 @@ mod tests {
         assert_eq!(e * 34 / 32, 9_126_805_504);
     }
 
+    fn with_q5(mut i: Input) -> Input {
+        i.kv = vec![KvType::Bf16, KvType::Q8_0, KvType::Q5_1, KvType::Q5_0];
+        i
+    }
+
+    fn first_probe(i: &Input) -> (u64, KvType) {
+        match plan(i) {
+            Step::Probe { ctx, kv, .. } => (ctx, kv),
+            s => panic!("{s:?}"),
+        }
+    }
+
     #[test]
-    fn context_first_then_the_most_precise_type_that_fits() {
-        // 16 GiB budget: 128k fits with q5_1 (q8_0 is 0.2 GiB over), so 128k with q5_1.
+    fn precision_first_and_compact_only_when_it_doubles_the_context() {
+        // 16 GiB: bf16 fits 64k, q8_0 also only 64k (128k is 0.2 GiB over): stay bf16 at 64k.
         let i = input(llama8b(), 16384, vec![]);
         match plan(&i) {
             Step::Probe { ctx, kv, fill, .. } => {
-                assert_eq!(ctx, 131072);
-                assert_eq!(kv, KvType::Q5_1);
-                assert_eq!(fill, 131072 * 9 / 10 - 256);
+                assert_eq!((ctx, kv), (65536, KvType::Bf16));
+                assert_eq!(fill, 65536 * 9 / 10 - 256);
             }
             s => panic!("{s:?}"),
         }
-        // A bigger budget keeps f16 at the trained maximum.
-        assert!(matches!(
-            plan(&input(llama8b(), 64 * 1024, vec![])),
-            Step::Probe {
-                ctx: 131072,
-                kv: KvType::F16,
-                ..
-            }
-        ));
+        // 10 GiB: bf16 fits 16k, q8_0 32k, exactly twice: q8_0.
+        assert_eq!(
+            first_probe(&input(llama8b(), 10 * 1024, vec![])),
+            (32768, KvType::Q8_0)
+        );
+        // 20 GiB: bf16 64k, q8_0 the full 128k: q8_0.
+        assert_eq!(
+            first_probe(&input(llama8b(), 20 * 1024, vec![])),
+            (131072, KvType::Q8_0)
+        );
+        // A bigger budget keeps bf16 at the trained maximum: nothing can double it.
+        assert_eq!(
+            first_probe(&input(llama8b(), 64 * 1024, vec![])),
+            (131072, KvType::Bf16)
+        );
+    }
+
+    #[test]
+    fn q5_only_when_offered_and_only_when_it_doubles_the_choice() {
+        // 16 GiB with q5 allowed: q8_0 does not double bf16's 64k, q5_1 fits 128k, which does.
+        assert_eq!(
+            first_probe(&with_q5(input(llama8b(), 16384, vec![]))),
+            (131072, KvType::Q5_1)
+        );
+        // 10 GiB: q8_0 doubles bf16 (32k); q5_1 also only fits 32k, so q8_0 stays.
+        assert_eq!(
+            first_probe(&with_q5(input(llama8b(), 10 * 1024, vec![]))),
+            (32768, KvType::Q8_0)
+        );
+        // 64 GiB: bf16 at the trained maximum whatever else is offered.
+        assert_eq!(
+            first_probe(&with_q5(input(llama8b(), 64 * 1024, vec![]))),
+            (131072, KvType::Bf16)
+        );
+    }
+
+    #[test]
+    fn f16_in_place_of_bf16_plans_the_same() {
+        let mut i = input(llama8b(), 16384, vec![]);
+        i.kv = vec![KvType::F16, KvType::Q8_0];
+        assert_eq!(first_probe(&i), (65536, KvType::F16));
     }
 
     #[test]
@@ -1023,9 +1109,7 @@ mod tests {
         // 10 GiB: 64k and 128k fit no type, 32k fits with q8_0. The first probe is the largest rung
         // that fits (not the middle of the ladder), and passing it ends the search.
         let i = input(llama8b(), 10 * 1024, vec![]);
-        let Step::Probe { ctx, kv, .. } = plan(&i) else {
-            panic!()
-        };
+        let (ctx, kv) = first_probe(&i);
         assert_eq!((ctx, kv), (32768, KvType::Q8_0));
         let i = input(
             llama8b(),
@@ -1043,60 +1127,103 @@ mod tests {
     }
 
     #[test]
-    fn memory_failure_tries_a_more_compact_type_at_the_same_context() {
+    fn memory_failure_steps_the_context_down_with_the_same_type() {
         let i = input(
             llama8b(),
-            64 * 1024,
-            vec![probe(131072, KvType::F16, ProbeOutcome::Oom)],
+            16384,
+            vec![probe(65536, KvType::Bf16, ProbeOutcome::Oom)],
         );
-        assert!(matches!(
-            plan(&i),
-            Step::Probe {
-                ctx: 131072,
-                kv: KvType::Q8_0,
-                ..
+        assert_eq!(first_probe(&i), (16384, KvType::Bf16));
+        let i = input(
+            llama8b(),
+            16384,
+            vec![probe(65536, KvType::Bf16, ProbeOutcome::LoadFailed)],
+        );
+        assert_eq!(first_probe(&i), (16384, KvType::Bf16));
+    }
+
+    #[test]
+    fn a_type_that_fails_at_every_context_steps_to_the_next() {
+        // bf16 refused even at the smallest rung: q8_0, bisecting (bf16's failure is a ceiling).
+        let r = vec![probe(4096, KvType::Bf16, ProbeOutcome::LoadFailed)];
+        assert_eq!(
+            first_probe(&input(llama8b(), 16384, r.clone())),
+            (16384, KvType::Q8_0)
+        );
+        // After a bisection down to nothing with bf16, the same.
+        let r = vec![
+            probe(65536, KvType::Bf16, ProbeOutcome::Oom),
+            probe(16384, KvType::Bf16, ProbeOutcome::Oom),
+            probe(8192, KvType::Bf16, ProbeOutcome::Oom),
+            probe(4096, KvType::Bf16, ProbeOutcome::Oom),
+        ];
+        assert_eq!(
+            first_probe(&input(llama8b(), 16384, r.clone())),
+            (16384, KvType::Q8_0)
+        );
+        // A bf16 pass anywhere keeps bf16: its best pass is the choice.
+        let r = vec![
+            probe(65536, KvType::Bf16, ProbeOutcome::Oom),
+            probe(16384, KvType::Bf16, ProbeOutcome::Passed),
+            probe(32768, KvType::Bf16, ProbeOutcome::Oom),
+        ];
+        assert_eq!(
+            plan(&input(llama8b(), 16384, r)),
+            Step::Phase {
+                id: Phase::Sampling,
+                ctx: 16384,
+                kv: KvType::Bf16
             }
-        ));
+        );
+        // q8_0 (the floor) failing everywhere too: no context.
+        let r = vec![
+            probe(4096, KvType::Bf16, ProbeOutcome::Oom),
+            probe(4096, KvType::Q8_0, ProbeOutcome::Oom),
+        ];
+        assert_eq!(
+            plan(&input(llama8b(), 16384, r)),
+            Step::Fail(Stop::NoContext)
+        );
     }
 
     #[test]
     fn recall_failure_steps_down_and_a_pass_moves_on() {
-        let mut r = vec![probe(131072, KvType::F16, ProbeOutcome::RecallFailed)];
+        let mut r = vec![probe(131072, KvType::Bf16, ProbeOutcome::RecallFailed)];
         let i = input(llama8b(), 64 * 1024, r.clone());
-        let Step::Probe { ctx, kv, .. } = plan(&i) else {
-            panic!()
-        };
-        assert_eq!((ctx, kv), (16384, KvType::F16));
-        r.push(probe(16384, KvType::F16, ProbeOutcome::Passed));
-        let Step::Probe { ctx, .. } = plan(&input(llama8b(), 64 * 1024, r.clone())) else {
-            panic!()
-        };
+        assert_eq!(first_probe(&i), (16384, KvType::Bf16));
+        r.push(probe(16384, KvType::Bf16, ProbeOutcome::Passed));
+        let (ctx, _) = first_probe(&input(llama8b(), 64 * 1024, r.clone()));
         assert_eq!(ctx, 65536);
-        r.push(probe(65536, KvType::F16, ProbeOutcome::Passed));
+        r.push(probe(65536, KvType::Bf16, ProbeOutcome::Passed));
         assert_eq!(
             plan(&input(llama8b(), 64 * 1024, r.clone())),
             Step::Phase {
                 id: Phase::Sampling,
                 ctx: 65536,
-                kv: KvType::F16
+                kv: KvType::Bf16
             }
         );
     }
 
     #[test]
     fn quality_failure_rules_out_that_type_and_more_compact_ones() {
-        let r = vec![probe(131072, KvType::Q8_0, ProbeOutcome::QualityFailed)];
-        // f16 at 128k does not fit 16 GiB; q8_0 and below are out: step down with f16.
-        let Step::Probe { ctx, kv, .. } = plan(&input(llama8b(), 16384, r)) else {
-            panic!()
-        };
-        assert_eq!(kv, KvType::F16);
-        assert!(ctx < 131072);
+        // 10 GiB picks q8_0 at 32k; q8_0 failing quality leaves bf16, at its own largest rung.
+        let r = vec![probe(32768, KvType::Q8_0, ProbeOutcome::QualityFailed)];
+        assert_eq!(
+            first_probe(&input(llama8b(), 10 * 1024, r)),
+            (16384, KvType::Bf16)
+        );
+        // With q5 offered, a q5_1 quality failure goes back to bf16 (q8_0 does not double it).
+        let r = vec![probe(131072, KvType::Q5_1, ProbeOutcome::QualityFailed)];
+        assert_eq!(
+            first_probe(&with_q5(input(llama8b(), 16384, r))),
+            (65536, KvType::Bf16)
+        );
     }
 
     #[test]
     fn phases_verify_and_serving_in_order() {
-        let mut r = vec![probe(131072, KvType::F16, ProbeOutcome::Passed)];
+        let mut r = vec![probe(131072, KvType::Bf16, ProbeOutcome::Passed)];
         let big = 64 * 1024;
         for id in Phase::ORDER {
             assert_eq!(
@@ -1104,7 +1231,7 @@ mod tests {
                 Step::Phase {
                     id,
                     ctx: 131072,
-                    kv: KvType::F16
+                    kv: KvType::Bf16
                 }
             );
             r.push(Entry::Phase {
@@ -1122,7 +1249,7 @@ mod tests {
         ));
         r.push(Entry::Verify {
             ctx: 131072,
-            kv: KvType::F16,
+            kv: KvType::Bf16,
             outcome: ProbeOutcome::Oom,
         });
         assert!(matches!(
@@ -1131,14 +1258,14 @@ mod tests {
         ));
         r.push(Entry::Verify {
             ctx: 65536,
-            kv: KvType::F16,
+            kv: KvType::Bf16,
             outcome: ProbeOutcome::Passed,
         });
         assert_eq!(
             plan(&input(llama8b(), big, r.clone())),
             Step::Serving {
                 ctx: 65536,
-                kv: KvType::F16
+                kv: KvType::Bf16
             }
         );
         r.push(Entry::Serving {
@@ -1148,7 +1275,7 @@ mod tests {
             plan(&input(llama8b(), big, r)),
             Step::Done {
                 ctx: 65536,
-                kv: KvType::F16
+                kv: KvType::Bf16
             }
         );
     }
@@ -1165,7 +1292,7 @@ mod tests {
         let mut f = llama8b();
         f.head_count = 0;
         assert_eq!(plan(&input(f, 65536, vec![])), Step::Fail(Stop::Unsizeable));
-        let r = vec![probe(4096, KvType::F16, ProbeOutcome::RecallFailed)];
+        let r = vec![probe(4096, KvType::Bf16, ProbeOutcome::RecallFailed)];
         assert_eq!(
             plan(&input(llama8b(), 65536, r)),
             Step::Fail(Stop::NoContext)
@@ -1213,14 +1340,8 @@ mod tests {
             usable_bytes(&i.memory),
             u128::from(20u64 * 1024 - 4608) * MIB
         );
-        assert!(matches!(
-            plan(&i),
-            Step::Probe {
-                ctx: 131072,
-                kv: KvType::Q5_1,
-                ..
-            }
-        ));
+        // 15.5 GiB usable: bf16 fits 32k, q8_0 64k, twice that: q8_0.
+        assert_eq!(first_probe(&i), (65536, KvType::Q8_0));
     }
 
     #[test]
