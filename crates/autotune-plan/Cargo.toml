@@ -1,0 +1,17 @@
+[package]
+name = "autotune-plan"
+version = "0.1.0"
+description = "Deterministic step planner for noevia's model auto-tune: context first, then KV cache type, fill-and-recall probes, then the remaining phases, a final fill check and the serving check, never repeating a measured step (noevia#1003)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+proptest = "1"

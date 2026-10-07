@@ -103,6 +103,17 @@ one slice at a time.
   noevia-core (`node tools/gen-chat-template-caps-fixtures.cjs`, public chat templates with
   their sources, adversarial ones, and the JS context test's own answers), copied byte-for-byte
   to `crates/chat-template-caps/tests/fixtures/chat-template-caps.v1.json`.
+- `crates/autotune-plan` (sbstndalton/noevia#1003): the deterministic step planner behind
+  native model auto-tune. From a model's GGUF facts, the inference memory budget (less the
+  services reserve and the floor, bounded by `MemAvailable`) and every result so far, it returns
+  the one next step: the largest context that fits first, then the most precise KV cache type
+  for it, fill-and-recall probes (memory failure: a more compact type at the same context;
+  recall, time or quality failure: bisect down), the sampling/drafting/batch phases once each,
+  one final fill check and the serving check, never planning a measured step twice. Integer
+  byte arithmetic mirroring noevia-core's `kvCacheBytes` estimate. In `dav-parse.wasm` as
+  `autotune_plan`. Table from noevia-core (`node tools/gen-autotune-plan-fixtures.cjs`, seeded
+  simulated runs over synthetic model layouts, expectations from an independent JS reference),
+  copied byte-for-byte to `crates/autotune-plan/tests/fixtures/autotune-plan.v1.json`.
 - `crates/docx-text` + `bins/docx-text` (sbstndalton/noevia#981): the OCR service's DOCX
   text front. `docx-text extract < upload.docx` checks the ZIP container (EOCD, member
   count/sizes, encryption, compression ratio) and prints `{"text", "truncated", "scope"}`

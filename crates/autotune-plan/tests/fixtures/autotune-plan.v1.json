@@ -1,0 +1,4719 @@
+{
+ "version": 1,
+ "limits": {
+  "maxInputBytes": 65536,
+  "maxLadder": 128,
+  "maxResults": 256,
+  "maxProbes": 8,
+  "maxVerify": 3
+ },
+ "models": {
+  "dense-gqa-8b": {
+   "facts": {
+    "nCtxTrain": 131072,
+    "blockCount": 32,
+    "headCount": 32,
+    "headCountKv": 8,
+    "embeddingLength": 4096,
+    "modelBytes": 4900000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768,
+    40960,
+    49152,
+    57344,
+    65536,
+    73728,
+    81920,
+    90112,
+    98304,
+    106496,
+    114688,
+    122880,
+    131072
+   ]
+  },
+  "dense-gqa-14b-32k": {
+   "facts": {
+    "nCtxTrain": 32768,
+    "blockCount": 40,
+    "headCount": 40,
+    "headCountKv": 8,
+    "embeddingLength": 5120,
+    "modelBytes": 9000000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768
+   ]
+  },
+  "swa-pattern-12b-vision": {
+   "facts": {
+    "nCtxTrain": 131072,
+    "blockCount": 48,
+    "headCount": 16,
+    "headCountKv": 8,
+    "embeddingLength": 3840,
+    "keyLength": 256,
+    "valueLength": 256,
+    "slidingWindow": 1024,
+    "slidingWindowPattern": [
+     true,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     true,
+     false
+    ],
+    "modelBytes": 7300000000,
+    "mmprojBytes": 850000000,
+    "ubatch": 1024,
+    "slots": 1
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768,
+    40960,
+    49152,
+    57344,
+    65536,
+    73728,
+    81920,
+    90112,
+    98304,
+    106496,
+    114688,
+    122880,
+    131072
+   ]
+  },
+  "swa-no-pattern-9b": {
+   "facts": {
+    "nCtxTrain": 8192,
+    "blockCount": 42,
+    "headCount": 16,
+    "headCountKv": 8,
+    "embeddingLength": 3584,
+    "keyLength": 256,
+    "valueLength": 256,
+    "slidingWindow": 4096,
+    "modelBytes": 5800000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192
+   ]
+  },
+  "swa-per-layer-heads": {
+   "facts": {
+    "nCtxTrain": 65536,
+    "blockCount": 12,
+    "headCount": 8,
+    "headCountKv": [
+     4,
+     4,
+     4,
+     4,
+     4,
+     2,
+     4,
+     4,
+     4,
+     4,
+     4,
+     2
+    ],
+    "embeddingLength": 2048,
+    "keyLength": 128,
+    "valueLength": 128,
+    "slidingWindow": 512,
+    "slidingWindowPattern": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0
+    ],
+    "modelBytes": 1200000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768,
+    40960,
+    49152,
+    57344,
+    65536
+   ]
+  },
+  "swa-shared-kv-4b": {
+   "facts": {
+    "nCtxTrain": 32768,
+    "blockCount": 30,
+    "headCount": 8,
+    "headCountKv": 2,
+    "embeddingLength": 2048,
+    "keyLength": 256,
+    "valueLength": 256,
+    "keyLengthSwa": 256,
+    "valueLengthSwa": 256,
+    "slidingWindow": 512,
+    "slidingWindowPattern": [
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     false,
+     true,
+     true,
+     true,
+     true,
+     false
+    ],
+    "sharedKvLayers": 10,
+    "modelBytes": 4400000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768
+   ]
+  },
+  "hybrid-ssm-9b": {
+   "facts": {
+    "nCtxTrain": 262144,
+    "blockCount": 32,
+    "headCount": 16,
+    "headCountKv": 4,
+    "embeddingLength": 4096,
+    "keyLength": 256,
+    "valueLength": 256,
+    "fullAttentionInterval": 4,
+    "modelBytes": 5600000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768,
+    40960,
+    49152,
+    57344,
+    65536,
+    73728,
+    81920,
+    90112,
+    98304,
+    106496,
+    114688,
+    122880,
+    131072,
+    139264,
+    147456,
+    151552,
+    155648,
+    159744,
+    163840,
+    172032,
+    180224,
+    188416,
+    196608,
+    204800,
+    212992,
+    221184,
+    229376,
+    237568,
+    245760,
+    253952,
+    262144
+   ]
+  },
+  "dense-mtp-head": {
+   "facts": {
+    "nCtxTrain": 32768,
+    "blockCount": 28,
+    "headCount": 16,
+    "headCountKv": 8,
+    "embeddingLength": 2048,
+    "keyLength": 128,
+    "valueLength": 128,
+    "nextnPredictLayers": 1,
+    "modelBytes": 2100000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768
+   ]
+  },
+  "dense-two-slots": {
+   "facts": {
+    "nCtxTrain": 65536,
+    "blockCount": 24,
+    "headCount": 16,
+    "headCountKv": 4,
+    "embeddingLength": 2048,
+    "modelBytes": 1900000000,
+    "slots": 2,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768,
+    40960,
+    49152,
+    57344,
+    65536
+   ]
+  },
+  "unknown-native": {
+   "facts": {
+    "nCtxTrain": 0,
+    "blockCount": 22,
+    "headCount": 32,
+    "headCountKv": 4,
+    "embeddingLength": 2048,
+    "modelBytes": 700000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768,
+    40960,
+    49152,
+    57344,
+    65536,
+    73728,
+    81920,
+    90112,
+    98304,
+    106496,
+    114688,
+    122880,
+    131072
+   ]
+  },
+  "unsizeable-no-heads": {
+   "facts": {
+    "nCtxTrain": 32768,
+    "blockCount": 24,
+    "headCount": 0,
+    "embeddingLength": 2048,
+    "modelBytes": 1500000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768
+   ]
+  },
+  "short-native-2k": {
+   "facts": {
+    "nCtxTrain": 2048,
+    "blockCount": 24,
+    "headCount": 16,
+    "headCountKv": 16,
+    "embeddingLength": 2048,
+    "modelBytes": 1100000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": []
+  },
+  "too-big-30gb": {
+   "facts": {
+    "nCtxTrain": 131072,
+    "blockCount": 64,
+    "headCount": 64,
+    "headCountKv": 8,
+    "embeddingLength": 8192,
+    "modelBytes": 30000000000,
+    "slots": 1,
+    "mmprojBytes": 0
+   },
+   "ladder": [
+    4096,
+    8192,
+    12288,
+    16384,
+    24576,
+    32768,
+    40960,
+    49152,
+    57344,
+    65536,
+    73728,
+    81920,
+    90112,
+    98304,
+    106496,
+    114688,
+    122880,
+    131072
+   ]
+  }
+ },
+ "memory": {
+  "budget16-avail": {
+   "budgetMib": 16384,
+   "memAvailableMib": 30000,
+   "reserveMib": 2560,
+   "floorMib": 2048,
+   "cacheRamMib": 1024
+  },
+  "budget16-tight-avail": {
+   "budgetMib": 16384,
+   "memAvailableMib": 14000,
+   "reserveMib": 2560,
+   "floorMib": 2048,
+   "cacheRamMib": 1024
+  },
+  "budget16-unreadable": {
+   "budgetMib": 16384,
+   "memAvailableMib": null,
+   "reserveMib": 2560,
+   "floorMib": 2048,
+   "cacheRamMib": 512
+  },
+  "budget8": {
+   "budgetMib": 8192,
+   "memAvailableMib": 60000,
+   "reserveMib": 2560,
+   "floorMib": 2048,
+   "cacheRamMib": 1024
+  }
+ },
+ "kv": {
+  "default": [
+   "f16",
+   "q8_0",
+   "q5_1",
+   "q5_0"
+  ],
+  "below": [
+   "f16",
+   "q8_0",
+   "q5_1",
+   "q5_0",
+   "q4_0"
+  ]
+ },
+ "runs": [
+  {
+   "name": "dense-gqa-8b / budget16-avail / default / all-pass",
+   "model": "dense-gqa-8b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 16146
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 16146
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 131072,
+      "kv": "q8_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget16-avail / default / seeded-a",
+   "model": "dense-gqa-8b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 16146
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "phase_failed",
+      "message": "A required tuning phase failed."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget16-avail / default / seeded-b",
+   "model": "dense-gqa-8b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 16146
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q5_1",
+      "fill": 117708,
+      "estimateMib": 13458
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "f16",
+      "fill": 51353,
+      "estimateMib": 14533
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 98304,
+      "kv": "q8_0",
+      "fill": 88217,
+      "estimateMib": 13861
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 81920,
+      "kv": "q8_0",
+      "fill": 73472,
+      "estimateMib": 12718
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 73728,
+      "kv": "q8_0",
+      "fill": 66099,
+      "estimateMib": 12147
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 73728,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 73728,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 73728,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 73728,
+      "kv": "q8_0",
+      "fill": 66099,
+      "estimateMib": 12147
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 65536,
+      "kv": "q8_0",
+      "fill": 58726,
+      "estimateMib": 11576
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 57344,
+      "kv": "q8_0",
+      "fill": 51353,
+      "estimateMib": 11005
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "verify_failed",
+      "message": "The finished profile could not fill and recall its context."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget16-avail / default / seeded-c",
+   "model": "dense-gqa-8b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 16146
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "f16",
+      "fill": 51353,
+      "estimateMib": 14533
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "f16",
+      "fill": 21862,
+      "estimateMib": 10232
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 40960,
+      "kv": "f16",
+      "fill": 36608,
+      "estimateMib": 12382
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 49152,
+      "kv": "f16",
+      "fill": 43980,
+      "estimateMib": 13458
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 49152,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 49152,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 49152,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 49152,
+      "kv": "f16",
+      "fill": 43980,
+      "estimateMib": 13458
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 40960,
+      "kv": "f16",
+      "fill": 36608,
+      "estimateMib": 12382
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 11307
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 32768,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget16-tight-avail / default / all-pass",
+   "model": "dense-gqa-8b",
+   "memory": "budget16-tight-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 49152,
+      "kv": "q5_0",
+      "fill": 43980,
+      "estimateMib": 9224
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 49152,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 49152,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 49152,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 49152,
+      "kv": "q5_0",
+      "fill": 43980,
+      "estimateMib": 9224
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 49152,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 49152,
+      "kv": "q5_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget16-tight-avail / default / seeded-a",
+   "model": "dense-gqa-8b",
+   "memory": "budget16-tight-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 49152,
+      "kv": "q5_0",
+      "fill": 43980,
+      "estimateMib": 9224
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 49152,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 49152,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 49152,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 49152,
+      "kv": "q5_0",
+      "fill": 43980,
+      "estimateMib": 9224
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 40960,
+      "kv": "q5_0",
+      "fill": 36608,
+      "estimateMib": 8854
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 40960,
+      "kv": "q5_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 40960,
+      "kv": "q5_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget16-tight-avail / default / seeded-b",
+   "model": "dense-gqa-8b",
+   "memory": "budget16-tight-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 49152,
+      "kv": "q5_0",
+      "fill": 43980,
+      "estimateMib": 9224
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 40960,
+      "kv": "q5_1",
+      "fill": 36608,
+      "estimateMib": 9022
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 16384,
+      "kv": "f16",
+      "fill": 14489,
+      "estimateMib": 9157
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 16384,
+      "kv": "q8_0",
+      "fill": 14489,
+      "estimateMib": 8149
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "q8_0",
+      "fill": 29235,
+      "estimateMib": 9291
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 32768,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 32768,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 32768,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 32768,
+      "kv": "q8_0",
+      "fill": 29235,
+      "estimateMib": 9291
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 32768,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 32768,
+      "kv": "q8_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget16-tight-avail / default / seeded-c",
+   "model": "dense-gqa-8b",
+   "memory": "budget16-tight-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 49152,
+      "kv": "q5_0",
+      "fill": 43980,
+      "estimateMib": 9224
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 49152,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 49152,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 49152,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 49152,
+      "kv": "q5_0",
+      "fill": 43980,
+      "estimateMib": 9224
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 40960,
+      "kv": "q5_0",
+      "fill": 36608,
+      "estimateMib": 8854
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 40960,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 40960,
+      "kv": "q5_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget8 / below / all-pass",
+   "model": "dense-gqa-8b",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "q5_0",
+      "fill": 21862,
+      "estimateMib": 8115
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 24576,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 24576,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 24576,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 24576,
+      "kv": "q5_0",
+      "fill": 21862,
+      "estimateMib": 8115
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 24576,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 24576,
+      "kv": "q5_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget8 / below / seeded-a",
+   "model": "dense-gqa-8b",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "q5_0",
+      "fill": 21862,
+      "estimateMib": 8115
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 24576,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 24576,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 24576,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 24576,
+      "kv": "q5_0",
+      "fill": 21862,
+      "estimateMib": 8115
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 16384,
+      "kv": "q5_0",
+      "fill": 14489,
+      "estimateMib": 7746
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 16384,
+      "kv": "q5_0"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "serving_failed",
+      "message": "The finished profile cannot serve a realistic chat request."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget8 / below / seeded-b",
+   "model": "dense-gqa-8b",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "q5_0",
+      "fill": 21862,
+      "estimateMib": 8115
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 24576,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 24576,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 24576,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 24576,
+      "kv": "q5_0",
+      "fill": 21862,
+      "estimateMib": 8115
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 16384,
+      "kv": "q5_0",
+      "fill": 14489,
+      "estimateMib": 7746
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 12288,
+      "kv": "q5_0",
+      "fill": 10803,
+      "estimateMib": 7561
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "verify_failed",
+      "message": "The finished profile could not fill and recall its context."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-8b / budget8 / below / seeded-c",
+   "model": "dense-gqa-8b",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "q5_0",
+      "fill": 21862,
+      "estimateMib": 8115
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "q8_0",
+      "fill": 10803,
+      "estimateMib": 7863
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 8082
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 8192,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 8192,
+      "kv": "f16"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "phase_failed",
+      "message": "A required tuning phase failed."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-14b-32k / budget16-avail / default / all-pass",
+   "model": "dense-gqa-14b-32k",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "q8_0",
+      "fill": 29235,
+      "estimateMib": 13968
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 32768,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 32768,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 32768,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 32768,
+      "kv": "q8_0",
+      "fill": 29235,
+      "estimateMib": 13968
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 32768,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 32768,
+      "kv": "q8_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-14b-32k / budget16-avail / default / seeded-a",
+   "model": "dense-gqa-14b-32k",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "q8_0",
+      "fill": 29235,
+      "estimateMib": 13968
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "f16",
+      "fill": 10803,
+      "estimateMib": 13128
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "q8_0",
+      "fill": 10803,
+      "estimateMib": 12183
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 12456
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 4096,
+      "kv": "f16",
+      "fill": 3430,
+      "estimateMib": 11784
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-14b-32k / budget16-avail / default / seeded-b",
+   "model": "dense-gqa-14b-32k",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "q8_0",
+      "fill": 29235,
+      "estimateMib": 13968
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "f16",
+      "fill": 10803,
+      "estimateMib": 13128
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 12456
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 4096,
+      "kv": "f16",
+      "fill": 3430,
+      "estimateMib": 11784
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-gqa-14b-32k / budget16-avail / default / seeded-c",
+   "model": "dense-gqa-14b-32k",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "q8_0",
+      "fill": 29235,
+      "estimateMib": 13968
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "f16",
+      "fill": 21862,
+      "estimateMib": 15144
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "f16",
+      "fill": 10803,
+      "estimateMib": 13128
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-pattern-12b-vision / budget16-avail / default / all-pass",
+   "model": "swa-pattern-12b-vision",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 16257
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 16257
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 131072,
+      "kv": "q8_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-pattern-12b-vision / budget16-avail / default / seeded-a",
+   "model": "swa-pattern-12b-vision",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 16257
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 58726,
+      "estimateMib": 16145
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 58726,
+      "estimateMib": 16145
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 57344,
+      "kv": "f16",
+      "fill": 51353,
+      "estimateMib": 15608
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 57344,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 57344,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-pattern-12b-vision / budget16-avail / default / seeded-b",
+   "model": "swa-pattern-12b-vision",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 16257
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q5_1",
+      "fill": 117708,
+      "estimateMib": 14860
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 131072,
+      "kv": "q5_1"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 131072,
+      "kv": "q5_1"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 131072,
+      "kv": "q5_1"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 131072,
+      "kv": "q5_1",
+      "fill": 117708,
+      "estimateMib": 14860
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 122880,
+      "kv": "q5_1",
+      "fill": 110336,
+      "estimateMib": 14659
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 114688,
+      "kv": "q5_1",
+      "fill": 102963,
+      "estimateMib": 14457
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "verify_failed",
+      "message": "The finished profile could not fill and recall its context."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-pattern-12b-vision / budget16-avail / default / seeded-c",
+   "model": "swa-pattern-12b-vision",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 16257
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q5_1",
+      "fill": 117708,
+      "estimateMib": 14860
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "f16",
+      "fill": 51353,
+      "estimateMib": 15608
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "q8_0",
+      "fill": 51353,
+      "estimateMib": 13686
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "q5_1",
+      "fill": 51353,
+      "estimateMib": 13046
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "q5_0",
+      "fill": 51353,
+      "estimateMib": 12918
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "f16",
+      "fill": 21862,
+      "estimateMib": 13457
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 40960,
+      "kv": "f16",
+      "fill": 36608,
+      "estimateMib": 14533
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 24576,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 24576,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 24576,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 24576,
+      "kv": "f16",
+      "fill": 21862,
+      "estimateMib": 13457
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 24576,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 24576,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-pattern-12b-vision / budget8 / below / all-pass",
+   "model": "swa-pattern-12b-vision",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "fail",
+      "code": "does_not_fit",
+      "message": "This model does not fit the inference memory budget even at the smallest context size."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-pattern-12b-vision / budget8 / below / seeded-a",
+   "model": "swa-pattern-12b-vision",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "fail",
+      "code": "does_not_fit",
+      "message": "This model does not fit the inference memory budget even at the smallest context size."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-pattern-12b-vision / budget8 / below / seeded-b",
+   "model": "swa-pattern-12b-vision",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "fail",
+      "code": "does_not_fit",
+      "message": "This model does not fit the inference memory budget even at the smallest context size."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-pattern-12b-vision / budget8 / below / seeded-c",
+   "model": "swa-pattern-12b-vision",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "fail",
+      "code": "does_not_fit",
+      "message": "This model does not fit the inference memory budget even at the smallest context size."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-no-pattern-9b / budget16-unreadable / default / all-pass",
+   "model": "swa-no-pattern-9b",
+   "memory": "budget16-unreadable",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 9042
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 8192,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 8192,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 8192,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 9042
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 8192,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 8192,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-no-pattern-9b / budget16-unreadable / default / seeded-a",
+   "model": "swa-no-pattern-9b",
+   "memory": "budget16-unreadable",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 9042
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-no-pattern-9b / budget16-unreadable / default / seeded-b",
+   "model": "swa-no-pattern-9b",
+   "memory": "budget16-unreadable",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 9042
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "q8_0",
+      "fill": 7116,
+      "estimateMib": 8270
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 8192,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 8192,
+      "kv": "q8_0"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "phase_failed",
+      "message": "A required tuning phase failed."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-no-pattern-9b / budget16-unreadable / default / seeded-c",
+   "model": "swa-no-pattern-9b",
+   "memory": "budget16-unreadable",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 9042
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "q8_0",
+      "fill": 7116,
+      "estimateMib": 8270
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 4096,
+      "kv": "f16",
+      "fill": 3430,
+      "estimateMib": 8807
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-per-layer-heads / budget16-avail / default / all-pass",
+   "model": "swa-per-layer-heads",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 58726,
+      "estimateMib": 3446
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 58726,
+      "estimateMib": 3446
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 65536,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-per-layer-heads / budget16-avail / default / seeded-a",
+   "model": "swa-per-layer-heads",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 58726,
+      "estimateMib": 3446
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 58726,
+      "estimateMib": 3446
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 57344,
+      "kv": "f16",
+      "fill": 51353,
+      "estimateMib": 3429
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 57344,
+      "kv": "f16"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "serving_failed",
+      "message": "The finished profile cannot serve a realistic chat request."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-per-layer-heads / budget16-avail / default / seeded-b",
+   "model": "swa-per-layer-heads",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 58726,
+      "estimateMib": 3446
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-per-layer-heads / budget16-avail / default / seeded-c",
+   "model": "swa-per-layer-heads",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 58726,
+      "estimateMib": 3446
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "q8_0",
+      "fill": 58726,
+      "estimateMib": 3378
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 65536,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 65536,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 65536,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 65536,
+      "kv": "q8_0",
+      "fill": 58726,
+      "estimateMib": 3378
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 57344,
+      "kv": "q8_0",
+      "fill": 51353,
+      "estimateMib": 3369
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 49152,
+      "kv": "q8_0",
+      "fill": 43980,
+      "estimateMib": 3360
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "verify_failed",
+      "message": "The finished profile could not fill and recall its context."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-shared-kv-4b / budget16-avail / default / all-pass",
+   "model": "swa-shared-kv-4b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 6791
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 6791
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 32768,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-shared-kv-4b / budget16-avail / default / seeded-a",
+   "model": "swa-shared-kv-4b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 6791
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "f16",
+      "fill": 10803,
+      "estimateMib": 6623
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "q8_0",
+      "fill": 10803,
+      "estimateMib": 6568
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 6590
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "q8_0",
+      "fill": 7116,
+      "estimateMib": 6550
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 8192,
+      "kv": "q8_0"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 8192,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 8192,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 8192,
+      "kv": "q8_0",
+      "fill": 7116,
+      "estimateMib": 6550
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 8192,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 8192,
+      "kv": "q8_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-shared-kv-4b / budget16-avail / default / seeded-b",
+   "model": "swa-shared-kv-4b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 6791
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "f16",
+      "fill": 10803,
+      "estimateMib": 6623
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "f16",
+      "fill": 21862,
+      "estimateMib": 6724
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 16384,
+      "kv": "f16",
+      "fill": 14489,
+      "estimateMib": 6657
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 16384,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 16384,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 16384,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 16384,
+      "kv": "f16",
+      "fill": 14489,
+      "estimateMib": 6657
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 16384,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 16384,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-shared-kv-4b / budget16-avail / default / seeded-c",
+   "model": "swa-shared-kv-4b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 6791
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 6791
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 24576,
+      "kv": "f16",
+      "fill": 21862,
+      "estimateMib": 6724
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 24576,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 24576,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid-ssm-9b / budget16-avail / default / all-pass",
+   "model": "hybrid-ssm-9b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 262144,
+      "kv": "q8_0",
+      "fill": 235673,
+      "estimateMib": 12378
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 262144,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 262144,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 262144,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 262144,
+      "kv": "q8_0",
+      "fill": 235673,
+      "estimateMib": 12378
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 262144,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 262144,
+      "kv": "q8_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid-ssm-9b / budget16-avail / default / seeded-a",
+   "model": "hybrid-ssm-9b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 262144,
+      "kv": "q8_0",
+      "fill": 235673,
+      "estimateMib": 12378
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "f16",
+      "fill": 117708,
+      "estimateMib": 12109
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 188416,
+      "kv": "f16",
+      "fill": 169318,
+      "estimateMib": 13991
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 188416,
+      "kv": "q8_0",
+      "fill": 169318,
+      "estimateMib": 11093
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 229376,
+      "kv": "q8_0",
+      "fill": 206182,
+      "estimateMib": 11807
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 245760,
+      "kv": "q8_0",
+      "fill": 220928,
+      "estimateMib": 12092
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 237568,
+      "kv": "q8_0",
+      "fill": 213555,
+      "estimateMib": 11949
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 237568,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 237568,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 237568,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 237568,
+      "kv": "q8_0",
+      "fill": 213555,
+      "estimateMib": 11949
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 229376,
+      "kv": "q8_0",
+      "fill": 206182,
+      "estimateMib": 11807
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 221184,
+      "kv": "q8_0",
+      "fill": 198809,
+      "estimateMib": 11664
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 221184,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 221184,
+      "kv": "q8_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid-ssm-9b / budget16-avail / default / seeded-b",
+   "model": "hybrid-ssm-9b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 262144,
+      "kv": "q8_0",
+      "fill": 235673,
+      "estimateMib": 12378
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "f16",
+      "fill": 117708,
+      "estimateMib": 12109
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 188416,
+      "kv": "f16",
+      "fill": 169318,
+      "estimateMib": 13991
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 229376,
+      "kv": "f16",
+      "fill": 206182,
+      "estimateMib": 15335
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 245760,
+      "kv": "f16",
+      "fill": 220928,
+      "estimateMib": 15872
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 253952,
+      "kv": "f16",
+      "fill": 228300,
+      "estimateMib": 16141
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 253952,
+      "kv": "q8_0",
+      "fill": 228300,
+      "estimateMib": 12235
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 253952,
+      "kv": "q8_0"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 253952,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 253952,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 253952,
+      "kv": "q8_0",
+      "fill": 228300,
+      "estimateMib": 12235
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 253952,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 253952,
+      "kv": "q8_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid-ssm-9b / budget16-avail / default / seeded-c",
+   "model": "hybrid-ssm-9b",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 262144,
+      "kv": "q8_0",
+      "fill": 235673,
+      "estimateMib": 12378
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 262144,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 262144,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 262144,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 262144,
+      "kv": "q8_0",
+      "fill": 235673,
+      "estimateMib": 12378
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 262144,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 262144,
+      "kv": "q8_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid-ssm-9b / budget8 / below / all-pass",
+   "model": "hybrid-ssm-9b",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 40960,
+      "kv": "q4_0",
+      "fill": 36608,
+      "estimateMib": 8186
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 40960,
+      "kv": "q4_0",
+      "fill": 36608,
+      "estimateMib": 8186
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 40960,
+      "kv": "q4_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid-ssm-9b / budget8 / below / seeded-a",
+   "model": "hybrid-ssm-9b",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 40960,
+      "kv": "q4_0",
+      "fill": 36608,
+      "estimateMib": 8186
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 40960,
+      "kv": "q4_0",
+      "fill": 36608,
+      "estimateMib": 8186
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "serving_failed",
+      "message": "The finished profile cannot serve a realistic chat request."
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid-ssm-9b / budget8 / below / seeded-b",
+   "model": "hybrid-ssm-9b",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 40960,
+      "kv": "q4_0",
+      "fill": 36608,
+      "estimateMib": 8186
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "phase_failed",
+      "message": "A required tuning phase failed."
+     }
+    }
+   ]
+  },
+  {
+   "name": "hybrid-ssm-9b / budget8 / below / seeded-c",
+   "model": "hybrid-ssm-9b",
+   "memory": "budget8",
+   "kv": "below",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 40960,
+      "kv": "q4_0",
+      "fill": 36608,
+      "estimateMib": 8186
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 40960,
+      "kv": "q4_0"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "phase_failed",
+      "message": "A required tuning phase failed."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-mtp-head / budget16-unreadable / default / all-pass",
+   "model": "dense-mtp-head",
+   "memory": "budget16-unreadable",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7588
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7588
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 32768,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-mtp-head / budget16-unreadable / default / seeded-a",
+   "model": "dense-mtp-head",
+   "memory": "budget16-unreadable",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7588
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "f16",
+      "fill": 10803,
+      "estimateMib": 5152
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 4665
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-mtp-head / budget16-unreadable / default / seeded-b",
+   "model": "dense-mtp-head",
+   "memory": "budget16-unreadable",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7588
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7588
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 32768,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 32768,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-mtp-head / budget16-unreadable / default / seeded-c",
+   "model": "dense-mtp-head",
+   "memory": "budget16-unreadable",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7588
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "f16",
+      "fill": 10803,
+      "estimateMib": 5152
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 4665
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 8192,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 8192,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 8192,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 8192,
+      "kv": "f16",
+      "fill": 7116,
+      "estimateMib": 4665
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 8192,
+      "kv": "f16"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "serving_failed",
+      "message": "The finished profile cannot serve a realistic chat request."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-two-slots / budget16-avail / default / all-pass",
+   "model": "dense-two-slots",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7228
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7228
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 65536,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-two-slots / budget16-avail / default / seeded-a",
+   "model": "dense-two-slots",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7228
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7228
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 65536,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 65536,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-two-slots / budget16-avail / default / seeded-b",
+   "model": "dense-two-slots",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7228
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "q8_0",
+      "fill": 29235,
+      "estimateMib": 5716
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 65536,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 65536,
+      "kv": "q8_0"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "phase_failed",
+      "message": "A required tuning phase failed."
+     }
+    }
+   ]
+  },
+  {
+   "name": "dense-two-slots / budget16-avail / default / seeded-c",
+   "model": "dense-two-slots",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 29235,
+      "estimateMib": 7228
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
+     }
+    }
+   ]
+  },
+  {
+   "name": "unknown-native / budget16-avail / default / all-pass",
+   "model": "unknown-native",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "f16",
+      "fill": 117708,
+      "estimateMib": 5757
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 131072,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 131072,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 131072,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 131072,
+      "kv": "f16",
+      "fill": 117708,
+      "estimateMib": 5757
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 131072,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 131072,
+      "kv": "f16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "unknown-native / budget16-avail / default / seeded-a",
+   "model": "unknown-native",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "f16",
+      "fill": 117708,
+      "estimateMib": 5757
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "f16",
+      "fill": 51353,
+      "estimateMib": 4094
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "q8_0",
+      "fill": 51353,
+      "estimateMib": 3488
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "q5_1",
+      "fill": 51353,
+      "estimateMib": 3286
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "q5_0",
+      "fill": 51353,
+      "estimateMib": 3245
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "f16",
+      "fill": 21862,
+      "estimateMib": 3355
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
+     }
+    }
+   ]
+  },
+  {
+   "name": "unknown-native / budget16-avail / default / seeded-b",
+   "model": "unknown-native",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "f16",
+      "fill": 117708,
+      "estimateMib": 5757
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 131072,
+      "kv": "f16"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 131072,
+      "kv": "f16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 131072,
+      "kv": "f16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 131072,
+      "kv": "f16",
+      "fill": 117708,
+      "estimateMib": 5757
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 122880,
+      "kv": "f16",
+      "fill": 110336,
+      "estimateMib": 5573
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 114688,
+      "kv": "f16",
+      "fill": 102963,
+      "estimateMib": 5388
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "verify_failed",
+      "message": "The finished profile could not fill and recall its context."
+     }
+    }
+   ]
+  },
+  {
+   "name": "unknown-native / budget16-avail / default / seeded-c",
+   "model": "unknown-native",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "f16",
+      "fill": 117708,
+      "estimateMib": 5757
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 4371
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q5_1",
+      "fill": 117708,
+      "estimateMib": 3909
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q5_0",
+      "fill": 117708,
+      "estimateMib": 3817
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 131072,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 131072,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 131072,
+      "kv": "q5_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 131072,
+      "kv": "q5_0",
+      "fill": 117708,
+      "estimateMib": 3817
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 122880,
+      "kv": "q5_0",
+      "fill": 110336,
+      "estimateMib": 3754
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 114688,
+      "kv": "q5_0",
+      "fill": 102963,
+      "estimateMib": 3690
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 114688,
+      "kv": "q5_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 114688,
+      "kv": "q5_0"
+     }
+    }
+   ]
+  },
+  {
+   "name": "unsizeable-no-heads / budget16-avail / default / all-pass",
+   "model": "unsizeable-no-heads",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "fail",
+      "code": "unsizeable",
+      "message": "Auto-tune cannot size this model's KV cache from its metadata."
+     }
+    }
+   ]
+  },
+  {
+   "name": "short-native-2k / budget16-avail / default / all-pass",
+   "model": "short-native-2k",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_rung",
+      "message": "No supported context size is at or below this model's trained context."
+     }
+    }
+   ]
+  },
+  {
+   "name": "too-big-30gb / budget16-avail / default / all-pass",
+   "model": "too-big-30gb",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "fail",
+      "code": "does_not_fit",
+      "message": "This model does not fit the inference memory budget even at the smallest context size."
+     }
+    }
+   ]
+  }
+ ],
+ "errors": [
+  {
+   "name": "not JSON",
+   "text": "{",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "too large",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"f16\"]}",
+   "pad": 65536,
+   "expect": {
+    "error": "too_large"
+   }
+  },
+  {
+   "name": "ladder not increasing",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[8192,4096],\"kv\":[\"f16\"]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "ladder rung not a number",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[\"4096\"],\"kv\":[\"f16\"]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "ladder rung too small",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[128],\"kv\":[\"f16\"]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "ladder too long",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,4097,4098,4099,4100,4101,4102,4103,4104,4105,4106,4107,4108,4109,4110,4111,4112,4113,4114,4115,4116,4117,4118,4119,4120,4121,4122,4123,4124,4125,4126,4127,4128,4129,4130,4131,4132,4133,4134,4135,4136,4137,4138,4139,4140,4141,4142,4143,4144,4145,4146,4147,4148,4149,4150,4151,4152,4153,4154,4155,4156,4157,4158,4159,4160,4161,4162,4163,4164,4165,4166,4167,4168,4169,4170,4171,4172,4173,4174,4175,4176,4177,4178,4179,4180,4181,4182,4183,4184,4185,4186,4187,4188,4189,4190,4191,4192,4193,4194,4195,4196,4197,4198,4199,4200,4201,4202,4203,4204,4205,4206,4207,4208,4209,4210,4211,4212,4213,4214,4215,4216,4217,4218,4219,4220,4221,4222,4223,4224],\"kv\":[\"f16\"]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "unknown cache type",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"q2_k\"]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "duplicate cache type",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"f16\",\"f16\"]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "negative fact",
+   "text": "{\"facts\":{\"blockCount\":-1},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"f16\"]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "fractional fact",
+   "text": "{\"facts\":{\"blockCount\":1.5},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"f16\"]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "string fact",
+   "text": "{\"facts\":{\"blockCount\":\"32\"},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"f16\"]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "no memory",
+   "text": "{\"facts\":{},\"ladder\":[4096],\"kv\":[\"f16\"]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "result kv not offered",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"f16\"],\"results\":[{\"step\":\"probe\",\"ctx\":4096,\"kv\":\"q8_0\",\"outcome\":\"passed\"}]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "unknown step",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"f16\"],\"results\":[{\"step\":\"guess\",\"outcome\":\"passed\"}]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "unknown outcome",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"f16\"],\"results\":[{\"step\":\"probe\",\"ctx\":4096,\"kv\":\"f16\",\"outcome\":\"maybe\"}]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "unknown phase",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"f16\"],\"results\":[{\"step\":\"phase\",\"id\":\"kv\",\"outcome\":\"passed\"}]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  },
+  {
+   "name": "too many results",
+   "text": "{\"facts\":{\"nCtxTrain\":131072,\"blockCount\":32,\"headCount\":32,\"headCountKv\":8,\"embeddingLength\":4096,\"modelBytes\":4900000000,\"slots\":1,\"mmprojBytes\":0},\"memory\":{\"budgetMib\":16384,\"memAvailableMib\":30000,\"reserveMib\":2560,\"floorMib\":2048,\"cacheRamMib\":1024},\"ladder\":[4096,8192],\"kv\":[\"f16\"],\"results\":[{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"},{\"step\":\"serving\",\"outcome\":\"passed\"}]}",
+   "pad": 0,
+   "expect": {
+    "error": "input"
+   }
+  }
+ ]
+}

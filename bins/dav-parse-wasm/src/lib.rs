@@ -46,6 +46,11 @@
 //!      reply `{"kind":"…","reason":"…"}` (provider-error, noevia#1002).
 //!    - `serving_verdict()`: same input, autotune's serving-check reply; reply
 //!      `{"passed":bool,"kind":"…"|null,"reason":"…"}` (chat-template-caps, noevia#1003).
+//!    - `autotune_plan()`: input auto-tune's planner request as UTF-8 JSON (at most
+//!      `autotune_plan::MAX_INPUT_BYTES`): the model's facts, the memory budget, the context
+//!      ladder, the allowed KV cache types and every result so far; reply the next step, e.g.
+//!      `{"step":"probe","ctx":…,"kv":"…","fill":…,"estimateMib":…}` (autotune-plan,
+//!      noevia#1003). A refused request is status 1 with `{"error":"input"|"too_large"}`.
 //!
 //!    Both secret calls wipe their input buffer (keys, user, value) and the previous reply before
 //!    returning; refusals are `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry
@@ -367,6 +372,17 @@ pub fn run_serving_verdict(input: &[u8]) -> (u32, String) {
     )
 }
 
+/// Auto-tune's next step for a UTF-8 JSON request (noevia#1003).
+pub fn run_autotune_plan(input: &[u8]) -> (u32, String) {
+    if input.len() > autotune_plan::MAX_INPUT_BYTES {
+        return (1, "{\"error\":\"too_large\"}".to_owned());
+    }
+    let Ok(text) = std::str::from_utf8(input) else {
+        return (2, "{\"error\":\"input_not_utf8\"}".to_owned());
+    };
+    autotune_plan::plan_json(text)
+}
+
 /// Run a secret call: wipe the previous reply first and the input (keys, user, value) after.
 fn consume_secret(run: impl FnOnce(&[u8]) -> (u32, Vec<u8>)) -> u32 {
     OUTPUT.with(|out| out.borrow_mut().zeroize());
@@ -507,6 +523,13 @@ pub extern "C" fn provider_error() -> u32 {
 #[no_mangle]
 pub extern "C" fn serving_verdict() -> u32 {
     consume(run_serving_verdict)
+}
+
+/// Plan auto-tune's next step from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn autotune_plan() -> u32 {
+    consume(run_autotune_plan)
 }
 
 /// Address of the last reply.
@@ -741,6 +764,22 @@ mod tests {
         assert_eq!(
             run_serving_verdict(&v),
             (0, r#"{"kind":null,"passed":true,"reason":""}"#.to_owned())
+        );
+    }
+
+    #[test]
+    fn autotune_plan_shapes() {
+        let (s, r) = run_autotune_plan(
+            br#"{"facts":{"nCtxTrain":8192,"blockCount":2,"headCount":2,"embeddingLength":64,"modelBytes":1000},"memory":{"budgetMib":4096},"ladder":[4096,8192],"kv":["f16"]}"#,
+        );
+        assert_eq!(s, 0);
+        assert!(r.starts_with(r#"{"ctx":8192,"#), "{r}");
+        assert_eq!(run_autotune_plan(b"{").0, 1);
+        assert_eq!(run_autotune_plan(&[0xff]).0, 2);
+        let big = vec![b' '; autotune_plan::MAX_INPUT_BYTES + 1];
+        assert_eq!(
+            run_autotune_plan(&big),
+            (1, r#"{"error":"too_large"}"#.to_owned())
         );
     }
 
