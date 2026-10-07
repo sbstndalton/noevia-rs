@@ -1,0 +1,15 @@
+[package]
+name = "model-files"
+version = "0.1.0"
+description = "Bounded Hugging Face tree listing -> model file entries, matching noevia model-manager's model_files.py"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"

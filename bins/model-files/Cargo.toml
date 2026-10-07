@@ -1,0 +1,21 @@
+[package]
+name = "model-files-cli"
+version = "0.1.0"
+description = "Turn a Hugging Face tree listing (JSON on stdin) into model file entries (JSON on stdout)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "model-files"
+path = "src/main.rs"
+
+[dependencies]
+model-files = { path = "../../crates/model-files" }
+
+[dev-dependencies]
+serde_json = "1"
