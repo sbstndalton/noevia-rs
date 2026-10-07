@@ -29,6 +29,15 @@
 //!    - `secret_seal()`: input `key(32) nonce(12) user plaintext`, `user` as above; reply the
 //!      ASCII envelope `enc:v1:…` (no user) or `enc:v2:…`. The nonce comes from the host's CSPRNG.
 //!
+//!    - `mcp_rpc_body()`: input `sse(0|1) id text`, where `id` is `0` (matches nothing), `1` null,
+//!      `2` false, `3` true, `4 f64le` a number or `5 u32le(n) units` a string, and `text` the body
+//!      as UTF-16LE units (at most `mcp_frame::MAX_BODY_UNITS`); on status 0 the reply is NOT
+//!      JSON but a tag (0 reply, 1 id mismatch, 2 no message, 3 other traffic, 4 invalid JSON)
+//!      followed, for 0 and 1, by the message as UTF-8 JSON text (mcp-frame, noevia#980).
+//!    - `mcp_schema_refs()`: input the schema (mcp-frame's wire form) as UTF-16LE units (at most
+//!      `mcp_frame::schema::MAX_SCHEMA_UNITS`); on status 0 the reply is a tag (0 the resolved
+//!      tree, 1 `{"code":…,"ref":…}`, what the JS throws) followed by UTF-8 JSON.
+//!
 //!    Both secret calls wipe their input buffer (keys, user, value) and the previous reply before
 //!    returning; refusals are `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry
 //!    input bytes. The host still wipes the whole linear memory and drops the instance after each
@@ -225,6 +234,87 @@ pub fn run_secret_seal(input: &[u8]) -> (u32, Vec<u8>) {
     }
 }
 
+fn units(b: &[u8]) -> Option<Vec<u16>> {
+    let (pairs, rest) = b.as_chunks::<2>();
+    rest.is_empty()
+        .then(|| pairs.iter().map(|&p| u16::from_le_bytes(p)).collect())
+}
+
+const SHAPE: &str = "{\"error\":\"input_shape\"}";
+const TOO_LARGE: &str = "{\"error\":\"too_large\"}";
+
+/// `mcp-frame` parseRpcBody; the raw reply described in the crate docs.
+pub fn run_mcp_rpc(input: &[u8]) -> (u32, Vec<u8>) {
+    let shape = || (2, SHAPE.as_bytes().to_vec());
+    let (Some(&sse), Some(&kind)) = (input.first(), input.get(1)) else {
+        return shape();
+    };
+    let (expected, rest) = match kind {
+        0 => (mcp_frame::Expected::Never, input.get(2..)),
+        1 => (mcp_frame::Expected::Null, input.get(2..)),
+        2 => (mcp_frame::Expected::Bool(false), input.get(2..)),
+        3 => (mcp_frame::Expected::Bool(true), input.get(2..)),
+        4 => match input.get(2..10).and_then(|b| <[u8; 8]>::try_from(b).ok()) {
+            Some(b) => (
+                mcp_frame::Expected::Number(f64::from_le_bytes(b)),
+                input.get(10..),
+            ),
+            None => return shape(),
+        },
+        5 => {
+            let Some(n) = input.get(2..6).and_then(|b| <[u8; 4]>::try_from(b).ok()) else {
+                return shape();
+            };
+            let end = (u32::from_le_bytes(n) as usize)
+                .saturating_mul(2)
+                .saturating_add(6);
+            match input.get(6..end).and_then(units) {
+                Some(u) => (mcp_frame::Expected::String(u), input.get(end..)),
+                None => return shape(),
+            }
+        }
+        _ => return shape(),
+    };
+    if sse > 1 {
+        return shape();
+    }
+    let Some(rest) = rest else { return shape() };
+    if rest.len() / 2 > mcp_frame::MAX_BODY_UNITS {
+        return (1, TOO_LARGE.as_bytes().to_vec());
+    }
+    let Some(text) = units(rest) else {
+        return shape();
+    };
+    match mcp_frame::parse_rpc_body(sse == 1, &text, &expected) {
+        Ok(o) => (0, mcp_frame::rpc_reply(&text, &o)),
+        Err(mcp_frame::TooLarge) => (1, TOO_LARGE.as_bytes().to_vec()),
+    }
+}
+
+/// `mcp-frame` resolveSchemaRefs; the raw reply described in the crate docs.
+pub fn run_mcp_schema(input: &[u8]) -> (u32, Vec<u8>) {
+    if input.len() / 2 > mcp_frame::schema::MAX_SCHEMA_UNITS {
+        return (1, TOO_LARGE.as_bytes().to_vec());
+    }
+    let Some(text) = units(input) else {
+        return (2, SHAPE.as_bytes().to_vec());
+    };
+    match mcp_frame::schema::resolve_schema_refs(&text) {
+        Ok(Ok(tree)) => {
+            let mut r = vec![0];
+            r.extend_from_slice(&tree);
+            (0, r)
+        }
+        Ok(Err(e)) => {
+            let mut r = vec![1];
+            r.extend_from_slice(&e.json());
+            (0, r)
+        }
+        Err(mcp_frame::schema::InputError::TooLarge) => (1, TOO_LARGE.as_bytes().to_vec()),
+        Err(mcp_frame::schema::InputError::NotJson) => (2, SHAPE.as_bytes().to_vec()),
+    }
+}
+
 /// Run a secret call: wipe the previous reply first and the input (keys, user, value) after.
 fn consume_secret(run: impl FnOnce(&[u8]) -> (u32, Vec<u8>)) -> u32 {
     OUTPUT.with(|out| out.borrow_mut().zeroize());
@@ -330,6 +420,20 @@ pub extern "C" fn secret_open() -> u32 {
 #[no_mangle]
 pub extern "C" fn secret_seal() -> u32 {
     consume_secret(run_secret_seal)
+}
+
+/// Parse an MCP response body from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn mcp_rpc_body() -> u32 {
+    consume_bytes(run_mcp_rpc)
+}
+
+/// Inline a tool schema's local refs from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn mcp_schema_refs() -> u32 {
+    consume_bytes(run_mcp_schema)
 }
 
 /// Address of the last reply.
@@ -511,6 +615,35 @@ mod tests {
         let reply = OUTPUT.with(|o| o.borrow().clone());
         assert!(reply.starts_with(b"enc:v1:"));
         assert!(!reply.windows(4).any(|w| w == [0x5a; 4]));
+    }
+
+    fn u16le(s: &str) -> Vec<u8> {
+        s.encode_utf16().flat_map(u16::to_le_bytes).collect()
+    }
+
+    #[test]
+    fn mcp_shapes() {
+        let mut v = vec![1, 4];
+        v.extend_from_slice(&1f64.to_le_bytes());
+        v.extend_from_slice(&u16le("data: {\"id\":1,\"result\":{}}\n"));
+        assert_eq!(run_mcp_rpc(&v), (0, b"\0{\"id\":1,\"result\":{}}".to_vec()));
+        let mut v = vec![0, 5, 1, 0, 0, 0];
+        v.extend_from_slice(&u16le("a{\"id\":\"b\"}"));
+        assert_eq!(run_mcp_rpc(&v), (0, b"\x01{\"id\":\"b\"}".to_vec()));
+        assert_eq!(run_mcp_rpc(&[0, 0, 0x7b]).0, 2);
+        assert_eq!(run_mcp_rpc(&[2, 0]).0, 2);
+        assert_eq!(run_mcp_rpc(&[0, 9]).0, 2);
+        assert_eq!(run_mcp_rpc(&[0, 0]), (0, vec![4]));
+        assert_eq!(
+            run_mcp_schema(&u16le("{\"a\":1}")),
+            (0, b"\0{\"=a\":1}".to_vec())
+        );
+        assert_eq!(
+            run_mcp_schema(&u16le("{\"$ref\":\"x\"}")),
+            (0, b"\x01{\"code\":\"non_local\",\"ref\":\"x\"}".to_vec())
+        );
+        assert_eq!(run_mcp_schema(&u16le("{")).0, 2);
+        assert_eq!(run_mcp_schema(&[0x7b]).0, 2);
     }
 
     #[test]

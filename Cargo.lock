@@ -151,6 +151,7 @@ name = "dav-parse-wasm"
 version = "0.1.0"
 dependencies = [
  "dav-parse",
+ "mcp-frame",
  "s3-list-parse",
  "secret-envelope",
  "storage-path",
@@ -555,6 +556,14 @@ name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
+
+[[package]]
+name = "mcp-frame"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+]
 
 [[package]]
 name = "memchr"
