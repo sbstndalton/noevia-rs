@@ -2,11 +2,11 @@
 //! serving check autotune signs a profile off with (noevia#1003).
 //!
 //! llama.cpp (router mode) builds a tool-call parser from the template whenever a request carries
-//! `tools`. For a template with no tool support that raises on unexpected input (Gemma 2/3:
+//! `tools`. For a template with no tool support that raises on unexpected input (e.g.
 //! `raise_exception('Conversation roles must alternate…')`), that generation renders synthetic
 //! conversations, the template raises, and every request with `tools` fails with HTTP 400.
 //! [`analyze`] reads the template text (from llama.cpp's `/props` `chat_template`) without
-//! running it and reports what it references; [`Caps::send_tools`] is the decision noevia-core
+//! running it (model and file names are never consulted) and reports what it references; [`Caps::send_tools`] is the decision noevia-core
 //! makes from it: send `tools` when the template handles them natively, or when it never raises
 //! (llama.cpp's generic tool handling then works); otherwise do not.
 //!
