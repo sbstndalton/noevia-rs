@@ -126,6 +126,18 @@ one slice at a time.
   noevia-core (`node tools/gen-load-verdict-fixtures.cjs`, synthetic engine messages, seeded
   combinations, expectations from an independent JS reference), copied byte-for-byte to
   `crates/load-verdict/tests/fixtures/load-verdict.v1.json`.
+- `crates/tune-contention` (sbstndalton/noevia#1062): while auto-tune runs, may it go on when
+  another client of the llama.cpp router has a model live? Foreign rows (not the tuned model,
+  not `unloaded`/`failed`) that are loading, in an unrecognised state or resident with requests
+  in flight (`llamacpp:requests_processing`) make it wait; when every foreign model is resident
+  and idle and the foreign set has looked the same for the quiet window (twice that when a
+  request count could not be read), it may send the router's own unload; past the wait limit it
+  gives up (the tune stops as interrupted, resumable). Stateless: the caller hands back the
+  previous reply's fingerprint and since. Never asks to stop a busy or loading model. In
+  `dav-parse.wasm` as `tune_contention`. Table from noevia-core
+  (`node tools/gen-tune-contention-fixtures.cjs`, synthetic model ids, seeded combinations,
+  expectations from an independent JS reference), copied byte-for-byte to
+  `crates/tune-contention/tests/fixtures/tune-contention.v1.json`.
 - `model-files backups` (`crates/model-files/src/backups.rs`, sbstndalton/noevia#1021): which
   recovery copies of models.ini a model-manager write makes and which old ones it removes. The
   rotating `<file>.bak-*` copies keep ini.py's rule (newest 10 by name); the

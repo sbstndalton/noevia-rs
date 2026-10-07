@@ -1,7 +1,7 @@
 [package]
 name = "dav-parse-wasm"
 version = "0.1.0"
-description = "WebAssembly module exposing dav-parse, s3-list-parse, storage-path, upload-sniff, secret-envelope, mcp-frame, chat-template-caps, provider-error, autotune-plan, preset-reload and load-verdict to noevia-core through a minimal, unsafe-free ABI"
+description = "WebAssembly module exposing dav-parse, s3-list-parse, storage-path, upload-sniff, secret-envelope, mcp-frame, chat-template-caps, provider-error, autotune-plan, preset-reload, load-verdict and tune-contention to noevia-core through a minimal, unsafe-free ABI"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -33,3 +33,4 @@ provider-error = { path = "../../crates/provider-error" }
 autotune-plan = { path = "../../crates/autotune-plan" }
 preset-reload = { path = "../../crates/preset-reload" }
 load-verdict = { path = "../../crates/load-verdict" }
+tune-contention = { path = "../../crates/tune-contention" }

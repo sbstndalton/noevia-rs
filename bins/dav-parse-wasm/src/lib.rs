@@ -64,6 +64,13 @@
 //!      "rule"|"advisor"|"fallback","rule":"…","ruleId":…,"ask":bool,"advice":…,
 //!      "adviceUsed":bool,"reason":"…"}` (load-verdict, noevia#1004). A refused request is
 //!      status 1 with `{"error":"input"|"too_large"}`.
+//!    - `tune_contention()`: input `{"tuning":"…","rows":[{"id":"…","status":"…","busy":…}],
+//!      "prev":{"fingerprint":"…","since":…}|null,"startedAt":…,"now":…,"maxWaitMs":…,
+//!      "quietMs":…}` as UTF-8 JSON (at most `tune_contention::MAX_INPUT_BYTES`): the router's rows
+//!      while auto-tune runs and the previous reply's fingerprint; reply `{"action":"proceed"|
+//!      "wait"|"unload"|"give_up","reason":"…","foreign":[…],"unload":[…],"fingerprint":"…",
+//!      "since":…,"waitedMs":…}` (tune-contention, noevia#1062). A refused request is status 1
+//!      with `{"error":"input"|"too_large"}`.
 //!
 //!    Both secret calls wipe their input buffer (keys, user, value) and the previous reply before
 //!    returning; refusals are `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry
@@ -418,6 +425,17 @@ pub fn run_load_verdict(input: &[u8]) -> (u32, String) {
     load_verdict::verdict_json(text)
 }
 
+/// `tune-contention`: may auto-tune go on while another client uses the router; see the crate docs.
+pub fn run_tune_contention(input: &[u8]) -> (u32, String) {
+    if input.len() > tune_contention::MAX_INPUT_BYTES {
+        return (1, "{\"error\":\"too_large\"}".to_owned());
+    }
+    let Ok(text) = std::str::from_utf8(input) else {
+        return (2, "{\"error\":\"input_not_utf8\"}".to_owned());
+    };
+    tune_contention::decide_json(text)
+}
+
 /// Run a secret call: wipe the previous reply first and the input (keys, user, value) after.
 fn consume_secret(run: impl FnOnce(&[u8]) -> (u32, Vec<u8>)) -> u32 {
     OUTPUT.with(|out| out.borrow_mut().zeroize());
@@ -579,6 +597,13 @@ pub extern "C" fn preset_reload() -> u32 {
 #[no_mangle]
 pub extern "C" fn load_verdict() -> u32 {
     consume(run_load_verdict)
+}
+
+/// Decide auto-tune's next move against another router client from the input buffer.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn tune_contention() -> u32 {
+    consume(run_tune_contention)
 }
 
 /// Address of the last reply.
@@ -828,6 +853,25 @@ mod tests {
         let big = vec![b' '; autotune_plan::MAX_INPUT_BYTES + 1];
         assert_eq!(
             run_autotune_plan(&big),
+            (1, r#"{"error":"too_large"}"#.to_owned())
+        );
+    }
+
+    #[test]
+    fn tune_contention_shapes() {
+        let (s, r) = run_tune_contention(
+            br#"{"tuning":"t","rows":[{"id":"q","status":"loaded","busy":2}],"prev":null,"startedAt":0,"now":5,"maxWaitMs":10,"quietMs":0}"#,
+        );
+        assert_eq!(s, 0);
+        assert_eq!(
+            r,
+            r#"{"action":"wait","fingerprint":"[[\"q\",\"busy\"]]","foreign":["q"],"reason":"busy","since":5,"unload":[],"waitedMs":5}"#
+        );
+        assert_eq!(run_tune_contention(b"{").0, 1);
+        assert_eq!(run_tune_contention(&[0xff]).0, 2);
+        let big = vec![b' '; tune_contention::MAX_INPUT_BYTES + 1];
+        assert_eq!(
+            run_tune_contention(&big),
             (1, r#"{"error":"too_large"}"#.to_owned())
         );
     }
