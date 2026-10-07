@@ -669,10 +669,10 @@
     {
      "expect": {
       "step": "probe",
-      "ctx": 57344,
-      "kv": "q8_0",
-      "fill": 51353,
-      "estimateMib": 11005
+      "ctx": 65536,
+      "kv": "bf16",
+      "fill": 58726,
+      "estimateMib": 15608
      },
      "outcome": "recall_failed"
     },
@@ -680,19 +680,29 @@
      "expect": {
       "step": "probe",
       "ctx": 24576,
-      "kv": "q8_0",
+      "kv": "bf16",
       "fill": 21862,
-      "estimateMib": 8720
+      "estimateMib": 10232
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "probe",
+      "ctx": 49152,
+      "kv": "bf16",
+      "fill": 43980,
+      "estimateMib": 13458
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
       "ctx": 40960,
-      "kv": "q8_0",
+      "kv": "bf16",
       "fill": 36608,
-      "estimateMib": 9862
+      "estimateMib": 12382
      },
      "outcome": "recall_failed"
     },
@@ -700,18 +710,18 @@
      "expect": {
       "step": "probe",
       "ctx": 32768,
-      "kv": "q8_0",
+      "kv": "bf16",
       "fill": 29235,
-      "estimateMib": 9291
+      "estimateMib": 11307
      },
-     "outcome": "recall_failed"
+     "outcome": "passed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 24576,
-      "kv": "q8_0"
+      "ctx": 32768,
+      "kv": "bf16"
      },
      "outcome": "passed"
     },
@@ -719,8 +729,8 @@
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 24576,
-      "kv": "q8_0"
+      "ctx": 32768,
+      "kv": "bf16"
      },
      "outcome": "passed"
     },
@@ -728,38 +738,38 @@
      "expect": {
       "step": "phase",
       "id": "batch",
-      "ctx": 24576,
-      "kv": "q8_0"
+      "ctx": 32768,
+      "kv": "bf16"
      },
-     "outcome": "passed"
+     "outcome": "skipped"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 24576,
-      "kv": "q8_0",
-      "fill": 21862,
-      "estimateMib": 8720
-     },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "verify",
-      "ctx": 16384,
-      "kv": "q8_0",
-      "fill": 14489,
-      "estimateMib": 8149
+      "ctx": 32768,
+      "kv": "bf16",
+      "fill": 29235,
+      "estimateMib": 11307
      },
      "outcome": "over_time"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 12288,
-      "kv": "q8_0",
-      "fill": 10803,
-      "estimateMib": 7863
+      "ctx": 24576,
+      "kv": "bf16",
+      "fill": 21862,
+      "estimateMib": 10232
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 16384,
+      "kv": "bf16",
+      "fill": 14489,
+      "estimateMib": 9157
      },
      "outcome": "quality_failed"
     },
@@ -786,7 +796,7 @@
       "fill": 117708,
       "estimateMib": 16146
      },
-     "outcome": "quality_failed"
+     "outcome": "over_time"
     },
     {
      "expect": {
@@ -796,7 +806,7 @@
       "fill": 58726,
       "estimateMib": 15608
      },
-     "outcome": "over_time"
+     "outcome": "recall_failed"
     },
     {
      "expect": {
@@ -806,25 +816,25 @@
       "fill": 21862,
       "estimateMib": 10232
      },
-     "outcome": "recall_failed"
+     "outcome": "passed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 12288,
+      "ctx": 49152,
       "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 8619
+      "fill": 43980,
+      "estimateMib": 13458
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 16384,
+      "ctx": 57344,
       "kv": "bf16",
-      "fill": 14489,
-      "estimateMib": 9157
+      "fill": 51353,
+      "estimateMib": 14533
      },
      "outcome": "passed"
     },
@@ -832,7 +842,7 @@
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 16384,
+      "ctx": 57344,
       "kv": "bf16"
      },
      "outcome": "passed"
@@ -841,7 +851,7 @@
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 16384,
+      "ctx": 57344,
       "kv": "bf16"
      },
      "outcome": "passed"
@@ -850,46 +860,54 @@
      "expect": {
       "step": "phase",
       "id": "batch",
-      "ctx": 16384,
+      "ctx": 57344,
       "kv": "bf16"
      },
-     "outcome": "passed"
+     "outcome": "skipped"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 16384,
+      "ctx": 57344,
       "kv": "bf16",
-      "fill": 14489,
-      "estimateMib": 9157
-     },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "verify",
-      "ctx": 12288,
-      "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 8619
+      "fill": 51353,
+      "estimateMib": 14533
      },
      "outcome": "quality_failed"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 8192,
+      "ctx": 49152,
       "kv": "bf16",
-      "fill": 7116,
-      "estimateMib": 8082
+      "fill": 43980,
+      "estimateMib": 13458
      },
      "outcome": "oom"
     },
     {
      "expect": {
-      "step": "fail",
-      "code": "verify_failed",
-      "message": "The finished profile could not fill and recall its context."
+      "step": "verify",
+      "ctx": 40960,
+      "kv": "bf16",
+      "fill": 36608,
+      "estimateMib": 12382
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 40960,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 40960,
+      "kv": "bf16"
      }
     }
    ]
@@ -1015,20 +1033,30 @@
       "fill": 117708,
       "estimateMib": 16146
      },
-     "outcome": "passed"
+     "outcome": "over_time"
     },
     {
      "expect": {
-      "step": "serving",
-      "ctx": 131072,
-      "kv": "q8_0"
+      "step": "verify",
+      "ctx": 122880,
+      "kv": "q8_0",
+      "fill": 110336,
+      "estimateMib": 15574
      },
      "outcome": "passed"
     },
     {
      "expect": {
+      "step": "serving",
+      "ctx": 122880,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
       "step": "done",
-      "ctx": 131072,
+      "ctx": 122880,
       "kv": "q8_0"
      }
     }
@@ -1047,36 +1075,6 @@
       "kv": "q8_0",
       "fill": 117708,
       "estimateMib": 16146
-     },
-     "outcome": "over_time"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 57344,
-      "kv": "q8_0",
-      "fill": 51353,
-      "estimateMib": 11005
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 98304,
-      "kv": "q8_0",
-      "fill": 88217,
-      "estimateMib": 13861
-     },
-     "outcome": "load_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 81920,
-      "kv": "q8_0",
-      "fill": 73472,
-      "estimateMib": 12718
      },
      "outcome": "quality_failed"
     },
@@ -1505,10 +1503,10 @@
     {
      "expect": {
       "step": "probe",
-      "ctx": 57344,
-      "kv": "q8_0",
-      "fill": 51353,
-      "estimateMib": 11005
+      "ctx": 65536,
+      "kv": "f16",
+      "fill": 58726,
+      "estimateMib": 15608
      },
      "outcome": "over_time"
     },
@@ -1516,59 +1514,29 @@
      "expect": {
       "step": "probe",
       "ctx": 24576,
-      "kv": "q8_0",
+      "kv": "f16",
       "fill": 21862,
-      "estimateMib": 8720
+      "estimateMib": 10232
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "probe",
+      "ctx": 49152,
+      "kv": "f16",
+      "fill": 43980,
+      "estimateMib": 13458
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
       "ctx": 40960,
-      "kv": "q8_0",
+      "kv": "f16",
       "fill": 36608,
-      "estimateMib": 9862
-     },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 32768,
-      "kv": "q8_0",
-      "fill": 29235,
-      "estimateMib": 9291
-     },
-     "outcome": "quality_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 16384,
-      "kv": "f16",
-      "fill": 14489,
-      "estimateMib": 9157
-     },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 8192,
-      "kv": "f16",
-      "fill": 7116,
-      "estimateMib": 8082
-     },
-     "outcome": "load_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 4096,
-      "kv": "f16",
-      "fill": 3430,
-      "estimateMib": 7544
+      "estimateMib": 12382
      },
      "outcome": "quality_failed"
     },
@@ -1665,7 +1633,17 @@
       "fill": 29235,
       "estimateMib": 9291
      },
-     "outcome": "oom"
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 16384,
+      "kv": "bf16",
+      "fill": 14489,
+      "estimateMib": 9157
+     },
+     "outcome": "load_failed"
     },
     {
      "expect": {
@@ -1675,27 +1653,27 @@
       "fill": 10803,
       "estimateMib": 7863
      },
-     "outcome": "oom"
+     "outcome": "quality_failed"
     },
     {
      "expect": {
       "step": "probe",
       "ctx": 8192,
-      "kv": "q8_0",
+      "kv": "bf16",
       "fill": 7116,
-      "estimateMib": 7578
+      "estimateMib": 8082
      },
-     "outcome": "over_time"
+     "outcome": "oom"
     },
     {
      "expect": {
       "step": "probe",
       "ctx": 4096,
-      "kv": "q8_0",
+      "kv": "bf16",
       "fill": 3430,
-      "estimateMib": 7292
+      "estimateMib": 7544
      },
-     "outcome": "over_time"
+     "outcome": "oom"
     },
     {
      "expect": {
@@ -1725,22 +1703,12 @@
     {
      "expect": {
       "step": "probe",
-      "ctx": 12288,
-      "kv": "q8_0",
-      "fill": 10803,
-      "estimateMib": 7863
+      "ctx": 16384,
+      "kv": "bf16",
+      "fill": 14489,
+      "estimateMib": 9157
      },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 8192,
-      "kv": "q8_0",
-      "fill": 7116,
-      "estimateMib": 7578
-     },
-     "outcome": "quality_failed"
+     "outcome": "over_time"
     },
     {
      "expect": {
@@ -1760,7 +1728,7 @@
       "fill": 3430,
       "estimateMib": 7544
      },
-     "outcome": "quality_failed"
+     "outcome": "recall_failed"
     },
     {
      "expect": {
@@ -1795,68 +1763,23 @@
       "fill": 14489,
       "estimateMib": 9157
      },
-     "outcome": "passed"
+     "outcome": "over_time"
     },
     {
      "expect": {
-      "step": "phase",
-      "id": "sampling",
-      "ctx": 16384,
-      "kv": "bf16"
-     },
-     "outcome": "failed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "drafting",
-      "ctx": 16384,
-      "kv": "bf16"
-     },
-     "outcome": "skipped"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "batch",
-      "ctx": 16384,
-      "kv": "bf16"
-     },
-     "outcome": "skipped"
-    },
-    {
-     "expect": {
-      "step": "verify",
-      "ctx": 16384,
+      "step": "probe",
+      "ctx": 8192,
       "kv": "bf16",
-      "fill": 14489,
-      "estimateMib": 9157
+      "fill": 7116,
+      "estimateMib": 8082
      },
-     "outcome": "load_failed"
+     "outcome": "quality_failed"
     },
     {
      "expect": {
-      "step": "verify",
-      "ctx": 12288,
-      "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 8619
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "serving",
-      "ctx": 12288,
-      "kv": "bf16"
-     },
-     "outcome": "skipped"
-    },
-    {
-     "expect": {
-      "step": "done",
-      "ctx": 12288,
-      "kv": "bf16"
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
      }
     }
    ]
@@ -1945,25 +1868,15 @@
       "fill": 29235,
       "estimateMib": 9291
      },
-     "outcome": "load_failed"
+     "outcome": "quality_failed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 12288,
-      "kv": "q8_0",
-      "fill": 10803,
-      "estimateMib": 7863
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 24576,
-      "kv": "q8_0",
-      "fill": 21862,
-      "estimateMib": 8720
+      "ctx": 16384,
+      "kv": "bf16",
+      "fill": 14489,
+      "estimateMib": 9157
      },
      "outcome": "passed"
     },
@@ -1971,17 +1884,17 @@
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 24576,
-      "kv": "q8_0"
+      "ctx": 16384,
+      "kv": "bf16"
      },
-     "outcome": "passed"
+     "outcome": "failed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 24576,
-      "kv": "q8_0"
+      "ctx": 16384,
+      "kv": "bf16"
      },
      "outcome": "skipped"
     },
@@ -1989,28 +1902,18 @@
      "expect": {
       "step": "phase",
       "id": "batch",
-      "ctx": 24576,
-      "kv": "q8_0"
+      "ctx": 16384,
+      "kv": "bf16"
      },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "verify",
-      "ctx": 24576,
-      "kv": "q8_0",
-      "fill": 21862,
-      "estimateMib": 8720
-     },
-     "outcome": "oom"
+     "outcome": "skipped"
     },
     {
      "expect": {
       "step": "verify",
       "ctx": 16384,
-      "kv": "q8_0",
+      "kv": "bf16",
       "fill": 14489,
-      "estimateMib": 8149
+      "estimateMib": 9157
      },
      "outcome": "load_failed"
     },
@@ -2018,17 +1921,25 @@
      "expect": {
       "step": "verify",
       "ctx": 12288,
-      "kv": "q8_0",
+      "kv": "bf16",
       "fill": 10803,
-      "estimateMib": 7863
+      "estimateMib": 8619
      },
-     "outcome": "load_failed"
+     "outcome": "passed"
     },
     {
      "expect": {
-      "step": "fail",
-      "code": "verify_failed",
-      "message": "The finished profile could not fill and recall its context."
+      "step": "serving",
+      "ctx": 12288,
+      "kv": "bf16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 12288,
+      "kv": "bf16"
      }
     }
    ]
@@ -2047,72 +1958,52 @@
       "fill": 29235,
       "estimateMib": 9291
      },
-     "outcome": "recall_failed"
+     "outcome": "load_failed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 12288,
-      "kv": "q8_0",
-      "fill": 10803,
-      "estimateMib": 7863
-     },
-     "outcome": "oom"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 8192,
-      "kv": "q8_0",
-      "fill": 7116,
-      "estimateMib": 7578
-     },
-     "outcome": "oom"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 4096,
-      "kv": "q8_0",
-      "fill": 3430,
-      "estimateMib": 7292
-     },
-     "outcome": "oom"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 12288,
+      "ctx": 16384,
       "kv": "q5_1",
-      "fill": 10803,
-      "estimateMib": 7611
-     },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 8192,
-      "kv": "q5_1",
-      "fill": 7116,
-      "estimateMib": 7410
+      "fill": 14489,
+      "estimateMib": 7813
      },
      "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 32768,
+      "kv": "q5_1",
+      "fill": 29235,
+      "estimateMib": 8619
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 40960,
+      "kv": "q5_1",
+      "fill": 36608,
+      "estimateMib": 9022
+     },
+     "outcome": "load_failed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 8192,
+      "ctx": 32768,
       "kv": "q5_1"
      },
-     "outcome": "passed"
+     "outcome": "skipped"
     },
     {
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 8192,
+      "ctx": 32768,
       "kv": "q5_1"
      },
      "outcome": "passed"
@@ -2121,34 +2012,46 @@
      "expect": {
       "step": "phase",
       "id": "batch",
-      "ctx": 8192,
+      "ctx": 32768,
       "kv": "q5_1"
      },
-     "outcome": "skipped"
+     "outcome": "passed"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 8192,
+      "ctx": 32768,
       "kv": "q5_1",
-      "fill": 7116,
-      "estimateMib": 7410
+      "fill": 29235,
+      "estimateMib": 8619
      },
-     "outcome": "passed"
+     "outcome": "load_failed"
     },
     {
      "expect": {
-      "step": "serving",
-      "ctx": 8192,
-      "kv": "q5_1"
+      "step": "verify",
+      "ctx": 24576,
+      "kv": "q5_1",
+      "fill": 21862,
+      "estimateMib": 8216
      },
-     "outcome": "passed"
+     "outcome": "load_failed"
     },
     {
      "expect": {
-      "step": "done",
-      "ctx": 8192,
-      "kv": "q5_1"
+      "step": "verify",
+      "ctx": 16384,
+      "kv": "q5_1",
+      "fill": 14489,
+      "estimateMib": 7813
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "verify_failed",
+      "message": "The finished profile could not fill and recall its context."
      }
     }
    ]
@@ -2167,23 +2070,63 @@
       "fill": 29235,
       "estimateMib": 9291
      },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 16384,
+      "kv": "q5_1",
+      "fill": 14489,
+      "estimateMib": 7813
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "q5_0",
+      "fill": 21862,
+      "estimateMib": 8115
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "bf16",
+      "fill": 7116,
+      "estimateMib": 8082
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 4096,
+      "kv": "bf16",
+      "fill": 3430,
+      "estimateMib": 7544
+     },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 32768,
-      "kv": "q8_0"
+      "ctx": 4096,
+      "kv": "bf16"
      },
-     "outcome": "failed"
+     "outcome": "passed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 32768,
-      "kv": "q8_0"
+      "ctx": 4096,
+      "kv": "bf16"
      },
      "outcome": "passed"
     },
@@ -2191,34 +2134,34 @@
      "expect": {
       "step": "phase",
       "id": "batch",
-      "ctx": 32768,
-      "kv": "q8_0"
+      "ctx": 4096,
+      "kv": "bf16"
      },
-     "outcome": "passed"
+     "outcome": "skipped"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 32768,
-      "kv": "q8_0",
-      "fill": 29235,
-      "estimateMib": 9291
+      "ctx": 4096,
+      "kv": "bf16",
+      "fill": 3430,
+      "estimateMib": 7544
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "serving",
-      "ctx": 32768,
-      "kv": "q8_0"
+      "ctx": 4096,
+      "kv": "bf16"
      },
-     "outcome": "failed"
+     "outcome": "passed"
     },
     {
      "expect": {
-      "step": "fail",
-      "code": "serving_failed",
-      "message": "The finished profile cannot serve a realistic chat request."
+      "step": "done",
+      "ctx": 4096,
+      "kv": "bf16"
      }
     }
    ]
@@ -2307,53 +2250,23 @@
       "fill": 14489,
       "estimateMib": 8149
      },
-     "outcome": "load_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 8192,
-      "kv": "q8_0",
-      "fill": 7116,
-      "estimateMib": 7578
-     },
-     "outcome": "over_time"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 4096,
-      "kv": "q8_0",
-      "fill": 3430,
-      "estimateMib": 7292
-     },
-     "outcome": "quality_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 4096,
-      "kv": "bf16",
-      "fill": 3430,
-      "estimateMib": 7544
-     },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 4096,
-      "kv": "bf16"
+      "ctx": 16384,
+      "kv": "q8_0"
      },
-     "outcome": "skipped"
+     "outcome": "failed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 4096,
-      "kv": "bf16"
+      "ctx": 16384,
+      "kv": "q8_0"
      },
      "outcome": "passed"
     },
@@ -2361,26 +2274,34 @@
      "expect": {
       "step": "phase",
       "id": "batch",
-      "ctx": 4096,
-      "kv": "bf16"
+      "ctx": 16384,
+      "kv": "q8_0"
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 4096,
-      "kv": "bf16",
-      "fill": 3430,
-      "estimateMib": 7544
+      "ctx": 16384,
+      "kv": "q8_0",
+      "fill": 14489,
+      "estimateMib": 8149
      },
-     "outcome": "load_failed"
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 16384,
+      "kv": "q8_0"
+     },
+     "outcome": "failed"
     },
     {
      "expect": {
       "step": "fail",
-      "code": "verify_failed",
-      "message": "The finished profile could not fill and recall its context."
+      "code": "serving_failed",
+      "message": "The finished profile cannot serve a realistic chat request."
      }
     }
    ]
@@ -2399,31 +2320,33 @@
       "fill": 14489,
       "estimateMib": 8149
      },
-     "outcome": "passed"
+     "outcome": "load_failed"
     },
     {
      "expect": {
-      "step": "phase",
-      "id": "sampling",
-      "ctx": 16384,
-      "kv": "q8_0"
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "q5_1",
+      "fill": 10803,
+      "estimateMib": 7611
      },
-     "outcome": "failed"
+     "outcome": "over_time"
     },
     {
      "expect": {
-      "step": "phase",
-      "id": "drafting",
-      "ctx": 16384,
-      "kv": "q8_0"
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "bf16",
+      "fill": 7116,
+      "estimateMib": 8082
      },
-     "outcome": "failed"
+     "outcome": "quality_failed"
     },
     {
      "expect": {
       "step": "fail",
-      "code": "phase_failed",
-      "message": "A required tuning phase failed."
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
      }
     }
    ]
@@ -2442,33 +2365,13 @@
       "fill": 14489,
       "estimateMib": 8149
      },
-     "outcome": "oom"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 8192,
-      "kv": "q8_0",
-      "fill": 7116,
-      "estimateMib": 7578
-     },
      "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 12288,
-      "kv": "q8_0",
-      "fill": 10803,
-      "estimateMib": 7863
-     },
-     "outcome": "oom"
     },
     {
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 8192,
+      "ctx": 16384,
       "kv": "q8_0"
      },
      "outcome": "skipped"
@@ -2477,16 +2380,44 @@
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 8192,
+      "ctx": 16384,
       "kv": "q8_0"
      },
-     "outcome": "skipped"
+     "outcome": "passed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "batch",
-      "ctx": 8192,
+      "ctx": 16384,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 16384,
+      "kv": "q8_0",
+      "fill": 14489,
+      "estimateMib": 8149
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 12288,
+      "kv": "q8_0",
+      "fill": 10803,
+      "estimateMib": 7863
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 12288,
       "kv": "q8_0"
      },
      "outcome": "failed"
@@ -2494,8 +2425,8 @@
     {
      "expect": {
       "step": "fail",
-      "code": "phase_failed",
-      "message": "A required tuning phase failed."
+      "code": "serving_failed",
+      "message": "The finished profile cannot serve a realistic chat request."
      }
     }
    ]
@@ -2584,47 +2515,7 @@
       "fill": 21862,
       "estimateMib": 15144
      },
-     "outcome": "over_time"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 12288,
-      "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 13128
-     },
-     "outcome": "load_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 8192,
-      "kv": "bf16",
-      "fill": 7116,
-      "estimateMib": 12456
-     },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 4096,
-      "kv": "bf16",
-      "fill": 3430,
-      "estimateMib": 11784
-     },
-     "outcome": "oom"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 4096,
-      "kv": "q8_0",
-      "fill": 3430,
-      "estimateMib": 11469
-     },
-     "outcome": "over_time"
+     "outcome": "quality_failed"
     },
     {
      "expect": {
@@ -2654,28 +2545,115 @@
     {
      "expect": {
       "step": "probe",
-      "ctx": 12288,
-      "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 13128
+      "ctx": 16384,
+      "kv": "q8_0",
+      "fill": 14489,
+      "estimateMib": 12540
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 16384,
-      "kv": "bf16",
-      "fill": 14489,
-      "estimateMib": 13800
+      "ctx": 32768,
+      "kv": "q8_0",
+      "fill": 29235,
+      "estimateMib": 13968
      },
-     "outcome": "quality_failed"
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "bf16",
+      "fill": 10803,
+      "estimateMib": 13128
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "bf16",
+      "fill": 7116,
+      "estimateMib": 12456
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 4096,
+      "kv": "bf16",
+      "fill": 3430,
+      "estimateMib": 11784
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 16384,
+      "kv": "q8_0"
+     },
+     "outcome": "failed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 16384,
+      "kv": "q8_0"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 16384,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 16384,
+      "kv": "q8_0",
+      "fill": 14489,
+      "estimateMib": 12540
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 12288,
+      "kv": "q8_0",
+      "fill": 10803,
+      "estimateMib": 12183
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 8192,
+      "kv": "q8_0",
+      "fill": 7116,
+      "estimateMib": 11826
+     },
+     "outcome": "oom"
     },
     {
      "expect": {
       "step": "fail",
-      "code": "no_context",
-      "message": "No context size passed the fill-and-recall test."
+      "code": "verify_failed",
+      "message": "The finished profile could not fill and recall its context."
      }
     }
    ]
@@ -2694,42 +2672,22 @@
       "fill": 21862,
       "estimateMib": 15144
      },
-     "outcome": "over_time"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 12288,
-      "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 13128
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 16384,
-      "kv": "bf16",
-      "fill": 14489,
-      "estimateMib": 13800
-     },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 16384,
+      "ctx": 24576,
       "kv": "bf16"
      },
-     "outcome": "passed"
+     "outcome": "failed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 16384,
+      "ctx": 24576,
       "kv": "bf16"
      },
      "outcome": "skipped"
@@ -2738,7 +2696,7 @@
      "expect": {
       "step": "phase",
       "id": "batch",
-      "ctx": 16384,
+      "ctx": 24576,
       "kv": "bf16"
      },
      "outcome": "passed"
@@ -2746,27 +2704,17 @@
     {
      "expect": {
       "step": "verify",
-      "ctx": 16384,
+      "ctx": 24576,
       "kv": "bf16",
-      "fill": 14489,
-      "estimateMib": 13800
-     },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "verify",
-      "ctx": 12288,
-      "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 13128
+      "fill": 21862,
+      "estimateMib": 15144
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "serving",
-      "ctx": 12288,
+      "ctx": 24576,
       "kv": "bf16"
      },
      "outcome": "passed"
@@ -2774,7 +2722,7 @@
     {
      "expect": {
       "step": "done",
-      "ctx": 12288,
+      "ctx": 24576,
       "kv": "bf16"
      }
     }
@@ -2864,45 +2812,15 @@
       "fill": 117708,
       "estimateMib": 16257
      },
-     "outcome": "recall_failed"
+     "outcome": "over_time"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 57344,
-      "kv": "q8_0",
-      "fill": 51353,
-      "estimateMib": 13686
-     },
-     "outcome": "oom"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 24576,
-      "kv": "q8_0",
-      "fill": 21862,
-      "estimateMib": 12544
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 40960,
-      "kv": "q8_0",
-      "fill": 36608,
-      "estimateMib": 13115
-     },
-     "outcome": "oom"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 32768,
-      "kv": "q8_0",
-      "fill": 29235,
-      "estimateMib": 12830
+      "ctx": 65536,
+      "kv": "bf16",
+      "fill": 58726,
+      "estimateMib": 16145
      },
      "outcome": "passed"
     },
@@ -2910,62 +2828,72 @@
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 32768,
-      "kv": "q8_0"
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "drafting",
-      "ctx": 32768,
-      "kv": "q8_0"
+      "ctx": 65536,
+      "kv": "bf16"
      },
      "outcome": "skipped"
     },
     {
      "expect": {
       "step": "phase",
+      "id": "drafting",
+      "ctx": 65536,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
       "id": "batch",
-      "ctx": 32768,
-      "kv": "q8_0"
+      "ctx": 65536,
+      "kv": "bf16"
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 32768,
-      "kv": "q8_0",
-      "fill": 29235,
-      "estimateMib": 12830
+      "ctx": 65536,
+      "kv": "bf16",
+      "fill": 58726,
+      "estimateMib": 16145
      },
-     "outcome": "load_failed"
+     "outcome": "recall_failed"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 24576,
-      "kv": "q8_0",
-      "fill": 21862,
-      "estimateMib": 12544
+      "ctx": 57344,
+      "kv": "bf16",
+      "fill": 51353,
+      "estimateMib": 15608
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 49152,
+      "kv": "bf16",
+      "fill": 43980,
+      "estimateMib": 15070
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "serving",
-      "ctx": 24576,
-      "kv": "q8_0"
+      "ctx": 49152,
+      "kv": "bf16"
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "done",
-      "ctx": 24576,
-      "kv": "q8_0"
+      "ctx": 49152,
+      "kv": "bf16"
      }
     }
    ]
@@ -2984,62 +2912,13 @@
       "fill": 117708,
       "estimateMib": 16257
      },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 57344,
-      "kv": "q8_0",
-      "fill": 51353,
-      "estimateMib": 13686
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 98304,
-      "kv": "q8_0",
-      "fill": 88217,
-      "estimateMib": 15114
-     },
-     "outcome": "oom"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 81920,
-      "kv": "q8_0",
-      "fill": 73472,
-      "estimateMib": 14543
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 90112,
-      "kv": "q8_0",
-      "fill": 80844,
-      "estimateMib": 14829
-     },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 90112,
-      "kv": "q8_0"
-     },
-     "outcome": "failed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "drafting",
-      "ctx": 90112,
+      "ctx": 131072,
       "kv": "q8_0"
      },
      "outcome": "passed"
@@ -3047,8 +2926,17 @@
     {
      "expect": {
       "step": "phase",
+      "id": "drafting",
+      "ctx": 131072,
+      "kv": "q8_0"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
       "id": "batch",
-      "ctx": 90112,
+      "ctx": 131072,
       "kv": "q8_0"
      },
      "outcome": "passed"
@@ -3056,38 +2944,36 @@
     {
      "expect": {
       "step": "verify",
-      "ctx": 90112,
+      "ctx": 131072,
       "kv": "q8_0",
-      "fill": 80844,
-      "estimateMib": 14829
+      "fill": 117708,
+      "estimateMib": 16257
      },
      "outcome": "load_failed"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 81920,
+      "ctx": 122880,
       "kv": "q8_0",
-      "fill": 73472,
-      "estimateMib": 14543
+      "fill": 110336,
+      "estimateMib": 15971
      },
-     "outcome": "oom"
+     "outcome": "passed"
     },
     {
      "expect": {
-      "step": "verify",
-      "ctx": 73728,
-      "kv": "q8_0",
-      "fill": 66099,
-      "estimateMib": 14258
+      "step": "serving",
+      "ctx": 122880,
+      "kv": "q8_0"
      },
-     "outcome": "oom"
+     "outcome": "passed"
     },
     {
      "expect": {
-      "step": "fail",
-      "code": "verify_failed",
-      "message": "The finished profile could not fill and recall its context."
+      "step": "done",
+      "ctx": 122880,
+      "kv": "q8_0"
      }
     }
    ]
@@ -3106,45 +2992,15 @@
       "fill": 117708,
       "estimateMib": 16257
      },
-     "outcome": "over_time"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 57344,
-      "kv": "q8_0",
-      "fill": 51353,
-      "estimateMib": 13686
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 98304,
-      "kv": "q8_0",
-      "fill": 88217,
-      "estimateMib": 15114
-     },
      "outcome": "recall_failed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 81920,
-      "kv": "q8_0",
-      "fill": 73472,
-      "estimateMib": 14543
-     },
-     "outcome": "over_time"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 73728,
-      "kv": "q8_0",
-      "fill": 66099,
-      "estimateMib": 14258
+      "ctx": 65536,
+      "kv": "bf16",
+      "fill": 58726,
+      "estimateMib": 16145
      },
      "outcome": "passed"
     },
@@ -3152,8 +3008,8 @@
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 73728,
-      "kv": "q8_0"
+      "ctx": 65536,
+      "kv": "bf16"
      },
      "outcome": "passed"
     },
@@ -3161,8 +3017,8 @@
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 73728,
-      "kv": "q8_0"
+      "ctx": 65536,
+      "kv": "bf16"
      },
      "outcome": "passed"
     },
@@ -3170,44 +3026,44 @@
      "expect": {
       "step": "phase",
       "id": "batch",
-      "ctx": 73728,
-      "kv": "q8_0"
+      "ctx": 65536,
+      "kv": "bf16"
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 73728,
-      "kv": "q8_0",
-      "fill": 66099,
-      "estimateMib": 14258
+      "ctx": 65536,
+      "kv": "bf16",
+      "fill": 58726,
+      "estimateMib": 16145
      },
-     "outcome": "oom"
+     "outcome": "over_time"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 65536,
-      "kv": "q8_0",
-      "fill": 58726,
-      "estimateMib": 13972
+      "ctx": 57344,
+      "kv": "bf16",
+      "fill": 51353,
+      "estimateMib": 15608
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "serving",
-      "ctx": 65536,
-      "kv": "q8_0"
+      "ctx": 57344,
+      "kv": "bf16"
      },
-     "outcome": "failed"
+     "outcome": "passed"
     },
     {
      "expect": {
-      "step": "fail",
-      "code": "serving_failed",
-      "message": "The finished profile cannot serve a realistic chat request."
+      "step": "done",
+      "ctx": 57344,
+      "kv": "bf16"
      }
     }
    ]
@@ -3296,15 +3152,155 @@
       "fill": 117708,
       "estimateMib": 16257
      },
-     "outcome": "recall_failed"
+     "outcome": "load_failed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 57344,
+      "ctx": 65536,
+      "kv": "q5_1",
+      "fill": 58726,
+      "estimateMib": 13247
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "q5_0",
+      "fill": 58726,
+      "estimateMib": 13103
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "bf16",
+      "fill": 21862,
+      "estimateMib": 13457
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "bf16",
+      "fill": 10803,
+      "estimateMib": 12651
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 16384,
+      "kv": "bf16",
+      "fill": 14489,
+      "estimateMib": 12920
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 12288,
+      "kv": "bf16"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 12288,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 12288,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 12288,
+      "kv": "bf16",
+      "fill": 10803,
+      "estimateMib": 12651
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 12288,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 12288,
+      "kv": "bf16"
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-pattern-12b-vision / budget16-avail / q5 / seeded-b",
+   "model": "swa-pattern-12b-vision",
+   "memory": "budget16-avail",
+   "kv": "q5",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
       "kv": "q8_0",
-      "fill": 51353,
-      "estimateMib": 13686
+      "fill": 117708,
+      "estimateMib": 16257
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "q5_1",
+      "fill": 58726,
+      "estimateMib": 13247
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 106496,
+      "kv": "q5_1",
+      "fill": 95590,
+      "estimateMib": 14255
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "bf16",
+      "fill": 58726,
+      "estimateMib": 16145
      },
      "outcome": "recall_failed"
     },
@@ -3312,29 +3308,29 @@
      "expect": {
       "step": "probe",
       "ctx": 24576,
-      "kv": "q8_0",
+      "kv": "bf16",
       "fill": 21862,
-      "estimateMib": 12544
+      "estimateMib": 13457
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "bf16",
+      "fill": 10803,
+      "estimateMib": 12651
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 40960,
-      "kv": "q8_0",
-      "fill": 36608,
-      "estimateMib": 13115
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 49152,
-      "kv": "q8_0",
-      "fill": 43980,
-      "estimateMib": 13401
+      "ctx": 16384,
+      "kv": "bf16",
+      "fill": 14489,
+      "estimateMib": 12920
      },
      "outcome": "passed"
     },
@@ -3342,8 +3338,8 @@
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 49152,
-      "kv": "q8_0"
+      "ctx": 16384,
+      "kv": "bf16"
      },
      "outcome": "passed"
     },
@@ -3351,49 +3347,59 @@
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 49152,
-      "kv": "q8_0"
+      "ctx": 16384,
+      "kv": "bf16"
      },
-     "outcome": "skipped"
+     "outcome": "passed"
     },
     {
      "expect": {
       "step": "phase",
       "id": "batch",
-      "ctx": 49152,
-      "kv": "q8_0"
+      "ctx": 16384,
+      "kv": "bf16"
      },
      "outcome": "skipped"
     },
     {
      "expect": {
       "step": "verify",
-      "ctx": 49152,
-      "kv": "q8_0",
-      "fill": 43980,
-      "estimateMib": 13401
+      "ctx": 16384,
+      "kv": "bf16",
+      "fill": 14489,
+      "estimateMib": 12920
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 12288,
+      "kv": "bf16",
+      "fill": 10803,
+      "estimateMib": 12651
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "serving",
-      "ctx": 49152,
-      "kv": "q8_0"
+      "ctx": 12288,
+      "kv": "bf16"
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "done",
-      "ctx": 49152,
-      "kv": "q8_0"
+      "ctx": 12288,
+      "kv": "bf16"
      }
     }
    ]
   },
   {
-   "name": "swa-pattern-12b-vision / budget16-avail / q5 / seeded-b",
+   "name": "swa-pattern-12b-vision / budget16-avail / q5 / seeded-c",
    "model": "swa-pattern-12b-vision",
    "memory": "budget16-avail",
    "kv": "q5",
@@ -3458,49 +3464,6 @@
       "step": "fail",
       "code": "serving_failed",
       "message": "The finished profile cannot serve a realistic chat request."
-     }
-    }
-   ]
-  },
-  {
-   "name": "swa-pattern-12b-vision / budget16-avail / q5 / seeded-c",
-   "model": "swa-pattern-12b-vision",
-   "memory": "budget16-avail",
-   "kv": "q5",
-   "trace": [
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 131072,
-      "kv": "q8_0",
-      "fill": 117708,
-      "estimateMib": 16257
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "sampling",
-      "ctx": 131072,
-      "kv": "q8_0"
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "drafting",
-      "ctx": 131072,
-      "kv": "q8_0"
-     },
-     "outcome": "failed"
-    },
-    {
-     "expect": {
-      "step": "fail",
-      "code": "phase_failed",
-      "message": "A required tuning phase failed."
      }
     }
    ]
@@ -3692,23 +3655,31 @@
       "fill": 7116,
       "estimateMib": 9042
      },
-     "outcome": "recall_failed"
+     "outcome": "passed"
     },
     {
      "expect": {
-      "step": "probe",
-      "ctx": 4096,
-      "kv": "bf16",
-      "fill": 3430,
-      "estimateMib": 8807
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 8192,
+      "kv": "bf16"
      },
-     "outcome": "over_time"
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 8192,
+      "kv": "bf16"
+     },
+     "outcome": "failed"
     },
     {
      "expect": {
       "step": "fail",
-      "code": "no_context",
-      "message": "No context size passed the fill-and-recall test."
+      "code": "phase_failed",
+      "message": "A required tuning phase failed."
      }
     }
    ]
@@ -3727,7 +3698,17 @@
       "fill": 7116,
       "estimateMib": 9042
      },
-     "outcome": "quality_failed"
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 4096,
+      "kv": "bf16",
+      "fill": 3430,
+      "estimateMib": 8807
+     },
+     "outcome": "over_time"
     },
     {
      "expect": {
@@ -3822,6 +3803,31 @@
       "fill": 58726,
       "estimateMib": 3446
      },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
+     }
+    }
+   ]
+  },
+  {
+   "name": "swa-per-layer-heads / budget16-avail / default / seeded-b",
+   "model": "swa-per-layer-heads",
+   "memory": "budget16-avail",
+   "kv": "default",
+   "trace": [
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 65536,
+      "kv": "bf16",
+      "fill": 58726,
+      "estimateMib": 3446
+     },
      "outcome": "passed"
     },
     {
@@ -3879,7 +3885,7 @@
    ]
   },
   {
-   "name": "swa-per-layer-heads / budget16-avail / default / seeded-b",
+   "name": "swa-per-layer-heads / budget16-avail / default / seeded-c",
    "model": "swa-per-layer-heads",
    "memory": "budget16-avail",
    "kv": "default",
@@ -3989,86 +3995,6 @@
    ]
   },
   {
-   "name": "swa-per-layer-heads / budget16-avail / default / seeded-c",
-   "model": "swa-per-layer-heads",
-   "memory": "budget16-avail",
-   "kv": "default",
-   "trace": [
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 65536,
-      "kv": "bf16",
-      "fill": 58726,
-      "estimateMib": 3446
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "sampling",
-      "ctx": 65536,
-      "kv": "bf16"
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "drafting",
-      "ctx": 65536,
-      "kv": "bf16"
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "batch",
-      "ctx": 65536,
-      "kv": "bf16"
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "verify",
-      "ctx": 65536,
-      "kv": "bf16",
-      "fill": 58726,
-      "estimateMib": 3446
-     },
-     "outcome": "oom"
-    },
-    {
-     "expect": {
-      "step": "verify",
-      "ctx": 57344,
-      "kv": "bf16",
-      "fill": 51353,
-      "estimateMib": 3429
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "serving",
-      "ctx": 57344,
-      "kv": "bf16"
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "done",
-      "ctx": 57344,
-      "kv": "bf16"
-     }
-    }
-   ]
-  },
-  {
    "name": "swa-shared-kv-4b / budget16-avail / default / all-pass",
    "model": "swa-shared-kv-4b",
    "memory": "budget16-avail",
@@ -4152,13 +4078,68 @@
       "fill": 29235,
       "estimateMib": 6791
      },
-     "outcome": "quality_failed"
+     "outcome": "passed"
     },
     {
      "expect": {
-      "step": "fail",
-      "code": "no_context",
-      "message": "No context size passed the fill-and-recall test."
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 32768,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 32768,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "batch",
+      "ctx": 32768,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 32768,
+      "kv": "bf16",
+      "fill": 29235,
+      "estimateMib": 6791
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 24576,
+      "kv": "bf16",
+      "fill": 21862,
+      "estimateMib": 6724
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 24576,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 24576,
+      "kv": "bf16"
      }
     }
    ]
@@ -4201,46 +4182,6 @@
       "kv": "bf16",
       "fill": 29235,
       "estimateMib": 6791
-     },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 12288,
-      "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 6623
-     },
-     "outcome": "oom"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 8192,
-      "kv": "bf16",
-      "fill": 7116,
-      "estimateMib": 6590
-     },
-     "outcome": "load_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 4096,
-      "kv": "bf16",
-      "fill": 3430,
-      "estimateMib": 6556
-     },
-     "outcome": "load_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 12288,
-      "kv": "q8_0",
-      "fill": 10803,
-      "estimateMib": 6568
      },
      "outcome": "quality_failed"
     },
@@ -4336,6 +4277,56 @@
       "kv": "bf16",
       "fill": 228300,
       "estimateMib": 16141
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "bf16",
+      "fill": 117708,
+      "estimateMib": 12109
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 131072,
+      "kv": "q8_0",
+      "fill": 117708,
+      "estimateMib": 10093
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "bf16",
+      "fill": 51353,
+      "estimateMib": 9690
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 57344,
+      "kv": "q8_0",
+      "fill": 51353,
+      "estimateMib": 8808
+     },
+     "outcome": "quality_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 24576,
+      "kv": "bf16",
+      "fill": 21862,
+      "estimateMib": 8615
      },
      "outcome": "quality_failed"
     },
@@ -4459,48 +4450,58 @@
     {
      "expect": {
       "step": "probe",
-      "ctx": 57344,
-      "kv": "bf16",
-      "fill": 51353,
-      "estimateMib": 9690
+      "ctx": 139264,
+      "kv": "q8_0",
+      "fill": 125081,
+      "estimateMib": 10236
      },
      "outcome": "oom"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 24576,
+      "ctx": 57344,
       "kv": "bf16",
-      "fill": 21862,
-      "estimateMib": 8615
+      "fill": 51353,
+      "estimateMib": 9690
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 40960,
+      "ctx": 98304,
       "kv": "bf16",
-      "fill": 36608,
-      "estimateMib": 9152
+      "fill": 88217,
+      "estimateMib": 11034
      },
      "outcome": "load_failed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 32768,
+      "ctx": 81920,
       "kv": "bf16",
-      "fill": 29235,
-      "estimateMib": 8883
+      "fill": 73472,
+      "estimateMib": 10496
      },
      "outcome": "passed"
     },
     {
      "expect": {
+      "step": "probe",
+      "ctx": 90112,
+      "kv": "bf16",
+      "fill": 80844,
+      "estimateMib": 10765
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 32768,
+      "ctx": 81920,
       "kv": "bf16"
      },
      "outcome": "skipped"
@@ -4509,16 +4510,7 @@
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 32768,
-      "kv": "bf16"
-     },
-     "outcome": "skipped"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "batch",
-      "ctx": 32768,
+      "ctx": 81920,
       "kv": "bf16"
      },
      "outcome": "failed"
@@ -4771,20 +4763,20 @@
     {
      "expect": {
       "step": "probe",
-      "ctx": 12288,
-      "kv": "q5_0",
-      "fill": 10803,
-      "estimateMib": 7947
+      "ctx": 16384,
+      "kv": "q4_0",
+      "fill": 14489,
+      "estimateMib": 7959
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "probe",
-      "ctx": 24576,
-      "kv": "q5_0",
-      "fill": 21862,
-      "estimateMib": 8085
+      "ctx": 32768,
+      "kv": "q4_0",
+      "fill": 29235,
+      "estimateMib": 8111
      },
      "outcome": "over_time"
     },
@@ -4792,9 +4784,49 @@
      "expect": {
       "step": "probe",
       "ctx": 16384,
-      "kv": "q5_0",
+      "kv": "q8_0",
       "fill": 14489,
-      "estimateMib": 7993
+      "estimateMib": 8094
+     },
+     "outcome": "over_time"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "bf16",
+      "fill": 7116,
+      "estimateMib": 8077
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "q8_0",
+      "fill": 7116,
+      "estimateMib": 7951
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 8192,
+      "kv": "q5_1",
+      "fill": 7116,
+      "estimateMib": 7909
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "probe",
+      "ctx": 12288,
+      "kv": "q5_1",
+      "fill": 10803,
+      "estimateMib": 7959
      },
      "outcome": "over_time"
     },
@@ -4802,8 +4834,8 @@
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 12288,
-      "kv": "q5_0"
+      "ctx": 8192,
+      "kv": "q5_1"
      },
      "outcome": "passed"
     },
@@ -4811,53 +4843,45 @@
      "expect": {
       "step": "phase",
       "id": "drafting",
-      "ctx": 12288,
-      "kv": "q5_0"
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "batch",
-      "ctx": 12288,
-      "kv": "q5_0"
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "verify",
-      "ctx": 12288,
-      "kv": "q5_0",
-      "fill": 10803,
-      "estimateMib": 7947
-     },
-     "outcome": "over_time"
-    },
-    {
-     "expect": {
-      "step": "verify",
       "ctx": 8192,
-      "kv": "q5_0",
-      "fill": 7116,
-      "estimateMib": 7901
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "serving",
-      "ctx": 8192,
-      "kv": "q5_0"
+      "kv": "q5_1"
      },
      "outcome": "skipped"
     },
     {
      "expect": {
-      "step": "done",
+      "step": "phase",
+      "id": "batch",
       "ctx": 8192,
-      "kv": "q5_0"
+      "kv": "q5_1"
+     },
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 8192,
+      "kv": "q5_1",
+      "fill": 7116,
+      "estimateMib": 7909
+     },
+     "outcome": "oom"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 4096,
+      "kv": "q5_1",
+      "fill": 3430,
+      "estimateMib": 7859
+     },
+     "outcome": "load_failed"
+    },
+    {
+     "expect": {
+      "step": "fail",
+      "code": "verify_failed",
+      "message": "The finished profile could not fill and recall its context."
      }
     }
    ]
@@ -4956,7 +4980,7 @@
       "fill": 10803,
       "estimateMib": 5152
      },
-     "outcome": "oom"
+     "outcome": "recall_failed"
     },
     {
      "expect": {
@@ -4966,23 +4990,31 @@
       "fill": 7116,
       "estimateMib": 4665
      },
-     "outcome": "load_failed"
+     "outcome": "passed"
     },
     {
      "expect": {
-      "step": "probe",
-      "ctx": 4096,
-      "kv": "bf16",
-      "fill": 3430,
-      "estimateMib": 4178
+      "step": "phase",
+      "id": "sampling",
+      "ctx": 8192,
+      "kv": "bf16"
      },
-     "outcome": "over_time"
+     "outcome": "skipped"
+    },
+    {
+     "expect": {
+      "step": "phase",
+      "id": "drafting",
+      "ctx": 8192,
+      "kv": "bf16"
+     },
+     "outcome": "failed"
     },
     {
      "expect": {
       "step": "fail",
-      "code": "no_context",
-      "message": "No context size passed the fill-and-recall test."
+      "code": "phase_failed",
+      "message": "A required tuning phase failed."
      }
     }
    ]
@@ -5001,52 +5033,13 @@
       "fill": 29235,
       "estimateMib": 7588
      },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 12288,
-      "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 5152
-     },
      "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 24576,
-      "kv": "bf16",
-      "fill": 21862,
-      "estimateMib": 6614
-     },
-     "outcome": "over_time"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 16384,
-      "kv": "bf16",
-      "fill": 14489,
-      "estimateMib": 5639
-     },
-     "outcome": "over_time"
     },
     {
      "expect": {
       "step": "phase",
       "id": "sampling",
-      "ctx": 12288,
-      "kv": "bf16"
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "drafting",
-      "ctx": 12288,
+      "ctx": 32768,
       "kv": "bf16"
      },
      "outcome": "skipped"
@@ -5054,8 +5047,17 @@
     {
      "expect": {
       "step": "phase",
+      "id": "drafting",
+      "ctx": 32768,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "phase",
       "id": "batch",
-      "ctx": 12288,
+      "ctx": 32768,
       "kv": "bf16"
      },
      "outcome": "passed"
@@ -5063,17 +5065,17 @@
     {
      "expect": {
       "step": "verify",
-      "ctx": 12288,
+      "ctx": 32768,
       "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 5152
+      "fill": 29235,
+      "estimateMib": 7588
      },
      "outcome": "passed"
     },
     {
      "expect": {
       "step": "serving",
-      "ctx": 12288,
+      "ctx": 32768,
       "kv": "bf16"
      },
      "outcome": "passed"
@@ -5081,7 +5083,7 @@
     {
      "expect": {
       "step": "done",
-      "ctx": 12288,
+      "ctx": 32768,
       "kv": "bf16"
      }
     }
@@ -5110,7 +5112,7 @@
       "ctx": 32768,
       "kv": "bf16"
      },
-     "outcome": "passed"
+     "outcome": "failed"
     },
     {
      "expect": {
@@ -5119,13 +5121,50 @@
       "ctx": 32768,
       "kv": "bf16"
      },
-     "outcome": "failed"
+     "outcome": "passed"
     },
     {
      "expect": {
-      "step": "fail",
-      "code": "phase_failed",
-      "message": "A required tuning phase failed."
+      "step": "phase",
+      "id": "batch",
+      "ctx": 32768,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 32768,
+      "kv": "bf16",
+      "fill": 29235,
+      "estimateMib": 7588
+     },
+     "outcome": "recall_failed"
+    },
+    {
+     "expect": {
+      "step": "verify",
+      "ctx": 24576,
+      "kv": "bf16",
+      "fill": 21862,
+      "estimateMib": 6614
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "serving",
+      "ctx": 24576,
+      "kv": "bf16"
+     },
+     "outcome": "passed"
+    },
+    {
+     "expect": {
+      "step": "done",
+      "ctx": 24576,
+      "kv": "bf16"
      }
     }
    ]
@@ -5214,61 +5253,13 @@
       "fill": 29235,
       "estimateMib": 7228
      },
-     "outcome": "load_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 24576,
-      "kv": "bf16",
-      "fill": 10803,
-      "estimateMib": 5212
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 49152,
-      "kv": "bf16",
-      "fill": 21862,
-      "estimateMib": 6421
-     },
-     "outcome": "recall_failed"
-    },
-    {
-     "expect": {
-      "step": "probe",
-      "ctx": 40960,
-      "kv": "bf16",
-      "fill": 18176,
-      "estimateMib": 6018
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "sampling",
-      "ctx": 40960,
-      "kv": "bf16"
-     },
-     "outcome": "passed"
-    },
-    {
-     "expect": {
-      "step": "phase",
-      "id": "drafting",
-      "ctx": 40960,
-      "kv": "bf16"
-     },
-     "outcome": "failed"
+     "outcome": "quality_failed"
     },
     {
      "expect": {
       "step": "fail",
-      "code": "phase_failed",
-      "message": "A required tuning phase failed."
+      "code": "no_context",
+      "message": "No context size passed the fill-and-recall test."
      }
     }
    ]

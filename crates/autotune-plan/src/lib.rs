@@ -8,7 +8,8 @@
 //!    most precise first (the list is the floor: noevia-core offers `bf16, q8_0` by default). The
 //!    run takes the most precise type that fits the smallest rung; walking the list, a more
 //!    compact type replaces that choice only when its largest fitting rung (by the estimate, at
-//!    most the trained context) is at least twice the current choice's. So a more compact cache
+//!    most the trained context, less rungs measured failures ruled out) is at least twice the
+//!    current choice's. So a more compact cache
 //!    is chosen only when it about doubles the context, never to win a few rungs.
 //! 2. **Then the context for that type:** its largest fitting rung first.
 //! 3. **Fill and recall.** Each `probe` fills about 90% of that context with synthetic text and a
@@ -796,18 +797,24 @@ enum Searched {
     Stop(Stop),
 }
 
-/// The largest rung type `k` fits by the estimate, or `None` when not even the smallest does.
-fn ceiling(cx: &Ctx, k: usize) -> Option<u64> {
+/// The largest rung type `k` fits by the estimate and no measured failure rules out (a recall or
+/// time failure at or below it, a memory failure with this or a more compact type at or below
+/// it), or `None` when there is none (noevia#1059: the doubling rule compares measured reality).
+fn ceiling(cx: &Ctx, s: &Search, k: usize) -> Option<u64> {
     let kv = *cx.input.kv.get(k)?;
-    cx.rungs.iter().copied().rfind(|&c| cx.fits(c, kv))
+    cx.rungs
+        .iter()
+        .copied()
+        .rfind(|&c| cx.fits(c, kv) && !s.hard_failed(c) && !s.dominated(c, k))
 }
 
 /// The type to search: precision first. The most precise allowed type still in play; each more
 /// compact one after it replaces the current choice only when it fits at least twice the
-/// context the current choice fits (by the estimate, on the ladder).
+/// context the current choice fits (by the estimate, on the ladder, less what measured failures
+/// ruled out).
 fn preferred(cx: &Ctx, s: &Search) -> Option<(usize, TypeSearch)> {
     let mut alive = (0..s.allowed(cx)).filter_map(|k| {
-        let cap = ceiling(cx, k)?;
+        let cap = ceiling(cx, s, k)?;
         let t = s.of_type(cx, k);
         (!t.exhausted()).then_some((k, cap, t))
     });
@@ -1079,6 +1086,18 @@ mod tests {
     }
 
     #[test]
+    fn measured_failures_lower_the_ceiling_the_doubling_rule_compares() {
+        // 20 GiB: by the estimate q8_0 fits 128k against bf16's 64k, but q8_0 ran out of memory at
+        // 128k: its measured ceiling is 64k, which does not double bf16's, so bf16 at 64k.
+        let i = input(
+            llama8b(),
+            20 * 1024,
+            vec![probe(131072, KvType::Q8_0, ProbeOutcome::Oom)],
+        );
+        assert_eq!(first_probe(&i), (65536, KvType::Bf16));
+    }
+
+    #[test]
     fn q5_only_when_offered_and_only_when_it_doubles_the_choice() {
         // 16 GiB with q5 allowed: q8_0 does not double bf16's 64k, q5_1 fits 128k, which does.
         assert_eq!(
@@ -1128,18 +1147,29 @@ mod tests {
 
     #[test]
     fn memory_failure_steps_the_context_down_with_the_same_type() {
+        // A finer ladder: bf16 running out of memory at 64k leaves it 48k, and q8_0's 64k is not
+        // twice that, so bf16 bisects down.
+        let mut i = input(
+            llama8b(),
+            16384,
+            vec![probe(65536, KvType::Bf16, ProbeOutcome::Oom)],
+        );
+        i.ladder = vec![4096, 8192, 12288, 16384, 24576, 32768, 49152, 65536];
+        assert_eq!(first_probe(&i), (16384, KvType::Bf16));
+        i.results = vec![probe(65536, KvType::Bf16, ProbeOutcome::LoadFailed)];
+        assert_eq!(first_probe(&i), (16384, KvType::Bf16));
+    }
+
+    #[test]
+    fn a_memory_failure_hands_over_when_the_compact_type_doubles_the_measured_ceiling() {
+        // Doubling ladder, 16 GiB: bf16 out of memory at 64k is left 32k; q8_0 fits 64k, twice,
+        // so q8_0, bisecting its rungs (the bf16 failure counts as a measured ceiling).
         let i = input(
             llama8b(),
             16384,
             vec![probe(65536, KvType::Bf16, ProbeOutcome::Oom)],
         );
-        assert_eq!(first_probe(&i), (16384, KvType::Bf16));
-        let i = input(
-            llama8b(),
-            16384,
-            vec![probe(65536, KvType::Bf16, ProbeOutcome::LoadFailed)],
-        );
-        assert_eq!(first_probe(&i), (16384, KvType::Bf16));
+        assert_eq!(first_probe(&i), (16384, KvType::Q8_0));
     }
 
     #[test]
@@ -1147,43 +1177,33 @@ mod tests {
         // bf16 refused even at the smallest rung: q8_0, bisecting (bf16's failure is a ceiling).
         let r = vec![probe(4096, KvType::Bf16, ProbeOutcome::LoadFailed)];
         assert_eq!(
-            first_probe(&input(llama8b(), 16384, r.clone())),
+            first_probe(&input(llama8b(), 16384, r)),
             (16384, KvType::Q8_0)
         );
-        // After a bisection down to nothing with bf16, the same.
-        let r = vec![
-            probe(65536, KvType::Bf16, ProbeOutcome::Oom),
-            probe(16384, KvType::Bf16, ProbeOutcome::Oom),
-            probe(8192, KvType::Bf16, ProbeOutcome::Oom),
-            probe(4096, KvType::Bf16, ProbeOutcome::Oom),
-        ];
-        assert_eq!(
-            first_probe(&input(llama8b(), 16384, r.clone())),
-            (16384, KvType::Q8_0)
+        // A bf16 pass keeps bf16 while q8_0 cannot double its measured ceiling (32k: 64k failed).
+        let mut i = input(
+            llama8b(),
+            16384,
+            vec![
+                probe(65536, KvType::Bf16, ProbeOutcome::RecallFailed),
+                probe(16384, KvType::Bf16, ProbeOutcome::Passed),
+                probe(32768, KvType::Bf16, ProbeOutcome::Passed),
+            ],
         );
-        // A bf16 pass anywhere keeps bf16: its best pass is the choice.
-        let r = vec![
-            probe(65536, KvType::Bf16, ProbeOutcome::Oom),
-            probe(16384, KvType::Bf16, ProbeOutcome::Passed),
-            probe(32768, KvType::Bf16, ProbeOutcome::Oom),
-        ];
         assert_eq!(
-            plan(&input(llama8b(), 16384, r)),
+            plan(&i),
             Step::Phase {
                 id: Phase::Sampling,
-                ctx: 16384,
+                ctx: 32768,
                 kv: KvType::Bf16
             }
         );
         // q8_0 (the floor) failing everywhere too: no context.
-        let r = vec![
+        i.results = vec![
             probe(4096, KvType::Bf16, ProbeOutcome::Oom),
             probe(4096, KvType::Q8_0, ProbeOutcome::Oom),
         ];
-        assert_eq!(
-            plan(&input(llama8b(), 16384, r)),
-            Step::Fail(Stop::NoContext)
-        );
+        assert_eq!(plan(&i), Step::Fail(Stop::NoContext));
     }
 
     #[test]
