@@ -124,7 +124,10 @@ fn is_ws(c: char) -> bool {
     c == ' ' || c == '\t'
 }
 
-/// Lines split the router's way: `\r\n`, `\n` or a lone `\r`.
+/// Lines split the router's way: `\r\n`, `\n` or a lone `\r`. llama.cpp (eafe15a5e)
+/// `common/preset.cpp:186` defines `newline ::= "\r\n" / "\n" / "\r"` and every other rule
+/// (comment :192, value :201-202, blank-line :214) ends at it, so a lone `\r` is a line break
+/// there. This is not Rust's `str::lines()`, which leaves a lone `\r` inside the line (noevia#1043).
 fn lines(text: &str) -> impl Iterator<Item = &str> {
     text.split('\n').flat_map(|l| {
         let l = l.strip_suffix('\r').unwrap_or(l);
@@ -348,6 +351,51 @@ mod tests {
         assert_eq!(
             check(BASE, &cur, &ids(&["Synthetic-A"])),
             Verdict::Unchanged
+        );
+    }
+
+    #[test]
+    fn a_lone_cr_is_a_line_break_like_the_router() {
+        // preset.cpp:186 `newline` includes a bare "\r"; a lone-CR file means what its LF twin means.
+        let cr = BASE.replace('\n', "\r");
+        assert_eq!(
+            check(BASE, &cr, &ids(&["Synthetic-A", "Synthetic-B"])),
+            Verdict::Unchanged
+        );
+        let mixed = BASE.replacen('\n', "\r", 3).replacen('\n', "\r\r\n", 2);
+        assert_eq!(
+            check(BASE, &mixed, &ids(&["Synthetic-A", "Synthetic-B"])),
+            Verdict::Unchanged
+        );
+        // An edit behind a lone CR (a value or comment ends there, preset.cpp:192/:201) is seen,
+        // and a header after a lone CR opens a section.
+        let edited = BASE
+            .replace("ctx-size = 8192", "ctx-size = 16384")
+            .replace('\n', "\r");
+        assert_eq!(
+            check(BASE, &edited, &ids(&["Synthetic-A", "Synthetic-B"])),
+            Verdict::Changed(ids(&["Synthetic-A"]))
+        );
+        assert_eq!(
+            check(
+                "[a]\rk = 1\r[b]\rk = 2\r",
+                "[a]\rk = 1\r[b]\rk = 3\r",
+                &ids(&["b"])
+            ),
+            Verdict::Changed(ids(&["b"]))
+        );
+        assert_eq!(
+            check(
+                "[a]\rk = 1\r[b]\rk = 2\r",
+                "[a]\rk = 1\r[b]\rk = 3\r",
+                &ids(&["a"])
+            ),
+            Verdict::Unchanged
+        );
+        // An indented header after a lone CR stays ambiguous.
+        assert_eq!(
+            check("[a]\rk = 1 \r  [b]\r", "[a]\r", &ids(&["a"])),
+            Verdict::Ambiguous(Ambiguity::Header)
         );
     }
 
