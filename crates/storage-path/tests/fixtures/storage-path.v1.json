@@ -1,0 +1,5893 @@
+{
+ "version": 1,
+ "generator": "noevia-core tools/gen-storage-fixtures.cjs path (expectations from server/storage-path.cjs)",
+ "cases": [
+  {
+   "name": "plain",
+   "op": "safeRelativePath",
+   "a": "a/b.md",
+   "expect": {
+    "value": "a/b.md"
+   }
+  },
+  {
+   "name": "empty",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "whitespace only",
+   "op": "safeRelativePath",
+   "a": " \t\n ",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "trimmed",
+   "op": "safeRelativePath",
+   "a": "  a/b.md \n",
+   "expect": {
+    "value": "a/b.md"
+   }
+  },
+  {
+   "name": "js whitespace trimmed",
+   "op": "safeRelativePath",
+   "a": "  a﻿　",
+   "expect": {
+    "value": "a"
+   }
+  },
+  {
+   "name": "leading slash",
+   "op": "safeRelativePath",
+   "a": "/abs.md",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "leading slash after trim",
+   "op": "safeRelativePath",
+   "a": "  /abs.md",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "leading backslash",
+   "op": "safeRelativePath",
+   "a": "\\abs.md",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "backslashes become slashes",
+   "op": "safeRelativePath",
+   "a": "a\\b\\c.md",
+   "expect": {
+    "value": "a/b/c.md"
+   }
+  },
+  {
+   "name": "mixed separators",
+   "op": "safeRelativePath",
+   "a": "a\\/b//\\c",
+   "expect": {
+    "value": "a/b/c"
+   }
+  },
+  {
+   "name": "dot dot",
+   "op": "safeRelativePath",
+   "a": "..",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "dot dot escape",
+   "op": "safeRelativePath",
+   "a": "../escape.md",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "dot dot inside",
+   "op": "safeRelativePath",
+   "a": "a/../../escape.md",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "dot dot backslash",
+   "op": "safeRelativePath",
+   "a": "a\\..\\..\\x",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "dot",
+   "op": "safeRelativePath",
+   "a": "./ok.md",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "trailing dot dot",
+   "op": "safeRelativePath",
+   "a": "a/b/..",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "triple dot is a name",
+   "op": "safeRelativePath",
+   "a": "a/.../b",
+   "expect": {
+    "value": "a/.../b"
+   }
+  },
+  {
+   "name": "dotted names",
+   "op": "safeRelativePath",
+   "a": ".hidden/..x/x..",
+   "expect": {
+    "value": ".hidden/..x/x.."
+   }
+  },
+  {
+   "name": "percent dot dot stays literal",
+   "op": "safeRelativePath",
+   "a": "%2e%2e/x",
+   "expect": {
+    "value": "%2e%2e/x"
+   }
+  },
+  {
+   "name": "upper percent dot dot",
+   "op": "safeRelativePath",
+   "a": "%2E%2E/%2e/x",
+   "expect": {
+    "value": "%2E%2E/%2e/x"
+   }
+  },
+  {
+   "name": "percent slash stays literal",
+   "op": "safeRelativePath",
+   "a": "a%2Fb/%5C",
+   "expect": {
+    "value": "a%2Fb/%5C"
+   }
+  },
+  {
+   "name": "double percent",
+   "op": "safeRelativePath",
+   "a": "%252e%252e",
+   "expect": {
+    "value": "%252e%252e"
+   }
+  },
+  {
+   "name": "NUL",
+   "op": "safeRelativePath",
+   "a": "a\u0000b",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "NUL alone",
+   "op": "safeRelativePath",
+   "a": "\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "NUL segment",
+   "op": "safeRelativePath",
+   "a": "a/\u0000/b",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "controls",
+   "op": "safeRelativePath",
+   "a": "a\u0001b/\u001f//",
+   "expect": {
+    "value": "a\u0001b/\u001f//"
+   }
+  },
+  {
+   "name": "tab inside",
+   "op": "safeRelativePath",
+   "a": "a\tb",
+   "expect": {
+    "value": "a\tb"
+   }
+  },
+  {
+   "name": "newline inside",
+   "op": "safeRelativePath",
+   "a": "a\nb/c",
+   "expect": {
+    "value": "a\nb/c"
+   }
+  },
+  {
+   "name": "empty segments",
+   "op": "safeRelativePath",
+   "a": "a//b///c/",
+   "expect": {
+    "value": "a/b/c"
+   }
+  },
+  {
+   "name": "only slashes",
+   "op": "safeRelativePath",
+   "a": "///",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "trailing slash",
+   "op": "safeRelativePath",
+   "a": "a/b/",
+   "expect": {
+    "value": "a/b"
+   }
+  },
+  {
+   "name": "windows drive",
+   "op": "safeRelativePath",
+   "a": "C:\\Users\\x\\a.md",
+   "expect": {
+    "value": "C:/Users/x/a.md"
+   }
+  },
+  {
+   "name": "windows drive forward",
+   "op": "safeRelativePath",
+   "a": "c:/x",
+   "expect": {
+    "value": "c:/x"
+   }
+  },
+  {
+   "name": "UNC",
+   "op": "safeRelativePath",
+   "a": "\\\\server\\share\\x",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "device path",
+   "op": "safeRelativePath",
+   "a": "\\\\?\\C:\\x",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "unicode look-alike dots",
+   "op": "safeRelativePath",
+   "a": "․․/x",
+   "expect": {
+    "value": "․․/x"
+   }
+  },
+  {
+   "name": "fullwidth dots and solidus",
+   "op": "safeRelativePath",
+   "a": "．．／x",
+   "expect": {
+    "value": "．．／x"
+   }
+  },
+  {
+   "name": "fraction slash and division slash",
+   "op": "safeRelativePath",
+   "a": "a⁄b∕c",
+   "expect": {
+    "value": "a⁄b∕c"
+   }
+  },
+  {
+   "name": "one dot leader",
+   "op": "safeRelativePath",
+   "a": "․/x",
+   "expect": {
+    "value": "․/x"
+   }
+  },
+  {
+   "name": "combining dot",
+   "op": "safeRelativePath",
+   "a": ".̇./x",
+   "expect": {
+    "value": ".̇./x"
+   }
+  },
+  {
+   "name": "bidi",
+   "op": "safeRelativePath",
+   "a": "a‮b/⁦c",
+   "expect": {
+    "value": "a‮b/⁦c"
+   }
+  },
+  {
+   "name": "emoji",
+   "op": "safeRelativePath",
+   "a": "😀/😀.md",
+   "expect": {
+    "value": "😀/😀.md"
+   }
+  },
+  {
+   "name": "lone surrogate",
+   "op": "safeRelativePath",
+   "a": "a�b",
+   "expect": {
+    "value": "a�b"
+   }
+  },
+  {
+   "name": "500 chars",
+   "op": "safeRelativePath",
+   "a": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  },
+  {
+   "name": "501 chars",
+   "op": "safeRelativePath",
+   "a": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "500 after trim",
+   "op": "safeRelativePath",
+   "a": " aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ",
+   "expect": {
+    "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+   }
+  },
+  {
+   "name": "250 emoji is 500 units",
+   "op": "safeRelativePath",
+   "a": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "expect": {
+    "value": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+   }
+  },
+  {
+   "name": "251 emoji",
+   "op": "safeRelativePath",
+   "a": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "500 chars with dot dot",
+   "op": "safeRelativePath",
+   "a": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/..",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "long segment list",
+   "op": "safeRelativePath",
+   "a": "a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a",
+   "expect": {
+    "value": "a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a"
+   }
+  },
+  {
+   "name": "query-like",
+   "op": "safeRelativePath",
+   "a": "a?b=c#d",
+   "expect": {
+    "value": "a?b=c#d"
+   }
+  },
+  {
+   "name": "url",
+   "op": "safeRelativePath",
+   "a": "https://example.test/x",
+   "expect": {
+    "value": "https:/example.test/x"
+   }
+  },
+  {
+   "name": "tilde",
+   "op": "safeRelativePath",
+   "a": "~/x",
+   "expect": {
+    "value": "~/x"
+   }
+  },
+  {
+   "name": "cleanRoot \"\"",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "cleanRoot \"/\"",
+   "op": "cleanRoot",
+   "a": "/",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "cleanRoot \"//\"",
+   "op": "cleanRoot",
+   "a": "//",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "cleanRoot \"root\"",
+   "op": "cleanRoot",
+   "a": "root",
+   "expect": {
+    "value": "root"
+   }
+  },
+  {
+   "name": "cleanRoot \"/root/\"",
+   "op": "cleanRoot",
+   "a": "/root/",
+   "expect": {
+    "value": "root"
+   }
+  },
+  {
+   "name": "cleanRoot \"//root//\"",
+   "op": "cleanRoot",
+   "a": "//root//",
+   "expect": {
+    "value": "root"
+   }
+  },
+  {
+   "name": "cleanRoot \"a/b/c\"",
+   "op": "cleanRoot",
+   "a": "a/b/c",
+   "expect": {
+    "value": "a/b/c"
+   }
+  },
+  {
+   "name": "cleanRoot \"/a//b/\"",
+   "op": "cleanRoot",
+   "a": "/a//b/",
+   "expect": {
+    "value": "a//b"
+   }
+  },
+  {
+   "name": "cleanRoot \" /a/ \"",
+   "op": "cleanRoot",
+   "a": " /a/ ",
+   "expect": {
+    "value": " /a/ "
+   }
+  },
+  {
+   "name": "cleanRoot \"\\\\a\\\\\"",
+   "op": "cleanRoot",
+   "a": "\\a\\",
+   "expect": {
+    "value": "\\a\\"
+   }
+  },
+  {
+   "name": "cleanRoot \"..\"",
+   "op": "cleanRoot",
+   "a": "..",
+   "expect": {
+    "value": ".."
+   }
+  },
+  {
+   "name": "cleanRoot \"/../\"",
+   "op": "cleanRoot",
+   "a": "/../",
+   "expect": {
+    "value": ".."
+   }
+  },
+  {
+   "name": "cleanRoot \"a/../b\"",
+   "op": "cleanRoot",
+   "a": "a/../b",
+   "expect": {
+    "value": "a/../b"
+   }
+  },
+  {
+   "name": "cleanRoot \"\\u0000/a\"",
+   "op": "cleanRoot",
+   "a": "\u0000/a",
+   "expect": {
+    "value": "\u0000/a"
+   }
+  },
+  {
+   "name": "cleanRoot \"/é/\"",
+   "op": "cleanRoot",
+   "a": "/é/",
+   "expect": {
+    "value": "é"
+   }
+  },
+  {
+   "name": "cleanRoot \"C:\\\\x\"",
+   "op": "cleanRoot",
+   "a": "C:\\x",
+   "expect": {
+    "value": "C:\\x"
+   }
+  },
+  {
+   "name": "cleanRoot of 100 units",
+   "op": "cleanRoot",
+   "a": "////////////////////////////////////////////////////////////////////////////////////////////////////",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "cleanRoot of 600 units",
+   "op": "cleanRoot",
+   "a": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  },
+  {
+   "name": "joinRoot [\"\",\"\"]",
+   "op": "joinRoot",
+   "a": "",
+   "b": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "joinRoot [\"\",\"a\"]",
+   "op": "joinRoot",
+   "a": "",
+   "b": "a",
+   "expect": {
+    "value": "a"
+   }
+  },
+  {
+   "name": "joinRoot [\"root\",\"\"]",
+   "op": "joinRoot",
+   "a": "root",
+   "b": "",
+   "expect": {
+    "value": "root"
+   }
+  },
+  {
+   "name": "joinRoot [\"root\",\"a/b\"]",
+   "op": "joinRoot",
+   "a": "root",
+   "b": "a/b",
+   "expect": {
+    "value": "root/a/b"
+   }
+  },
+  {
+   "name": "joinRoot [\"/root/\",\"a\"]",
+   "op": "joinRoot",
+   "a": "/root/",
+   "b": "a",
+   "expect": {
+    "value": "root/a"
+   }
+  },
+  {
+   "name": "joinRoot [\"//\",\"a\"]",
+   "op": "joinRoot",
+   "a": "//",
+   "b": "a",
+   "expect": {
+    "value": "a"
+   }
+  },
+  {
+   "name": "joinRoot [\"root\",\"/a\"]",
+   "op": "joinRoot",
+   "a": "root",
+   "b": "/a",
+   "expect": {
+    "value": "root//a"
+   }
+  },
+  {
+   "name": "joinRoot [\"root/\",\"/a\"]",
+   "op": "joinRoot",
+   "a": "root/",
+   "b": "/a",
+   "expect": {
+    "value": "root//a"
+   }
+  },
+  {
+   "name": "joinRoot [\"a/../b\",\"../c\"]",
+   "op": "joinRoot",
+   "a": "a/../b",
+   "b": "../c",
+   "expect": {
+    "value": "a/../b/../c"
+   }
+  },
+  {
+   "name": "joinRoot [\"root\",\"\\u0000\"]",
+   "op": "joinRoot",
+   "a": "root",
+   "b": "\u0000",
+   "expect": {
+    "value": "root/\u0000"
+   }
+  },
+  {
+   "name": "joinRoot [\"é\",\"ü\"]",
+   "op": "joinRoot",
+   "a": "é",
+   "b": "ü",
+   "expect": {
+    "value": "é/ü"
+   }
+  },
+  {
+   "name": "joinRoot [\" r \",\" x \"]",
+   "op": "joinRoot",
+   "a": " r ",
+   "b": " x ",
+   "expect": {
+    "value": " r / x "
+   }
+  },
+  {
+   "name": "joinRoot [\"\\\\r\\\\\",\"x\"]",
+   "op": "joinRoot",
+   "a": "\\r\\",
+   "b": "x",
+   "expect": {
+    "value": "\\r\\/x"
+   }
+  },
+  {
+   "name": "filename \"a.md\"",
+   "op": "isPlainFilename",
+   "a": "a.md",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"report.final.pdf\"",
+   "op": "isPlainFilename",
+   "a": "report.final.pdf",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \".hidden\"",
+   "op": "isPlainFilename",
+   "a": ".hidden",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"..x\"",
+   "op": "isPlainFilename",
+   "a": "..x",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"x..\"",
+   "op": "isPlainFilename",
+   "a": "x..",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"...\"",
+   "op": "isPlainFilename",
+   "a": "...",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \".\"",
+   "op": "isPlainFilename",
+   "a": ".",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \"..\"",
+   "op": "isPlainFilename",
+   "a": "..",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \"\"",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \" \"",
+   "op": "isPlainFilename",
+   "a": " ",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"a/b\"",
+   "op": "isPlainFilename",
+   "a": "a/b",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \"a\\\\b\"",
+   "op": "isPlainFilename",
+   "a": "a\\b",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \"\\u0000\"",
+   "op": "isPlainFilename",
+   "a": "\u0000",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \"a\\u0001\"",
+   "op": "isPlainFilename",
+   "a": "a\u0001",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \"a\\u001f\"",
+   "op": "isPlainFilename",
+   "a": "a\u001f",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \"a\"",
+   "op": "isPlainFilename",
+   "a": "a",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"a\"",
+   "op": "isPlainFilename",
+   "a": "a",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"tab\\there\"",
+   "op": "isPlainFilename",
+   "a": "tab\there",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \"new\\nline\"",
+   "op": "isPlainFilename",
+   "a": "new\nline",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \"é.md\"",
+   "op": "isPlainFilename",
+   "a": "é.md",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"😀.png\"",
+   "op": "isPlainFilename",
+   "a": "😀.png",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"‮gnp.exe\"",
+   "op": "isPlainFilename",
+   "a": "‮gnp.exe",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"CON\"",
+   "op": "isPlainFilename",
+   "a": "CON",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"C:x\"",
+   "op": "isPlainFilename",
+   "a": "C:x",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"a:b\"",
+   "op": "isPlainFilename",
+   "a": "a:b",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename of 200 units",
+   "op": "isPlainFilename",
+   "a": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename of 201 units",
+   "op": "isPlainFilename",
+   "a": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename of 200 units",
+   "op": "isPlainFilename",
+   "a": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename of 202 units",
+   "op": "isPlainFilename",
+   "a": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename of 201 units",
+   "op": "isPlainFilename",
+   "a": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "filename \"．．\"",
+   "op": "isPlainFilename",
+   "a": "．．",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"․․\"",
+   "op": "isPlainFilename",
+   "a": "․․",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"%2e%2e\"",
+   "op": "isPlainFilename",
+   "a": "%2e%2e",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "filename \"a\\ud800\"",
+   "op": "isPlainFilename",
+   "a": "a�",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 0",
+   "op": "isPlainFilename",
+   "a": "\t ‮a~~//..\n",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 1",
+   "op": "isPlainFilename",
+   "a": "．﻿..\u001f😀\\C: //?",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 2",
+   "op": "joinRoot",
+   "a": ": ﻿?//\u0001%2F%2F",
+   "b": "\u0000",
+   "expect": {
+    "value": ": ﻿?//\u0001%2F%2F/\u0000"
+   }
+  },
+  {
+   "name": "random 3",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 4",
+   "op": "safeRelativePath",
+   "a": "%00/#//\t\u0001\u0000﻿ /xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 5",
+   "op": "isPlainFilename",
+   "a": "?éé: :",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 6",
+   "op": "cleanRoot",
+   "a": "/  ‮%2e.C://․",
+   "expect": {
+    "value": "  ‮%2e.C://․"
+   }
+  },
+  {
+   "name": "random 7",
+   "op": "cleanRoot",
+   "a": "é😀\u001f．?\\*%00‮‮",
+   "expect": {
+    "value": "é😀\u001f．?\\*%00‮‮"
+   }
+  },
+  {
+   "name": "random 8",
+   "op": "safeRelativePath",
+   "a": "%2F ",
+   "expect": {
+    "value": "%2F"
+   }
+  },
+  {
+   "name": "random 9",
+   "op": "safeRelativePath",
+   "a": "//..\\﻿\t%00",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 10",
+   "op": "joinRoot",
+   "a": "😀b*",
+   "b": "",
+   "expect": {
+    "value": "😀b*"
+   }
+  },
+  {
+   "name": "random 11",
+   "op": "joinRoot",
+   "a": "․﻿\\\u0001",
+   "b": "\\․:�\u0001..\nC:",
+   "expect": {
+    "value": "․﻿\\\u0001/\\․:�\u0001..\nC:"
+   }
+  },
+  {
+   "name": "random 12",
+   "op": "safeRelativePath",
+   "a": "?C:․%00C: ",
+   "expect": {
+    "value": "?C:․%00C:"
+   }
+  },
+  {
+   "name": "random 13",
+   "op": "isPlainFilename",
+   "a": "éC:é\u001f..😀 ．",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 14",
+   "op": "cleanRoot",
+   "a": "#C://://C:",
+   "expect": {
+    "value": "#C://://C:"
+   }
+  },
+  {
+   "name": "random 15",
+   "op": "joinRoot",
+   "a": "\u0000\u0000..#․",
+   "b": "",
+   "expect": {
+    "value": "\u0000\u0000..#․"
+   }
+  },
+  {
+   "name": "random 16",
+   "op": "cleanRoot",
+   "a": "%2F~: ﻿\u0000﻿~� %00",
+   "expect": {
+    "value": "%2F~: ﻿\u0000﻿~� %00"
+   }
+  },
+  {
+   "name": "random 17",
+   "op": "cleanRoot",
+   "a": " ． ",
+   "expect": {
+    "value": " ． "
+   }
+  },
+  {
+   "name": "random 18",
+   "op": "joinRoot",
+   "a": "．// .\u001f#bb",
+   "b": "‮‮",
+   "expect": {
+    "value": "．// .\u001f#bb/‮‮"
+   }
+  },
+  {
+   "name": "random 19",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 20",
+   "op": "isPlainFilename",
+   "a": "\n\n�",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 21",
+   "op": "isPlainFilename",
+   "a": "😀%00 #*.‮",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 22",
+   "op": "safeRelativePath",
+   "a": "\t?﻿~ C:*‮",
+   "expect": {
+    "value": "?﻿~ C:*‮"
+   }
+  },
+  {
+   "name": "random 23",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 24",
+   "op": "isPlainFilename",
+   "a": "‮b‮ :",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 25",
+   "op": "isPlainFilename",
+   "a": "b..%2e%00 //#/\u0000a..",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 26",
+   "op": "cleanRoot",
+   "a": "%00a\n．",
+   "expect": {
+    "value": "%00a\n．"
+   }
+  },
+  {
+   "name": "random 27",
+   "op": "safeRelativePath",
+   "a": " ",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 28",
+   "op": "joinRoot",
+   "a": "%00 é",
+   "b": "%2F/~\n%2e?*%2F\n\\",
+   "expect": {
+    "value": "%00 é/%2F/~\n%2e?*%2F\n\\"
+   }
+  },
+  {
+   "name": "random 29",
+   "op": "joinRoot",
+   "a": "%2e%00 ? ~\u0001é‮",
+   "b": "",
+   "expect": {
+    "value": "%2e%00 ? ~\u0001é‮"
+   }
+  },
+  {
+   "name": "random 30",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 31",
+   "op": "safeRelativePath",
+   "a": "//%2e:~\u0000#a~ a．",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 32",
+   "op": "safeRelativePath",
+   "a": "\\b~~\u0001a﻿xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 33",
+   "op": "joinRoot",
+   "a": "",
+   "b": ":\u001f b\u0000\u0001 ~",
+   "expect": {
+    "value": ":\u001f b\u0000\u0001 ~"
+   }
+  },
+  {
+   "name": "random 34",
+   "op": "joinRoot",
+   "a": "#?\u001f//a:",
+   "b": "*\n﻿ %00‮a*． ",
+   "expect": {
+    "value": "#?\u001f//a:/*\n﻿ %00‮a*． "
+   }
+  },
+  {
+   "name": "random 35",
+   "op": "isPlainFilename",
+   "a": "%2F\t*é%00\u001f*﻿．",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 36",
+   "op": "safeRelativePath",
+   "a": "\u0000é",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 37",
+   "op": "joinRoot",
+   "a": "é\n\u0000😀.",
+   "b": " ",
+   "expect": {
+    "value": "é\n\u0000😀./ "
+   }
+  },
+  {
+   "name": "random 38",
+   "op": "isPlainFilename",
+   "a": "?%2F ?",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 39",
+   "op": "safeRelativePath",
+   "a": "%00�C:?*\u0001#",
+   "expect": {
+    "value": "%00�C:?*\u0001#"
+   }
+  },
+  {
+   "name": "random 40",
+   "op": "safeRelativePath",
+   "a": "* b\n #",
+   "expect": {
+    "value": "* b\n #"
+   }
+  },
+  {
+   "name": "random 41",
+   "op": "safeRelativePath",
+   "a": "a#\n．﻿\u0000﻿",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 42",
+   "op": "joinRoot",
+   "a": "b ．b ./?",
+   "b": "\tb~",
+   "expect": {
+    "value": "b ．b ./?/\tb~"
+   }
+  },
+  {
+   "name": "random 43",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 44",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 45",
+   "op": "isPlainFilename",
+   "a": "C:%2e%00//%2e\na․．",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 46",
+   "op": "safeRelativePath",
+   "a": "#..//․%2e\u0001//\u001f‮‮",
+   "expect": {
+    "value": "#../․%2e\u0001/\u001f‮‮"
+   }
+  },
+  {
+   "name": "random 47",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 48",
+   "op": "safeRelativePath",
+   "a": "*😀%2e~#..:﻿",
+   "expect": {
+    "value": "*😀%2e~#..:"
+   }
+  },
+  {
+   "name": "random 49",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 50",
+   "op": "joinRoot",
+   "a": "..*  *",
+   "b": "#é�.%2e．.%2F\\․",
+   "expect": {
+    "value": "..*  */#é�.%2e．.%2F\\․"
+   }
+  },
+  {
+   "name": "random 51",
+   "op": "cleanRoot",
+   "a": "\u001f//%2F b",
+   "expect": {
+    "value": "\u001f//%2F b"
+   }
+  },
+  {
+   "name": "random 52",
+   "op": "cleanRoot",
+   "a": "\u0001😀",
+   "expect": {
+    "value": "\u0001😀"
+   }
+  },
+  {
+   "name": "random 53",
+   "op": "cleanRoot",
+   "a": "\\ ‮#",
+   "expect": {
+    "value": "\\ ‮#"
+   }
+  },
+  {
+   "name": "random 54",
+   "op": "cleanRoot",
+   "a": "?‮éa ﻿b",
+   "expect": {
+    "value": "?‮éa ﻿b"
+   }
+  },
+  {
+   "name": "random 55",
+   "op": "joinRoot",
+   "a": "...\u0000.😀．",
+   "b": "😀*~\u0001\u0000‮\u0000",
+   "expect": {
+    "value": "...\u0000.😀．/😀*~\u0001\u0000‮\u0000"
+   }
+  },
+  {
+   "name": "random 56",
+   "op": "cleanRoot",
+   "a": "\t\n~‮ ．",
+   "expect": {
+    "value": "\t\n~‮ ．"
+   }
+  },
+  {
+   "name": "random 57",
+   "op": "safeRelativePath",
+   "a": "\u0001* C:\u0001",
+   "expect": {
+    "value": "\u0001* C:\u0001"
+   }
+  },
+  {
+   "name": "random 58",
+   "op": "isPlainFilename",
+   "a": "․%00 ．a﻿﻿%00.",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 59",
+   "op": "cleanRoot",
+   "a": "~%00b%2F\n\u0001\u001fC:",
+   "expect": {
+    "value": "~%00b%2F\n\u0001\u001fC:"
+   }
+  },
+  {
+   "name": "random 60",
+   "op": "isPlainFilename",
+   "a": "b",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 61",
+   "op": "safeRelativePath",
+   "a": "\tbé\u0001‮..C:a",
+   "expect": {
+    "value": "bé\u0001‮..C:a"
+   }
+  },
+  {
+   "name": "random 62",
+   "op": "safeRelativePath",
+   "a": "\u0000..b%00*\u001f\u001f \n",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 63",
+   "op": "joinRoot",
+   "a": "\u0000a *bC:．\n%00.\t",
+   "b": "‮．b ",
+   "expect": {
+    "value": "\u0000a *bC:．\n%00.\t/‮．b "
+   }
+  },
+  {
+   "name": "random 64",
+   "op": "safeRelativePath",
+   "a": "~~．�.\n",
+   "expect": {
+    "value": "~~．�."
+   }
+  },
+  {
+   "name": "random 65",
+   "op": "cleanRoot",
+   "a": ".. ",
+   "expect": {
+    "value": ".. "
+   }
+  },
+  {
+   "name": "random 66",
+   "op": "joinRoot",
+   "a": ".",
+   "b": "",
+   "expect": {
+    "value": "."
+   }
+  },
+  {
+   "name": "random 67",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 68",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 69",
+   "op": "safeRelativePath",
+   "a": "‮",
+   "expect": {
+    "value": "‮"
+   }
+  },
+  {
+   "name": "random 70",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 71",
+   "op": "cleanRoot",
+   "a": "․\u0000",
+   "expect": {
+    "value": "․\u0000"
+   }
+  },
+  {
+   "name": "random 72",
+   "op": "cleanRoot",
+   "a": "#é?%2e/?%2e�?",
+   "expect": {
+    "value": "#é?%2e/?%2e�?"
+   }
+  },
+  {
+   "name": "random 73",
+   "op": "joinRoot",
+   "a": "//😀․‮",
+   "b": "﻿?a%2e%2F",
+   "expect": {
+    "value": "😀․‮/﻿?a%2e%2F"
+   }
+  },
+  {
+   "name": "random 74",
+   "op": "isPlainFilename",
+   "a": "\u001f\u0000#․",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 75",
+   "op": "joinRoot",
+   "a": "\u0000C:..",
+   "b": "C:b#b",
+   "expect": {
+    "value": "\u0000C:../C:b#b"
+   }
+  },
+  {
+   "name": "random 76",
+   "op": "isPlainFilename",
+   "a": "‮😀",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 77",
+   "op": "cleanRoot",
+   "a": " 😀#a:\u0001\u001f😀",
+   "expect": {
+    "value": " 😀#a:\u0001\u001f😀"
+   }
+  },
+  {
+   "name": "random 78",
+   "op": "isPlainFilename",
+   "a": "．\u001f\\\n?#%2F.\u0000C:%2F",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 79",
+   "op": "cleanRoot",
+   "a": "‮é․b\\",
+   "expect": {
+    "value": "‮é․b\\"
+   }
+  },
+  {
+   "name": "random 80",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 81",
+   "op": "isPlainFilename",
+   "a": "\n",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 82",
+   "op": "safeRelativePath",
+   "a": "﻿b..//%2F//#",
+   "expect": {
+    "value": "b../%2F/#"
+   }
+  },
+  {
+   "name": "random 83",
+   "op": "cleanRoot",
+   "a": "\u001f",
+   "expect": {
+    "value": "\u001f"
+   }
+  },
+  {
+   "name": "random 84",
+   "op": "joinRoot",
+   "a": "%2F\u0000é\\‮ *~",
+   "b": " C:",
+   "expect": {
+    "value": "%2F\u0000é\\‮ *~/ C:"
+   }
+  },
+  {
+   "name": "random 85",
+   "op": "joinRoot",
+   "a": "\n\u001f\u0001..．é~..",
+   "b": "C:é",
+   "expect": {
+    "value": "\n\u001f\u0001..．é~../C:é"
+   }
+  },
+  {
+   "name": "random 86",
+   "op": "cleanRoot",
+   "a": "．\n b\u001f",
+   "expect": {
+    "value": "．\n b\u001f"
+   }
+  },
+  {
+   "name": "random 87",
+   "op": "joinRoot",
+   "a": "  \u0001‮:﻿%2F．?",
+   "b": "?a�**%00‮�",
+   "expect": {
+    "value": "  \u0001‮:﻿%2F．?/?a�**%00‮�"
+   }
+  },
+  {
+   "name": "random 88",
+   "op": "isPlainFilename",
+   "a": "a%2F?~\nb�😀C:%00",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 89",
+   "op": "isPlainFilename",
+   "a": "?%2e%2e:�%00%2e:．",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 90",
+   "op": "safeRelativePath",
+   "a": "..C:․%00",
+   "expect": {
+    "value": "..C:․%00"
+   }
+  },
+  {
+   "name": "random 91",
+   "op": "isPlainFilename",
+   "a": "﻿\u0000*%2F",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 92",
+   "op": "safeRelativePath",
+   "a": "� �..",
+   "expect": {
+    "value": "� �.."
+   }
+  },
+  {
+   "name": "random 93",
+   "op": "cleanRoot",
+   "a": "a﻿%2e...%2F ",
+   "expect": {
+    "value": "a﻿%2e...%2F "
+   }
+  },
+  {
+   "name": "random 94",
+   "op": "safeRelativePath",
+   "a": "é/a:é:．‮‮ *",
+   "expect": {
+    "value": "é/a:é:．‮‮ *"
+   }
+  },
+  {
+   "name": "random 95",
+   "op": "isPlainFilename",
+   "a": "．",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 96",
+   "op": "joinRoot",
+   "a": "b:?",
+   "b": ":\\․﻿ é\n..",
+   "expect": {
+    "value": "b:?/:\\․﻿ é\n.."
+   }
+  },
+  {
+   "name": "random 97",
+   "op": "safeRelativePath",
+   "a": "�:",
+   "expect": {
+    "value": "�:"
+   }
+  },
+  {
+   "name": "random 98",
+   "op": "cleanRoot",
+   "a": "*:\u001f..:: 😀",
+   "expect": {
+    "value": "*:\u001f..:: 😀"
+   }
+  },
+  {
+   "name": "random 99",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 100",
+   "op": "cleanRoot",
+   "a": "�",
+   "expect": {
+    "value": "�"
+   }
+  },
+  {
+   "name": "random 101",
+   "op": "cleanRoot",
+   "a": "\u0000． ",
+   "expect": {
+    "value": "\u0000． "
+   }
+  },
+  {
+   "name": "random 102",
+   "op": "joinRoot",
+   "a": "*",
+   "b": " ",
+   "expect": {
+    "value": "*/ "
+   }
+  },
+  {
+   "name": "random 103",
+   "op": "isPlainFilename",
+   "a": "\u001f/#~😀:\u0001#�\u0001#",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 104",
+   "op": "cleanRoot",
+   "a": "\u0001\u001f﻿*.\\‮/\\",
+   "expect": {
+    "value": "\u0001\u001f﻿*.\\‮/\\"
+   }
+  },
+  {
+   "name": "random 105",
+   "op": "joinRoot",
+   "a": "//\\․ C:‮ 😀..",
+   "b": "a‮",
+   "expect": {
+    "value": "\\․ C:‮ 😀../a‮"
+   }
+  },
+  {
+   "name": "random 106",
+   "op": "isPlainFilename",
+   "a": "﻿ b:/․%2e:",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 107",
+   "op": "safeRelativePath",
+   "a": "C:?．",
+   "expect": {
+    "value": "C:?．"
+   }
+  },
+  {
+   "name": "random 108",
+   "op": "isPlainFilename",
+   "a": "\u001f%2e😀😀b．․\u0001",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 109",
+   "op": "isPlainFilename",
+   "a": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 110",
+   "op": "joinRoot",
+   "a": "b\u0001\u001f\u0000~",
+   "b": "� \u0000",
+   "expect": {
+    "value": "b\u0001\u001f\u0000~/� \u0000"
+   }
+  },
+  {
+   "name": "random 111",
+   "op": "isPlainFilename",
+   "a": "//  \\* ",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 112",
+   "op": "safeRelativePath",
+   "a": "\u001f:%2F~",
+   "expect": {
+    "value": "\u001f:%2F~"
+   }
+  },
+  {
+   "name": "random 113",
+   "op": "joinRoot",
+   "a": "b﻿:%00.😀 ․%00 %2e",
+   "b": "\\\t\u0000\u0001C:😀~",
+   "expect": {
+    "value": "b﻿:%00.😀 ․%00 %2e/\\\t\u0000\u0001C:😀~"
+   }
+  },
+  {
+   "name": "random 114",
+   "op": "isPlainFilename",
+   "a": ".C:.%2F%2e\u001f�/﻿\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 115",
+   "op": "isPlainFilename",
+   "a": "*?.\u001f",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 116",
+   "op": "safeRelativePath",
+   "a": "%2F#/...#é* \u0001",
+   "expect": {
+    "value": "%2F#/...#é* \u0001"
+   }
+  },
+  {
+   "name": "random 117",
+   "op": "safeRelativePath",
+   "a": "%2e﻿ é*:",
+   "expect": {
+    "value": "%2e﻿ é*:"
+   }
+  },
+  {
+   "name": "random 118",
+   "op": "cleanRoot",
+   "a": "․",
+   "expect": {
+    "value": "․"
+   }
+  },
+  {
+   "name": "random 119",
+   "op": "cleanRoot",
+   "a": "C:",
+   "expect": {
+    "value": "C:"
+   }
+  },
+  {
+   "name": "random 120",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 121",
+   "op": "cleanRoot",
+   "a": " ．\ta．\u0001// ",
+   "expect": {
+    "value": " ．\ta．\u0001// "
+   }
+  },
+  {
+   "name": "random 122",
+   "op": "isPlainFilename",
+   "a": "://  \u0000😀",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 123",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 124",
+   "op": "safeRelativePath",
+   "a": ".😀?%00\u001f",
+   "expect": {
+    "value": ".😀?%00\u001f"
+   }
+  },
+  {
+   "name": "random 125",
+   "op": "safeRelativePath",
+   "a": "%2e．",
+   "expect": {
+    "value": "%2e．"
+   }
+  },
+  {
+   "name": "random 126",
+   "op": "isPlainFilename",
+   "a": "․*‮\u0001  a😀%00",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 127",
+   "op": "safeRelativePath",
+   "a": "/",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 128",
+   "op": "joinRoot",
+   "a": "\n\t %00\u0000 ~�é%00",
+   "b": "\u0001.//",
+   "expect": {
+    "value": "\n\t %00\u0000 ~�é%00/\u0001.//"
+   }
+  },
+  {
+   "name": "random 129",
+   "op": "cleanRoot",
+   "a": "\né😀%2e~..?xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": "\né😀%2e~..?xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  },
+  {
+   "name": "random 130",
+   "op": "isPlainFilename",
+   "a": " %00․",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 131",
+   "op": "joinRoot",
+   "a": "..․é%2e~‮\u001f#%00%2e",
+   "b": "C:?",
+   "expect": {
+    "value": "..․é%2e~‮\u001f#%00%2e/C:?"
+   }
+  },
+  {
+   "name": "random 132",
+   "op": "joinRoot",
+   "a": ".\u0001C:é*// ..b．.",
+   "b": " \u0001%2F😀",
+   "expect": {
+    "value": ".\u0001C:é*// ..b．./ \u0001%2F😀"
+   }
+  },
+  {
+   "name": "random 133",
+   "op": "isPlainFilename",
+   "a": "%2F#?**😀",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 134",
+   "op": "cleanRoot",
+   "a": " %2eé",
+   "expect": {
+    "value": " %2eé"
+   }
+  },
+  {
+   "name": "random 135",
+   "op": "joinRoot",
+   "a": "�%00%2F\t\n\u0000%00b\t~",
+   "b": "\t.%2F😀*‮//\\․*",
+   "expect": {
+    "value": "�%00%2F\t\n\u0000%00b\t~/\t.%2F😀*‮//\\․*"
+   }
+  },
+  {
+   "name": "random 136",
+   "op": "safeRelativePath",
+   "a": " C:\t%00�?\u001f",
+   "expect": {
+    "value": " C:\t%00�?\u001f"
+   }
+  },
+  {
+   "name": "random 137",
+   "op": "joinRoot",
+   "a": " 😀．😀*//#",
+   "b": "*.\u001f..?b%2e ",
+   "expect": {
+    "value": " 😀．😀*//#/*.\u001f..?b%2e "
+   }
+  },
+  {
+   "name": "random 138",
+   "op": "isPlainFilename",
+   "a": "  b%00",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 139",
+   "op": "safeRelativePath",
+   "a": "%2F:%2e%2e...․#?\t\t",
+   "expect": {
+    "value": "%2F:%2e%2e...․#?"
+   }
+  },
+  {
+   "name": "random 140",
+   "op": "joinRoot",
+   "a": "#",
+   "b": " ",
+   "expect": {
+    "value": "#/ "
+   }
+  },
+  {
+   "name": "random 141",
+   "op": "safeRelativePath",
+   "a": "é․\u0001",
+   "expect": {
+    "value": "é․\u0001"
+   }
+  },
+  {
+   "name": "random 142",
+   "op": "safeRelativePath",
+   "a": "\u0000.%2F%2F\u001f",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 143",
+   "op": "safeRelativePath",
+   "a": "�~::%2F\\/é",
+   "expect": {
+    "value": "�~::%2F/é"
+   }
+  },
+  {
+   "name": "random 144",
+   "op": "safeRelativePath",
+   "a": "//.․\u0000/%2F..  ",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 145",
+   "op": "safeRelativePath",
+   "a": ".",
+   "expect": {
+    "value": "."
+   }
+  },
+  {
+   "name": "random 146",
+   "op": "isPlainFilename",
+   "a": "\u0000# 😀:é \u0001a%2e",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 147",
+   "op": "joinRoot",
+   "a": " ~a",
+   "b": "\\a//．%00C:",
+   "expect": {
+    "value": " ~a/\\a//．%00C:"
+   }
+  },
+  {
+   "name": "random 148",
+   "op": "joinRoot",
+   "a": "#.\u001f~․//",
+   "b": ":",
+   "expect": {
+    "value": "#.\u001f~․/:"
+   }
+  },
+  {
+   "name": "random 149",
+   "op": "joinRoot",
+   "a": "😀.*\u0001",
+   "b": "?",
+   "expect": {
+    "value": "😀.*\u0001/?"
+   }
+  },
+  {
+   "name": "random 150",
+   "op": "cleanRoot",
+   "a": " ?\u001f",
+   "expect": {
+    "value": " ?\u001f"
+   }
+  },
+  {
+   "name": "random 151",
+   "op": "isPlainFilename",
+   "a": "%2e�# ",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 152",
+   "op": "safeRelativePath",
+   "a": "%00",
+   "expect": {
+    "value": "%00"
+   }
+  },
+  {
+   "name": "random 153",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 154",
+   "op": "isPlainFilename",
+   "a": "*:..%2F**�\u001faé",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 155",
+   "op": "isPlainFilename",
+   "a": "\u0000%2F﻿*%2F﻿~\\%2F",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 156",
+   "op": "isPlainFilename",
+   "a": "﻿é‮:",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 157",
+   "op": "joinRoot",
+   "a": "%2F\u001f~\n‮",
+   "b": "\u0001?",
+   "expect": {
+    "value": "%2F\u001f~\n‮/\u0001?"
+   }
+  },
+  {
+   "name": "random 158",
+   "op": "safeRelativePath",
+   "a": "�%2e~~\\é﻿xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": "�%2e~~/é﻿xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  },
+  {
+   "name": "random 159",
+   "op": "isPlainFilename",
+   "a": "C:*//C: ",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 160",
+   "op": "cleanRoot",
+   "a": "/b %2F",
+   "expect": {
+    "value": "b %2F"
+   }
+  },
+  {
+   "name": "random 161",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 162",
+   "op": "cleanRoot",
+   "a": "﻿?",
+   "expect": {
+    "value": "﻿?"
+   }
+  },
+  {
+   "name": "random 163",
+   "op": "joinRoot",
+   "a": "a.",
+   "b": "",
+   "expect": {
+    "value": "a."
+   }
+  },
+  {
+   "name": "random 164",
+   "op": "safeRelativePath",
+   "a": "? \u0001\n\u001f",
+   "expect": {
+    "value": "? \u0001\n\u001f"
+   }
+  },
+  {
+   "name": "random 165",
+   "op": "isPlainFilename",
+   "a": "~?",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 166",
+   "op": "safeRelativePath",
+   "a": ": \t*#",
+   "expect": {
+    "value": ": \t*#"
+   }
+  },
+  {
+   "name": "random 167",
+   "op": "isPlainFilename",
+   "a": "%2F\\\t\u0001%00~ :..",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 168",
+   "op": "safeRelativePath",
+   "a": "�\u0001 \u0000․//",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 169",
+   "op": "isPlainFilename",
+   "a": "/ é. \n",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 170",
+   "op": "cleanRoot",
+   "a": "．C:\u0001.. \u001f.\u0001~\n�",
+   "expect": {
+    "value": "．C:\u0001.. \u001f.\u0001~\n�"
+   }
+  },
+  {
+   "name": "random 171",
+   "op": "safeRelativePath",
+   "a": "%2F\u001f%2F?\u0000😀 ․",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 172",
+   "op": "joinRoot",
+   "a": "�:..a��",
+   "b": "/",
+   "expect": {
+    "value": "�:..a��//"
+   }
+  },
+  {
+   "name": "random 173",
+   "op": "cleanRoot",
+   "a": "﻿\t#😀?\tC:\\",
+   "expect": {
+    "value": "﻿\t#😀?\tC:\\"
+   }
+  },
+  {
+   "name": "random 174",
+   "op": "safeRelativePath",
+   "a": "~",
+   "expect": {
+    "value": "~"
+   }
+  },
+  {
+   "name": "random 175",
+   "op": "safeRelativePath",
+   "a": "\u0001\u0001\u0001",
+   "expect": {
+    "value": "\u0001\u0001\u0001"
+   }
+  },
+  {
+   "name": "random 176",
+   "op": "joinRoot",
+   "a": "#/*😀..﻿",
+   "b": "\u0000",
+   "expect": {
+    "value": "#/*😀..﻿/\u0000"
+   }
+  },
+  {
+   "name": "random 177",
+   "op": "joinRoot",
+   "a": "\u001f%00a~\n%2F．",
+   "b": "�\n�． \u001f%2F%2e %2F",
+   "expect": {
+    "value": "\u001f%00a~\n%2F．/�\n�． \u001f%2F%2e %2F"
+   }
+  },
+  {
+   "name": "random 178",
+   "op": "joinRoot",
+   "a": ".%00%2F /‮�/\u001f",
+   "b": "a\n\u001f﻿",
+   "expect": {
+    "value": ".%00%2F /‮�/\u001f/a\n\u001f﻿"
+   }
+  },
+  {
+   "name": "random 179",
+   "op": "safeRelativePath",
+   "a": "\\",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 180",
+   "op": "isPlainFilename",
+   "a": "\\C:．",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 181",
+   "op": "safeRelativePath",
+   "a": "\u001f.*b \u001f C:\u0001",
+   "expect": {
+    "value": "\u001f.*b \u001f C:\u0001"
+   }
+  },
+  {
+   "name": "random 182",
+   "op": "joinRoot",
+   "a": " \t﻿:﻿é%2e\u001f�//",
+   "b": "/b ?//",
+   "expect": {
+    "value": " \t﻿:﻿é%2e\u001f�//b ?//"
+   }
+  },
+  {
+   "name": "random 183",
+   "op": "safeRelativePath",
+   "a": " %00�\nb*﻿",
+   "expect": {
+    "value": "%00�\nb*"
+   }
+  },
+  {
+   "name": "random 184",
+   "op": "safeRelativePath",
+   "a": "C: ..\u001f%00﻿\n․",
+   "expect": {
+    "value": "C: ..\u001f%00﻿\n․"
+   }
+  },
+  {
+   "name": "random 185",
+   "op": "joinRoot",
+   "a": "*‮",
+   "b": "‮",
+   "expect": {
+    "value": "*‮/‮"
+   }
+  },
+  {
+   "name": "random 186",
+   "op": "joinRoot",
+   "a": "\\․%2e．․﻿ \u0000",
+   "b": "C:\t․//C::~",
+   "expect": {
+    "value": "\\․%2e．․﻿ \u0000/C:\t․//C::~"
+   }
+  },
+  {
+   "name": "random 187",
+   "op": "cleanRoot",
+   "a": "*\u0001\u001f\n  � *",
+   "expect": {
+    "value": "*\u0001\u001f\n  � *"
+   }
+  },
+  {
+   "name": "random 188",
+   "op": "cleanRoot",
+   "a": "‮%2e:\u0001/..%00?\t�",
+   "expect": {
+    "value": "‮%2e:\u0001/..%00?\t�"
+   }
+  },
+  {
+   "name": "random 189",
+   "op": "cleanRoot",
+   "a": "..﻿ \u001f\n.",
+   "expect": {
+    "value": "..﻿ \u001f\n."
+   }
+  },
+  {
+   "name": "random 190",
+   "op": "cleanRoot",
+   "a": "~%2e﻿..%2F﻿#\u0001\u0001",
+   "expect": {
+    "value": "~%2e﻿..%2F﻿#\u0001\u0001"
+   }
+  },
+  {
+   "name": "random 191",
+   "op": "isPlainFilename",
+   "a": "b%2eC:%2F/\n// ． ",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 192",
+   "op": "isPlainFilename",
+   "a": "．",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 193",
+   "op": "safeRelativePath",
+   "a": "😀�．\\\u0000😀😀\t\u0000﻿\n",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 194",
+   "op": "joinRoot",
+   "a": "/\\%00． /é\n\\",
+   "b": "? %2e",
+   "expect": {
+    "value": "\\%00． /é\n\\/? %2e"
+   }
+  },
+  {
+   "name": "random 195",
+   "op": "joinRoot",
+   "a": "#\u0001․\u001f",
+   "b": "~.é%2e. �\n~",
+   "expect": {
+    "value": "#\u0001․\u001f/~.é%2e. �\n~"
+   }
+  },
+  {
+   "name": "random 196",
+   "op": "safeRelativePath",
+   "a": ".．///b",
+   "expect": {
+    "value": ".．/b"
+   }
+  },
+  {
+   "name": "random 197",
+   "op": "safeRelativePath",
+   "a": "\\ a",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 198",
+   "op": "cleanRoot",
+   "a": "‮\u0001%2e�C:😀a.%2e%2F",
+   "expect": {
+    "value": "‮\u0001%2e�C:😀a.%2e%2F"
+   }
+  },
+  {
+   "name": "random 199",
+   "op": "joinRoot",
+   "a": "\u001f/C:",
+   "b": "%2e:?\t..",
+   "expect": {
+    "value": "\u001f/C:/%2e:?\t.."
+   }
+  },
+  {
+   "name": "random 200",
+   "op": "safeRelativePath",
+   "a": "..\u0001a xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 201",
+   "op": "isPlainFilename",
+   "a": "\t*�\\%00",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 202",
+   "op": "safeRelativePath",
+   "a": "?# �‮‮%2e.",
+   "expect": {
+    "value": "?# �‮‮%2e."
+   }
+  },
+  {
+   "name": "random 203",
+   "op": "safeRelativePath",
+   "a": "�%2e‮\\?~．:",
+   "expect": {
+    "value": "�%2e‮/?~．:"
+   }
+  },
+  {
+   "name": "random 204",
+   "op": "safeRelativePath",
+   "a": "‮%2F�a",
+   "expect": {
+    "value": "‮%2F�a"
+   }
+  },
+  {
+   "name": "random 205",
+   "op": "joinRoot",
+   "a": "．\u001f~‮# ",
+   "b": " ",
+   "expect": {
+    "value": "．\u001f~‮# / "
+   }
+  },
+  {
+   "name": "random 206",
+   "op": "isPlainFilename",
+   "a": "�//\u0000 C:\\b",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 207",
+   "op": "isPlainFilename",
+   "a": "  ․\n:/․..%2e",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 208",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 209",
+   "op": "cleanRoot",
+   "a": "\n?�%2e．*",
+   "expect": {
+    "value": "\n?�%2e．*"
+   }
+  },
+  {
+   "name": "random 210",
+   "op": "cleanRoot",
+   "a": "//�#� \u001fé#b*\\",
+   "expect": {
+    "value": "�#� \u001fé#b*\\"
+   }
+  },
+  {
+   "name": "random 211",
+   "op": "joinRoot",
+   "a": "b�․ :",
+   "b": "%2eb%2F:",
+   "expect": {
+    "value": "b�․ :/%2eb%2F:"
+   }
+  },
+  {
+   "name": "random 212",
+   "op": "isPlainFilename",
+   "a": "\u0001:�C:%2e.a.",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 213",
+   "op": "safeRelativePath",
+   "a": "é ",
+   "expect": {
+    "value": "é"
+   }
+  },
+  {
+   "name": "random 214",
+   "op": "joinRoot",
+   "a": "․\u001f\u0001﻿/\t",
+   "b": "",
+   "expect": {
+    "value": "․\u001f\u0001﻿/\t"
+   }
+  },
+  {
+   "name": "random 215",
+   "op": "cleanRoot",
+   "a": "///",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 216",
+   "op": "joinRoot",
+   "a": "a‮․%2F:a\u0001#",
+   "b": "%2e😀\t./::/a%00",
+   "expect": {
+    "value": "a‮․%2F:a\u0001#/%2e😀\t./::/a%00"
+   }
+  },
+  {
+   "name": "random 217",
+   "op": "joinRoot",
+   "a": "*C:?#~%00",
+   "b": "%2F",
+   "expect": {
+    "value": "*C:?#~%00/%2F"
+   }
+  },
+  {
+   "name": "random 218",
+   "op": "safeRelativePath",
+   "a": "‮#* :~ ",
+   "expect": {
+    "value": "‮#* :~"
+   }
+  },
+  {
+   "name": "random 219",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 220",
+   "op": "safeRelativePath",
+   "a": "/%2e..#�.\u001fb//",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 221",
+   "op": "safeRelativePath",
+   "a": "․‮%2e",
+   "expect": {
+    "value": "․‮%2e"
+   }
+  },
+  {
+   "name": "random 222",
+   "op": "joinRoot",
+   "a": "․․b?",
+   "b": "😀C: #😀",
+   "expect": {
+    "value": "․․b?/😀C: #😀"
+   }
+  },
+  {
+   "name": "random 223",
+   "op": "joinRoot",
+   "a": "‮/%00\u001f\t a",
+   "b": " %2Fa․‮ /",
+   "expect": {
+    "value": "‮/%00\u001f\t a/ %2Fa․‮ /"
+   }
+  },
+  {
+   "name": "random 224",
+   "op": "cleanRoot",
+   "a": "//﻿#:é%2F",
+   "expect": {
+    "value": "﻿#:é%2F"
+   }
+  },
+  {
+   "name": "random 225",
+   "op": "joinRoot",
+   "a": " %2F․:․﻿%2F%2e",
+   "b": "﻿ �\u001f‮ ..� ",
+   "expect": {
+    "value": " %2F․:․﻿%2F%2e/﻿ �\u001f‮ ..� "
+   }
+  },
+  {
+   "name": "random 226",
+   "op": "isPlainFilename",
+   "a": "%2FC:?..:*\nba",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 227",
+   "op": "safeRelativePath",
+   "a": "․\u001f/a",
+   "expect": {
+    "value": "․\u001f/a"
+   }
+  },
+  {
+   "name": "random 228",
+   "op": "joinRoot",
+   "a": "\u001f ",
+   "b": "/ /\u0001\u0001~😀\\�\n",
+   "expect": {
+    "value": "\u001f // /\u0001\u0001~😀\\�\n"
+   }
+  },
+  {
+   "name": "random 229",
+   "op": "safeRelativePath",
+   "a": "� C:%2e．﻿‮%2e%2eéa",
+   "expect": {
+    "value": "� C:%2e．﻿‮%2e%2eéa"
+   }
+  },
+  {
+   "name": "random 230",
+   "op": "safeRelativePath",
+   "a": "﻿..\u001f․ bé?b%2e%2e",
+   "expect": {
+    "value": "..\u001f․ bé?b%2e%2e"
+   }
+  },
+  {
+   "name": "random 231",
+   "op": "safeRelativePath",
+   "a": "b?*\n．\\",
+   "expect": {
+    "value": "b?*\n．"
+   }
+  },
+  {
+   "name": "random 232",
+   "op": "safeRelativePath",
+   "a": "#\u001f ",
+   "expect": {
+    "value": "#\u001f"
+   }
+  },
+  {
+   "name": "random 233",
+   "op": "safeRelativePath",
+   "a": "\u001fb😀:\u001f%00%2e%2F",
+   "expect": {
+    "value": "\u001fb😀:\u001f%00%2e%2F"
+   }
+  },
+  {
+   "name": "random 234",
+   "op": "isPlainFilename",
+   "a": ":C:．C://C:",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 235",
+   "op": "joinRoot",
+   "a": "․%00  \t․\u001f😀",
+   "b": "//b﻿#\u0001﻿..a",
+   "expect": {
+    "value": "․%00  \t․\u001f😀///b﻿#\u0001﻿..a"
+   }
+  },
+  {
+   "name": "random 236",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 237",
+   "op": "cleanRoot",
+   "a": "?",
+   "expect": {
+    "value": "?"
+   }
+  },
+  {
+   "name": "random 238",
+   "op": "cleanRoot",
+   "a": "*?b%00．\u001f․%2FC:",
+   "expect": {
+    "value": "*?b%00．\u001f․%2FC:"
+   }
+  },
+  {
+   "name": "random 239",
+   "op": "safeRelativePath",
+   "a": "# ..??",
+   "expect": {
+    "value": "# ..??"
+   }
+  },
+  {
+   "name": "random 240",
+   "op": "joinRoot",
+   "a": "\\é  *․ éC:",
+   "b": "․\u0001",
+   "expect": {
+    "value": "\\é  *․ éC:/․\u0001"
+   }
+  },
+  {
+   "name": "random 241",
+   "op": "safeRelativePath",
+   "a": "é:~%00 %2F \u001f?%2e//",
+   "expect": {
+    "value": "é:~%00 %2F \u001f?%2e"
+   }
+  },
+  {
+   "name": "random 242",
+   "op": "safeRelativePath",
+   "a": "%00~C:﻿a․",
+   "expect": {
+    "value": "%00~C:﻿a․"
+   }
+  },
+  {
+   "name": "random 243",
+   "op": "joinRoot",
+   "a": "‮*%2e",
+   "b": ".\u001f/?․�\\*",
+   "expect": {
+    "value": "‮*%2e/.\u001f/?․�\\*"
+   }
+  },
+  {
+   "name": "random 244",
+   "op": "safeRelativePath",
+   "a": "😀b",
+   "expect": {
+    "value": "😀b"
+   }
+  },
+  {
+   "name": "random 245",
+   "op": "cleanRoot",
+   "a": ".．",
+   "expect": {
+    "value": ".．"
+   }
+  },
+  {
+   "name": "random 246",
+   "op": "joinRoot",
+   "a": "..",
+   "b": "%00é.�",
+   "expect": {
+    "value": "../%00é.�"
+   }
+  },
+  {
+   "name": "random 247",
+   "op": "isPlainFilename",
+   "a": "/é\u0000~C://‮:",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 248",
+   "op": "safeRelativePath",
+   "a": "C:\n\\\u0000é//．．\t//",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 249",
+   "op": "cleanRoot",
+   "a": "．/😀\u0000",
+   "expect": {
+    "value": "．/😀\u0000"
+   }
+  },
+  {
+   "name": "random 250",
+   "op": "isPlainFilename",
+   "a": "a\na\t  ․ \u001f",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 251",
+   "op": "safeRelativePath",
+   "a": ": ",
+   "expect": {
+    "value": ":"
+   }
+  },
+  {
+   "name": "random 252",
+   "op": "joinRoot",
+   "a": "~\n%00\t",
+   "b": "\u001f~?/:․�",
+   "expect": {
+    "value": "~\n%00\t/\u001f~?/:․�"
+   }
+  },
+  {
+   "name": "random 253",
+   "op": "safeRelativePath",
+   "a": "ba \\~?😀",
+   "expect": {
+    "value": "ba /~?😀"
+   }
+  },
+  {
+   "name": "random 254",
+   "op": "safeRelativePath",
+   "a": "C: ",
+   "expect": {
+    "value": "C:"
+   }
+  },
+  {
+   "name": "random 255",
+   "op": "safeRelativePath",
+   "a": "C:😀 ..%00*b",
+   "expect": {
+    "value": "C:😀 ..%00*b"
+   }
+  },
+  {
+   "name": "random 256",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 257",
+   "op": "safeRelativePath",
+   "a": "?﻿ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 258",
+   "op": "isPlainFilename",
+   "a": ".~\u001f..%2F%00b#﻿C:",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 259",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 260",
+   "op": "safeRelativePath",
+   "a": "․․",
+   "expect": {
+    "value": "․․"
+   }
+  },
+  {
+   "name": "random 261",
+   "op": "safeRelativePath",
+   "a": ":‮/․",
+   "expect": {
+    "value": ":‮/․"
+   }
+  },
+  {
+   "name": "random 262",
+   "op": "safeRelativePath",
+   "a": "．．",
+   "expect": {
+    "value": "．．"
+   }
+  },
+  {
+   "name": "random 263",
+   "op": "isPlainFilename",
+   "a": " ．%00 .\u0001/ �",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 264",
+   "op": "safeRelativePath",
+   "a": "\u001f😀",
+   "expect": {
+    "value": "\u001f😀"
+   }
+  },
+  {
+   "name": "random 265",
+   "op": "joinRoot",
+   "a": "\t",
+   "b": "\\�C:\t?",
+   "expect": {
+    "value": "\t/\\�C:\t?"
+   }
+  },
+  {
+   "name": "random 266",
+   "op": "safeRelativePath",
+   "a": "?b． b\\﻿%2ea~",
+   "expect": {
+    "value": "?b． b/﻿%2ea~"
+   }
+  },
+  {
+   "name": "random 267",
+   "op": "isPlainFilename",
+   "a": "�b\u001f..",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 268",
+   "op": "safeRelativePath",
+   "a": "﻿",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 269",
+   "op": "safeRelativePath",
+   "a": "/ *\n\\․\u0000 é",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 270",
+   "op": "safeRelativePath",
+   "a": "%00",
+   "expect": {
+    "value": "%00"
+   }
+  },
+  {
+   "name": "random 271",
+   "op": "joinRoot",
+   "a": "\\﻿/# a﻿\\ ",
+   "b": "",
+   "expect": {
+    "value": "\\﻿/# a﻿\\ "
+   }
+  },
+  {
+   "name": "random 272",
+   "op": "safeRelativePath",
+   "a": "．*\u0000*�",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 273",
+   "op": "isPlainFilename",
+   "a": "\t#.‮%2e~ é",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 274",
+   "op": "cleanRoot",
+   "a": "a\t\t~\t",
+   "expect": {
+    "value": "a\t\t~\t"
+   }
+  },
+  {
+   "name": "random 275",
+   "op": "joinRoot",
+   "a": "",
+   "b": "\u0000 \u0000\n\u0001*",
+   "expect": {
+    "value": "\u0000 \u0000\n\u0001*"
+   }
+  },
+  {
+   "name": "random 276",
+   "op": "joinRoot",
+   "a": "\u001f%00\\// ﻿ ‮C:‮․",
+   "b": "\t\u001f😀 é%2F// ?",
+   "expect": {
+    "value": "\u001f%00\\// ﻿ ‮C:‮․/\t\u001f😀 é%2F// ?"
+   }
+  },
+  {
+   "name": "random 277",
+   "op": "cleanRoot",
+   "a": "😀\t//․#․/‮\u001f．",
+   "expect": {
+    "value": "😀\t//․#․/‮\u001f．"
+   }
+  },
+  {
+   "name": "random 278",
+   "op": "safeRelativePath",
+   "a": " \téb//\u0001.//﻿",
+   "expect": {
+    "value": "éb/\u0001."
+   }
+  },
+  {
+   "name": "random 279",
+   "op": "cleanRoot",
+   "a": "~😀\t",
+   "expect": {
+    "value": "~😀\t"
+   }
+  },
+  {
+   "name": "random 280",
+   "op": "joinRoot",
+   "a": "a%00😀\u0000//C::..# ",
+   "b": "/",
+   "expect": {
+    "value": "a%00😀\u0000//C::..# //"
+   }
+  },
+  {
+   "name": "random 281",
+   "op": "safeRelativePath",
+   "a": "\\..#a😀C:%2e\u001fa//\t",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 282",
+   "op": "cleanRoot",
+   "a": "//:C:\n� .﻿%2eC:",
+   "expect": {
+    "value": ":C:\n� .﻿%2eC:"
+   }
+  },
+  {
+   "name": "random 283",
+   "op": "safeRelativePath",
+   "a": "é\t．\na  ",
+   "expect": {
+    "value": "é\t．\na"
+   }
+  },
+  {
+   "name": "random 284",
+   "op": "cleanRoot",
+   "a": "\u001f\\..%00�",
+   "expect": {
+    "value": "\u001f\\..%00�"
+   }
+  },
+  {
+   "name": "random 285",
+   "op": "isPlainFilename",
+   "a": "\t\t%00é*~",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 286",
+   "op": "cleanRoot",
+   "a": "%2exxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": "%2exxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  },
+  {
+   "name": "random 287",
+   "op": "safeRelativePath",
+   "a": "bé",
+   "expect": {
+    "value": "bé"
+   }
+  },
+  {
+   "name": "random 288",
+   "op": "cleanRoot",
+   "a": "․C:",
+   "expect": {
+    "value": "․C:"
+   }
+  },
+  {
+   "name": "random 289",
+   "op": "isPlainFilename",
+   "a": "?/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 290",
+   "op": "safeRelativePath",
+   "a": ".#./b ",
+   "expect": {
+    "value": ".#./b"
+   }
+  },
+  {
+   "name": "random 291",
+   "op": "cleanRoot",
+   "a": " ..#é",
+   "expect": {
+    "value": " ..#é"
+   }
+  },
+  {
+   "name": "random 292",
+   "op": "safeRelativePath",
+   "a": "%2F�",
+   "expect": {
+    "value": "%2F�"
+   }
+  },
+  {
+   "name": "random 293",
+   "op": "safeRelativePath",
+   "a": " C:😀\t%2e//\u0000\n//",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 294",
+   "op": "safeRelativePath",
+   "a": "﻿  *😀?\\",
+   "expect": {
+    "value": "*😀?"
+   }
+  },
+  {
+   "name": "random 295",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 296",
+   "op": "joinRoot",
+   "a": "",
+   "b": "\u001f．\u0001\\\t．:a",
+   "expect": {
+    "value": "\u001f．\u0001\\\t．:a"
+   }
+  },
+  {
+   "name": "random 297",
+   "op": "cleanRoot",
+   "a": "😀\u0001:．\u0000a?*😀 C:",
+   "expect": {
+    "value": "😀\u0001:．\u0000a?*😀 C:"
+   }
+  },
+  {
+   "name": "random 298",
+   "op": "isPlainFilename",
+   "a": "/é﻿．%2e😀%2e ．",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 299",
+   "op": "safeRelativePath",
+   "a": "~😀\n..",
+   "expect": {
+    "value": "~😀\n.."
+   }
+  },
+  {
+   "name": "random 300",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 301",
+   "op": "cleanRoot",
+   "a": "\n.:/\\.\t\\",
+   "expect": {
+    "value": "\n.:/\\.\t\\"
+   }
+  },
+  {
+   "name": "random 302",
+   "op": "safeRelativePath",
+   "a": "\t?%2e",
+   "expect": {
+    "value": "?%2e"
+   }
+  },
+  {
+   "name": "random 303",
+   "op": "joinRoot",
+   "a": "%00😀\nb..*",
+   "b": "//",
+   "expect": {
+    "value": "%00😀\nb..*///"
+   }
+  },
+  {
+   "name": "random 304",
+   "op": "safeRelativePath",
+   "a": "．%2e:․\u0000 ?",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 305",
+   "op": "isPlainFilename",
+   "a": "․\\ ..#\n\u0000~é\u0000/",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 306",
+   "op": "safeRelativePath",
+   "a": " *//#~#․😀//%2F",
+   "expect": {
+    "value": "*/#~#․😀/%2F"
+   }
+  },
+  {
+   "name": "random 307",
+   "op": "joinRoot",
+   "a": " C:�%2e",
+   "b": "?\\",
+   "expect": {
+    "value": " C:�%2e/?\\"
+   }
+  },
+  {
+   "name": "random 308",
+   "op": "safeRelativePath",
+   "a": "․．😀\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 309",
+   "op": "safeRelativePath",
+   "a": "� \n",
+   "expect": {
+    "value": "�"
+   }
+  },
+  {
+   "name": "random 310",
+   "op": "joinRoot",
+   "a": "a%2e�\u0000:\t\u0001%00:/#",
+   "b": "é",
+   "expect": {
+    "value": "a%2e�\u0000:\t\u0001%00:/#/é"
+   }
+  },
+  {
+   "name": "random 311",
+   "op": "isPlainFilename",
+   "a": "\u001f�  \u0001․%00�",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 312",
+   "op": "safeRelativePath",
+   "a": "//*\n%2e",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 313",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 314",
+   "op": "isPlainFilename",
+   "a": "#",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 315",
+   "op": "isPlainFilename",
+   "a": "‮😀\u0000%2e%2F/\\\\é~",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 316",
+   "op": "safeRelativePath",
+   "a": "..\u0000\n",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 317",
+   "op": "isPlainFilename",
+   "a": "?😀�/\n\u001fb",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 318",
+   "op": "safeRelativePath",
+   "a": "~",
+   "expect": {
+    "value": "~"
+   }
+  },
+  {
+   "name": "random 319",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 320",
+   "op": "cleanRoot",
+   "a": "．b ",
+   "expect": {
+    "value": "．b "
+   }
+  },
+  {
+   "name": "random 321",
+   "op": "joinRoot",
+   "a": "‮* 😀﻿%2e//%2F\u001f",
+   "b": "#\\ b‮//﻿%2F%2F�//",
+   "expect": {
+    "value": "‮* 😀﻿%2e//%2F\u001f/#\\ b‮//﻿%2F%2F�//"
+   }
+  },
+  {
+   "name": "random 322",
+   "op": "cleanRoot",
+   "a": "😀\\a\u001f😀xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": "😀\\a\u001f😀xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  },
+  {
+   "name": "random 323",
+   "op": "safeRelativePath",
+   "a": "﻿%2e:\t\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 324",
+   "op": "isPlainFilename",
+   "a": "․‮",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 325",
+   "op": "cleanRoot",
+   "a": "‮",
+   "expect": {
+    "value": "‮"
+   }
+  },
+  {
+   "name": "random 326",
+   "op": "safeRelativePath",
+   "a": "‮\\\u0001\u0001\\",
+   "expect": {
+    "value": "‮/\u0001\u0001"
+   }
+  },
+  {
+   "name": "random 327",
+   "op": "safeRelativePath",
+   "a": ".%2e:\u0000b: \\",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 328",
+   "op": "safeRelativePath",
+   "a": "\u001f  ",
+   "expect": {
+    "value": "\u001f"
+   }
+  },
+  {
+   "name": "random 329",
+   "op": "cleanRoot",
+   "a": "%2e� ",
+   "expect": {
+    "value": "%2e� "
+   }
+  },
+  {
+   "name": "random 330",
+   "op": "cleanRoot",
+   "a": "\u0001../\u0001~",
+   "expect": {
+    "value": "\u0001../\u0001~"
+   }
+  },
+  {
+   "name": "random 331",
+   "op": "safeRelativePath",
+   "a": "éC:C:\t.\u0001#.",
+   "expect": {
+    "value": "éC:C:\t.\u0001#."
+   }
+  },
+  {
+   "name": "random 332",
+   "op": "safeRelativePath",
+   "a": "‮\t\n%2F:..",
+   "expect": {
+    "value": "‮\t\n%2F:.."
+   }
+  },
+  {
+   "name": "random 333",
+   "op": "isPlainFilename",
+   "a": " ．%2F﻿‮",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 334",
+   "op": "isPlainFilename",
+   "a": "�  �",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 335",
+   "op": "joinRoot",
+   "a": " b//%00\u0001",
+   "b": " %00xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": " b//%00\u0001/ %00xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  },
+  {
+   "name": "random 336",
+   "op": "safeRelativePath",
+   "a": "é\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 337",
+   "op": "safeRelativePath",
+   "a": "a?%2F\u0000~",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 338",
+   "op": "cleanRoot",
+   "a": "\u0001b�%00",
+   "expect": {
+    "value": "\u0001b�%00"
+   }
+  },
+  {
+   "name": "random 339",
+   "op": "joinRoot",
+   "a": "b\t‮aé.․",
+   "b": "C: 😀\\///\t# ",
+   "expect": {
+    "value": "b\t‮aé.․/C: 😀\\///\t# "
+   }
+  },
+  {
+   "name": "random 340",
+   "op": "isPlainFilename",
+   "a": "%2e․:%00%00ab?\t﻿﻿",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 341",
+   "op": "cleanRoot",
+   "a": "\u0000C:*\u0000%2F😀%2F",
+   "expect": {
+    "value": "\u0000C:*\u0000%2F😀%2F"
+   }
+  },
+  {
+   "name": "random 342",
+   "op": "safeRelativePath",
+   "a": "﻿‮?‮ \n",
+   "expect": {
+    "value": "‮?‮"
+   }
+  },
+  {
+   "name": "random 343",
+   "op": "safeRelativePath",
+   "a": "//%00é//é��",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 344",
+   "op": "joinRoot",
+   "a": "﻿%2F \t‮�C:‮//\n",
+   "b": "%00\\﻿\u0000",
+   "expect": {
+    "value": "﻿%2F \t‮�C:‮//\n/%00\\﻿\u0000"
+   }
+  },
+  {
+   "name": "random 345",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 346",
+   "op": "safeRelativePath",
+   "a": " \n:․%2F%2e%2F\u0001\t‮%2F",
+   "expect": {
+    "value": ":․%2F%2e%2F\u0001\t‮%2F"
+   }
+  },
+  {
+   "name": "random 347",
+   "op": "safeRelativePath",
+   "a": "․?*",
+   "expect": {
+    "value": "․?*"
+   }
+  },
+  {
+   "name": "random 348",
+   "op": "safeRelativePath",
+   "a": "\n..:#//\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 349",
+   "op": "safeRelativePath",
+   "a": "%2F~:%2e",
+   "expect": {
+    "value": "%2F~:%2e"
+   }
+  },
+  {
+   "name": "random 350",
+   "op": "joinRoot",
+   "a": "\u0000 \u001fC:#//",
+   "b": ":.%2e．",
+   "expect": {
+    "value": "\u0000 \u001fC:#/:.%2e．"
+   }
+  },
+  {
+   "name": "random 351",
+   "op": "cleanRoot",
+   "a": "\u0000",
+   "expect": {
+    "value": "\u0000"
+   }
+  },
+  {
+   "name": "random 352",
+   "op": "safeRelativePath",
+   "a": "//\u0001\u0000::\t．．~.",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 353",
+   "op": "safeRelativePath",
+   "a": "\u0000//😀%2F",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 354",
+   "op": "joinRoot",
+   "a": "．\t%2eé．%2e ",
+   "b": " \t:\\\u0001\u001f",
+   "expect": {
+    "value": "．\t%2eé．%2e / \t:\\\u0001\u001f"
+   }
+  },
+  {
+   "name": "random 355",
+   "op": "safeRelativePath",
+   "a": " %2F#a",
+   "expect": {
+    "value": "%2F#a"
+   }
+  },
+  {
+   "name": "random 356",
+   "op": "safeRelativePath",
+   "a": "%00é ",
+   "expect": {
+    "value": "%00é"
+   }
+  },
+  {
+   "name": "random 357",
+   "op": "cleanRoot",
+   "a": "\\?..~\u0000\\\n..\\",
+   "expect": {
+    "value": "\\?..~\u0000\\\n..\\"
+   }
+  },
+  {
+   "name": "random 358",
+   "op": "safeRelativePath",
+   "a": "\\ab\\ :",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 359",
+   "op": "cleanRoot",
+   "a": "//�‮\u001f\u0001bb．~#",
+   "expect": {
+    "value": "�‮\u001f\u0001bb．~#"
+   }
+  },
+  {
+   "name": "random 360",
+   "op": "safeRelativePath",
+   "a": "\u0001%00../",
+   "expect": {
+    "value": "\u0001%00.."
+   }
+  },
+  {
+   "name": "random 361",
+   "op": "safeRelativePath",
+   "a": "\t?é.․*xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": "?é.․*xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  },
+  {
+   "name": "random 362",
+   "op": "cleanRoot",
+   "a": "/\\?a\n?///\u001f",
+   "expect": {
+    "value": "\\?a\n?///\u001f"
+   }
+  },
+  {
+   "name": "random 363",
+   "op": "joinRoot",
+   "a": "/ ",
+   "b": " ..．﻿#*..:..%2e ",
+   "expect": {
+    "value": " / ..．﻿#*..:..%2e "
+   }
+  },
+  {
+   "name": "random 364",
+   "op": "safeRelativePath",
+   "a": "*‮‮\u0000~:\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 365",
+   "op": "isPlainFilename",
+   "a": "*",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 366",
+   "op": "joinRoot",
+   "a": "․．/a",
+   "b": "．#�~",
+   "expect": {
+    "value": "․．/a/．#�~"
+   }
+  },
+  {
+   "name": "random 367",
+   "op": "joinRoot",
+   "a": "éé․\\",
+   "b": "\n\t\u0000//‮\u001f*",
+   "expect": {
+    "value": "éé․\\/\n\t\u0000//‮\u001f*"
+   }
+  },
+  {
+   "name": "random 368",
+   "op": "isPlainFilename",
+   "a": "﻿",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 369",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 370",
+   "op": "isPlainFilename",
+   "a": "😀é? ",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 371",
+   "op": "safeRelativePath",
+   "a": "a~",
+   "expect": {
+    "value": "a~"
+   }
+  },
+  {
+   "name": "random 372",
+   "op": "joinRoot",
+   "a": "/.  ",
+   "b": ".* ~",
+   "expect": {
+    "value": ".  /.* ~"
+   }
+  },
+  {
+   "name": "random 373",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 374",
+   "op": "safeRelativePath",
+   "a": ".",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 375",
+   "op": "safeRelativePath",
+   "a": "\u0001~\n﻿�?%2e%2F\n %2F",
+   "expect": {
+    "value": "\u0001~\n﻿�?%2e%2F\n %2F"
+   }
+  },
+  {
+   "name": "random 376",
+   "op": "safeRelativePath",
+   "a": "%2F😀//*\u001f../%00‮‮",
+   "expect": {
+    "value": "%2F😀/*\u001f../%00‮‮"
+   }
+  },
+  {
+   "name": "random 377",
+   "op": "joinRoot",
+   "a": "﻿",
+   "b": " :‮ \\ \\%2F?‮",
+   "expect": {
+    "value": "﻿/ :‮ \\ \\%2F?‮"
+   }
+  },
+  {
+   "name": "random 378",
+   "op": "joinRoot",
+   "a": ":\u0001 ",
+   "b": "*/",
+   "expect": {
+    "value": ":\u0001 /*/"
+   }
+  },
+  {
+   "name": "random 379",
+   "op": "isPlainFilename",
+   "a": " \t\t\u001f~\u0001/﻿",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 380",
+   "op": "cleanRoot",
+   "a": "﻿%2F\\%2e \\%2F*a．",
+   "expect": {
+    "value": "﻿%2F\\%2e \\%2F*a．"
+   }
+  },
+  {
+   "name": "random 381",
+   "op": "safeRelativePath",
+   "a": "\t \n\\\u0000 \u001f",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 382",
+   "op": "cleanRoot",
+   "a": " �%00",
+   "expect": {
+    "value": " �%00"
+   }
+  },
+  {
+   "name": "random 383",
+   "op": "joinRoot",
+   "a": "~C:😀.b\u0000\u001f",
+   "b": "\\﻿%2F \\‮*%00%00﻿\u0000",
+   "expect": {
+    "value": "~C:😀.b\u0000\u001f/\\﻿%2F \\‮*%00%00﻿\u0000"
+   }
+  },
+  {
+   "name": "random 384",
+   "op": "joinRoot",
+   "a": ".\u0000．\u001f",
+   "b": "?..",
+   "expect": {
+    "value": ".\u0000．\u001f/?.."
+   }
+  },
+  {
+   "name": "random 385",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 386",
+   "op": "safeRelativePath",
+   "a": "*\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 387",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 388",
+   "op": "safeRelativePath",
+   "a": "*%00\u001fé",
+   "expect": {
+    "value": "*%00\u001fé"
+   }
+  },
+  {
+   "name": "random 389",
+   "op": "safeRelativePath",
+   "a": "\n﻿C:~é",
+   "expect": {
+    "value": "C:~é"
+   }
+  },
+  {
+   "name": "random 390",
+   "op": "safeRelativePath",
+   "a": "a ‮�? ",
+   "expect": {
+    "value": "a ‮�?"
+   }
+  },
+  {
+   "name": "random 391",
+   "op": "safeRelativePath",
+   "a": "\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 392",
+   "op": "cleanRoot",
+   "a": "~﻿�%00�~//b\u0001",
+   "expect": {
+    "value": "~﻿�%00�~//b\u0001"
+   }
+  },
+  {
+   "name": "random 393",
+   "op": "safeRelativePath",
+   "a": "%00 C:﻿#\\．/",
+   "expect": {
+    "value": "%00 C:﻿#/．"
+   }
+  },
+  {
+   "name": "random 394",
+   "op": "cleanRoot",
+   "a": "\t․%2e.~b😀%00 :..",
+   "expect": {
+    "value": "\t․%2e.~b😀%00 :.."
+   }
+  },
+  {
+   "name": "random 395",
+   "op": "isPlainFilename",
+   "a": "﻿C:．b..%2Fb",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 396",
+   "op": "safeRelativePath",
+   "a": ".bb*\u0000\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 397",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 398",
+   "op": "joinRoot",
+   "a": "%2e?\u0000..\u0001///é\t",
+   "b": "%2F",
+   "expect": {
+    "value": "%2e?\u0000..\u0001///é\t/%2F"
+   }
+  },
+  {
+   "name": "random 399",
+   "op": "cleanRoot",
+   "a": "\u0000 ",
+   "expect": {
+    "value": "\u0000 "
+   }
+  },
+  {
+   "name": "random 400",
+   "op": "isPlainFilename",
+   "a": "%00.%2F 😀\u0000.",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 401",
+   "op": "safeRelativePath",
+   "a": ":\\a .//#.",
+   "expect": {
+    "value": ":/a ./#."
+   }
+  },
+  {
+   "name": "random 402",
+   "op": "safeRelativePath",
+   "a": "é/",
+   "expect": {
+    "value": "é"
+   }
+  },
+  {
+   "name": "random 403",
+   "op": "safeRelativePath",
+   "a": "*․é?#é",
+   "expect": {
+    "value": "*․é?#é"
+   }
+  },
+  {
+   "name": "random 404",
+   "op": "safeRelativePath",
+   "a": "�😀\n．",
+   "expect": {
+    "value": "�😀\n．"
+   }
+  },
+  {
+   "name": "random 405",
+   "op": "cleanRoot",
+   "a": " ",
+   "expect": {
+    "value": " "
+   }
+  },
+  {
+   "name": "random 406",
+   "op": "cleanRoot",
+   "a": " \n",
+   "expect": {
+    "value": " \n"
+   }
+  },
+  {
+   "name": "random 407",
+   "op": "isPlainFilename",
+   "a": "․%00*?éa\n．😀",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 408",
+   "op": "cleanRoot",
+   "a": "😀:․b．?# \u001fC:",
+   "expect": {
+    "value": "😀:․b．?# \u001fC:"
+   }
+  },
+  {
+   "name": "random 409",
+   "op": "cleanRoot",
+   "a": "~//a~#‮?﻿~é#",
+   "expect": {
+    "value": "~//a~#‮?﻿~é#"
+   }
+  },
+  {
+   "name": "random 410",
+   "op": "joinRoot",
+   "a": "b//\t%2e.?%2F",
+   "b": ":#\n#․\\\u0001",
+   "expect": {
+    "value": "b//\t%2e.?%2F/:#\n#․\\\u0001"
+   }
+  },
+  {
+   "name": "random 411",
+   "op": "safeRelativePath",
+   "a": "\\",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 412",
+   "op": "joinRoot",
+   "a": "",
+   "b": "\t\u001f😀?#%2e﻿\u001f",
+   "expect": {
+    "value": "\t\u001f😀?#%2e﻿\u001f"
+   }
+  },
+  {
+   "name": "random 413",
+   "op": "isPlainFilename",
+   "a": "b/．\n�%2F?\\a\\xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 414",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 415",
+   "op": "safeRelativePath",
+   "a": "\n ",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 416",
+   "op": "safeRelativePath",
+   "a": "\u0000a#b",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 417",
+   "op": "cleanRoot",
+   "a": "\\﻿~.",
+   "expect": {
+    "value": "\\﻿~."
+   }
+  },
+  {
+   "name": "random 418",
+   "op": "isPlainFilename",
+   "a": "\u0001\n‮．😀\u001f\u0000~a:",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 419",
+   "op": "cleanRoot",
+   "a": "\n .�%00%00%2F~ é..",
+   "expect": {
+    "value": "\n .�%00%00%2F~ é.."
+   }
+  },
+  {
+   "name": "random 420",
+   "op": "isPlainFilename",
+   "a": "．\u0000: :  ",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 421",
+   "op": "safeRelativePath",
+   "a": "//\u0000﻿/# ",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 422",
+   "op": "joinRoot",
+   "a": "C:😀/aé\u0001\u0000..�.",
+   "b": "*\n․?%2F",
+   "expect": {
+    "value": "C:😀/aé\u0001\u0000..�./*\n․?%2F"
+   }
+  },
+  {
+   "name": "random 423",
+   "op": "cleanRoot",
+   "a": "é#\u001f․%2F\u0000",
+   "expect": {
+    "value": "é#\u001f․%2F\u0000"
+   }
+  },
+  {
+   "name": "random 424",
+   "op": "joinRoot",
+   "a": "\u0001 \t  :?\n..",
+   "b": "a\u001f\n %00:‮﻿*\u0000",
+   "expect": {
+    "value": "\u0001 \t  :?\n../a\u001f\n %00:‮﻿*\u0000"
+   }
+  },
+  {
+   "name": "random 425",
+   "op": "isPlainFilename",
+   "a": " ‮#",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 426",
+   "op": "joinRoot",
+   "a": "%2e.é%2e﻿://‮?‮%2Fxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "b": "  \\:",
+   "expect": {
+    "value": "%2e.é%2e﻿://‮?‮%2Fxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/  \\:"
+   }
+  },
+  {
+   "name": "random 427",
+   "op": "cleanRoot",
+   "a": "%2F‮",
+   "expect": {
+    "value": "%2F‮"
+   }
+  },
+  {
+   "name": "random 428",
+   "op": "cleanRoot",
+   "a": " �",
+   "expect": {
+    "value": " �"
+   }
+  },
+  {
+   "name": "random 429",
+   "op": "safeRelativePath",
+   "a": "?:#~�\u001f#‮",
+   "expect": {
+    "value": "?:#~�\u001f#‮"
+   }
+  },
+  {
+   "name": "random 430",
+   "op": "safeRelativePath",
+   "a": "C: %2F.\\\u0001",
+   "expect": {
+    "value": "C: %2F./\u0001"
+   }
+  },
+  {
+   "name": "random 431",
+   "op": "isPlainFilename",
+   "a": " %00",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 432",
+   "op": "joinRoot",
+   "a": "",
+   "b": "/",
+   "expect": {
+    "value": "/"
+   }
+  },
+  {
+   "name": "random 433",
+   "op": "cleanRoot",
+   "a": "😀%2F/",
+   "expect": {
+    "value": "😀%2F"
+   }
+  },
+  {
+   "name": "random 434",
+   "op": "safeRelativePath",
+   "a": "‮\u0000..\n%2F%00#*😀",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 435",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 436",
+   "op": "safeRelativePath",
+   "a": "．%2F/‮//\u0001\\",
+   "expect": {
+    "value": "．%2F/‮/\u0001"
+   }
+  },
+  {
+   "name": "random 437",
+   "op": "joinRoot",
+   "a": "%2Fé~😀\u0001",
+   "b": " ․:．C:\\﻿�",
+   "expect": {
+    "value": "%2Fé~😀\u0001/ ․:．C:\\﻿�"
+   }
+  },
+  {
+   "name": "random 438",
+   "op": "safeRelativePath",
+   "a": "\u001f%2e",
+   "expect": {
+    "value": "\u001f%2e"
+   }
+  },
+  {
+   "name": "random 439",
+   "op": "cleanRoot",
+   "a": "\u0000:?//*․",
+   "expect": {
+    "value": "\u0000:?//*․"
+   }
+  },
+  {
+   "name": "random 440",
+   "op": "isPlainFilename",
+   "a": "b#",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 441",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 442",
+   "op": "isPlainFilename",
+   "a": "․． C:é",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 443",
+   "op": "safeRelativePath",
+   "a": "😀\\． //b﻿",
+   "expect": {
+    "value": "😀/． /b"
+   }
+  },
+  {
+   "name": "random 444",
+   "op": "isPlainFilename",
+   "a": "..\tb..\t",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 445",
+   "op": "isPlainFilename",
+   "a": "😀*😀. :",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 446",
+   "op": "joinRoot",
+   "a": "%2F..😀\u001f a\\",
+   "b": " \t․%2e\\",
+   "expect": {
+    "value": "%2F..😀\u001f a\\/ \t․%2e\\"
+   }
+  },
+  {
+   "name": "random 447",
+   "op": "isPlainFilename",
+   "a": "/?C::# \u001f%00",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 448",
+   "op": "safeRelativePath",
+   "a": "�．a﻿~~~#",
+   "expect": {
+    "value": "�．a﻿~~~#"
+   }
+  },
+  {
+   "name": "random 449",
+   "op": "isPlainFilename",
+   "a": "‮‮%2F",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 450",
+   "op": "joinRoot",
+   "a": "//﻿..�? %00",
+   "b": "\u001f~a   C:\t\u001f",
+   "expect": {
+    "value": "﻿..�? %00/\u001f~a   C:\t\u001f"
+   }
+  },
+  {
+   "name": "random 451",
+   "op": "safeRelativePath",
+   "a": "\t ‮",
+   "expect": {
+    "value": "‮"
+   }
+  },
+  {
+   "name": "random 452",
+   "op": "safeRelativePath",
+   "a": "\t\u001fb%2e  a%00. ",
+   "expect": {
+    "value": "\u001fb%2e  a%00."
+   }
+  },
+  {
+   "name": "random 453",
+   "op": "isPlainFilename",
+   "a": "*﻿%2F‮",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 454",
+   "op": "safeRelativePath",
+   "a": "‮\n//\\",
+   "expect": {
+    "value": "‮\n"
+   }
+  },
+  {
+   "name": "random 455",
+   "op": "joinRoot",
+   "a": "�．:%00 a/*//",
+   "b": "C:",
+   "expect": {
+    "value": "�．:%00 a/*/C:"
+   }
+  },
+  {
+   "name": "random 456",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 457",
+   "op": "safeRelativePath",
+   "a": "#",
+   "expect": {
+    "value": "#"
+   }
+  },
+  {
+   "name": "random 458",
+   "op": "safeRelativePath",
+   "a": "\u0001\u0000b%2eéb\u0001//．\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 459",
+   "op": "safeRelativePath",
+   "a": "\u0001",
+   "expect": {
+    "value": "\u0001"
+   }
+  },
+  {
+   "name": "random 460",
+   "op": "safeRelativePath",
+   "a": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   }
+  },
+  {
+   "name": "random 461",
+   "op": "isPlainFilename",
+   "a": "*． ․� /😀é",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 462",
+   "op": "cleanRoot",
+   "a": "//?..",
+   "expect": {
+    "value": "?.."
+   }
+  },
+  {
+   "name": "random 463",
+   "op": "isPlainFilename",
+   "a": "?b\n﻿\t...\u001f\n",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 464",
+   "op": "safeRelativePath",
+   "a": "%2e%2e%00\\",
+   "expect": {
+    "value": "%2e%2e%00"
+   }
+  },
+  {
+   "name": "random 465",
+   "op": "safeRelativePath",
+   "a": "%00%00\u0001: ",
+   "expect": {
+    "value": "%00%00\u0001:"
+   }
+  },
+  {
+   "name": "random 466",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 467",
+   "op": "safeRelativePath",
+   "a": "\u001f﻿\n\u0000b..﻿",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 468",
+   "op": "joinRoot",
+   "a": "//😀C::‮",
+   "b": "\t\u0000?b\u0000é‮",
+   "expect": {
+    "value": "😀C::‮/\t\u0000?b\u0000é‮"
+   }
+  },
+  {
+   "name": "random 469",
+   "op": "joinRoot",
+   "a": "#\\�#  \u0000",
+   "b": "",
+   "expect": {
+    "value": "#\\�#  \u0000"
+   }
+  },
+  {
+   "name": "random 470",
+   "op": "cleanRoot",
+   "a": "\u0001․ %2F�//%00C:",
+   "expect": {
+    "value": "\u0001․ %2F�//%00C:"
+   }
+  },
+  {
+   "name": "random 471",
+   "op": "cleanRoot",
+   "a": "😀C:é.?․",
+   "expect": {
+    "value": "😀C:é.?․"
+   }
+  },
+  {
+   "name": "random 472",
+   "op": "isPlainFilename",
+   "a": "‮:",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 473",
+   "op": "safeRelativePath",
+   "a": ":a?.C:C:․\n",
+   "expect": {
+    "value": ":a?.C:C:․"
+   }
+  },
+  {
+   "name": "random 474",
+   "op": "isPlainFilename",
+   "a": "\u001f//‮%2F\u0001C:\u001fb%2e",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 475",
+   "op": "joinRoot",
+   "a": ".",
+   "b": " %2F%00.#~ é",
+   "expect": {
+    "value": "./ %2F%00.#~ é"
+   }
+  },
+  {
+   "name": "random 476",
+   "op": "isPlainFilename",
+   "a": "b․.‮?//a‮C:",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 477",
+   "op": "safeRelativePath",
+   "a": "..a.. :b\u0001 *",
+   "expect": {
+    "value": "..a.. :b\u0001 *"
+   }
+  },
+  {
+   "name": "random 478",
+   "op": "safeRelativePath",
+   "a": "é*\u001f.. :b//~??",
+   "expect": {
+    "value": "é*\u001f.. :b/~??"
+   }
+  },
+  {
+   "name": "random 479",
+   "op": "safeRelativePath",
+   "a": "#a\u0001.. ..․ \u001f",
+   "expect": {
+    "value": "#a\u0001.. ..․ \u001f"
+   }
+  },
+  {
+   "name": "random 480",
+   "op": "safeRelativePath",
+   "a": "*%2e ",
+   "expect": {
+    "value": "*%2e"
+   }
+  },
+  {
+   "name": "random 481",
+   "op": "cleanRoot",
+   "a": "․/😀\u0001%2e‮ ",
+   "expect": {
+    "value": "․/😀\u0001%2e‮ "
+   }
+  },
+  {
+   "name": "random 482",
+   "op": "safeRelativePath",
+   "a": "․ ",
+   "expect": {
+    "value": "․"
+   }
+  },
+  {
+   "name": "random 483",
+   "op": "safeRelativePath",
+   "a": "%2F‮C:~",
+   "expect": {
+    "value": "%2F‮C:~"
+   }
+  },
+  {
+   "name": "random 484",
+   "op": "safeRelativePath",
+   "a": "\u0000*\n/",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 485",
+   "op": "safeRelativePath",
+   "a": "‮é．b%2F#*",
+   "expect": {
+    "value": "‮é．b%2F#*"
+   }
+  },
+  {
+   "name": "random 486",
+   "op": "safeRelativePath",
+   "a": "😀��b﻿\u001f�\nC:�",
+   "expect": {
+    "value": "😀��b﻿\u001f�\nC:�"
+   }
+  },
+  {
+   "name": "random 487",
+   "op": "joinRoot",
+   "a": "*~b\n.�?//..a",
+   "b": "﻿:﻿é‮﻿\u001f\n",
+   "expect": {
+    "value": "*~b\n.�?//..a/﻿:﻿é‮﻿\u001f\n"
+   }
+  },
+  {
+   "name": "random 488",
+   "op": "safeRelativePath",
+   "a": "..?/b․a\\‮%2e/",
+   "expect": {
+    "value": "..?/b․a/‮%2e"
+   }
+  },
+  {
+   "name": "random 489",
+   "op": "joinRoot",
+   "a": "..%00%2F:😀\t\u0001%2F😀",
+   "b": "%00\u001f/:",
+   "expect": {
+    "value": "..%00%2F:😀\t\u0001%2F😀/%00\u001f/:"
+   }
+  },
+  {
+   "name": "random 490",
+   "op": "safeRelativePath",
+   "a": " ?b\u001f~",
+   "expect": {
+    "value": "?b\u001f~"
+   }
+  },
+  {
+   "name": "random 491",
+   "op": "safeRelativePath",
+   "a": "�．a\té. 😀 ",
+   "expect": {
+    "value": "�．a\té. 😀"
+   }
+  },
+  {
+   "name": "random 492",
+   "op": "joinRoot",
+   "a": "�/ ~*",
+   "b": "..%2F😀‮é~",
+   "expect": {
+    "value": "�/ ~*/..%2F😀‮é~"
+   }
+  },
+  {
+   "name": "random 493",
+   "op": "safeRelativePath",
+   "a": "． %00b",
+   "expect": {
+    "value": "． %00b"
+   }
+  },
+  {
+   "name": "random 494",
+   "op": "safeRelativePath",
+   "a": "․*\u0000․..\u0001\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 495",
+   "op": "safeRelativePath",
+   "a": "?\txxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 496",
+   "op": "joinRoot",
+   "a": "/  ‮~\u001f\\é",
+   "b": " %2F*\n．.😀․",
+   "expect": {
+    "value": "  ‮~\u001f\\é/ %2F*\n．.😀․"
+   }
+  },
+  {
+   "name": "random 497",
+   "op": "cleanRoot",
+   "a": " ",
+   "expect": {
+    "value": " "
+   }
+  },
+  {
+   "name": "random 498",
+   "op": "safeRelativePath",
+   "a": "\u001f//😀*..\u0001﻿%2eC:.",
+   "expect": {
+    "value": "\u001f/😀*..\u0001﻿%2eC:."
+   }
+  },
+  {
+   "name": "random 499",
+   "op": "cleanRoot",
+   "a": "\né",
+   "expect": {
+    "value": "\né"
+   }
+  },
+  {
+   "name": "random 500",
+   "op": "safeRelativePath",
+   "a": "~\t\t\t ?",
+   "expect": {
+    "value": "~\t\t\t ?"
+   }
+  },
+  {
+   "name": "random 501",
+   "op": "isPlainFilename",
+   "a": "/‮%2F﻿é%00",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 502",
+   "op": "isPlainFilename",
+   "a": "‮",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 503",
+   "op": "joinRoot",
+   "a": "bb*b",
+   "b": "a",
+   "expect": {
+    "value": "bb*b/a"
+   }
+  },
+  {
+   "name": "random 504",
+   "op": "cleanRoot",
+   "a": ":\u001f//\u0000..~‮\u0000",
+   "expect": {
+    "value": ":\u001f//\u0000..~‮\u0000"
+   }
+  },
+  {
+   "name": "random 505",
+   "op": "safeRelativePath",
+   "a": "%2F\n%2Fé\u0000‮\t~\t",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 506",
+   "op": "isPlainFilename",
+   "a": "%2e",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 507",
+   "op": "safeRelativePath",
+   "a": "?/․�",
+   "expect": {
+    "value": "?/․�"
+   }
+  },
+  {
+   "name": "random 508",
+   "op": "joinRoot",
+   "a": "C:\u0000",
+   "b": "",
+   "expect": {
+    "value": "C:\u0000"
+   }
+  },
+  {
+   "name": "random 509",
+   "op": "isPlainFilename",
+   "a": "﻿#%2F/# ",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 510",
+   "op": "safeRelativePath",
+   "a": "?//",
+   "expect": {
+    "value": "?"
+   }
+  },
+  {
+   "name": "random 511",
+   "op": "isPlainFilename",
+   "a": "é*C:C:",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 512",
+   "op": "safeRelativePath",
+   "a": "éa?‮․",
+   "expect": {
+    "value": "éa?‮․"
+   }
+  },
+  {
+   "name": "random 513",
+   "op": "safeRelativePath",
+   "a": "%00\n．�\\\u001f#﻿😀",
+   "expect": {
+    "value": "%00\n．�/\u001f#﻿😀"
+   }
+  },
+  {
+   "name": "random 514",
+   "op": "safeRelativePath",
+   "a": "․․‮․:\u001fab‮",
+   "expect": {
+    "value": "․․‮․:\u001fab‮"
+   }
+  },
+  {
+   "name": "random 515",
+   "op": "cleanRoot",
+   "a": "*\u001f#‮*",
+   "expect": {
+    "value": "*\u001f#‮*"
+   }
+  },
+  {
+   "name": "random 516",
+   "op": "cleanRoot",
+   "a": " a�bb//#",
+   "expect": {
+    "value": " a�bb//#"
+   }
+  },
+  {
+   "name": "random 517",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 518",
+   "op": "safeRelativePath",
+   "a": "*\n//é..\\\u0001%00",
+   "expect": {
+    "value": "*\n/é../\u0001%00"
+   }
+  },
+  {
+   "name": "random 519",
+   "op": "isPlainFilename",
+   "a": "a\u0000..?/\n/😀",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 520",
+   "op": "isPlainFilename",
+   "a": "\\*xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 521",
+   "op": "cleanRoot",
+   "a": "\n\u0001*�..",
+   "expect": {
+    "value": "\n\u0001*�.."
+   }
+  },
+  {
+   "name": "random 522",
+   "op": "safeRelativePath",
+   "a": "\n//\u001f .*�\t",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 523",
+   "op": "isPlainFilename",
+   "a": "\u0001 ?%00\t\n*/．",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 524",
+   "op": "safeRelativePath",
+   "a": "\u0000😀/a%00.#",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 525",
+   "op": "safeRelativePath",
+   "a": "%2F#:😀���\n．",
+   "expect": {
+    "value": "%2F#:😀���\n．"
+   }
+  },
+  {
+   "name": "random 526",
+   "op": "joinRoot",
+   "a": "‮:",
+   "b": "․%00b:․�*a\n",
+   "expect": {
+    "value": "‮:/․%00b:․�*a\n"
+   }
+  },
+  {
+   "name": "random 527",
+   "op": "joinRoot",
+   "a": "�\u0000\u001f\n\t",
+   "b": "/..\u0000#‮",
+   "expect": {
+    "value": "�\u0000\u001f\n\t//..\u0000#‮"
+   }
+  },
+  {
+   "name": "random 528",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 529",
+   "op": "isPlainFilename",
+   "a": "?",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 530",
+   "op": "safeRelativePath",
+   "a": "\u0000/�#a",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 531",
+   "op": "joinRoot",
+   "a": " .\nC:😀a\u001f/",
+   "b": "b\u001f%2F:",
+   "expect": {
+    "value": " .\nC:😀a\u001f/b\u001f%2F:"
+   }
+  },
+  {
+   "name": "random 532",
+   "op": "cleanRoot",
+   "a": "%00\u001f�",
+   "expect": {
+    "value": "%00\u001f�"
+   }
+  },
+  {
+   "name": "random 533",
+   "op": "isPlainFilename",
+   "a": "%2F..b․\t．\\/",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 534",
+   "op": "cleanRoot",
+   "a": "․:./．*",
+   "expect": {
+    "value": "․:./．*"
+   }
+  },
+  {
+   "name": "random 535",
+   "op": "safeRelativePath",
+   "a": "..\u001f%2e\u001f#﻿%2F:%2F..",
+   "expect": {
+    "value": "..\u001f%2e\u001f#﻿%2F:%2F.."
+   }
+  },
+  {
+   "name": "random 536",
+   "op": "cleanRoot",
+   "a": "~\t",
+   "expect": {
+    "value": "~\t"
+   }
+  },
+  {
+   "name": "random 537",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 538",
+   "op": "safeRelativePath",
+   "a": "/ �C:%2F․ //﻿",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 539",
+   "op": "safeRelativePath",
+   "a": "\n#/#�b",
+   "expect": {
+    "value": "#/#�b"
+   }
+  },
+  {
+   "name": "random 540",
+   "op": "safeRelativePath",
+   "a": "?�😀\u0000．",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 541",
+   "op": "joinRoot",
+   "a": "‮..",
+   "b": "\u0000．b\t",
+   "expect": {
+    "value": "‮../\u0000．b\t"
+   }
+  },
+  {
+   "name": "random 542",
+   "op": "isPlainFilename",
+   "a": "\u0001é.%2FC: ",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 543",
+   "op": "joinRoot",
+   "a": "�xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "b": " //%00‮C:．😀�//*",
+   "expect": {
+    "value": "�xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/ //%00‮C:．😀�//*"
+   }
+  },
+  {
+   "name": "random 544",
+   "op": "joinRoot",
+   "a": "%2Fb%2eb �",
+   "b": "\u0000://~C:*",
+   "expect": {
+    "value": "%2Fb%2eb �/\u0000://~C:*"
+   }
+  },
+  {
+   "name": "random 545",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 546",
+   "op": "isPlainFilename",
+   "a": "~C:．a/‮",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 547",
+   "op": "joinRoot",
+   "a": "‮:😀:",
+   "b": "C:#\u0000//..:",
+   "expect": {
+    "value": "‮:😀:/C:#\u0000//..:"
+   }
+  },
+  {
+   "name": "random 548",
+   "op": "joinRoot",
+   "a": "a．﻿~\t\u001f‮ ",
+   "b": "․",
+   "expect": {
+    "value": "a．﻿~\t\u001f‮ /․"
+   }
+  },
+  {
+   "name": "random 549",
+   "op": "cleanRoot",
+   "a": "\u001f../*./ ?😀",
+   "expect": {
+    "value": "\u001f../*./ ?😀"
+   }
+  },
+  {
+   "name": "random 550",
+   "op": "safeRelativePath",
+   "a": "\t/~．\téC:C:/",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 551",
+   "op": "joinRoot",
+   "a": "\\%2F\t\u0001%00%00�",
+   "b": "\t�a ~?..",
+   "expect": {
+    "value": "\\%2F\t\u0001%00%00�/\t�a ~?.."
+   }
+  },
+  {
+   "name": "random 552",
+   "op": "joinRoot",
+   "a": " ",
+   "b": "C:\\",
+   "expect": {
+    "value": " /C:\\"
+   }
+  },
+  {
+   "name": "random 553",
+   "op": "safeRelativePath",
+   "a": "?﻿:‮\u0000//#\n‮",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 554",
+   "op": "joinRoot",
+   "a": "..%2F😀:．:#\t․**",
+   "b": "․\u001f%2e \\",
+   "expect": {
+    "value": "..%2F😀:．:#\t․**/․\u001f%2e \\"
+   }
+  },
+  {
+   "name": "random 555",
+   "op": "joinRoot",
+   "a": "b?",
+   "b": "C:?",
+   "expect": {
+    "value": "b?/C:?"
+   }
+  },
+  {
+   "name": "random 556",
+   "op": "safeRelativePath",
+   "a": "%2F%2ea",
+   "expect": {
+    "value": "%2F%2ea"
+   }
+  },
+  {
+   "name": "random 557",
+   "op": "cleanRoot",
+   "a": "\u0000?\u001f",
+   "expect": {
+    "value": "\u0000?\u001f"
+   }
+  },
+  {
+   "name": "random 558",
+   "op": "isPlainFilename",
+   "a": ".﻿b%2F \u0001~\u0000\u0001",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 559",
+   "op": "cleanRoot",
+   "a": "‮aé#",
+   "expect": {
+    "value": "‮aé#"
+   }
+  },
+  {
+   "name": "random 560",
+   "op": "cleanRoot",
+   "a": "‮..\u0001‮%2F",
+   "expect": {
+    "value": "‮..\u0001‮%2F"
+   }
+  },
+  {
+   "name": "random 561",
+   "op": "cleanRoot",
+   "a": "․\n😀:? :\u0001C:#/",
+   "expect": {
+    "value": "․\n😀:? :\u0001C:#"
+   }
+  },
+  {
+   "name": "random 562",
+   "op": "cleanRoot",
+   "a": "\\.é%2e．é%2F\n",
+   "expect": {
+    "value": "\\.é%2e．é%2F\n"
+   }
+  },
+  {
+   "name": "random 563",
+   "op": "isPlainFilename",
+   "a": " ",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 564",
+   "op": "joinRoot",
+   "a": "é．.~ %2F",
+   "b": "．",
+   "expect": {
+    "value": "é．.~ %2F/．"
+   }
+  },
+  {
+   "name": "random 565",
+   "op": "joinRoot",
+   "a": "\u001f/\u0001//\u0001.?",
+   "b": "",
+   "expect": {
+    "value": "\u001f/\u0001//\u0001.?"
+   }
+  },
+  {
+   "name": "random 566",
+   "op": "isPlainFilename",
+   "a": " é/ �?﻿b%00",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 567",
+   "op": "isPlainFilename",
+   "a": "",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 568",
+   "op": "joinRoot",
+   "a": "// ",
+   "b": "﻿é\u001f \u0000",
+   "expect": {
+    "value": " /﻿é\u001f \u0000"
+   }
+  },
+  {
+   "name": "random 569",
+   "op": "isPlainFilename",
+   "a": "․․\t#  //~",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 570",
+   "op": "joinRoot",
+   "a": "//%00﻿",
+   "b": "///b%2F\u0000",
+   "expect": {
+    "value": "%00﻿////b%2F\u0000"
+   }
+  },
+  {
+   "name": "random 571",
+   "op": "cleanRoot",
+   "a": ".%2F.．\u0000",
+   "expect": {
+    "value": ".%2F.．\u0000"
+   }
+  },
+  {
+   "name": "random 572",
+   "op": "safeRelativePath",
+   "a": "\n\\*%2e#..?\u0000",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 573",
+   "op": "joinRoot",
+   "a": "%2e#*�﻿/",
+   "b": " \nC:�%2F\u0000%2e",
+   "expect": {
+    "value": "%2e#*�﻿/ \nC:�%2F\u0000%2e"
+   }
+  },
+  {
+   "name": "random 574",
+   "op": "isPlainFilename",
+   "a": "\t�#",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 575",
+   "op": "joinRoot",
+   "a": "",
+   "b": "\\",
+   "expect": {
+    "value": "\\"
+   }
+  },
+  {
+   "name": "random 576",
+   "op": "joinRoot",
+   "a": "\t.\t",
+   "b": "�~: ",
+   "expect": {
+    "value": "\t.\t/�~: "
+   }
+  },
+  {
+   "name": "random 577",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 578",
+   "op": "cleanRoot",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 579",
+   "op": "joinRoot",
+   "a": "~\t",
+   "b": "bé",
+   "expect": {
+    "value": "~\t/bé"
+   }
+  },
+  {
+   "name": "random 580",
+   "op": "safeRelativePath",
+   "a": "",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 581",
+   "op": "joinRoot",
+   "a": "é?/~‮/é",
+   "b": "",
+   "expect": {
+    "value": "é?/~‮/é"
+   }
+  },
+  {
+   "name": "random 582",
+   "op": "isPlainFilename",
+   "a": "~~ ﻿",
+   "expect": {
+    "value": true
+   }
+  },
+  {
+   "name": "random 583",
+   "op": "safeRelativePath",
+   "a": "�",
+   "expect": {
+    "value": "�"
+   }
+  },
+  {
+   "name": "random 584",
+   "op": "joinRoot",
+   "a": "~b",
+   "b": "b�\u0001#..#�．\u0000C:a",
+   "expect": {
+    "value": "~b/b�\u0001#..#�．\u0000C:a"
+   }
+  },
+  {
+   "name": "random 585",
+   "op": "joinRoot",
+   "a": "﻿~#b․",
+   "b": "� ~\u001f\u001fa%2e~ ﻿",
+   "expect": {
+    "value": "﻿~#b․/� ~\u001f\u001fa%2e~ ﻿"
+   }
+  },
+  {
+   "name": "random 586",
+   "op": "safeRelativePath",
+   "a": "﻿*b..:.:",
+   "expect": {
+    "value": "*b..:.:"
+   }
+  },
+  {
+   "name": "random 587",
+   "op": "safeRelativePath",
+   "a": "? a~ :%2e．é:․",
+   "expect": {
+    "value": "? a~ :%2e．é:․"
+   }
+  },
+  {
+   "name": "random 588",
+   "op": "joinRoot",
+   "a": "..?‮é~bé",
+   "b": "C:%2F．..\u0001\u0000*.﻿﻿",
+   "expect": {
+    "value": "..?‮é~bé/C:%2F．..\u0001\u0000*.﻿﻿"
+   }
+  },
+  {
+   "name": "random 589",
+   "op": "cleanRoot",
+   "a": " //․é．\n//",
+   "expect": {
+    "value": " //․é．\n"
+   }
+  },
+  {
+   "name": "random 590",
+   "op": "cleanRoot",
+   "a": ":éC:.\n‮",
+   "expect": {
+    "value": ":éC:.\n‮"
+   }
+  },
+  {
+   "name": "random 591",
+   "op": "safeRelativePath",
+   "a": "�é",
+   "expect": {
+    "value": "�é"
+   }
+  },
+  {
+   "name": "random 592",
+   "op": "joinRoot",
+   "a": "\u0000‮",
+   "b": "*",
+   "expect": {
+    "value": "\u0000‮/*"
+   }
+  },
+  {
+   "name": "random 593",
+   "op": "safeRelativePath",
+   "a": "\t \n\\",
+   "expect": {
+    "value": ""
+   }
+  },
+  {
+   "name": "random 594",
+   "op": "isPlainFilename",
+   "a": "%2e\t�..#﻿� \u0000",
+   "expect": {
+    "value": false
+   }
+  },
+  {
+   "name": "random 595",
+   "op": "cleanRoot",
+   "a": ".%2Fé\u0001%00\u0000�.",
+   "expect": {
+    "value": ".%2Fé\u0001%00\u0000�."
+   }
+  },
+  {
+   "name": "random 596",
+   "op": "safeRelativePath",
+   "a": "․ ․a﻿� .\n%00",
+   "expect": {
+    "value": "․ ․a﻿� .\n%00"
+   }
+  },
+  {
+   "name": "random 597",
+   "op": "safeRelativePath",
+   "a": "😀?  \n‮",
+   "expect": {
+    "value": "😀?  \n‮"
+   }
+  },
+  {
+   "name": "random 598",
+   "op": "joinRoot",
+   "a": "..．??..�\u001f%2e\u0001",
+   "b": "",
+   "expect": {
+    "value": "..．??..�\u001f%2e\u0001"
+   }
+  },
+  {
+   "name": "random 599",
+   "op": "joinRoot",
+   "a": "#﻿%00\n\n/ ．� ",
+   "b": "C:a．",
+   "expect": {
+    "value": "#﻿%00\n\n/ ．� /C:a．"
+   }
+  }
+ ]
+}
