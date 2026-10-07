@@ -338,6 +338,15 @@ fn redact_word(word: &str, after_scheme: bool) -> String {
     if core.is_empty() {
         return word.to_owned();
     }
+    // Markdown link or image syntax (`[text](target)`, `![alt](src)`, a reference `[a][b]`) would
+    // render as a link in the chat (noevia#1017).
+    if word.contains("](")
+        || word.contains("][")
+        || word.starts_with("![")
+        || word.contains("<http")
+    {
+        return "[link]".to_owned();
+    }
     if word.contains("://") {
         return "[url]".to_owned();
     }
@@ -466,6 +475,10 @@ mod tests {
             "Visit [host] to fix this, or [host]"
         );
         assert_eq!(sanitize("v1.2 costs 3.5 tokens"), "v1.2 costs 3.5 tokens");
+        assert_eq!(
+            sanitize("see [here](x) or ![i](y) or [a][b] but [ok] stays"),
+            "see [link] or [link] or [link] but [ok] stays"
+        );
         let long = "word ".repeat(100);
         let capped = sanitize(&long);
         assert!(capped.chars().count() <= MAX_REASON_CHARS);
