@@ -25,6 +25,17 @@ one slice at a time.
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
   regenerated with
   `NOEVIA_CHECKOUT=<noevia> node tools/egress-diff.cjs > crates/egress/tests/fixtures/egress-diff.json`.
+- `crates/model-files` + `bins/model-files` (sbstndalton/noevia#964): the model manager's
+  model-files front. `model-files tree < listing.json` turns a Hugging Face repository tree
+  listing (untrusted, from the network) into the file entries the service uses (path, size,
+  quant label, shard group), exactly as noevia-services' `model-manager/app/model_files.py`
+  `files_from_tree_py` does, Python's Unicode rules included. Bounded (16 MiB input, 100k
+  entries, 4096-char strings, depth 64), no network or filesystem. The Unicode tables and
+  the differential corpus are regenerated from the Python reference (on the service's Python,
+  3.12) with
+  `uv run --python 3.12 tools/gen-model-files.py --model-manager <noevia-services>/model-manager`;
+  copy `crates/model-files/tests/fixtures/model-files.v1.json` into noevia-services'
+  `model-manager/tests/fixtures/` when it changes.
 
 ## Checks
 
