@@ -1,0 +1,137 @@
+{
+  "contract": "egress-grant",
+  "invalid": [
+    {
+      "error": "BadSignature",
+      "name": "forged: other key",
+      "now": 1800000000000,
+      "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiIzZjJiOGMxZS0wZDRhLTRjN2UtOWE1MS02YjJmMGU5ZDhjN2EiLCJob3N0cyI6WyJyZWdpc3RyeS5ucG1qcy5leGFtcGxlIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDQzMjAwMDAwLCJpZGxlIjoyMTYwMDAwMCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3In0.c2hN_RfQo9jD5-qXQmpDrzCbo0N4Z_z4HEqjh4UbnLs"
+    },
+    {
+      "error": "BadSignature",
+      "name": "tampered: hosts swapped under the original tag",
+      "now": 1800000000000,
+      "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiIzZjJiOGMxZS0wZDRhLTRjN2UtOWE1MS02YjJmMGU5ZDhjN2EiLCJob3N0cyI6WyJldmlsLmV4YW1wbGUiXSwiaWF0IjoxODAwMDAwMDAwMDAwLCJleHAiOjE4MDAwNDMyMDAwMDAsImlkbGUiOjIxNjAwMDAwLCJub25jZSI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHcifQ.fKFQaM1SRbSb2Dxffnun3HyrXmF4wkWqVVaU0ZHheT0"
+    },
+    {
+      "error": "BadSignature",
+      "name": "tampered: tag truncated",
+      "now": 1800000000000,
+      "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiIzZjJiOGMxZS0wZDRhLTRjN2UtOWE1MS02YjJmMGU5ZDhjN2EiLCJob3N0cyI6WyJyZWdpc3RyeS5ucG1qcy5leGFtcGxlIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDQzMjAwMDAwLCJpZGxlIjoyMTYwMDAwMCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3In0.fKFQaM1SRbSb2Dxffnun3HyrXmF4wkWqVVaU0ZHh"
+    },
+    {
+      "error": "WrongVersion",
+      "name": "wrong version prefix",
+      "now": 1800000000000,
+      "token": "ngr2.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiIzZjJiOGMxZS0wZDRhLTRjN2UtOWE1MS02YjJmMGU5ZDhjN2EiLCJob3N0cyI6WyJyZWdpc3RyeS5ucG1qcy5leGFtcGxlIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDQzMjAwMDAwLCJpZGxlIjoyMTYwMDAwMCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3In0.fKFQaM1SRbSb2Dxffnun3HyrXmF4wkWqVVaU0ZHheT0"
+    },
+    {
+      "error": "WrongVersion",
+      "name": "wrong version field, validly signed",
+      "now": 1800000000000,
+      "token": "ngr1.eyJ2IjoyLCJhY3QiOiJncmFudCIsInRhc2siOiIzZjJiOGMxZS0wZDRhLTRjN2UtOWE1MS02YjJmMGU5ZDhjN2EiLCJob3N0cyI6WyJyZWdpc3RyeS5ucG1qcy5leGFtcGxlIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDQzMjAwMDAwLCJpZGxlIjoyMTYwMDAwMCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3In0.NqIDoERhNcHFqdrAlFihDonRvNNtEIWD2BZ-Qudb9LU"
+    },
+    {
+      "error": "Malformed",
+      "name": "non-canonical: whitespace, validly signed",
+      "now": 1800000000000,
+      "token": "ngr1.eyJ2IjoxLCAiYWN0IjoiZ3JhbnQiLCJ0YXNrIjoiM2YyYjhjMWUtMGQ0YS00YzdlLTlhNTEtNmIyZjBlOWQ4YzdhIiwiaG9zdHMiOlsicmVnaXN0cnkubnBtanMuZXhhbXBsZSJdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDA0MzIwMDAwMCwiaWRsZSI6MjE2MDAwMDAsIm5vbmNlIjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EdyJ9.5nRq4ktpJ0-EKGonq_qAkNKL7Wb_xbom8VDRPdbxChs"
+    },
+    {
+      "error": "Malformed",
+      "name": "non-canonical: upper-case host, validly signed",
+      "now": 1800000000000,
+      "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiIzZjJiOGMxZS0wZDRhLTRjN2UtOWE1MS02YjJmMGU5ZDhjN2EiLCJob3N0cyI6WyJSZWdpc3RyeS5ucG1qcy5leGFtcGxlIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDQzMjAwMDAwLCJpZGxlIjoyMTYwMDAwMCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3In0.2HAq1l6GvHOHYLCF2uSZfBQfyyn2bCXIy9J4Jq1549g"
+    },
+    {
+      "error": "Expired",
+      "name": "expired",
+      "now": 1800043200000,
+      "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiIzZjJiOGMxZS0wZDRhLTRjN2UtOWE1MS02YjJmMGU5ZDhjN2EiLCJob3N0cyI6WyJyZWdpc3RyeS5ucG1qcy5leGFtcGxlIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDQzMjAwMDAwLCJpZGxlIjoyMTYwMDAwMCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3In0.fKFQaM1SRbSb2Dxffnun3HyrXmF4wkWqVVaU0ZHheT0"
+    },
+    {
+      "error": "NotYetValid",
+      "name": "not yet valid",
+      "now": 1799999939999,
+      "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiIzZjJiOGMxZS0wZDRhLTRjN2UtOWE1MS02YjJmMGU5ZDhjN2EiLCJob3N0cyI6WyJyZWdpc3RyeS5ucG1qcy5leGFtcGxlIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDQzMjAwMDAwLCJpZGxlIjoyMTYwMDAwMCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3In0.fKFQaM1SRbSb2Dxffnun3HyrXmF4wkWqVVaU0ZHheT0"
+    },
+    {
+      "error": "NotAGrant",
+      "name": "not a grant",
+      "now": 1800000000000,
+      "token": "tok-plain-0123456789"
+    }
+  ],
+  "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "valid": [
+    {
+      "grant": {
+        "act": "grant",
+        "exp": 1800043200000,
+        "hosts": [
+          "registry.npmjs.example"
+        ],
+        "iat": 1800000000000,
+        "idle": 21600000,
+        "nonce": "AAECAwQFBgcICQoLDA0ODw",
+        "task": "3f2b8c1e-0d4a-4c7e-9a51-6b2f0e9d8c7a"
+      },
+      "name": "single host",
+      "now": 1800000000001,
+      "payload": "{\"v\":1,\"act\":\"grant\",\"task\":\"3f2b8c1e-0d4a-4c7e-9a51-6b2f0e9d8c7a\",\"hosts\":[\"registry.npmjs.example\"],\"iat\":1800000000000,\"exp\":1800043200000,\"idle\":21600000,\"nonce\":\"AAECAwQFBgcICQoLDA0ODw\"}",
+      "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiIzZjJiOGMxZS0wZDRhLTRjN2UtOWE1MS02YjJmMGU5ZDhjN2EiLCJob3N0cyI6WyJyZWdpc3RyeS5ucG1qcy5leGFtcGxlIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDQzMjAwMDAwLCJpZGxlIjoyMTYwMDAwMCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3In0.fKFQaM1SRbSb2Dxffnun3HyrXmF4wkWqVVaU0ZHheT0"
+    },
+    {
+      "grant": {
+        "act": "grant",
+        "exp": 1800043200000,
+        "hosts": [
+          "pypi.example",
+          "files.pythonhosted.example",
+          "github.example"
+        ],
+        "iat": 1800000000000,
+        "idle": 21600000,
+        "nonce": "_-_-_-_-_-_-_-_-_-_-_w",
+        "task": "3f2b8c1e-0d4a-4c7e-9a51-6b2f0e9d8c7a"
+      },
+      "name": "several hosts, order kept",
+      "now": 1800000000001,
+      "payload": "{\"v\":1,\"act\":\"grant\",\"task\":\"3f2b8c1e-0d4a-4c7e-9a51-6b2f0e9d8c7a\",\"hosts\":[\"pypi.example\",\"files.pythonhosted.example\",\"github.example\"],\"iat\":1800000000000,\"exp\":1800043200000,\"idle\":21600000,\"nonce\":\"_-_-_-_-_-_-_-_-_-_-_w\"}",
+      "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiIzZjJiOGMxZS0wZDRhLTRjN2UtOWE1MS02YjJmMGU5ZDhjN2EiLCJob3N0cyI6WyJweXBpLmV4YW1wbGUiLCJmaWxlcy5weXRob25ob3N0ZWQuZXhhbXBsZSIsImdpdGh1Yi5leGFtcGxlIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDQzMjAwMDAwLCJpZGxlIjoyMTYwMDAwMCwibm9uY2UiOiJfLV8tXy1fLV8tXy1fLV8tXy1fLV93In0.nb9PzpFqMJ_ArVhWF1r1yu_FftZ9jU3f6uzlUfkRaMw"
+    },
+    {
+      "grant": {
+        "act": "grant",
+        "exp": 1800000001000,
+        "hosts": [
+          "registry.npmjs.example"
+        ],
+        "iat": 1800000000000,
+        "idle": 1000,
+        "nonce": "AAECAwQFBgcICQoLDA0ODw",
+        "task": "task:browser.1_x"
+      },
+      "name": "short-lived, idle equals lifetime",
+      "now": 1800000000001,
+      "payload": "{\"v\":1,\"act\":\"grant\",\"task\":\"task:browser.1_x\",\"hosts\":[\"registry.npmjs.example\"],\"iat\":1800000000000,\"exp\":1800000001000,\"idle\":1000,\"nonce\":\"AAECAwQFBgcICQoLDA0ODw\"}",
+      "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOmJyb3dzZXIuMV94IiwiaG9zdHMiOlsicmVnaXN0cnkubnBtanMuZXhhbXBsZSJdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDAwMDAwMTAwMCwiaWRsZSI6MTAwMCwibm9uY2UiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3In0.sW_4fSBaZWzDe0l_opD3kZSLdDRg5VFmMK9xXF-VOGw"
+    },
+    {
+      "grant": {
+        "act": "revoke",
+        "exp": 1800043200000,
+        "hosts": [],
+        "iat": 1800000000000,
+        "idle": 1,
+        "nonce": "zzzzzzzzzzzzzzzzzzzzzw",
+        "task": "3f2b8c1e-0d4a-4c7e-9a51-6b2f0e9d8c7a"
+      },
+      "name": "revoke",
+      "now": 1800000000001,
+      "payload": "{\"v\":1,\"act\":\"revoke\",\"task\":\"3f2b8c1e-0d4a-4c7e-9a51-6b2f0e9d8c7a\",\"hosts\":[],\"iat\":1800000000000,\"exp\":1800043200000,\"idle\":1,\"nonce\":\"zzzzzzzzzzzzzzzzzzzzzw\"}",
+      "token": "ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoiM2YyYjhjMWUtMGQ0YS00YzdlLTlhNTEtNmIyZjBlOWQ4YzdhIiwiaG9zdHMiOltdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDA0MzIwMDAwMCwiaWRsZSI6MSwibm9uY2UiOiJ6enp6enp6enp6enp6enp6enp6enp3In0.aNzYc_3g2uehjXXLBHEU9P1VQSVmCkN4qLZIj762EF8"
+    }
+  ],
+  "version": 1
+}

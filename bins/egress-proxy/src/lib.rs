@@ -22,7 +22,8 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use egress::{
-    check_addresses, check_target, status_text, Allowed, Expired, Grant, GrantId, Refusal,
+    basic_token, check_addresses, check_target, looks_signed, status_text, verify, Act, Admission,
+    Allowed, Expired, Grant, GrantError, GrantId, GrantKey, Ledger, Refusal, SignedGrant,
     TokenStore, ALLOWED_PORTS, DEFAULT_TOKEN_TTL_MS,
 };
 use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
@@ -90,6 +91,40 @@ impl Clock for MonotonicClock {
     }
 }
 
+/// Unix milliseconds. Signed grants carry absolute `iat`/`exp` minted by the web on the same
+/// host, so the proxy's default clock is the wall clock.
+#[derive(Default)]
+pub struct SystemClock;
+impl Clock for SystemClock {
+    fn now_ms(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+            .unwrap_or(0)
+    }
+}
+
+/// Where the grant HMAC key comes from. A file is re-read at most every `KEY_RELOAD`, so a key
+/// the web writes after the proxy starts (or rewrites after a secrets rotation) is picked up.
+pub enum KeySource {
+    Static(GrantKey),
+    File(std::path::PathBuf),
+}
+
+const KEY_RELOAD: Duration = Duration::from_secs(5);
+
+struct KeyCache {
+    key: Option<GrantKey>,
+    read_at: Option<Instant>,
+}
+
+/// Loads a key file (64 hex digits). The error never contains the file's contents.
+pub fn read_key_file(path: &std::path::Path) -> Result<GrantKey, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("grant key file {}: {}", path.display(), e.kind()))?;
+    GrantKey::from_hex(&text).map_err(|e| format!("grant key file {}: {e}", path.display()))
+}
+
 /// Where structured log lines go.
 pub type LogSink = Arc<dyn Fn(Value) + Send + Sync>;
 
@@ -139,6 +174,16 @@ struct State {
     /// Open tunnels / in-flight forwards per task id (keyed by task, so a re-grant does not
     /// reset the count).
     open_by_task: HashMap<String, usize>,
+    /// Replay / supersession memory for signed grants.
+    ledger: Ledger,
+    /// Installed signed grants: their task, nonce and absolute expiry.
+    signed: HashMap<GrantId, SignedMeta>,
+}
+
+struct SignedMeta {
+    task_id: String,
+    nonce: String,
+    exp: u64,
 }
 
 /// One of a task's connection slots; frees itself on drop, exactly once.
@@ -167,10 +212,13 @@ pub struct Proxy {
     log: LogSink,
     limits: Limits,
     allowed_ports: Vec<u16>,
+    key_source: Option<KeySource>,
+    key_cache: Mutex<KeyCache>,
 }
 
 pub struct ProxyBuilder {
     grants: Vec<Grant>,
+    key_source: Option<KeySource>,
     resolver: Arc<dyn Resolver>,
     connector: Arc<dyn Connector>,
     clock: Arc<dyn Clock>,
@@ -182,9 +230,10 @@ impl ProxyBuilder {
     pub fn new(grants: Vec<Grant>) -> Self {
         Self {
             grants,
+            key_source: None,
             resolver: Arc::new(SystemResolver),
             connector: Arc::new(DirectConnector),
-            clock: Arc::new(MonotonicClock::default()),
+            clock: Arc::new(SystemClock),
             log: stderr_log(),
             limits: Limits::default(),
         }
@@ -209,6 +258,11 @@ impl ProxyBuilder {
         self.limits = l;
         self
     }
+    /// Accept signed grants (`ngr1.` tokens) verified with this key.
+    pub fn grant_key(mut self, k: KeySource) -> Self {
+        self.key_source = Some(k);
+        self
+    }
     pub fn build(self) -> Arc<Proxy> {
         let now = self.clock.now_ms();
         let mut store = TokenStore::new();
@@ -225,6 +279,8 @@ impl ProxyBuilder {
                 store,
                 cancels,
                 open_by_task: HashMap::new(),
+                ledger: Ledger::new(),
+                signed: HashMap::new(),
             }),
             resolver: self.resolver,
             connector: self.connector,
@@ -232,6 +288,11 @@ impl ProxyBuilder {
             log: self.log,
             limits: self.limits,
             allowed_ports: ALLOWED_PORTS.to_vec(),
+            key_source: self.key_source,
+            key_cache: Mutex::new(KeyCache {
+                key: None,
+                read_at: None,
+            }),
         })
     }
 }
@@ -371,18 +432,48 @@ impl Proxy {
             if let Some(tx) = state.cancels.remove(&e.id) {
                 let _ = tx.send(true);
             }
+            Self::retire_signed(state, e.id);
             self.record(json!({ "event": "egress.expired", "taskId": e.task_id }));
         }
     }
 
-    /// Drops grants idle past their TTL and closes their connections; returns how many.
+    /// A dropped signed grant's nonce is retired, so the same token cannot reinstall it.
+    fn retire_signed(state: &mut State, id: GrantId) {
+        if let Some(m) = state.signed.remove(&id) {
+            state.ledger.retire(&m.task_id, &m.nonce, m.exp);
+        }
+    }
+
+    /// Drops signed grants past their absolute `exp` and forgets ledger entries past theirs.
+    fn expire_signed(&self, state: &mut State, now: u64) {
+        let gone: Vec<(GrantId, String)> = state
+            .signed
+            .iter()
+            .filter(|(_, m)| now >= m.exp)
+            .map(|(id, m)| (*id, m.task_id.clone()))
+            .collect();
+        for (id, task) in gone {
+            for rid in state.store.revoke(&task) {
+                if let Some(tx) = state.cancels.remove(&rid) {
+                    let _ = tx.send(true);
+                }
+            }
+            Self::retire_signed(state, id);
+            self.record(json!({ "event": "egress.expired", "taskId": task }));
+        }
+        state.ledger.prune(now);
+    }
+
+    /// Drops grants idle past their TTL or past their absolute expiry and closes their
+    /// connections; returns how many.
     pub fn sweep(&self) -> usize {
         let now = self.clock.now_ms();
         let mut st = self.lock();
+        let before = st.store.len();
         let expired = st.store.sweep(now);
-        let n = expired.len();
         self.drop_expired(&mut st, expired);
-        n
+        self.expire_signed(&mut st, now);
+        before.saturating_sub(st.store.len())
     }
 
     /// Revokes a task's grant and closes its connections.
@@ -393,8 +484,140 @@ impl Proxy {
             if let Some(tx) = st.cancels.remove(id) {
                 let _ = tx.send(true);
             }
+            Self::retire_signed(&mut st, *id);
         }
         ids.len()
+    }
+
+    /// The grant key, (re)reading a key file at most every few seconds. None: no key (yet).
+    fn grant_key(&self) -> Option<GrantKey> {
+        let path = match self.key_source.as_ref()? {
+            KeySource::Static(k) => return Some(k.clone()),
+            KeySource::File(p) => p,
+        };
+        let mut cache = self.key_cache.lock().unwrap_or_else(|p| p.into_inner());
+        if cache.read_at.is_none_or(|t| t.elapsed() >= KEY_RELOAD) {
+            cache.read_at = Some(Instant::now());
+            match read_key_file(path) {
+                Ok(k) => cache.key = Some(k),
+                // A previously loaded key survives a transient read failure.
+                Err(e) => {
+                    self.record(json!({ "event": "egress.grant_key_unavailable", "error": e }))
+                }
+            }
+        }
+        cache.key.clone()
+    }
+
+    fn verify_signed(&self, token: &[u8], now: u64) -> Result<SignedGrant, Refusal> {
+        let Some(key) = self.grant_key() else {
+            let (status, reason) = if self.key_source.is_some() {
+                (503, "grant key is not available")
+            } else {
+                (407, "signed grants are not enabled")
+            };
+            return Err(Refusal {
+                status,
+                reason: reason.into(),
+                task_id: None,
+                host: None,
+            });
+        };
+        verify(&key, token, now).map_err(|e| grant_refusal(e, None))
+    }
+
+    /// Installs (or confirms) the signed grant a request presents. Unsigned tokens pass
+    /// through untouched to the static store.
+    fn admit_signed(&self, proxy_authorization: Option<&[u8]>, now: u64) -> Result<(), Refusal> {
+        let Some(token) = proxy_authorization.and_then(basic_token) else {
+            return Ok(());
+        };
+        if !looks_signed(&token) {
+            return Ok(());
+        }
+        let g = self.verify_signed(&token, now)?;
+        if g.act != Act::Grant {
+            return Err(grant_refusal(GrantError::NotAGrant, Some(&g.task)));
+        }
+        let Ok(token) = String::from_utf8(token) else {
+            return Err(grant_refusal(GrantError::Malformed, None));
+        };
+        let mut st = self.lock();
+        self.expire_signed(&mut st, now);
+        match st.ledger.admit(&g, now) {
+            Err(e) => Err(grant_refusal(e, Some(&g.task))),
+            Ok(Admission::Current) => Ok(()),
+            Ok(Admission::New) => {
+                let (id, replaced) = st.store.insert(
+                    Grant {
+                        token,
+                        task_id: g.task.clone(),
+                        domains: g.hosts.clone(),
+                        idle_ttl_ms: g.idle,
+                    },
+                    now,
+                );
+                for r in replaced {
+                    if let Some(tx) = st.cancels.remove(&r) {
+                        let _ = tx.send(true);
+                    }
+                    // The ledger already retired the superseded nonce.
+                    st.signed.remove(&r);
+                }
+                st.cancels.insert(id, watch::channel(false).0);
+                st.signed.insert(
+                    id,
+                    SignedMeta {
+                        task_id: g.task.clone(),
+                        nonce: g.nonce.clone(),
+                        exp: g.exp,
+                    },
+                );
+                self.record(
+                    json!({ "event": "egress.granted", "taskId": g.task, "hosts": g.hosts.len() }),
+                );
+                Ok(())
+            }
+        }
+    }
+
+    /// `POST /v1/revoke` with `Authorization: Bearer <signed revoke>` (origin-form, sent by
+    /// the web when a task ends): drops the task's grant and its connections. A grant token,
+    /// an unsigned token or a bad MAC is refused (403); replaying a revoke is harmless.
+    fn handle_revoke(&self, req: &Request<Incoming>) -> Response<Body> {
+        let now = self.clock.now_ms();
+        let token = req
+            .headers()
+            .get(hyper::header::AUTHORIZATION)
+            .and_then(|v| v.as_bytes().strip_prefix(b"Bearer "))
+            .map(<[u8]>::to_vec);
+        let result = match token {
+            None => Err(grant_refusal(GrantError::NotAGrant, None)),
+            Some(t) => self.verify_signed(&t, now).and_then(|g| {
+                if g.act != Act::Revoke {
+                    return Err(grant_refusal(GrantError::NotAGrant, Some(&g.task)));
+                }
+                self.lock()
+                    .ledger
+                    .admit(&g, now)
+                    .map_err(|e| grant_refusal(e, Some(&g.task)))?;
+                Ok(g)
+            }),
+        };
+        match result {
+            Ok(g) => {
+                let n = self.revoke(&g.task);
+                self.record(json!({ "event": "egress.revoked", "taskId": g.task, "grants": n }));
+                response(204, empty())
+            }
+            Err(mut r) => {
+                if r.status == 407 {
+                    r.status = 403;
+                }
+                self.refused(&r);
+                text_refusal(&r)
+            }
+        }
     }
 
     fn touch(&self, id: GrantId) {
@@ -412,7 +635,9 @@ impl Proxy {
     ) -> Result<(Allowed, watch::Receiver<bool>), Refusal> {
         let pending = {
             let now = self.clock.now_ms();
+            self.admit_signed(proxy_authorization, now)?;
             let mut st = self.lock();
+            self.expire_signed(&mut st, now);
             let mut expired = Vec::new();
             let r = check_target(
                 &mut st.store,
@@ -678,6 +903,9 @@ impl Proxy {
     /// own credentials and every hop-by-hop header removed.
     async fn handle_forward(self: Arc<Self>, req: Request<Incoming>, slot: Slot) -> Response<Body> {
         let uri = req.uri().clone();
+        if uri.scheme().is_none() && req.method() == Method::POST && uri.path() == "/v1/revoke" {
+            return self.handle_revoke(&req);
+        }
         if let Some(scheme) = uri.scheme_str() {
             // `https://` in absolute form would go out as plaintext to port 80: the task
             // believes it has TLS and gets none. TLS goes through CONNECT only (#930).
@@ -776,6 +1004,19 @@ impl Proxy {
             }
             Err(_) => upstream_failed(),
         }
+    }
+}
+
+fn grant_refusal(e: GrantError, task: Option<&str>) -> Refusal {
+    Refusal {
+        status: if e == GrantError::LedgerFull {
+            503
+        } else {
+            407
+        },
+        reason: e.reason().into(),
+        task_id: task.map(str::to_owned),
+        host: None,
     }
 }
 

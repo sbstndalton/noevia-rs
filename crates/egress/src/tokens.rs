@@ -165,7 +165,7 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 
 /// `/^Basic\s+(\S+)$/i`, base64-decoded; the token is what follows the first `:` (the whole
 /// value when there is none). Returns the token bytes, or None for anything else.
-fn basic_token(header: &[u8]) -> Option<Vec<u8>> {
+pub fn basic_token(header: &[u8]) -> Option<Vec<u8>> {
     let scheme = header.get(..5)?;
     if !scheme.eq_ignore_ascii_case(b"basic") {
         return None;
