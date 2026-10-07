@@ -66,6 +66,15 @@ one slice at a time.
   `upload_decode`; every other call keeps its own smaller cap. Table from noevia-core
   (`node tools/gen-upload-fixtures.cjs`), copied byte-for-byte to
   `crates/upload-sniff/tests/fixtures/upload-sniff.v1.json`.
+- `crates/secret-envelope` (sbstndalton/noevia#979): stored-credential envelopes, a port of
+  noevia-core's `server/secret-envelope.cjs` (`enc:v1` without AAD, `enc:v2` with AAD
+  `noevia:user:<id>`, AES-256-GCM from RustCrypto `aes-gcm` =0.10.3, no `getrandom`). Node keeps
+  the key files and passes key bytes (and, to seal, a 12-byte nonce from `crypto.randomBytes`) per
+  call, so the module still imports nothing. In `dav-parse.wasm` as `secret_open` and
+  `secret_seal`; both wipe their input buffer and previous reply (`zeroize`), and the host wipes
+  the whole linear memory and drops the instance after each call. Table from noevia-core
+  (`node tools/gen-secret-fixtures.cjs`; synthetic keys), copied byte-for-byte to
+  `crates/secret-envelope/tests/fixtures/secret-envelope.v1.json`.
 - `crates/docx-text` + `bins/docx-text` (sbstndalton/noevia#981): the OCR service's DOCX
   text front. `docx-text extract < upload.docx` checks the ZIP container (EOCD, member
   count/sizes, encryption, compression ratio) and prints `{"text", "truncated", "scope"}`

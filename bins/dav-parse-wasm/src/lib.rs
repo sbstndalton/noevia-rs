@@ -1,7 +1,8 @@
 //! `dav-parse.wasm`: the WebAssembly face of noevia-rs's storage parsers: `dav-parse` (noevia#967),
-//! `s3-list-parse` (noevia#976), `storage-path` (noevia#978) and `upload-sniff` (noevia#977). One module, one pin: noevia-core's
-//! `server/dav-parse.lock` names its sha256 and every switch (`DAV_PARSE_IMPL`, `S3_PARSE_IMPL`,
-//! `STORAGE_PATH_IMPL`, `UPLOAD_SNIFF_IMPL`) loads the same bytes.
+//! `s3-list-parse` (noevia#976), `storage-path` (noevia#978), `upload-sniff` (noevia#977) and
+//! `secret-envelope` (noevia#979). One module, one pin: noevia-core's `server/dav-parse.lock` names
+//! its sha256 and every switch (`DAV_PARSE_IMPL`, `S3_PARSE_IMPL`, `STORAGE_PATH_IMPL`,
+//! `UPLOAD_SNIFF_IMPL`, `SECRET_ENVELOPE_IMPL`) loads the same bytes.
 //!
 //! A deliberately tiny ABI with no `unsafe` block and no imports (no WASI, no wasm-bindgen glue):
 //!
@@ -21,6 +22,17 @@
 //!    - `upload_decode()`: input the upload's bytes (at most `upload_sniff::MAX_DECODE_BYTES`);
 //!      on status 0 the reply is NOT JSON but one tag byte (0 = not text, 1 utf-8, 2 utf-16le,
 //!      3 utf-16be, 4 windows-1252) followed by the decoded text in UTF-8.
+//!    - `secret_open()`: input `n(1|2) key*n user value`, where each key is 32 bytes, `user` is
+//!      `0` (no user) or `1 u32le(len) utf8`, and `value` is the stored text as UTF-16LE units; on
+//!      status 0 the reply is NOT JSON but one byte (0 = not an envelope, 1 = opened with the
+//!      first key, 2 = with the second) followed by the plaintext bytes (none for 0).
+//!    - `secret_seal()`: input `key(32) nonce(12) user plaintext`, `user` as above; reply the
+//!      ASCII envelope `enc:v1:…` (no user) or `enc:v2:…`. The nonce comes from the host's CSPRNG.
+//!
+//!    Both secret calls wipe their input buffer (keys, user, value) and the previous reply before
+//!    returning; refusals are `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry
+//!    input bytes. The host still wipes the whole linear memory and drops the instance after each
+//!    secret call (the reply holds plaintext until then).
 //! 3. `dav_output_ptr()` / `dav_output_len()`: where the UTF-8 JSON reply is.
 //!
 //! The host must treat anything other than status 0 with a well-formed reply as a refusal; noevia
@@ -30,6 +42,7 @@
 //! `#[no_mangle]`); each is allowed individually.
 #![deny(unsafe_code)]
 
+use secret_envelope::zeroize::{Zeroize, Zeroizing};
 use std::cell::RefCell;
 
 /// Input cap for any call, so a host cannot make this module grow without bound: the larger of a
@@ -137,6 +150,95 @@ pub fn run_decode(input: &[u8]) -> (u32, Vec<u8>) {
     }
 }
 
+/// Split the `user` field: `0` or `1 u32le(len) utf8`; returns the user and the rest.
+fn secret_user(input: &[u8]) -> Option<(Option<&[u8]>, &[u8])> {
+    match input.first()? {
+        0 => Some((None, input.get(1..)?)),
+        1 => {
+            let n = u32::from_le_bytes(input.get(1..5)?.try_into().ok()?) as usize;
+            let end = 5usize.checked_add(n)?;
+            Some((Some(input.get(5..end)?), input.get(end..)?))
+        }
+        _ => None,
+    }
+}
+
+const SECRET_SHAPE: &str = "{\"error\":\"input\"}";
+
+fn secret_error(e: secret_envelope::Error) -> (u32, Vec<u8>) {
+    (1, format!("{{\"error\":\"{}\"}}", e.code()).into_bytes())
+}
+
+/// `secret-envelope` open; the raw reply described in the crate docs.
+pub fn run_secret_open(input: &[u8]) -> (u32, Vec<u8>) {
+    let shape = || (2, SECRET_SHAPE.as_bytes().to_vec());
+    let Some(&n) = input.first() else {
+        return shape();
+    };
+    let keys_end = 1 + usize::from(n) * secret_envelope::KEY_BYTES;
+    let (Some(keys), Some(rest)) = (input.get(1..keys_end), input.get(keys_end..)) else {
+        return shape();
+    };
+    if !(n == 1 || n == 2) {
+        return shape();
+    }
+    let (current, previous) = keys.split_at(secret_envelope::KEY_BYTES);
+    let previous = (n == 2).then_some(previous);
+    let Some((user, value)) = secret_user(rest) else {
+        return shape();
+    };
+    if value.len() / 2 > secret_envelope::MAX_ENVELOPE_UNITS {
+        return secret_error(secret_envelope::Error::TooLarge);
+    }
+    let Some(units) = secret_envelope::units_from_le(value).map(Zeroizing::new) else {
+        return shape();
+    };
+    match secret_envelope::open(current, previous, &units, user) {
+        Ok((used, plain)) => {
+            let mut reply = Vec::with_capacity(1 + plain.len());
+            reply.push(used.tag());
+            reply.extend_from_slice(&plain);
+            (0, reply)
+        }
+        Err(e) => secret_error(e),
+    }
+}
+
+/// `secret-envelope` seal; the ASCII envelope described in the crate docs.
+pub fn run_secret_seal(input: &[u8]) -> (u32, Vec<u8>) {
+    let shape = || (2, SECRET_SHAPE.as_bytes().to_vec());
+    let k = secret_envelope::KEY_BYTES;
+    let nonce_end = k + secret_envelope::NONCE_BYTES;
+    let (Some(key), Some(nonce), Some(rest)) = (
+        input.get(..k),
+        input.get(k..nonce_end),
+        input.get(nonce_end..),
+    ) else {
+        return shape();
+    };
+    let Some((user, plain)) = secret_user(rest) else {
+        return shape();
+    };
+    match secret_envelope::seal(key, nonce, plain, user) {
+        Ok(text) => (0, text.into_bytes()),
+        Err(e) => secret_error(e),
+    }
+}
+
+/// Run a secret call: wipe the previous reply first and the input (keys, user, value) after.
+fn consume_secret(run: impl FnOnce(&[u8]) -> (u32, Vec<u8>)) -> u32 {
+    OUTPUT.with(|out| out.borrow_mut().zeroize());
+    let (status, reply) = INPUT.with(|buf| run(&buf.borrow()));
+    INPUT.with(|buf| {
+        let mut buf = buf.borrow_mut();
+        // Vec::zeroize wipes the whole capacity, then clears.
+        buf.zeroize();
+        buf.shrink_to_fit();
+    });
+    OUTPUT.with(|out| *out.borrow_mut() = reply);
+    status
+}
+
 fn consume(run: impl FnOnce(&[u8]) -> (u32, String)) -> u32 {
     consume_bytes(|input| {
         let (status, reply) = run(input);
@@ -216,6 +318,20 @@ pub extern "C" fn upload_decode() -> u32 {
     consume_bytes(run_decode)
 }
 
+/// Open a stored credential from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn secret_open() -> u32 {
+    consume_secret(run_secret_open)
+}
+
+/// Seal a credential from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn secret_seal() -> u32 {
+    consume_secret(run_secret_seal)
+}
+
 /// Address of the last reply.
 #[allow(unsafe_code)]
 #[no_mangle]
@@ -231,6 +347,7 @@ pub extern "C" fn dav_output_len() -> u32 {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -313,6 +430,87 @@ mod tests {
         assert_eq!(run_decode(b"a\0"), (0, vec![0]));
         let big = vec![b'a'; upload_sniff::MAX_DECODE_BYTES + 1];
         assert_eq!(run_decode(&big).0, 1);
+    }
+
+    fn secret_input(keys: &[[u8; 32]], user: Option<&[u8]>, value: &str) -> Vec<u8> {
+        let mut v = vec![keys.len() as u8];
+        for k in keys {
+            v.extend_from_slice(k);
+        }
+        push_user(&mut v, user);
+        for u in value.encode_utf16() {
+            v.extend_from_slice(&u.to_le_bytes());
+        }
+        v
+    }
+
+    fn push_user(v: &mut Vec<u8>, user: Option<&[u8]>) {
+        match user {
+            None => v.push(0),
+            Some(u) => {
+                v.push(1);
+                v.extend_from_slice(&(u.len() as u32).to_le_bytes());
+                v.extend_from_slice(u);
+            }
+        }
+    }
+
+    #[test]
+    fn secret_shapes() {
+        let (k, other) = ([3u8; 32], [4u8; 32]);
+        let mut seal_in = k.to_vec();
+        seal_in.extend_from_slice(&[9; 12]);
+        push_user(&mut seal_in, Some(b"u1"));
+        seal_in.extend_from_slice("caf\u{e9}".as_bytes());
+        let (s, env) = run_secret_seal(&seal_in);
+        assert_eq!(s, 0);
+        let env = String::from_utf8(env).unwrap();
+        assert!(env.starts_with("enc:v2:"));
+        let (s, r) = run_secret_open(&secret_input(&[other, k], Some(b"u1"), &env));
+        assert_eq!((s, r.as_slice()), (0, &b"\x02caf\xc3\xa9"[..]));
+        assert_eq!(
+            run_secret_open(&secret_input(&[k], Some(b"u2"), &env)),
+            (1, br#"{"error":"unopenable"}"#.to_vec())
+        );
+        assert_eq!(
+            run_secret_open(&secret_input(&[k], None, &env)),
+            (1, br#"{"error":"bound"}"#.to_vec())
+        );
+        assert_eq!(
+            run_secret_open(&secret_input(&[k], None, "plain")),
+            (0, vec![0])
+        );
+        assert_eq!(run_secret_open(&[]).0, 2);
+        assert_eq!(run_secret_open(&[3]).0, 2);
+        assert_eq!(run_secret_open(&secret_input(&[k], None, "a")[..35]).0, 2);
+        let mut odd = secret_input(&[k], None, "a");
+        odd.push(0);
+        assert_eq!(run_secret_open(&odd).0, 2);
+        let mut bad_user = k.to_vec();
+        bad_user.extend_from_slice(&[9; 12]);
+        bad_user.extend_from_slice(&[1, 9, 0, 0, 0, b'a']);
+        assert_eq!(run_secret_seal(&bad_user).0, 2);
+        assert_eq!(run_secret_seal(&k[..20]).0, 2);
+    }
+
+    #[test]
+    fn secret_calls_wipe_the_input() {
+        let k = [0x5au8; 32];
+        let mut input = k.to_vec();
+        input.extend_from_slice(&[1; 12]);
+        input.push(0);
+        input.extend_from_slice(b"synthetic plaintext");
+        let ptr = dav_input(input.len() as u32);
+        assert_ne!(ptr, 0);
+        INPUT.with(|b| b.borrow_mut().copy_from_slice(&input));
+        assert_eq!(secret_seal(), 0);
+        INPUT.with(|b| {
+            let b = b.borrow();
+            assert!(b.is_empty());
+        });
+        let reply = OUTPUT.with(|o| o.borrow().clone());
+        assert!(reply.starts_with(b"enc:v1:"));
+        assert!(!reply.windows(4).any(|w| w == [0x5a; 4]));
     }
 
     #[test]
