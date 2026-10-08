@@ -93,11 +93,13 @@
 //!      correction op the request as ASCII JSON. A refused request is status 1 with
 //!      `{"error":"too_large"|"input_shape"|"schema"|"state"|"options"}`.
 //!
-//!    - `gguf_summary()`: input `u64le(size)` and the first bytes of a GGUF file of `size` bytes
-//!      (at most `gguf::node::MAX_WINDOW_BYTES`): gguf-meta.cjs `summarize(readGguf(file))`
-//!      (gguf crate, `gguf::node`). Status 0 replies `{"summary":{…}}` (NaN, ±Infinity and -0 as
-//!      `{"$num":"…"}`), `{"need":N}` (read the file up to offset N and ask again) or the JS's
-//!      error as `{"fail":"…"[,"value":N]}`; status 1 refuses with
+//!    - `gguf_summary()`: input `u64le(size) u32le(n)`, n × `u64le(off) u32le(len)` and those
+//!      byte ranges of a GGUF file of `size` bytes (sorted, disjoint; at most
+//!      `gguf::node::MAX_WINDOW_BYTES` in `gguf::node::MAX_SEGMENTS` ranges): gguf-meta.cjs
+//!      `summarize(readGguf(file))` (gguf crate, `gguf::node`). Status 0 replies
+//!      `{"summary":{…}}` (NaN, ±Infinity and -0 as `{"$num":"…"}`), `{"need":{"at":A,"end":E}}`
+//!      (read the file from A to at least E and ask again) or the JS's error as
+//!      `{"fail":"…"[,"value":N]}`; status 1 refuses with
 //!      `{"error":"input"|"too_large"|"depth"|"kept"}`.
 //!    - `auth_tokens()`: input DIARY_AUTH_TOKEN, UI_AUTH_TOKEN and LEGACY_AUTH_COMPAT, each
 //!      `u8(0 none|1 string) [u32le(n) n UTF-16LE units]`: auth-tokens.cjs resolveAuthTokens
@@ -863,7 +865,11 @@ mod tests {
 
     #[test]
     fn gguf_and_policy_shapes() {
+        // u64le(size) u32le(1) u64le(0) u32le(4) "GGUG"
         let mut gguf = 4u64.to_le_bytes().to_vec();
+        gguf.extend(1u32.to_le_bytes());
+        gguf.extend(0u64.to_le_bytes());
+        gguf.extend(4u32.to_le_bytes());
         gguf.extend_from_slice(b"GGUG");
         assert_eq!(
             run_gguf_summary(&gguf),

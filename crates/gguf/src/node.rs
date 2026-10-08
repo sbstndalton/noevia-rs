@@ -3,13 +3,16 @@
 //! caps (arrays over 1024 elements become `{array, count}`, strings over 256 KiB read as
 //! `null`, a 128 MiB header limit) and throws on the first fault instead of recording `_error`.
 //!
-//! The host keeps the file I/O. It passes the file's size and a prefix of it (the *window*);
-//! the reader either answers or names the end offset it needs (`need`), which the host reads
-//! and asks again. Only bytes the JS `take`s must be in the window; skipped bytes need not be.
+//! The host keeps the file I/O. It passes the file's size and the byte ranges of it read so far
+//! (*segments*, sorted and disjoint); the reader parses from the start every call and either
+//! answers or names the first range it is missing (`need`: from `at` to at least `end`), which
+//! the host reads and asks again. Only bytes the JS `take`s must be held; bytes it skips (long
+//! strings, the rest of big arrays) are never read, so a header far larger than the bytes held
+//! is fine.
 //!
 //! Stricter than the JS, as fixed refusals (the JS would recurse or allocate without bound
 //! first): arrays nested more than [`MAX_NEST`] deep, more than [`MAX_KEPT`] values kept for
-//! the summary, and a window over [`MAX_WINDOW_BYTES`].
+//! the summary, and more than [`MAX_WINDOW_BYTES`] held in [`MAX_SEGMENTS`] ranges.
 
 use std::collections::HashMap;
 
@@ -19,10 +22,12 @@ pub const MAX_HEADER_BYTES: u64 = 128 * 1024 * 1024;
 pub const MAX_ARRAY_KEPT: u64 = 1024;
 /// gguf-meta.cjs MAX_STRING_KEPT: longer strings are skipped and read as `null`.
 pub const MAX_STRING_KEPT: u64 = 256 * 1024;
-/// The largest window (file prefix) one call accepts.
+/// The most file bytes one call accepts, over all segments.
 pub const MAX_WINDOW_BYTES: usize = 16 * 1024 * 1024;
-/// The largest request: `u64le(size)` and the window.
-pub const MAX_INPUT_BYTES: usize = MAX_WINDOW_BYTES + 8;
+/// The most segments one call accepts.
+pub const MAX_SEGMENTS: usize = 512;
+/// The largest request: `u64le(size) u32le(count)`, a 12-byte header per segment, the bytes.
+pub const MAX_INPUT_BYTES: usize = MAX_WINDOW_BYTES + 12 + 12 * MAX_SEGMENTS;
 /// Arrays nested deeper than this are refused (the JS recurses until its stack runs out).
 pub const MAX_NEST: u32 = 64;
 /// Values kept for the summary (every list element counts) before the call is refused.
@@ -93,8 +98,8 @@ pub enum Fault {
     Depth,
     /// Refusal: more than [`MAX_KEPT`] values kept.
     Kept,
-    /// Not a fault: the window must reach this end offset.
-    Need(u64),
+    /// Not a fault: the bytes from `at` to `end` must be held, in one segment.
+    Need { at: u64, end: u64 },
 }
 
 impl Fault {
@@ -108,7 +113,7 @@ impl Fault {
             Fault::Range => "GGUF length out of range".into(),
             Fault::Type(t) => format!("Unknown GGUF value type {t}"),
             Fault::Nested => "Unsupported nested GGUF array".into(),
-            Fault::Depth | Fault::Kept | Fault::Need(_) => return None,
+            Fault::Depth | Fault::Kept | Fault::Need { .. } => return None,
         })
     }
 }
@@ -123,8 +128,15 @@ fn scalar_size(t: u32) -> Option<u64> {
     }
 }
 
+/// File bytes the host holds: `bytes` is the file from offset `off`.
+#[derive(Debug, Clone, Copy)]
+pub struct Segment<'a> {
+    pub off: u64,
+    pub bytes: &'a [u8],
+}
+
 struct Reader<'a, F: Fn(&str) -> bool> {
-    win: &'a [u8],
+    segs: &'a [Segment<'a>],
     size: u64,
     pos: u64,
     kept: u64,
@@ -143,12 +155,21 @@ impl<F: Fn(&str) -> bool> Reader<'_, F> {
         if end > self.size {
             return Err(Fault::Eof);
         }
-        let (Ok(from), Ok(to)) = (usize::try_from(self.pos), usize::try_from(end)) else {
-            return Err(Fault::Limit);
+        let pos = self.pos;
+        let need = Fault::Need { at: pos, end };
+        // The last segment starting at or before pos must hold the whole range.
+        let i = self.segs.partition_point(|s| s.off <= pos);
+        let seg = i
+            .checked_sub(1)
+            .and_then(|i| self.segs.get(i))
+            .ok_or(need)?;
+        let (Ok(from), Ok(to)) = (
+            usize::try_from(pos - seg.off),
+            usize::try_from(end - seg.off),
+        ) else {
+            return Err(need);
         };
-        let Some(bytes) = self.win.get(from..to) else {
-            return Err(Fault::Need(end));
-        };
+        let bytes = seg.bytes.get(from..to).ok_or(need)?;
         self.pos = end;
         Ok(bytes)
     }
@@ -292,11 +313,11 @@ impl<F: Fn(&str) -> bool> Reader<'_, F> {
 
 fn read_kept<F: Fn(&str) -> bool>(
     size: u64,
-    win: &[u8],
+    segs: &[Segment<'_>],
     keep_key: F,
 ) -> Result<HashMap<String, Val>, Fault> {
     Reader {
-        win,
+        segs,
         size,
         pos: 0,
         kept: 0,
@@ -447,17 +468,22 @@ fn write_val(out: &mut String, v: &Val) {
     }
 }
 
-/// `summarize(readGguf(file))` over `win`, the first `win.len()` bytes of a file of `size`
-/// bytes: the summary as ASCII JSON (keys in the JS order), or the fault.
-pub fn summary(size: u64, win: &[u8]) -> Result<String, Fault> {
+/// [`summary`] over one prefix of the file.
+pub fn summary_prefix(size: u64, win: &[u8]) -> Result<String, Fault> {
+    summary(size, &[Segment { off: 0, bytes: win }])
+}
+
+/// `summarize(readGguf(file))` over `segs` (sorted, disjoint ranges) of a file of `size` bytes:
+/// the summary as ASCII JSON (keys in the JS order), or the fault.
+pub fn summary(size: u64, segs: &[Segment<'_>]) -> Result<String, Fault> {
     // Pass 1 finds the architecture (and every fault); pass 2 keeps only the keys it names.
-    let first = read_kept(size, win, |k| k == "general.architecture")?;
+    let first = read_kept(size, segs, |k| k == "general.architecture")?;
     let arch = match first.get("general.architecture") {
         Some(Val::Str(s)) => s.clone(),
         _ => String::new(),
     };
     let names: Vec<String> = FIELDS.iter().map(|f| format!("{arch}.{}", f.1)).collect();
-    let kv = read_kept(size, win, |k| {
+    let kv = read_kept(size, segs, |k| {
         k == "general.name" || k == "tokenizer.chat_template" || names.iter().any(|n| n == k)
     })?;
     let mut out = String::from("{\"arch\":");
@@ -491,25 +517,54 @@ pub fn summary(size: u64, win: &[u8]) -> Result<String, Fault> {
     Ok(out)
 }
 
-/// The wire call: input `u64le(size)` and the window (at most [`MAX_WINDOW_BYTES`], no longer
-/// than `size`). Status 0 replies `{"summary":{…}}`, `{"need":N}` (N past the window, at most
-/// `size`) or `{"fail":"not_gguf"|"limit"|"eof"|"range"|"nested"}` /
-/// `{"fail":"version"|"type","value":N}` (the JS's errors); status 1 refuses with
-/// `{"error":"input"|"too_large"|"depth"|"kept"}`.
+/// The wire call: input `u64le(size) u32le(n)`, then n × `u64le(off) u32le(len)` (sorted,
+/// disjoint, non-empty, inside the file; at most [`MAX_SEGMENTS`]), then the segments' bytes in
+/// order (at most [`MAX_WINDOW_BYTES`] in all). Status 0 replies `{"summary":{…}}`,
+/// `{"need":{"at":A,"end":E}}` (no one segment holds [A, E); A < E <= size) or
+/// `{"fail":"not_gguf"|"limit"|"eof"|"range"|"nested"}` / `{"fail":"version"|"type","value":N}`
+/// (the JS's errors); status 1 refuses with `{"error":"input"|"too_large"|"depth"|"kept"}`.
 pub fn call(input: &[u8]) -> (u32, String) {
+    const INPUT: &str = r#"{"error":"input"}"#;
     if input.len() > MAX_INPUT_BYTES {
         return (1, r#"{"error":"too_large"}"#.into());
     }
-    let (Some(head), Some(win)) = (input.get(..8), input.get(8..)) else {
-        return (1, r#"{"error":"input"}"#.into());
+    let u64_at = |i: usize| -> Option<u64> {
+        let mut a = [0u8; 8];
+        a.copy_from_slice(input.get(i..i.checked_add(8)?)?);
+        Some(u64::from_le_bytes(a))
     };
-    let mut size = [0u8; 8];
-    size.copy_from_slice(head);
-    let size = u64::from_le_bytes(size);
-    if win.len() as u64 > size {
-        return (1, r#"{"error":"input"}"#.into());
-    }
-    match summary(size, win) {
+    let u32_at = |i: usize| -> Option<usize> {
+        let mut a = [0u8; 4];
+        a.copy_from_slice(input.get(i..i.checked_add(4)?)?);
+        usize::try_from(u32::from_le_bytes(a)).ok()
+    };
+    let parse = || -> Option<(u64, Vec<Segment<'_>>)> {
+        let size = u64_at(0)?;
+        let n = u32_at(8)?;
+        if n > MAX_SEGMENTS {
+            return None;
+        }
+        let mut data = 12usize.checked_add(n.checked_mul(12)?)?;
+        let mut segs = Vec::with_capacity(n);
+        let mut floor = 0u64;
+        for i in 0..n {
+            let at = 12 + 12 * i;
+            let (off, len) = (u64_at(at)?, u32_at(at + 8)?);
+            let end = off.checked_add(len as u64)?;
+            if len == 0 || off < floor || end > size {
+                return None;
+            }
+            floor = end;
+            let bytes = input.get(data..data.checked_add(len)?)?;
+            data += len;
+            segs.push(Segment { off, bytes });
+        }
+        (data == input.len()).then_some((size, segs))
+    };
+    let Some((size, segs)) = parse() else {
+        return (1, INPUT.into());
+    };
+    match summary(size, &segs) {
         Ok(s) => (0, format!("{{\"summary\":{s}}}")),
         Err(f) => fault_reply(f),
     }
@@ -525,7 +580,7 @@ fn fault_reply(f: Fault) -> (u32, String) {
         Fault::Nested => fixed("nested"),
         Fault::Version(v) => (0, format!("{{\"fail\":\"version\",\"value\":{v}}}")),
         Fault::Type(t) => (0, format!("{{\"fail\":\"type\",\"value\":{t}}}")),
-        Fault::Need(n) => (0, format!("{{\"need\":{n}}}")),
+        Fault::Need { at, end } => (0, format!("{{\"need\":{{\"at\":{at},\"end\":{end}}}}}")),
         Fault::Depth => (1, r#"{"error":"depth"}"#.into()),
         Fault::Kept => (1, r#"{"error":"kept"}"#.into()),
     }

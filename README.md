@@ -21,11 +21,12 @@ one slice at a time.
   `gguf_meta.py`. Its differential corpus is regenerated from the Python reference with
   `NOEVIA_GGUF_META=<noevia>/services/model-manager/app/gguf_meta.py python3 tools/gen-fixtures.py`.
   `gguf::node` is noevia-core's gguf-meta.cjs instead (`summarize(readGguf(file))`, its own
-  caps and thrown errors): the host passes the file's size and a prefix of it and is told the
-  offset to read up to when the prefix is short; skipped bytes never need to cross. Same summary
+  caps and thrown errors): the host passes the file's size and the byte ranges it has read and
+  is told the next range to read; bytes the JS skips (long strings, the rest of big arrays) are
+  never read or passed. Same summary
   as the JS byte for byte (numbers as `Number#toString`, NaN/±Infinity/-0 tagged, mode() ties,
   `kv[null]`). Stricter than the JS, as refusals: arrays nested past 64, more than 262,144 kept
-  values, a header whose last read ends past 16 MiB. In `dav-parse.wasm` as `gguf_summary`
+  values, more than 16 MiB of read (not skipped) header bytes. In `dav-parse.wasm` as `gguf_summary`
   (GGUF_META_IMPL). Table from noevia-core (`node tools/gen-gguf-meta-fixtures.cjs`, synthetic
   headers incl. truncated at every byte, huge counts and lengths, odd types), copied
   byte-for-byte to `crates/gguf/tests/fixtures/gguf-meta.v1.json`.

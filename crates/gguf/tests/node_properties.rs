@@ -9,7 +9,7 @@
     clippy::panic
 )]
 
-use gguf::node::{call, js_number, summary, Fault};
+use gguf::node::{call, js_number, summary, summary_prefix, Fault, Segment};
 use proptest::prelude::*;
 
 fn str_(s: &[u8]) -> Vec<u8> {
@@ -57,17 +57,60 @@ fn base() -> Vec<u8> {
     f
 }
 
-fn windowed(file: &[u8], mut w: usize) -> Result<String, Fault> {
-    loop {
-        w = w.min(file.len());
-        match summary(file.len() as u64, &file[..w]) {
-            Err(Fault::Need(n)) => {
-                assert!(n as usize > w && n as usize <= file.len());
-                w = n as usize;
+/// What the host does (gguf-meta.cjs readSummaryWasm): hold the first `first` bytes, then on
+/// each need read from `at` to at least `end` (and at least as much again as is held), merged
+/// with any segment it touches into one.
+fn windowed(file: &[u8], first: usize) -> Result<String, Fault> {
+    let size = file.len();
+    let mut segs: Vec<(usize, usize)> = Vec::new();
+    if first.min(size) > 0 {
+        segs.push((0, first.min(size)));
+    }
+    for _round in 0..10_000 {
+        let view: Vec<Segment<'_>> = segs
+            .iter()
+            .map(|&(a, b)| Segment {
+                off: a as u64,
+                bytes: &file[a..b],
+            })
+            .collect();
+        match summary(size as u64, &view) {
+            Err(Fault::Need { at, end }) => {
+                let (at, end) = (at as usize, end as usize);
+                assert!(at < end && end <= size, "need {at}..{end} of {size}");
+                assert!(
+                    !segs.iter().any(|&(a, b)| a <= at && end <= b),
+                    "need {at}..{end} is held"
+                );
+                let held: usize = segs.iter().map(|&(a, b)| b - a).sum();
+                let (mut lo, mut hi) = (at, size.min(end.max(at + held.max(first).max(1))));
+                segs.retain(|&(a, b)| {
+                    let touch = a <= hi && b >= lo;
+                    if touch {
+                        lo = lo.min(a);
+                        hi = hi.max(b);
+                    }
+                    !touch
+                });
+                segs.push((lo, hi));
+                segs.sort_unstable();
             }
             r => return r,
         }
     }
+    panic!("no answer");
+}
+
+/// A request holding `file` as one segment at 0.
+fn one(size: u64, file: &[u8]) -> Vec<u8> {
+    let mut v = size.to_le_bytes().to_vec();
+    v.extend(u32::from(!file.is_empty()).to_le_bytes());
+    if !file.is_empty() {
+        v.extend(0u64.to_le_bytes());
+        v.extend((file.len() as u32).to_le_bytes());
+        v.extend_from_slice(file);
+    }
+    v
 }
 
 const FAILS: [&str; 5] = ["not_gguf", "limit", "eof", "range", "nested"];
@@ -93,7 +136,8 @@ fn check_reply(status: u32, reply: &str) {
     let o = v.as_object().unwrap();
     if let Some(n) = o.get("need") {
         assert_eq!(o.len(), 1);
-        assert!(n.as_u64().is_some());
+        let (at, end) = (n["at"].as_u64().unwrap(), n["end"].as_u64().unwrap());
+        assert!(at < end && n.as_object().unwrap().len() == 2);
         return;
     }
     let code = o["fail"].as_str().unwrap();
@@ -113,9 +157,7 @@ proptest! {
     fn arbitrary_bytes_never_panic(body in proptest::collection::vec(any::<u8>(), 0..512), gguf in any::<bool>(), extra in 0u64..4096) {
         let mut file = if gguf { b"GGUF\x03\x00\x00\x00".to_vec() } else { Vec::new() };
         file.extend(body);
-        let mut input = (file.len() as u64 + extra).to_le_bytes().to_vec();
-        input.extend_from_slice(&file);
-        let (status, reply) = call(&input);
+        let (status, reply) = call(&one(file.len() as u64 + extra, &file));
         check_reply(status, &reply);
     }
 
@@ -135,13 +177,12 @@ proptest! {
             let n = cut.index(file.len());
             file.truncate(n);
         }
-        let whole = summary(file.len() as u64, &file);
-        prop_assert!(!matches!(whole, Err(Fault::Need(_))));
+        let whole = summary_prefix(file.len() as u64, &file);
+        let needs = matches!(whole, Err(Fault::Need { .. }));
+        prop_assert!(!needs);
         let w = w.index(file.len() + 1);
         prop_assert_eq!(windowed(&file, w), whole.clone());
-        let mut input = (file.len() as u64).to_le_bytes().to_vec();
-        input.extend_from_slice(&file);
-        let (status, reply) = call(&input);
+        let (status, reply) = call(&one(file.len() as u64, &file));
         check_reply(status, &reply);
     }
 
@@ -158,7 +199,7 @@ proptest! {
 #[test]
 fn base_summary() {
     let f = base();
-    let s = summary(f.len() as u64, &f).unwrap();
+    let s = summary_prefix(f.len() as u64, &f).unwrap();
     assert!(s.contains("\"blockCount\":4"), "{s}");
     assert!(s.contains("\"headCountKv\":[2,4,4]"), "{s}");
     assert!(s.contains("\"slidingWindowPattern\":[[true],[1.5]]"), "{s}");
@@ -181,9 +222,9 @@ fn caps_are_refusals() {
         f.extend(1000u64.to_le_bytes());
         f.extend([0u8; 1000]);
     }
-    assert_eq!(summary(f.len() as u64, &f), Err(Fault::Kept));
+    assert_eq!(summary_prefix(f.len() as u64, &f), Err(Fault::Kept));
     // The same values under a key the summary does not read are walked, not kept.
     let at = 4 + 4 + 8 + 8 + 8;
     f[at] = b'x';
-    assert!(summary(f.len() as u64, &f).is_ok());
+    assert!(summary_prefix(f.len() as u64, &f).is_ok());
 }
