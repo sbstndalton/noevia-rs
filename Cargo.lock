@@ -171,6 +171,7 @@ dependencies = [
  "chat-template-caps",
  "dav-parse",
  "load-verdict",
+ "long-profile",
  "mcp-frame",
  "preset-reload",
  "provider-error",
@@ -584,6 +585,15 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 name = "load-verdict"
 version = "0.1.0"
 dependencies = [
+ "proptest",
+ "serde_json",
+]
+
+[[package]]
+name = "long-profile"
+version = "0.1.0"
+dependencies = [
+ "preset-reload",
  "proptest",
  "serde_json",
 ]

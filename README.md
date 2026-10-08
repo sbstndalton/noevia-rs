@@ -138,6 +138,17 @@ one slice at a time.
   (`node tools/gen-tune-contention-fixtures.cjs`, synthetic model ids, seeded combinations,
   expectations from an independent JS reference), copied byte-for-byte to
   `crates/tune-contention/tests/fixtures/tune-contention.v1.json`.
+- `crates/long-profile` (sbstndalton/noevia#1079): low- and high-context profiles per model. A
+  Long auto-tune writes `[<model>-long]`, which loads the same weights with its own context, KV
+  cache and batch values. Three decisions: which router rows pair as a model and its long
+  profile (the `-long` id and the same model file, never a name alone); the models.ini text with
+  that section appended (the base section's lines without `load-on-startup` and `alias`, the
+  router's model and projector files when the base has none, and every existing section left
+  as preset-reload needs it to reload without unloading anything); and which entry serves a
+  chat with Context Low or High. In `dav-parse.wasm` as `long_profile`. Table from noevia-core
+  (`node tools/gen-long-profile-fixtures.cjs`, synthetic ids and paths, expectations from an
+  independent JS reference), copied byte-for-byte to
+  `crates/long-profile/tests/fixtures/long-profile.v1.json`.
 - `model-files backups` (`crates/model-files/src/backups.rs`, sbstndalton/noevia#1021): which
   recovery copies of models.ini a model-manager write makes and which old ones it removes. The
   rotating `<file>.bak-*` copies keep ini.py's rule (newest 10 by name); the
