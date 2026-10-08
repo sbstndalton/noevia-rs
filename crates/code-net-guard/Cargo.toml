@@ -1,0 +1,17 @@
+[package]
+name = "code-net-guard"
+version = "0.1.0"
+description = "noevia-core's code-net-guard.cjs decisions in Rust: COWORK_CODE_NET_ADDR parsing, address normalisation and whether a request arrived on web's own code-network address; DNS, timers and the 403 stay in JS"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+
+[dev-dependencies]
+proptest = "1"

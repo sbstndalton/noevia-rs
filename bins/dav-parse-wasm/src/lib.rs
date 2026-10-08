@@ -132,6 +132,12 @@
 //!      invalidResult, reply `{"invalid":null|"…"}`; op 3 the error's facts, causeOf, reply
 //!      `{"cause":"…"}` (decision crate). Refuses with status 1 and
 //!      `{"error":"input"|"too_large"|"throws"|"opaque"}`.
+//!    - `code_net_guard()`: input `u8(op)` and UTF-8 JSON (at most `code_net_guard::MAX_INPUT_BYTES`):
+//!      op 1 `COWORK_CODE_NET_ADDR` code-net-guard.cjs parseCodeNetSpec, reply
+//!      `{"literals":[…],"hosts":[…]}` or `{"malformed":"entry"}`; op 2 `[answer|null,…]` the
+//!      addresses resolveOnce keeps, reply `{"addresses":[…]}`; op 3 `[[address,…], local|null]`
+//!      refuses, reply `{"refuses":bool}` (code-net-guard crate). Refuses with status 1 and
+//!      `{"error":"input"|"too_large"|"ambiguous"}`.
 //!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
@@ -194,6 +200,7 @@ const _: () = assert!(review_verdict::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(tool_exchange::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(mcp_servers::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(decision::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(code_net_guard::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -584,6 +591,11 @@ pub fn run_decision(input: &[u8]) -> (u32, String) {
     decision::call(input)
 }
 
+/// `code-net-guard`: code-net-guard.cjs's spec, lookup and refusal decisions; see the crate docs.
+pub fn run_code_net_guard(input: &[u8]) -> (u32, String) {
+    code_net_guard::call(input)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -916,6 +928,13 @@ pub extern "C" fn mcp_servers() -> u32 {
 #[no_mangle]
 pub extern "C" fn decision() -> u32 {
     consume(run_decision)
+}
+
+/// Consume the input buffer as a code-net-guard request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn code_net_guard() -> u32 {
+    consume(run_code_net_guard)
 }
 
 /// Address of the last reply.

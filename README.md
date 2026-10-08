@@ -72,6 +72,15 @@ one slice at a time.
   a sparse array, the port refuses and the host falls back. In `dav-parse.wasm` as `decision`
   (DECISION_IMPL). Table from noevia-core (`node tools/gen-decision-fixtures.cjs`), copied
   byte-for-byte to `crates/decision/tests/fixtures/decision.v1.json`.
+- `crates/code-net-guard`: noevia-core's code-net-guard.cjs decisions (noevia#853): parse
+  `COWORK_CODE_NET_ADDR` (IP literals as Node's `net.isIP` accepts them, host names of the JS's
+  pattern), the addresses a lookup keeps, and whether a request arrived on web's own code-network
+  address. DNS, retries and the 403 stay in the JS; the host serves a request only when the JS and
+  the port both say so. Stricter: non-ASCII text, `%zone` literals and `xn--`/IPv4-like host names
+  are refused; the same IP in another spelling (`0:0::1` / `::1`) is refused. In `dav-parse.wasm` as
+  `code_net_guard` (CODE_NET_GUARD_IMPL). Table from noevia-core
+  (`node tools/gen-code-net-guard-fixtures.cjs`), copied byte-for-byte to
+  `crates/code-net-guard/tests/fixtures/code-net-guard.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
