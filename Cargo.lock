@@ -177,6 +177,7 @@ dependencies = [
  "prompt-framing",
  "provider-error",
  "s3-list-parse",
+ "s3-sign",
  "secret-envelope",
  "storage-path",
  "tune-contention",
@@ -870,6 +871,17 @@ dependencies = [
  "dav-parse",
  "proptest",
  "serde_json",
+]
+
+[[package]]
+name = "s3-sign"
+version = "0.1.0"
+dependencies = [
+ "hmac",
+ "proptest",
+ "serde_json",
+ "sha2",
+ "zeroize",
 ]
 
 [[package]]
