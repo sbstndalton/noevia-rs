@@ -138,6 +138,13 @@
 //!      addresses resolveOnce keeps, reply `{"addresses":[…]}`; op 3 `[[address,…], local|null]`
 //!      refuses, reply `{"refuses":bool}` (code-net-guard crate). Refuses with status 1 and
 //!      `{"error":"input"|"too_large"|"ambiguous"}`.
+//!    - `role_context()`: input `u8(op)` and UTF-8 JSON (at most `role_context::MAX_INPUT_BYTES`):
+//!      op 1 `[role, state]` role-context.cjs projectRoleContext, reply
+//!      `{"projection":{…},"redactions":n}`; op 2 `[roles, state]` projectSharedDossier, reply
+//!      `{"dossier":{…},"redactions":n}`; either may instead reply `{"refused":"code"}` or
+//!      `{"leak":["class",…]}` (what the JS throws). Refuses with status 1 and
+//!      `{"error":"input"|"too_large"|"ambiguous"}` (role-context crate). The state carries
+//!      credentials and grant tokens, so this is a secret call (below).
 //!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
@@ -165,7 +172,7 @@
 //!
 //!    Both refuse with status 1 and `{"error":"input"|"too_large"}`.
 //!
-//!    The secret calls (`secret_open`, `secret_seal`, `s3_sign`, `auth_tokens`) wipe their input buffer (keys,
+//!    The secret calls (`secret_open`, `secret_seal`, `s3_sign`, `auth_tokens`, `role_context`) wipe their input buffer (keys,
 //!    user, value, the S3 secret key) and the previous reply before returning; refusals are
 //!    `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry input bytes. The host still wipes the whole linear memory and drops the instance after each
 //!    secret call (the reply holds plaintext until then).
@@ -201,6 +208,7 @@ const _: () = assert!(tool_exchange::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(mcp_servers::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(decision::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(code_net_guard::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(role_context::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -596,6 +604,12 @@ pub fn run_code_net_guard(input: &[u8]) -> (u32, String) {
     code_net_guard::call(input)
 }
 
+/// `role-context`: role-context.cjs's per-role projections and leak guard; see the crate docs.
+pub fn run_role_context(input: &[u8]) -> (u32, Vec<u8>) {
+    let (status, reply) = role_context::call(input);
+    (status, reply.into_bytes())
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -935,6 +949,14 @@ pub extern "C" fn decision() -> u32 {
 #[no_mangle]
 pub extern "C" fn code_net_guard() -> u32 {
     consume(run_code_net_guard)
+}
+
+/// Consume the input buffer as a role-context request (a secret call: the state carries
+/// credentials); see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn role_context() -> u32 {
+    consume_secret(run_role_context)
 }
 
 /// Address of the last reply.

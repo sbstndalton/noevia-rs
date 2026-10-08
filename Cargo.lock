@@ -190,6 +190,7 @@ dependencies = [
  "prompt-framing",
  "provider-error",
  "review-verdict",
+ "role-context",
  "s3-list-parse",
  "s3-sign",
  "secret-envelope",
@@ -889,6 +890,17 @@ dependencies = [
  "mcp-frame",
  "prompt-framing",
  "proptest",
+]
+
+[[package]]
+name = "role-context"
+version = "0.1.0"
+dependencies = [
+ "icu_normalizer",
+ "icu_properties",
+ "prompt-framing",
+ "proptest",
+ "tool-exchange",
 ]
 
 [[package]]
