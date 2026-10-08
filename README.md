@@ -20,6 +20,24 @@ one slice at a time.
   reader. `gguf-meta <path>` prints the same summary JSON as model-manager's
   `gguf_meta.py`. Its differential corpus is regenerated from the Python reference with
   `NOEVIA_GGUF_META=<noevia>/services/model-manager/app/gguf_meta.py python3 tools/gen-fixtures.py`.
+  `gguf::node` is noevia-core's gguf-meta.cjs instead (`summarize(readGguf(file))`, its own
+  caps and thrown errors): the host passes the file's size and the byte ranges it has read and
+  is told the next range to read; bytes the JS skips (long strings, the rest of big arrays) are
+  never read or passed. Same summary
+  as the JS byte for byte (numbers as `Number#toString`, NaN/±Infinity/-0 tagged, mode() ties,
+  `kv[null]`). Stricter than the JS, as refusals: arrays nested past 64, more than 262,144 kept
+  values, more than 24 MiB of read (not skipped) header bytes in 512 ranges. In `dav-parse.wasm` as `gguf_summary`
+  (GGUF_META_IMPL). Table from noevia-core (`node tools/gen-gguf-meta-fixtures.cjs`, synthetic
+  headers incl. truncated at every byte, huge counts and lengths, odd types), copied
+  byte-for-byte to `crates/gguf/tests/fixtures/gguf-meta.v1.json`.
+- `crates/policy-leaves`: noevia-core's auth-tokens.cjs (`resolveAuthTokens`, #294: both tokens
+  trimmed as `String#trim` over UTF-16 units, no fallback between them, the two warnings) and
+  tool-policy.cjs's per-tool decision and `set()` checks (the table stays in the JS). Never
+  weaker than the JS: a stored mode outside the table's CHECK is `block`, writes are never
+  `allow`; no refusal carries input, so no token is ever echoed. In `dav-parse.wasm` as
+  `auth_tokens` (a secret call) and `tool_policy` (POLICY_LEAVES_IMPL). Table from noevia-core
+  (`node tools/gen-policy-leaves-fixtures.cjs`, synthetic tokens only), copied byte-for-byte to
+  `crates/policy-leaves/tests/fixtures/policy-leaves.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
