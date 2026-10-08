@@ -149,6 +149,19 @@ one slice at a time.
   (`node tools/gen-long-profile-fixtures.cjs`, synthetic ids and paths, expectations from an
   independent JS reference), copied byte-for-byte to
   `crates/long-profile/tests/fixtures/long-profile.v1.json`.
+- `crates/prompt-framing` (sbstndalton/noevia#769, #740): noevia-core's prompt-injection
+  boundary, byte-identical to the JS over UTF-16 code units (lone surrogates included):
+  `frameUntrusted`/`escapeClosing` (prompt-framing.cjs: the `<untrusted kind label>` block and
+  its defused closing markers), the tool-layer provenance policy (provenance-policy.cjs: framed
+  block parsing, NFKC/lowercase normalisation, 16-unit FNV-1a grams, sensitive key stems, the
+  candidate forms of a value with WHATWG URL hosts and Node's `domainToUnicode`, `checkWrite`)
+  and task packet schema 1 (task-packet.cjs: strict parse/validate with the JS's `path: rule`
+  errors, render). The taint store is plain data the host hands back each call. In
+  `dav-parse.wasm` as `frame_untrusted`, `escape_closing`, `provenance` and `task_packet`
+  (PROMPT_FRAMING_IMPL). Table from noevia-core (`node tools/gen-prompt-framing-fixtures.cjs`
+  on Node 22, the shipped runtime; synthetic text, seeded), copied byte-for-byte to
+  `crates/prompt-framing/tests/fixtures/prompt-framing.v1.json`. Node 22's ada maps U+1E9E to
+  "ss" (pre-15.1 UTS46); the crate does the same for hosts (see `idna_compat`).
 - `model-files backups` (`crates/model-files/src/backups.rs`, sbstndalton/noevia#1021): which
   recovery copies of models.ini a model-manager write makes and which old ones it removes. The
   rotating `<file>.bak-*` copies keep ini.py's rule (newest 10 by name); the

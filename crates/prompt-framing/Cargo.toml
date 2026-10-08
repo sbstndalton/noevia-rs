@@ -1,0 +1,20 @@
+[package]
+name = "prompt-framing"
+version = "0.1.0"
+description = "The prompt-injection boundary of noevia-core in Rust: frameUntrusted (prompt-framing.cjs), the tool-layer provenance policy (provenance-policy.cjs, noevia#769) and task packet schema 1 (task-packet.cjs, noevia#740), byte-identical to the JS references over UTF-16 code units"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mcp-frame = { path = "../mcp-frame" }
+url = "2"
+idna = "1"
+icu_normalizer = { version = "2", default-features = false, features = ["compiled_data"] }
+
+[dev-dependencies]
+proptest = "1"
