@@ -26,7 +26,7 @@ one slice at a time.
   never read or passed. Same summary
   as the JS byte for byte (numbers as `Number#toString`, NaN/±Infinity/-0 tagged, mode() ties,
   `kv[null]`). Stricter than the JS, as refusals: arrays nested past 64, more than 262,144 kept
-  values, more than 16 MiB of read (not skipped) header bytes. In `dav-parse.wasm` as `gguf_summary`
+  values, more than 24 MiB of read (not skipped) header bytes in 512 ranges. In `dav-parse.wasm` as `gguf_summary`
   (GGUF_META_IMPL). Table from noevia-core (`node tools/gen-gguf-meta-fixtures.cjs`, synthetic
   headers incl. truncated at every byte, huge counts and lengths, odd types), copied
   byte-for-byte to `crates/gguf/tests/fixtures/gguf-meta.v1.json`.

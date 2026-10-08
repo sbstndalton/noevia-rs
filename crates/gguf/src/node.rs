@@ -22,8 +22,9 @@ pub const MAX_HEADER_BYTES: u64 = 128 * 1024 * 1024;
 pub const MAX_ARRAY_KEPT: u64 = 1024;
 /// gguf-meta.cjs MAX_STRING_KEPT: longer strings are skipped and read as `null`.
 pub const MAX_STRING_KEPT: u64 = 256 * 1024;
-/// The most file bytes one call accepts, over all segments.
-pub const MAX_WINDOW_BYTES: usize = 16 * 1024 * 1024;
+/// The most file bytes one call accepts, over all segments. Real Gemma 4 headers read ~15 MiB
+/// (not counting skipped bytes); 24 MiB keeps the request inside the module-wide 25 MiB cap.
+pub const MAX_WINDOW_BYTES: usize = 24 * 1024 * 1024;
 /// The most segments one call accepts.
 pub const MAX_SEGMENTS: usize = 512;
 /// The largest request: `u64le(size) u32le(count)`, a 12-byte header per segment, the bytes.
