@@ -181,6 +181,7 @@ dependencies = [
  "secret-envelope",
  "ssrf-policy",
  "storage-path",
+ "stream-guard",
  "tune-contention",
  "upload-sniff",
 ]
@@ -1001,6 +1002,14 @@ name = "storage-path"
 version = "0.1.0"
 dependencies = [
  "dav-parse",
+ "proptest",
+ "serde_json",
+]
+
+[[package]]
+name = "stream-guard"
+version = "0.1.0"
+dependencies = [
  "proptest",
  "serde_json",
 ]

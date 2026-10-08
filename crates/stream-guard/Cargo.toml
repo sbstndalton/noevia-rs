@@ -1,0 +1,19 @@
+[package]
+name = "stream-guard"
+version = "0.1.0"
+description = "noevia-core's stream-guard.cjs in Rust: the incremental JSON validator for a restricted JSON-schema subset (first violation as soon as it is decidable, chunk by chunk, over UTF-16 code units) and the bounded correction request (noevia#516, #704)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# No dependencies: the schema reader, the state codec and the reply writer are here, so that no
+# feature of a shared crate (serde_json float parsing, for one) changes what this decides.
+[dependencies]
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"
