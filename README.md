@@ -149,6 +149,15 @@ one slice at a time.
   (`node tools/gen-long-profile-fixtures.cjs`, synthetic ids and paths, expectations from an
   independent JS reference), copied byte-for-byte to
   `crates/long-profile/tests/fixtures/long-profile.v1.json`.
+- `crates/ssrf-policy` (sbstndalton/noevia#795, #930): the decision core of noevia-core's
+  outbound-URL guard (ssrf.cjs `isPublicUrl`/`isPrivateIp`, public-fetch.cjs). Is this URL
+  acceptable (WHATWG parse, so decimal/octal/hex IPv4, userinfo and backslash tricks resolve to
+  the host Node connects to), and is every resolved address public; DNS and the socket stay in
+  JS, and the loader refuses unless the host matches `new URL().hostname`. Addresses via
+  `egress::is_private_ip`. Stricter than the JS: trailing-dot names, internationalized (`xn--`)
+  hosts, and the metadata name under public fetch. In `dav-parse.wasm` as `ssrf_policy`. Table
+  from noevia-core (`node tools/gen-ssrf-fixtures.cjs`, expectations from the JS itself with the
+  network stubbed), copied byte-for-byte to `crates/ssrf-policy/tests/fixtures/ssrf.v1.json`.
 - `crates/prompt-framing` (sbstndalton/noevia#769, #740): noevia-core's prompt-injection
   boundary, byte-identical to the JS over UTF-16 code units (lone surrogates included):
   `frameUntrusted`/`escapeClosing` (prompt-framing.cjs: the `<untrusted kind label>` block and

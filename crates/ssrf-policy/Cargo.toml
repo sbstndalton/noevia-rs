@@ -1,0 +1,19 @@
+[package]
+name = "ssrf-policy"
+version = "0.1.0"
+description = "The decision core of noevia-core's outbound-URL guard: ssrf.cjs isPublicUrl / isPrivateIp and public-fetch.cjs's URL and connect-time address checks (noevia#795, #930); DNS and the socket stay in JS"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+egress = { path = "../egress" }
+serde_json = "1"
+url = "2"
+
+[dev-dependencies]
+proptest = "1"

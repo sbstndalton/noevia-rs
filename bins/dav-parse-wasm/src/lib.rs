@@ -78,6 +78,13 @@
 //!      `{"ok":false,"reason":…}` or `{"model":…,"long":bool,"reason":…}` (long-profile,
 //!      noevia#1079). A refused request is status 1 with `{"error":"input"|"too_large"}`.
 //!
+//!    - `ssrf_policy()`: input `{"op":"url","url":"…","mode":"check"|"fetch","loopback":bool}` or
+//!      `{"op":"addresses","addresses":["…",…]}` as UTF-8 JSON (at most
+//!      `ssrf_policy::MAX_INPUT_BYTES`): ssrf.cjs isPublicUrl up to its DNS step / public-fetch.cjs
+//!      before the socket, and "is every resolved address public" (ssrf-policy, noevia#795);
+//!      reply `{"ok":true,"kind":"ip"|"name","host":…}` / `{"ok":false,"reason":…}` or
+//!      `{"public":bool}`. A refused request is status 1 with `{"error":"input"|"too_large"}`.
+//!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
 //!      `prompt_framing::MAX_TEXT_UNITS`); on status 0 the reply is NOT JSON but the framed block
@@ -458,6 +465,17 @@ pub fn run_tune_contention(input: &[u8]) -> (u32, String) {
     tune_contention::decide_json(text)
 }
 
+/// `ssrf-policy`: the outbound-URL and resolved-address decisions; see the crate docs.
+pub fn run_ssrf(input: &[u8]) -> (u32, String) {
+    if input.len() > ssrf_policy::MAX_INPUT_BYTES {
+        return (1, "{\"error\":\"too_large\"}".to_owned());
+    }
+    let Ok(text) = std::str::from_utf8(input) else {
+        return (2, "{\"error\":\"input_not_utf8\"}".to_owned());
+    };
+    ssrf_policy::run_json(text)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -696,6 +714,13 @@ pub extern "C" fn tune_contention() -> u32 {
 #[no_mangle]
 pub extern "C" fn long_profile() -> u32 {
     consume(run_long_profile)
+}
+
+/// Decide an outbound URL or a set of resolved addresses from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn ssrf_policy() -> u32 {
+    consume(run_ssrf)
 }
 
 /// Address of the last reply.
@@ -1017,6 +1042,22 @@ mod tests {
             run_long_profile(&big),
             (1, r#"{"error":"too_large"}"#.to_owned())
         );
+    }
+
+    #[test]
+    fn ssrf_policy_shapes() {
+        assert_eq!(
+            run_ssrf(br#"{"op":"url","url":"http://0x7f.1/","mode":"check"}"#),
+            (0, r#"{"ok":false,"reason":"private_address"}"#.to_owned())
+        );
+        assert_eq!(
+            run_ssrf(br#"{"op":"addresses","addresses":["8.8.8.8","10.0.0.1"]}"#),
+            (0, r#"{"public":false}"#.to_owned())
+        );
+        assert_eq!(run_ssrf(b"{").0, 1);
+        assert_eq!(run_ssrf(&[0xff]).0, 2);
+        let big = vec![b' '; ssrf_policy::MAX_INPUT_BYTES + 1];
+        assert_eq!(run_ssrf(&big), (1, r#"{"error":"too_large"}"#.to_owned()));
     }
 
     #[test]
