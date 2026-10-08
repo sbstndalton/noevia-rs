@@ -81,6 +81,17 @@ one slice at a time.
   `code_net_guard` (CODE_NET_GUARD_IMPL). Table from noevia-core
   (`node tools/gen-code-net-guard-fixtures.cjs`), copied byte-for-byte to
   `crates/code-net-guard/tests/fixtures/code-net-guard.v1.json`.
+- `crates/role-context`: noevia-core's role-context.cjs (noevia#511/#515, #519, #702): the
+  per-role context projections of the multi-agent pipeline (allowlists, code-point caps, the
+  serialised diff budget, credential redaction, total-size refusal and the leak guard: sensitive
+  state values in any searched form, copied excerpts of 63+ folded code points, credential
+  patterns), and the shared dossier. The host returns the JS projection only when the port gives
+  the byte-identical one, so the port can refuse context but never add any. Stricter: lone
+  surrogates (in the state, or written by decoding a literal `\uXXXX`), states over 8 MiB and leak
+  searches past a work bound are refused. A secret call (the state carries credentials). In
+  `dav-parse.wasm` as `role_context` (ROLE_CONTEXT_IMPL). Table from noevia-core
+  (`node tools/gen-role-context-fixtures.cjs`), copied byte-for-byte to
+  `crates/role-context/tests/fixtures/role-context.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
