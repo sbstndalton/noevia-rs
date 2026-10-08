@@ -307,7 +307,10 @@ pub fn section(
     if all.iter().any(|(n, _)| *n == id) {
         return Err(Refusal::Exists);
     }
-    let has = |keys: &[&str]| body.iter().any(|l| key_of(l).is_some_and(|k| keys.contains(&k)));
+    let has = |keys: &[&str]| {
+        body.iter()
+            .any(|l| key_of(l).is_some_and(|k| keys.contains(&k)))
+    };
     let model = model.filter(|m| !m.is_empty());
     let mmproj = mmproj.filter(|m| !m.is_empty());
     let add_model = if has(MODEL_KEYS) {
@@ -560,22 +563,27 @@ mod tests {
         assert!(out.ends_with(
             "\n\n[Synthetic-A-long]\nmodel = /models/a.gguf\nmmproj = /models/a-mmproj.gguf\nctx-size = 8192\n"
         ));
-        assert!(preset_reload::check(
-            INI,
-            &out,
-            &["Synthetic-A".into(), "Synthetic-B".into()]
-        )
-        .safe());
+        assert!(
+            preset_reload::check(INI, &out, &["Synthetic-A".into(), "Synthetic-B".into()]).safe()
+        );
     }
 
     #[test]
     fn section_adds_the_router_file_when_the_base_has_none() {
-        let (_, out) = section(INI, "Synthetic-B", Some("/models/b.gguf"), Some("/models/b-p.gguf"))
-            .unwrap();
+        let (_, out) = section(
+            INI,
+            "Synthetic-B",
+            Some("/models/b.gguf"),
+            Some("/models/b-p.gguf"),
+        )
+        .unwrap();
         assert!(out.ends_with(
             "[Synthetic-B-long]\nctx-size = 4096\nmodel = /models/b.gguf\nmmproj = /models/b-p.gguf\n"
         ));
-        assert_eq!(section(INI, "Synthetic-B", None, None), Err(Refusal::NoModel));
+        assert_eq!(
+            section(INI, "Synthetic-B", None, None),
+            Err(Refusal::NoModel)
+        );
         assert_eq!(
             section(INI, "Synthetic-B", Some(" /x"), None),
             Err(Refusal::BadPath)
@@ -584,7 +592,10 @@ mod tests {
 
     #[test]
     fn section_refusals() {
-        assert_eq!(section(INI, "bad name", None, None), Err(Refusal::InvalidId));
+        assert_eq!(
+            section(INI, "bad name", None, None),
+            Err(Refusal::InvalidId)
+        );
         assert_eq!(section(INI, "x-long", None, None), Err(Refusal::IsLong));
         assert_eq!(section(INI, "Missing", None, None), Err(Refusal::NoBase));
         assert_eq!(
