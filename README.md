@@ -158,6 +158,18 @@ one slice at a time.
   hosts, and the metadata name under public fetch. In `dav-parse.wasm` as `ssrf_policy`. Table
   from noevia-core (`node tools/gen-ssrf-fixtures.cjs`, expectations from the JS itself with the
   network stubbed), copied byte-for-byte to `crates/ssrf-policy/tests/fixtures/ssrf.v1.json`.
+- `crates/stream-guard` (sbstndalton/noevia#516, #704): noevia-core's stream-guard.cjs, the
+  incremental JSON validator over the restricted schema subset (type, required, properties,
+  additionalProperties: false, enum, items, maxItems, maxLength) and its bounded correction
+  request. Same first violation (message and path, unit for unit, after the same chunk) as the
+  JS over UTF-16 code units, lone surrogates, split pairs and Node's `/\s/` included; maxBytes
+  counts each chunk's `Buffer.byteLength` as the JS does. The state between chunks is bytes the
+  host holds (bounded, checked on decode). No dependencies. Stricter than the JS, as refusals:
+  schema shapes outside plain JSON subset use, maxBytes over 2 MiB, maxDepth over 1024,
+  non-integer options. In `dav-parse.wasm` as `stream_guard` (STREAM_GUARD_IMPL). Table from
+  noevia-core (`node tools/gen-stream-guard-fixtures.cjs`, synthetic texts and the real caller
+  schemas, expectations from the JS itself), copied byte-for-byte to
+  `crates/stream-guard/tests/fixtures/stream-guard.v1.json`.
 - `crates/prompt-framing` (sbstndalton/noevia#769, #740): noevia-core's prompt-injection
   boundary, byte-identical to the JS over UTF-16 code units (lone surrogates included):
   `frameUntrusted`/`escapeClosing` (prompt-framing.cjs: the `<untrusted kind label>` block and

@@ -85,6 +85,14 @@
 //!      reply `{"ok":true,"kind":"ip"|"name","host":…}` / `{"ok":false,"reason":…}` or
 //!      `{"public":bool}`. A refused request is status 1 with `{"error":"input"|"too_large"}`.
 //!
+//!    - `stream_guard()`: input one stream-guard request in the binary format of
+//!      `stream_guard::call` (at most `stream_guard::MAX_INPUT_BYTES`): stream-guard.cjs's
+//!      incremental validator (new / feed / end, the state held by the host between calls, or a
+//!      one-shot check) and buildCorrectionRequest (noevia#516, #704). On status 0 the reply is
+//!      `u32le(n)`, n bytes of ASCII JSON, then the state bytes (none for check), or for the
+//!      correction op the request as ASCII JSON. A refused request is status 1 with
+//!      `{"error":"too_large"|"input_shape"|"schema"|"state"|"options"}`.
+//!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
 //!      `prompt_framing::MAX_TEXT_UNITS`); on status 0 the reply is NOT JSON but the framed block
@@ -137,6 +145,9 @@ pub const MAX_INPUT_BYTES: usize = {
         upload_sniff::MAX_DECODE_BYTES
     }
 };
+
+// stream-guard's largest request fits the module-wide cap.
+const _: () = assert!(stream_guard::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -486,6 +497,11 @@ pub fn run_ssrf(input: &[u8]) -> (u32, String) {
     ssrf_policy::run_json(text)
 }
 
+/// `stream-guard`: the incremental validator and the correction request; see the crate docs.
+pub fn run_stream_guard(input: &[u8]) -> (u32, Vec<u8>) {
+    stream_guard::call(input)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -762,6 +778,13 @@ pub extern "C" fn long_profile() -> u32 {
 #[no_mangle]
 pub extern "C" fn ssrf_policy() -> u32 {
     consume(run_ssrf)
+}
+
+/// Consume the input buffer as a stream-guard request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn stream_guard() -> u32 {
+    consume_bytes(run_stream_guard)
 }
 
 /// Address of the last reply.
@@ -1150,6 +1173,27 @@ mod tests {
         assert_eq!(run_ssrf(&[0xff]).0, 2);
         let big = vec![b' '; ssrf_policy::MAX_INPUT_BYTES + 1];
         assert_eq!(run_ssrf(&big), (1, r#"{"error":"too_large"}"#.to_owned()));
+    }
+
+    #[test]
+    fn stream_guard_shapes() {
+        let mut v = vec![3u8];
+        v.extend_from_slice(&64f64.to_le_bytes());
+        v.extend_from_slice(&2097152f64.to_le_bytes());
+        v.extend_from_slice(&2u32.to_le_bytes());
+        v.extend_from_slice(b"{}");
+        v.push(0);
+        v.extend_from_slice(&u16le("[1,]"));
+        let (s, r) = run_stream_guard(&v);
+        assert_eq!(s, 0);
+        let json = br#"{"violation":{"message":"Unexpected character ']' while expecting a value at $[1]","path":"$[1]","reason":"unexpected_char"},"done":false}"#;
+        assert_eq!(r[..4], (json.len() as u32).to_le_bytes());
+        assert_eq!(&r[4..], json);
+        assert_eq!(
+            run_stream_guard(&[7]),
+            (1, br#"{"error":"input_shape"}"#.to_vec())
+        );
+        assert!(dav_input(stream_guard::MAX_INPUT_BYTES as u32) != 0);
     }
 
     #[test]
