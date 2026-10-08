@@ -456,12 +456,13 @@ pub fn decode(v: &Value) -> Option<Js> {
                 }
                 ("o", [Value::Arr(pairs)]) => {
                     let mut out: Vec<(Vec<u16>, Js)> = Vec::with_capacity(pairs.len());
+                    let mut seen: HashSet<&[u16]> = HashSet::with_capacity(pairs.len());
                     for p in pairs {
                         let Value::Arr(kv) = p else { return None };
                         let [Value::Str(k), val] = kv.as_slice() else {
                             return None;
                         };
-                        if out.iter().any(|(seen, _)| seen == k) {
+                        if !seen.insert(k.as_slice()) {
                             return None;
                         }
                         out.push((k.clone(), decode(val)?));
@@ -765,5 +766,39 @@ mod tests {
         assert_eq!(call(b"\x01[\"h\",-1]"), (1, BAD_INPUT.to_owned()));
         let big = vec![b' '; MAX_INPUT_BYTES + 1];
         assert_eq!(call(&big), (1, TOO_LARGE.to_owned()));
+    }
+
+    #[test]
+    fn many_score_keys_decode_in_linear_time() {
+        let n = 65_536;
+        let mut body =
+            String::from(r#"[["o",[["kind","rank"],["items",["a",[]]]]],["o",[["scores",["o",["#);
+        for i in 0..n {
+            if i > 0 {
+                body.push(',');
+            }
+            body.push_str(&format!(r#"["k{i}",1]"#));
+        }
+        body.push_str("]]]]]]");
+        let mut input = vec![2u8];
+        input.extend_from_slice(body.as_bytes());
+        assert!(input.len() <= MAX_INPUT_BYTES, "{}", input.len());
+        let t = std::time::Instant::now();
+        let (status, reply) = call(&input);
+        assert!(
+            t.elapsed() < std::time::Duration::from_secs(5),
+            "{:?}",
+            t.elapsed()
+        );
+        assert_eq!(status, 0, "{reply}");
+        assert_eq!(
+            reply,
+            r#"{"invalid":"score for an id that was not offered"}"#
+        );
+        // A duplicate key still refuses.
+        let dup = br#"[["o",[["kind","rank"]]],["o",[["scores",["o",[["k",1],["k",2]]]]]]]"#;
+        let mut input = vec![2u8];
+        input.extend_from_slice(dup);
+        assert_eq!(call(&input), (1, BAD_INPUT.to_owned()));
     }
 }
