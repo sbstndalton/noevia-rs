@@ -138,6 +138,17 @@ one slice at a time.
   (`node tools/gen-tune-contention-fixtures.cjs`, synthetic model ids, seeded combinations,
   expectations from an independent JS reference), copied byte-for-byte to
   `crates/tune-contention/tests/fixtures/tune-contention.v1.json`.
+- `crates/long-profile` (sbstndalton/noevia#1079): low- and high-context profiles per model. A
+  Long auto-tune writes `[<model>-long]`, which loads the same weights with its own context, KV
+  cache and batch values. Three decisions: which router rows pair as a model and its long
+  profile (the `-long` id and the same model file, never a name alone); the models.ini text with
+  that section appended (the base section's lines without `load-on-startup` and `alias`, the
+  router's model and projector files when the base has none, and every existing section left
+  as preset-reload needs it to reload without unloading anything); and which entry serves a
+  chat with Context Low or High. In `dav-parse.wasm` as `long_profile`. Table from noevia-core
+  (`node tools/gen-long-profile-fixtures.cjs`, synthetic ids and paths, expectations from an
+  independent JS reference), copied byte-for-byte to
+  `crates/long-profile/tests/fixtures/long-profile.v1.json`.
 - `crates/prompt-framing` (sbstndalton/noevia#769, #740): noevia-core's prompt-injection
   boundary, byte-identical to the JS over UTF-16 code units (lone surrogates included):
   `frameUntrusted`/`escapeClosing` (prompt-framing.cjs: the `<untrusted kind label>` block and

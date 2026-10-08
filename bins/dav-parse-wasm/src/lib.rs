@@ -71,6 +71,12 @@
 //!      "wait"|"unload"|"give_up","reason":"…","foreign":[…],"unload":[…],"fingerprint":"…",
 //!      "since":…,"waitedMs":…}` (tune-contention, noevia#1062). A refused request is status 1
 //!      with `{"error":"input"|"too_large"}`.
+//!    - `long_profile()`: input `{"op":"pairs"|"section"|"pick",…}` as UTF-8 JSON (at most
+//!      `long_profile::MAX_INPUT_BYTES`): which router rows are a model's `<id>-long` profile, the
+//!      models.ini text with that section appended for a Long tune, or which entry serves a chat
+//!      with Context Low or High; reply `{"pairs":[…]}`, `{"ok":true,"id":…,"text":…}` /
+//!      `{"ok":false,"reason":…}` or `{"model":…,"long":bool,"reason":…}` (long-profile,
+//!      noevia#1079). A refused request is status 1 with `{"error":"input"|"too_large"}`.
 //!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
@@ -452,6 +458,17 @@ pub fn run_tune_contention(input: &[u8]) -> (u32, String) {
     tune_contention::decide_json(text)
 }
 
+/// `long-profile`: low- and high-context profiles per model; see the crate docs.
+pub fn run_long_profile(input: &[u8]) -> (u32, String) {
+    if input.len() > long_profile::MAX_INPUT_BYTES {
+        return (1, "{\"error\":\"too_large\"}".to_owned());
+    }
+    let Ok(text) = std::str::from_utf8(input) else {
+        return (2, "{\"error\":\"input_not_utf8\"}".to_owned());
+    };
+    long_profile::run_json(text)
+}
+
 fn refusal(e: prompt_framing::Error) -> (u32, Vec<u8>) {
     (1, e.json())
 }
@@ -672,6 +689,13 @@ pub extern "C" fn load_verdict() -> u32 {
 #[no_mangle]
 pub extern "C" fn tune_contention() -> u32 {
     consume(run_tune_contention)
+}
+
+/// Pair, derive or pick a long-context profile from the input buffer; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn long_profile() -> u32 {
+    consume(run_long_profile)
 }
 
 /// Address of the last reply.
@@ -975,6 +999,22 @@ mod tests {
         let big = vec![b' '; load_verdict::MAX_INPUT_BYTES + 1];
         assert_eq!(
             run_load_verdict(&big),
+            (1, r#"{"error":"too_large"}"#.to_owned())
+        );
+    }
+
+    #[test]
+    fn long_profile_shapes() {
+        let (s, r) = run_long_profile(
+            br#"{"op":"pairs","rows":[{"id":"a","model":"/f"},{"id":"a-long","model":"/f"}]}"#,
+        );
+        assert_eq!(s, 0);
+        assert_eq!(r, r#"{"pairs":[{"base":"a","long":"a-long"}]}"#);
+        assert_eq!(run_long_profile(b"{").0, 1);
+        assert_eq!(run_long_profile(&[0xff]).0, 2);
+        let big = vec![b' '; long_profile::MAX_INPUT_BYTES + 1];
+        assert_eq!(
+            run_long_profile(&big),
             (1, r#"{"error":"too_large"}"#.to_owned())
         );
     }

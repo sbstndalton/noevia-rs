@@ -1,0 +1,18 @@
+[package]
+name = "long-profile"
+version = "0.1.0"
+description = "Low- and high-context profiles per model (noevia#1079): which router entries are a model's `<id>-long` profile, the models.ini section a Long tune starts from, and which entry a chat with Context High is served by"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+preset-reload = { path = "../preset-reload" }
+serde_json = "1"
+
+[dev-dependencies]
+proptest = "1"
