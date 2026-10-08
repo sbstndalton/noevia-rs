@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build dav-parse.wasm (noevia#967; since #976/#978/#977/#979 it also carries s3-list-parse, storage-path,
-# upload-sniff and secret-envelope)
+# upload-sniff and secret-envelope; later crates are listed in bins/dav-parse-wasm, since this slice s3-sign)
 # reproducibly and print its sha256.
 #   tools/build-dav-parse-wasm.sh [OUT]   (default: target/dav-parse.wasm)
 # The same command runs in noevia-rs CI, noevia-core CI and noevia's web image build; noevia-core
