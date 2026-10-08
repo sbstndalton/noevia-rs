@@ -105,8 +105,8 @@
 //!    Both refuse with status 1 and `{"error":"input"|"too_large"}`.
 //!
 //!    The secret calls (`secret_open`, `secret_seal`, `s3_sign`) wipe their input buffer (keys,
-//!    user, value, the S3 secret key) and the previous reply before returning; refusals are `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry
-//!    input bytes. The host still wipes the whole linear memory and drops the instance after each
+//!    user, value, the S3 secret key) and the previous reply before returning; refusals are
+//!    `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry input bytes. The host still wipes the whole linear memory and drops the instance after each
 //!    secret call (the reply holds plaintext until then).
 //! 3. `dav_output_ptr()` / `dav_output_len()`: where the UTF-8 JSON reply is.
 //!
