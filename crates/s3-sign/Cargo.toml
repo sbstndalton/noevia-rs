@@ -1,0 +1,22 @@
+[package]
+name = "s3-sign"
+version = "0.1.0"
+description = "Minimal AWS SigV4 signer for S3-compatible storage and the region rule, matching noevia-core's server/s3-sign.cjs and server/s3-region.cjs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+# Pinned exactly (the versions already in Cargo.lock): this crate signs every S3 request core
+# sends. No default features beyond what SigV4 needs; nothing here imports from the host.
+[dependencies]
+hmac = "=0.12.1"
+sha2 = "=0.10.9"
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"

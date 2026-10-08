@@ -94,8 +94,18 @@
 //!
 //!    These four refuse with status 1 and `{"error":"input"|"too_large"}`.
 //!
-//!    Both secret calls wipe their input buffer (keys, user, value) and the previous reply before
-//!    returning; refusals are `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry
+//!    - `s3_sign()`: input `field*8 u32le(n) (key value)*n payload` (each `u32le(len) bytes`;
+//!      method, host, pathname, access key, secret key, region, session token, amz date; every one
+//!      but the secret UTF-8): a SigV4 signature (s3-sign.cjs signS3Request, s3-sign crate); reply
+//!      the headers as a UTF-8 JSON object `{"host":…,"x-amz-content-sha256":…,"x-amz-date":…,
+//!      ["x-amz-security-token":…,]"Authorization":…}`. The input carries the secret key, so this
+//!      is a secret call (below).
+//!    - `s3_region()`: input the UTF-8 region text; reply the normalized region (s3-region.cjs).
+//!
+//!    Both refuse with status 1 and `{"error":"input"|"too_large"}`.
+//!
+//!    The secret calls (`secret_open`, `secret_seal`, `s3_sign`) wipe their input buffer (keys,
+//!    user, value, the S3 secret key) and the previous reply before returning; refusals are `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry
 //!    input bytes. The host still wipes the whole linear memory and drops the instance after each
 //!    secret call (the reply holds plaintext until then).
 //! 3. `dav_output_ptr()` / `dav_output_len()`: where the UTF-8 JSON reply is.
@@ -493,6 +503,23 @@ pub fn run_packet(input: &[u8]) -> (u32, Vec<u8>) {
     prompt_framing::packet_call(input).map_or_else(refusal, |r| (0, r))
 }
 
+fn s3_reply(r: Result<Vec<u8>, s3_sign::Error>) -> (u32, Vec<u8>) {
+    match r {
+        Ok(reply) => (0, reply),
+        Err(e) => (1, e.json()),
+    }
+}
+
+/// `s3-sign` signS3Request; the JSON headers described in the crate docs.
+pub fn run_s3_sign(input: &[u8]) -> (u32, Vec<u8>) {
+    s3_reply(s3_sign::sign_call(input))
+}
+
+/// `s3-sign` normalizeS3Region.
+pub fn run_s3_region(input: &[u8]) -> (u32, Vec<u8>) {
+    s3_reply(s3_sign::region_call(input))
+}
+
 /// Run a secret call: wipe the previous reply first and the input (keys, user, value) after.
 fn consume_secret(run: impl FnOnce(&[u8]) -> (u32, Vec<u8>)) -> u32 {
     OUTPUT.with(|out| out.borrow_mut().zeroize());
@@ -626,6 +653,20 @@ pub extern "C" fn secret_open() -> u32 {
 #[no_mangle]
 pub extern "C" fn secret_seal() -> u32 {
     consume_secret(run_secret_seal)
+}
+
+/// Sign an S3 request from the input buffer (it holds the secret key); see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn s3_sign() -> u32 {
+    consume_secret(run_s3_sign)
+}
+
+/// Normalize an S3 region from the input buffer.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn s3_region() -> u32 {
+    consume_bytes(run_s3_region)
 }
 
 /// Parse an MCP response body from the input buffer; see the crate docs.
@@ -877,6 +918,57 @@ mod tests {
         let reply = OUTPUT.with(|o| o.borrow().clone());
         assert!(reply.starts_with(b"enc:v1:"));
         assert!(!reply.windows(4).any(|w| w == [0x5a; 4]));
+    }
+
+    fn s3_input(secret: &[u8], date: &str) -> Vec<u8> {
+        fn field(v: &mut Vec<u8>, b: &[u8]) {
+            v.extend_from_slice(&(b.len() as u32).to_le_bytes());
+            v.extend_from_slice(b);
+        }
+        let mut v = Vec::new();
+        for f in [
+            &b"GET"[..],
+            b"s3.example.com",
+            b"/diary-bucket",
+            b"AKIAIOSFODNN7EXAMPLE",
+        ] {
+            field(&mut v, f);
+        }
+        field(&mut v, secret);
+        for f in [&b""[..], b"", date.as_bytes()] {
+            field(&mut v, f);
+        }
+        v.extend_from_slice(&2u32.to_le_bytes());
+        for f in [&b"list-type"[..], b"2", b"max-keys", b"1"] {
+            field(&mut v, f);
+        }
+        v
+    }
+
+    #[test]
+    fn s3_sign_shapes_and_wipe() {
+        let secret = b"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+        let input = s3_input(secret, "20130524T000000Z");
+        let (s, r) = run_s3_sign(&input);
+        assert_eq!(s, 0);
+        let text = String::from_utf8(r).unwrap();
+        assert!(text.starts_with(r#"{"host":"s3.example.com","x-amz-content-sha256":"#));
+        assert!(text.ends_with(
+            r#"Signature=4560899e7ffad2d2164e3dbc99454334a44ba5a4a86bf34dadad3be59e0364ad"}"#
+        ));
+        let refused = (1, br#"{"error":"input"}"#.to_vec());
+        assert_eq!(run_s3_sign(&input[..10]), refused);
+        assert_eq!(run_s3_sign(&s3_input(secret, "1234567\u{1F600}")), refused);
+        assert_eq!(run_s3_region(b" EU-West-1 "), (0, b"eu-west-1".to_vec()));
+        assert_eq!(run_s3_region(&[0xff]), refused);
+        // Through the export: the input (with the secret) is wiped; the reply holds no secret.
+        let ptr = dav_input(input.len() as u32);
+        assert_ne!(ptr, 0);
+        INPUT.with(|b| b.borrow_mut().copy_from_slice(&input));
+        assert_eq!(s3_sign(), 0);
+        INPUT.with(|b| assert!(b.borrow().is_empty()));
+        let reply = OUTPUT.with(|o| o.borrow().clone());
+        assert!(!reply.windows(secret.len()).any(|w| w == secret));
     }
 
     fn u16le(s: &str) -> Vec<u8> {
