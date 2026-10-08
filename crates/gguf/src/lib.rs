@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod json;
+pub mod node;
 mod pyfmt;
 mod raw;
 mod summary;

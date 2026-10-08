@@ -1,0 +1,17 @@
+[package]
+name = "policy-leaves"
+version = "0.1.0"
+description = "noevia-core's auth-tokens.cjs (the two independent auth tokens' env parsing, #294) and tool-policy.cjs's per-tool allow/ask/block decision and set() validation in Rust"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"

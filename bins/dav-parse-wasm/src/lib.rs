@@ -93,6 +93,22 @@
 //!      correction op the request as ASCII JSON. A refused request is status 1 with
 //!      `{"error":"too_large"|"input_shape"|"schema"|"state"|"options"}`.
 //!
+//!    - `gguf_summary()`: input `u64le(size)` and the first bytes of a GGUF file of `size` bytes
+//!      (at most `gguf::node::MAX_WINDOW_BYTES`): gguf-meta.cjs `summarize(readGguf(file))`
+//!      (gguf crate, `gguf::node`). Status 0 replies `{"summary":{…}}` (NaN, ±Infinity and -0 as
+//!      `{"$num":"…"}`), `{"need":N}` (read the file up to offset N and ask again) or the JS's
+//!      error as `{"fail":"…"[,"value":N]}`; status 1 refuses with
+//!      `{"error":"input"|"too_large"|"depth"|"kept"}`.
+//!    - `auth_tokens()`: input DIARY_AUTH_TOKEN, UI_AUTH_TOKEN and LEGACY_AUTH_COMPAT, each
+//!      `u8(0 none|1 string) [u32le(n) n UTF-16LE units]`: auth-tokens.cjs resolveAuthTokens
+//!      (policy-leaves crate); reply `{"diaryToken":…,"uiAuthToken":…,"legacyCompat":bool,
+//!      "warnings":[…]}`. The input and reply carry tokens, so this is a secret call (below).
+//!    - `tool_policy()`: input `1 stored u8(isWrite)` (mode) or `2 value u32le(n) n×u8(isWrite)`
+//!      (set's checks), strings as above: tool-policy.cjs (policy-leaves crate); reply
+//!      `{"mode":…}` or `{"ok":true,"mode":…}` / `{"ok":false,"reason":"mode"|"empty"|"write"}`.
+//!
+//!    These two refuse with status 1 and `{"error":"input"|"too_large"}`.
+//!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
 //!      `prompt_framing::MAX_TEXT_UNITS`); on status 0 the reply is NOT JSON but the framed block
@@ -119,7 +135,7 @@
 //!
 //!    Both refuse with status 1 and `{"error":"input"|"too_large"}`.
 //!
-//!    The secret calls (`secret_open`, `secret_seal`, `s3_sign`) wipe their input buffer (keys,
+//!    The secret calls (`secret_open`, `secret_seal`, `s3_sign`, `auth_tokens`) wipe their input buffer (keys,
 //!    user, value, the S3 secret key) and the previous reply before returning; refusals are
 //!    `{"error":"bound"|"unopenable"|"too_large"|"input"}` and never carry input bytes. The host still wipes the whole linear memory and drops the instance after each
 //!    secret call (the reply holds plaintext until then).
@@ -146,8 +162,10 @@ pub const MAX_INPUT_BYTES: usize = {
     }
 };
 
-// stream-guard's largest request fits the module-wide cap.
+// stream-guard's, gguf-meta's and policy-leaves' largest requests fit the module-wide cap.
 const _: () = assert!(stream_guard::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(gguf::node::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(policy_leaves::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -502,6 +520,22 @@ pub fn run_stream_guard(input: &[u8]) -> (u32, Vec<u8>) {
     stream_guard::call(input)
 }
 
+/// `gguf::node`: gguf-meta.cjs's summary over a window of the file; see the module docs.
+pub fn run_gguf_summary(input: &[u8]) -> (u32, String) {
+    gguf::node::call(input)
+}
+
+/// `policy-leaves`: auth-tokens.cjs resolveAuthTokens; see the crate docs.
+pub fn run_auth_tokens(input: &[u8]) -> (u32, Vec<u8>) {
+    let (status, reply) = policy_leaves::auth_call(input);
+    (status, reply.into_bytes())
+}
+
+/// `policy-leaves`: tool-policy.cjs's decision and set() checks; see the crate docs.
+pub fn run_tool_policy(input: &[u8]) -> (u32, String) {
+    policy_leaves::policy_call(input)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -787,6 +821,27 @@ pub extern "C" fn stream_guard() -> u32 {
     consume_bytes(run_stream_guard)
 }
 
+/// Consume the input buffer as a gguf-meta request; see the module docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn gguf_summary() -> u32 {
+    consume(run_gguf_summary)
+}
+
+/// Consume the input buffer as the auth tokens (a secret call: input and reply are wiped).
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn auth_tokens() -> u32 {
+    consume_secret(run_auth_tokens)
+}
+
+/// Consume the input buffer as a tool-policy request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn tool_policy() -> u32 {
+    consume(run_tool_policy)
+}
+
 /// Address of the last reply.
 #[allow(unsafe_code)]
 #[no_mangle]
@@ -805,6 +860,32 @@ pub extern "C" fn dav_output_len() -> u32 {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gguf_and_policy_shapes() {
+        let mut gguf = 4u64.to_le_bytes().to_vec();
+        gguf.extend_from_slice(b"GGUG");
+        assert_eq!(
+            run_gguf_summary(&gguf),
+            (0, r#"{"fail":"not_gguf"}"#.to_owned())
+        );
+        assert_eq!(
+            run_gguf_summary(b""),
+            (1, r#"{"error":"input"}"#.to_owned())
+        );
+        assert_eq!(
+            run_tool_policy(&[1, 0, 1]),
+            (0, r#"{"mode":"ask"}"#.to_owned())
+        );
+        assert_eq!(
+            run_tool_policy(&[9]),
+            (1, r#"{"error":"input"}"#.to_owned())
+        );
+        let (status, reply) = run_auth_tokens(&[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]);
+        assert_eq!(status, 0);
+        assert!(reply.starts_with(br#"{"diaryToken":"","uiAuthToken":"","legacyCompat":false,"#));
+        assert_eq!(run_auth_tokens(&[2]), (1, br#"{"error":"input"}"#.to_vec()));
+    }
 
     #[test]
     fn run_shapes() {
