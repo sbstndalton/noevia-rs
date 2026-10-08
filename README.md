@@ -56,6 +56,22 @@ one slice at a time.
   nested 1,024 containers deep. In `dav-parse.wasm` as `tool_exchange` (TOOL_EXCHANGE_IMPL).
   Table from noevia-core (`node tools/gen-tool-exchange-fixtures.cjs`), copied byte-for-byte to
   `crates/tool-exchange/tests/fixtures/tool-exchange.v1.json`.
+- `crates/mcp-servers`: noevia-core's mcp-servers.cjs: `parseMcpServers` (MCP_SERVERS
+  `id|url|auth` entries or MCP_SERVER_URL: http(s) only, no credentials in the URL, `internal`
+  only on a loopback IP literal and once, `bearer:ENV_NAME` by name, the JS's warnings word for
+  word), `parseEnabledToolboxes` and `toolboxOffered`. Token values never cross. Stricter, as a
+  refusal of the whole list (the host configures no MCP server): a URL it must judge that is not
+  printable ASCII or has `%` / `xn--` in its authority, or an id re-accepted after a URL drop. In
+  `dav-parse.wasm` as `mcp_servers` (MCP_SERVERS_IMPL). Table from noevia-core
+  (`node tools/gen-mcp-servers-fixtures.cjs`, synthetic URLs only), copied byte-for-byte to
+  `crates/mcp-servers/tests/fixtures/mcp-servers.v1.json`.
+- `crates/decision`: noevia-core's decision/index.cjs pure checks: `invalidRequest`,
+  `invalidResult` (a backend's answer stays inside the offered ids, `SameValueZero`, hashed) and
+  `causeOf`; the chain, deadlines and backends stay in the JS. The host projects exactly the
+  values they read; where the JS would throw, compare object identities, coerce an object or walk
+  a sparse array, the port refuses and the host falls back. In `dav-parse.wasm` as `decision`
+  (DECISION_IMPL). Table from noevia-core (`node tools/gen-decision-fixtures.cjs`), copied
+  byte-for-byte to `crates/decision/tests/fixtures/decision.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is

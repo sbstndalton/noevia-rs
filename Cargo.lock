@@ -170,10 +170,12 @@ dependencies = [
  "autotune-plan",
  "chat-template-caps",
  "dav-parse",
+ "decision",
  "gguf",
  "load-verdict",
  "long-profile",
  "mcp-frame",
+ "mcp-servers",
  "policy-leaves",
  "preset-reload",
  "prompt-framing",
@@ -188,6 +190,14 @@ dependencies = [
  "tool-exchange",
  "tune-contention",
  "upload-sniff",
+]
+
+[[package]]
+name = "decision"
+version = "0.1.0"
+dependencies = [
+ "prompt-framing",
+ "proptest",
 ]
 
 [[package]]
@@ -613,6 +623,15 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "serde_json",
+]
+
+[[package]]
+name = "mcp-servers"
+version = "0.1.0"
+dependencies = [
+ "prompt-framing",
+ "proptest",
+ "url",
 ]
 
 [[package]]

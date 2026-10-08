@@ -1,0 +1,18 @@
+[package]
+name = "mcp-servers"
+version = "0.1.0"
+description = "noevia-core's mcp-servers.cjs in Rust: the MCP server list (MCP_SERVERS / MCP_SERVER_URL, per-server credential pass-through) and the curated-box filter (ENABLED_TOOLBOXES)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+url = "2"
+
+[dev-dependencies]
+proptest = "1"
