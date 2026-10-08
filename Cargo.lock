@@ -178,12 +178,14 @@ dependencies = [
  "preset-reload",
  "prompt-framing",
  "provider-error",
+ "review-verdict",
  "s3-list-parse",
  "s3-sign",
  "secret-envelope",
  "ssrf-policy",
  "storage-path",
  "stream-guard",
+ "tool-exchange",
  "tune-contention",
  "upload-sniff",
 ]
@@ -853,6 +855,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "review-verdict"
+version = "0.1.0"
+dependencies = [
+ "mcp-frame",
+ "prompt-framing",
+ "proptest",
+]
+
+[[package]]
 name = "rustix"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1111,6 +1122,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "tool-exchange"
+version = "0.1.0"
+dependencies = [
+ "prompt-framing",
+ "proptest",
 ]
 
 [[package]]

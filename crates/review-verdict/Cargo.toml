@@ -1,0 +1,18 @@
+[package]
+name = "review-verdict"
+version = "0.1.0"
+description = "noevia-core's code-review-verdict.cjs (#519) in Rust: the strict reading of a Planner review verdict and the bounded shape a review.* job event keeps"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+mcp-frame = { path = "../mcp-frame" }
+
+[dev-dependencies]
+proptest = "1"
