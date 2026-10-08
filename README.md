@@ -38,6 +38,24 @@ one slice at a time.
   `auth_tokens` (a secret call) and `tool_policy` (POLICY_LEAVES_IMPL). Table from noevia-core
   (`node tools/gen-policy-leaves-fixtures.cjs`, synthetic tokens only), copied byte-for-byte to
   `crates/policy-leaves/tests/fixtures/policy-leaves.v1.json`.
+- `crates/review-verdict`: noevia-core's code-review-verdict.cjs (#519): `readVerdict` (the
+  strict reading of a Planner review verdict: only the schema's fields, controls and bidi
+  overrides dropped, trimmed and cut by code points, inconsistent verdicts refused, with the JS's
+  nine reasons) and `boundReviewEvent` (what a `review.*` job event keeps, -0 included). The host
+  sends JS values in a tagged JSON form that keeps undefined/-0/NaN and hides objects that are not
+  plain data; where the JS would look inside one, the port refuses (`opaque`), which the host
+  turns into the JS's own failure. In `dav-parse.wasm` as `review_verdict`
+  (CODE_REVIEW_VERDICT_IMPL). Table from noevia-core (`node tools/gen-code-review-verdict-fixtures.cjs`,
+  synthetic text only), copied byte-for-byte to
+  `crates/review-verdict/tests/fixtures/code-review-verdict.v1.json`.
+- `crates/tool-exchange`: noevia-core's tool-exchange.cjs checks before a chat tool runs
+  (cancelled, enabled, arguments a JSON object, exactly as `JSON.parse`), its canonical-JSON
+  dedupe key (keys in UTF-16 order, numbers as `JSON.stringify` writes them, lone surrogates
+  escaped) and a failed call's text; the per-turn exchange stays in the JS. Stricter, as
+  refusals (the host answers with an error, the tool never runs): arguments over 4 Mi units or
+  nested 1,024 containers deep. In `dav-parse.wasm` as `tool_exchange` (TOOL_EXCHANGE_IMPL).
+  Table from noevia-core (`node tools/gen-tool-exchange-fixtures.cjs`), copied byte-for-byte to
+  `crates/tool-exchange/tests/fixtures/tool-exchange.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is

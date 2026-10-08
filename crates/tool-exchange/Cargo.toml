@@ -1,0 +1,17 @@
+[package]
+name = "tool-exchange"
+version = "0.1.0"
+description = "noevia-core's tool-exchange.cjs in Rust: a chat tool call's pre-run checks (cancelled, enabled, arguments a JSON object) and its canonical-JSON dedupe key, and the error text of a failed call"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+
+[dev-dependencies]
+proptest = "1"

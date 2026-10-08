@@ -111,6 +111,18 @@
 //!
 //!    These two refuse with status 1 and `{"error":"input"|"too_large"}`.
 //!
+//!    - `review_verdict()`: input `u8(op)` and a UTF-8 JSON value in review-verdict's tagged form
+//!      (at most `review_verdict::MAX_INPUT_BYTES`): op 1 code-review-verdict.cjs readVerdict,
+//!      reply `{"verdict":{…}}` or `{"invalid":"<code>"}`; op 2 `[type, data]` boundReviewEvent,
+//!      reply `{"event":{…}}` (review-verdict crate, #519). Refuses with status 1 and
+//!      `{"error":"input"|"too_large"|"opaque"}`.
+//!    - `tool_exchange()`: input `u8(op)`, then `u8(aborted) u8(allowed) u32le(n) name
+//!      u8(hasArgs) [args]` (op 1, a tool call's checks and dedupe key) or `u32le(n) name u32le(m)
+//!      message` (op 2, a failed call's text), all strings UTF-16LE units; on status 0 the reply is
+//!      NOT JSON but a tag (0 the key: run the tool, 1 the tool result: do not) followed by
+//!      UTF-16LE units (tool-exchange.cjs, tool-exchange crate). Refuses with status 1 and
+//!      `{"error":"input"|"too_large"|"depth"}`.
+//!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
 //!      `prompt_framing::MAX_TEXT_UNITS`); on status 0 the reply is NOT JSON but the framed block
@@ -168,6 +180,8 @@ pub const MAX_INPUT_BYTES: usize = {
 const _: () = assert!(stream_guard::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(gguf::node::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(policy_leaves::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(review_verdict::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(tool_exchange::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -538,6 +552,16 @@ pub fn run_tool_policy(input: &[u8]) -> (u32, String) {
     policy_leaves::policy_call(input)
 }
 
+/// `review-verdict`: code-review-verdict.cjs readVerdict / boundReviewEvent; see the crate docs.
+pub fn run_review_verdict(input: &[u8]) -> (u32, String) {
+    review_verdict::call(input)
+}
+
+/// `tool-exchange`: tool-exchange.cjs's pre-run checks and dedupe key; see the crate docs.
+pub fn run_tool_exchange(input: &[u8]) -> (u32, Vec<u8>) {
+    tool_exchange::call(input)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -844,6 +868,20 @@ pub extern "C" fn tool_policy() -> u32 {
     consume(run_tool_policy)
 }
 
+/// Consume the input buffer as a review-verdict request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn review_verdict() -> u32 {
+    consume(run_review_verdict)
+}
+
+/// Consume the input buffer as a tool-exchange request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn tool_exchange() -> u32 {
+    consume_bytes(run_tool_exchange)
+}
+
 /// Address of the last reply.
 #[allow(unsafe_code)]
 #[no_mangle]
@@ -891,6 +929,26 @@ mod tests {
         assert_eq!(status, 0);
         assert!(reply.starts_with(br#"{"diaryToken":"","uiAuthToken":"","legacyCompat":false,"#));
         assert_eq!(run_auth_tokens(&[2]), (1, br#"{"error":"input"}"#.to_vec()));
+    }
+
+    #[test]
+    fn review_and_exchange_shapes() {
+        assert_eq!(
+            run_review_verdict(b"\x01null"),
+            (0, r#"{"invalid":"fields"}"#.to_owned())
+        );
+        assert_eq!(
+            run_review_verdict(b"\x01[\"x\"]"),
+            (1, r#"{"error":"opaque"}"#.to_owned())
+        );
+        // op 1, not aborted, allowed, name "t", no args: the key ["t","{}"].
+        let (status, reply) = run_tool_exchange(&[1, 0, 1, 1, 0, 0, 0, 0x74, 0, 0]);
+        assert_eq!(status, 0);
+        assert_eq!(reply[0], 0);
+        assert_eq!(
+            run_tool_exchange(&[3]),
+            (1, br#"{"error":"input"}"#.to_vec())
+        );
     }
 
     #[test]
