@@ -122,6 +122,16 @@
 //!      NOT JSON but a tag (0 the key: run the tool, 1 the tool result: do not) followed by
 //!      UTF-16LE units (tool-exchange.cjs, tool-exchange crate). Refuses with status 1 and
 //!      `{"error":"input"|"too_large"|"depth"}`.
+//!    - `mcp_servers()`: input `u8(op)` and UTF-8 JSON (at most `mcp_servers::MAX_INPUT_BYTES`):
+//!      op 1 `[MCP_SERVERS|null, MCP_SERVER_URL|null]` mcp-servers.cjs parseMcpServers, reply
+//!      `{"servers":[…],"warnings":[…]}`; op 2 `ENABLED_TOOLBOXES|null`, reply
+//!      `{"enabled":null|[…]}`; op 3 `[null|[id,…], id]` toolboxOffered, reply `{"offered":bool}`
+//!      (mcp-servers crate). Refuses with status 1 and `{"error":"input"|"too_large"|"ambiguous"}`.
+//!    - `decision()`: input `u8(op)` and UTF-8 JSON in the decision crate's tagged form (at most
+//!      `decision::MAX_INPUT_BYTES`): op 1 decision/index.cjs invalidRequest, op 2 `[r, result]`
+//!      invalidResult, reply `{"invalid":null|"…"}`; op 3 the error's facts, causeOf, reply
+//!      `{"cause":"…"}` (decision crate). Refuses with status 1 and
+//!      `{"error":"input"|"too_large"|"throws"|"opaque"}`.
 //!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
@@ -182,6 +192,8 @@ const _: () = assert!(gguf::node::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(policy_leaves::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(review_verdict::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(tool_exchange::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(mcp_servers::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(decision::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -562,6 +574,16 @@ pub fn run_tool_exchange(input: &[u8]) -> (u32, Vec<u8>) {
     tool_exchange::call(input)
 }
 
+/// `mcp-servers`: mcp-servers.cjs's server list and box filter; see the crate docs.
+pub fn run_mcp_servers(input: &[u8]) -> (u32, String) {
+    mcp_servers::call(input)
+}
+
+/// `decision`: decision/index.cjs's invalidRequest, invalidResult and causeOf; see the crate docs.
+pub fn run_decision(input: &[u8]) -> (u32, String) {
+    decision::call(input)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -880,6 +902,20 @@ pub extern "C" fn review_verdict() -> u32 {
 #[no_mangle]
 pub extern "C" fn tool_exchange() -> u32 {
     consume_bytes(run_tool_exchange)
+}
+
+/// Consume the input buffer as an mcp-servers request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn mcp_servers() -> u32 {
+    consume(run_mcp_servers)
+}
+
+/// Consume the input buffer as a decision request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn decision() -> u32 {
+    consume(run_decision)
 }
 
 /// Address of the last reply.
