@@ -156,6 +156,11 @@
 //!      reportHash, reply `{"hash":"…","report":{…canonical…}}` or
 //!      `{"unhashable":"deep"|"large","overall":"…","statuses":[…]}`. Refuses with status 1 and
 //!      `{"error":"input"|"too_large"|"ambiguous"}` (completeness-report crate).
+//!    - `llamacpp_autoconfig()`: input `u8(op)` and UTF-8 JSON (at most
+//!      `llamacpp_autoconfig::MAX_INPUT_BYTES`): llamacpp-autoconfig.cjs suggest (1),
+//!      estimateInputs (2), estimateFootprint (3), cacheRamMibOf (4), isPromptCacheFree (5) and
+//!      parseMemoryLimit (6); reply the JS's answer as JSON.stringify writes it. Refuses with
+//!      status 1 and `{"error":"input"|"too_large"|"ambiguous"}` (llamacpp-autoconfig crate).
 //!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
@@ -222,6 +227,7 @@ const _: () = assert!(code_net_guard::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(role_context::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(task_lifecycle::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(completeness_report::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(llamacpp_autoconfig::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -634,6 +640,11 @@ pub fn run_completeness_report(input: &[u8]) -> (u32, String) {
     completeness_report::call(input)
 }
 
+/// `llamacpp-autoconfig`: llamacpp-autoconfig.cjs's sizing; see the crate docs.
+pub fn run_llamacpp_autoconfig(input: &[u8]) -> (u32, String) {
+    llamacpp_autoconfig::call(input)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -995,6 +1006,13 @@ pub extern "C" fn task_lifecycle() -> u32 {
 #[no_mangle]
 pub extern "C" fn completeness_report() -> u32 {
     consume(run_completeness_report)
+}
+
+/// Consume the input buffer as a llamacpp-autoconfig request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn llamacpp_autoconfig() -> u32 {
+    consume(run_llamacpp_autoconfig)
 }
 
 /// Address of the last reply.
