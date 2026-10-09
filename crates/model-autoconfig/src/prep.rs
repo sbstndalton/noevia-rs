@@ -2,7 +2,7 @@
 //! and the backends (`_kv_first_int`, `kv_shape`, `_moe_ratio`, the hostile `int()` and `==`
 //! handling), its four early refusals, the main-GPU reservation and the size core's backends.
 
-use crate::kv::{kv_shape_bytes, Shape};
+use crate::kv::{kv_shape_bytes, Shape, SSM_STATE_BYTES};
 use crate::pyfloat::{self, f};
 use crate::pyval::{
     big, float_of, float_or_zero, get, int_of, int_or, int_value, is_int, iterate,
@@ -52,6 +52,7 @@ pub enum Prep {
         known: usize,
         count: String,
         layers: i128,
+        shared: i128,
     },
     Ok(Box<Prepared>),
 }
@@ -304,6 +305,7 @@ fn kv_shape(
         v_swa: None,
         shared: None,
         period: None,
+        recurrent_bytes: None,
     };
     if let Some(interval) = full_attention_interval.filter(|&i| i > 1) {
         shape.hybrid_interval = Some(interval);
@@ -549,6 +551,15 @@ pub fn prepare(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
                     known,
                     count,
                     layers,
+                    shared: 0,
+                })
+            }
+            Some(Attn::Full { .. }) if swa.shared.is_some_and(|n| n > 0) => {
+                return Ok(Prep::KvLayers {
+                    known: usize::try_from(layers).map_err(|_| Error::OutOfRange("block_count"))?,
+                    count: layers.to_string(),
+                    layers,
+                    shared: swa.shared.unwrap_or(0),
                 })
             }
             Some(Attn::Full { n_attn, max_heads }) => {
@@ -569,6 +580,13 @@ pub fn prepare(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
         &swa,
         work,
     )?;
+    let mut shape = shape;
+    if let Some(s) = shape.as_mut() {
+        if shape_layers != layers {
+            // Non-attention layers still hold a per-sequence recurrent state (#1159).
+            s.recurrent_bytes = Some((layers - shape_layers) * SSM_STATE_BYTES * n_sessions);
+        }
+    }
     let kv = match &shape {
         Some(s) => kv_shape_bytes(s, 4096, CACHE_BYTES, CACHE_BYTES, work)?,
         None => 0.0,
@@ -684,10 +702,11 @@ pub fn prep_json(p: &Prep) -> String {
             known,
             count,
             layers,
+            shared,
         } => {
             let _ = write!(
                 out,
-                "{{\"refuse\":\"kv_layers\",\"known\":{known},\"count\":{count},\"layers\":{layers}}}"
+                "{{\"refuse\":\"kv_layers\",\"known\":{known},\"count\":{count},\"layers\":{layers},\"shared\":{shared}}}"
             );
         }
         Prep::Ok(p) => {
@@ -734,6 +753,9 @@ pub fn prep_json(p: &Prep) -> String {
                     }
                     out.push(']');
                 }
+            }
+            if let Some(rec) = s.recurrent_bytes {
+                let _ = write!(out, ",\"recurrent_bytes\":{rec}");
             }
             out.push_str("},\"sized\":[");
             for (i, n) in p.sized.iter().enumerate() {

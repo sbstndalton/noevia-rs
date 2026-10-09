@@ -154,6 +154,8 @@ def handmade(core) -> list[tuple[str, dict]]:
         # #1159: a hybrid model's KV shape covers only its attention layers (11 of 30 here).
         ("hybrid: KV over the attention layers only", v(shape=core.kv_shape("lfm2", 11, 8, 64), layers=30,
                                                        model_gb_raw=1.5, native_ctx=32768)),
+        ("hybrid: recurrent state charged", v(shape=dict(core.kv_shape("lfm2", 11, 8, 64), recurrent_bytes=19 * 4 * 2**20 * 2),
+                                              layers=30, model_gb_raw=1.5, native_ctx=32768, n_sessions=2)),
         ("hybrid: long-ctx preset", v(shape=core.kv_shape("lfm2", 11, 8, 64), layers=30, model_gb_raw=1.5,
                                       native_ctx=32768, preset="long-ctx")),
         ("dense measured prompt rate caps by time", v(prompt_tps=500.0)),
@@ -375,6 +377,17 @@ def check_handmade() -> list[tuple[str, dict]]:
             block_count=4, sliding_window=512, attention_head_count_kv=[0, 8, 0, 8]))),
         ("prep: hybrid per-layer kv heads with a zero sliding window", p(model=mm(
             block_count=4, sliding_window=0, attention_head_count_kv=[8, 0, 8, 0]))),
+        # Review of #1159: the non-attention layers' recurrent state is charged per session, and a
+        # shared-KV declaration on top of a per-layer hybrid array refuses.
+        ("prep: granite-4.0-h shaped hybrid charges SSM state", p(arch="granitehybrid", model=mm(
+            block_count=40, ssm_state_size=128, attention_head_count_kv=[0] * 5 + [8] + [0] * 9 + [8] + [0] * 9 + [8]
+            + [0] * 9 + [8] + [0] * 5))),
+        ("prep: hybrid recurrent state scales with sessions", p(arch="lfm2", n_sessions=4, model=mm(
+            block_count=6, attention_head_count_kv=[0, 0, 8, 0, 0, 8]))),
+        ("prep: hybrid per-layer kv heads with shared KV refuses", p(arch="lfm2", model=mm(
+            block_count=6, shared_kv_layers=2, attention_head_count_kv=[0, 0, 8, 0, 0, 8]))),
+        ("prep: hybrid per-layer kv heads with zero shared KV", p(arch="lfm2", model=mm(
+            block_count=6, shared_kv_layers=0, attention_head_count_kv=[0, 0, 8, 0, 0, 8]))),
         ("prep: hybrid refusal comes after the backend refusals", p(backends=[], model=mm(attention_head_count_kv=
                                                                   {"_array": True, "count": 32, "sample": [0, 8]}))),
         ("prep: string ints are read as Python reads them", p(model=mm(block_count=" 32 ", attention_head_count="+3_2",

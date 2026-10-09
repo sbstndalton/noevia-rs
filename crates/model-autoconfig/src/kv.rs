@@ -3,7 +3,7 @@
 use crate::pyfloat::f;
 use crate::{Error, Work};
 
-const SSM_STATE_BYTES: i128 = 4 * 1024 * 1024;
+pub const SSM_STATE_BYTES: i128 = 4 * 1024 * 1024;
 
 /// `kv_shape()` of autoconfig_core.py: every context-independent quantity, already resolved.
 #[derive(Debug, Clone, PartialEq)]
@@ -20,6 +20,9 @@ pub struct Shape {
     pub shared: Option<i128>,
     /// One repeating period of (is_local, kv_heads as a float).
     pub period: Option<Vec<(bool, f64)>>,
+    /// A hybrid model's fixed recurrent state, sized over its non-attention layers (#1159).
+    /// Absent from the JSON unless set.
+    pub recurrent_bytes: Option<i128>,
 }
 
 /// The bytes as Python's `int(...)` left them, still as a float (an integral one): the caller
@@ -34,6 +37,22 @@ pub fn kv_shape_bytes(
     if ctx <= 0 {
         return Ok(0.0);
     }
+    let base = kv_core(s, ctx, bytes_per_elem, v_bytes, work)?;
+    // Python adds the int to the int; the float sum rounds that exact sum once, and the caller's
+    // division by 1024^3 is exact scaling, so the GiB figure is the same.
+    Ok(match s.recurrent_bytes {
+        Some(rec) if rec != 0 => base + f(rec),
+        _ => base,
+    })
+}
+
+fn kv_core(
+    s: &Shape,
+    ctx: i128,
+    bytes_per_elem: f64,
+    v_bytes: f64,
+    work: &mut Work,
+) -> Result<f64, Error> {
     let layers = s.layers;
     let per_layer_per_token = f(s.kv_heads) * (f(s.k_dim) * bytes_per_elem + f(s.v_dim) * v_bytes);
 
