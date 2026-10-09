@@ -27,7 +27,13 @@ fn run(args: &[&str], stdin: &[u8]) -> (i32, Vec<u8>, String) {
 
 #[test]
 fn usage() {
-    for args in [&["--help"][..], &[][..], &["size", "extra"][..]] {
+    for args in [
+        &["--help"][..],
+        &[][..],
+        &["size", "extra"][..],
+        &["check", "size"][..],
+        &["prep"][..],
+    ] {
         let (code, out, err) = run(args, b"");
         assert_eq!(code, 2, "{args:?}");
         assert!(out.is_empty());
@@ -50,4 +56,45 @@ fn plan() {
     let text = String::from_utf8(out).unwrap();
     assert!(text.starts_with("{\"plans\":") && text.ends_with("}\n"));
     assert!(text.contains("\"cap\":\"unmeasured\""));
+}
+
+#[test]
+fn check_answers_every_part_in_one_process() {
+    let size = std::str::from_utf8(REQUEST).unwrap();
+    let stdin = format!(
+        "{{\"prep\":{{\"n_sessions\":1,\"arch\":\"llama\",\"model\":{{\"block_count\":32,\
+\"attention_head_count\":32,\"embedding_length\":4096,\"attention_head_count_kv\":8,\"context_length\":131072}},\
+\"file_size\":5046586572,\"backends\":[{{\"name\":\"a\",\"vram_gb\":24.0,\"host_ram_gb\":64.0}}],\
+\"projector\":{{\"has_mmproj\":false,\"mmproj_gb\":0.0,\"mtp_gb\":0.0}}}},\"size\":{size},\
+\"values\":{{\"model_rel\":\"\",\"n_sessions\":1,\"chat_template\":true,\"features\":null,\"section\":\"\",\
+\"vision\":true,\"current\":{{}},\"mmproj_rel\":\"\",\"has_mmproj\":false,\"spec\":[],\"plan\":{{\"initial_ctx\":32768,\
+\"sized\":true,\"ctx\":32768,\"ngl\":null,\"fit\":false,\"cache_ram\":8192}},\"rope\":{{}},\"native_ctx\":131072,\
+\"rec_gpu_count\":1}}}}"
+    );
+    let (code, out, err) = run(&["check"], stdin.as_bytes());
+    assert_eq!(code, 0, "{err}");
+    let text = String::from_utf8(out).unwrap();
+    assert!(
+        text.starts_with("{\"prep\":{\"refuse\":null,") && text.ends_with("]]}\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains(",\"size\":{\"plans\":")
+            && text.contains(",\"values\":[[\"ctx-size\",\"32768\"],")
+    );
+}
+
+#[test]
+fn check_refusal_leaves_stdout_empty() {
+    let (code, out, err) = run(&["check"], b"{\"values\": {}}");
+    assert_eq!(code, 1);
+    assert!(out.is_empty());
+    assert!(err.starts_with("model-autoconfig: schema"), "{err}");
+    let (code, out, err) = run(&["check"], b"{\"prep\": {\"n_sessions\": 1, \"arch\": 5}}");
+    assert_eq!(code, 1);
+    assert!(out.is_empty());
+    assert!(
+        err.starts_with("model-autoconfig: python:AttributeError"),
+        "{err}"
+    );
 }
