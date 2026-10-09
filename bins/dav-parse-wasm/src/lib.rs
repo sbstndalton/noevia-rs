@@ -145,6 +145,12 @@
 //!      `{"leak":["class",…]}` (what the JS throws). Refuses with status 1 and
 //!      `{"error":"input"|"too_large"|"ambiguous"}` (role-context crate). The state carries
 //!      credentials and grant tokens, so this is a secret call (below).
+//!    - `task_lifecycle()`: input `u8(op)` and UTF-8 JSON (at most `task_lifecycle::MAX_INPUT_BYTES`):
+//!      op 1 `[from, to]` task-lifecycle.cjs canTransition, reply `{"allowed":bool}`; op 2
+//!      `[from, to]` transition and op 3 assertStageMove, reply `{"state":"…"}`; op 4
+//!      `[events|null, from, authoritative]` foldEvents and op 5 `[events|null]` deriveLifecycle,
+//!      reply `{"state":"…"}`; any may instead reply `{"throws":"code"}` (what the JS throws).
+//!      Refuses with status 1 and `{"error":"input"|"too_large"|"ambiguous"}` (task-lifecycle crate).
 //!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
@@ -209,6 +215,7 @@ const _: () = assert!(mcp_servers::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(decision::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(code_net_guard::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(role_context::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(task_lifecycle::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -610,6 +617,12 @@ pub fn run_role_context(input: &[u8]) -> (u32, Vec<u8>) {
     (status, reply.into_bytes())
 }
 
+/// `task-lifecycle`: task-lifecycle.cjs's guarded table, stage moves and journal fold; see the
+/// crate docs.
+pub fn run_task_lifecycle(input: &[u8]) -> (u32, String) {
+    task_lifecycle::call(input)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -957,6 +970,13 @@ pub extern "C" fn code_net_guard() -> u32 {
 #[no_mangle]
 pub extern "C" fn role_context() -> u32 {
     consume_secret(run_role_context)
+}
+
+/// Consume the input buffer as a task-lifecycle request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn task_lifecycle() -> u32 {
+    consume(run_task_lifecycle)
 }
 
 /// Address of the last reply.

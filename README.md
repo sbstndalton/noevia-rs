@@ -92,6 +92,14 @@ one slice at a time.
   `dav-parse.wasm` as `role_context` (ROLE_CONTEXT_IMPL). Table from noevia-core
   (`node tools/gen-role-context-fixtures.cjs`), copied byte-for-byte to
   `crates/role-context/tests/fixtures/role-context.v1.json`.
+- `crates/task-lifecycle`: noevia-core's task-lifecycle.cjs (noevia#511/#512, #701): the guarded
+  task state table, the pipeline's stage moves (merged only from reviewing, reviewing only with a
+  completeness report hash) and the fold over a jobs.cjs journal (authoritative or not). The host
+  allows a move or derives a state only when the JS and the port agree. Stricter: a `reportHash`
+  that is an array or object (the JS reads it through `String()`) and journals over 8 MiB are
+  refused. In `dav-parse.wasm` as `task_lifecycle` (TASK_LIFECYCLE_IMPL). Table from noevia-core
+  (`node tools/gen-task-lifecycle-fixtures.cjs`), copied byte-for-byte to
+  `crates/task-lifecycle/tests/fixtures/task-lifecycle.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
