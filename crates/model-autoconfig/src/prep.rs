@@ -181,6 +181,44 @@ fn attention_layers(v: &Value, layers: i128, work: &mut Work) -> Result<Option<A
     }))
 }
 
+const OVERFLOW: Error = Error::OutOfRange("ssm state bytes");
+
+/// `_ssm_layer_bytes`: one non-attention layer's recurrent state per sequence, never below
+/// SSM_STATE_BYTES. Checked arithmetic: a hostile header's sizes refuse rather than wrap.
+fn ssm_layer_bytes(
+    state: Option<i128>,
+    inner: Option<i128>,
+    conv: Option<i128>,
+    groups: Option<i128>,
+    embed: i128,
+) -> Result<i128, Error> {
+    let ok = |v: Option<i128>| v.filter(|&x| x > 0);
+    let mul = |a: i128, b: i128| a.checked_mul(b).ok_or(OVERFLOW);
+    let add = |a: i128, b: i128| a.checked_add(b).ok_or(OVERFLOW);
+    if ok(state).is_none() && ok(inner).is_none() {
+        return Ok(SSM_STATE_BYTES);
+    }
+    let need = match (ok(state), ok(inner), ok(conv), ok(groups)) {
+        (Some(st), Some(inn), Some(cv), Some(g)) => {
+            let conv_w = add(inn, mul(mul(2, g)?, st)?)?;
+            mul(4, add(mul(st, inn)?, mul(cv - 1, conv_w)?)?)?
+        }
+        _ => {
+            let st = ok(state).unwrap_or(128);
+            let inn = match ok(inner) {
+                Some(v) => v,
+                None => mul(2, embed)?,
+            };
+            let cv = ok(conv).unwrap_or(4);
+            let g = ok(groups).unwrap_or(8);
+            let ssm = add(mul(mul(mul(4, st)?, inn)?, 11)?, 9)?.div_euclid(10);
+            let conv_w = add(inn, mul(mul(2, g)?, st)?)?;
+            add(ssm, mul(mul(4, cv - 1)?, conv_w)?)?
+        }
+    };
+    Ok(need.max(SSM_STATE_BYTES))
+}
+
 fn moe_ratio(experts: &Value) -> Result<f64, Error> {
     if !is_int(experts) {
         return Ok(0.0);
@@ -582,9 +620,35 @@ pub fn prepare(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
     )?;
     let mut shape = shape;
     if let Some(s) = shape.as_mut() {
-        if shape_layers != layers {
-            // Non-attention layers still hold a per-sequence recurrent state (#1159).
-            s.recurrent_bytes = Some((layers - shape_layers) * SSM_STATE_BYTES * n_sessions);
+        if shape_layers != layers || s.hybrid_interval.is_some() {
+            // Non-attention layers still hold a per-sequence recurrent state (#1159). The keys
+            // are read only here, as Python reads them, so other models never see them.
+            let per = ssm_layer_bytes(
+                opt_int(get(m, "ssm_state_size"), "ssm_state_size")?,
+                opt_int(get(m, "ssm_inner_size"), "ssm_inner_size")?,
+                opt_int(get(m, "ssm_conv_kernel"), "ssm_conv_kernel")?,
+                opt_int(get(m, "ssm_group_count"), "ssm_group_count")?,
+                embed,
+            )?;
+            let per_seq = per.checked_mul(n_sessions).ok_or(OVERFLOW)?;
+            match s.hybrid_interval {
+                None => {
+                    s.recurrent_bytes = Some(
+                        (layers - shape_layers)
+                            .checked_mul(per_seq)
+                            .ok_or(OVERFLOW)?,
+                    );
+                }
+                Some(interval) => {
+                    let full = ((layers + interval - 1).div_euclid(interval)).max(1);
+                    let extra = (layers - full)
+                        .checked_mul(per_seq - SSM_STATE_BYTES)
+                        .ok_or(OVERFLOW)?;
+                    if extra > 0 {
+                        s.recurrent_bytes = Some(extra);
+                    }
+                }
+            }
         }
     }
     let kv = match &shape {

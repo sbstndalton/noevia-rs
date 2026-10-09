@@ -359,6 +359,8 @@ pub fn summarize(raw: &Raw) -> Result<Json, SummaryError> {
         ),
         ("ssm_state_size", si("ssm.state_size")?),
         ("ssm_inner_size", si("ssm.inner_size")?),
+        ("ssm_conv_kernel", si("ssm.conv_kernel")?),
+        ("ssm_group_count", si("ssm.group_count")?),
     ]);
 
     let tokenizer = Json::object([

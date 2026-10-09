@@ -382,6 +382,20 @@ def check_handmade() -> list[tuple[str, dict]]:
         ("prep: granite-4.0-h shaped hybrid charges SSM state", p(arch="granitehybrid", model=mm(
             block_count=40, ssm_state_size=128, attention_head_count_kv=[0] * 5 + [8] + [0] * 9 + [8] + [0] * 9 + [8]
             + [0] * 9 + [8] + [0] * 5))),
+        # Re-review of #1159: the Mamba state from the header (llama.cpp's conv + SSM state).
+        ("prep: granite-4.0-h-small shaped, all four ssm keys", p(arch="granitehybrid", n_sessions=2, model=mm(
+            block_count=40, embedding_length=4096, ssm_state_size=128, ssm_inner_size=8192, ssm_conv_kernel=4,
+            ssm_group_count=1, attention_head_count_kv=([0] * 9 + [8]) * 4))),
+        ("prep: nemotron-h shaped, large state", p(arch="nemotron_h", model=mm(
+            block_count=52, embedding_length=8192, attention_head_count=64, ssm_state_size=256, ssm_inner_size=16384,
+            ssm_conv_kernel=4, ssm_group_count=8, attention_head_count_kv=([0] * 12 + [8]) * 4))),
+        ("prep: ssm keys partly missing use the defaults", p(arch="granitehybrid", model=mm(
+            block_count=8, ssm_state_size=256, attention_head_count_kv=[0, 0, 0, 8] * 2))),
+        ("prep: interleaved hybrid charged the excess only", p(n_sessions=3, model=mm(
+            full_attention_interval=4, ssm_state_size=128, ssm_inner_size=8192, ssm_conv_kernel=4, ssm_group_count=1))),
+        ("prep: interleaved hybrid without ssm keys stays as before", p(model=mm(full_attention_interval=4))),
+        ("[stricter] prep: ssm sizes past i128 refuse", p(model=mm(
+            full_attention_interval=4, ssm_state_size=2**90, ssm_inner_size=2**90))),
         ("prep: hybrid recurrent state scales with sessions", p(arch="lfm2", n_sessions=4, model=mm(
             block_count=6, attention_head_count_kv=[0, 0, 8, 0, 0, 8]))),
         ("prep: hybrid per-layer kv heads with shared KV refuses", p(arch="lfm2", model=mm(
