@@ -189,6 +189,11 @@
 //!      `toolboxes_permitted::MAX_INPUT_BYTES`): toolboxes-permitted.cjs projectToolboxIds (1),
 //!      selectedToolboxIds (2) and computePermittedTools (3) over the host's projections. Refuses
 //!      with status 1 and `{"error":"input"|"too_large"}` (toolboxes-permitted crate).
+//!    - `llamacpp_presets()`: input `u8(op)` and UTF-8 JSON (at most
+//!      `llamacpp_presets::MAX_INPUT_BYTES`): llamacpp-presets.cjs prepare's option check with the
+//!      cache-ram clamp (1), canonicalOptions (2), the micro-batch check (3) and the model name
+//!      check (4). Refuses with status 1 and `{"error":"input"|"too_large"}` (llamacpp-presets
+//!      crate).
 //!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
@@ -262,6 +267,7 @@ const _: () = assert!(provider_egress::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(browser_policy::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(tool_gate::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(toolboxes_permitted::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(llamacpp_presets::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -712,6 +718,12 @@ pub fn run_toolboxes_permitted(input: &[u8]) -> (u32, Vec<u8>) {
     toolboxes_permitted::call(input)
 }
 
+/// `llamacpp-presets`: llamacpp-presets.cjs's allowlisted options, aliases and ranges; see the
+/// crate docs.
+pub fn run_llamacpp_presets(input: &[u8]) -> (u32, Vec<u8>) {
+    llamacpp_presets::call(input)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -1122,6 +1134,13 @@ pub extern "C" fn tool_gate() -> u32 {
 #[no_mangle]
 pub extern "C" fn toolboxes_permitted() -> u32 {
     consume_bytes(run_toolboxes_permitted)
+}
+
+/// Consume the input buffer as a llamacpp-presets request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn llamacpp_presets() -> u32 {
+    consume_bytes(run_llamacpp_presets)
 }
 
 /// Address of the last reply.
