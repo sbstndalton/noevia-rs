@@ -214,6 +214,7 @@ dependencies = [
  "decision",
  "gguf",
  "llamacpp-autoconfig",
+ "llamacpp-presets",
  "load-verdict",
  "long-profile",
  "mcp-frame",
@@ -655,6 +656,14 @@ dependencies = [
  "prompt-framing",
  "proptest",
  "tool-exchange",
+]
+
+[[package]]
+name = "llamacpp-presets"
+version = "0.1.0"
+dependencies = [
+ "prompt-framing",
+ "proptest",
 ]
 
 [[package]]

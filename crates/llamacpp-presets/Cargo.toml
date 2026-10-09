@@ -1,0 +1,17 @@
+[package]
+name = "llamacpp-presets"
+version = "0.1.0"
+description = "noevia-core's llamacpp-presets.cjs validation in Rust: the allowlisted llama.cpp preset options, their aliases and ranges, the cache-ram clamp and the micro-batch check; the host only ever uses it to refuse more"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+
+[dev-dependencies]
+proptest = "1"

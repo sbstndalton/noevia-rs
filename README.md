@@ -174,6 +174,16 @@ one slice at a time.
   nothing on a fault. In `dav-parse.wasm` as `toolboxes_permitted`. Table from noevia-core
   (`node tools/gen-toolboxes-permitted-fixtures.cjs`), copied byte-for-byte to
   `crates/toolboxes-permitted/tests/fixtures/toolboxes-permitted.v1.json`.
+- `crates/llamacpp-presets`: noevia-core's llamacpp-presets.cjs validation: the allowlisted
+  llama.cpp preset options, their aliases and ranges, prepare's option check (with
+  inference-budget.cjs's cache-ram clamp), canonicalOptions, the micro-batch check (ECMAScript
+  `Number()` string conversion) and the model name pattern. Preset values reach llama-server's
+  command line (noevia#697, #1132). The host never accepts more with it
+  (LLAMACPP_PRESETS_IMPL=wasm): an option is written only if both accept it with the identical
+  value. Stricter by design: a cache-ram clamp without a safe-integer hard maximum and a
+  `0x`/`0o`/`0b` number wider than 53 bits are undecided (refused). In `dav-parse.wasm` as
+  `llamacpp_presets`. Table from noevia-core (`node tools/gen-llamacpp-presets-fixtures.cjs`),
+  copied byte-for-byte to `crates/llamacpp-presets/tests/fixtures/llamacpp-presets.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
