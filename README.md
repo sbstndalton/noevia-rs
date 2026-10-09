@@ -140,6 +140,18 @@ one slice at a time.
   `uv run --python 3.12 tools/gen-model-files.py --model-manager <noevia-services>/model-manager`;
   copy `crates/model-files/tests/fixtures/model-files.v1.json` into noevia-services'
   `model-manager/tests/fixtures/` when it changes.
+- `crates/model-autoconfig` + `bins/model-autoconfig` (`MODEL_AUTOCONFIG`, autoconfig slice 1):
+  the size core of the model manager's autoconfig. `model-autoconfig size < request.json`
+  computes the per-backend fit sweep, the recommended backend and context, the usable-context
+  cap, the offload presets and the prompt cache (`--cache-ram`) exactly as noevia-services'
+  `model-manager/app/autoconfig_core.py` `size_plan` does, floats to the bit (Python's `round`
+  and `int` reproduced; see `src/pyfloat.rs`). The service keeps the Python plan authoritative
+  and uses this only to confirm it. Bounded (4 MiB input, 4096 layers, 64 backends/GPUs, a
+  200M-step work budget, integers below 2^100); no network or filesystem. The differential
+  corpus is regenerated with
+  `uv run --python 3.12 tools/gen-model-autoconfig.py --model-manager <noevia-services>/model-manager`;
+  copy `crates/model-autoconfig/tests/fixtures/model-autoconfig.v1.json` into noevia-services'
+  `model-manager/tests/fixtures/` when it changes.
 - `crates/dav-parse` + `bins/dav-parse-wasm` (sbstndalton/noevia#967): the storage browser's
   WebDAV PROPFIND (`Depth: 1`) listing parser, a port of noevia-core's `server/dav-listing.cjs`
   `listingRecordsJs` (entity decoding, WHATWG href resolution, `decodeURIComponent`, direct

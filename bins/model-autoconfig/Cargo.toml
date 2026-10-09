@@ -1,0 +1,18 @@
+[package]
+name = "model-autoconfig-cli"
+version = "0.1.0"
+description = "Run model-manager autoconfig's size core: a request (JSON on stdin) to a size plan (JSON on stdout)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "model-autoconfig"
+path = "src/main.rs"
+
+[dependencies]
+model-autoconfig = { path = "../../crates/model-autoconfig" }

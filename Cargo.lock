@@ -693,6 +693,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-autoconfig"
+version = "0.1.0"
+dependencies = [
+ "model-files",
+ "proptest",
+]
+
+[[package]]
+name = "model-autoconfig-cli"
+version = "0.1.0"
+dependencies = [
+ "model-autoconfig",
+]
+
+[[package]]
 name = "model-files"
 version = "0.1.0"
 dependencies = [
