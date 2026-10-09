@@ -179,7 +179,7 @@ const REQUEST_KEYS: [&str; 14] = [
     "verified_ctx",
     "cache_ram_cap_mib",
 ];
-const SHAPE_KEYS: [&str; 12] = [
+const SHAPE_KEYS: [&str; 13] = [
     "gemma",
     "layers",
     "kv_heads",
@@ -192,6 +192,7 @@ const SHAPE_KEYS: [&str; 12] = [
     "shared",
     "period",
     "recurrent_bytes",
+    "alt",
 ];
 const BACKEND_KEYS: [&str; 5] = ["vram_gb", "gpu_count", "cards", "host_ram_gb", "same_as"];
 const PRESET_KEYS: [&str; 3] = ["fast", "balanced", "long-ctx"];
@@ -255,6 +256,12 @@ fn boolean(v: &Value, what: &'static str) -> Result<bool, Error> {
 }
 
 fn parse_shape(v: &Value) -> Result<Shape, Error> {
+    parse_shape_at(v, true)
+}
+
+/// `allow_alt`: the top-level shape may carry the old-sample reading (#1186) as `alt`; that one
+/// may not carry another.
+fn parse_shape_at(v: &Value, allow_alt: bool) -> Result<Shape, Error> {
     obj(v, &SHAPE_KEYS, "shape")?;
     let g = |k: &str| field(v, k, "shape: missing field");
     let period = match g("period")? {
@@ -296,6 +303,11 @@ fn parse_shape(v: &Value) -> Result<Shape, Error> {
         recurrent_bytes: match v.get("recurrent_bytes") {
             None => None,
             Some(x) => opt_int(x, "shape.recurrent_bytes")?,
+        },
+        alt: match v.get("alt") {
+            None => None,
+            Some(x) if allow_alt => Some(Box::new(parse_shape_at(x, false)?)),
+            Some(_) => return Err(Error::Schema("shape.alt")),
         },
     };
     if shape.recurrent_bytes.is_some_and(|r| r < 0) {

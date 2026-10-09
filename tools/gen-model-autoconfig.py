@@ -178,6 +178,11 @@ def handmade(core) -> list[tuple[str, dict]]:
                                                dict(base["backends"][0], vram_gb=12.0, host_ram_gb=16.0, same_as=0)])),
         ("projector pinned to main GPU", v(mmproj_vram_gb=2.05, backends=two)),
         ("huge period head count overflows", v(shape=dict(swa, period=[[False, 1e300]] * 6), layers=42)),
+        # #1186: a shape carries its old 8-entry-sample reading as alt; KV takes the larger.
+        ("alt shape larger than the shape", v(shape=dict(core.kv_shape("llama", 32, 1, 128), alt=dense))),
+        ("alt shape smaller than the shape", v(shape=dict(dense, alt=core.kv_shape("llama", 32, 1, 128)))),
+        ("alt sliding-window shape", v(shape=dict(core.kv_shape("lfm2", 11, 8, 64), recurrent_bytes=2**26, alt=swa),
+                                       layers=42, native_ctx=262144, model_gb_raw=14.0)),
     ]
 
 
@@ -369,6 +374,37 @@ def check_handmade() -> list[tuple[str, dict]]:
         ("prep: per-layer kv heads negative", p(arch="lfm2", model=mm(block_count=3, attention_head_count_kv=[0, -2, -1]))),
         ("prep: hybrid per-layer kv heads with a bool stays as before", p(model=mm(block_count=3, attention_head_count_kv=[0, True, 8]))),
         ("prep: hybrid per-layer kv heads with a float stays as before", p(model=mm(block_count=3, attention_head_count_kv=[8.0, 0, 8]))),
+        # #1186: GGUF summaries now keep a block_count-length list whole; a list longer than the
+        # 8-entry sample sizes KV at its largest head count (never below the sample's mode).
+        ("prep: whole per-layer kv heads size at the max", p(model=mm(block_count=30, attention_head_count_kv=[1] + [8] * 29))),
+        ("prep: whole per-layer kv heads, OpenELM increasing", p(model=mm(block_count=16, attention_head_count_kv=
+            [2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 8]))),
+        ("prep: whole per-layer kv heads skip nulls", p(model=mm(block_count=10, attention_head_count_kv=[None, 2] * 5))),
+        ("prep: whole per-layer kv heads all null fall back", p(model=mm(block_count=9, attention_head_count_kv=[None] * 9))),
+        ("prep: whole per-layer kv heads with a float", p(model=mm(block_count=9, attention_head_count_kv=[4.5] + [2] * 8))),
+        ("prep: whole per-layer kv heads unparsable raises", p(model=mm(block_count=9, attention_head_count_kv=[8] * 8 + ["x"]))),
+        ("prep: eight-entry kv heads list keeps its first", p(model=mm(block_count=8, attention_head_count_kv=[1] + [8] * 7))),
+        # #1186 review: the summary's old 8-entry reading (per_layer_sample) is prepared too and
+        # rides along as shape.alt; a 0 entry in a K/V length list never goes below head_dim.
+        ("prep: per_layer_sample adds the old reading as alt", p(model=mm(
+            block_count=30, attention_head_count_kv=[1] + [8] * 29, key_length=64,
+            per_layer_sample={"attention_head_count_kv": {"_array": True, "count": 30, "sample": [1] + [8] * 7},
+                              "key_length": 256}))),
+        ("prep: per_layer_sample with a bool kv head", p(model=mm(per_layer_sample={"attention_head_count_kv": True}))),
+        ("prep: per_layer_sample that refuses adds nothing", p(arch="lfm2", model=mm(
+            block_count=30, attention_head_count_kv=[0, 0, 8] * 10,
+            per_layer_sample={"attention_head_count_kv": {"_array": True, "count": 30, "sample": [0, 0, 8, 0, 0, 8, 0, 0]}}))),
+        ("prep: per_layer_sample new key appended", p(model=mm(per_layer_sample={"value_length": 512, "x": 1}))),
+        ("prep: per_layer_sample empty or not a dict", p(model=mm(per_layer_sample={}, per_layer_zero_dims="key_length"))),
+        ("prep: per_layer_sample a list is ignored", p(model=mm(per_layer_sample=[["key_length", 9]]))),
+        ("prep: per_layer_sample raising raises", p(model=mm(per_layer_sample={"block_count": "x"}))),
+        ("prep: refusal skips per_layer_sample", p(backends=[], model=mm(per_layer_sample={"key_length": 1}))),
+        ("prep: zero K/V length entry never below head_dim", p(model=mm(key_length=8, value_length=512,
+            per_layer_zero_dims=["key_length", "value_length", 7]))),
+        ("prep: zero K/V length, all zero falls back", p(model=mm(key_length=0, per_layer_zero_dims=["key_length"]))),
+        ("prep: zero SWA length never below the global one", p(arch="gemma4", model=dict(gemma4, key_length_swa=4,
+            value_length_swa=1000, per_layer_zero_dims=["key_length_swa", "value_length_swa"]))),
+        ("prep: zero dims not listed leave lengths alone", p(model=mm(key_length=8, per_layer_zero_dims=["value_length"]))),
         ("prep: hybrid per-layer dict, _array not true stays as before", p(model=mm(attention_head_count_kv=
                                                                        {"_array": 1, "count": 32, "sample": [8, 0]}))),
         ("prep: hybrid per-layer kv heads under interleaved attention stays as before", p(model=mm(

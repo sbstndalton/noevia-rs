@@ -32,6 +32,16 @@ pub const MAX_BYTES_READ: u64 = 256 * 1024 * 1024;
 /// eight lists of eight bytes build several hundred MB of values. Real headers keep a few
 /// thousand.
 pub const MAX_RETAINED_VALUES: u64 = 500_000;
+/// A top-level numeric array whose length equals the header's own `<arch>.block_count` is a
+/// per-layer value (hybrid models list `attention.head_count_kv` per layer, 0 on recurrent
+/// layers) and is kept whole rather than as an 8-element sample, so autoconfig sees every
+/// layer (sbstndalton/noevia#1186). Only when block_count is at most this; worst case is this
+/// many numbers per such key. Mirrors gguf_meta.py's `MAX_PER_LAYER_KEPT`.
+pub const MAX_PER_LAYER_KEPT: u64 = 4096;
+/// Numbers kept in whole per-layer arrays across one header. Past it, a block_count-length
+/// array falls back to sample + count, so a header of many such arrays stays cheap. Mirrors
+/// gguf_meta.py's `MAX_PER_LAYER_VALUES`.
+pub const MAX_PER_LAYER_VALUES: u64 = 64 * MAX_PER_LAYER_KEPT;
 
 const BUF_CAPACITY: usize = 64 * 1024;
 
@@ -117,6 +127,11 @@ struct Source<R: Read + Seek> {
     values: u64,
     ran_out: bool,
     bytes_read: u64,
+    /// Length a top-level numeric array must have to be kept whole (see
+    /// [`MAX_PER_LAYER_KEPT`]); set by the KV loop before each value.
+    per_layer: Option<u64>,
+    /// Numbers still allowed in whole per-layer arrays ([`MAX_PER_LAYER_VALUES`]).
+    per_layer_left: u64,
 }
 
 impl<R: Read + Seek> Source<R> {
@@ -132,6 +147,8 @@ impl<R: Read + Seek> Source<R> {
             values: 0,
             ran_out: false,
             bytes_read: 0,
+            per_layer: None,
+            per_layer_left: MAX_PER_LAYER_VALUES,
         })
     }
 
@@ -268,7 +285,19 @@ impl<R: Read + Seek> Source<R> {
         if elem_size.is_none() && subtype != T_STRING && subtype != T_ARRAY {
             return Err(Fault::Meta(format!("unknown array element type {subtype}")));
         }
-        if count <= MAX_ARRAY_ELEMENTS_KEPT {
+        let keep_whole = match (depth, self.per_layer, elem_size) {
+            // Bool is not a per-layer number; a cut-off header keeps the old count + sample
+            // (and run_out) rather than failing on the first missing element.
+            (0, Some(n), Some(size)) if subtype != T_BOOL && count == n => {
+                u128::from(size) * u128::from(count) <= u128::from(self.remaining())
+                    && count <= self.per_layer_left
+            }
+            _ => false,
+        };
+        if keep_whole {
+            self.per_layer_left = self.per_layer_left.saturating_sub(count);
+        }
+        if count <= MAX_ARRAY_ELEMENTS_KEPT || keep_whole {
             let mut items = Vec::new();
             for _ in 0..count {
                 items.push(self.read_value(subtype, depth + 1)?);
@@ -331,6 +360,20 @@ impl<R: Read + Seek> Source<R> {
     }
 }
 
+/// The header's block_count when it was already read and is a plausible layer count: an
+/// integer under `<general.architecture>.block_count`, 1..=[`MAX_PER_LAYER_KEPT`].
+fn per_layer_len(out: &Raw) -> Option<u64> {
+    let Some(Value::Str(arch)) = out.get("general.architecture") else {
+        return None;
+    };
+    match out.get(&format!("{arch}.block_count")) {
+        Some(Value::Int(n)) if (1..=i128::from(MAX_PER_LAYER_KEPT)).contains(n) => {
+            u64::try_from(*n).ok()
+        }
+        _ => None,
+    }
+}
+
 fn scalar_size(t: u32) -> Option<u64> {
     match t {
         T_UINT8 | T_INT8 | T_BOOL => Some(1),
@@ -375,6 +418,7 @@ pub fn read_raw_stream<R: Read + Seek>(inner: R) -> Result<Raw, GgufError> {
         let kv = (|| -> Result<(String, Value), Fault> {
             let key = src.read_string(MAX_KEY_LEN)?;
             let vtype = src.u32()?;
+            src.per_layer = per_layer_len(&out);
             let value = src.read_value(vtype, 0)?;
             Ok((key, value))
         })();

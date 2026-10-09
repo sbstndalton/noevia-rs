@@ -6,7 +6,7 @@ use crate::raw::Value;
 
 /// A Python `int`: anything an `i128` holds, or the decimal digits of a larger one (only
 /// produced by `int()` of a huge float).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PyInt {
     Small(i128),
     Big(String),

@@ -68,10 +68,15 @@ pub struct Prepared {
     pub model_gb_raw: f64,
     pub shape: Shape,
     pub kv_heads_is_bool: bool,
+    /// Whether the `alt` shape's kv_heads is a Python bool (it prints as one).
+    pub alt_kv_heads_is_bool: bool,
     pub sized: Vec<usize>,
     pub mmproj_vram_gb: f64,
     pub backends: Vec<SizedBackend>,
 }
+
+/// gguf_meta.py's MAX_ARRAY_ELEMENTS_KEPT: a longer list is a whole per-layer array (#1186).
+const SAMPLE_KEPT: usize = 8;
 
 fn kv_first_int(v: &Value, default: i128, work: &mut Work) -> Result<PyInt, Error> {
     if is_int(v) {
@@ -112,6 +117,19 @@ fn kv_first_int(v: &Value, default: i128, work: &mut Work) -> Result<PyInt, Erro
         }
     }
     if let Value::Arr(items) = v {
+        if items.len() > SAMPLE_KEPT {
+            // A whole per-layer list (#1186): the largest head count, so no layer's cache is
+            // under-sized. Converted in order, so the first bad entry raises as in Python.
+            let mut best: Option<i128> = None;
+            for item in iterate(v, work)? {
+                if item == Value::Null {
+                    continue;
+                }
+                let k = int_of(&item, "attention_head_count_kv[i]")?;
+                best = Some(best.map_or(k, |b| b.max(k)));
+            }
+            return Ok(plain(best.unwrap_or(default)));
+        }
         if let Some(first) = items.first() {
             if *first != Value::Null {
                 return int_of(first, "attention_head_count_kv[0]").map(plain);
@@ -344,6 +362,7 @@ fn kv_shape(
         shared: None,
         period: None,
         recurrent_bytes: None,
+        alt: None,
     };
     if let Some(interval) = full_attention_interval.filter(|&i| i > 1) {
         shape.hybrid_interval = Some(interval);
@@ -464,7 +483,70 @@ fn number(v: &Value, what: &'static str) -> Result<f64, Error> {
 }
 
 /// `prepare_all` of a prep request.
+const PER_LAYER_KEYS: [&str; 2] = ["per_layer_sample", "per_layer_zero_dims"];
+
+/// `prepare`: [`prepare_one`], and when the summary kept whole per-layer lists (#1186) and
+/// carries their old 8-entry-sample reading as `per_layer_sample`, the model prepared that way
+/// too; when that plan stands its shape rides along as `alt` (kv_shape_bytes takes the larger).
 pub fn prepare(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
+    let mut p = prepare_one(inp, work)?;
+    let Prep::Ok(ref mut ok) = p else {
+        return Ok(p);
+    };
+    let model = field(inp, "model")?;
+    let Value::Obj(m) = model else {
+        return Ok(p);
+    };
+    let Value::Obj(sample) = get(model, "per_layer_sample") else {
+        return Ok(p);
+    };
+    if sample.is_empty() {
+        return Ok(p);
+    }
+    work.charge(m.len() + sample.len())?;
+    // Python: {k: v for k, v in m.items() if k not in _PER_LAYER_KEYS}, then .update(sample).
+    let mut old: Vec<(String, Value)> = m
+        .iter()
+        .filter(|(k, _)| !PER_LAYER_KEYS.contains(&k.as_str()))
+        .cloned()
+        .collect();
+    for (k, v) in sample {
+        match old.iter_mut().find(|(ok, _)| ok == k) {
+            Some(slot) => slot.1 = v.clone(),
+            None => old.push((k.clone(), v.clone())),
+        }
+    }
+    let Value::Obj(pairs) = inp else {
+        return Ok(p);
+    };
+    let old_inp = Value::Obj(
+        pairs
+            .iter()
+            .map(|(k, v)| {
+                if k == "model" {
+                    (k.clone(), Value::Obj(old.clone()))
+                } else {
+                    (k.clone(), v.clone())
+                }
+            })
+            .collect(),
+    );
+    if let Prep::Ok(q) = prepare_one(&old_inp, work)? {
+        ok.alt_kv_heads_is_bool = q.kv_heads_is_bool;
+        ok.shape.alt = Some(Box::new(q.shape));
+    }
+    Ok(p)
+}
+
+/// `zero_dims`: whether the summary's `per_layer_zero_dims` lists `key` (Python `in`).
+fn zero_dim(m: &Value, key: &str) -> bool {
+    match get(m, "per_layer_zero_dims") {
+        Value::Arr(items) => items.iter().any(|x| matches!(x, Value::Str(s) if s == key)),
+        _ => false,
+    }
+}
+
+fn prepare_one(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
     let Value::Obj(pairs) = inp else {
         return Err(Error::Schema("prep"));
     };
@@ -500,16 +582,37 @@ pub fn prepare(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
     let kv_heads = kv_first_int(get(m, "attention_head_count_kv"), heads, work)?;
     let native_ctx = int_or(get(m, "context_length"), 0, "context_length")?;
     let experts = get(m, "expert_count");
-    let key_length = opt_int(get(m, "key_length"), "key_length")?;
-    let value_length = opt_int(get(m, "value_length"), "value_length")?;
+    let mut key_length = opt_int(get(m, "key_length"), "key_length")?;
+    let mut value_length = opt_int(get(m, "value_length"), "value_length")?;
+    // A per-layer K/V length list with a 0 entry ("use head_dim", #1186): never below head_dim.
+    if zero_dim(m, "key_length") {
+        key_length = key_length.map(|k| k.max(head_dim));
+    }
+    if zero_dim(m, "value_length") {
+        value_length = value_length.map(|v| v.max(head_dim));
+    }
+    let k_fallback = key_length.filter(|&k| k != 0).unwrap_or(head_dim);
+    let v_fallback = value_length.filter(|&v| v != 0).unwrap_or(head_dim);
     let fai = opt_int(get(m, "full_attention_interval"), "full_attention_interval")?;
     // ssm_state_size only ever decides alongside full_attention_interval > 1 (see kv_shape), so
     // it is not read.
     let swa = Swa {
         window: opt_int(get(m, "sliding_window"), "sliding_window")?,
         pattern: get(m, "sliding_window_pattern"),
-        k_swa: opt_int(get(m, "key_length_swa"), "key_length_swa")?,
-        v_swa: opt_int(get(m, "value_length_swa"), "value_length_swa")?,
+        k_swa: opt_int(get(m, "key_length_swa"), "key_length_swa")?.map(|k| {
+            if zero_dim(m, "key_length_swa") {
+                k.max(k_fallback)
+            } else {
+                k
+            }
+        }),
+        v_swa: opt_int(get(m, "value_length_swa"), "value_length_swa")?.map(|v| {
+            if zero_dim(m, "value_length_swa") {
+                v.max(v_fallback)
+            } else {
+                v
+            }
+        }),
         shared: opt_int(get(m, "shared_kv_layers"), "shared_kv_layers")?,
         heads_pattern: get(m, "attention_head_count_kv"),
     };
@@ -706,6 +809,7 @@ pub fn prepare(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
         model_gb_raw,
         shape,
         kv_heads_is_bool: kv_heads.is_bool,
+        alt_kv_heads_is_bool: false,
         sized,
         mmproj_vram_gb: reserve,
         backends: sized_backends,
@@ -719,6 +823,51 @@ fn opt(out: &mut String, v: Option<i128>) {
         }
         None => out.push_str("null"),
     }
+}
+
+/// One shape as Python's dict prints (`alt` last, when present).
+fn write_shape(out: &mut String, s: &Shape, kv_is_bool: bool, alt_is_bool: bool) {
+    let kv_heads = if kv_is_bool {
+        (s.kv_heads != 0).to_string()
+    } else {
+        s.kv_heads.to_string()
+    };
+    let _ = write!(
+        out,
+        "{{\"gemma\":{},\"layers\":{},\"kv_heads\":{kv_heads},\"k_dim\":{},\"v_dim\":{},\"hybrid_interval\":",
+        s.gemma, s.layers, s.k_dim, s.v_dim
+    );
+    opt(out, s.hybrid_interval);
+    out.push_str(",\"window\":");
+    opt(out, s.window);
+    out.push_str(",\"k_swa\":");
+    opt(out, s.k_swa);
+    out.push_str(",\"v_swa\":");
+    opt(out, s.v_swa);
+    out.push_str(",\"shared\":");
+    opt(out, s.shared);
+    out.push_str(",\"period\":");
+    match &s.period {
+        None => out.push_str("null"),
+        Some(period) => {
+            out.push('[');
+            for (i, (local, h)) in period.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                let _ = write!(out, "[{local},{}]", pyfloat::json(*h));
+            }
+            out.push(']');
+        }
+    }
+    if let Some(rec) = s.recurrent_bytes {
+        let _ = write!(out, ",\"recurrent_bytes\":{rec}");
+    }
+    if let Some(alt) = &s.alt {
+        out.push_str(",\"alt\":");
+        write_shape(out, alt, alt_is_bool, false);
+    }
+    out.push('}');
 }
 
 /// The answer as the JSON object `prepare_all` returns (key order aside).
@@ -774,15 +923,9 @@ pub fn prep_json(p: &Prep) -> String {
             );
         }
         Prep::Ok(p) => {
-            let s = &p.shape;
-            let kv_heads = if p.kv_heads_is_bool {
-                (s.kv_heads != 0).to_string()
-            } else {
-                s.kv_heads.to_string()
-            };
             let _ = write!(
                 out,
-                "{{\"refuse\":null,\"n_sessions\":{},\"layers\":{},\"native_ctx\":{},\"hidden\":{},\"is_moe\":{},\"moe_ratio\":{},\"model_gb_raw\":{},\"shape\":{{\"gemma\":{},\"layers\":{},\"kv_heads\":{kv_heads},\"k_dim\":{},\"v_dim\":{},\"hybrid_interval\":",
+                "{{\"refuse\":null,\"n_sessions\":{},\"layers\":{},\"native_ctx\":{},\"hidden\":{},\"is_moe\":{},\"moe_ratio\":{},\"model_gb_raw\":{},\"shape\":",
                 p.n_sessions,
                 p.layers,
                 p.native_ctx,
@@ -790,38 +933,14 @@ pub fn prep_json(p: &Prep) -> String {
                 p.is_moe,
                 pyfloat::json(p.moe_ratio),
                 pyfloat::json(p.model_gb_raw),
-                s.gemma,
-                s.layers,
-                s.k_dim,
-                s.v_dim
             );
-            opt(&mut out, s.hybrid_interval);
-            out.push_str(",\"window\":");
-            opt(&mut out, s.window);
-            out.push_str(",\"k_swa\":");
-            opt(&mut out, s.k_swa);
-            out.push_str(",\"v_swa\":");
-            opt(&mut out, s.v_swa);
-            out.push_str(",\"shared\":");
-            opt(&mut out, s.shared);
-            out.push_str(",\"period\":");
-            match &s.period {
-                None => out.push_str("null"),
-                Some(period) => {
-                    out.push('[');
-                    for (i, (local, h)) in period.iter().enumerate() {
-                        if i > 0 {
-                            out.push(',');
-                        }
-                        let _ = write!(out, "[{local},{}]", pyfloat::json(*h));
-                    }
-                    out.push(']');
-                }
-            }
-            if let Some(rec) = s.recurrent_bytes {
-                let _ = write!(out, ",\"recurrent_bytes\":{rec}");
-            }
-            out.push_str("},\"sized\":[");
+            write_shape(
+                &mut out,
+                &p.shape,
+                p.kv_heads_is_bool,
+                p.alt_kv_heads_is_bool,
+            );
+            out.push_str(",\"sized\":[");
             for (i, n) in p.sized.iter().enumerate() {
                 if i > 0 {
                     out.push(',');

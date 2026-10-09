@@ -1,9 +1,11 @@
 //! `summarize()` from gguf_meta.py: the shape the model-manager API, autoconfig and the
 //! config panel consume. Field names, types and null-vs-absent match the Python exactly.
 
+use std::collections::HashMap;
+
 use crate::json::{Json, PyInt};
 use crate::pyfmt::{py_float_repr, py_str, truthy};
-use crate::raw::{Raw, Value};
+use crate::raw::{Raw, Value, MAX_ARRAY_ELEMENTS_KEPT};
 
 /// Raised where Python's `summarize()` itself raises (an unhashable `general.file_type`). The message follows Python's.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,35 +125,91 @@ fn numeric_int(v: &Value) -> Result<Option<PyInt>, SummaryError> {
     })
 }
 
-/// `_scalar_int`: unwrap array summaries (most common sample value, first seen wins a tie)
-/// and lists (first element) to a representative int.
+/// The most common numeric value of `items`, the first seen winning a tie (`_scalar_int`'s
+/// `max(counts, key=…)` over an insertion-ordered dict).
+fn most_common(items: &[Value]) -> Result<Option<PyInt>, SummaryError> {
+    let mut counts: Vec<(PyInt, usize)> = Vec::new();
+    let mut index: HashMap<PyInt, usize> = HashMap::new();
+    for x in items {
+        if let Some(k) = numeric_int(x)? {
+            match index.get(&k).and_then(|&i| counts.get_mut(i)) {
+                Some((_, n)) => *n += 1,
+                None => {
+                    index.insert(k.clone(), counts.len());
+                    counts.push((k, 1));
+                }
+            }
+        }
+    }
+    let mut best: Option<&(PyInt, usize)> = None;
+    for entry in &counts {
+        if best.is_none_or(|b| entry.1 > b.1) {
+            best = Some(entry);
+        }
+    }
+    Ok(best.map(|(k, _)| k.clone()))
+}
+
+/// `_scalar_int`: unwrap array summaries and whole per-layer lists (longer than any sample,
+/// #1186) to their most common value, and shorter lists to their first element.
 fn scalar_int(v: Option<&Value>) -> Result<Option<PyInt>, SummaryError> {
     let Some(v) = v else { return Ok(None) };
     match v {
         Value::Bool(_) | Value::Int(_) | Value::Float(_) => numeric_int(v),
-        Value::ArraySummary { sample, .. } => {
-            let mut counts: Vec<(PyInt, usize)> = Vec::new();
-            for x in sample {
-                if let Some(k) = numeric_int(x)? {
-                    match counts.iter_mut().find(|(seen, _)| *seen == k) {
-                        Some((_, n)) => *n += 1,
-                        None => counts.push((k, 1)),
-                    }
-                }
-            }
-            let mut best: Option<&(PyInt, usize)> = None;
-            for entry in &counts {
-                if best.is_none_or(|b| entry.1 > b.1) {
-                    best = Some(entry);
-                }
-            }
-            Ok(best.map(|(k, _)| k.clone()))
-        }
+        Value::ArraySummary { sample, .. } => most_common(sample),
+        Value::List(items) if items.len() as u64 > MAX_ARRAY_ELEMENTS_KEPT => most_common(items),
         Value::List(items) => match items.first() {
             Some(first) => numeric_int(first),
             None => Ok(None),
         },
         Value::Str(_) | Value::None => Ok(None),
+    }
+}
+
+/// Python's ordering of two ints (a `Big` only ever comes from `int()` of a huge float).
+fn py_int_cmp(a: &PyInt, b: &PyInt) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    if let (PyInt::Small(x), PyInt::Small(y)) = (a, b) {
+        return x.cmp(y);
+    }
+    let (sa, sb) = (a.to_string(), b.to_string());
+    let (na, nb) = (sa.starts_with('-'), sb.starts_with('-'));
+    let (da, db) = (sa.trim_start_matches('-'), sb.trim_start_matches('-'));
+    let mag = da.len().cmp(&db.len()).then_with(|| da.cmp(db));
+    match (na, nb) {
+        (false, true) => Ordering::Greater,
+        (true, false) => Ordering::Less,
+        (false, false) => mag,
+        (true, true) => mag.reverse(),
+    }
+}
+
+/// `_kv_dim_int`: a KV-cache dimension. A whole per-layer list (#1186) gives its largest value
+/// (Python's `max`, the first of equals), so the cache is never sized below the old sample's
+/// most common value; everything else reads as [`scalar_int`].
+fn kv_dim_int(v: Option<&Value>) -> Result<Option<PyInt>, SummaryError> {
+    match v {
+        Some(Value::List(items)) if items.len() as u64 > MAX_ARRAY_ELEMENTS_KEPT => {
+            // The largest nonzero entry; 0 ("use head_dim") only when every entry is 0.
+            let mut best: Option<PyInt> = None;
+            let mut any = false;
+            for x in items {
+                if let Some(k) = numeric_int(x)? {
+                    any = true;
+                    if k == PyInt::Small(0) {
+                        continue;
+                    }
+                    if best
+                        .as_ref()
+                        .is_none_or(|b| py_int_cmp(&k, b) == std::cmp::Ordering::Greater)
+                    {
+                        best = Some(k);
+                    }
+                }
+            }
+            Ok(best.or(if any { Some(PyInt::Small(0)) } else { None }))
+        }
+        other => scalar_int(other),
     }
 }
 
@@ -277,9 +335,87 @@ fn finite(v: &Value) -> Value {
 }
 
 /// Build the summary gguf_meta.py's `summarize(raw)` returns.
+/// A whole per-layer list: only these are longer than the 8-entry sample (#1186).
+fn is_whole(v: &Value) -> bool {
+    matches!(v, Value::List(items) if items.len() as u64 > MAX_ARRAY_ELEMENTS_KEPT)
+}
+
+const KV_DIMS: [(&str, &str); 4] = [
+    ("key_length", "attention.key_length"),
+    ("value_length", "attention.value_length"),
+    ("key_length_swa", "attention.key_length_swa"),
+    ("value_length_swa", "attention.value_length_swa"),
+];
+
+/// `summarize`: the summary. When the header kept a whole per-layer list (#1186) the model
+/// section also carries `per_layer_sample` (each model field the old 8-entry-sample reading
+/// gives differently, at that old value) and `per_layer_zero_dims` (the KV dimensions whose
+/// list has a 0 entry), so autoconfig can size KV both ways and keep the larger.
 pub fn summarize(raw: &Raw) -> Result<Json, SummaryError> {
     let finite_raw: Raw = raw.iter().map(|(k, v)| (k.clone(), finite(v))).collect();
-    let raw = &finite_raw;
+    let mut out = summarize_once(&finite_raw)?;
+    if !finite_raw.values().any(is_whole) {
+        return Ok(out);
+    }
+    let keep = usize::try_from(MAX_ARRAY_ELEMENTS_KEPT).unwrap_or(usize::MAX);
+    let sampled: Raw = finite_raw
+        .iter()
+        .map(|(k, v)| {
+            let v = match v {
+                Value::List(items) if is_whole(v) => Value::ArraySummary {
+                    count: items.len() as u64,
+                    sample: items.iter().take(keep).cloned().collect(),
+                },
+                other => other.clone(),
+            };
+            (k.clone(), v)
+        })
+        .collect();
+    let old = summarize_once(&sampled)?;
+    let mut diff: Vec<(String, Json)> = Vec::new();
+    let new_model = out.get("model");
+    if let Some(Json::Object(old_fields)) = old.get("model") {
+        for (k, v) in old_fields {
+            let now = new_model
+                .and_then(|m| m.get(k))
+                .map_or_else(|| "null".to_string(), Json::to_string);
+            if v.to_string() != now {
+                diff.push((k.clone(), v.clone()));
+            }
+        }
+    }
+    let arch = finite_raw.get("general.architecture");
+    let mut zero: Vec<Json> = Vec::new();
+    if let Some(arch) = arch.filter(|a| truthy(a)) {
+        let prefix = py_str(arch);
+        for (field, key) in KV_DIMS {
+            if let Some(Value::List(items)) = finite_raw.get(format!("{prefix}.{key}").as_str()) {
+                let has_zero = items.iter().any(|x| match x {
+                    Value::Int(i) => *i == 0,
+                    Value::Float(f) => *f == 0.0,
+                    Value::Bool(b) => !*b,
+                    _ => false,
+                });
+                if items.len() as u64 > MAX_ARRAY_ELEMENTS_KEPT && has_zero {
+                    zero.push(Json::Str(field.to_string()));
+                }
+            }
+        }
+    }
+    if let Json::Object(fields) = &mut out {
+        if let Some((_, Json::Object(model))) = fields.iter_mut().find(|(k, _)| k == "model") {
+            if !diff.is_empty() {
+                model.push(("per_layer_sample".to_string(), Json::Object(diff)));
+            }
+            if !zero.is_empty() {
+                model.push(("per_layer_zero_dims".to_string(), Json::Array(zero)));
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn summarize_once(raw: &Raw) -> Result<Json, SummaryError> {
     let empty = Value::Str(String::new());
     let arch: &Value = match raw.get("general.architecture") {
         Some(v) if truthy(v) => v,
@@ -323,6 +459,7 @@ pub fn summarize(raw: &Raw) -> Result<Json, SummaryError> {
     ]);
 
     let si = |key: &str| -> Result<Json, SummaryError> { Ok(int_json(scalar_int(a(key))?)) };
+    let kd = |key: &str| -> Result<Json, SummaryError> { Ok(int_json(kv_dim_int(a(key))?)) };
     let sf = |key: &str| -> Result<Json, SummaryError> { Ok(float_json(scalar_float(a(key))?)) };
     let model = Json::object([
         ("arch", Json::from(arch)),
@@ -346,12 +483,12 @@ pub fn summarize(raw: &Raw) -> Result<Json, SummaryError> {
         ("expert_count", si("expert_count")?),
         ("nextn_predict_layers", si("nextn_predict_layers")?),
         ("expert_used_count", si("expert_used_count")?),
-        ("key_length", si("attention.key_length")?),
-        ("value_length", si("attention.value_length")?),
+        ("key_length", kd("attention.key_length")?),
+        ("value_length", kd("attention.value_length")?),
         ("full_attention_interval", si("full_attention_interval")?),
         ("sliding_window", si("attention.sliding_window")?),
-        ("key_length_swa", si("attention.key_length_swa")?),
-        ("value_length_swa", si("attention.value_length_swa")?),
+        ("key_length_swa", kd("attention.key_length_swa")?),
+        ("value_length_swa", kd("attention.value_length_swa")?),
         ("shared_kv_layers", si("attention.shared_kv_layers")?),
         (
             "sliding_window_pattern",
