@@ -208,6 +208,7 @@ dependencies = [
  "ssrf-policy",
  "storage-path",
  "stream-guard",
+ "task-lifecycle",
  "tool-exchange",
  "tune-contention",
  "upload-sniff",
@@ -1124,6 +1125,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "task-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "prompt-framing",
+ "proptest",
 ]
 
 [[package]]
