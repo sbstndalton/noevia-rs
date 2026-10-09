@@ -151,6 +151,15 @@ one slice at a time.
   a path outside the NFC-inert set is treated as possibly in the Diary. In `dav-parse.wasm` as
   `provider_egress`. Table from noevia-core (`node tools/gen-provider-egress-fixtures.cjs`), copied
   byte-for-byte to `crates/provider-egress/tests/fixtures/provider-egress.v1.json`.
+- `crates/browser-policy`: noevia-core's browser-policy.cjs (spec-agent-execution §6): allow,
+  needs approval or blocked for each browser action from the facts the executor read off the page,
+  where the browser may go, and which `{{secret:name}}` placeholders may be filled on an origin
+  (names and domains only, never a value). The host never weakens the JS answer with it
+  (BROWSER_POLICY_IMPL=wasm): both must allow, either asking or blocking wins, any doubt asks. Folds
+  labels with ICU4X NFKD over a table of code points; anything outside it is unknown. In
+  `dav-parse.wasm` as `browser_policy`. Table from noevia-core
+  (`node tools/gen-browser-policy-fixtures.cjs`), copied byte-for-byte to
+  `crates/browser-policy/tests/fixtures/browser-policy.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is

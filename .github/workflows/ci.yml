@@ -37,7 +37,7 @@ jobs:
         run: cargo test --locked --workspace
 
   dav-parse-wasm:
-    # noevia#967 (+ #976 s3-list-parse, #978 storage-path, #977 upload-sniff, #979 secret-envelope, #980 mcp-frame, #1002 chat-template-caps and provider-error, #1003 autotune-plan, #1062 tune-contention, #769/#740 prompt-framing, #1079 long-profile, s3-sign, #795 ssrf-policy, #516/#704 stream-guard, gguf-meta, policy-leaves, review-verdict, tool-exchange, mcp-servers, decision, code-net-guard, role-context, completeness-report, task-lifecycle, llamacpp-autoconfig, code-actions, project-file-names, provider-egress in the same module): dav-parse.wasm is consumed by noevia-core at a pinned sha256, so the build must be
+    # noevia#967 (+ #976 s3-list-parse, #978 storage-path, #977 upload-sniff, #979 secret-envelope, #980 mcp-frame, #1002 chat-template-caps and provider-error, #1003 autotune-plan, #1062 tune-contention, #769/#740 prompt-framing, #1079 long-profile, s3-sign, #795 ssrf-policy, #516/#704 stream-guard, gguf-meta, policy-leaves, review-verdict, tool-exchange, mcp-servers, decision, code-net-guard, role-context, completeness-report, task-lifecycle, llamacpp-autoconfig, code-actions, project-file-names, provider-egress, browser-policy in the same module): dav-parse.wasm is consumed by noevia-core at a pinned sha256, so the build must be
     # reproducible. Build it twice from clean target dirs, require identical bytes, and record the
     # digest in the job summary (compare it with DAV_PARSE_WASM_SHA256 in noevia-core's
     # server/dav-parse.lock when re-pinning).

@@ -1,7 +1,7 @@
 [package]
 name = "dav-parse-wasm"
 version = "0.1.0"
-description = "WebAssembly module exposing dav-parse, s3-list-parse, storage-path, upload-sniff, secret-envelope, mcp-frame, chat-template-caps, provider-error, autotune-plan, preset-reload, load-verdict, tune-contention, prompt-framing, long-profile, s3-sign, ssrf-policy, stream-guard, gguf (gguf-meta.cjs), policy-leaves, review-verdict, tool-exchange, mcp-servers, decision, code-net-guard, role-context, completeness-report, task-lifecycle, llamacpp-autoconfig, code-actions, project-file-names and provider-egress to noevia-core through a minimal, unsafe-free ABI"
+description = "WebAssembly module exposing dav-parse, s3-list-parse, storage-path, upload-sniff, secret-envelope, mcp-frame, chat-template-caps, provider-error, autotune-plan, preset-reload, load-verdict, tune-contention, prompt-framing, long-profile, s3-sign, ssrf-policy, stream-guard, gguf (gguf-meta.cjs), policy-leaves, review-verdict, tool-exchange, mcp-servers, decision, code-net-guard, role-context, completeness-report, task-lifecycle, llamacpp-autoconfig, code-actions, project-file-names, provider-egress and browser-policy to noevia-core through a minimal, unsafe-free ABI"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -53,3 +53,4 @@ llamacpp-autoconfig = { path = "../../crates/llamacpp-autoconfig" }
 code-actions = { path = "../../crates/code-actions" }
 project-file-names = { path = "../../crates/project-file-names" }
 provider-egress = { path = "../../crates/provider-egress" }
+browser-policy = { path = "../../crates/browser-policy" }
