@@ -295,6 +295,39 @@ def cases() -> dict[str, bytes]:
     c["raise_short_magic"] = b"GG"
     c["raise_truncated_fixed_header"] = b"GGUF\x03\x00"
     c["raise_truncated_kv_count"] = b"GGUF" + struct.pack("<IQ", 3, 0) + b"\x01"
+    # per-layer arrays (#1186): a top-level numeric array whose length equals <arch>.block_count
+    # is kept whole; every other long array keeps the 8-element sample + count.
+    hyb = [0, 0, 8, 0, 0, 8, 0, 0, 8, 0, 8, 0, 8, 0, 8, 0, 8, 0, 8, 0, 8, 0, 0, 8, 0, 0, 8, 0, 0, 0]
+    arch_lfm2 = (kv("general.architecture", STRING, "lfm2"), kv("lfm2.block_count", U32, 30),
+                 kv("lfm2.attention.head_count", U32, 32), kv("lfm2.embedding_length", U32, 2048))
+    c["per_layer_hybrid_kv_kept_whole"] = gguf(*arch_lfm2, kv_arr("lfm2.attention.head_count_kv", U32, hyb),
+                                               kv_arr("lfm2.feed_forward_length", I64, [8192 + i for i in range(30)]),
+                                               kv_arr("lfm2.rope.freq_base", F32, [1.5] * 30),
+                                               kv("lfm2.context_length", U32, 128000))
+    c["per_layer_len_mismatch_summarised"] = gguf(*arch_lfm2, kv_arr("lfm2.attention.head_count_kv", U32, hyb[:29]),
+                                                  kv_arr("lfm2.x", U32, list(range(31))))
+    c["per_layer_bool_summarised"] = gguf(*arch_lfm2, kv_arr("lfm2.attention.sliding_window_pattern", BOOL, [1, 0] * 15))
+    c["per_layer_string_summarised"] = gguf(*arch_lfm2, kv_arr("lfm2.names", STRING, [f"l{i}" for i in range(30)]))
+    c["per_layer_before_block_count"] = gguf(kv("general.architecture", STRING, "lfm2"),
+                                             kv_arr("lfm2.attention.head_count_kv", U32, hyb),
+                                             kv("lfm2.block_count", U32, 30))
+    c["per_layer_other_arch_block_count"] = gguf(kv("general.architecture", STRING, "lfm2"), kv("llama.block_count", U32, 30),
+                                                 kv_arr("lfm2.attention.head_count_kv", U32, hyb))
+    c["per_layer_no_arch"] = gguf(kv("lfm2.block_count", U32, 30), kv_arr("lfm2.attention.head_count_kv", U32, hyb))
+    c["per_layer_block_count_bool"] = gguf(kv("general.architecture", STRING, "lfm2"), kv("lfm2.block_count", BOOL, 1),
+                                           kv_arr("lfm2.a", U32, [1]))
+    c["per_layer_block_count_float"] = gguf(kv("general.architecture", STRING, "lfm2"), kv("lfm2.block_count", F32, 30.0),
+                                            kv_arr("lfm2.attention.head_count_kv", U32, hyb))
+    c["per_layer_block_count_max"] = gguf(kv("general.architecture", STRING, "lfm2"), kv("lfm2.block_count", U64, 4096),
+                                          kv_arr("lfm2.attention.head_count_kv", U16, [i % 9 for i in range(4096)]))
+    c["per_layer_block_count_over_max"] = gguf(kv("general.architecture", STRING, "lfm2"), kv("lfm2.block_count", U64, 4097),
+                                               kv_arr("lfm2.attention.head_count_kv", U16, [i % 9 for i in range(4097)]))
+    c["per_layer_block_count_negative"] = gguf(kv("general.architecture", STRING, "lfm2"), kv("lfm2.block_count", I32, -30),
+                                               kv_arr("lfm2.attention.head_count_kv", U32, hyb))
+    c["per_layer_nested_not_kept"] = gguf(*arch_lfm2, s("lfm2.n") + struct.pack("<I", ARRAY) + struct.pack("<IQ", ARRAY, 30)
+                                          + b"".join(struct.pack("<IQ", U8, 1) + b"\x01" for _ in range(30)))
+    c["per_layer_cut_off_keeps_sample"] = gguf(*arch_lfm2, kv_arr("lfm2.attention.head_count_kv", U32, hyb[:12], count=30))
+    c["per_layer_floats_kept_whole"] = gguf(*arch_lfm2, kv_arr("lfm2.attention.scale", F64, [0.5 * i for i in range(30)]))
     return c
 
 
