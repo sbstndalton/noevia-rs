@@ -27,6 +27,10 @@ const PLAN_KEYS: [&str; 6] = ["initial_ctx", "sized", "ctx", "ngl", "fit", "cach
 /// Largest context taken as exact in the rope ratio (Python divides big ints exactly).
 const MAX_EXACT: i128 = 1 << 53;
 const IMAGE_MAX_TOKENS: i128 = 1024;
+/// Most speculative-decoding entries accepted. Python writes at most 7 (spec-type, the draft
+/// model and ngl, the profile knobs); the cap keeps Values::set's linear search bounded
+/// (noevia#1153).
+pub const MAX_SPEC: usize = 16;
 
 /// A Python dict of strings: insertion order kept, an assignment to an existing key keeps
 /// its place, `pop` removes.
@@ -203,6 +207,7 @@ pub fn assemble(inp: &Value) -> Result<Values, Error> {
     }
 
     match field(inp, "spec")? {
+        Value::Arr(items) if items.len() > MAX_SPEC => return Err(Error::OutOfRange("spec")),
         Value::Arr(items) => {
             for item in items {
                 match item {

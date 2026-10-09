@@ -348,3 +348,29 @@ fn huge_patterns_are_refused_by_the_work_budget_not_run() {
     assert_eq!(check_json(text.as_bytes()), Err(Error::WorkLimit));
     assert!(t0.elapsed().as_secs() < 5, "{:?}", t0.elapsed());
 }
+
+#[test]
+fn spec_entries_are_capped() {
+    let values = |n: usize| {
+        let spec = (0..n)
+            .map(|i| format!("[\"spec-k{i}\",\"1\"]"))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("{{\"values\":{{\"model_rel\":\"\",\"n_sessions\":1,\"chat_template\":true,\"features\":null,\
+\"section\":\"m\",\"vision\":true,\"current\":{{}},\"mmproj_rel\":\"\",\"has_mmproj\":false,\"spec\":[{spec}],\
+\"plan\":{{\"initial_ctx\":4096,\"sized\":false,\"ctx\":4096,\"ngl\":null,\"fit\":false,\"cache_ram\":null}},\
+\"rope\":{{}},\"native_ctx\":8192,\"rec_gpu_count\":null}}}}")
+    };
+    assert!(check_json(values(model_autoconfig::values::MAX_SPEC).as_bytes()).is_ok());
+    assert_eq!(
+        check_json(values(model_autoconfig::values::MAX_SPEC + 1).as_bytes()),
+        Err(Error::OutOfRange("spec"))
+    );
+    // A crafted near-4 MiB request is refused at once, not after a quadratic search.
+    let t0 = std::time::Instant::now();
+    assert_eq!(
+        check_json(values(150_000).as_bytes()),
+        Err(Error::OutOfRange("spec"))
+    );
+    assert!(t0.elapsed().as_secs() < 2, "{:?}", t0.elapsed());
+}
