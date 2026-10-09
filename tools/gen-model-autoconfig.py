@@ -369,6 +369,16 @@ def check_handmade() -> list[tuple[str, dict]]:
         ("prep: per-layer kv heads negative", p(arch="lfm2", model=mm(block_count=3, attention_head_count_kv=[0, -2, -1]))),
         ("prep: hybrid per-layer kv heads with a bool stays as before", p(model=mm(block_count=3, attention_head_count_kv=[0, True, 8]))),
         ("prep: hybrid per-layer kv heads with a float stays as before", p(model=mm(block_count=3, attention_head_count_kv=[8.0, 0, 8]))),
+        # #1186: GGUF summaries now keep a block_count-length list whole; a list longer than the
+        # 8-entry sample sizes KV at its largest head count (never below the sample's mode).
+        ("prep: whole per-layer kv heads size at the max", p(model=mm(block_count=30, attention_head_count_kv=[1] + [8] * 29))),
+        ("prep: whole per-layer kv heads, OpenELM increasing", p(model=mm(block_count=16, attention_head_count_kv=
+            [2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 8]))),
+        ("prep: whole per-layer kv heads skip nulls", p(model=mm(block_count=10, attention_head_count_kv=[None, 2] * 5))),
+        ("prep: whole per-layer kv heads all null fall back", p(model=mm(block_count=9, attention_head_count_kv=[None] * 9))),
+        ("prep: whole per-layer kv heads with a float", p(model=mm(block_count=9, attention_head_count_kv=[4.5] + [2] * 8))),
+        ("prep: whole per-layer kv heads unparsable raises", p(model=mm(block_count=9, attention_head_count_kv=[8] * 8 + ["x"]))),
+        ("prep: eight-entry kv heads list keeps its first", p(model=mm(block_count=8, attention_head_count_kv=[1] + [8] * 7))),
         ("prep: hybrid per-layer dict, _array not true stays as before", p(model=mm(attention_head_count_kv=
                                                                        {"_array": 1, "count": 32, "sample": [8, 0]}))),
         ("prep: hybrid per-layer kv heads under interleaved attention stays as before", p(model=mm(

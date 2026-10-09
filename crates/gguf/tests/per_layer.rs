@@ -124,3 +124,60 @@ fn a_cut_off_per_layer_array_ends_the_parse_without_losing_it() {
         ))
     );
 }
+
+#[test]
+fn a_hostile_header_of_many_per_layer_arrays_stays_cheap() {
+    // block_count 4096 and 2000 uint8 arrays of 4096: only the budget is kept whole.
+    let mut kvs: Vec<Vec<u8>> = vec![];
+    let s = |k: &str| [&(k.len() as u64).to_le_bytes()[..], k.as_bytes()].concat();
+    kvs.push(
+        [
+            s("general.architecture"),
+            8u32.to_le_bytes().to_vec(),
+            s("lfm2"),
+        ]
+        .concat(),
+    );
+    kvs.push(
+        [
+            s("lfm2.block_count"),
+            4u32.to_le_bytes().to_vec(),
+            4096u32.to_le_bytes().to_vec(),
+        ]
+        .concat(),
+    );
+    for i in 0..2000 {
+        kvs.push(
+            [
+                s(&format!("k{i}")),
+                9u32.to_le_bytes().to_vec(),
+                0u32.to_le_bytes().to_vec(),
+                4096u64.to_le_bytes().to_vec(),
+                vec![1u8; 4096],
+            ]
+            .concat(),
+        );
+    }
+    let mut buf = [
+        b"GGUF".to_vec(),
+        3u32.to_le_bytes().to_vec(),
+        0u64.to_le_bytes().to_vec(),
+    ]
+    .concat();
+    buf.extend((kvs.len() as u64).to_le_bytes());
+    for kv in &kvs {
+        buf.extend(kv);
+    }
+    let t = std::time::Instant::now();
+    let raw = read_raw_bytes(&buf).unwrap();
+    assert!(t.elapsed().as_secs() < 5);
+    let kept: u64 = raw
+        .values()
+        .map(|v| match v {
+            Value::List(items) => items.len() as u64,
+            _ => 0,
+        })
+        .sum();
+    assert_eq!(kept, gguf::MAX_PER_LAYER_VALUES);
+    assert!(!raw.contains_key("_error"));
+}

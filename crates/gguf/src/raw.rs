@@ -38,6 +38,10 @@ pub const MAX_RETAINED_VALUES: u64 = 500_000;
 /// layer (sbstndalton/noevia#1186). Only when block_count is at most this; worst case is this
 /// many numbers per such key. Mirrors gguf_meta.py's `MAX_PER_LAYER_KEPT`.
 pub const MAX_PER_LAYER_KEPT: u64 = 4096;
+/// Numbers kept in whole per-layer arrays across one header. Past it, a block_count-length
+/// array falls back to sample + count, so a header of many such arrays stays cheap. Mirrors
+/// gguf_meta.py's `MAX_PER_LAYER_VALUES`.
+pub const MAX_PER_LAYER_VALUES: u64 = 64 * MAX_PER_LAYER_KEPT;
 
 const BUF_CAPACITY: usize = 64 * 1024;
 
@@ -126,6 +130,8 @@ struct Source<R: Read + Seek> {
     /// Length a top-level numeric array must have to be kept whole (see
     /// [`MAX_PER_LAYER_KEPT`]); set by the KV loop before each value.
     per_layer: Option<u64>,
+    /// Numbers still allowed in whole per-layer arrays ([`MAX_PER_LAYER_VALUES`]).
+    per_layer_left: u64,
 }
 
 impl<R: Read + Seek> Source<R> {
@@ -142,6 +148,7 @@ impl<R: Read + Seek> Source<R> {
             ran_out: false,
             bytes_read: 0,
             per_layer: None,
+            per_layer_left: MAX_PER_LAYER_VALUES,
         })
     }
 
@@ -283,9 +290,13 @@ impl<R: Read + Seek> Source<R> {
             // (and run_out) rather than failing on the first missing element.
             (0, Some(n), Some(size)) if subtype != T_BOOL && count == n => {
                 u128::from(size) * u128::from(count) <= u128::from(self.remaining())
+                    && count <= self.per_layer_left
             }
             _ => false,
         };
+        if keep_whole {
+            self.per_layer_left = self.per_layer_left.saturating_sub(count);
+        }
         if count <= MAX_ARRAY_ELEMENTS_KEPT || keep_whole {
             let mut items = Vec::new();
             for _ in 0..count {

@@ -328,6 +328,19 @@ def cases() -> dict[str, bytes]:
                                           + b"".join(struct.pack("<IQ", U8, 1) + b"\x01" for _ in range(30)))
     c["per_layer_cut_off_keeps_sample"] = gguf(*arch_lfm2, kv_arr("lfm2.attention.head_count_kv", U32, hyb[:12], count=30))
     c["per_layer_floats_kept_whole"] = gguf(*arch_lfm2, kv_arr("lfm2.attention.scale", F64, [0.5 * i for i in range(30)]))
+    # a whole per-layer list reads like a summary for scalar fields: most common, first on a tie
+    c["per_layer_scalar_mode"] = gguf(kv("general.architecture", STRING, "lfm2"), kv("lfm2.block_count", U32, 30),
+                                      kv_arr("lfm2.attention.head_count", U32, [1] + [8] * 29),
+                                      kv_arr("lfm2.feed_forward_length", U32, [5] * 4 + [9] * 13 + [7] * 13),
+                                      kv_arr("lfm2.attention.key_length", I32, [64, 128] * 15),
+                                      kv_arr("lfm2.expert_count", U32, list(range(30))),
+                                      # KV dimensions take the largest entry instead (never below the sample's mode)
+                                      kv_arr("lfm2.attention.value_length", F32, [64.0] * 20 + [256.5] + [64.0] * 9),
+                                      kv_arr("lfm2.attention.key_length_swa", I64, [-4] * 30),
+                                      kv_arr("lfm2.attention.value_length_swa", U16, [3, 1, 2] * 10))
+    # The per-header budget of whole arrays (MAX_PER_LAYER_VALUES) needs a ~270 KB header, too big
+    # for the every-truncation mutation test: noevia-services' test_gguf_meta_differential.py
+    # compares it against the binary, and tests/per_layer.rs builds it inline.
     return c
 
 

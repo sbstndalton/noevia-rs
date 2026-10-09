@@ -16,7 +16,7 @@ pub use json::{Json, PyInt};
 pub use raw::{
     read_raw, read_raw_bytes, read_raw_stream, GgufError, Raw, Value, MAX_ARRAY_DEPTH,
     MAX_ARRAY_ELEMENTS_KEPT, MAX_BYTES_READ, MAX_KEY_LEN, MAX_KV_COUNT, MAX_PER_LAYER_KEPT,
-    MAX_RETAINED_CHARS, MAX_RETAINED_VALUES, MAX_STRING_LEN,
+    MAX_PER_LAYER_VALUES, MAX_RETAINED_CHARS, MAX_RETAINED_VALUES, MAX_STRING_LEN,
 };
 pub use summary::{file_type_name, scan_chat_template_features, summarize, SummaryError};
 

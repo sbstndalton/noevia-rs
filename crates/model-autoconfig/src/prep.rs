@@ -73,6 +73,9 @@ pub struct Prepared {
     pub backends: Vec<SizedBackend>,
 }
 
+/// gguf_meta.py's MAX_ARRAY_ELEMENTS_KEPT: a longer list is a whole per-layer array (#1186).
+const SAMPLE_KEPT: usize = 8;
+
 fn kv_first_int(v: &Value, default: i128, work: &mut Work) -> Result<PyInt, Error> {
     if is_int(v) {
         return Ok(PyInt {
@@ -112,6 +115,19 @@ fn kv_first_int(v: &Value, default: i128, work: &mut Work) -> Result<PyInt, Erro
         }
     }
     if let Value::Arr(items) = v {
+        if items.len() > SAMPLE_KEPT {
+            // A whole per-layer list (#1186): the largest head count, so no layer's cache is
+            // under-sized. Converted in order, so the first bad entry raises as in Python.
+            let mut best: Option<i128> = None;
+            for item in iterate(v, work)? {
+                if item == Value::Null {
+                    continue;
+                }
+                let k = int_of(&item, "attention_head_count_kv[i]")?;
+                best = Some(best.map_or(k, |b| b.max(k)));
+            }
+            return Ok(plain(best.unwrap_or(default)));
+        }
         if let Some(first) = items.first() {
             if *first != Value::Null {
                 return int_of(first, "attention_head_count_kv[0]").map(plain);
