@@ -24,8 +24,6 @@
 //! - **A URL with a non-ASCII unit, or a host with an `xn--` label** (which is also what a
 //!   percent-encoded non-ASCII host becomes) is not a public URL pattern: the URL is required, not
 //!   prefetched. Node's and the `url` crate's IDNA tables differ.
-//! - **A host with more than one trailing dot** (`nas.local..`): the JS drops one dot before its
-//!   local-suffix check, so `nas.local..` passes as public; the port drops them all, so it does not.
 //! - Requests over [`MAX_INPUT_BYTES`], or over their work budget, are refused (`too_large`); the
 //!   host treats that as a fault.
 //!
@@ -549,7 +547,8 @@ fn is_local_suffix(host: &str) -> bool {
     })
 }
 
-/// `publicUrlPattern(raw)`, with the port's stricter non-ASCII, `xn--` and trailing-dot rules.
+/// `publicUrlPattern(raw)` (with noevia#1224's empty-label rule), with the port's stricter
+/// non-ASCII and `xn--` rules.
 pub fn public_url(raw: &[u16], work: &mut Work) -> R<bool> {
     work.charge(raw.len().saturating_mul(4))?;
     if raw.iter().any(|&c| c >= 0x80) {
@@ -569,9 +568,13 @@ pub fn public_url(raw: &[u16], work: &mut Work) -> R<bool> {
     let hostname = url.host_str().unwrap_or("");
     let bare = hostname.strip_prefix('[').unwrap_or(hostname);
     let bare = bare.strip_suffix(']').unwrap_or(bare);
-    // Stricter: every trailing dot goes (the JS drops one).
-    let host = bare.trim_end_matches('.').to_ascii_lowercase();
+    // `.replace(/\.$/, '')`: one trailing dot.
+    let host = bare.strip_suffix('.').unwrap_or(bare).to_ascii_lowercase();
     if host.is_empty() {
+        return Ok(false);
+    }
+    // noevia#1224: an empty label (`nas.local..`, `10.0.0.1..`) is not public.
+    if host.split('.').any(str::is_empty) {
         return Ok(false);
     }
     if host.split('.').any(|l| l.starts_with("xn--")) {
@@ -1478,7 +1481,9 @@ mod tests {
         assert!(pu("https://example.com/a"));
         assert!(!pu("http://localhost/"));
         assert!(!pu("http://nas.local./"));
-        assert!(!pu("http://nas.local../")); // stricter than the JS
+        assert!(!pu("http://nas.local../")); // noevia#1224
+        assert!(!pu("http://10.0.0.1../x"));
+        assert!(!pu("http://a..b.com/"));
         assert!(!pu("http://intranet/"));
         assert!(!pu("http://10.0.0.1/"));
         assert!(!pu("http://user@example.com/"));

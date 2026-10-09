@@ -165,8 +165,7 @@ one slice at a time.
   Stage 2 decision service is shown, and how its answer is read (the service call stays in JS).
   The host never forces more with it (TOOL_GATE_IMPL=wasm): prefetch only when both prefetch the
   same arguments, require when one requires, otherwise no tool is forced. Stricter by design: a
-  non-ASCII or `xn--` URL, or a local name behind several trailing dots, is required, not
-  prefetched. The fixed JS patterns are matched as V8 matches non-Unicode regular expressions. In
+  non-ASCII or `xn--` URL is required, not prefetched. The fixed JS patterns are matched as V8 matches non-Unicode regular expressions. In
   `dav-parse.wasm` as `tool_gate`. Table from noevia-core (`node tools/gen-tool-gate-fixtures.cjs`),
   copied byte-for-byte to `crates/tool-gate/tests/fixtures/tool-gate.v1.json`.
 - `crates/toolboxes-permitted`: noevia-core's toolboxes-permitted.cjs: the toolbox ids one request

@@ -305,3 +305,14 @@ fn the_quadratic_js_case_is_linear_here() {
     assert_eq!(status, 0);
     assert!(took < Duration::from_secs(5), "{took:?}");
 }
+
+#[test]
+fn a_million_unit_word_soup_is_answered_not_refused() {
+    // "a " * 500,000 with the default boxes: every unit is a start position for several patterns.
+    let tool = r#"{"name":"project_search","readOnly":true,"description":"","own":["query"],"truthy":["query"],"anyProps":true,"required":[]}"#;
+    let boxes = r#"[["url",["tavily_extract","web_fetch","fetch_url","browse"]],["search",["tavily_search","web_search","wikipedia_search"]],["diary",["diary_read_month","diary_read_today","diary_list_months"]],["drive",["nc_webdav_search_files","drive_search_files","nc_webdav_find_by_name","nc_webdav_list_directory","project_search"]]]"#;
+    let mut input = vec![1u8];
+    input.extend(format!(r#"["{}",[{tool}],0,{boxes}]"#, "a ".repeat(500_000)).as_bytes());
+    let (status, reply) = call(&input);
+    assert_eq!(status, 0, "{}", String::from_utf8_lossy(&reply));
+}
