@@ -100,6 +100,18 @@ one slice at a time.
   refused. In `dav-parse.wasm` as `task_lifecycle` (TASK_LIFECYCLE_IMPL). Table from noevia-core
   (`node tools/gen-task-lifecycle-fixtures.cjs`), copied byte-for-byte to
   `crates/task-lifecycle/tests/fixtures/task-lifecycle.v1.json`.
+- `crates/completeness-report`: noevia-core's completeness-report.cjs (noevia#514, #701): the
+  five named checks of buildCompletenessReport over a derived job (server-defined test steps and
+  test-report artifacts only, expected artifacts, plan steps closed, unresolved uncertainty or a
+  pending approval, the checkpoint head SHA), the overall verdict, and reportHash's canonical JSON
+  and sha256 with its depth and size refusals. The host hands out the JS report as verified only
+  when the port gives the byte-identical canonical text and hash; otherwise the report is marked
+  unverified and cannot let a task into `reviewing`. Stricter: a truthy non-array `uncertain`,
+  an expectedArtifacts string or one with non-strings, a not-completed step whose id or status is
+  an object or array, and inputs over 8 MiB are refused. In `dav-parse.wasm` as
+  `completeness_report` (COMPLETENESS_REPORT_IMPL). Table from noevia-core
+  (`node tools/gen-completeness-report-fixtures.cjs`), copied byte-for-byte to
+  `crates/completeness-report/tests/fixtures/completeness-report.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
