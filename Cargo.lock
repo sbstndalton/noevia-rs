@@ -234,6 +234,8 @@ dependencies = [
  "stream-guard",
  "task-lifecycle",
  "tool-exchange",
+ "tool-gate",
+ "toolboxes-permitted",
  "tune-contention",
  "upload-sniff",
 ]
@@ -1273,6 +1275,24 @@ dependencies = [
 
 [[package]]
 name = "tool-exchange"
+version = "0.1.0"
+dependencies = [
+ "prompt-framing",
+ "proptest",
+]
+
+[[package]]
+name = "tool-gate"
+version = "0.1.0"
+dependencies = [
+ "prompt-framing",
+ "proptest",
+ "ssrf-policy",
+ "url",
+]
+
+[[package]]
+name = "toolboxes-permitted"
 version = "0.1.0"
 dependencies = [
  "prompt-framing",

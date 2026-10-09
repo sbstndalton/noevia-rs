@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/gguf", "crates/gguf-memtest", "crates/egress", "bins/gguf-meta", "bins/egress-proxy", "crates/model-files", "bins/model-files", "crates/dav-parse", "crates/s3-list-parse", "crates/storage-path", "crates/upload-sniff", "crates/secret-envelope", "crates/mcp-frame", "bins/dav-parse-wasm", "crates/docx-text", "bins/docx-text", "crates/sandbox-bridge", "bins/sandbox-bridge-wasm", "crates/provider-error", "crates/chat-template-caps", "crates/autotune-plan", "crates/preset-reload", "crates/load-verdict", "crates/tune-contention", "crates/prompt-framing", "crates/long-profile", "crates/s3-sign", "crates/ssrf-policy", "crates/stream-guard", "crates/policy-leaves", "crates/review-verdict", "crates/tool-exchange", "crates/mcp-servers", "crates/decision", "crates/code-net-guard", "crates/role-context", "crates/completeness-report", "crates/task-lifecycle", "crates/llamacpp-autoconfig", "crates/model-autoconfig", "bins/model-autoconfig", "crates/tenant-assertion", "bins/tenant-assertion", "crates/code-actions", "crates/project-file-names", "crates/provider-egress", "crates/browser-policy"]
+members = ["crates/gguf", "crates/gguf-memtest", "crates/egress", "bins/gguf-meta", "bins/egress-proxy", "crates/model-files", "bins/model-files", "crates/dav-parse", "crates/s3-list-parse", "crates/storage-path", "crates/upload-sniff", "crates/secret-envelope", "crates/mcp-frame", "bins/dav-parse-wasm", "crates/docx-text", "bins/docx-text", "crates/sandbox-bridge", "bins/sandbox-bridge-wasm", "crates/provider-error", "crates/chat-template-caps", "crates/autotune-plan", "crates/preset-reload", "crates/load-verdict", "crates/tune-contention", "crates/prompt-framing", "crates/long-profile", "crates/s3-sign", "crates/ssrf-policy", "crates/stream-guard", "crates/policy-leaves", "crates/review-verdict", "crates/tool-exchange", "crates/mcp-servers", "crates/decision", "crates/code-net-guard", "crates/role-context", "crates/completeness-report", "crates/task-lifecycle", "crates/llamacpp-autoconfig", "crates/model-autoconfig", "bins/model-autoconfig", "crates/tenant-assertion", "bins/tenant-assertion", "crates/code-actions", "crates/project-file-names", "crates/provider-egress", "crates/browser-policy", "crates/tool-gate", "crates/toolboxes-permitted"]
 
 [workspace.package]
 edition = "2021"
@@ -40,4 +40,9 @@ opt-level = 3
 # browser-policy's timed tests (inputs at the 4 MiB cap, refusals under 10 ms) mean what the wasm
 # module does only when optimised.
 [profile.dev.package.browser-policy]
+opt-level = 3
+
+# tool-gate's timed tests (messages at the 4 MiB cap) mean what the wasm module does only when
+# optimised.
+[profile.dev.package.tool-gate]
 opt-level = 3
