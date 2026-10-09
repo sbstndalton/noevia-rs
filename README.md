@@ -112,6 +112,18 @@ one slice at a time.
   `completeness_report` (COMPLETENESS_REPORT_IMPL). Table from noevia-core
   (`node tools/gen-completeness-report-fixtures.cjs`), copied byte-for-byte to
   `crates/completeness-report/tests/fixtures/completeness-report.v1.json`.
+- `crates/llamacpp-autoconfig`: noevia-core's llamacpp-autoconfig.cjs (#204, #697): KV-cache
+  sizing (hybrid, sliding-window, shared-KV, MTP draft), the preset suggestion (largest qualified
+  context that fits the inference budget, prompt cache, projector and MTP knobs, notes), the
+  Will-it-fit inputs and the load footprint, plus cacheRamMibOf, isPromptCacheFree and
+  parseMemoryLimit, in exact JS f64 order. File and process I/O stay in JS; nothing loads a model.
+  The host returns the JS answer when the port's reply is byte-identical; otherwise only if the JS
+  answer is the conservative one, else no suggestion / a refused load. Stricter: non-number
+  metadata fields, containers where the JS converts a value, radix literals past 128 bits, pattern
+  periods over 4096 and native contexts toLocaleString formats through ICU are refused. In
+  `dav-parse.wasm` as `llamacpp_autoconfig` (LLAMACPP_AUTOCONFIG_IMPL). Table from noevia-core
+  (`node tools/gen-llamacpp-autoconfig-fixtures.cjs`), copied byte-for-byte to
+  `crates/llamacpp-autoconfig/tests/fixtures/llamacpp-autoconfig.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
