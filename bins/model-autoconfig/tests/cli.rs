@@ -1,0 +1,53 @@
+//! The CLI contract the service relies on: usage errors exit 2, refusals exit 1 with nothing on
+//! stdout, a plan exits 0 with one JSON object.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+use std::io::Write;
+use std::process::{Command, Stdio};
+
+const REQUEST: &[u8] = br#"{"shape":{"gemma":false,"layers":32,"kv_heads":8,"k_dim":128,"v_dim":128,"hybrid_interval":null,"window":null,"k_swa":null,"v_swa":null,"shared":0,"period":null},"layers":32,"native_ctx":131072,"model_gb_raw":4.7,"moe_ratio":0.0,"is_moe":false,"mmproj_vram_gb":0.0,"n_sessions":1,"backends":[{"vram_gb":24.0,"gpu_count":1,"cards":[],"host_ram_gb":64.0,"same_as":0}],"preset":"","prompt_tps":0.0,"prompt_budget_s":120.0,"verified_ctx":0,"cache_ram_cap_mib":1024}"#;
+
+fn run(args: &[&str], stdin: &[u8]) -> (i32, Vec<u8>, String) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_model-autoconfig"))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn");
+    // A usage error may exit before reading stdin; a broken pipe there is fine.
+    let _ = child.stdin.take().unwrap().write_all(stdin);
+    let out = child.wait_with_output().unwrap();
+    (
+        out.status.code().unwrap_or(-1),
+        out.stdout,
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn usage() {
+    for args in [&["--help"][..], &[][..], &["size", "extra"][..]] {
+        let (code, out, err) = run(args, b"");
+        assert_eq!(code, 2, "{args:?}");
+        assert!(out.is_empty());
+        assert!(err.contains("usage"));
+    }
+}
+
+#[test]
+fn refusal_leaves_stdout_empty() {
+    let (code, out, err) = run(&["size"], b"{\"not\": \"a request\"}");
+    assert_eq!(code, 1);
+    assert!(out.is_empty());
+    assert!(err.starts_with("model-autoconfig: schema"), "{err}");
+}
+
+#[test]
+fn plan() {
+    let (code, out, _) = run(&["size"], REQUEST);
+    assert_eq!(code, 0);
+    let text = String::from_utf8(out).unwrap();
+    assert!(text.starts_with("{\"plans\":") && text.ends_with("}\n"));
+    assert!(text.contains("\"cap\":\"unmeasured\""));
+}

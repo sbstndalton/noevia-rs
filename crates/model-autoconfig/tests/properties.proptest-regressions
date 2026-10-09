@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 829d3c1711f21de4623666fc547133006aae4eeab10c4283860f6e0fb4433325 # shrinks to (req, layers, cap) = ("{\"shape\":{\"gemma\":false,\"layers\":1,\"kv_heads\":1,\"k_dim\":1,\"v_dim\":1,\"hybrid_interval\":null,\"window\":null,\"k_swa\":null,\"v_swa\":null,\"shared\":0,\"period\":null},\"layers\":1,\"native_ctx\":0,\"model_gb_raw\":0.1,\"moe_ratio\":0.0,\"is_moe\":false,\"mmproj_vram_gb\":0.0,\"n_sessions\":1,\"backends\":[{\"vram_gb\":116.13612231110146,\"gpu_count\":1,\"cards\":[],\"host_ram_gb\":0.0,\"same_as\":0}],\"preset\":\"\",\"prompt_tps\":0.0,\"prompt_budget_s\":0.5,\"verified_ctx\":0,\"cache_ram_cap_mib\":0}", 1, 0)
