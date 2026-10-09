@@ -1,0 +1,17 @@
+[package]
+name = "project-file-names"
+version = "0.1.0"
+description = "noevia-core's project-file-names.cjs in Rust: a model-given file name resolved to exactly one file of the requesting project, traversal-shaped names refused; the host only ever uses it to refuse"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+
+[dev-dependencies]
+proptest = "1"

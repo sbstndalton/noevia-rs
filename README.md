@@ -124,6 +124,25 @@ one slice at a time.
   `dav-parse.wasm` as `llamacpp_autoconfig` (LLAMACPP_AUTOCONFIG_IMPL). Table from noevia-core
   (`node tools/gen-llamacpp-autoconfig-fixtures.cjs`), copied byte-for-byte to
   `crates/llamacpp-autoconfig/tests/fixtures/llamacpp-autoconfig.v1.json`.
+- `crates/code-actions`: noevia-core's code-actions.cjs (CodeHarness contract v0): one ACP tool
+  call of a coding agent read into noevia's action classes (the shell reader, wrappers, `sh -c`,
+  interpreters, `find -exec`, git, installers, publishers, curl/wget/httpie flags, redirects),
+  failing closed; `decide` (allow / ask / deny with the domain allow-list over every URL host) and
+  `pickOption`. The host (CODE_ACTIONS_IMPL) keeps the JS answer only when the port's reply is
+  byte-identical; otherwise a call is never auto-allowed or standing, a decision is at least `ask`,
+  an option `cancelled`. Stricter: command array elements `String()` reads unpredictably, URL hosts
+  outside plain ASCII labels or a canonical dotted quad (in `decide`'s network branch), more than
+  `MAX_WORK` reading work or `find -exec find` nested past 64, inputs over 8 MiB. In
+  `dav-parse.wasm` as `code_actions`. Table from noevia-core
+  (`node tools/gen-code-actions-fixtures.cjs`), copied byte-for-byte to
+  `crates/code-actions/tests/fixtures/code-actions.v1.json`.
+- `crates/project-file-names`: noevia-core's project-file-names.cjs (#642): a model-given file
+  name resolved to exactly one file of the requesting project (verbatim or a unique trailing part),
+  traversal-shaped names refused. No normalization tables: a name outside the NFC-inert set is
+  refused, so it never resolves under PROJECT_FILE_NAMES_IMPL=wasm; the host resolves a name only
+  when both resolve it to the same file. In `dav-parse.wasm` as `project_file_names`. Table from
+  noevia-core (`node tools/gen-project-file-names-fixtures.cjs`), copied byte-for-byte to
+  `crates/project-file-names/tests/fixtures/project-file-names.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
