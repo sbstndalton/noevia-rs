@@ -9,7 +9,7 @@
 //! - [`assert_stage_move`]: the pipeline's stricter move (`merged` only from `reviewing`).
 //! - [`fold`]: `foldEvents(events, fromState, { authoritative })`, one `step()` per event:
 //!   - `task.stage` (either mode): `data.to` must be a state, `data.from` the current state, entering
-//!     `reviewing` needs `String(data.reportHash || '')` to match `/^[0-9a-f]{64}$/`, then
+//!     `reviewing` needs `data.reportHash` to be a string matching `/^[0-9a-f]{64}$/` (#1125), then
 //!     [`assert_stage_move`]; `task.revision` is a no-op;
 //!   - authoritative: `job.failed` / `job.cancelled` / `job.interrupted` force `blocked` (except out
 //!     of `merged`); everything else is a no-op;
@@ -24,10 +24,10 @@
 //!
 //! # Stricter than the JS
 //!
-//! The port refuses ([`Refusal::Ambiguous`]) a `task.stage` entering `reviewing` whose
-//! `reportHash` is an array or object: the JS runs it through `String()`, where `[hash]` passes,
-//! and an object with its own `toString` key throws a `TypeError` instead. A request that is not
-//! the documented shape, or over [`MAX_INPUT_BYTES`], is refused too. The host
+//! A request that is not the documented shape, or over [`MAX_INPUT_BYTES`], is refused. (Before
+//! noevia#1125 the JS ran a non-string `reportHash` through `String()` and the port refused those;
+//! both now answer `report_hash`.) The host sends only the events and fields the fold reads
+//! (noevia#1126), but any full journal folds the same. The host
 //! (noevia-core TASK_LIFECYCLE_IMPL) refuses the transition whenever the port refuses or disagrees.
 //!
 //! No Unicode tables, number formatting or locale data are involved: types, states and stages are
@@ -144,8 +144,6 @@ impl Throw {
 pub enum Refusal {
     Input,
     TooLarge,
-    /// The JS answer goes through a coercion the port does not model (see the crate docs).
-    Ambiguous,
 }
 
 impl Refusal {
@@ -153,7 +151,6 @@ impl Refusal {
         match self {
             Refusal::Input => r#"{"error":"input"}"#,
             Refusal::TooLarge => r#"{"error":"too_large"}"#,
-            Refusal::Ambiguous => r#"{"error":"ambiguous"}"#,
         }
     }
 }
@@ -211,16 +208,9 @@ fn is_hex64(s: &[u16]) -> bool {
     s.len() == 64 && s.iter().all(|&c| matches!(c, 0x30..=0x39 | 0x61..=0x66))
 }
 
-/// `REPORT_HASH.test(String(v || ''))`. A falsy value is `''`; `true` is `'true'`; a number's
-/// `String()` is at most 21 digits without an exponent and otherwise holds `.`, `-`, `e` or `+`,
-/// so never 64 hex digits. Arrays and objects go through `toString`/`join` (or throw a
-/// `TypeError`): refused.
-fn report_hash_ok(v: Option<&Value>) -> Result<bool, Refusal> {
-    match v {
-        None | Some(Value::Null | Value::Bool(_) | Value::Num(_)) => Ok(false),
-        Some(Value::Str(s)) => Ok(is_hex64(s)),
-        Some(Value::Arr(_) | Value::Obj(_) | Value::Deep) => Err(Refusal::Ambiguous),
-    }
+/// `typeof v === 'string' && REPORT_HASH.test(v)` (#1125).
+fn report_hash_ok(v: Option<&Value>) -> bool {
+    v.and_then(Value::as_str).is_some_and(is_hex64)
 }
 
 /// A member of `event.data || {}`: only an object has the members read here (a string, number or
@@ -237,12 +227,8 @@ fn stage_step(state: State, data: Option<&Value>) -> Result<State, Stop> {
     if !from_matches {
         return Err(Throw::Stale.into());
     }
-    if to == State::Reviewing && to != state {
-        match report_hash_ok(field(data, "reportHash")) {
-            Ok(true) => {}
-            Ok(false) => return Err(Throw::ReportHash.into()),
-            Err(r) => return Err(Stop::Refused(r)),
-        }
+    if to == State::Reviewing && to != state && !report_hash_ok(field(data, "reportHash")) {
+        return Err(Throw::ReportHash.into());
     }
     Ok(assert_stage_move(state, to)?)
 }
@@ -389,7 +375,7 @@ fn run(op: u8, args: &[Value]) -> Result<String, Refusal> {
 ///   `{"state":"…"}`;
 ///
 /// each may instead answer `{"throws":"code"}` (what the JS throws). Status 0 for those, 1 with
-/// `{"error":"input"|"too_large"|"ambiguous"}` for a refusal.
+/// `{"error":"input"|"too_large"}` for a refusal.
 pub fn call(input: &[u8]) -> (u32, String) {
     if input.len() > MAX_INPUT_BYTES {
         return (1, Refusal::TooLarge.json().to_owned());
@@ -455,7 +441,10 @@ mod tests {
         let stage = format!(
             r#"[[{{"type":"task.stage","data":{{"from":"planned","to":"implementing"}}}},{{"type":"task.stage","data":{{"from":"implementing","to":"reviewing","reportHash":["{hash}"]}}}}]]"#
         );
-        assert_eq!(req(5, &stage), (1, r#"{"error":"ambiguous"}"#.to_owned()));
+        assert_eq!(
+            req(5, &stage),
+            (0, r#"{"throws":"report_hash"}"#.to_owned())
+        );
         assert_eq!(req(4, "[[],\"planned\",1]").0, 1);
         assert_eq!(req(9, "[]").0, 1);
         assert_eq!(call(&[]).0, 1);

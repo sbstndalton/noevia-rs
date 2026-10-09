@@ -181,5 +181,5 @@ fn large_and_deep_requests_stay_bounded() {
     );
     let mut input = vec![5u8];
     input.extend(deep_hash.as_bytes());
-    assert_eq!(call(&input), (1, r#"{"error":"ambiguous"}"#.to_owned()));
+    assert_eq!(call(&input), (0, r#"{"throws":"report_hash"}"#.to_owned()));
 }

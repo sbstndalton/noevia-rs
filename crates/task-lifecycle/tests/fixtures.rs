@@ -1,7 +1,6 @@
 //! Every row of tests/fixtures/task-lifecycle.v1.json (printed by noevia-core's
 //! tools/gen-task-lifecycle-fixtures.cjs from the JS itself; byte-identical to core's copy) through
-//! the wasm call's wire format: the same table answers, stage moves and folds, the same throw codes;
-//! the strict rows are refused as ambiguous.
+//! the wasm call's wire format: the same table answers, stage moves and folds, the same throw codes.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -69,7 +68,7 @@ fn pair_rows() {
 fn fold_and_derive_rows() {
     let f = fixtures();
     let (folds, derive) = (rows(&f, "folds"), rows(&f, "derive"));
-    assert!(folds.len() >= 250 && derive.len() >= 340);
+    assert!(folds.len() >= 250 && derive.len() >= 345);
     let mut thrown = 0;
     for (i, row) in folds.iter().enumerate() {
         answered(4, row, row.get("want").unwrap(), &format!("fold {i}"));
@@ -81,21 +80,4 @@ fn fold_and_derive_rows() {
     }
     // Both outcomes are well represented.
     assert!(thrown >= 100 && thrown + 100 <= derive.len(), "{thrown}");
-}
-
-#[test]
-fn strict_rows_refused() {
-    let f = fixtures();
-    let rows = rows(&f, "strict");
-    assert!(rows.len() >= 5);
-    let ambiguous = json::parse_utf8(br#"{"error":"ambiguous"}"#, 4).unwrap();
-    for (i, row) in rows.iter().enumerate() {
-        let (status, reply) = ask(5, row);
-        assert_eq!(status, 1, "strict {i}");
-        assert_eq!(
-            &reply,
-            row.get("want").map(|_| &ambiguous).unwrap(),
-            "strict {i}"
-        );
-    }
 }
