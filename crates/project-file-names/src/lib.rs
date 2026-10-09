@@ -24,6 +24,16 @@
 //! - suffix match: decided by the tail when it is at least as long as `'/' + wanted`; otherwise
 //!   refused only when the tail is a suffix of `'/' + wanted`.
 //!
+//! One shape outside the inert set is read with a small table (noevia#1211): an inert base
+//! U+0000–U+02FF followed by exactly one combining mark U+0300–U+036F and then by an inert code
+//! point or the end, where NFC composes the two into one code point in U+0000–U+02FF
+//! ([`NFC_PAIRS`], generated from the runtime by tools/gen-nfc-pairs.cjs; e.g. `e` + U+0301 is
+//! `é`). The base is a starter that never composes with what precedes it and the next code point
+//! is inert, so NFC of the whole is NFC of the parts, and the pair's NFC is the table's. Both the
+//! wanted name and every stored name are read through this ([`compose_pairs`]) before the steps
+//! above, so an NFD `Café.md` resolves like the JS. A mark after another mark, or a pair the table
+//! does not hold, is left as is (and refused as before).
+//!
 //! So one stored name with, say, Greek in a folder name no longer blocks the whole project. Besides
 //! those refusals the port is stricter than the JS only for requests over [`MAX_INPUT_BYTES`]
 //! (`too_large`).
@@ -34,6 +44,9 @@
 
 use prompt_framing::js::trim;
 use prompt_framing::json::{self, Value};
+
+mod nfc_pairs;
+pub use nfc_pairs::NFC_PAIRS;
 
 /// The largest request [`call`] accepts (the op byte and the JSON).
 pub const MAX_INPUT_BYTES: usize = 8 * 1024 * 1024 + 1;
@@ -116,6 +129,62 @@ pub fn inert_tail_len(s: &[u16]) -> usize {
         }
     }
     s.len() - i
+}
+
+/// The single code point NFC makes of `base` + `mark` when [`NFC_PAIRS`] holds the pair.
+pub fn pair_composition(base: u16, mark: u16) -> Option<u16> {
+    NFC_PAIRS
+        .binary_search_by(|&(b, m, _)| (b, m).cmp(&(base, mark)))
+        .ok()
+        .and_then(|i| NFC_PAIRS.get(i))
+        .map(|&(_, _, c)| c)
+}
+
+/// `s` with every table pair (an inert base U+0000–U+02FF and one mark U+0300–U+036F, followed by
+/// the end or an NFC-inert code point) replaced by its NFC composition; NFC of the result is NFC of
+/// `s` (see the crate docs). Anything else is copied as is.
+pub fn compose_pairs(s: &[u16]) -> Vec<u16> {
+    let mut out = Vec::with_capacity(s.len());
+    let mut i = 0;
+    while let Some(&c) = s.get(i) {
+        let composed = match s.get(i + 1) {
+            Some(&mark) if c < 0x300 && (0x300..0x370).contains(&mark) => {
+                let next_ok = match s.get(i + 2) {
+                    None => true,
+                    Some(_) => inert_head(s.get(i + 2..).unwrap_or(&[])),
+                };
+                if next_ok {
+                    pair_composition(c, mark)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        match composed {
+            Some(p) => {
+                out.push(p);
+                i += 2;
+            }
+            None => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// Whether `s` starts with a whole NFC-inert code point.
+fn inert_head(s: &[u16]) -> bool {
+    match s {
+        [hi, lo, ..] if (0xd800..=0xdbff).contains(hi) && (0xdc00..=0xdfff).contains(lo) => {
+            let cp = 0x10000 + ((u32::from(*hi) - 0xd800) << 10) + (u32::from(*lo) - 0xdc00);
+            is_nfc_inert(cp)
+        }
+        [c, ..] => !(0xd800..=0xdfff).contains(c) && is_nfc_inert(u32::from(*c)),
+        [] => false,
+    }
 }
 
 fn inert(s: &[u16]) -> bool {
@@ -206,10 +275,12 @@ pub fn resolve(names: &[Vec<u16>], raw: &[u16]) -> Result<Resolved, Refusal> {
     if let Some(reason) = invalid_reason(raw) {
         return Ok(Resolved::Invalid(reason));
     }
-    let wanted = trim(raw);
+    let wanted = compose_pairs(trim(raw));
+    let wanted = wanted.as_slice();
     if !inert(wanted) {
         return Err(Refusal::Ambiguous);
     }
+    let names: Vec<Vec<u16>> = names.iter().map(|n| compose_pairs(n)).collect();
     // A stored name is `head + tail`, `tail` its longest inert suffix. NFC changes nothing across
     // that boundary (the tail starts with a class-0 code point that never composes with what comes
     // before), so NFC(name) = NFC(head) + tail: only the tail is known without tables.
@@ -348,10 +419,57 @@ mod tests {
                 "a file name cannot contain encoded dots or separators"
             ))
         );
+        // noevia#1211: one table mark after an inert base composes, in either name.
         assert_eq!(
             resolve(&names(&["e\u{301}.md"]), &units("é.md")),
-            Err(Refusal::Ambiguous)
+            Ok(Resolved::File(0))
         );
+        assert_eq!(
+            resolve(&names(&["x/Café.md"]), &units("Cafe\u{301}.md")),
+            Ok(Resolved::File(0))
+        );
+        assert_eq!(
+            resolve(
+                &names(&["x/Cafe\u{301}.md", "y/Café.md"]),
+                &units("Café.md")
+            ),
+            Ok(Resolved::Ambiguous(vec![0, 1]))
+        );
+        // Two marks, a mark before a non-inert code point, or a pair NFC does not compose: refused.
+        for raw in [
+            "u\u{308}\u{301}.md",
+            "e\u{301}\u{3b1}.md",
+            "q\u{301}.md",
+            "\u{301}.md",
+        ] {
+            assert_eq!(
+                resolve(&names(&["a.md"]), &units(raw)),
+                Err(Refusal::Ambiguous),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn pair_table() {
+        let mut last = None;
+        for &(b, m, c) in NFC_PAIRS.iter() {
+            assert!(b < 0x300 && (0x300..0x370).contains(&m) && c < 0x300);
+            assert!(last < Some((b, m)), "sorted and unique");
+            last = Some((b, m));
+            assert_eq!(pair_composition(b, m), Some(c));
+        }
+        assert_eq!(pair_composition(u16::from(b'e'), 0x301), Some(0xe9));
+        assert_eq!(pair_composition(u16::from(b'q'), 0x301), None);
+        assert_eq!(compose_pairs(&units("Cafe\u{301}.md")), units("Café.md"));
+        assert_eq!(compose_pairs(&units("e\u{301}")), units("é"));
+        assert_eq!(
+            compose_pairs(&units("e\u{301}\u{301}")),
+            units("e\u{301}\u{301}")
+        );
+        let lone = [u16::from(b'e'), 0x301, 0xd800];
+        assert_eq!(compose_pairs(&lone), lone.to_vec());
+        assert_eq!(compose_pairs(&units("e\u{301}😀")), units("é😀"));
     }
 
     #[test]

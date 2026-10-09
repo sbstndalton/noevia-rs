@@ -201,34 +201,69 @@ proptest! {
 }
 
 #[test]
-fn find_chains_are_bounded() {
-    for n in [64usize, 65, 1000, 50_000] {
+fn find_chains_are_linear() {
+    // noevia#1201/#1212: a find reached through -exec does not re-read its own -exec's; more than
+    // 64 -exec's in one find is every class but none/read, never standing (the JS does the same).
+    let every: Vec<Action> = vec![
+        Action::External,
+        Action::GitPush,
+        Action::Delete,
+        Action::Browser,
+        Action::Install,
+        Action::Execute,
+        Action::Network,
+        Action::Edit,
+    ];
+    for n in [64usize, 65, 1000, 10_000, 50_000] {
         let cmd = format!("find {}", "-exec find ".repeat(n));
         let t = Instant::now();
         let r = analyze_command(&units(&cmd));
         assert!(
-            t.elapsed() < Duration::from_secs(5),
+            t.elapsed() < Duration::from_millis(10),
             "{n}: {:?}",
             t.elapsed()
         );
-        if n > 64 {
-            assert_eq!(r, Err(Refusal::TooLarge), "{n}");
+        match n {
+            64 => assert_eq!(r.unwrap().actions, vec![Action::Execute]),
+            // Over MAX_WORK: the lexer stops.
+            50_000 => assert_eq!(r, Err(Refusal::TooLarge)),
+            _ => {
+                let r = r.unwrap();
+                assert_eq!(r.actions, every, "{n}");
+                assert!(!r.standable);
+            }
         }
     }
 }
 
 #[test]
 fn large_and_deep_inputs_stay_bounded() {
-    let t = Instant::now();
-    // 2 MiB of plain words, 200,000 pipes, 100,000 nested substitutions, a 1 MiB heredoc-ish string.
+    // 2 MiB of plain words, 200,000 pipes, 100,000 nested substitutions, a 1 MiB heredoc-ish
+    // string, and the same shapes just under MAX_WORK: each answers or refuses in under 10 ms
+    // (noevia#1212).
     let words = "ab ".repeat(700_000);
     let pipes = "ls | ".repeat(200_000);
     let nested = format!("{}x{}", "$(".repeat(100_000), ")".repeat(100_000));
     let quoted = format!("echo \"{}\"", "\\\"".repeat(500_000));
-    for cmd in [words, pipes, nested, quoted] {
-        let _ = classify(&execute(&cmd));
+    let small_words = "ab ".repeat(40_000);
+    let small_pipes = "ls | ".repeat(20_000);
+    for cmd in [words, pipes, nested, quoted, small_words, small_pipes] {
+        // The call is built outside the clock; best of three, so a busy CI host is not a failure.
+        let call = execute(&cmd);
+        let took = (0..3)
+            .map(|_| {
+                let t = Instant::now();
+                let _ = classify(&call);
+                t.elapsed()
+            })
+            .min()
+            .unwrap();
+        assert!(
+            took < Duration::from_millis(10),
+            "{} chars: {took:?}",
+            cmd.len()
+        );
     }
-    assert!(t.elapsed() < Duration::from_secs(20), "{:?}", t.elapsed());
     // Over the request cap: refused.
     let mut big = vec![1u8];
     big.extend(vec![b' '; MAX_INPUT_BYTES]);

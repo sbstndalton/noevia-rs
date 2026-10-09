@@ -7,7 +7,7 @@
     clippy::indexing_slicing
 )]
 
-use project_file_names::{call, invalid_reason, resolve, Resolved};
+use project_file_names::{call, compose_pairs, invalid_reason, resolve, Resolved};
 use prompt_framing::js::{trim, units};
 use proptest::prelude::*;
 use std::time::{Duration, Instant};
@@ -45,12 +45,13 @@ proptest! {
         }
         match r {
             Ok(Resolved::File(i)) => {
-                let w = trim(&units(&raw)).to_vec();
-                let name = &n[i];
+                // Compared as NFC: a table pair (noevia#1211) is its composition on both sides.
+                let w = compose_pairs(trim(&units(&raw)));
+                let name = &compose_pairs(&n[i]);
                 let mut suffix = vec![u16::from(b'/')];
                 suffix.extend(&w);
                 prop_assert!(name == &w || name.ends_with(&suffix));
-                prop_assert!(invalid_reason(&w).is_none());
+                prop_assert!(invalid_reason(trim(&units(&raw))).is_none());
             }
             Ok(Resolved::Ambiguous(c)) => {
                 prop_assert!(c.len() > 1 && c.windows(2).all(|p| p[0] < p[1]));

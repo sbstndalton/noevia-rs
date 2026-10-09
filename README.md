@@ -132,7 +132,8 @@ one slice at a time.
   byte-identical; otherwise a call is never auto-allowed or standing, a decision is at least `ask`,
   an option `cancelled`. Stricter: command array elements `String()` reads unpredictably, URL hosts
   outside plain ASCII labels or a canonical dotted quad (in `decide`'s network branch), more than
-  `MAX_WORK` reading work or `find -exec find` nested past 64, inputs over 8 MiB. In
+  `MAX_WORK` reading work (every refusal well under 10 ms), inputs over 2 MiB. More than 64
+  `-exec`s in one find is every class, never standing, as in the JS (noevia#1212). In
   `dav-parse.wasm` as `code_actions`. Table from noevia-core
   (`node tools/gen-code-actions-fixtures.cjs`), copied byte-for-byte to
   `crates/code-actions/tests/fixtures/code-actions.v1.json`.

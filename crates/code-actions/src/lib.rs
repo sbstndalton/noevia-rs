@@ -27,9 +27,11 @@
 //!   the port does not read with certainty: anything but ASCII letters, digits, `_` and `-` in
 //!   non-empty labels (no `xn--` label, no label starting or ending with `-`, no trailing dot),
 //!   an IP literal in brackets, or a numeric last label other than a canonical dotted quad.
-//! - `too_large`: more than [`MAX_WORK`] units of reading work, or `find -exec find …` nested
-//!   deeper than [`MAX_FIND_NESTING`]. The JS's `find` re-reads every later `-exec` from each
-//!   earlier one, which is exponential in the number of nested `find -exec`; the port stops.
+//! - `too_large`: more than [`MAX_WORK`] units of reading work (lexed text, words visited), which
+//!   keeps every refusal well under 10 ms. Nested `find -exec find …` is read like the JS after
+//!   noevia#1201: a find reached through `-exec` does not re-read its own `-exec`s (the outer find
+//!   already reads each of them), so chains are linear; more than [`MAX_FIND_EXECS`] `-exec`s in
+//!   one find is every class but none/read, never standing, in the JS and here.
 //!
 //! The host (noevia-core CODE_ACTIONS_IMPL) always computes the JS answer first and keeps it only
 //! when the port's reply is byte-identical; otherwise a classification is made stricter (never
@@ -41,15 +43,29 @@
 
 #![forbid(unsafe_code)]
 
+use std::collections::HashSet;
+
 use prompt_framing::js::{is_js_space, trim, units};
 use prompt_framing::json::{self, Value};
 
 /// The largest request [`call`] accepts (the op byte and the JSON).
-pub const MAX_INPUT_BYTES: usize = 8 * 1024 * 1024 + 1;
+///
+/// noevia#1212: 2 MiB, so reading even a refused request stays under 10 ms; a command of more than
+/// [`MAX_WORK`] units is refused whatever the request size.
+pub const MAX_INPUT_BYTES: usize = 2 * 1024 * 1024 + 1;
 /// Units of reading work (lexed text, words visited) one request may cost.
-pub const MAX_WORK: u64 = 64 * 1024 * 1024;
-/// `find … -exec find … -exec …` nesting the port follows.
-pub const MAX_FIND_NESTING: usize = 64;
+///
+/// noevia#1212: 256 Ki units, so a refusal comes back in well under 10 ms in the wasm module; a
+/// command of more than 256 Ki UTF-16 units is refused (`too_large`) and the host fails closed.
+pub const MAX_WORK: u64 = 256 * 1024;
+/// `MAX_FIND_EXECS` of the JS: a find with more `-exec`s is read as every class, never standing.
+pub const MAX_FIND_EXECS: usize = 64;
+/// Reading work charged for each command text and each command (segment, `-exec` slice) read, on
+/// top of its length: the table lookups a command costs (noevia#1212), so many tiny segments or
+/// substitutions are bounded like long text.
+const CALL_COST: usize = 64;
+/// Extra reading work per word of a curl/wget/httpie command (the flag tables).
+const NETWORK_WORD_COST: usize = 4;
 /// `MAX_DEPTH` of the JS: nested command texts read.
 const MAX_DEPTH: usize = 6;
 /// JSON nesting kept: request (0), call (1), rawInput / locations (2), a command array (3), its
@@ -61,7 +77,7 @@ const JSON_DEPTH: usize = 4;
 pub enum Refusal {
     /// Not the documented request shape.
     Input,
-    /// Over [`MAX_INPUT_BYTES`], [`MAX_WORK`] or [`MAX_FIND_NESTING`].
+    /// Over [`MAX_INPUT_BYTES`] or [`MAX_WORK`].
     TooLarge,
     /// A value whose JS reading the port does not reproduce with certainty.
     Ambiguous,
@@ -591,6 +607,19 @@ fn one(a: Action, standable: bool) -> Part {
     }
 }
 
+/// `[...new Set(words)]`: each word once, first occurrence order, in linear time (thousands of
+/// distinct `-fprint`/redirect targets or locations must not cost a quadratic scan, noevia#1212).
+fn unique_words<'a>(words: impl Iterator<Item = &'a Word>) -> Vec<Word> {
+    let mut seen: HashSet<&'a [u16]> = HashSet::new();
+    let mut out = Vec::new();
+    for w in words {
+        if seen.insert(w.as_slice()) {
+            out.push(w.clone());
+        }
+    }
+    out
+}
+
 fn execute_only() -> Analysis {
     Analysis {
         action: Action::Execute,
@@ -612,7 +641,8 @@ fn is_dev_stream(t: &[u16]) -> bool {
     }
 }
 
-fn analyze(command: &[u16], depth: usize, work: &mut Work, finds: usize) -> R<Analysis> {
+fn analyze(command: &[u16], depth: usize, work: &mut Work) -> R<Analysis> {
+    work.charge(CALL_COST)?;
     let text = trim(command);
     if text.is_empty() || depth > MAX_DEPTH {
         return Ok(execute_only());
@@ -635,10 +665,10 @@ fn analyze(command: &[u16], depth: usize, work: &mut Work, finds: usize) -> R<An
         writes.extend(r.writes);
     };
     for words in &lexed.segments {
-        add(classify_words(words, depth, work, finds)?);
+        add(classify_words(words, depth, work, false)?);
     }
     for inner in &lexed.nested {
-        let r = analyze(inner, depth + 1, work, finds)?;
+        let r = analyze(inner, depth + 1, work)?;
         add(Part {
             actions: Found(r.actions),
             standable: r.standable,
@@ -684,12 +714,7 @@ fn analyze(command: &[u16], depth: usize, work: &mut Work, finds: usize) -> R<An
         && !lexed.dynamic
         && lexed.segments.len() == 1
         && found.0.len() == 1;
-    let mut unique: Vec<Word> = Vec::new();
-    for w in writes {
-        if !unique.contains(&w) {
-            unique.push(w);
-        }
-    }
+    let unique = unique_words(writes.iter());
     Ok(Analysis {
         action,
         actions: found.0,
@@ -859,9 +884,9 @@ fn publishes(name: &[u16], args: &[&Word]) -> bool {
     false
 }
 
-/// `classifyWords(input, depth)`.
-fn classify_words(input: &[Word], depth: usize, work: &mut Work, finds: usize) -> R<Part> {
-    work.charge(input.len())?;
+/// `classifyWords(input, depth, viaExec)`.
+fn classify_words(input: &[Word], depth: usize, work: &mut Work, via_exec: bool) -> R<Part> {
+    work.charge(input.len().saturating_add(CALL_COST))?;
     let mut words: &[Word] = input;
     let mut standable = true;
     let mut prefixed = false;
@@ -932,7 +957,7 @@ fn classify_words(input: &[Word], depth: usize, work: &mut Work, finds: usize) -
         let Some(inner) = inner else {
             return Ok(one(Action::Execute, false));
         };
-        let r = analyze(&inner, depth + 1, work, finds)?;
+        let r = analyze(&inner, depth + 1, work)?;
         let mut actions = Found(r.actions);
         actions.add(Action::Execute);
         return Ok(Part {
@@ -946,7 +971,7 @@ fn classify_words(input: &[Word], depth: usize, work: &mut Work, finds: usize) -
         return Ok(one(Action::Execute, false));
     }
     if is(name, "find") {
-        return find_words(rest, standable, depth, work, finds);
+        return find_words(rest, standable, depth, work, via_exec);
     }
     if is(name, "git") || starts(name, "git-") {
         let (action, own) = git_action(name, rest);
@@ -974,6 +999,8 @@ fn classify_words(input: &[Word], depth: usize, work: &mut Work, finds: usize) -
         return Ok(one(Action::Execute, false));
     }
     if one_of(name, NETWORK_COMMANDS) {
+        // Each word is matched against the flag tables, twice (`networkWords`, `plainNetwork`).
+        work.charge(rest.len().saturating_mul(NETWORK_WORD_COST))?;
         let mut actions = network_words(name, rest);
         if prefixed {
             actions.add(Action::Execute);
@@ -1046,16 +1073,34 @@ fn inline_code_flag(w: &[u16]) -> bool {
     })
 }
 
-/// The `find` branch of `classifyWords`.
+/// `-exec` and friends: the words up to the next `;` or `+` run as a command.
+const FIND_EXEC: &[&str] = &["-exec", "-execdir", "-ok", "-okdir"];
+
+/// The `find` branch of `classifyWords` (noevia#1201). Every `-exec` slice of the outer find is
+/// classified by the outer loop, including the `-exec`s of a find that is itself run by `-exec`
+/// (the slices nest), and the outer loop sees every `-delete`/`-fprint` word too. So a find reached
+/// through `-exec` (`via_exec`) scans its own words but does not classify its own `-exec` slices
+/// again. More than [`MAX_FIND_EXECS`] `-exec`s: every class but none/read, never standing.
 fn find_words(
     rest: &[Word],
     standable: bool,
     depth: usize,
     work: &mut Work,
-    finds: usize,
+    via_exec: bool,
 ) -> R<Part> {
-    if finds >= MAX_FIND_NESTING {
-        return Err(Refusal::TooLarge);
+    work.charge(rest.len())?;
+    if rest.iter().filter(|w| one_of(w, FIND_EXEC)).count() > MAX_FIND_EXECS {
+        let every = SEVERITY
+            .iter()
+            .copied()
+            .filter(|a| *a != Action::None && *a != Action::Read)
+            .collect();
+        return Ok(Part {
+            actions: Found(every),
+            standable: false,
+            complex: false,
+            writes: Vec::new(),
+        });
     }
     let mut actions = Found(vec![Action::Execute]);
     let mut writes = Vec::new();
@@ -1071,16 +1116,19 @@ fn find_words(
             }
             own = false;
         }
-        if one_of(w, &["-exec", "-execdir", "-ok", "-okdir"]) {
+        if one_of(w, FIND_EXEC) {
             own = false;
+            if via_exec {
+                continue;
+            }
             let after = rest.get(k + 1..).unwrap_or(&[]);
-            work.charge(after.len())?;
             let end = after.iter().position(|x| is(x, ";") || is(x, "+"));
             let inner = match end {
                 Some(e) => after.get(..e).unwrap_or(&[]),
                 None => after,
             };
-            let r = classify_words(inner, depth + 1, work, finds + 1)?;
+            work.charge(inner.len())?;
+            let r = classify_words(inner, depth + 1, work, true)?;
             for a in r.actions.0 {
                 actions.add(a);
             }
@@ -1631,7 +1679,7 @@ pub fn classify(call: &Call) -> R<Classified> {
     let mut writes: Vec<Word> = Vec::new();
     if action == Action::Execute {
         if !command.is_empty() {
-            let a = analyze(&command, 0, &mut work, 0)?;
+            let a = analyze(&command, 0, &mut work)?;
             action = a.action;
             actions = a.actions;
             simple = a.simple;
@@ -1644,13 +1692,8 @@ pub fn classify(call: &Call) -> R<Classified> {
     if call.raw_input && call.outside {
         standable = false;
     }
-    let mut paths: Vec<Word> = Vec::new();
     let named = call.locations.iter().flatten().filter(|p| !p.is_empty());
-    for p in named.chain(writes.iter()) {
-        if !paths.contains(p) {
-            paths.push(p.clone());
-        }
-    }
+    let paths = unique_words(named.chain(writes.iter()));
     Ok(Classified {
         action,
         approval: approval_for(action),
@@ -1665,7 +1708,7 @@ pub fn classify(call: &Call) -> R<Classified> {
 
 /// `analyzeCommand(command)` (exposed for tests and properties).
 pub fn analyze_command(command: &[u16]) -> R<Analysis> {
-    analyze(command, 0, &mut Work { left: MAX_WORK }, 0)
+    analyze(command, 0, &mut Work { left: MAX_WORK })
 }
 
 // ── hostsOf ──────────────────────────────────────────────────────────────────
@@ -2261,9 +2304,10 @@ mod tests {
     }
 
     #[test]
-    fn find_chains_stop() {
+    fn find_chains_are_linear() {
         let deep = format!("find {}", "-exec find ".repeat(200));
-        assert_eq!(cls(&deep), Refusal::TooLarge.json());
+        assert!(cls(&deep).contains(r#""actions":["external_account","git_push","delete","open_browser","install_dependency","execute_command","network","edit_file"]"#));
+        assert!(cls(&deep).contains(r#""standable":false"#));
         let ok = format!("find {}", "-exec find ".repeat(10));
         assert!(ok.len() > 10 && cls(&ok).contains("execute_command"));
     }
