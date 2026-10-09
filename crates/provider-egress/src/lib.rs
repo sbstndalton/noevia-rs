@@ -32,8 +32,11 @@
 //! - Requests over [`MAX_INPUT_BYTES`] (`too_large`), which the host treats as a refusal.
 //!
 //! Linear in the input (the DAV-URL patterns are matched with precomputed next-slash and
-//! line-terminator tables, never by backtracking; see noevia#1209), bounded recursion (four
-//! levels, the JS's own `depth > 3` limit), no panics.
+//! line-terminator tables, never by backtracking), bounded recursion (four levels, the JS's own
+//! `depth > 3` limit), no panics. This does not mitigate noevia#1209 under wasm: the host runs the
+//! JS first. The JS itself is bounded since #1209 (a path argument over [`MAX_PATH_UNITS`] code
+//! units is refused before any regex, and `hostOf` trims dots with a loop); the port mirrors the
+//! path cap.
 
 #![forbid(unsafe_code)]
 
@@ -43,6 +46,9 @@ use prompt_framing::json::{self, Value};
 
 /// The largest request [`call`] accepts (the op byte and the JSON).
 pub const MAX_INPUT_BYTES: usize = 8 * 1024 * 1024 + 1;
+
+/// toolRefusal's `MAX_PATH_UNITS`: a longer path argument is refused as in the Diary folder.
+pub const MAX_PATH_UNITS: usize = 4096;
 
 /// JSON nesting kept below a tool call's arguments. `pathArguments` reads containers at most
 /// eight levels down (depth 3, each step an object value or an array element of one), so deeper
@@ -694,6 +700,9 @@ pub fn tool_refusal(
     let mut folder_slash = folder.clone();
     folder_slash.push(SLASH);
     for value in paths {
+        if value.len() > MAX_PATH_UNITS {
+            return inside();
+        }
         let Some(target) = canonical_path(value) else {
             // Unknown: it may be the Diary folder.
             return inside();
