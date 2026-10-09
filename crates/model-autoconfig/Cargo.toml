@@ -1,7 +1,7 @@
 [package]
 name = "model-autoconfig"
 version = "0.1.0"
-description = "noevia model-manager autoconfig's size core (fit sweep, pick, context cap, presets, prompt cache), matching autoconfig_core.py"
+description = "noevia model-manager autoconfig (size core, input prep, values, speculative profiles, companion-file rules, baseline parsing, diff and presentation), matching autoconfig_core.py"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate crates/model-autoconfig's differential fixtures (MODEL_AUTOCONFIG, autoconfig slices 1-2).
+"""Generate crates/model-autoconfig's differential fixtures (MODEL_AUTOCONFIG, autoconfig slices 1-6).
 
 The reference is noevia-services' model-manager/app/autoconfig_core.py (`size_plan`, the size
 core of autoconfig: fit sweep, pick, context cap, presets, prompt cache). It imports only the
@@ -9,7 +9,8 @@ stdlib, so it runs here without the service's dependencies:
 
 Writes crates/model-autoconfig/tests/fixtures/model-autoconfig.v1.json (the size core) and
 model-autoconfig-check.v1.json (slice 2: `check` with one part, input prep or values assembly;
-the reference is `check_reference`). Both files are copied verbatim into noevia-services
+the reference is `check_reference`) and model-autoconfig-present.v1.json (slices 3-6: `check` with
+one of the parts spec, files, present or baseline). All three files are copied verbatim into noevia-services
 (model-manager/tests/fixtures/), where CI checks they are byte-identical. Every input is synthetic: invented model shapes and backends, never a real
 model file, never a model run.
 
@@ -30,6 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "crates" / "model-autoconfig" / "tests" / "fixtures" / "model-autoconfig.v1.json"
 OUT_CHECK = OUT.with_name("model-autoconfig-check.v1.json")
+OUT_PRESENT = OUT.with_name("model-autoconfig-present.v1.json")
 CHECK_SEED = 20261009
 CHECK_RANDOM_CASES = 400
 SERVICE_PYTHON = (3, 12)
@@ -427,6 +429,255 @@ def check_reference(core, parts: dict) -> dict:
         return {"error": type(e).__name__}
 
 
+# ---- slices 3-6: speculative profiles, companion files, presentation, baseline (`check`) ----
+#
+# Written to model-autoconfig-present.v1.json, one part per case. Case names starting
+# "[stricter]" are inputs the port refuses on purpose (a non-ASCII section or model file name,
+# repr() past U+024F, a case-insensitive comparison of two non-ASCII strings, an unsorted
+# known-key list, a non-string saved value) while Python answers.
+
+PRESENT_SEED = 20261010
+PRESENT_RANDOM_CASES = 1600
+
+SPEC_STRS = ["", " ", "none", "None", "draft-mtp", "draft-mtp,ngram-simple", "ngram-simple", " draft-mtp ",
+             "\u3000ngram-simple", "4", "8", "2", "1", "0.25", "0.05", "0.60", " 4 ", "999", "12",
+             "/models/m/mtp-Q8_0.gguf", " /models/m/mtp.gguf "]
+SPEC_PROFILE_KNOBS = [("draft-mtp", {"spec-draft-n-max": "4", "spec-draft-p-min": "0.25"}),
+                      ("draft-mtp,ngram-simple", {"spec-draft-n-max": "8", "spec-draft-n-min": "1",
+                                                  "spec-draft-p-min": "0.05"}),
+                      ("draft-mtp", {"spec-draft-n-max": "2", "spec-draft-p-min": "0.60"}),
+                      ("ngram-simple", {}), ("none", {}), ("", {})]
+SPEC_SECTION = ("spec-type", "spec-draft-model", "spec-draft-ngl", "spec-draft-n-max", "spec-draft-n-min",
+                "spec-draft-p-min")
+
+
+def spec_case(r: random.Random) -> dict:
+    current = None
+    if r.random() < 0.75:
+        current = {}
+        if r.random() < 0.6:
+            stype, knobs = r.choice(SPEC_PROFILE_KNOBS)
+            current["spec-type"] = stype
+            current.update(knobs)
+        for k in r.sample(SPEC_SECTION, r.randint(0, 3)):
+            current[k] = r.choice(SPEC_STRS)
+        if r.random() < 0.03:
+            current[r.choice(SPEC_SECTION)] = r.choice([None, 1, True, []])
+    return {"section": r.choice(["", "m", "Qwen-27B-Q4"]), "current": current,
+            "spec_profile": r.choice(["", "", None, "off", "balanced", "coding", "writing", "ngram", "custom",
+                                      "bogus", " coding ", "\u3000ngram", "Custom"]),
+            "mode": r.choice(["", "chat", "code", "agent", "writing", "x", None, 3] + ([[1]] if r.random() < 0.03 else [])),
+            "files": r.random() < 0.6, "found_mtp": r.choice(["", "", "/models/m/MTP/mtp-Q4_0.gguf"]),
+            "nextn": r.choice([None, None, 0, 1, 2, "1", " 2 ", True, False, 2.5, -1, "0"]
+                              + (["x", []] if r.random() < 0.05 else []))}
+
+
+FILE_NAMES = ["m-Q4_K_M.gguf", "m-Q4_K_M-mmproj-F16.gguf", "mmproj-BF16.gguf", "mmproj-F32.gguf", "MMPROJ.GGUF",
+              "mmproj", "x.mmproj.gguf.txt", "mQ4KM-MTP-Q8_0.gguf", "m-Q4_K_M-draft-Q4_0.gguf", "m.draft.gguf",
+              "draft-m.gguf", "m-noMTP-x.gguf", "nodraft-draft-.gguf", "x.Gguf", ".gguf", "x.", "a.GGUF", "mtp",
+              "mtp.gguf", "draft.gguf", "x-mtp.gguf", "MTP-x.gguf", "a_mtp_b.gguf", "a.mtp.b.gguf", "-draft-",
+              "\u0130-draft-.gguf", "K\u212a-mtp.gguf", "\u00fc-mtp-.gguf", "m\u00f6del-mmproj.gguf", "mm\u0130proj.gguf",
+              "m-Q4_K_M", "M-Q4-K-M-mtp.gguf", "big-mtp-q4.gguf", "s_mtp_.gguf", "s.mtp.gguf", "mmproj-s.gguf",
+              "m.q4.k.m-mmproj.gguf", "no_mtp-x.gguf", "x-draft", "draft"]
+SIZES = [0, 1, 7, 60 * 2**20, 100 * 2**20, 2**31, 2**31 + 1, 3 * 2**30, 60 * 2**20]
+SECTIONS = ["m-Q4_K_M", "m", "mQ4KM", "M-Q4_K_M", "x", "s", "big-mtp-q4", "a.b", "-", "", "mtp", "draft-m"]
+
+
+def listing(r: random.Random) -> list | None:
+    if r.random() < 0.06:
+        return None
+    out = []
+    for name in sorted(r.sample(FILE_NAMES, r.randint(0, 9))):
+        kind = r.choices(["file", "other", "error"], [0.85, 0.12, 0.03])[0]
+        size = (r.choice(SIZES) if r.random() > 0.03 else None) if kind == "file" else None
+        out.append([name, kind, size])
+    return out
+
+
+def files_call(r: random.Random) -> dict:
+    rule = r.choice(["mmproj_subdir", "mmproj_flat", "mtp_folder", "mtp_flat", "projector"])
+    if rule == "projector":
+        return {"rule": rule, "files": r.random() < 0.7,
+                "current": r.choice(["", "", " ", "/models/m/mine.gguf", " /models/m/x.gguf ", "\u3000"]),
+                "found": r.choice(["", "/models/m/mmproj-F16.gguf"]), "stat_gb": r.choice([0.0, 0.78, 1.5500001, 0.0001]),
+                "vision": r.random() < 0.8,
+                "override": r.choice([None, None, 0, 0.0, 0.8, 2, True, False, -1.0, float("nan"), float("inf")]
+                                     + (["x"] if r.random() < 0.05 else []))}
+    req = {"rule": rule, "listing": listing(r)}
+    if rule == "mmproj_subdir":
+        req["subdir"] = r.choice(["m", "a/b", "Big-MTP-Q4"])
+    else:
+        req["section"] = r.choice(SECTIONS)
+    if rule == "mtp_folder":
+        req["prefix"] = r.choice(["/models/m/", "/models/m/MTP/"])
+    return req
+
+
+BASE_VALUES = [("model", ["/models/m/m-Q4_K_M.gguf"]), ("ctx-size", ["32768", "65536", "8192"]),
+               ("parallel", ["1", "2", "4"]), ("cont-batching", ["on"]), ("keep", ["256"]), ("batch-size", ["4096", "1024"]),
+               ("ngl", ["999", "40"]), ("flash-attn", ["on", "ON"]), ("cache-type-k", ["q8_0"]), ("cache-type-v", ["q8_0"]),
+               ("cache-reuse", ["1"]), ("jinja", ["true"]), ("mmproj", ["/models/m/mmproj-F16.gguf"]),
+               ("spec-type", ["", "draft-mtp"]), ("spec-draft-n-max", ["", "4"]), ("spec-draft-model", ["", "/models/m/h.gguf"]),
+               ("fit", ["on"]), ("cache-ram", ["8192", "1024"]), ("reasoning", ["on"]), ("chat-template-kwargs", ['{"reasoning_effort": "medium"}']),
+               ("mmproj-offload", ["on"]), ("image-max-tokens", ["1024"]), ("ubatch-size", ["1024", "4096"]),
+               ("rope-scaling", ["linear"]), ("rope-scale", ["2.5", "4.0"]), ("split-mode", ["layer"]),
+               ("lora", ["/x.gguf"]), ("threads", ["8"])]
+CUR_STRS = ["", " ", "0", "1", "8", "999", " 999 ", "30", "4", "on", "true", "TRUE", "On", "1_024", " 32768 ", "32768",
+            "65536", "x", "-5", "q8_0", "Q8_0", "it's", 'say "hi"', "both'\"", "back\\slash", "tab\there", "nl\nx",
+            "\x7f", "\x01", "\u00fc", "\u0130", "/models/m/mmproj-F16.gguf", "none"]
+CUR_KEYS = [k for k, _ in BASE_VALUES] + ["n-cpu-moe", "cpu-moe", "tensor-split", "reasoning-format", "spec-draft-ngl",
+                                          "spec-draft-p-min", "rope-scale", "chat-template-file", "context-shift"]
+QUANT_NAMES = ["m-Q4_K_M.gguf", "m-Q2_K.gguf", "x-UD-IQ2_XS.gguf", "q-iq3_m-c", "Q3", "a.Q1_0.gguf", "IQ4_NL",
+               "b_q2_k_s", "c-UD-Q3_K_XL-00001-of-00002.gguf", "Q2__K", "IQ3xx", "aQ2_K", "m-Q3\n", "F16", ""]
+
+
+def present_case(r: random.Random) -> dict:
+    values = []
+    for k, opts in r.sample(BASE_VALUES, r.randint(1, 14)):
+        values.append([k, r.choice(opts)])
+    if r.random() < 0.05:
+        values.append([r.choice(["weird-key", "zz-top", "a"]), "1"])
+    current = None
+    if r.random() < 0.7:
+        current = {k: r.choice(CUR_STRS) for k in r.sample(CUR_KEYS, r.randint(0, 10))}
+        if r.random() < 0.3:
+            current["ctx-size"] = str(r.choice([8192, 32768, 65536, 131072]) * r.choice([1, 2]))
+    recommended = r.random() < 0.85
+    rec_backend = None
+    if recommended:
+        rec_backend = {}
+        if r.random() < 0.8:
+            rec_backend["baseline"] = r.choice([{}, None, {k: r.choice(CUR_STRS + [None]) for k in r.sample(CUR_KEYS, r.randint(0, 5))}])
+        if r.random() < 0.8:
+            rec_backend["gpu_count"] = r.choice([1, 1, 2, 3, True] + (["2", 2.7] if r.random() < 0.1 else []))
+    presets = []
+    if recommended:
+        for key in r.sample(["fast", "balanced", "long-ctx"], r.randint(0, 3)):
+            presets.append({"key": key, "ctx": r.choice([8192, 32768, 65536, 16384]),
+                            "offload_kind": r.choice(["none", "ngl", "n-cpu-moe", "cpu-moe"]),
+                            "ngl": r.choice([999, 30, 0]), "n_cpu_moe": r.choice([0, 4, 6])})
+    feats = r.choice([None, {}, {k: r.choice([True, False, 0, 1, "", "x", None]) for k in FEATURE_KEYS if r.random() < 0.6}])
+    return {"values": values, "current": current, "recommended": recommended,
+            "rec_name": r.choice(["llama-cuda", "a", 1, 1.0, True, None]) if recommended else None,
+            "rec_backend": rec_backend,
+            "arch": r.choice(["llama", "gemma3", "Gemma2", "GEMMA4", "", None, "qwen3", "g\u0130mma"]),
+            "chat_template": r.random() < 0.8, "features": feats,
+            "n_sessions": r.choice([1, 1, 2, 4, 8]), "rec_ctx": r.choice([0, 8192, 16384, 32768, 24576, 1000, 65536]),
+            "has_mmproj": r.random() < 0.3, "mmproj_vram_gb": r.choice([0.5, 1.9100000001, 2.125, 0.0]),
+            "mmproj_gb": r.choice([0.0, 0.78, 1.555, 2, True, 0.005]),
+            "rope": r.choice([{}, {"arch": r.choice(["gemma3", "llama", None]),
+                                   "rope_scaling_type": r.choice([None, "", "none", " NONE ", "NONE", "linear", "\u3000none"]),
+                                   "rope_scaling_factor": r.choice([None, 0, 4.0])}]),
+            "native_ctx": r.choice([0, 4096, 8192, 131072, -5, 1000]), "layers": r.choice([32, 48, 1]),
+            "experts": r.choice([None, None, 1, 2, 8, 128, True, 0, -3, 2**70]),
+            "offload": [r.choice(["none", "ngl", "n-cpu-moe", "cpu-moe"]), r.choice([0, 4, 12])],
+            "presets": presets, "model_rel": r.choice(["", "/models/m/" + r.choice(QUANT_NAMES), r.choice(QUANT_NAMES)]),
+            "general": r.choice([None, {}, {"params_raw": r.choice([None, 0, 4e9, 35e9, 1e11, 99_999_999_999, 100_000_000_000, 1.2e11])}])}
+
+
+BASELINE_ARGS = ["-ngl", "999", "-c", "8192", "--ctx-size", "4096", "-fa", "--flash-attn", "on", "-np", "2", "--parallel",
+                 "-ctv", "q8_0", "-ctk", "--jinja", "--models-dir", "/models", "-t", "8", "--threads", "--port", "8080",
+                 "--cache-type-v", "Q8_0", "--unknown", "-x", "--no-mmap", "--mmproj", "--cont-batching", "--cpu-moe",
+                 "-ncmoe", "4", "--n-cpu-moe", "-ub", "2048", "--batch-size", "--split-mode", "layer", "--", "-", "",
+                 "-1", "--keep", "--spec-type", "--reasoning", "ON", "--fit", "-fit", "-kvo", "-cmoe", "-fitt", "-mg"]
+# A synthetic stand-in for ini.ALL_KNOWN_KEYS (the rule takes the set as data).
+KNOWN = sorted({"ctx-size", "flash-attn", "parallel", "jinja", "threads", "cache-type-v", "cache-type-k", "mmproj",
+                "cont-batching", "cpu-moe", "n-cpu-moe", "batch-size", "split-mode", "keep", "spec-type", "reasoning",
+                "fit", "ngl", "ubatch-size", "", "models-dir"} - {""})
+
+
+def baseline_case(r: random.Random) -> dict:
+    args = [r.choice(BASELINE_ARGS) for _ in range(r.randint(0, 16))]
+    if r.random() < 0.04 and args:
+        args[r.randrange(len(args))] = r.choice([None, 1, True, 2.5, [], {}])
+    return {"args": args, "known": KNOWN}
+
+
+def present_handmade() -> list[tuple[str, dict]]:
+    r = random.Random(1)
+    base = present_case(r)
+    base.update(values=[["parallel", "1"], ["ctx-size", "32768"]], current={"ctx-size": "32768"}, model_rel="m.gguf",
+                arch="llama", rec_backend={"baseline": {}, "gpu_count": 1}, recommended=True, rec_name="a")
+
+    def pc(**over) -> dict:
+        d = json.loads(json.dumps(base))
+        d.update(over)
+        return {"present": d}
+    return [
+        ("present: the #1152 order, changed then superseded sorted",
+         pc(values=[["parallel", "2"], ["ctx-size", "8192"]],
+            current={"tensor-split": "1,1", "ngl": "30", "keep": "64", "cpu-moe": "on", "fit": "off", "parallel": "1"})),
+        ("present: a baseline conflict and a redundancy", pc(rec_backend={"baseline": {"parallel": "1", "ctx-size": "32768"}},
+                                                             values=[["parallel", "2"], ["ctx-size", "32768"]])),
+        ("present: multi-GPU disclosure", pc(rec_backend={"gpu_count": 4})),
+        ("present: a gpu count that is not a number raises", pc(rec_backend={"gpu_count": "four"})),
+        ("present: projector reservation formatted", pc(has_mmproj=True, mmproj_vram_gb=2.125, mmproj_gb=0.625)),
+        ("present: MoE with expert offload", pc(experts=64, offload=["n-cpu-moe", 12])),
+        ("present: MoE that does not fit", pc(experts=64, recommended=False, rec_backend=None, presets=[])),
+        ("present: rope extension quirk", pc(values=[["rope-scaling", "linear"], ["rope-scale", "2.5"]], native_ctx=8192, rec_ctx=20480)),
+        ("present: a sub-Q4 warning and a small context", pc(model_rel="/models/x/m-UD-IQ2_XS.gguf", rec_ctx=8192)),
+        ("present: params as a string raises... in Python only", pc(model_rel="m-Q2_K.gguf", general={"params_raw": []})),
+        ("present: the saved preset by ngl", pc(current={"ctx-size": "65536", "ngl": " 30 "},
+                                                presets=[{"key": "fast", "ctx": 32768, "offload_kind": "ngl", "ngl": 30, "n_cpu_moe": 0}],
+                                                n_sessions=2)),
+        ("present: the saved preset by cpu-moe", pc(current={"ctx-size": "32768", "cpu-moe": "TRUE"},
+                                                    presets=[{"key": "long-ctx", "ctx": 32768, "offload_kind": "cpu-moe", "ngl": 999, "n_cpu_moe": 0}])),
+        ("present: an undeclared key is a quirk", pc(values=[["parallel", "1"], ["zz", "1"], ["aa", "2"]])),
+        ("present: Kelvin sign lower-cases to k", pc(rec_backend={"baseline": {"cache-type-k": "Q8_0", "threads": "K\u212a"}},
+                                                     values=[["cache-type-k", "q8_0"], ["threads", "kk"]], current=None)),
+        ("[stricter] present: repr past U+024F", pc(current={"ctx-size": "\u2192"})),
+        ("present: repr of a no-break space and C1 controls", pc(current={"keep": "\u00a0\u0085\u00ad\u00ff"})),
+        ("[stricter] present: a saved context of Unicode spaces", pc(current={"ctx-size": "\u00a0"},
+                                                                     presets=[{"key": "fast", "ctx": 32768, "offload_kind": "none", "ngl": 999, "n_cpu_moe": 0}])),
+        ("[stricter] present: a non-ASCII model file name", pc(model_rel="/models/m/m\u00f6del-Q2_K.gguf")),
+        ("[stricter] present: two non-ASCII baseline values", pc(rec_backend={"baseline": {"parallel": "\u00c9"}},
+                                                                 values=[["parallel", "\u00e9"]])),
+        ("[stricter] present: a non-string saved value", pc(current={"ctx-size": ["32768"]})),
+        ("[stricter] present: a 40-digit saved context", pc(current={"ctx-size": "9" * 40},
+                                                            presets=[{"key": "fast", "ctx": 32768, "offload_kind": "none", "ngl": 999, "n_cpu_moe": 0}])),
+        ("spec: a hand-tuned section echoes every key", {"spec": {"section": "m", "current": {"spec-type": "draft-mtp", "spec-draft-n-max": " 6 "},
+                                                                  "spec_profile": "", "mode": "", "files": True, "found_mtp": "",
+                                                                  "nextn": None}}),
+        ("spec: a head-needing profile without a head falls back to off",
+         {"spec": {"section": "m", "current": None, "spec_profile": "coding", "mode": "", "files": False, "found_mtp": "",
+                   "nextn": 0}}),
+        ("spec: built-in MTP layers count as a head", {"spec": {"section": "m", "current": None, "spec_profile": "", "mode": "agent",
+                                                                "files": False, "found_mtp": "", "nextn": "2"}}),
+        ("spec: a mode that is a list raises", {"spec": {"section": "m", "current": None, "spec_profile": "", "mode": [1],
+                                                         "files": True, "found_mtp": "/models/m/h.gguf", "nextn": None}}),
+        ("files: the smallest projector in the folder", {"files": [{"rule": "mmproj_subdir", "subdir": "m", "listing": [
+            ["mmproj-BF16.gguf", "file", 800], ["mmproj-F16.gguf", "file", 800], ["mmproj-F32.gguf", "file", 1600]]}]}),
+        ("files: an unsized projector stops the scan", {"files": [{"rule": "mmproj_subdir", "subdir": "m", "listing": [
+            ["mmproj-F32.gguf", "file", 1600], ["mmproj-a.gguf", "file", None], ["mmproj-b.gguf", "file", 1]]}]}),
+        ("files: an is_file error empties a head folder", {"files": [{"rule": "mtp_folder", "prefix": "/models/m/", "section": "m",
+                                                                      "listing": [["a-mtp-.gguf", "file", 5], ["b", "error", None]]}]}),
+        ("files: the model is never its own head", {"files": [{"rule": "mtp_folder", "prefix": "/models/m/", "section": "m-MTP-Q4",
+                                                               "listing": [["m-MTP-Q4.gguf", "file", 5], ["x-mtp-.gguf", "file", 9]]}]}),
+        ("files: an unsized flat head raises OSError", {"files": [{"rule": "mtp_flat", "section": "m",
+                                                                   "listing": [["m-mtp-.gguf", "file", None]]}]}),
+        ("files: Kelvin and dotted I in names", {"files": [{"rule": "mtp_flat", "section": "kk", "listing": [
+            ["K\u212a-mtp.gguf", "file", 3], ["\u0130-draft-.gguf", "file", 1]]}]}),
+        ("[stricter] files: a non-ASCII section name", {"files": [{"rule": "mmproj_flat", "section": "m\u00f6del",
+                                                                   "listing": [["m\u00f6del-mmproj.gguf", "file", 1]]}]}),
+        ("baseline: short and long flags", {"baseline": [{"args": ["-ngl", "999", "--ctx-size", "8192", "--jinja", "-fa", "on"],
+                                                          "known": KNOWN}]}),
+        ("baseline: a non-string argument raises", {"baseline": [{"args": ["-ngl", 5], "known": KNOWN}]}),
+        ("baseline: a null value is true", {"baseline": [{"args": ["-c", None], "known": KNOWN}]}),
+        ("[stricter] baseline: known keys out of order", {"baseline": [{"args": ["--jinja"], "known": ["jinja", "ctx-size"]}]}),
+    ]
+
+
+def present_cases() -> list[tuple[str, dict]]:
+    cases = present_handmade()
+    r = random.Random(PRESENT_SEED)
+    makers = [("spec", spec_case), ("files", lambda r: [files_call(r) for _ in range(r.randint(1, 4))]),
+              ("present", present_case), ("baseline", lambda r: [baseline_case(r) for _ in range(r.randint(1, 3))])]
+    for i in range(PRESENT_RANDOM_CASES):
+        part, make = makers[i % len(makers)]
+        cases.append((f"random {part} {i}", {part: make(r)}))
+    return cases
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--model-manager", required=True, type=Path)
@@ -461,6 +712,15 @@ def main() -> None:
     errors = sum(1 for c in out["cases"] if "error" in c["expect"])
     OUT_CHECK.write_text(json.dumps(out, sort_keys=True, separators=(",", ":")) + "\n")
     print(f"{len(out['cases'])} cases ({errors} where the reference raises) -> {OUT_CHECK.relative_to(ROOT)}")
+
+    out = {"version": 1, "reference": "noevia-services model-manager/app/autoconfig_core.py check_reference (spec, files, present, baseline)",
+           "cases": []}
+    for name, parts in present_cases():
+        text = json.dumps(parts, sort_keys=True)
+        out["cases"].append({"name": name, "input": text, "expect": check_reference(core, json.loads(text))})
+    errors = sum(1 for c in out["cases"] if "error" in c["expect"])
+    OUT_PRESENT.write_text(json.dumps(out, sort_keys=True, separators=(",", ":")) + "\n")
+    print(f"{len(out['cases'])} cases ({errors} where the reference raises) -> {OUT_PRESENT.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

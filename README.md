@@ -141,25 +141,32 @@ one slice at a time.
   copy `crates/model-files/tests/fixtures/model-files.v1.json` into noevia-services'
   `model-manager/tests/fixtures/` when it changes.
 - `crates/model-autoconfig` + `bins/model-autoconfig` (`MODEL_AUTOCONFIG`, autoconfig slices
-  1-2): the model manager's autoconfig, as noevia-services' `model-manager/app/autoconfig_core.py`
+  1-6): the model manager's autoconfig, as noevia-services' `model-manager/app/autoconfig_core.py`
   computes it, floats to the bit (Python's `round`, `int()`, `==`, truthiness and `str.strip`
   reproduced; see `src/pyfloat.rs` and `src/pyval.rs`). `model-autoconfig size < request.json`
   is the size core (`size_plan`: the per-backend fit sweep, the recommended backend and context,
   the usable-context cap, the offload presets, the prompt cache). `model-autoconfig check`
-  takes `{"prep"?, "size"?, "values"?}` and answers each part in one process: input prep
+  takes `{"prep"?, "size"?, "values"?, "spec"?, "files"?, "present"?, "baseline"?}` and answers
+  each part in one process: input prep
   (`prepare_all`: the GGUF summary read with Python's conversions, `_kv_first_int`, `kv_shape`,
   `_moe_ratio`, the early refusals, the main-GPU reservation, the sized backends), the size core,
   and values assembly (`assemble_values`: batch/ubatch/image-max-tokens, rope, split-mode,
-  reasoning flags, ...). The service keeps Python authoritative and uses this only to confirm
-  it. Where exact reproduction would need Unicode tables or big integers (non-ASCII digit
-  strings, string backend numbers, a NaN name, integers past 2^100) it refuses instead
+  reasoning flags, ...), the speculative-decoding profiles (`resolve_spec`), the companion-file
+  name rules (`pick_file`: which projector and draft head belong to a model, from a directory
+  listing the service read; stat stays in Python), the baseline parser (`parse_baseline`), and
+  the report beside the values (`present`: baseline redundancy and conflicts, quirks, the saved
+  preset, the diff in its #1152 order, the displaced keys, the quality warnings; `src/pystr.rs`
+  has Python's `repr`, `lower` and number formatting). The service keeps Python authoritative and
+  uses this only to confirm it. Where exact reproduction would need Unicode tables or big
+  integers (non-ASCII digit strings, string backend numbers, a NaN name, integers past 2^100,
+  `repr` past U+024F, a non-ASCII model file or section name) it refuses instead
   (`unsupported` / `out_of_range`). Bounded (4 MiB input, 4096 layers, 64 backends/GPUs, a
   200M-step work budget for the size core and 2M for prep, integers below 2^100); no network or
   filesystem. The differential corpora are regenerated with
   `uv run --python 3.12 tools/gen-model-autoconfig.py --model-manager <noevia-services>/model-manager`;
-  copy `crates/model-autoconfig/tests/fixtures/model-autoconfig.v1.json` and
-  `model-autoconfig-check.v1.json` into noevia-services' `model-manager/tests/fixtures/` when
-  they change.
+  copy `crates/model-autoconfig/tests/fixtures/model-autoconfig.v1.json`,
+  `model-autoconfig-check.v1.json` and `model-autoconfig-present.v1.json` into
+  noevia-services' `model-manager/tests/fixtures/` when they change.
 - `crates/tenant-assertion` + `bins/tenant-assertion` (`TENANT_ASSERTION_IMPL`, Diary): the
   per-request `X-Cowork-Tenant-Assertion` v2 check of noevia-services'
   `diary/agent/tenant_assertion.py` (`verify` minus its nonce cache, and the `storage_secret_ref`

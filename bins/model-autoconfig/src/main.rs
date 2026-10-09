@@ -1,7 +1,8 @@
 //! `model-autoconfig size`: read a size request (JSON) on stdin and print the size plan (JSON)
 //! on stdout, as noevia model-manager's `autoconfig_core.size_plan` returns it.
-//! `model-autoconfig check`: read `{"prep"?, "size"?, "values"?}` and print the answer to each
-//! part asked for, as `autoconfig_core.check_reference` returns it (what the service runs).
+//! `model-autoconfig check`: read `{"prep"?, "size"?, "values"?, "spec"?, "files"?, "present"?,
+//! "baseline"?}` and print the answer to each part asked for, as
+//! `autoconfig_core.check_reference` returns it (what the service runs).
 //! Exit 0 on success; on error, `model-autoconfig: <code>: <message>` on stderr, nothing on
 //! stdout, and exit 1 (2 for bad usage). Never touches the network or the filesystem.
 

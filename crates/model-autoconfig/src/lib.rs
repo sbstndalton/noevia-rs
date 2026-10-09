@@ -6,11 +6,17 @@
 //!   cache;
 //! * input prep ([`prep`], `prepare_all`): the GGUF summary's fields read with Python's `int()`
 //!   and `==`, the KV shape, the early refusals, the main-GPU reservation, the sized backends;
-//! * values assembly ([`values`], `assemble_values`): the settings a recommendation writes.
+//! * values assembly ([`values`], `assemble_values`): the settings a recommendation writes;
+//! * speculative-decoding profiles ([`spec`], `resolve_spec`), the companion-file name rules
+//!   ([`files`], `pick_file`: which projector and draft head belong to a model, from a listing
+//!   Python read), the baseline parser ([`baseline`], `parse_baseline`) and the report beside
+//!   the values ([`present`], `present`: baseline redundancy, quirks, the saved preset, the diff,
+//!   the displaced keys, the quality warnings).
 //!
 //! Each matches Python to the bit on every input inside the caps below (floats included: the
 //! arithmetic is done in the same order, and Python's `round` and `int` are reproduced exactly;
-//! see [`pyfloat`] and [`pyval`]). `model-autoconfig check` answers all three in one process.
+//! see [`pyfloat`], [`pyval`] and [`pystr`]). `model-autoconfig check` answers them all in one
+//! process.
 //!
 //! Python stays authoritative: the service uses its own plan, and only when this one agrees
 //! exactly (or Python's is the smaller one). This crate's job is to agree, or to refuse.
@@ -22,11 +28,16 @@
 
 #![forbid(unsafe_code)]
 
+pub mod baseline;
 pub mod core;
+pub mod files;
 pub mod kv;
 pub mod prep;
+pub mod present;
 pub mod pyfloat;
+pub mod pystr;
 pub mod pyval;
+pub mod spec;
 pub mod values;
 
 use crate::core::{Offload, Plan, PresetOption};
@@ -512,11 +523,38 @@ pub fn size_plan_json(input: &[u8]) -> Result<String, Error> {
     size_plan(&req).map(|p| plan_json(&p))
 }
 
-const CHECK_KEYS: [&str; 3] = ["prep", "size", "values"];
+const CHECK_KEYS: [&str; 7] = [
+    "prep", "size", "values", "spec", "files", "present", "baseline",
+];
 
-/// `model-autoconfig check`: a request `{"prep"?, "size"?, "values"?}` (each part absent or
-/// null to skip it) in; `{"prep": .., "size": .., "values": ..}` with the parts asked for out,
-/// as autoconfig_core.py's `check_reference` answers. Any part's refusal refuses the whole.
+/// A JSON value written back the way Python's json.dumps writes it (floats as [`pyfloat::json`]).
+pub(crate) fn json_value(out: &mut String, v: &Value) -> Result<(), Error> {
+    match v {
+        Value::Null => out.push_str("null"),
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Int(i) => {
+            let _ = write!(out, "{i}");
+        }
+        Value::Float(x) => out.push_str(&pyfloat::json(*x)),
+        Value::Str(s) => json_str(out, s),
+        // Only scalars are ever echoed back.
+        Value::Arr(_) | Value::Obj(_) => {
+            return Err(Error::Schema("an echoed value is not a scalar"))
+        }
+    }
+    Ok(())
+}
+
+fn sep(out: &mut String) {
+    if out.len() > 1 {
+        out.push(',');
+    }
+}
+
+/// `model-autoconfig check`: a request `{"prep"?, "size"?, "values"?, "spec"?, "files"?,
+/// "present"?, "baseline"?}` (each part absent or null to skip it) in; an object with the parts
+/// asked for out, as autoconfig_core.py's `check_reference` answers. Any part's refusal refuses
+/// the whole.
 pub fn check_json(input: &[u8]) -> Result<String, Error> {
     if input.len() > MAX_INPUT_BYTES {
         return Err(Error::InputTooLarge);
@@ -553,6 +591,40 @@ pub fn check_json(input: &[u8]) -> Result<String, Error> {
         }
         out.push_str("\"values\":");
         out.push_str(&values::values_json(&values::assemble(p)?));
+    }
+    if let Some(p) = part("spec") {
+        let mut work = Work::new(MAX_PREP_WORK);
+        let r = spec::resolve(p, &mut work)?;
+        sep(&mut out);
+        out.push_str("\"spec\":");
+        out.push_str(&spec::resolved_json(&r));
+    }
+    if let Some(p) = part("files") {
+        let mut work = Work::new(MAX_PREP_WORK);
+        let answers = files::pick_all(p, &mut work)?;
+        sep(&mut out);
+        out.push_str("\"files\":");
+        out.push_str(&files::answers_json(&answers)?);
+    }
+    if let Some(p) = part("present") {
+        let mut work = Work::new(MAX_PREP_WORK);
+        let r = present::present(p, &mut work)?;
+        sep(&mut out);
+        out.push_str("\"present\":");
+        out.push_str(&present::report_json(&r));
+    }
+    if let Some(p) = part("baseline") {
+        let mut work = Work::new(MAX_PREP_WORK);
+        let parsed = baseline::parse_all(p, &mut work)?;
+        sep(&mut out);
+        out.push_str("\"baseline\":[");
+        for (i, v) in parsed.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push_str(&values::values_json(v));
+        }
+        out.push(']');
     }
     out.push('}');
     Ok(out)
