@@ -98,3 +98,21 @@ fn check_refusal_leaves_stdout_empty() {
         "{err}"
     );
 }
+
+#[test]
+fn check_answers_the_slice_3_to_6_parts() {
+    let stdin = b"{\"spec\":{\"section\":\"m\",\"current\":null,\"spec_profile\":\"ngram\",\"mode\":\"\",\
+\"files\":false,\"found_mtp\":\"\",\"nextn\":null},\
+\"files\":[{\"rule\":\"mmproj_subdir\",\"subdir\":\"m\",\"listing\":[[\"mmproj-F32.gguf\",\"file\",9],[\"mmproj-F16.gguf\",\"file\",5]]}],\
+\"baseline\":[{\"args\":[\"-c\",\"8192\",\"--jinja\"],\"known\":[\"ctx-size\",\"jinja\"]}]}";
+    let (code, out, err) = run(&["check"], stdin);
+    assert_eq!(code, 0, "{err}");
+    let text = String::from_utf8(out).unwrap();
+    assert_eq!(
+        text,
+        "{\"spec\":{\"mtp_rel\":\"\",\"saved\":\"\",\"key\":\"ngram\",\"head\":\"\",\"values\":[[\"spec-type\",\"ngram-simple\"],\
+[\"spec-draft-n-max\",\"\"],[\"spec-draft-n-min\",\"\"],[\"spec-draft-p-min\",\"\"],[\"spec-draft-model\",\"\"],\
+[\"spec-draft-ngl\",\"\"]]},\"files\":[\"/models/m/mmproj-F16.gguf\"],\
+\"baseline\":[[[\"ctx-size\",\"8192\"],[\"jinja\",\"true\"]]]}\n"
+    );
+}

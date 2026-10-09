@@ -38,18 +38,18 @@ pub const MAX_SPEC: usize = 16;
 pub struct Values(pub Vec<(String, String)>);
 
 impl Values {
-    fn set(&mut self, k: &str, v: String) {
+    pub(crate) fn set(&mut self, k: &str, v: String) {
         match self.0.iter_mut().find(|(key, _)| key == k) {
             Some((_, slot)) => *slot = v,
             None => self.0.push((k.to_owned(), v)),
         }
     }
 
-    fn pop(&mut self, k: &str) {
+    pub(crate) fn pop(&mut self, k: &str) {
         self.0.retain(|(key, _)| key != k);
     }
 
-    fn get(&self, k: &str) -> Option<&str> {
+    pub(crate) fn get(&self, k: &str) -> Option<&str> {
         self.0
             .iter()
             .find(|(key, _)| key == k)
@@ -101,7 +101,7 @@ fn int_or_zero_lenient(v: Option<&Value>, what: &'static str) -> Result<i128, Er
 }
 
 /// `rope_owned_by_gguf(model)`.
-fn rope_owned(model: &Value) -> Result<bool, Error> {
+pub(crate) fn rope_owned(model: &Value) -> Result<bool, Error> {
     if !matches!(model, Value::Obj(_)) {
         return Err(Error::Python("AttributeError"));
     }
