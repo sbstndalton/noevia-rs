@@ -151,6 +151,11 @@ def handmade(core) -> list[tuple[str, dict]]:
     two = [{"vram_gb": 23.9, "gpu_count": 2, "cards": [12.0, 11.9], "host_ram_gb": 125.5, "same_as": 0}]
     return [
         ("dense fits, unmeasured cap", v()),
+        # #1159: a hybrid model's KV shape covers only its attention layers (11 of 30 here).
+        ("hybrid: KV over the attention layers only", v(shape=core.kv_shape("lfm2", 11, 8, 64), layers=30,
+                                                       model_gb_raw=1.5, native_ctx=32768)),
+        ("hybrid: long-ctx preset", v(shape=core.kv_shape("lfm2", 11, 8, 64), layers=30, model_gb_raw=1.5,
+                                      native_ctx=32768, preset="long-ctx")),
         ("dense measured prompt rate caps by time", v(prompt_tps=500.0)),
         ("dense verified context caps", v(verified_ctx=50000)),
         ("dense long-ctx preset offloads layers", v(preset="long-ctx", model_gb_raw=20.0)),

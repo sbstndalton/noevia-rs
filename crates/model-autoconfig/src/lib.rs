@@ -390,7 +390,9 @@ pub fn parse_value(v: &Value) -> Result<Request, Error> {
         verified_ctx: int(g("verified_ctx")?, "verified_ctx")?,
         cache_ram_cap_mib: int(g("cache_ram_cap_mib")?, "cache_ram_cap_mib")?,
     };
-    if !(0..=MAX_BLOCK_COUNT).contains(&req.layers) || req.layers != req.shape.layers {
+    // The shape covers the layers that hold KV: all of them, or a hybrid model's attention
+    // layers only (#1159), never more than the stack.
+    if !(0..=MAX_BLOCK_COUNT).contains(&req.layers) || req.shape.layers > req.layers {
         return Err(Error::Schema("layers"));
     }
     if !(1..=8).contains(&req.n_sessions) {
