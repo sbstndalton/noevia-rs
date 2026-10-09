@@ -3,7 +3,9 @@
 //! form button that is not `button`/`reset` always asks; an accepted navigation is http(s), carries
 //! no credentials, is not a local name with or without trailing dots and is on the allowlist; a
 //! substitution is accepted only when every placeholder names a listed secret bound to the origin's
-//! host; and adversarial inputs at the size cap stay linear, with refusals well under 10 ms. The
+//! host; and adversarial inputs at the size cap stay linear. A request over the cap is refused
+//! before it is parsed and an exhausted budget stops at once (both under 10 ms); a full 4 MiB
+//! request that is parsed and then refused takes as long as reading it. The
 //! JS side of "never more permissive than the JS" runs against the real JS in noevia-core's
 //! differential test (every fixture row and seeded live calls through the switch).
 #![allow(

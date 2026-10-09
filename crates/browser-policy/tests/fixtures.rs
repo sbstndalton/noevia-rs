@@ -55,5 +55,5 @@ fn rows() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    assert!(strict > 300, "{strict} strict rows");
+    assert!(strict > 200, "{strict} strict rows");
 }

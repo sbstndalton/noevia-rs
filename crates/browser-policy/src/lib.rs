@@ -16,22 +16,20 @@
 //! an unknown, a refusal or a fault asks (or blocks, where the JS blocks or the caller has no
 //! approval step). So wherever the port cannot be sure it says so ([`Status`] `None`).
 //!
+//! Form buttons (noevia#1218) and local names with trailing dots (noevia#1219) are decided as the
+//! JS now decides them: a `<button>` in a form submits unless its type is exactly (ASCII
+//! case-insensitively) `button` or `reset`, and the local suffixes are checked on the host with
+//! and without its trailing dots.
+//!
 //! # Where the port is stricter than the JS (by design)
 //!
-//! - **A `<button>` in a form with a `type` other than `button` or `reset`** (`type="x"`, a typo,
-//!   any invalid value) submits the form in HTML (the invalid value default is the Submit Button
-//!   state); the JS only treats an empty or `submit` type as submitting. The port says
-//!   "Submits a form." (noevia#1218.)
-//! - **Local names with trailing dots.** `corp.internal.` and `localhost.` are the same names as
-//!   `corp.internal` and `localhost`; the JS checks the local suffixes on the hostname as written,
-//!   so an allowlisted local domain is reachable with a trailing dot. The port checks the name with
-//!   its trailing dots removed too. (noevia#1219.)
 //! - **Text outside [`KNOWN_RANGES`]** (a lone surrogate, or a code point outside the Latin, Greek,
-//!   Cyrillic, punctuation, kana, CJK, Hangul, fullwidth and emoji blocks listed) in a label, tag,
+//!   Cyrillic, Hebrew, Arabic, Devanagari, Thai, punctuation, arrows, symbols and dingbats, kana,
+//!   CJK, Hangul, private use, fullwidth and emoji blocks listed) in a label, tag,
 //!   type, role or key that the decision reads: [`fold`] gives no answer and the action is
 //!   unknown (the host asks). Inside the table the port folds with ICU4X's NFKD and the standard
 //!   library's lowercasing; noevia-core's differential test checks every code point of the table,
-//!   alone and between letters, against the runtime's own ICU.
+//!   alone, between letters and next to combining marks, against the runtime's own ICU.
 //! - **A non-GET method with non-ASCII text** counts as not GET (exact: no non-ASCII text
 //!   uppercases to `GET`).
 //! - Requests over [`MAX_INPUT_BYTES`] (`too_large`), and requests that would need more than
@@ -142,13 +140,20 @@ const CONTROL_INPUTS: [&str; 6] = ["submit", "image", "button", "reset", "checkb
 /// Code points [`fold`] answers for (inclusive ranges). Outside them, or for a lone surrogate, it
 /// gives no answer. Every range was assigned (or left unassigned with no decomposition and no case)
 /// long before any ICU noevia runs on; noevia-core's differential test checks each code point.
-pub const KNOWN_RANGES: [(u32, u32); 9] = [
+pub const KNOWN_RANGES: [(u32, u32); 16] = [
     (0x0000, 0x052f), // Latin, IPA, spacing modifiers, combining diacriticals, Greek, Cyrillic
+    (0x0590, 0x05ff), // Hebrew
+    (0x0600, 0x06ff), // Arabic
+    (0x0900, 0x097f), // Devanagari
+    (0x0e00, 0x0e7f), // Thai
     (0x1e00, 0x1fff), // Latin Extended Additional, Greek Extended
     (0x2000, 0x206f), // General Punctuation
+    (0x2190, 0x21ff), // Arrows
+    (0x2500, 0x27bf), // box drawing, block elements, geometric shapes, misc symbols, dingbats
     (0x3000, 0x30ff), // CJK Symbols and Punctuation, Hiragana, Katakana
     (0x4e00, 0x9fff), // CJK Unified Ideographs
     (0xac00, 0xd7a3), // Hangul Syllables
+    (0xe000, 0xf8ff), // Private Use Area (icon fonts)
     (0xff01, 0xff9f), // fullwidth ASCII, halfwidth katakana
     (0x1f300, 0x1f6ff), // pictographs, emoticons, transport
     (0x1f900, 0x1faff), // supplemental symbols and pictographs, symbols extended-A
@@ -417,7 +422,7 @@ pub fn navigation(raw: &[u16], domains: &[Vec<u16>], work: &mut Work) -> R<Nav> 
     let bare = hostname.strip_prefix('[').unwrap_or(hostname);
     let bare = bare.strip_suffix(']').unwrap_or(bare);
     let host = units(&bare.to_ascii_lowercase());
-    // Stricter than the JS: the local suffixes also on the name without its trailing dots.
+    // The local suffixes also on the name without its trailing dots (noevia#1219).
     let mut end = host.len();
     while end > 0 && host.get(end - 1) == Some(&0x2e) {
         end -= 1;
@@ -546,9 +551,20 @@ fn click(el: &Element, work: &mut Work) -> R<Verdict> {
     let (Some(tag), Some(kind)) = (fold(&el.tag, work)?, fold(&el.kind, work)?) else {
         return Ok(unknown());
     };
-    // HTML: a <button>'s missing or invalid type is the Submit Button state; only `button` and
-    // `reset` do not submit. (The JS reads only '' and 'submit': stricter here.)
-    let button_submits = !eq_str(&kind, "button") && !eq_str(&kind, "reset");
+    // HTML: a <button>'s missing or invalid type is the Submit Button state; only an exact (ASCII
+    // case-insensitive) `button` or `reset` does not submit (noevia#1218, now also the JS).
+    let raw_kind: Vec<u16> = el
+        .kind
+        .iter()
+        .map(|&c| {
+            if (0x41..=0x5a).contains(&c) {
+                c + 0x20
+            } else {
+                c
+            }
+        })
+        .collect();
+    let button_submits = !eq_str(&raw_kind, "button") && !eq_str(&raw_kind, "reset");
     let submits = eq_str(&kind, "submit")
         || (eq_str(&tag, "input") && eq_str(&kind, "image"))
         || (eq_str(&tag, "button") && el.in_form && button_submits);
@@ -1040,7 +1056,24 @@ mod tests {
             status(&click, &el("button", "button", "Show", true)),
             Some(Decision::Allow)
         );
-        // Stricter than the JS: an invalid type submits.
+        // noevia#1218: an invalid type submits; ' button' and a full-width spelling are invalid.
+        for kind in [
+            "x",
+            " button",
+            "button ",
+            "\u{ff42}\u{ff55}\u{ff54}\u{ff54}\u{ff4f}\u{ff4e}",
+            "BUTTON\u{a0}",
+        ] {
+            assert_eq!(
+                status(&click, &el("button", kind, "Next", true)),
+                Some(Decision::NeedsApproval),
+                "{kind:?}"
+            );
+        }
+        assert_eq!(
+            status(&click, &el("button", "RESET", "Next", true)),
+            Some(Decision::Allow)
+        );
         assert_eq!(
             status(&click, &el("button", "xyz", "Next", true)),
             Some(Decision::NeedsApproval)
@@ -1076,7 +1109,12 @@ mod tests {
 
     #[test]
     fn navigations() {
-        let d = vec![units("example.com"), units("*.corp.internal")];
+        let d = vec![
+            units("example.com"),
+            units("*.corp.internal"),
+            units("localhost"),
+            units("nas.local"),
+        ];
         let nav = |u: &str| navigation(&units(u), &d, &mut w()).unwrap();
         assert_eq!(
             nav("https://a.example.com/x"),
@@ -1089,6 +1127,9 @@ mod tests {
         for u in [
             "https://corp.internal/",
             "https://corp.internal./",
+            "http://corp.internal./",
+            "http://localhost../",
+            "http://nas.local.:8080/",
             "http://localhost./",
             "http://127.0.0.1/",
             "http://[::1]/",
