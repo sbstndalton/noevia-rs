@@ -1,0 +1,17 @@
+[package]
+name = "code-actions"
+version = "0.1.0"
+description = "noevia-core's code-actions.cjs in Rust: a coding agent's tool call read into noevia's action classes (failing closed), the approval decision and the ACP permission option; the host only ever uses it to refuse"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+
+[dev-dependencies]
+proptest = "1"
