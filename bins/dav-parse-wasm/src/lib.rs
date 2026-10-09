@@ -175,6 +175,11 @@
 //!      canonicalPath (5) and diaryFolderFor (6) over the host's projections; unknowns fold to the
 //!      strict answer. Refuses with status 1 and `{"error":"input"|"too_large"}` (provider-egress
 //!      crate).
+//!    - `browser_policy()`: input `u8(op)` and UTF-8 JSON (at most
+//!      `browser_policy::MAX_INPUT_BYTES`): browser-policy.cjs classifyAction (1), checkNavigation
+//!      (2), the decision of substituteSecrets (3, names and domains only, never a value) and the
+//!      label fold (4) over the host's projections; an unknown is a `null` status or fold. Refuses
+//!      with status 1 and `{"error":"input"|"too_large"}` (browser-policy crate).
 //!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
@@ -245,6 +250,7 @@ const _: () = assert!(llamacpp_autoconfig::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(code_actions::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(project_file_names::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(provider_egress::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(browser_policy::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -677,6 +683,12 @@ pub fn run_provider_egress(input: &[u8]) -> (u32, Vec<u8>) {
     provider_egress::call(input)
 }
 
+/// `browser-policy`: browser-policy.cjs's action, navigation and secret-origin rules; see the
+/// crate docs.
+pub fn run_browser_policy(input: &[u8]) -> (u32, Vec<u8>) {
+    browser_policy::call(input)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -1066,6 +1078,13 @@ pub extern "C" fn project_file_names() -> u32 {
 #[no_mangle]
 pub extern "C" fn provider_egress() -> u32 {
     consume_bytes(run_provider_egress)
+}
+
+/// Consume the input buffer as a browser-policy request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn browser_policy() -> u32 {
+    consume_bytes(run_browser_policy)
 }
 
 /// Address of the last reply.

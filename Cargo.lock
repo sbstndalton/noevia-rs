@@ -96,6 +96,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "browser-policy"
+version = "0.1.0"
+dependencies = [
+ "icu_normalizer",
+ "prompt-framing",
+ "proptest",
+ "ssrf-policy",
+ "url",
+]
+
+[[package]]
 name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -194,6 +205,7 @@ name = "dav-parse-wasm"
 version = "0.1.0"
 dependencies = [
  "autotune-plan",
+ "browser-policy",
  "chat-template-caps",
  "code-actions",
  "code-net-guard",
