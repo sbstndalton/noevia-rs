@@ -210,6 +210,7 @@ dependencies = [
  "preset-reload",
  "project-file-names",
  "prompt-framing",
+ "provider-egress",
  "provider-error",
  "review-verdict",
  "role-context",
@@ -857,6 +858,16 @@ dependencies = [
  "rusty-fork",
  "tempfile",
  "unarray",
+]
+
+[[package]]
+name = "provider-egress"
+version = "0.1.0"
+dependencies = [
+ "project-file-names",
+ "prompt-framing",
+ "proptest",
+ "url",
 ]
 
 [[package]]
