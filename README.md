@@ -152,6 +152,18 @@ one slice at a time.
   `uv run --python 3.12 tools/gen-model-autoconfig.py --model-manager <noevia-services>/model-manager`;
   copy `crates/model-autoconfig/tests/fixtures/model-autoconfig.v1.json` into noevia-services'
   `model-manager/tests/fixtures/` when it changes.
+- `crates/tenant-assertion` + `bins/tenant-assertion` (`TENANT_ASSERTION_IMPL`, Diary): the
+  per-request `X-Cowork-Tenant-Assertion` v2 check of noevia-services'
+  `diary/agent/tenant_assertion.py` (`verify` minus its nonce cache, and the `storage_secret_ref`
+  secretRef check). `tenant-assertion check < request.json`; the key and every header value
+  travel on stdin only, and nothing derived from the input is ever printed. The Diary only
+  AND-composes it with Python (both must accept), so it may be stricter and never more lenient:
+  ASCII-only user id and method, non-empty key, body hash = sha256 hex or `stream`, finite `now`,
+  256 KiB per field, ASCII-digit timestamps. Constant-time signature compare (`subtle`).
+  `tenant-assertion self-test` is the image smoke test. The differential corpus is regenerated
+  with `python3 -I tools/gen-tenant-assertion.py --diary <noevia-services>/diary --bin target/release/tenant-assertion`;
+  copy `crates/tenant-assertion/tests/fixtures/tenant-assertion.v1.json` into noevia-services'
+  `diary/tests/fixtures/` when it changes.
 - `crates/dav-parse` + `bins/dav-parse-wasm` (sbstndalton/noevia#967): the storage browser's
   WebDAV PROPFIND (`Depth: 1`) listing parser, a port of noevia-core's `server/dav-listing.cjs`
   `listingRecordsJs` (entity decoding, WHATWG href resolution, `decodeURIComponent`, direct
