@@ -143,6 +143,13 @@ one slice at a time.
   when both resolve it to the same file. In `dav-parse.wasm` as `project_file_names`. Table from
   noevia-core (`node tools/gen-project-file-names-fixtures.cjs`), copied byte-for-byte to
   `crates/project-file-names/tests/fixtures/project-file-names.v1.json`.
+- `crates/provider-egress`: noevia-core's provider-egress.cjs (#447, #452): which providers are
+  external, Diary text refused for them, private toolboxes stripped, and storage-tool paths in (or,
+  for tree tools, containing) the Diary folder refused. The host asks it only when the JS lets
+  something out, so it can only refuse more (PROVIDER_EGRESS_IMPL=wasm). No normalization tables:
+  a path outside the NFC-inert set is treated as possibly in the Diary. In `dav-parse.wasm` as
+  `provider_egress`. Table from noevia-core (`node tools/gen-provider-egress-fixtures.cjs`), copied
+  byte-for-byte to `crates/provider-egress/tests/fixtures/provider-egress.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
