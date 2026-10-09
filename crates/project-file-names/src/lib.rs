@@ -11,15 +11,22 @@
 //!
 //! # Normalization without Unicode tables
 //!
-//! The JS compares `normalize('NFC')` forms. The port carries no normalization data: it reads only
-//! strings whose every code unit is in [`is_nfc_inert`] — code points that are their own NFC form,
-//! have canonical combining class 0 and never appear after the first position of any canonical
-//! decomposition, so a string of them is unchanged by NFC whatever its neighbours (noevia-core's
-//! differential test checks this exhaustively against the runtime's own ICU). When the wanted name
-//! or a stored name it is compared with holds anything else (combining marks, Greek, Arabic,
-//! Hebrew, Indic scripts, lone surrogates, …), the port refuses (`ambiguous`), and the host then
-//! resolves nothing. That is the one way it is stricter than the JS, besides requests over
-//! [`MAX_INPUT_BYTES`] (`too_large`).
+//! The JS compares `normalize('NFC')` forms. The port carries no normalization data. It knows a
+//! set of NFC-inert code points ([`NFC_INERT_RANGES`]): each is its own NFC form, has canonical
+//! combining class 0, and neither it nor the start of its decomposition ever appears after the
+//! first position of a canonical decomposition, so NFC never changes across the start of a run of
+//! them (noevia-core's differential test checks every one against the runtime's own ICU). The
+//! wanted name must be inert throughout. A stored name is split into a head and its longest inert
+//! tail, and `NFC(name) = NFC(head) + tail` (noevia#1203):
+//!
+//! - exact match: a fully inert name is compared as is; otherwise it cannot equal the wanted name
+//!   unless its tail is a suffix of it, and only then does the port refuse (`ambiguous`);
+//! - suffix match: decided by the tail when it is at least as long as `'/' + wanted`; otherwise
+//!   refused only when the tail is a suffix of `'/' + wanted`.
+//!
+//! So one stored name with, say, Greek in a folder name no longer blocks the whole project. Besides
+//! those refusals the port is stricter than the JS only for requests over [`MAX_INPUT_BYTES`]
+//! (`too_large`).
 //!
 //! Linear in the input (each name is compared once for equality and once as a suffix), no panics.
 
@@ -53,33 +60,66 @@ impl Refusal {
     }
 }
 
-/// A code unit that NFC leaves alone in any context (see the crate docs): U+0000–U+02FF, Cyrillic
-/// U+0400–U+0482 and U+048A–U+04FF, Hiragana U+3041–U+3096, Katakana U+30A1–U+30FA, CJK Unified
-/// Ideographs U+4E00–U+9FFF and Hangul syllables U+AC00–U+D7A3.
-pub fn is_nfc_inert(c: u16) -> bool {
-    matches!(c,
-        0x0000..=0x02ff
-        | 0x0400..=0x0482
-        | 0x048a..=0x04ff
-        | 0x3041..=0x3096
-        | 0x30a1..=0x30fa
-        | 0x4e00..=0x9fff
-        | 0xac00..=0xd7a3)
-}
-
-/// The NFC-inert ranges, for the host's exhaustive check.
-pub const NFC_INERT_RANGES: [(u32, u32); 7] = [
+/// The NFC-inert code points (see the crate docs), as inclusive ranges: U+0000–U+02FF, Cyrillic
+/// U+0400–U+0482 and U+048A–U+04FF, punctuation U+2010–U+2027 and U+2030–U+205E, CJK symbols
+/// U+3001–U+3029, Hiragana U+3041–U+3096, Katakana U+30A1–U+30FC, CJK Unified Ideographs
+/// U+4E00–U+9FFF, Hangul syllables U+AC00–U+D7A3, fullwidth forms U+FF01–U+FF60 and the emoji
+/// blocks U+1F300–U+1F64F, U+1F680–U+1F6FF, U+1F900–U+1F9FF, U+1FA70–U+1FAFF (whole code points).
+/// noevia-core's differential test checks every one against the runtime's ICU.
+pub const NFC_INERT_RANGES: [(u32, u32); 15] = [
     (0x0000, 0x02ff),
     (0x0400, 0x0482),
     (0x048a, 0x04ff),
+    (0x2010, 0x2027),
+    (0x2030, 0x205e),
+    (0x3001, 0x3029),
     (0x3041, 0x3096),
-    (0x30a1, 0x30fa),
+    (0x30a1, 0x30fc),
     (0x4e00, 0x9fff),
     (0xac00, 0xd7a3),
+    (0xff01, 0xff60),
+    (0x1f300, 0x1f64f),
+    (0x1f680, 0x1f6ff),
+    (0x1f900, 0x1f9ff),
+    (0x1fa70, 0x1faff),
 ];
 
+/// Whether the code point `cp` is NFC-inert.
+pub fn is_nfc_inert(cp: u32) -> bool {
+    NFC_INERT_RANGES.iter().any(|&(a, b)| (a..=b).contains(&cp))
+}
+
+/// The length in code units of the longest suffix of `s` made of whole NFC-inert code points (a
+/// lone surrogate is never inert).
+pub fn inert_tail_len(s: &[u16]) -> usize {
+    let mut i = s.len();
+    while i > 0 {
+        let lo = s.get(i - 1).copied().unwrap_or(0);
+        if (0xdc00..=0xdfff).contains(&lo) {
+            let hi = if i >= 2 {
+                s.get(i - 2).copied().unwrap_or(0)
+            } else {
+                0
+            };
+            if !(0xd800..=0xdbff).contains(&hi) {
+                break;
+            }
+            let cp = 0x10000 + ((u32::from(hi) - 0xd800) << 10) + (u32::from(lo) - 0xdc00);
+            if !is_nfc_inert(cp) {
+                break;
+            }
+            i -= 2;
+        } else if (0xd800..=0xdbff).contains(&lo) || !is_nfc_inert(u32::from(lo)) {
+            break;
+        } else {
+            i -= 1;
+        }
+    }
+    s.len() - i
+}
+
 fn inert(s: &[u16]) -> bool {
-    s.iter().all(|&c| is_nfc_inert(c))
+    inert_tail_len(s) == s.len()
 }
 
 const fn u(c: char) -> u16 {
@@ -170,24 +210,36 @@ pub fn resolve(names: &[Vec<u16>], raw: &[u16]) -> Result<Resolved, Refusal> {
     if !inert(wanted) {
         return Err(Refusal::Ambiguous);
     }
-    // `files.find((f) => norm(f.name) === wanted)`: names are compared in order until one equals.
+    // A stored name is `head + tail`, `tail` its longest inert suffix. NFC changes nothing across
+    // that boundary (the tail starts with a class-0 code point that never composes with what comes
+    // before), so NFC(name) = NFC(head) + tail: only the tail is known without tables.
+    // `files.find((f) => norm(f.name) === wanted)`, in order until one equals.
     for (i, name) in names.iter().enumerate() {
-        if !inert(name) {
+        let tail_at = name.len() - inert_tail_len(name);
+        if tail_at == 0 {
+            if name.as_slice() == wanted {
+                return Ok(Resolved::File(i));
+            }
+        } else if wanted.ends_with(name.get(tail_at..).unwrap_or(&[])) {
+            // Equal exactly when NFC(head) is the rest of `wanted`: unknown without tables.
             return Err(Refusal::Ambiguous);
-        }
-        if name.as_slice() == wanted {
-            return Ok(Resolved::File(i));
         }
     }
     let mut suffix = Vec::with_capacity(wanted.len() + 1);
     suffix.push(u('/'));
     suffix.extend_from_slice(wanted);
-    let matches: Vec<usize> = names
-        .iter()
-        .enumerate()
-        .filter(|(_, n)| n.ends_with(&suffix))
-        .map(|(i, _)| i)
-        .collect();
+    let mut matches: Vec<usize> = Vec::new();
+    for (i, name) in names.iter().enumerate() {
+        let tail = name.get(name.len() - inert_tail_len(name)..).unwrap_or(&[]);
+        if tail.len() == name.len() || tail.len() >= suffix.len() {
+            if name.ends_with(&suffix) {
+                matches.push(i);
+            }
+        } else if suffix.ends_with(tail) {
+            // The tail is too short to decide `NFC(name).endsWith('/' + wanted)`.
+            return Err(Refusal::Ambiguous);
+        }
+    }
     Ok(match matches.as_slice() {
         [] => Resolved::Missing,
         [one] => Resolved::File(*one),
