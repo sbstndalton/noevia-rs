@@ -1,9 +1,16 @@
-//! The size core of noevia model-manager's autoconfig (sbstndalton/noevia, MODEL_AUTOCONFIG):
-//! from a model's KV shape, its size and the GPU backends, which backend and context to
-//! recommend, the offload presets, and the prompt cache. A port of noevia-services
-//! `model-manager/app/autoconfig_core.py` `size_plan`, matching it to the bit on every input
-//! inside the caps below (floats included: the arithmetic is done in the same order, and
-//! Python's `round` and `int` are reproduced exactly; see [`pyfloat`]).
+//! noevia model-manager's autoconfig (sbstndalton/noevia, MODEL_AUTOCONFIG), ported in slices
+//! from noevia-services `model-manager/app/autoconfig_core.py`:
+//!
+//! * the size core ([`size_plan`], `size_plan` there): from a model's KV shape, its size and the
+//!   GPU backends, which backend and context to recommend, the offload presets, and the prompt
+//!   cache;
+//! * input prep ([`prep`], `prepare_all`): the GGUF summary's fields read with Python's `int()`
+//!   and `==`, the KV shape, the early refusals, the main-GPU reservation, the sized backends;
+//! * values assembly ([`values`], `assemble_values`): the settings a recommendation writes.
+//!
+//! Each matches Python to the bit on every input inside the caps below (floats included: the
+//! arithmetic is done in the same order, and Python's `round` and `int` are reproduced exactly;
+//! see [`pyfloat`] and [`pyval`]). `model-autoconfig check` answers all three in one process.
 //!
 //! Python stays authoritative: the service uses its own plan, and only when this one agrees
 //! exactly (or Python's is the smaller one). This crate's job is to agree, or to refuse.
@@ -17,7 +24,10 @@
 
 pub mod core;
 pub mod kv;
+pub mod prep;
 pub mod pyfloat;
+pub mod pyval;
+pub mod values;
 
 use crate::core::{Offload, Plan, PresetOption};
 use crate::kv::Shape;
@@ -37,6 +47,10 @@ pub const MAX_GPUS: i128 = 64;
 pub const MAX_CARDS: usize = 256;
 /// Steps of work (fit-search iterations, KV evaluations, per-card passes) one request may use.
 pub const MAX_WORK: u64 = 200_000_000;
+/// Steps (comparisons, iterated items) input prep or values assembly may use. Real per-layer
+/// samples hold at most 8 items (gguf_meta keeps no more), so this is generous; it only stops a
+/// hostile request from running long.
+pub const MAX_PREP_WORK: u64 = 2_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
@@ -52,6 +66,9 @@ pub enum Error {
     OutOfRange(&'static str),
     /// The request would take more than [`MAX_WORK`] steps.
     WorkLimit,
+    /// Python's answer here would need semantics this port does not reproduce (a non-ASCII
+    /// digit string, a NaN inside a compared value, ...): refused rather than guessed.
+    Unsupported(&'static str),
     /// Python raises here (the exception's type). The service never asks Rust about a request
     /// on which Python raised, but the differential fixtures record these cases too.
     Python(&'static str),
@@ -67,6 +84,7 @@ impl Error {
             Error::Schema(_) => "schema".to_owned(),
             Error::OutOfRange(_) => "out_of_range".to_owned(),
             Error::WorkLimit => "work_limit".to_owned(),
+            Error::Unsupported(_) => "unsupported".to_owned(),
             Error::Python(kind) => format!("python:{kind}"),
         }
     }
@@ -81,6 +99,7 @@ impl fmt::Display for Error {
             Error::Schema(m) => write!(f, "bad request: {m}"),
             Error::OutOfRange(m) => write!(f, "out of range: {m}"),
             Error::WorkLimit => write!(f, "more than {MAX_WORK} steps of work"),
+            Error::Unsupported(m) => write!(f, "not reproduced exactly: {m}"),
             Error::Python(kind) => write!(f, "the Python reference raises {kind} here"),
         }
     }
@@ -318,8 +337,13 @@ pub fn parse_request(input: &[u8]) -> Result<Request, Error> {
     }
     let text = std::str::from_utf8(input).map_err(|_| Error::NotUtf8)?;
     let v = json::parse(text).map_err(|e| Error::Json(e.to_string()))?;
-    obj(&v, &REQUEST_KEYS, "request")?;
-    let g = |k: &str| field(&v, k, "request: missing field");
+    parse_value(&v)
+}
+
+/// Read a request already parsed as JSON.
+pub fn parse_value(v: &Value) -> Result<Request, Error> {
+    obj(v, &REQUEST_KEYS, "request")?;
+    let g = |k: &str| field(v, k, "request: missing field");
     let backends = match g("backends")? {
         Value::Arr(items) if !items.is_empty() && items.len() <= MAX_BACKENDS => items
             .iter()
@@ -370,7 +394,7 @@ pub fn size_plan(req: &Request) -> Result<Plan, Error> {
     core::size_plan(req, &mut work)
 }
 
-fn json_str(out: &mut String, s: &str) {
+pub(crate) fn json_str(out: &mut String, s: &str) {
     out.push('"');
     for c in s.chars() {
         match c {
@@ -486,4 +510,50 @@ pub fn plan_json(plan: &Plan) -> String {
 pub fn size_plan_json(input: &[u8]) -> Result<String, Error> {
     let req = parse_request(input)?;
     size_plan(&req).map(|p| plan_json(&p))
+}
+
+const CHECK_KEYS: [&str; 3] = ["prep", "size", "values"];
+
+/// `model-autoconfig check`: a request `{"prep"?, "size"?, "values"?}` (each part absent or
+/// null to skip it) in; `{"prep": .., "size": .., "values": ..}` with the parts asked for out,
+/// as autoconfig_core.py's `check_reference` answers. Any part's refusal refuses the whole.
+pub fn check_json(input: &[u8]) -> Result<String, Error> {
+    if input.len() > MAX_INPUT_BYTES {
+        return Err(Error::InputTooLarge);
+    }
+    let text = std::str::from_utf8(input).map_err(|_| Error::NotUtf8)?;
+    let v = json::parse(text).map_err(|e| Error::Json(e.to_string()))?;
+    let pairs = obj(&v, &CHECK_KEYS, "check")?;
+    let mut seen: Vec<&str> = Vec::new();
+    for (k, _) in pairs {
+        if seen.contains(&k.as_str()) {
+            return Err(Error::Schema("check: a duplicated part"));
+        }
+        seen.push(k);
+    }
+    let part = |k: &str| v.get(k).filter(|p| **p != Value::Null);
+    let mut out = String::from("{");
+    if let Some(p) = part("prep") {
+        let mut work = Work::new(MAX_PREP_WORK);
+        out.push_str("\"prep\":");
+        out.push_str(&prep::prep_json(&prep::prepare(p, &mut work)?));
+    }
+    if let Some(p) = part("size") {
+        if out.len() > 1 {
+            out.push(',');
+        }
+        // The size part is the very request `model-autoconfig size` reads.
+        let req = parse_value(p)?;
+        out.push_str("\"size\":");
+        out.push_str(&plan_json(&size_plan(&req)?));
+    }
+    if let Some(p) = part("values") {
+        if out.len() > 1 {
+            out.push(',');
+        }
+        out.push_str("\"values\":");
+        out.push_str(&values::values_json(&values::assemble(p)?));
+    }
+    out.push('}');
+    Ok(out)
 }
