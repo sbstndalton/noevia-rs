@@ -124,6 +124,8 @@ def cases() -> dict[str, bytes]:
         kv("qwen3moe.full_attention_interval", I8, -4),
         kv("qwen3moe.ssm.state_size", I16, 16),
         kv("qwen3moe.ssm.inner_size", F64, 3072.9),
+        kv("qwen3moe.ssm.conv_kernel", U32, 4),
+        kv("qwen3moe.ssm.group_count", F32, 8.0),
         kv_arr("qwen3moe.rope.freq_base", F32, [1.5, 2.5]),
         kv_arr("qwen3moe.rope.scaling.factor", STRING, ["x"]),
         kv_arr("qwen3moe.embedding_length", STRING, [f"s{i}" for i in range(12)]),
@@ -198,7 +200,7 @@ def cases() -> dict[str, bytes]:
                   "attention.key_length", "attention.value_length", "full_attention_interval",
                   "attention.sliding_window", "attention.key_length_swa",
                   "attention.value_length_swa", "attention.shared_kv_layers", "ssm.state_size",
-                  "ssm.inner_size"]
+                  "ssm.inner_size", "ssm.conv_kernel", "ssm.group_count"]
     for field in int_fields:
         slug = field.replace(".", "_")
         key = f"llama.{field}"
@@ -297,10 +299,18 @@ def cases() -> dict[str, bytes]:
 
 
 def load_reference(path: Path):
-    spec = importlib.util.spec_from_file_location("gguf_meta_reference", path)
+    # gguf_meta.py imports its sibling autoconfig_core relatively (both stdlib-only). Load it as a
+    # submodule of a bare package over its directory, so that import resolves without running
+    # the service package's __init__ (and its dependencies).
+    import types
+    pkg = types.ModuleType("gguf_meta_pkg")
+    pkg.__path__ = [str(path.resolve().parent)]
+    sys.modules["gguf_meta_pkg"] = pkg
+    spec = importlib.util.spec_from_file_location("gguf_meta_pkg.gguf_meta", path)
     if spec is None or spec.loader is None:
         sys.exit(f"cannot load {path}")
     mod = importlib.util.module_from_spec(spec)
+    sys.modules["gguf_meta_pkg.gguf_meta"] = mod
     spec.loader.exec_module(mod)
     return mod
 

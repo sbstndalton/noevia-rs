@@ -179,7 +179,7 @@ const REQUEST_KEYS: [&str; 14] = [
     "verified_ctx",
     "cache_ram_cap_mib",
 ];
-const SHAPE_KEYS: [&str; 11] = [
+const SHAPE_KEYS: [&str; 12] = [
     "gemma",
     "layers",
     "kv_heads",
@@ -191,6 +191,7 @@ const SHAPE_KEYS: [&str; 11] = [
     "v_swa",
     "shared",
     "period",
+    "recurrent_bytes",
 ];
 const BACKEND_KEYS: [&str; 5] = ["vram_gb", "gpu_count", "cards", "host_ram_gb", "same_as"];
 const PRESET_KEYS: [&str; 3] = ["fast", "balanced", "long-ctx"];
@@ -291,7 +292,15 @@ fn parse_shape(v: &Value) -> Result<Shape, Error> {
         v_swa: opt_int(g("v_swa")?, "shape.v_swa")?,
         shared: opt_int(g("shared")?, "shape.shared")?,
         period,
+        // Optional: only a hybrid model's attention-only shape carries it (#1159).
+        recurrent_bytes: match v.get("recurrent_bytes") {
+            None => None,
+            Some(x) => opt_int(x, "shape.recurrent_bytes")?,
+        },
     };
+    if shape.recurrent_bytes.is_some_and(|r| r < 0) {
+        return Err(Error::Schema("shape.recurrent_bytes"));
+    }
     // kv_shape() returns None (and analyze() refuses) unless these hold.
     if !(shape.layers > 0 && shape.kv_heads > 0 && shape.k_dim > 0 && shape.v_dim > 0) {
         return Err(Error::Schema("shape: not sizeable"));
@@ -390,7 +399,9 @@ pub fn parse_value(v: &Value) -> Result<Request, Error> {
         verified_ctx: int(g("verified_ctx")?, "verified_ctx")?,
         cache_ram_cap_mib: int(g("cache_ram_cap_mib")?, "cache_ram_cap_mib")?,
     };
-    if !(0..=MAX_BLOCK_COUNT).contains(&req.layers) || req.layers != req.shape.layers {
+    // The shape covers the layers that hold KV: all of them, or a hybrid model's attention
+    // layers only (#1159), never more than the stack.
+    if !(0..=MAX_BLOCK_COUNT).contains(&req.layers) || req.shape.layers > req.layers {
         return Err(Error::Schema("layers"));
     }
     if !(1..=8).contains(&req.n_sessions) {

@@ -2,11 +2,11 @@
 //! and the backends (`_kv_first_int`, `kv_shape`, `_moe_ratio`, the hostile `int()` and `==`
 //! handling), its four early refusals, the main-GPU reservation and the size core's backends.
 
-use crate::kv::{kv_shape_bytes, Shape};
+use crate::kv::{kv_shape_bytes, Shape, SSM_STATE_BYTES};
 use crate::pyfloat::{self, f};
 use crate::pyval::{
-    float_of, float_or_zero, get, int_of, int_or, int_value, is_int, iterate, lower_starts_with,
-    py_eq, py_str,
+    big, float_of, float_or_zero, get, int_of, int_or, int_value, is_int, iterate,
+    lower_starts_with, py_eq, py_str,
 };
 use crate::{Error, Work, MAX_BLOCK_COUNT};
 use model_files::json::Value;
@@ -46,6 +46,14 @@ pub enum Prep {
     },
     UnsizedVram(Vec<String>),
     Kv(Vec<&'static str>),
+    /// A hybrid model's per-layer head count with 0 entries that is not fully known (#1159).
+    /// `count` is the declared entry count as written (any size of integer).
+    KvLayers {
+        known: usize,
+        count: String,
+        layers: i128,
+        shared: i128,
+    },
     Ok(Box<Prepared>),
 }
 
@@ -111,6 +119,104 @@ fn kv_first_int(v: &Value, default: i128, work: &mut Work) -> Result<PyInt, Erro
         }
     }
     Ok(plain(default))
+}
+
+/// `_attention_layers`'s answer.
+enum Attn {
+    /// Every entry known, one per layer: the attention layers and their largest head count.
+    Full { n_attn: i128, max_heads: i128 },
+    /// A 0 entry, but not every entry known (or not one per layer).
+    Partial { known: usize, count: String },
+}
+
+/// `_attention_layers`: a per-layer head count of plain ints with a 0 entry, where llama.cpp
+/// gives the 0 layers no KV cache (#1159). None leaves sizing as it was.
+fn attention_layers(v: &Value, layers: i128, work: &mut Work) -> Result<Option<Attn>, Error> {
+    let (seq, count) = match v {
+        Value::Arr(items) => (items, None),
+        Value::Obj(_) if matches!(get(v, "_array"), Value::Bool(true)) => {
+            match (get(v, "sample"), get(v, "count")) {
+                (Value::Arr(items), c @ Value::Int(_)) => (items, Some(c)),
+                _ => return Ok(None),
+            }
+        }
+        _ => return Ok(None),
+    };
+    work.charge(seq.len())?;
+    let mut has_zero = false;
+    for x in seq {
+        match x {
+            Value::Int(i) => has_zero |= i.is_zero(),
+            _ => return Ok(None),
+        }
+    }
+    if !has_zero {
+        return Ok(None);
+    }
+    let len = seq.len();
+    let len_i = i128::try_from(len).map_err(|_| Error::OutOfRange("attention_head_count_kv"))?;
+    let (count_n, count_s) = match count {
+        None => (Some(len_i), len.to_string()),
+        Some(c @ Value::Int(i)) => (big(c, "count").ok(), i.to_string()),
+        Some(_) => return Ok(None),
+    };
+    if count_n == Some(len_i) && len_i == layers {
+        let mut n_attn: i128 = 0;
+        let mut max_heads: Option<i128> = None;
+        for x in seq {
+            let h = int_value(x, "attention_head_count_kv")?;
+            if h != 0 {
+                n_attn += 1;
+                max_heads = Some(max_heads.map_or(h, |m| m.max(h)));
+            }
+        }
+        return Ok(Some(Attn::Full {
+            n_attn,
+            max_heads: max_heads.unwrap_or(0),
+        }));
+    }
+    Ok(Some(Attn::Partial {
+        known: len,
+        count: count_s,
+    }))
+}
+
+const OVERFLOW: Error = Error::OutOfRange("ssm state bytes");
+
+/// `_ssm_layer_bytes`: one non-attention layer's recurrent state per sequence, never below
+/// SSM_STATE_BYTES. Checked arithmetic: a hostile header's sizes refuse rather than wrap.
+fn ssm_layer_bytes(
+    state: Option<i128>,
+    inner: Option<i128>,
+    conv: Option<i128>,
+    groups: Option<i128>,
+    embed: i128,
+) -> Result<i128, Error> {
+    let ok = |v: Option<i128>| v.filter(|&x| x > 0);
+    let mul = |a: i128, b: i128| a.checked_mul(b).ok_or(OVERFLOW);
+    let add = |a: i128, b: i128| a.checked_add(b).ok_or(OVERFLOW);
+    if ok(state).is_none() && ok(inner).is_none() {
+        return Ok(SSM_STATE_BYTES);
+    }
+    let need = match (ok(state), ok(inner), ok(conv), ok(groups)) {
+        (Some(st), Some(inn), Some(cv), Some(g)) => {
+            let conv_w = add(inn, mul(mul(2, g)?, st)?)?;
+            mul(4, add(mul(st, inn)?, mul(cv - 1, conv_w)?)?)?
+        }
+        _ => {
+            let st = ok(state).unwrap_or(128);
+            let inn = match ok(inner) {
+                Some(v) => v,
+                None => mul(2, embed)?,
+            };
+            let cv = ok(conv).unwrap_or(4);
+            let g = ok(groups).unwrap_or(8);
+            let ssm = add(mul(mul(mul(4, st)?, inn)?, 11)?, 9)?.div_euclid(10);
+            let conv_w = add(inn, mul(mul(2, g)?, st)?)?;
+            add(ssm, mul(mul(4, cv - 1)?, conv_w)?)?
+        }
+    };
+    Ok(need.max(SSM_STATE_BYTES))
 }
 
 fn moe_ratio(experts: &Value) -> Result<f64, Error> {
@@ -237,6 +343,7 @@ fn kv_shape(
         v_swa: None,
         shared: None,
         period: None,
+        recurrent_bytes: None,
     };
     if let Some(interval) = full_attention_interval.filter(|&i| i > 1) {
         shape.hybrid_interval = Some(interval);
@@ -472,10 +579,38 @@ pub fn prepare(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
         return Ok(Prep::UnsizedVram(names));
     }
 
+    // Per-layer heads with 0 entries (#1159): only the attention layers hold KV. Left to the
+    // interleaved-attention and sliding-window paths when those are declared.
+    let (mut shape_layers, mut shape_heads) = (layers, kv_heads.value);
+    if fai.is_none_or(|i| i <= 1) && swa.window.is_none_or(|w| w <= 0) {
+        match attention_layers(get(m, "attention_head_count_kv"), layers, work)? {
+            Some(Attn::Partial { known, count }) => {
+                return Ok(Prep::KvLayers {
+                    known,
+                    count,
+                    layers,
+                    shared: 0,
+                })
+            }
+            Some(Attn::Full { .. }) if swa.shared.is_some_and(|n| n > 0) => {
+                return Ok(Prep::KvLayers {
+                    known: usize::try_from(layers).map_err(|_| Error::OutOfRange("block_count"))?,
+                    count: layers.to_string(),
+                    layers,
+                    shared: swa.shared.unwrap_or(0),
+                })
+            }
+            Some(Attn::Full { n_attn, max_heads }) => {
+                shape_layers = n_attn;
+                shape_heads = max_heads;
+            }
+            None => {}
+        }
+    }
     let shape = kv_shape(
         gemma,
-        layers,
-        kv_heads.value,
+        shape_layers,
+        shape_heads,
         head_dim,
         key_length,
         value_length,
@@ -483,6 +618,39 @@ pub fn prepare(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
         &swa,
         work,
     )?;
+    let mut shape = shape;
+    if let Some(s) = shape.as_mut() {
+        if shape_layers != layers || s.hybrid_interval.is_some() {
+            // Non-attention layers still hold a per-sequence recurrent state (#1159). The keys
+            // are read only here, as Python reads them, so other models never see them.
+            let per = ssm_layer_bytes(
+                opt_int(get(m, "ssm_state_size"), "ssm_state_size")?,
+                opt_int(get(m, "ssm_inner_size"), "ssm_inner_size")?,
+                opt_int(get(m, "ssm_conv_kernel"), "ssm_conv_kernel")?,
+                opt_int(get(m, "ssm_group_count"), "ssm_group_count")?,
+                embed,
+            )?;
+            let per_seq = per.checked_mul(n_sessions).ok_or(OVERFLOW)?;
+            match s.hybrid_interval {
+                None => {
+                    s.recurrent_bytes = Some(
+                        (layers - shape_layers)
+                            .checked_mul(per_seq)
+                            .ok_or(OVERFLOW)?,
+                    );
+                }
+                Some(interval) => {
+                    let full = ((layers + interval - 1).div_euclid(interval)).max(1);
+                    let extra = (layers - full)
+                        .checked_mul(per_seq - SSM_STATE_BYTES)
+                        .ok_or(OVERFLOW)?;
+                    if extra > 0 {
+                        s.recurrent_bytes = Some(extra);
+                    }
+                }
+            }
+        }
+    }
     let kv = match &shape {
         Some(s) => kv_shape_bytes(s, 4096, CACHE_BYTES, CACHE_BYTES, work)?,
         None => 0.0,
@@ -492,7 +660,7 @@ pub fn prepare(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
         _ => {
             let missing = [
                 ("block_count", layers),
-                ("attention_head_count_kv", kv_heads.value),
+                ("attention_head_count_kv", shape_heads),
                 (
                     "head_dim (embedding_length / attention_head_count)",
                     head_dim,
@@ -594,6 +762,17 @@ pub fn prep_json(p: &Prep) -> String {
             }
             out.push_str("]}");
         }
+        Prep::KvLayers {
+            known,
+            count,
+            layers,
+            shared,
+        } => {
+            let _ = write!(
+                out,
+                "{{\"refuse\":\"kv_layers\",\"known\":{known},\"count\":{count},\"layers\":{layers},\"shared\":{shared}}}"
+            );
+        }
         Prep::Ok(p) => {
             let s = &p.shape;
             let kv_heads = if p.kv_heads_is_bool {
@@ -638,6 +817,9 @@ pub fn prep_json(p: &Prep) -> String {
                     }
                     out.push(']');
                 }
+            }
+            if let Some(rec) = s.recurrent_bytes {
+                let _ = write!(out, ",\"recurrent_bytes\":{rec}");
             }
             out.push_str("},\"sized\":[");
             for (i, n) in p.sized.iter().enumerate() {

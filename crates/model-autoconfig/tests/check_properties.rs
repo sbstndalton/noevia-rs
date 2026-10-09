@@ -110,12 +110,38 @@ fn any_json() -> impl Strategy<Value = String> {
     })
 }
 
+/// A per-layer attention.head_count_kv: small ints with 0 entries (hybrid layers, #1159), as a
+/// list or a summary's {_array, count, sample}, sometimes one per layer of a 32-layer stack.
+fn per_layer_kv() -> impl Strategy<Value = String> {
+    (
+        prop::collection::vec(
+            prop_oneof![2 => Just(0i64), 1 => -2i64..3, 2 => 1i64..65],
+            0..40,
+        ),
+        prop_oneof![Just(None), Just(Some(32u64)), (0u64..50).prop_map(Some)],
+        any::<bool>(),
+    )
+        .prop_map(|(mut seq, count, dict)| {
+            if dict && seq.len() > 8 && count != Some(seq.len() as u64) {
+                seq.truncate(8);
+            }
+            let list = format!(
+                "[{}]",
+                seq.iter().map(i64::to_string).collect::<Vec<_>>().join(",")
+            );
+            match (dict, count) {
+                (true, Some(c)) => format!("{{\"_array\":true,\"count\":{c},\"sample\":{list}}}"),
+                _ => list,
+            }
+        })
+}
+
 fn model() -> impl Strategy<Value = String> {
     (
         prop_oneof![6 => Just("32".to_owned()), 1 => Just("42".to_owned()), 1 => any_json()],
         prop_oneof![6 => Just("32".to_owned()), 1 => Just("16".to_owned()), 1 => any_json()],
         prop_oneof![6 => Just("4096".to_owned()), 1 => any_json()],
-        prop_oneof![6 => Just("8".to_owned()), 1 => any_json()],
+        prop_oneof![6 => Just("8".to_owned()), 1 => any_json(), 2 => per_layer_kv()],
         prop_oneof![6 => Just("131072".to_owned()), 1 => any_json()],
         prop_oneof![6 => Just("null".to_owned()), 1 => Just("512".to_owned()), 1 => any_json()],
         any_json(),

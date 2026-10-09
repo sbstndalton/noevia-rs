@@ -151,6 +151,13 @@ def handmade(core) -> list[tuple[str, dict]]:
     two = [{"vram_gb": 23.9, "gpu_count": 2, "cards": [12.0, 11.9], "host_ram_gb": 125.5, "same_as": 0}]
     return [
         ("dense fits, unmeasured cap", v()),
+        # #1159: a hybrid model's KV shape covers only its attention layers (11 of 30 here).
+        ("hybrid: KV over the attention layers only", v(shape=core.kv_shape("lfm2", 11, 8, 64), layers=30,
+                                                       model_gb_raw=1.5, native_ctx=32768)),
+        ("hybrid: recurrent state charged", v(shape=dict(core.kv_shape("lfm2", 11, 8, 64), recurrent_bytes=19 * 4 * 2**20 * 2),
+                                              layers=30, model_gb_raw=1.5, native_ctx=32768, n_sessions=2)),
+        ("hybrid: long-ctx preset", v(shape=core.kv_shape("lfm2", 11, 8, 64), layers=30, model_gb_raw=1.5,
+                                      native_ctx=32768, preset="long-ctx")),
         ("dense measured prompt rate caps by time", v(prompt_tps=500.0)),
         ("dense verified context caps", v(verified_ctx=50000)),
         ("dense long-ctx preset offloads layers", v(preset="long-ctx", model_gb_raw=20.0)),
@@ -342,6 +349,61 @@ def check_handmade() -> list[tuple[str, dict]]:
         ("prep: kv heads sample of a number raises", p(model=mm(attention_head_count_kv={"_array": True, "sample": 3}))),
         ("prep: kv heads sample element unparsable raises", p(model=mm(attention_head_count_kv={"_array": True, "sample": ["x"]}))),
         ("prep: kv heads list", p(model=mm(attention_head_count_kv=[4, 8]))),
+        # #1159: llama.cpp reads head_count_kv per layer; absent means head_count (MHA), and a 0
+        # entry is a layer with no KV cache (hybrid LFM2 / Jamba). Only attention layers are sized.
+        ("prep: absent kv heads is MHA", p(model={k: v for k, v in good_model.items() if k != "attention_head_count_kv"})),
+        ("prep: absent kv and head count", p(model={"block_count": 32, "embedding_length": 4096, "context_length": 8192})),
+        ("prep: zero head count, absent kv", p(model={"block_count": 32, "attention_head_count": 0, "embedding_length": 4096})),
+        ("prep: GQA scalar kv heads", p(model=mm(attention_head_count_kv=4))),
+        ("prep: MHA per-layer kv heads", p(model=mm(block_count=4, attention_head_count_kv=[32, 32, 32, 32]))),
+        ("prep: hybrid per-layer kv heads, fully known", p(arch="lfm2", model=mm(block_count=6, attention_head_count_kv=[0, 0, 8, 0, 0, 8]))),
+        ("prep: hybrid per-layer kv heads, mixed counts", p(arch="lfm2", model=mm(block_count=6, attention_head_count_kv=[0, 4, 0, 8, 0, 2]))),
+        ("prep: hybrid per-layer kv heads, full sample dict", p(arch="lfm2", model=mm(block_count=4, attention_head_count_kv=
+                                                             {"_array": True, "count": 4, "sample": [0, 8, 0, 8]}))),
+        ("prep: hybrid per-layer kv heads, prefix only, refuses", p(arch="lfm2", model=mm(block_count=30, attention_head_count_kv=
+                                                                 {"_array": True, "count": 30, "sample": [0, 0, 8, 0, 0, 8, 0, 0]}))),
+        ("prep: hybrid per-layer kv heads, wrong length, refuses", p(arch="lfm2", model=mm(block_count=6, attention_head_count_kv=[0, 8, 0]))),
+        ("prep: hybrid per-layer kv heads, huge count, refuses", p(arch="lfm2", model=mm(block_count=6, attention_head_count_kv=
+                                                                {"_array": True, "count": 2**130, "sample": [0, 8]}))),
+        ("prep: per-layer kv heads all zero refuses", p(arch="lfm2", model=mm(block_count=4, attention_head_count_kv=[0, 0, 0, 0]))),
+        ("prep: per-layer kv heads negative", p(arch="lfm2", model=mm(block_count=3, attention_head_count_kv=[0, -2, -1]))),
+        ("prep: hybrid per-layer kv heads with a bool stays as before", p(model=mm(block_count=3, attention_head_count_kv=[0, True, 8]))),
+        ("prep: hybrid per-layer kv heads with a float stays as before", p(model=mm(block_count=3, attention_head_count_kv=[8.0, 0, 8]))),
+        ("prep: hybrid per-layer dict, _array not true stays as before", p(model=mm(attention_head_count_kv=
+                                                                       {"_array": 1, "count": 32, "sample": [8, 0]}))),
+        ("prep: hybrid per-layer kv heads under interleaved attention stays as before", p(model=mm(
+            block_count=4, full_attention_interval=2, attention_head_count_kv=[0, 8, 0, 8]))),
+        ("prep: hybrid per-layer kv heads under a sliding window stays as before", p(model=mm(
+            block_count=4, sliding_window=512, attention_head_count_kv=[0, 8, 0, 8]))),
+        ("prep: hybrid per-layer kv heads with a zero sliding window", p(model=mm(
+            block_count=4, sliding_window=0, attention_head_count_kv=[8, 0, 8, 0]))),
+        # Review of #1159: the non-attention layers' recurrent state is charged per session, and a
+        # shared-KV declaration on top of a per-layer hybrid array refuses.
+        ("prep: granite-4.0-h shaped hybrid charges SSM state", p(arch="granitehybrid", model=mm(
+            block_count=40, ssm_state_size=128, attention_head_count_kv=[0] * 5 + [8] + [0] * 9 + [8] + [0] * 9 + [8]
+            + [0] * 9 + [8] + [0] * 5))),
+        # Re-review of #1159: the Mamba state from the header (llama.cpp's conv + SSM state).
+        ("prep: granite-4.0-h-small shaped, all four ssm keys", p(arch="granitehybrid", n_sessions=2, model=mm(
+            block_count=40, embedding_length=4096, ssm_state_size=128, ssm_inner_size=8192, ssm_conv_kernel=4,
+            ssm_group_count=1, attention_head_count_kv=([0] * 9 + [8]) * 4))),
+        ("prep: nemotron-h shaped, large state", p(arch="nemotron_h", model=mm(
+            block_count=52, embedding_length=8192, attention_head_count=64, ssm_state_size=256, ssm_inner_size=16384,
+            ssm_conv_kernel=4, ssm_group_count=8, attention_head_count_kv=([0] * 12 + [8]) * 4))),
+        ("prep: ssm keys partly missing use the defaults", p(arch="granitehybrid", model=mm(
+            block_count=8, ssm_state_size=256, attention_head_count_kv=[0, 0, 0, 8] * 2))),
+        ("prep: interleaved hybrid charged the excess only", p(n_sessions=3, model=mm(
+            full_attention_interval=4, ssm_state_size=128, ssm_inner_size=8192, ssm_conv_kernel=4, ssm_group_count=1))),
+        ("prep: interleaved hybrid without ssm keys stays as before", p(model=mm(full_attention_interval=4))),
+        ("[stricter] prep: ssm sizes past i128 refuse", p(model=mm(
+            full_attention_interval=4, ssm_state_size=2**90, ssm_inner_size=2**90))),
+        ("prep: hybrid recurrent state scales with sessions", p(arch="lfm2", n_sessions=4, model=mm(
+            block_count=6, attention_head_count_kv=[0, 0, 8, 0, 0, 8]))),
+        ("prep: hybrid per-layer kv heads with shared KV refuses", p(arch="lfm2", model=mm(
+            block_count=6, shared_kv_layers=2, attention_head_count_kv=[0, 0, 8, 0, 0, 8]))),
+        ("prep: hybrid per-layer kv heads with zero shared KV", p(arch="lfm2", model=mm(
+            block_count=6, shared_kv_layers=0, attention_head_count_kv=[0, 0, 8, 0, 0, 8]))),
+        ("prep: hybrid refusal comes after the backend refusals", p(backends=[], model=mm(attention_head_count_kv=
+                                                                  {"_array": True, "count": 32, "sample": [0, 8]}))),
         ("prep: string ints are read as Python reads them", p(model=mm(block_count=" 32 ", attention_head_count="+3_2",
                                                                        context_length="\x1c8192\x1f"))),
         ("prep: an unparsable block count raises", p(model=mm(block_count="thirty"))),

@@ -44,6 +44,8 @@
   "shared_kv_layers": null,
   "sliding_window": null,
   "sliding_window_pattern": null,
+  "ssm_conv_kernel": null,
+  "ssm_group_count": null,
   "ssm_inner_size": null,
   "ssm_state_size": null,
   "value_length": 128,
