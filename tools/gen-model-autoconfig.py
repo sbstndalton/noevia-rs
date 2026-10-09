@@ -342,6 +342,36 @@ def check_handmade() -> list[tuple[str, dict]]:
         ("prep: kv heads sample of a number raises", p(model=mm(attention_head_count_kv={"_array": True, "sample": 3}))),
         ("prep: kv heads sample element unparsable raises", p(model=mm(attention_head_count_kv={"_array": True, "sample": ["x"]}))),
         ("prep: kv heads list", p(model=mm(attention_head_count_kv=[4, 8]))),
+        # #1159: llama.cpp reads head_count_kv per layer; absent means head_count (MHA), and a 0
+        # entry is a layer with no KV cache (hybrid LFM2 / Jamba). Only attention layers are sized.
+        ("prep: absent kv heads is MHA", p(model={k: v for k, v in good_model.items() if k != "attention_head_count_kv"})),
+        ("prep: absent kv and head count", p(model={"block_count": 32, "embedding_length": 4096, "context_length": 8192})),
+        ("prep: zero head count, absent kv", p(model={"block_count": 32, "attention_head_count": 0, "embedding_length": 4096})),
+        ("prep: GQA scalar kv heads", p(model=mm(attention_head_count_kv=4))),
+        ("prep: MHA per-layer kv heads", p(model=mm(block_count=4, attention_head_count_kv=[32, 32, 32, 32]))),
+        ("prep: hybrid per-layer kv heads, fully known", p(arch="lfm2", model=mm(block_count=6, attention_head_count_kv=[0, 0, 8, 0, 0, 8]))),
+        ("prep: hybrid per-layer kv heads, mixed counts", p(arch="lfm2", model=mm(block_count=6, attention_head_count_kv=[0, 4, 0, 8, 0, 2]))),
+        ("prep: hybrid per-layer kv heads, full sample dict", p(arch="lfm2", model=mm(block_count=4, attention_head_count_kv=
+                                                             {"_array": True, "count": 4, "sample": [0, 8, 0, 8]}))),
+        ("prep: hybrid per-layer kv heads, prefix only, refuses", p(arch="lfm2", model=mm(block_count=30, attention_head_count_kv=
+                                                                 {"_array": True, "count": 30, "sample": [0, 0, 8, 0, 0, 8, 0, 0]}))),
+        ("prep: hybrid per-layer kv heads, wrong length, refuses", p(arch="lfm2", model=mm(block_count=6, attention_head_count_kv=[0, 8, 0]))),
+        ("prep: hybrid per-layer kv heads, huge count, refuses", p(arch="lfm2", model=mm(block_count=6, attention_head_count_kv=
+                                                                {"_array": True, "count": 2**130, "sample": [0, 8]}))),
+        ("prep: per-layer kv heads all zero refuses", p(arch="lfm2", model=mm(block_count=4, attention_head_count_kv=[0, 0, 0, 0]))),
+        ("prep: per-layer kv heads negative", p(arch="lfm2", model=mm(block_count=3, attention_head_count_kv=[0, -2, -1]))),
+        ("prep: hybrid per-layer kv heads with a bool stays as before", p(model=mm(block_count=3, attention_head_count_kv=[0, True, 8]))),
+        ("prep: hybrid per-layer kv heads with a float stays as before", p(model=mm(block_count=3, attention_head_count_kv=[8.0, 0, 8]))),
+        ("prep: hybrid per-layer dict, _array not true stays as before", p(model=mm(attention_head_count_kv=
+                                                                       {"_array": 1, "count": 32, "sample": [8, 0]}))),
+        ("prep: hybrid per-layer kv heads under interleaved attention stays as before", p(model=mm(
+            block_count=4, full_attention_interval=2, attention_head_count_kv=[0, 8, 0, 8]))),
+        ("prep: hybrid per-layer kv heads under a sliding window stays as before", p(model=mm(
+            block_count=4, sliding_window=512, attention_head_count_kv=[0, 8, 0, 8]))),
+        ("prep: hybrid per-layer kv heads with a zero sliding window", p(model=mm(
+            block_count=4, sliding_window=0, attention_head_count_kv=[8, 0, 8, 0]))),
+        ("prep: hybrid refusal comes after the backend refusals", p(backends=[], model=mm(attention_head_count_kv=
+                                                                  {"_array": True, "count": 32, "sample": [0, 8]}))),
         ("prep: string ints are read as Python reads them", p(model=mm(block_count=" 32 ", attention_head_count="+3_2",
                                                                        context_length="\x1c8192\x1f"))),
         ("prep: an unparsable block count raises", p(model=mm(block_count="thirty"))),
