@@ -160,6 +160,21 @@ one slice at a time.
   `dav-parse.wasm` as `browser_policy`. Table from noevia-core
   (`node tools/gen-browser-policy-fixtures.cjs`), copied byte-for-byte to
   `crates/browser-policy/tests/fixtures/browser-policy.v1.json`.
+- `crates/tool-gate`: noevia-core's tool-gate.cjs rules: whether one message makes the chat loop
+  prefetch a read-only tool (run it on arguments taken from the message) or require it, what the
+  Stage 2 decision service is shown, and how its answer is read (the service call stays in JS).
+  The host never forces more with it (TOOL_GATE_IMPL=wasm): prefetch only when both prefetch the
+  same arguments, require when one requires, otherwise no tool is forced. Stricter by design: a
+  non-ASCII or `xn--` URL, or a local name behind several trailing dots, is required, not
+  prefetched. The fixed JS patterns are matched as V8 matches non-Unicode regular expressions. In
+  `dav-parse.wasm` as `tool_gate`. Table from noevia-core (`node tools/gen-tool-gate-fixtures.cjs`),
+  copied byte-for-byte to `crates/tool-gate/tests/fixtures/tool-gate.v1.json`.
+- `crates/toolboxes-permitted`: noevia-core's toolboxes-permitted.cjs: the toolbox ids one request
+  carries and the per-turn catalogue (box and tool states and reason codes). The host never offers
+  more with it (TOOLBOXES_PERMITTED_IMPL=wasm): ids both carry, the stricter state and permission,
+  nothing on a fault. In `dav-parse.wasm` as `toolboxes_permitted`. Table from noevia-core
+  (`node tools/gen-toolboxes-permitted-fixtures.cjs`), copied byte-for-byte to
+  `crates/toolboxes-permitted/tests/fixtures/toolboxes-permitted.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is

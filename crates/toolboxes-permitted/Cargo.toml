@@ -1,0 +1,17 @@
+[package]
+name = "toolboxes-permitted"
+version = "0.1.0"
+description = "noevia-core's toolboxes-permitted.cjs in Rust: which toolboxes a request carries and which tools an account could use this turn, with states and reason codes; the host only ever uses it to offer less"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+
+[dev-dependencies]
+proptest = "1"

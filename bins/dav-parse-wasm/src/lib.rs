@@ -180,6 +180,15 @@
 //!      (2), the decision of substituteSecrets (3, names and domains only, never a value) and the
 //!      label fold (4) over the host's projections; an unknown is a `null` status or fold. Refuses
 //!      with status 1 and `{"error":"input"|"too_large"}` (browser-policy crate).
+//!    - `tool_gate()`: input `u8(op)` and UTF-8 JSON (at most `tool_gate::MAX_INPUT_BYTES`):
+//!      tool-gate.cjs ruleDecision (1), readout's options (2), readout's reading of an answer (3),
+//!      searchQuery/prefetchableSearch (4), diaryMonth (5) and publicUrlPattern (6) over the
+//!      host's projections. Refuses with status 1 and `{"error":"input"|"too_large"}` (tool-gate
+//!      crate).
+//!    - `toolboxes_permitted()`: input `u8(op)` and UTF-8 JSON (at most
+//!      `toolboxes_permitted::MAX_INPUT_BYTES`): toolboxes-permitted.cjs projectToolboxIds (1),
+//!      selectedToolboxIds (2) and computePermittedTools (3) over the host's projections. Refuses
+//!      with status 1 and `{"error":"input"|"too_large"}` (toolboxes-permitted crate).
 //!
 //!    - `frame_untrusted()`: input `u32le(n) kind u32le(m) label text`, all UTF-16LE code units
 //!      (kind and label at most `prompt_framing::MAX_LABEL_UNITS`, text at most
@@ -251,6 +260,8 @@ const _: () = assert!(code_actions::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(project_file_names::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(provider_egress::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 const _: () = assert!(browser_policy::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(tool_gate::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
+const _: () = assert!(toolboxes_permitted::MAX_INPUT_BYTES <= MAX_INPUT_BYTES);
 
 thread_local! {
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
@@ -689,6 +700,18 @@ pub fn run_browser_policy(input: &[u8]) -> (u32, Vec<u8>) {
     browser_policy::call(input)
 }
 
+/// `tool-gate`: tool-gate.cjs's prefetch/require rules and Stage 2 option and answer reading; see
+/// the crate docs.
+pub fn run_tool_gate(input: &[u8]) -> (u32, Vec<u8>) {
+    tool_gate::call(input)
+}
+
+/// `toolboxes-permitted`: toolboxes-permitted.cjs's carried box ids and per-turn catalogue; see the
+/// crate docs.
+pub fn run_toolboxes_permitted(input: &[u8]) -> (u32, Vec<u8>) {
+    toolboxes_permitted::call(input)
+}
+
 /// `long-profile`: low- and high-context profiles per model; see the crate docs.
 pub fn run_long_profile(input: &[u8]) -> (u32, String) {
     if input.len() > long_profile::MAX_INPUT_BYTES {
@@ -1085,6 +1108,20 @@ pub extern "C" fn provider_egress() -> u32 {
 #[no_mangle]
 pub extern "C" fn browser_policy() -> u32 {
     consume_bytes(run_browser_policy)
+}
+
+/// Consume the input buffer as a tool-gate request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn tool_gate() -> u32 {
+    consume_bytes(run_tool_gate)
+}
+
+/// Consume the input buffer as a toolboxes-permitted request; see the crate docs.
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn toolboxes_permitted() -> u32 {
+    consume_bytes(run_toolboxes_permitted)
 }
 
 /// Address of the last reply.
