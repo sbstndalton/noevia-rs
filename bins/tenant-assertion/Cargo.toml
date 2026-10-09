@@ -1,0 +1,21 @@
+[package]
+name = "tenant-assertion-cli"
+version = "0.1.0"
+description = "One tenant-assertion request on stdin -> accept/reject on stdout (Diary, TENANT_ASSERTION_IMPL=rust)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "tenant-assertion"
+path = "src/main.rs"
+
+[dependencies]
+tenant-assertion = { path = "../../crates/tenant-assertion" }
+serde_json = "1"
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
+
