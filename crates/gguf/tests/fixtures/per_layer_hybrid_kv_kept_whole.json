@@ -62,6 +62,22 @@
   "key_length": null,
   "key_length_swa": null,
   "nextn_predict_layers": null,
+  "per_layer_sample": {
+   "attention_head_count_kv": {
+    "_array": true,
+    "count": 30,
+    "sample": [
+     0,
+     0,
+     8,
+     0,
+     0,
+     8,
+     0,
+     0
+    ]
+   }
+  },
   "rope_freq_base": 1.0,
   "rope_scaling_factor": null,
   "rope_scaling_original_context": null,

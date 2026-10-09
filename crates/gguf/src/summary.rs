@@ -190,9 +190,15 @@ fn py_int_cmp(a: &PyInt, b: &PyInt) -> std::cmp::Ordering {
 fn kv_dim_int(v: Option<&Value>) -> Result<Option<PyInt>, SummaryError> {
     match v {
         Some(Value::List(items)) if items.len() as u64 > MAX_ARRAY_ELEMENTS_KEPT => {
+            // The largest nonzero entry; 0 ("use head_dim") only when every entry is 0.
             let mut best: Option<PyInt> = None;
+            let mut any = false;
             for x in items {
                 if let Some(k) = numeric_int(x)? {
+                    any = true;
+                    if k == PyInt::Small(0) {
+                        continue;
+                    }
                     if best
                         .as_ref()
                         .is_none_or(|b| py_int_cmp(&k, b) == std::cmp::Ordering::Greater)
@@ -201,7 +207,7 @@ fn kv_dim_int(v: Option<&Value>) -> Result<Option<PyInt>, SummaryError> {
                     }
                 }
             }
-            Ok(best)
+            Ok(best.or(if any { Some(PyInt::Small(0)) } else { None }))
         }
         other => scalar_int(other),
     }
@@ -329,9 +335,87 @@ fn finite(v: &Value) -> Value {
 }
 
 /// Build the summary gguf_meta.py's `summarize(raw)` returns.
+/// A whole per-layer list: only these are longer than the 8-entry sample (#1186).
+fn is_whole(v: &Value) -> bool {
+    matches!(v, Value::List(items) if items.len() as u64 > MAX_ARRAY_ELEMENTS_KEPT)
+}
+
+const KV_DIMS: [(&str, &str); 4] = [
+    ("key_length", "attention.key_length"),
+    ("value_length", "attention.value_length"),
+    ("key_length_swa", "attention.key_length_swa"),
+    ("value_length_swa", "attention.value_length_swa"),
+];
+
+/// `summarize`: the summary. When the header kept a whole per-layer list (#1186) the model
+/// section also carries `per_layer_sample` (each model field the old 8-entry-sample reading
+/// gives differently, at that old value) and `per_layer_zero_dims` (the KV dimensions whose
+/// list has a 0 entry), so autoconfig can size KV both ways and keep the larger.
 pub fn summarize(raw: &Raw) -> Result<Json, SummaryError> {
     let finite_raw: Raw = raw.iter().map(|(k, v)| (k.clone(), finite(v))).collect();
-    let raw = &finite_raw;
+    let mut out = summarize_once(&finite_raw)?;
+    if !finite_raw.values().any(is_whole) {
+        return Ok(out);
+    }
+    let keep = usize::try_from(MAX_ARRAY_ELEMENTS_KEPT).unwrap_or(usize::MAX);
+    let sampled: Raw = finite_raw
+        .iter()
+        .map(|(k, v)| {
+            let v = match v {
+                Value::List(items) if is_whole(v) => Value::ArraySummary {
+                    count: items.len() as u64,
+                    sample: items.iter().take(keep).cloned().collect(),
+                },
+                other => other.clone(),
+            };
+            (k.clone(), v)
+        })
+        .collect();
+    let old = summarize_once(&sampled)?;
+    let mut diff: Vec<(String, Json)> = Vec::new();
+    let new_model = out.get("model");
+    if let Some(Json::Object(old_fields)) = old.get("model") {
+        for (k, v) in old_fields {
+            let now = new_model
+                .and_then(|m| m.get(k))
+                .map_or_else(|| "null".to_string(), Json::to_string);
+            if v.to_string() != now {
+                diff.push((k.clone(), v.clone()));
+            }
+        }
+    }
+    let arch = finite_raw.get("general.architecture");
+    let mut zero: Vec<Json> = Vec::new();
+    if let Some(arch) = arch.filter(|a| truthy(a)) {
+        let prefix = py_str(arch);
+        for (field, key) in KV_DIMS {
+            if let Some(Value::List(items)) = finite_raw.get(format!("{prefix}.{key}").as_str()) {
+                let has_zero = items.iter().any(|x| match x {
+                    Value::Int(i) => *i == 0,
+                    Value::Float(f) => *f == 0.0,
+                    Value::Bool(b) => !*b,
+                    _ => false,
+                });
+                if items.len() as u64 > MAX_ARRAY_ELEMENTS_KEPT && has_zero {
+                    zero.push(Json::Str(field.to_string()));
+                }
+            }
+        }
+    }
+    if let Json::Object(fields) = &mut out {
+        if let Some((_, Json::Object(model))) = fields.iter_mut().find(|(k, _)| k == "model") {
+            if !diff.is_empty() {
+                model.push(("per_layer_sample".to_string(), Json::Object(diff)));
+            }
+            if !zero.is_empty() {
+                model.push(("per_layer_zero_dims".to_string(), Json::Array(zero)));
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn summarize_once(raw: &Raw) -> Result<Json, SummaryError> {
     let empty = Value::Str(String::new());
     let arch: &Value = match raw.get("general.architecture") {
         Some(v) if truthy(v) => v,

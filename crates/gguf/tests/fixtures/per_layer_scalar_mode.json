@@ -31,6 +31,11 @@
   "key_length": 128,
   "key_length_swa": -4,
   "nextn_predict_layers": null,
+  "per_layer_sample": {
+   "feed_forward_length": 5,
+   "key_length": 64,
+   "value_length": 64
+  },
   "rope_freq_base": null,
   "rope_scaling_factor": null,
   "rope_scaling_original_context": null,

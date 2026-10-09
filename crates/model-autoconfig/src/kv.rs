@@ -1,6 +1,6 @@
 //! `kv_shape_bytes`: KV cache bytes of a model at a context, from the shape Python resolved.
 
-use crate::pyfloat::f;
+use crate::pyfloat::{self, f};
 use crate::{Error, Work};
 
 pub const SSM_STATE_BYTES: i128 = 4 * 1024 * 1024;
@@ -23,6 +23,9 @@ pub struct Shape {
     /// A hybrid model's fixed recurrent state, sized over its non-attention layers (#1159).
     /// Absent from the JSON unless set.
     pub recurrent_bytes: Option<i128>,
+    /// The same model read with the old 8-entry sample of its per-layer lists (#1186);
+    /// [`kv_shape_bytes`] takes the larger of the two. Never nested further.
+    pub alt: Option<Box<Shape>>,
 }
 
 /// The bytes as Python's `int(...)` left them, still as a float (an integral one): the caller
@@ -40,9 +43,16 @@ pub fn kv_shape_bytes(
     let base = kv_core(s, ctx, bytes_per_elem, v_bytes, work)?;
     // Python adds the int to the int; the float sum rounds that exact sum once, and the caller's
     // division by 1024^3 is exact scaling, so the GiB figure is the same.
-    Ok(match s.recurrent_bytes {
+    let total = match s.recurrent_bytes {
         Some(rec) if rec != 0 => base + f(rec),
         _ => base,
+    };
+    Ok(match &s.alt {
+        Some(alt) => pyfloat::max(
+            total,
+            kv_shape_bytes(alt, ctx, bytes_per_elem, v_bytes, work)?,
+        ),
+        None => total,
     })
 }
 
