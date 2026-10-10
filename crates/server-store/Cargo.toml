@@ -1,0 +1,18 @@
+[package]
+name = "server-store"
+version = "0.1.0"
+description = "Read access to noevia-core's UI_DATA_DIR/cowork.db (schema owned by Node) with a compiled table-ownership list, plus Node's atomic JSON write"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rusqlite = { version = "0.40", features = ["bundled", "hooks"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
