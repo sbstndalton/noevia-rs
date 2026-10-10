@@ -109,6 +109,28 @@ struct Server(Child);
 
 impl Drop for Server {
     fn drop(&mut self) {
+        // The server runs in its own process group (see start_server): stop the group, so a
+        // `sh -c` wrapper does not leave the real server (and its mocks) running.
+        #[cfg(unix)]
+        {
+            let _ = Command::new("kill")
+                .arg("-TERM")
+                .arg("--")
+                .arg(format!("-{}", self.0.id()))
+                .status();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while Instant::now() < deadline {
+                if let Ok(Some(_)) = self.0.try_wait() {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            let _ = Command::new("kill")
+                .arg("-KILL")
+                .arg("--")
+                .arg(format!("-{}", self.0.id()))
+                .status();
+        }
         let _ = self.0.kill();
         let _ = self.0.wait();
     }
@@ -128,6 +150,11 @@ fn start_server(
         .env("UI_PORT", base.port.to_string())
         .env("UI_HOST", &base.host)
         .stdin(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        c.process_group(0);
+    }
     for kv in env {
         let (k, v) = kv
             .split_once('=')
@@ -347,5 +374,62 @@ fn main() -> ExitCode {
             eprintln!("replay: {e}");
             ExitCode::from(2)
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_server_that_never_gets_ready_is_stopped_with_its_children() {
+        let dir = std::env::temp_dir().join(format!("replay-start-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pid_file = dir.join("child.pid");
+        let cmd = format!("sleep 30 & echo $! > '{}'; wait", pid_file.display());
+        let base = http::Base::parse("http://127.0.0.1:9").unwrap();
+        let err = start_server(&cmd, &[], &base, &dir, Duration::from_secs(1))
+            .err()
+            .unwrap();
+        assert!(err.contains("not ready"), "{err}");
+        let pid = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .to_string();
+        let alive = Command::new("kill")
+            .arg("-0")
+            .arg(&pid)
+            .status()
+            .unwrap()
+            .success();
+        assert!(!alive, "the background child {pid} outlived the replay");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_seed_is_copied_and_an_existing_work_dir_is_refused() {
+        let root = std::env::temp_dir().join(format!("replay-seed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("seed/sub")).unwrap();
+        std::fs::write(root.join("seed/sub/a.json"), "{}").unwrap();
+        copy_tree(&root.join("seed"), &root.join("work")).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.join("work/sub/a.json")).unwrap(),
+            "{}"
+        );
+        let args = Args::parse(&[
+            "--corpus".into(),
+            root.join("seed").display().to_string(),
+            "--base".into(),
+            "http://127.0.0.1:9".into(),
+            "--seed".into(),
+            root.join("seed").display().to_string(),
+            "--work".into(),
+            root.join("work").display().to_string(),
+        ])
+        .unwrap();
+        assert!(run(&args).unwrap_err().contains("already exists"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
