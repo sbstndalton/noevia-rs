@@ -1,0 +1,47 @@
+{
+  "v": 1,
+  "seq": 68,
+  "request": {
+    "method": "GET",
+    "path": "/api/models/capabilities",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "kind": "none",
+        "enabled": false,
+        "admin": true,
+        "routing": false,
+        "load": false,
+        "unload": false,
+        "download": false,
+        "deleteCached": false,
+        "runtimeOptions": false,
+        "hardware": false,
+        "presets": false,
+        "modelManagement": false
+      }
+    }
+  }
+}

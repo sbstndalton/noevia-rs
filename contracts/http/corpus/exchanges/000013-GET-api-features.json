@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "seq": 13,
+  "request": {
+    "method": "GET",
+    "path": "/api/features",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "flags": {
+          "stepSupervision": false,
+          "systemOneRouting": false,
+          "toolGate": false,
+          "previews": false,
+          "diaryMcpWrite": false,
+          "deepResearch": false,
+          "offsiteBackup": false,
+          "toolRouter": false,
+          "codeHarness": false,
+          "plannerReview": false,
+          "browserExecutor": false,
+          "constrainedPlanDecoding": false,
+          "codePipeline": false,
+          "codeMerge": false,
+          "executorGuard": false,
+          "chatFraming": false,
+          "framingReasoner": false,
+          "brainContext": false,
+          "provenancePolicy": false,
+          "routingModes": false,
+          "kiwix": false,
+          "chatgptOAuth": false,
+          "nativeClientAuth": false
+        }
+      }
+    }
+  }
+}

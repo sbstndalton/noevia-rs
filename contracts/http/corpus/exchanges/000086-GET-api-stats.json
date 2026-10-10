@@ -1,0 +1,49 @@
+{
+  "v": 1,
+  "seq": 86,
+  "request": {
+    "method": "GET",
+    "path": "/api/stats",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "up": false,
+        "telemetryScope": null,
+        "mtp": [],
+        "tokensPerSecond": null,
+        "timeToFirstToken": null,
+        "inputTokens": null,
+        "outputTokens": null,
+        "inputTokensTotal": null,
+        "outputTokensTotal": null,
+        "requestCount": null,
+        "cpuPercent": null,
+        "gpuPercent": null,
+        "vramGb": null,
+        "memoryGb": null
+      }
+    }
+  }
+}

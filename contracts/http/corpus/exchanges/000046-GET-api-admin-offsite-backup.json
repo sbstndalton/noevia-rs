@@ -1,0 +1,57 @@
+{
+  "v": 1,
+  "seq": 46,
+  "request": {
+    "method": "GET",
+    "path": "/api/admin/offsite-backup",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "enabled": false,
+        "ready": false,
+        "reason": "Off-site backups are turned off (Settings → Features).",
+        "reasonCode": "off",
+        "reasonGaps": [],
+        "busy": null,
+        "schedule": "Daily at 03:00 (server time)",
+        "scheduleHour": 3,
+        "retention": "Keeps 7 daily, 4 weekly and 6 monthly snapshots",
+        "retentionPolicy": {
+          "daily": 7,
+          "weekly": 4,
+          "monthly": 6
+        },
+        "destinationFolder": null,
+        "destination": null,
+        "google": null,
+        "paths": 1,
+        "lastBackup": null,
+        "lastVerify": null,
+        "lastError": null,
+        "snapshots": null
+      }
+    }
+  }
+}

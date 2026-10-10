@@ -1,0 +1,62 @@
+{
+  "v": 1,
+  "seq": 87,
+  "request": {
+    "method": "GET",
+    "path": "/api/toolboxes",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "toolboxes": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "inApp": true,
+            "toolCount": 2,
+            "estTokens": 276
+          }
+        ],
+        "prefill": {
+          "targetMs": "<num>",
+          "models": {
+            "synthetic-chat-model": {
+              "buckets": 1,
+              "tokensPerSecond": null,
+              "range": [
+                12,
+                12
+              ]
+            }
+          }
+        },
+        "mcp": {
+          "configured": false
+        }
+      }
+    }
+  }
+}

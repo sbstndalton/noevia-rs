@@ -1,0 +1,640 @@
+# Every /api/ path the noevia web client (sbstndalton/noevia-web src/, tests excluded) names,
+# and which server owns it. M0 of the full-Rust migration: everything is owner = "node" until a
+# Rust slice takes the route over and tools/replay shows its contract corpus replays clean.
+#
+# Generated from noevia-web at the ref in web.ref by tools/contracts/routes_check.py --list;
+# CI (routes-check job) fails when the client names a path that is missing here. Parameter
+# names do not matter for the match ({id} == {chatId}); {*} is a computed segment, {*?} an
+# optional suffix or query. A path kept for a non-web caller sets client = false.
+
+[[route]]
+path = "/api/account/instructions"
+owner = "node"
+
+[[route]]
+path = "/api/account/memory"
+owner = "node"
+
+[[route]]
+path = "/api/account/preferences"
+owner = "node"
+
+[[route]]
+path = "/api/account/retention"
+owner = "node"
+
+[[route]]
+path = "/api/admin/decision-settings"
+owner = "node"
+
+[[route]]
+path = "/api/admin/decision-settings/test"
+owner = "node"
+
+[[route]]
+path = "/api/admin/features"
+owner = "node"
+
+[[route]]
+path = "/api/admin/features/{name}"
+owner = "node"
+
+[[route]]
+path = "/api/admin/invitations"
+owner = "node"
+
+[[route]]
+path = "/api/admin/mcp-directory"
+owner = "node"
+
+[[route]]
+path = "/api/admin/mcp-directory/custom"
+owner = "node"
+
+[[route]]
+path = "/api/admin/mcp-directory/custom/preview"
+owner = "node"
+
+[[route]]
+path = "/api/admin/mcp-directory/{*}"
+owner = "node"
+
+[[route]]
+path = "/api/admin/mcp-directory/{*}/keys"
+owner = "node"
+
+[[route]]
+path = "/api/admin/mcp-directory/{id}/oauth-client"
+owner = "node"
+
+[[route]]
+path = "/api/admin/offsite-backup"
+owner = "node"
+
+[[route]]
+path = "/api/admin/offsite-backup/copy"
+owner = "node"
+
+[[route]]
+path = "/api/admin/offsite-backup/google/connect"
+owner = "node"
+
+[[route]]
+path = "/api/admin/offsite-backup/google/disconnect"
+owner = "node"
+
+[[route]]
+path = "/api/admin/offsite-backup/recovery-key"
+owner = "node"
+
+[[route]]
+path = "/api/admin/offsite-backup/run"
+owner = "node"
+
+[[route]]
+path = "/api/admin/offsite-backup/verify"
+owner = "node"
+
+[[route]]
+path = "/api/admin/users"
+owner = "node"
+
+[[route]]
+path = "/api/admin/users/{id}"
+owner = "node"
+
+[[route]]
+path = "/api/admin/users/{id}/disabled"
+owner = "node"
+
+[[route]]
+path = "/api/admin/users/{id}/recovery"
+owner = "node"
+
+[[route]]
+path = "/api/admin/web-address"
+owner = "node"
+
+[[route]]
+path = "/api/auth/device/approve"
+owner = "node"
+
+[[route]]
+path = "/api/auth/device/lookup"
+owner = "node"
+
+[[route]]
+path = "/api/auth/devices"
+owner = "node"
+
+[[route]]
+path = "/api/auth/devices/{id}"
+owner = "node"
+
+[[route]]
+path = "/api/auth/invitations/accept"
+owner = "node"
+
+[[route]]
+path = "/api/auth/login/passkey/options"
+owner = "node"
+
+[[route]]
+path = "/api/auth/login/passkey/verify"
+owner = "node"
+
+[[route]]
+path = "/api/auth/login/password"
+owner = "node"
+
+[[route]]
+path = "/api/auth/logout"
+owner = "node"
+
+[[route]]
+path = "/api/auth/passkeys/register/options"
+owner = "node"
+
+[[route]]
+path = "/api/auth/passkeys/register/verify"
+owner = "node"
+
+[[route]]
+path = "/api/auth/passkeys/{id}"
+owner = "node"
+
+[[route]]
+path = "/api/auth/recovery/complete"
+owner = "node"
+
+[[route]]
+path = "/api/auth/session"
+owner = "node"
+
+[[route]]
+path = "/api/auth/sessions/{id}"
+owner = "node"
+
+[[route]]
+path = "/api/auto-roles"
+owner = "node"
+
+[[route]]
+path = "/api/chat"
+owner = "node"
+
+[[route]]
+path = "/api/chat-framing/preferences"
+owner = "node"
+
+[[route]]
+path = "/api/chat-framing/suggest"
+owner = "node"
+
+[[route]]
+path = "/api/chat-vault-mirror/preferences"
+owner = "node"
+
+[[route]]
+path = "/api/chats/{chatId}/context"
+owner = "node"
+
+[[route]]
+path = "/api/chats/{chatId}/context-window"
+owner = "node"
+
+[[route]]
+path = "/api/chats/{chatId}/history"
+owner = "node"
+
+[[route]]
+path = "/api/chats/{chatId}/move"
+owner = "node"
+
+[[route]]
+path = "/api/code/active"
+owner = "node"
+
+[[route]]
+path = "/api/connectors"
+owner = "node"
+
+[[route]]
+path = "/api/connectors/gdrive/backup-copy"
+owner = "node"
+
+[[route]]
+path = "/api/connectors/gdrive/connect"
+owner = "node"
+
+[[route]]
+path = "/api/connectors/gdrive/disconnect"
+owner = "node"
+
+[[route]]
+path = "/api/connectors/gdrive/policy"
+owner = "node"
+
+[[route]]
+path = "/api/connectors/nextcloud/policy"
+owner = "node"
+
+[[route]]
+path = "/api/diary"
+owner = "node"
+
+[[route]]
+path = "/api/diary-connector"
+owner = "node"
+
+[[route]]
+path = "/api/diary/context"
+owner = "node"
+
+[[route]]
+path = "/api/diary/exchanges"
+owner = "node"
+
+[[route]]
+path = "/api/diary/local-exchange"
+owner = "node"
+
+[[route]]
+path = "/api/diary/source"
+owner = "node"
+
+[[route]]
+path = "/api/diary/storage-import"
+owner = "node"
+
+[[route]]
+path = "/api/diary/storage-status"
+owner = "node"
+
+[[route]]
+path = "/api/diary/today"
+owner = "node"
+
+[[route]]
+path = "/api/diary/workspace-export"
+owner = "node"
+
+[[route]]
+path = "/api/diary/workspace-import"
+owner = "node"
+
+[[route]]
+path = "/api/export/conversations"
+owner = "node"
+
+[[route]]
+path = "/api/features"
+owner = "node"
+
+[[route]]
+path = "/api/freechats"
+owner = "node"
+
+[[route]]
+path = "/api/freechats/{chatId}"
+owner = "node"
+
+[[route]]
+path = "/api/health"
+owner = "node"
+
+[[route]]
+path = "/api/import/conversations"
+owner = "node"
+
+[[route]]
+path = "/api/integrations/storage"
+owner = "node"
+
+[[route]]
+path = "/api/integrations/storage/file"
+owner = "node"
+
+[[route]]
+path = "/api/integrations/storage/files{*?}"
+owner = "node"
+
+[[route]]
+path = "/api/integrations/storage/folder"
+owner = "node"
+
+[[route]]
+path = "/api/integrations/storage/nextcloud/poll"
+owner = "node"
+
+[[route]]
+path = "/api/integrations/storage/nextcloud/start"
+owner = "node"
+
+[[route]]
+path = "/api/integrations/storage/test"
+owner = "node"
+
+[[route]]
+path = "/api/mcp-keys/servers"
+owner = "node"
+
+[[route]]
+path = "/api/mcp-keys/{*}"
+owner = "node"
+
+[[route]]
+path = "/api/mcp-oauth/servers"
+owner = "node"
+
+[[route]]
+path = "/api/mcp-oauth/{id}"
+owner = "node"
+
+[[route]]
+path = "/api/mcp-oauth/{id}/connect"
+owner = "node"
+
+[[route]]
+path = "/api/model-manager"
+owner = "node"
+
+[[route]]
+path = "/api/models/autotune"
+owner = "node"
+
+[[route]]
+path = "/api/models/autotune/cancel"
+owner = "node"
+
+[[route]]
+path = "/api/models/autotune/resume"
+owner = "node"
+
+[[route]]
+path = "/api/models/autotune/settings"
+owner = "node"
+
+[[route]]
+path = "/api/models/autotune/untuned"
+owner = "node"
+
+[[route]]
+path = "/api/models/calibration"
+owner = "node"
+
+[[route]]
+path = "/api/models/calibration/cancel"
+owner = "node"
+
+[[route]]
+path = "/api/models/capabilities"
+owner = "node"
+
+[[route]]
+path = "/api/models/delete"
+owner = "node"
+
+[[route]]
+path = "/api/models/estimate"
+owner = "node"
+
+[[route]]
+path = "/api/models/evidence"
+owner = "node"
+
+[[route]]
+path = "/api/models/evidence/import"
+owner = "node"
+
+[[route]]
+path = "/api/models/evidence/recheck"
+owner = "node"
+
+[[route]]
+path = "/api/models/hardware"
+owner = "node"
+
+[[route]]
+path = "/api/models/inference-budget"
+owner = "node"
+
+[[route]]
+path = "/api/models/installed"
+owner = "node"
+
+[[route]]
+path = "/api/models/load"
+owner = "node"
+
+[[route]]
+path = "/api/models/presets/reload"
+owner = "node"
+
+[[route]]
+path = "/api/models/{*}"
+owner = "node"
+
+[[route]]
+path = "/api/plugins/directory"
+owner = "node"
+
+[[route]]
+path = "/api/profile"
+owner = "node"
+
+[[route]]
+path = "/api/profile/app-passwords"
+owner = "node"
+
+[[route]]
+path = "/api/profile/app-passwords/{*}"
+owner = "node"
+
+[[route]]
+path = "/api/profile/appearance"
+owner = "node"
+
+[[route]]
+path = "/api/profile/diary-connectors"
+owner = "node"
+
+[[route]]
+path = "/api/profile/diary-connectors/{*}"
+owner = "node"
+
+[[route]]
+path = "/api/profile/features"
+owner = "node"
+
+[[route]]
+path = "/api/profile/onboarding"
+owner = "node"
+
+[[route]]
+path = "/api/profile/sharing"
+owner = "node"
+
+[[route]]
+path = "/api/projects"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{projectId}"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{id}/assets/{assetId}"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{projectId}/browser"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{projectId}/chats"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{projectId}/chats/{chatId}"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{projectId}/code"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{projectId}/config"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{id}/documents/original"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{id}/files"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{projectId}/instruction-skills"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{projectId}/instruction-skills/manifests"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{projectId}/research"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{project}/skills/install"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{id}/sources/sync"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{id}/upload"
+owner = "node"
+
+[[route]]
+path = "/api/projects/{id}/{*}/original"
+owner = "node"
+
+[[route]]
+path = "/api/providers"
+owner = "node"
+
+[[route]]
+path = "/api/providers/chatgpt"
+owner = "node"
+
+[[route]]
+path = "/api/providers/chatgpt/device"
+owner = "node"
+
+[[route]]
+path = "/api/providers/chatgpt/device/cancel"
+owner = "node"
+
+[[route]]
+path = "/api/providers/chatgpt/device/poll"
+owner = "node"
+
+[[route]]
+path = "/api/providers/chatgpt/models"
+owner = "node"
+
+[[route]]
+path = "/api/providers/test"
+owner = "node"
+
+[[route]]
+path = "/api/providers/{id}"
+owner = "node"
+
+[[route]]
+path = "/api/providers/{providerId}/models{*?}"
+owner = "node"
+
+[[route]]
+path = "/api/ready"
+owner = "node"
+
+[[route]]
+path = "/api/reasoning-settings"
+owner = "node"
+
+[[route]]
+path = "/api/routing-default"
+owner = "node"
+
+[[route]]
+path = "/api/routing-mode"
+owner = "node"
+
+[[route]]
+path = "/api/routing-mode/allowed"
+owner = "node"
+
+[[route]]
+path = "/api/sampling-settings"
+owner = "node"
+
+[[route]]
+path = "/api/setup/complete"
+owner = "node"
+
+[[route]]
+path = "/api/setup/status"
+owner = "node"
+
+[[route]]
+path = "/api/stats"
+owner = "node"
+
+[[route]]
+path = "/api/tool-approvals/{approvalId}"
+owner = "node"
+
+[[route]]
+path = "/api/toolboxes"
+owner = "node"
+
+[[route]]
+path = "/api/toolboxes/permitted"
+owner = "node"
+
+[[route]]
+path = "/api/usage"
+owner = "node"
+
+[[route]]
+path = "/api/usage/aggregate"
+owner = "node"
+
+[[route]]
+path = "/api/workspace"
+owner = "node"

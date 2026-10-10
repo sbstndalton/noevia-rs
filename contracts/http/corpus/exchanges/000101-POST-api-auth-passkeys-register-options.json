@@ -1,0 +1,77 @@
+{
+  "v": 1,
+  "seq": 101,
+  "request": {
+    "method": "POST",
+    "path": "/api/auth/passkeys/register/options",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node",
+      "x-csrf-token": "<secret:4>"
+    },
+    "body": {
+      "kind": "json",
+      "json": {}
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "options": {
+          "challenge": "<secret:18>",
+          "rp": {
+            "name": "noevia",
+            "id": "127.0.0.1"
+          },
+          "user": {
+            "id": "<id:12>",
+            "name": "synthetic-admin",
+            "displayName": "Synthetic Admin Renamed"
+          },
+          "pubKeyCredParams": [
+            {
+              "alg": -8,
+              "type": "public-key"
+            },
+            {
+              "alg": -7,
+              "type": "public-key"
+            },
+            {
+              "alg": -257,
+              "type": "public-key"
+            }
+          ],
+          "timeout": 60000,
+          "attestation": "none",
+          "excludeCredentials": [],
+          "authenticatorSelection": {
+            "residentKey": "<secret:19>",
+            "userVerification": "required",
+            "requireResidentKey": false
+          },
+          "extensions": {
+            "credProps": true
+          },
+          "hints": []
+        },
+        "challengeToken": "<secret:20>"
+      }
+    }
+  }
+}

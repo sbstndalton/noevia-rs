@@ -1,0 +1,90 @@
+{
+  "v": 1,
+  "seq": 104,
+  "request": {
+    "method": "POST",
+    "path": "/api/connectors/gdrive/disconnect",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node",
+      "x-csrf-token": "<secret:4>"
+    },
+    "body": {
+      "kind": "json",
+      "json": {}
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "id": "gdrive",
+        "name": "Google Drive",
+        "configured": false,
+        "state": "not-configured",
+        "email": null,
+        "connectedAt": null,
+        "message": "This noevia build has no Google sign-in registered.",
+        "backup": null,
+        "tools": [
+          {
+            "name": "drive_search_files",
+            "label": "Search files",
+            "write": false,
+            "mode": "allow"
+          },
+          {
+            "name": "drive_read_file",
+            "label": "Read file content",
+            "write": false,
+            "mode": "allow"
+          },
+          {
+            "name": "drive_get_metadata",
+            "label": "Get file metadata",
+            "write": false,
+            "mode": "allow"
+          },
+          {
+            "name": "drive_list_recent",
+            "label": "List recent files",
+            "write": false,
+            "mode": "allow"
+          },
+          {
+            "name": "drive_create_file",
+            "label": "Create file",
+            "write": true,
+            "mode": "ask"
+          },
+          {
+            "name": "drive_update_file",
+            "label": "Update file",
+            "write": true,
+            "mode": "ask"
+          },
+          {
+            "name": "drive_trash_file",
+            "label": "Trash file",
+            "write": true,
+            "mode": "ask"
+          }
+        ]
+      }
+    }
+  }
+}
