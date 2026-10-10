@@ -1,7 +1,7 @@
 [package]
 name = "server-auth"
 version = "0.1.0"
-description = "noevia-core's request authentication (auth.cjs sessions and legacy bearer, device-auth.cjs device tokens, CSRF/origin/browser-only gates, app-password verify) in Rust, read-only, differential-tested against Node"
+description = "noevia-core's request authentication (auth.cjs sessions and legacy bearer, device-auth.cjs device tokens, CSRF/origin/browser-only gates, app-password verify) in Rust, read-only plus the gate's per-request session upkeep (M3, NOEVIA_RUST_AUTH), differential-tested against Node"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

@@ -6,7 +6,9 @@
 //! code-net-guard.cjs (see code_net.rs; a malformed value stops startup). UI_DATA_DIR and the auth
 //! keys (PUBLIC_ORIGIN, ADDITIONAL_TRUSTED_ORIGINS, UI_AUTH_TOKEN, LEGACY_AUTH_COMPAT,
 //! NOEVIA_FEATURE_NATIVE_CLIENT_AUTH) as core index.cjs reads them, for identity.rs; an invalid
-//! auth value never stops the front (see identity.rs).
+//! auth value never stops the front (see identity.rs). NOEVIA_RUST_AUTH=1 (exactly) is the M3
+//! deployment switch: Rust owns sign-in and the account and the tables they write (Node refuses
+//! those writes with the same switch and NOEVIA_FRONT=rust); any other value is off.
 
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -26,6 +28,8 @@ pub struct Config {
     pub data_dir: Option<PathBuf>,
     /// The auth environment, or why it is invalid.
     pub auth: Result<server_auth::AuthConfig, String>,
+    /// NOEVIA_RUST_AUTH=1.
+    pub rust_auth: Option<server_store::RustAuth>,
 }
 
 /// Where Node listens. Only `http://<loopback ip>:<port>` is accepted: the proxy forwards session
@@ -83,6 +87,13 @@ fn port_from(raw: Option<String>) -> Result<u16, String> {
 }
 
 impl Config {
+    /// The deployment switches that are on.
+    pub fn switches(&self) -> crate::routes::Switches {
+        crate::routes::Switches {
+            rust_auth: self.rust_auth.is_some(),
+        }
+    }
+
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         let host = get("UI_HOST")
             .filter(|h| !h.is_empty())
@@ -111,6 +122,9 @@ impl Config {
                 .filter(|d| !d.is_empty())
                 .map(PathBuf::from),
             auth: server_auth::AuthConfig::from_lookup(&get),
+            rust_auth: server_store::RustAuth::from_env_value(
+                get(server_store::RustAuth::ENV).as_deref(),
+            ),
         })
     }
 }
@@ -162,6 +176,22 @@ mod tests {
         .unwrap();
         assert!(!c.trust_proxy);
         assert_eq!(c.upstream.authority(), "[::1]:9021");
+        assert!(c.rust_auth.is_none());
+        for (v, on) in [
+            ("1", true),
+            ("true", false),
+            ("0", false),
+            ("", false),
+            (" 1", false),
+        ] {
+            let c = cfg(&[
+                ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021"),
+                ("NOEVIA_RUST_AUTH", v),
+            ])
+            .unwrap();
+            assert_eq!(c.rust_auth.is_some(), on, "{v:?}");
+            assert_eq!(c.switches().rust_auth, on);
+        }
     }
 
     #[test]

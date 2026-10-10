@@ -1,12 +1,10 @@
 //! core device-auth.cjs `createRequestAuth` over auth.cjs `authenticate` / `csrfValid` /
 //! `originValid` and device-auth.cjs `authenticate` / `browserOnly`, read-only.
 //!
-//! Verdicts are Node's. What Node also does and this does not (it never writes `cowork.db`):
-//! a valid session's `last_seen_at` is not moved to now, a rejected session row is not deleted,
-//! and a device grant's `last_used_at` is not touched. While Node serves every route it does all
-//! three on each request, so idle expiry is unchanged; a Rust-owned route will need
-//! `sessions`/`device_grants` in server-store's OWNED_TABLES (or a Node call) before it can
-//! keep a session alive by itself (M3).
+//! Verdicts are Node's. What Node also does on each request (a valid session's `last_seen_at`
+//! moved to now, a rejected session row deleted, a device grant's `last_used_at` touched) is not
+//! done here: this reads only. Node keeps doing it while it owns those tables; with
+//! NOEVIA_RUST_AUTH (M3) the front does it first, through [`crate::upkeep`].
 
 use crate::config::AuthConfig;
 use crate::js;
@@ -302,6 +300,10 @@ impl Authenticator {
             return Ok(CurrentOrigin::Exact(a));
         }
         let setup = setting(r, "public_origin")?.unwrap_or_default();
+        if !self.config.public_origin.is_empty() && self.config.origin_from_settings {
+            // M3: Node reads the address again on every use, the way a restart does.
+            return Ok(CurrentOrigin::Exact(self.config.public_origin.clone()));
+        }
         if !self.config.public_origin.is_empty() {
             if !setup.is_empty() && setup != self.config.public_origin {
                 return Ok(CurrentOrigin::Ambiguous);

@@ -96,6 +96,7 @@ pub fn config(scenario: &Value) -> AuthConfig {
         legacy_compat: env["legacyCompat"].as_bool().unwrap(),
         trust_proxy: true,
         native_client_auth_env: Some(scenario["nativeClientAuth"].as_bool().unwrap()),
+        origin_from_settings: false,
     }
 }
 

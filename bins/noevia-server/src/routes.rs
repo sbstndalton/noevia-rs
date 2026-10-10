@@ -1,6 +1,8 @@
 //! Route ownership, from contracts/http/routes.toml (compiled in by build.rs). One owner per
 //! route: a request whose route is owner = "rust" (for one of its methods) is answered natively,
-//! everything else goes to Node through the legacy proxy.
+//! everything else goes to Node through the legacy proxy. A route with a `switch` is Rust's only
+//! while that deployment switch is on (M3: NOEVIA_RUST_AUTH, see [`Switches`]); off, it is
+//! Node's, so merging a flip changes nothing until the deployment sets the switch.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Owner {
@@ -16,6 +18,34 @@ pub struct Route {
     pub methods: &'static [&'static str],
     /// The non-/api fallback: matches any non-/api path no other entry names.
     pub catch_all: bool,
+    /// The deployment switch `owner = "rust"` depends on, if any.
+    pub switch: Option<&'static str>,
+}
+
+/// The deployment switches that are on in this process.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Switches {
+    /// NOEVIA_RUST_AUTH=1: Rust owns sign-in and the account (M3).
+    pub rust_auth: bool,
+}
+
+impl Switches {
+    pub fn on(&self, name: &str) -> bool {
+        match name {
+            "NOEVIA_RUST_AUTH" => self.rust_auth,
+            _ => false,
+        }
+    }
+}
+
+impl Route {
+    /// The owner in effect under `switches`.
+    pub fn owner_under(&self, switches: Switches) -> Owner {
+        match (self.owner, self.switch) {
+            (Owner::Rust, Some(sw)) if !switches.on(sw) => Owner::Node,
+            (owner, _) => owner,
+        }
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/routes_gen.rs"));
@@ -91,10 +121,16 @@ pub fn route_for(path: &str) -> Option<&'static Route> {
     ROUTES.iter().find(|r| r.catch_all)
 }
 
-/// What answers `method path`: a native handler, or `None` for the legacy proxy.
+/// What answers `method path` with every switch off: a native handler, or `None` for the
+/// legacy proxy.
 pub fn dispatch(method: &str, path: &str) -> Option<Native> {
+    dispatch_under(method, path, Switches::default())
+}
+
+/// [`dispatch`] under the deployment switches that are on.
+pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Native> {
     let route = route_for(path)?;
-    if route.owner != Owner::Rust {
+    if route.owner_under(switches) != Owner::Rust {
         return None;
     }
     if !route.methods.is_empty() && !route.methods.contains(&method) {
@@ -124,6 +160,26 @@ mod tests {
         for r in ROUTES.iter().filter(|r| r.owner == Owner::Node) {
             assert_eq!(dispatch("GET", r.path), None, "{}", r.path);
         }
+        // A switched route is Node's while its switch is off.
+        for r in ROUTES.iter().filter(|r| r.switch.is_some()) {
+            assert_eq!(
+                r.owner_under(Switches::default()),
+                Owner::Node,
+                "{}",
+                r.path
+            );
+            for m in ["GET", "POST", "PUT", "PATCH", "DELETE"] {
+                assert_eq!(dispatch(m, r.path), None, "{m} {}", r.path);
+            }
+        }
+    }
+
+    #[test]
+    fn switches_by_name() {
+        let on = Switches { rust_auth: true };
+        assert!(on.on("NOEVIA_RUST_AUTH"));
+        assert!(!Switches::default().on("NOEVIA_RUST_AUTH"));
+        assert!(!on.on("NOEVIA_SOMETHING_ELSE"));
     }
 
     #[test]

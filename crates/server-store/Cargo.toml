@@ -1,7 +1,7 @@
 [package]
 name = "server-store"
 version = "0.1.0"
-description = "Read access to noevia-core's UI_DATA_DIR/cowork.db (schema owned by Node) with a compiled table-ownership list, plus Node's atomic JSON write"
+description = "Access to noevia-core's UI_DATA_DIR/cowork.db (schema owned by Node): read-only, plus writes limited to a compiled table-ownership list behind the NOEVIA_RUST_AUTH switch, and Node's atomic JSON write"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
