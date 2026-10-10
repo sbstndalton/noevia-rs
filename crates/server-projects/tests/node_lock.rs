@@ -94,6 +94,15 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
       // Both modes finish with the same truly stale input, after Rust's final write.
       const done = fs.readFileSync(0, 'utf8');
       if (done !== 'rust-done') throw new Error('missing Rust completion signal');
+      if (!blind) {
+        // Check the actual concurrent result before the final stale input could repair it.
+        const assert = require('node:assert/strict');
+        const actual = JSON.parse(fs.readFileSync(file, 'utf8')).projects.find((p) => p.id === 'p1');
+        assert.deepEqual(actual.chats.map((c) => c.id),
+          Array.from({ length: Number(rounds) }, (_, i) => 'chat-' + i));
+        assert.deepEqual(actual.assets.map((a) => a.id),
+          Array.from({ length: Number(rounds) }, (_, i) => 'img-' + i));
+      }
       if (blind) atomicJson(file, { projects: finalStale });
       else finalPf.save(finalStale);
     "#;
