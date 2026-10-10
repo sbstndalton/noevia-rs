@@ -228,10 +228,8 @@ fn write_owned_from(
     value: &Value,
     format: Format,
 ) -> Result<(), JsonError> {
-    let plain = !name.is_empty()
-        && name != "."
-        && name != ".."
-        && !name.contains(['/', '\\', '\0']);
+    let plain =
+        !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', '\0']);
     if !plain || !owned.contains(&name) {
         return Err(JsonError::NotOwned(name.chars().take(64).collect()));
     }
@@ -239,7 +237,12 @@ fn write_owned_from(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use serde_json::json;
@@ -255,9 +258,18 @@ mod tests {
             stringify(&json!({"a": [1, {"b": 2}], "c": {}}), Format::Pretty).unwrap(),
             "{\n  \"a\": [\n    1,\n    {\n      \"b\": 2\n    }\n  ],\n  \"c\": {}\n}"
         );
-        assert!(matches!(stringify(&json!(1e-7), Format::Compact), Err(JsonError::Unsupported)));
-        assert!(matches!(stringify(&json!(1e21), Format::Compact), Err(JsonError::Unsupported)));
-        assert_eq!(stringify(&json!(1e20), Format::Compact).unwrap(), "100000000000000000000");
+        assert!(matches!(
+            stringify(&json!(1e-7), Format::Compact),
+            Err(JsonError::Unsupported)
+        ));
+        assert!(matches!(
+            stringify(&json!(1e21), Format::Compact),
+            Err(JsonError::Unsupported)
+        ));
+        assert_eq!(
+            stringify(&json!(1e20), Format::Compact).unwrap(),
+            "100000000000000000000"
+        );
     }
 
     #[test]
@@ -265,7 +277,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("nested/deeper/prefs.json");
         write_atomic(&file, &json!({"k": "v"}), Format::Pretty).unwrap();
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "{\n  \"k\": \"v\"\n}");
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            "{\n  \"k\": \"v\"\n}"
+        );
         // Overwrite replaces whole; no temp file is left behind.
         write_atomic(&file, &json!([1]), Format::Compact).unwrap();
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "[1]");
@@ -314,9 +329,15 @@ mod tests {
         ));
         let owned = ["mine.json"];
         for bad in ["../mine.json", "a/mine.json", "", ".", "..", "theirs.json"] {
-            assert!(write_owned_from(&owned, dir.path(), bad, &json!(1), Format::Compact).is_err(), "{bad}");
+            assert!(
+                write_owned_from(&owned, dir.path(), bad, &json!(1), Format::Compact).is_err(),
+                "{bad}"
+            );
         }
         write_owned_from(&owned, dir.path(), "mine.json", &json!(1), Format::Compact).unwrap();
-        assert_eq!(std::fs::read_to_string(dir.path().join("mine.json")).unwrap(), "1");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("mine.json")).unwrap(),
+            "1"
+        );
     }
 }

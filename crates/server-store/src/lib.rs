@@ -162,7 +162,9 @@ fn read_only_authorizer(ctx: AuthContext<'_>) -> Authorization {
 
 /// The writer's authorizer: the reader's set plus INSERT/UPDATE/DELETE on `owned` tables only.
 /// DDL stays denied: Rust never writes schema while Node is the migrator.
-fn owned_authorizer(owned: &'static [&'static str]) -> impl FnMut(AuthContext<'_>) -> Authorization {
+fn owned_authorizer(
+    owned: &'static [&'static str],
+) -> impl FnMut(AuthContext<'_>) -> Authorization {
     move |ctx: AuthContext<'_>| match ctx.action {
         AuthAction::Insert { table_name }
         | AuthAction::Delete { table_name }
@@ -198,7 +200,9 @@ fn verify(conn: &Connection) -> Result<(), StoreError> {
         return Err(StoreError::NotReady("no schema_migrations table".into()));
     }
     let found: Option<i64> =
-        conn.query_row("SELECT max(version) FROM schema_migrations", [], |r| r.get(0))?;
+        conn.query_row("SELECT max(version) FROM schema_migrations", [], |r| {
+            r.get(0)
+        })?;
     let found = found.unwrap_or(0);
     if found > KNOWN_SCHEMA_VERSION {
         return Err(StoreError::SchemaTooNew {
@@ -220,7 +224,9 @@ fn verify(conn: &Connection) -> Result<(), StoreError> {
             return Err(StoreError::NotReady(format!("no {table} table")));
         }
         if let Some(missing) = columns.iter().find(|c| !have.iter().any(|h| h == *c)) {
-            return Err(StoreError::NotReady(format!("{table}.{missing} is missing")));
+            return Err(StoreError::NotReady(format!(
+                "{table}.{missing} is missing"
+            )));
         }
     }
     Ok(())
@@ -237,9 +243,11 @@ impl Inner {
         // A data-only migration (core v2 is one) inserts its version without touching the schema
         // cookie, so the version is read every time (an indexed max, cheap); columns are rechecked
         // when the cookie moves.
-        let found: Option<i64> = self
-            .conn
-            .query_row("SELECT max(version) FROM schema_migrations", [], |r| r.get(0))?;
+        let found: Option<i64> =
+            self.conn
+                .query_row("SELECT max(version) FROM schema_migrations", [], |r| {
+                    r.get(0)
+                })?;
         let found = found.unwrap_or(0);
         if found > KNOWN_SCHEMA_VERSION {
             return Err(StoreError::SchemaTooNew {
@@ -307,7 +315,10 @@ impl Store {
 
     /// Runs `f` in one read transaction. Fails closed with [`StoreError::SchemaTooNew`] /
     /// [`StoreError::NotReady`] if Node changed the schema since the last check.
-    pub fn read<T>(&self, f: impl FnOnce(&Reader<'_>) -> Result<T, StoreError>) -> Result<T, StoreError> {
+    pub fn read<T>(
+        &self,
+        f: impl FnOnce(&Reader<'_>) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
         let mut inner = self.inner.lock().map_err(|_| StoreError::Poisoned)?;
         inner.ensure_current()?;
         let tx = inner
@@ -345,7 +356,9 @@ impl Reader<'_> {
         map: impl FnMut(&Row<'_>) -> rusqlite::Result<T>,
     ) -> Result<Vec<T>, StoreError> {
         let mut stmt = self.conn.prepare_cached(sql)?;
-        let out = stmt.query_map(params, map)?.collect::<Result<Vec<T>, _>>()?;
+        let out = stmt
+            .query_map(params, map)?
+            .collect::<Result<Vec<T>, _>>()?;
         Ok(out)
     }
 }
@@ -364,7 +377,9 @@ impl WriteTx<'_> {
     /// Runs one statement; a write outside the owned tables fails with [`StoreError::NotOwned`].
     pub fn execute<P: Params>(&self, sql: &str, params: P) -> Result<usize, StoreError> {
         let mut stmt = self.conn.prepare_cached(sql).map_err(|e| match e {
-            rusqlite::Error::SqliteFailure(f, _) if f.code == rusqlite::ErrorCode::AuthorizationForStatementDenied => {
+            rusqlite::Error::SqliteFailure(f, _)
+                if f.code == rusqlite::ErrorCode::AuthorizationForStatementDenied =>
+            {
                 StoreError::NotOwned(sql_target(sql))
             }
             other => StoreError::from(other),
@@ -392,7 +407,9 @@ impl Writer {
 
     fn open_owning(data_dir: &Path, owned: &'static [&'static str]) -> Result<Self, StoreError> {
         if owned.is_empty() {
-            return Err(StoreError::NotOwned("any table (OWNED_TABLES is empty)".into()));
+            return Err(StoreError::NotOwned(
+                "any table (OWNED_TABLES is empty)".into(),
+            ));
         }
         // READ_WRITE without CREATE: the file must already exist (Node made it).
         let inner = open_inner(
@@ -407,7 +424,10 @@ impl Writer {
     }
 
     /// Runs `f` in one IMMEDIATE transaction (Node's writer waits up to [`BUSY_TIMEOUT`] too).
-    pub fn write<T>(&self, f: impl FnOnce(&WriteTx<'_>) -> Result<T, StoreError>) -> Result<T, StoreError> {
+    pub fn write<T>(
+        &self,
+        f: impl FnOnce(&WriteTx<'_>) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
         let mut inner = self.inner.lock().map_err(|_| StoreError::Poisoned)?;
         inner.ensure_current()?;
         let tx = inner
@@ -420,5 +440,11 @@ impl Writer {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests;
+pub use rusqlite;

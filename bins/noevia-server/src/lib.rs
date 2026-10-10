@@ -5,6 +5,7 @@
 pub mod code_net;
 pub mod config;
 pub mod health;
+pub mod identity;
 pub mod legacy_proxy;
 pub mod reply;
 pub mod routes;
@@ -26,6 +27,8 @@ pub struct App {
     pub statics: static_files::StaticFiles,
     pub version: Option<String>,
     pub code_net: Arc<code_net::CodeNetGuard>,
+    /// The validated identity for Rust-owned routes; no route uses it in M2.
+    pub identity: Arc<identity::IdentityLayer>,
 }
 
 impl App {
@@ -37,7 +40,9 @@ impl App {
     pub fn with_lookup(config: config::Config, lookup: code_net::Lookup) -> Arc<Self> {
         let code_net = code_net::CodeNetGuard::new(&config.code_net, lookup);
         let version = health::local_version(&config.dist, config.stamp_version.as_deref());
+        let identity = Arc::new(identity::IdentityLayer::new(&config));
         Arc::new(App {
+            identity,
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,

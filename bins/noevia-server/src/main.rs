@@ -70,6 +70,20 @@ async fn main() -> ExitCode {
     );
     let app = App::new(config);
     app.statics.warm();
+    // Reported, never fatal in M2: no route needs an identity yet (identity.rs).
+    let layer = std::sync::Arc::clone(&app.identity);
+    match tokio::task::spawn_blocking(move || layer.status()).await {
+        Ok(noevia_server::identity::Status::Ready) => {
+            println!("noevia-server: identity ready (read-only cowork.db)")
+        }
+        Ok(noevia_server::identity::Status::Unavailable(why)) => {
+            println!("noevia-server: identity unavailable for now: {why}")
+        }
+        Ok(noevia_server::identity::Status::Refused(why)) => {
+            eprintln!("noevia-server: warning: identity refused: {why}")
+        }
+        Err(_) => eprintln!("noevia-server: warning: identity check did not run"),
+    }
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let mut stop_wait = stop_rx.clone();
     let server = serve::serve(listener, app, serve::Limits::default(), async move {

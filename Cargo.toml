@@ -46,3 +46,11 @@ opt-level = 3
 # optimised.
 [profile.dev.package.tool-gate]
 opt-level = 3
+
+# server-auth's differential test verifies ~100 Node Argon2id hashes (19 MiB, t=2); unoptimised
+# that alone takes minutes.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

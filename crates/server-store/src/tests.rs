@@ -42,54 +42,71 @@ fn never_creates_a_database() {
     let dir = tempfile::tempdir().unwrap();
     assert_eq!(Store::open(dir.path()).err(), Some(StoreError::Missing));
     assert!(!db_path(dir.path()).exists());
-    assert_eq!(Store::open(&dir.path().join("nope")).err(), Some(StoreError::Missing));
+    assert_eq!(
+        Store::open(&dir.path().join("nope")).err(),
+        Some(StoreError::Missing)
+    );
     assert!(!dir.path().join("nope").exists());
 }
 
 #[test]
 fn refuses_a_newer_schema_at_open_and_later() {
     let (dir, node) = node_db();
-    node.execute("INSERT INTO schema_migrations VALUES(6,0)", []).unwrap();
+    node.execute("INSERT INTO schema_migrations VALUES(6,0)", [])
+        .unwrap();
     assert_eq!(
         Store::open(dir.path()).err(),
         Some(StoreError::SchemaTooNew { found: 6, known: 5 })
     );
-    node.execute("DELETE FROM schema_migrations WHERE version=6", []).unwrap();
+    node.execute("DELETE FROM schema_migrations WHERE version=6", [])
+        .unwrap();
     let store = Store::open(dir.path()).unwrap();
     assert_eq!(count_users(&store), 1);
     // Node upgrades under a running front: a data-only migration (no schema cookie change) and a
     // column migration are both caught before the next read.
-    node.execute("INSERT INTO schema_migrations VALUES(6,0)", []).unwrap();
+    node.execute("INSERT INTO schema_migrations VALUES(6,0)", [])
+        .unwrap();
     assert_eq!(
         store.read(|_| Ok(())).err(),
         Some(StoreError::SchemaTooNew { found: 6, known: 5 })
     );
-    node.execute("DELETE FROM schema_migrations WHERE version=6", []).unwrap();
+    node.execute("DELETE FROM schema_migrations WHERE version=6", [])
+        .unwrap();
     assert_eq!(count_users(&store), 1);
 }
 
 #[test]
 fn refuses_an_unmigrated_or_incomplete_schema() {
     let (dir, node) = node_db();
-    node.execute("DELETE FROM schema_migrations WHERE version=5", []).unwrap();
-    assert!(matches!(Store::open(dir.path()), Err(StoreError::NotReady(_))));
-    node.execute("INSERT INTO schema_migrations VALUES(5,0)", []).unwrap();
+    node.execute("DELETE FROM schema_migrations WHERE version=5", [])
+        .unwrap();
+    assert!(matches!(
+        Store::open(dir.path()),
+        Err(StoreError::NotReady(_))
+    ));
+    node.execute("INSERT INTO schema_migrations VALUES(5,0)", [])
+        .unwrap();
     let store = Store::open(dir.path()).unwrap();
     // A column Rust reads disappears (a rebuilt table): caught by the schema-cookie recheck.
-    node.execute_batch("ALTER TABLE users DROP COLUMN credential_epoch").unwrap();
+    node.execute_batch("ALTER TABLE users DROP COLUMN credential_epoch")
+        .unwrap();
     match store.read(|_| Ok(())) {
         Err(StoreError::NotReady(why)) => assert!(why.contains("credential_epoch"), "{why}"),
         other => panic!("{other:?}"),
     }
     drop(store);
-    assert!(matches!(Store::open(dir.path()), Err(StoreError::NotReady(_))));
+    assert!(matches!(
+        Store::open(dir.path()),
+        Err(StoreError::NotReady(_))
+    ));
 }
 
 #[test]
 fn refuses_a_database_node_never_put_in_wal() {
     let dir = tempfile::tempdir().unwrap();
     let node = Connection::open(db_path(dir.path())).unwrap();
-    node.execute_batch(&SCHEMA.replace("PRAGMA journal_mode = WAL;", "")).unwrap();
+    node.execute_batch(&SCHEMA.replace("PRAGMA journal_mode = WAL;", ""))
+        .unwrap();
     match Store::open(dir.path()) {
         Err(StoreError::NotReady(why)) => assert!(why.contains("WAL"), "{why}"),
         other => panic!("{:?}", other.err()),
@@ -135,7 +152,10 @@ fn m2_owns_no_tables() {
     let (dir, _node) = node_db();
     assert!(OWNED_TABLES.is_empty());
     assert!(OWNED_JSON_FILES.is_empty());
-    assert!(matches!(Writer::open(dir.path()), Err(StoreError::NotOwned(_))));
+    assert!(matches!(
+        Writer::open(dir.path()),
+        Err(StoreError::NotOwned(_))
+    ));
 }
 
 #[test]
@@ -143,10 +163,19 @@ fn a_writer_writes_only_its_owned_tables() {
     let (dir, node) = node_db();
     let writer = Writer::open_owning(dir.path(), &["audit_events"]).unwrap();
     writer
-        .write(|w| w.execute("INSERT INTO audit_events(action,created_at) VALUES('rust.test',1)", []))
+        .write(|w| {
+            w.execute(
+                "INSERT INTO audit_events(action,created_at) VALUES('rust.test',1)",
+                [],
+            )
+        })
         .unwrap();
     let n: i64 = node
-        .query_row("SELECT count(*) FROM audit_events WHERE action='rust.test'", [], |r| r.get(0))
+        .query_row(
+            "SELECT count(*) FROM audit_events WHERE action='rust.test'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(n, 1);
     for sql in [
@@ -167,16 +196,25 @@ fn a_writer_writes_only_its_owned_tables() {
         writer.write(|w| w.execute("UPDATE users SET role='admin'", [])),
         Err(StoreError::NotOwned(_))
     ));
-    let role: String = node.query_row("SELECT role FROM users", [], |r| r.get(0)).unwrap();
+    let role: String = node
+        .query_row("SELECT role FROM users", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(role, "member");
     // A failed statement rolls the whole transaction back.
     let res = writer.write(|w| {
-        w.execute("INSERT INTO audit_events(action,created_at) VALUES('rolled.back',1)", [])?;
+        w.execute(
+            "INSERT INTO audit_events(action,created_at) VALUES('rolled.back',1)",
+            [],
+        )?;
         w.execute("DELETE FROM users", [])
     });
     assert!(res.is_err());
     let n: i64 = node
-        .query_row("SELECT count(*) FROM audit_events WHERE action='rolled.back'", [], |r| r.get(0))
+        .query_row(
+            "SELECT count(*) FROM audit_events WHERE action='rolled.back'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(n, 0);
 }
