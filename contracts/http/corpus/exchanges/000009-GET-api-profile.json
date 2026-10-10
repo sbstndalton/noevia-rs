@@ -1,0 +1,55 @@
+{
+  "v": 1,
+  "seq": 9,
+  "request": {
+    "method": "GET",
+    "path": "/api/profile",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "user": {
+          "id": "<id:1>",
+          "username": "synthetic-admin",
+          "displayName": "Synthetic Admin",
+          "role": "admin",
+          "disabled": false,
+          "diaryEnabled": false,
+          "onboarded": false
+        },
+        "passkeys": [],
+        "sessions": [
+          {
+            "id": "<id:2>",
+            "createdAt": "<ts>",
+            "lastSeenAt": "<ts>",
+            "expiresAt": "<ts>",
+            "userAgent": "node",
+            "ip": "127.0.0.1",
+            "current": true
+          }
+        ]
+      }
+    }
+  }
+}

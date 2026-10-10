@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "seq": 6,
+  "request": {
+    "method": "POST",
+    "path": "/api/setup/complete",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "origin": "<origin>"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "setupCode": "<secret:1>",
+        "publicOrigin": "<origin>",
+        "username": "synthetic-admin",
+        "displayName": "Synthetic Admin",
+        "password": "<secret:2>",
+        "diaryEnabled": false
+      }
+    }
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "error": "setup could not be completed"
+      }
+    }
+  }
+}

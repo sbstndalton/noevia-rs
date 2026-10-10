@@ -1,0 +1,74 @@
+{
+  "v": 1,
+  "seq": 15,
+  "request": {
+    "method": "POST",
+    "path": "/api/projects",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "x-csrf-token": "<secret:4>"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "name": "Synthetic project",
+        "goal": "Contract corpus",
+        "instructions": "Answer briefly.",
+        "model": "synthetic-chat-model",
+        "files": [
+          {
+            "name": "notes.md",
+            "content": "# Synthetic notes\n\nAlpha beta gamma."
+          }
+        ]
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "id": "<id:3>",
+        "name": "Synthetic project",
+        "goal": "Contract corpus",
+        "instructions": "Answer briefly.",
+        "pinned": false,
+        "archived": false,
+        "sourceFolders": [],
+        "memories": [],
+        "files": [
+          {
+            "name": "notes.md",
+            "content": "# Synthetic notes\n\nAlpha beta gamma."
+          }
+        ],
+        "model": "synthetic-chat-model",
+        "routing": "auto",
+        "modes": [
+          "chat"
+        ],
+        "toolboxes": [
+          "core"
+        ],
+        "chats": [],
+        "createdAt": "<ts>",
+        "updatedAt": "<ts>",
+        "instructionSkills": {}
+      }
+    }
+  }
+}

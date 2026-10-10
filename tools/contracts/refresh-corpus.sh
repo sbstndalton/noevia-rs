@@ -14,9 +14,15 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 gh run download "$run" --repo sbstndalton/noevia-core --name contract-corpus --dir "$tmp/c"
 [ -f "$tmp/c/manifest.json" ] || { echo "artifact has no manifest.json" >&2; exit 1; }
-if grep -rEl 'cowork_(session|csrf)=[^<;"[:space:]]|Bearer [^<"]' "$tmp/c/exchanges" >/dev/null 2>&1; then
-  echo "refusing: a raw cookie or bearer value is in the artifact" >&2; exit 1
-fi
+# A cookie value or bearer credential that is not a placeholder (a challenge such as
+# `WWW-Authenticate: Bearer realm="cowork"` is not a credential).
+python3 - "$tmp/c/exchanges" <<'PY'
+import pathlib, re, sys
+bad = re.compile(r'cowork_(session|csrf)=(?!<secret:|;|"|\s|$)|Bearer (?!<secret:|realm=)')
+hits = [p.name for p in pathlib.Path(sys.argv[1]).glob("*.json") if bad.search(p.read_text())]
+if hits:
+    sys.exit("refusing: a raw cookie or bearer value is in " + ", ".join(hits[:5]))
+PY
 if ls "$tmp/c/exchanges"/*.dropped >/dev/null 2>&1; then
   echo "refusing: the recorder dropped exchanges (a secret survived normalisation)" >&2; exit 1
 fi
