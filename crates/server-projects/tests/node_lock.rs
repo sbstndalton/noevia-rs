@@ -13,7 +13,8 @@
 use js_json::JValue;
 use server_projects::{lock, store};
 use server_store::RustProjects;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 const ROUNDS: usize = 150;
 
@@ -71,6 +72,9 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
         const p = projects.find((x) => x.id === 'p1');
         p.assets = (p.assets || []).filter(() => true);
       }
+      // An independent owner retains its original base and view throughout the race.
+      const finalPf = createProjectsFile(file, { atomicJson, warn: (m) => { throw new Error(m); } });
+      const finalStale = finalPf.load();
       fs.writeFileSync(file + '.loaded', '');
       const until = Date.now() + 20000;
       while (!fs.readFileSync(file, 'utf8').includes('"img-0"')) {
@@ -85,6 +89,22 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
         else pf.save(projects);
         p.assets = (p.assets || []).filter(() => true);
       }
+      finalStale.find((p) => p.id === 'p1').chats =
+        Array.from({ length: Number(rounds) }, (_, i) => ({ id: 'chat-' + i }));
+      // Both modes finish with the same truly stale input, after Rust's final write.
+      const done = fs.readFileSync(0, 'utf8');
+      if (done !== 'rust-done') throw new Error('missing Rust completion signal');
+      if (!blind) {
+        // Check the actual concurrent result before the final stale input could repair it.
+        const assert = require('node:assert/strict');
+        const actual = JSON.parse(fs.readFileSync(file, 'utf8')).projects.find((p) => p.id === 'p1');
+        assert.deepEqual(actual.chats.map((c) => c.id),
+          Array.from({ length: Number(rounds) }, (_, i) => 'chat-' + i));
+        assert.deepEqual(actual.assets.map((a) => a.id),
+          Array.from({ length: Number(rounds) }, (_, i) => 'img-' + i));
+      }
+      if (blind) atomicJson(file, { projects: finalStale });
+      else finalPf.save(finalStale);
     "#;
     let mut node = Command::new("node")
         .args([
@@ -95,6 +115,7 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
             &ROUNDS.to_string(),
             if blind { "blind" } else { "merge" },
         ])
+        .stdin(Stdio::piped())
         .spawn()
         .expect("node on PATH");
     let switch = RustProjects::from_env_value(Some("1")).unwrap();
@@ -117,6 +138,9 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
         })
         .unwrap();
     }
+    let mut input = node.stdin.take().unwrap();
+    input.write_all(b"rust-done").unwrap();
+    drop(input); // EOF releases Node's bounded-size read; no scheduling/timing assumption.
     assert!(node.wait().unwrap().success(), "node side failed");
     let text = std::fs::read_to_string(&file).unwrap();
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
@@ -166,6 +190,50 @@ fn without_the_merge_nodes_saves_drop_rusts_images() {
     assert!(!assets.contains(&"img-0".to_string()), "{assets:?}");
 }
 
+// A stress writer may receive the production three-second Busy refusal: flock provides no
+// fairness guarantee. Retry only Busy, under one overall test budget; never drop an increment.
+fn stress_lock(file: &std::path::Path, deadline: std::time::Instant) -> lock::FileLock {
+    stress_lock_with_busy(file, deadline, || {})
+}
+
+fn stress_lock_with_busy(
+    file: &std::path::Path,
+    deadline: std::time::Instant,
+    mut busy: impl FnMut(),
+) -> lock::FileLock {
+    loop {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "stress lock budget exhausted"
+        );
+        match lock::acquire(file) {
+            Ok(held) => return held,
+            Err(lock::LockError::Busy) => busy(),
+            Err(e) => panic!("stress lock error: {e:?}"),
+        }
+    }
+}
+
+#[test]
+fn stress_retry_handles_busy_from_an_actual_holder() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("counter");
+    let held = lock::acquire(&file).unwrap();
+    let (send, receive) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        stress_lock_with_busy(
+            &file,
+            std::time::Instant::now() + std::time::Duration::from_secs(10),
+            || send.send(()).unwrap(),
+        )
+    });
+    receive
+        .recv_timeout(std::time::Duration::from_secs(6))
+        .unwrap();
+    drop(held);
+    drop(worker.join().unwrap());
+}
+
 /// The two halves are one lock: Node processes (flock(1) on an inherited descriptor) and Rust
 /// threads (std File::try_lock) incrementing one counter are never both inside and lose nothing.
 #[test]
@@ -177,12 +245,16 @@ fn node_processes_and_rust_threads_share_one_flock() {
     let script = r#"
       const fs = require('fs'); const [core, f] = process.argv.slice(1);
       const rp = require(core + '/server/rust-projects.cjs');
-      for (let i = 0; i < 100; i++) rp.withFileLock(f, () => {
-        fs.mkdirSync(f + '.inside'); // EEXIST: two inside
-        const n = Number(fs.readFileSync(f, 'utf8'));
-        fs.writeFileSync(f, String(n + 1));
-        fs.rmdirSync(f + '.inside');
-      });
+      const deadline = Date.now() + 30000;
+      for (let i = 0; i < 100;) {
+        if (Date.now() >= deadline) throw new Error('stress lock budget exhausted');
+        try { rp.withFileLock(f, () => {
+          fs.mkdirSync(f + '.inside'); // EEXIST: two inside
+          const n = Number(fs.readFileSync(f, 'utf8'));
+          fs.writeFileSync(f, String(n + 1));
+          fs.rmdirSync(f + '.inside');
+        }); i++; } catch (e) { if (e.code !== 'PROJECTS_BUSY') throw e; }
+      }
     "#;
     let nodes: Vec<_> = (0..2)
         .map(|_| {
@@ -192,6 +264,7 @@ fn node_processes_and_rust_threads_share_one_flock() {
                 .expect("node on PATH")
         })
         .collect();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     let threads: Vec<_> = (0..3)
         .map(|_| {
             let file = file.clone();
@@ -202,7 +275,7 @@ fn node_processes_and_rust_threads_share_one_flock() {
                     std::path::PathBuf::from(p)
                 };
                 for _ in 0..100 {
-                    let _held = lock::acquire(&file).unwrap();
+                    let _held = stress_lock(&file, deadline);
                     std::fs::create_dir(&inside).expect("two inside");
                     let n: u64 = std::fs::read_to_string(&file).unwrap().parse().unwrap();
                     std::fs::write(&file, (n + 1).to_string()).unwrap();
