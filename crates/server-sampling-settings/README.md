@@ -20,8 +20,8 @@ remain enabled; the GET SQL returns only a Boolean rather than materializing a l
 
 `tools/gen-sampling-fixtures.cjs <clean core> <output>` executes actual Node route/body/JSON/auth
 SQLite/audit collaborators with isolated synthetic data. The committed fixture's immutable
-core acceptance SHA is `b6fe168ba37b68ded2ae175a75bba36db59b0f72` (approved core#65 test input,
-not a release pin). `contracts/http/core.ref` separately remains landed core a8f7a3b.
+core oracle SHA is landed core#65 `73120cd6632a0cec85987eb9089212dc39126e68`, matching
+`contracts/http/core.ref` and its independently verified archive checksum.
 All 76 module cases match status/body/setting/audit. Real HTTP tests replay 74 of those cases
 with a dead Node upstream; the two throwing-Readable cases are module-only transport tests.
 Native body tests separately cover stream errors, actual byte overflow, deadlines and admission
