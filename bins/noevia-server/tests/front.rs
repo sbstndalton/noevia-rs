@@ -421,14 +421,32 @@ async fn headers_cookies_and_forwarded_for() {
 
 #[tokio::test]
 async fn request_body_cap() {
+    check_request_body_cap(
+        "/api/chat",
+        "/api/import",
+        noevia_server::legacy_proxy::BODY_CAP,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn upload_request_body_cap() {
+    check_request_body_cap(
+        "/api/projects/synthetic/upload?background=1",
+        "/api/projects/synthetic/upload",
+        noevia_server::legacy_proxy::UPLOAD_BODY_CAP,
+    )
+    .await;
+}
+
+async fn check_request_body_cap(route: &str, accepted_route: &str, cap: u64) {
     let (up, up_addr) = start_upstream().await;
     let front = start_front(up_addr, &dist_dir("cap"), false).await;
-    let cap = noevia_server::legacy_proxy::BODY_CAP;
     // Declared too large: refused without touching Node.
     let (res, _c) = call(
         front,
         "POST",
-        "/api/chat",
+        route,
         &[("content-length", &(cap + 1).to_string())],
         &[],
     )
@@ -441,7 +459,7 @@ async fn request_body_cap() {
     let mut c = client(front).await;
     let (mut tx, body) =
         http_body_util::channel::Channel::<Bytes, std::convert::Infallible>::new(4);
-    let req = Request::post("/api/chat")
+    let req = Request::post(route)
         .header("host", "front.test")
         .body(body.boxed())
         .unwrap();
@@ -462,7 +480,14 @@ async fn request_body_cap() {
         "{status:?}"
     );
     // Exactly the cap passes.
-    let (res, _c) = call(front, "POST", "/api/import", &[], &vec![b'b'; cap as usize]).await;
+    let (res, _c) = call(
+        front,
+        "POST",
+        accepted_route,
+        &[],
+        &vec![b'b'; cap as usize],
+    )
+    .await;
     assert_eq!(res.status(), 200);
     let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
     assert_eq!(echo["bodyLen"], cap);
