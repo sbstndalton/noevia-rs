@@ -1,7 +1,12 @@
 //! End-to-end tests of the front against a fake Node upstream: route ownership, streaming (SSE
 //! flushes per event), client-abort propagation, header and X-Forwarded-For rules, the body cap,
 //! the static bundle, /api/ready, the code-network guard and the connection timeouts.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
