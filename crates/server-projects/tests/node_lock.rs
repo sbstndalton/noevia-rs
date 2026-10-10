@@ -66,6 +66,13 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
       // Loaded before Rust's first image (Rust waits for this marker): from here on this view is
       // stale until refreshed.
       const fs = require('fs');
+      if (!blind) {
+        // As the config route does: a save, then (pruneDocuments -> uploads.prune) the absent
+        // list becomes [] in memory only, before the front's first image. Not a change of Node's.
+        pf.save(projects);
+        const p = projects.find((x) => x.id === 'p1');
+        p.assets = (p.assets || []).filter(() => true);
+      }
       fs.writeFileSync(file + '.loaded', '');
       const until = Date.now() + 20000;
       while (!fs.readFileSync(file, 'utf8').includes('"img-0"')) {
@@ -78,6 +85,7 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
         p.chats = [...(p.chats || []), { id: 'chat-' + i }];
         if (blind) atomicJson(file, { projects });
         else pf.save(projects);
+        p.assets = (p.assets || []).filter(() => true);
       }
     "#;
     let mut node = Command::new("node")
