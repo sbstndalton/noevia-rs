@@ -247,6 +247,8 @@ jobs:
           echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo build --locked -p replay -p noevia-server
+      - name: Node's guard refuses exactly the tables and keys server-store owns
+        run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-store --test node_guard
       - name: Replay against Node directly (reference data dir)
         run: |
           set -euo pipefail
