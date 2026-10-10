@@ -7,7 +7,8 @@
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
-      "origin": "<origin>"
+      "origin": "<origin>",
+      "user-agent": "node"
     },
     "body": {
       "kind": "empty"

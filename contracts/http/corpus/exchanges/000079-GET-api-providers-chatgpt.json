@@ -8,7 +8,8 @@
     "headers": {
       "accept": "application/json, text/event-stream",
       "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
-      "origin": "<origin>"
+      "origin": "<origin>",
+      "user-agent": "node"
     },
     "body": {
       "kind": "empty"

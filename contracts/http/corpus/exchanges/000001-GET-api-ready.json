@@ -6,7 +6,8 @@
     "path": "/api/ready",
     "query": [],
     "headers": {
-      "accept": "*/*"
+      "accept": "*/*",
+      "user-agent": "node"
     },
     "body": {
       "kind": "empty"
@@ -27,7 +28,7 @@
       "kind": "json",
       "json": {
         "ready": true,
-        "version": "0.2.0"
+        "version": "<version>"
       }
     }
   }

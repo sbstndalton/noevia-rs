@@ -9,7 +9,8 @@
       "accept": "application/json, text/event-stream",
       "content-type": "application/json",
       "cookie": "cowork_session=<secret:3>",
-      "origin": "<origin>"
+      "origin": "<origin>",
+      "user-agent": "node"
     },
     "body": {
       "kind": "json",

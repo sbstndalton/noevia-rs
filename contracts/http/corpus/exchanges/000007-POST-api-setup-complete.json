@@ -8,7 +8,8 @@
     "headers": {
       "accept": "application/json, text/event-stream",
       "content-type": "application/json",
-      "origin": "<origin>"
+      "origin": "<origin>",
+      "user-agent": "node"
     },
     "body": {
       "kind": "json",

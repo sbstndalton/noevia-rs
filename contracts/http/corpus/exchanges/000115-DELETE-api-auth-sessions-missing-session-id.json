@@ -9,6 +9,7 @@
       "accept": "application/json, text/event-stream",
       "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
       "origin": "<origin>",
+      "user-agent": "node",
       "x-csrf-token": "<secret:4>"
     },
     "body": {
