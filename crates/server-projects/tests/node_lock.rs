@@ -13,7 +13,8 @@
 use js_json::JValue;
 use server_projects::{lock, store};
 use server_store::RustProjects;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 const ROUNDS: usize = 150;
 
@@ -85,6 +86,11 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
         else pf.save(projects);
         p.assets = (p.assets || []).filter(() => true);
       }
+      // Both modes finish under identical ordering: Rust signals only after its final write.
+      const done = fs.readFileSync(0, 'utf8');
+      if (done !== 'rust-done') throw new Error('missing Rust completion signal');
+      if (blind) atomicJson(file, { projects });
+      else pf.save(projects);
     "#;
     let mut node = Command::new("node")
         .args([
@@ -95,6 +101,7 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
             &ROUNDS.to_string(),
             if blind { "blind" } else { "merge" },
         ])
+        .stdin(Stdio::piped())
         .spawn()
         .expect("node on PATH");
     let switch = RustProjects::from_env_value(Some("1")).unwrap();
@@ -117,6 +124,9 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
         })
         .unwrap();
     }
+    let mut input = node.stdin.take().unwrap();
+    input.write_all(b"rust-done").unwrap();
+    drop(input); // EOF releases Node's bounded-size read; no scheduling/timing assumption.
     assert!(node.wait().unwrap().success(), "node side failed");
     let text = std::fs::read_to_string(&file).unwrap();
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
