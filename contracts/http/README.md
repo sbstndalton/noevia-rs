@@ -59,7 +59,6 @@ so merging a flip changes nothing live. The switch also:
   `server/rust-auth.cjs`), so each row has one writer, and re-read the public address from
   settings on every use.
 
-Do not set the switch with this layer alone: Node then refuses the account writes while no route
-is Rust's yet (the routes arrive with the next change, which also makes `noevia-server --features`
-list `rust-auth`). The switch is removed, with Node's copies of the routes, once Rust-owned sign-in
+`noevia-server --features` lists `rust-auth`: the build answers the switched routes (the web
+supervisor should check it before letting Node refuse the account tables). The switch is removed, with Node's copies of the routes, once Rust-owned sign-in
 is proven live.
