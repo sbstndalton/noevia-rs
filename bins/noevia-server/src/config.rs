@@ -35,6 +35,7 @@ pub struct Config {
     pub rust_projects: Option<server_store::RustProjects>,
     /// M6 requires native identity/upkeep.
     pub rust_usage: bool,
+    pub rust_sampling_settings: Option<server_store::RustSamplingSettings>,
     pub usage_clock: Result<server_usage::summary::Clock, server_usage::Fault>,
     /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
     /// UI_DATA_DIR); `None` without UI_DATA_DIR.
@@ -102,6 +103,7 @@ impl Config {
             rust_auth: self.rust_auth.is_some(),
             rust_projects: self.rust_projects.is_some(),
             rust_usage: self.rust_usage,
+            rust_sampling_settings: self.rust_sampling_settings.is_some(),
         }
     }
 
@@ -128,6 +130,14 @@ impl Config {
         if rust_usage && rust_auth.is_none() {
             return Err("NOEVIA_RUST_USAGE=1 needs NOEVIA_RUST_AUTH=1".into());
         }
+        let rust_sampling_settings =
+            if get(server_store::RustSamplingSettings::ENV).as_deref() == Some("1") {
+                let auth =
+                    rust_auth.ok_or("NOEVIA_RUST_SAMPLING_SETTINGS=1 needs NOEVIA_RUST_AUTH=1")?;
+                server_store::RustSamplingSettings::from_env_value(Some("1"), auth)
+            } else {
+                None
+            };
         Ok(Config {
             host,
             port,
@@ -151,6 +161,7 @@ impl Config {
             rust_auth,
             rust_projects,
             rust_usage,
+            rust_sampling_settings,
             usage_clock: server_usage::summary::Clock::system(&get),
         })
     }
@@ -273,5 +284,33 @@ mod tests {
         ])
         .unwrap();
         assert!(c.switches().rust_usage);
+    }
+    #[test]
+    fn sampling_needs_native_auth_and_exact_switch_defaults_off() {
+        for value in [None, Some("0"), Some("true"), Some(" 1")] {
+            let mut env = vec![
+                ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021"),
+                ("NOEVIA_RUST_AUTH", "1"),
+            ];
+            if let Some(value) = value {
+                env.push(("NOEVIA_RUST_SAMPLING_SETTINGS", value));
+            }
+            assert!(cfg(&env).unwrap().rust_sampling_settings.is_none());
+        }
+        assert!(cfg(&[
+            ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021"),
+            ("NOEVIA_RUST_SAMPLING_SETTINGS", "1")
+        ])
+        .is_err());
+        assert!(
+            cfg(&[
+                ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021"),
+                ("NOEVIA_RUST_AUTH", "1"),
+                ("NOEVIA_RUST_SAMPLING_SETTINGS", "1")
+            ])
+            .unwrap()
+            .switches()
+            .rust_sampling_settings
+        );
     }
 }

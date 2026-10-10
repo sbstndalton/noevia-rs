@@ -1421,6 +1421,7 @@ dependencies = [
  "server-account",
  "server-auth",
  "server-projects",
+ "server-sampling-settings",
  "server-store",
  "server-usage",
  "sha2",
@@ -2144,6 +2145,16 @@ version = "0.1.0"
 dependencies = [
  "js-json",
  "rand_core 0.6.4",
+ "serde_json",
+ "server-store",
+ "tempfile",
+]
+
+[[package]]
+name = "server-sampling-settings"
+version = "0.1.0"
+dependencies = [
+ "proptest",
  "serde_json",
  "server-store",
  "tempfile",

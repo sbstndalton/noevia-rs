@@ -163,6 +163,16 @@ impl RustProjects {
     }
 }
 
+/// M6 sampling-settings capability. Auth alone never grants this settings key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustSamplingSettings(());
+impl RustSamplingSettings {
+    pub const ENV: &'static str = "NOEVIA_RUST_SAMPLING_SETTINGS";
+    pub fn from_env_value(value: Option<&str>, _auth: RustAuth) -> Option<Self> {
+        (value == Some("1")).then_some(Self(()))
+    }
+}
+
 /// The per-user file M4 shares with Node (core `server/rust-projects.cjs`): written by both, each
 /// only under the shared lock (crates/server-projects `lock`) and never from a stale copy.
 pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json"];
@@ -660,6 +670,20 @@ impl WriteTx<'_> {
             "INSERT OR REPLACE INTO settings(key,value) VALUES(?1,?2)",
             [key, value],
         )
+    }
+
+    /// A distinct capability grants exactly one fixed statement/key; arbitrary SQL stays denied.
+    pub fn set_sampling_enabled(
+        &self,
+        _sampling: RustSamplingSettings,
+        enabled: bool,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        let mut stmt = self.conn.prepare(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('auto_sampling_presets_enabled',?1)",
+        )?;
+        Ok(stmt.execute([if enabled { "true" } else { "false" }])?)
     }
 
     /// `INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)` for an owned key.
