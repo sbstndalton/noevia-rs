@@ -101,7 +101,9 @@ fn decode_length(data: &[u8], argument: u8, index: usize) -> Result<(f64, usize)
             3,
         ),
         26 => (
-            rest.get(..4).and_then(|b| <[u8; 4]>::try_from(b).ok()).map(|b| u64::from(u32::from_be_bytes(b))),
+            rest.get(..4)
+                .and_then(|b| <[u8; 4]>::try_from(b).ok())
+                .map(|b| u64::from(u32::from_be_bytes(b))),
             5,
         ),
         27 => {
@@ -192,9 +194,9 @@ fn decode_next(data: &[u8], index: usize, depth: usize) -> Result<(Cbor, usize),
                 }
                 let dup = match &key {
                     // Map keys compare with SameValueZero: NaN equals NaN, -0 equals 0.
-                    Cbor::Num(n) => items.iter().any(|(k, _)| {
-                        matches!(k, Cbor::Num(m) if m == n || (m.is_nan() && n.is_nan()))
-                    }),
+                    Cbor::Num(n) => items.iter().any(
+                        |(k, _)| matches!(k, Cbor::Num(m) if m == n || (m.is_nan() && n.is_nan())),
+                    ),
                     Cbor::Text(t) => items
                         .iter()
                         .any(|(k, _)| matches!(k, Cbor::Text(u) if u == t)),
@@ -213,7 +215,10 @@ fn decode_next(data: &[u8], index: usize, depth: usize) -> Result<(Cbor, usize),
         6 => {
             let (tag, tn) = decode_length(data, argument, index)?;
             let (v, vn) = decode_next(data, index + tn, depth + 1)?;
-            Ok((Cbor::Tag(tag, Box::new(v)), tn.checked_add(vn).ok_or(CborError)?))
+            Ok((
+                Cbor::Tag(tag, Box::new(v)),
+                tn.checked_add(vn).ok_or(CborError)?,
+            ))
         }
         _ => match argument {
             20 => Ok((Cbor::Bool(false), 1)),

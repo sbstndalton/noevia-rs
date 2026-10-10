@@ -35,8 +35,21 @@ const ALG_NUMBERS: &[f64] = &[
     -259.0, -65535.0,
 ];
 const ALG_NAMES: &[&str] = &[
-    "ES256", "EdDSA", "ES384", "ES512", "PS256", "PS384", "PS512", "ES256K", "ML_DSA_44",
-    "ML_DSA_65", "ML_DSA_87", "RS256", "RS384", "RS512", "RS1",
+    "ES256",
+    "EdDSA",
+    "ES384",
+    "ES512",
+    "PS256",
+    "PS384",
+    "PS512",
+    "ES256K",
+    "ML_DSA_44",
+    "ML_DSA_65",
+    "ML_DSA_87",
+    "RS256",
+    "RS384",
+    "RS512",
+    "RS1",
 ];
 
 /// cose.js `isCOSEAlg`: `Object.values(COSEALG)` holds both the numbers and the names.
@@ -85,7 +98,7 @@ pub fn hash_for(alg: Option<&Cbor>) -> Result<Hash, String> {
         )
     };
     match n {
-        Some(x) if x == -65535.0 => Ok(Hash::Sha1),
+        Some(-65535.0) => Ok(Hash::Sha1),
         Some(x) if [-7.0, -37.0, -257.0].contains(&x) => Ok(Hash::Sha256),
         Some(x) if [-35.0, -38.0, -258.0].contains(&x) => Ok(Hash::Sha384),
         Some(x) if [-36.0, -39.0, -259.0, -8.0].contains(&x) => Ok(Hash::Sha512),
@@ -104,7 +117,7 @@ enum KeyAlg {
 
 fn key_alg_for(alg: Option<&Cbor>) -> Result<KeyAlg, String> {
     match num(alg) {
-        Some(x) if x == -8.0 => Ok(KeyAlg::Ed25519),
+        Some(-8.0) => Ok(KeyAlg::Ed25519),
         Some(x) if [-7.0, -35.0, -36.0, -47.0].contains(&x) => Ok(KeyAlg::Ecdsa),
         Some(x) if [-257.0, -258.0, -259.0, -65535.0].contains(&x) => Ok(KeyAlg::Pkcs1),
         Some(x) if [-37.0, -38.0, -39.0].contains(&x) => Ok(KeyAlg::Pss),
@@ -200,9 +213,9 @@ fn verify_ec2(
         ));
     }
     let component = match num(crv) {
-        Some(x) if x == 1.0 => 32,
-        Some(x) if x == 2.0 => 48,
-        Some(x) if x == 3.0 => 66,
+        Some(1.0) => 32,
+        Some(2.0) => 48,
+        Some(3.0) => 66,
         _ => {
             return Err(format!(
                 "Unexpected COSE crv value of {} (EC2)",

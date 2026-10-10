@@ -128,10 +128,14 @@ pub fn now_ms() -> i64 {
 
 /// `new URL(req.url, 'http://h').pathname`, or None when it does not parse.
 pub fn whatwg_pathname(parts: &Parts) -> Option<String> {
-    let target = parts
-        .uri
+    whatwg_pathname_of(&parts.uri)
+}
+
+/// [`whatwg_pathname`] for a request URI.
+pub fn whatwg_pathname_of(uri: &axum::http::Uri) -> Option<String> {
+    let target = uri
         .path_and_query()
-        .map_or_else(|| parts.uri.path(), |pq| pq.as_str());
+        .map_or_else(|| uri.path(), |pq| pq.as_str());
     let base = url::Url::parse("http://h").ok()?;
     let parsed = url::Url::options()
         .base_url(Some(&base))

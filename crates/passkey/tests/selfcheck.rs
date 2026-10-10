@@ -60,7 +60,10 @@ fn registration(key: &[u8], challenge: &str, flags: u8) -> JValue {
         (
             "response",
             JValue::obj([
-                ("clientDataJSON", JValue::from(client("webauthn.create", challenge))),
+                (
+                    "clientDataJSON",
+                    JValue::from(client("webauthn.create", challenge)),
+                ),
                 ("attestationObject", JValue::from(b64::from_buffer(&ao))),
                 ("transports", JValue::Arr(vec![JValue::from("internal")])),
             ]),

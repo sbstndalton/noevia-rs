@@ -30,6 +30,9 @@ pub struct Config {
     pub auth: Result<server_auth::AuthConfig, String>,
     /// NOEVIA_RUST_AUTH=1.
     pub rust_auth: Option<server_store::RustAuth>,
+    /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
+    /// UI_DATA_DIR); `None` without UI_DATA_DIR.
+    pub account: Option<server_account::Settings>,
 }
 
 /// Where Node listens. Only `http://<loopback ip>:<port>` is accepted: the proxy forwards session
@@ -121,6 +124,9 @@ impl Config {
             data_dir: get("UI_DATA_DIR")
                 .filter(|d| !d.is_empty())
                 .map(PathBuf::from),
+            account: get("UI_DATA_DIR")
+                .filter(|d| !d.is_empty())
+                .map(|d| server_account::Settings::from_lookup(&get, PathBuf::from(d))),
             auth: server_auth::AuthConfig::from_lookup(&get),
             rust_auth: server_store::RustAuth::from_env_value(
                 get(server_store::RustAuth::ENV).as_deref(),

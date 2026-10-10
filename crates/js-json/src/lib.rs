@@ -379,7 +379,10 @@ mod tests {
         assert!(parse("").is_err());
         assert!(parse("{} x").is_err());
         assert!(parse("\u{feff}{}").is_err());
-        assert_eq!(parse("12345678901234567890").unwrap(), JValue::Num(1.2345678901234567e19));
+        assert_eq!(
+            parse("12345678901234567890").unwrap(),
+            JValue::Num(1.2345678901234567e19)
+        );
         assert!(parse(r#""\ud800""#).is_err());
     }
 
@@ -387,7 +390,14 @@ mod tests {
     fn stringify_like_js() {
         let v = JValue::obj([
             ("a", JValue::Undefined),
-            ("b", JValue::Arr(vec![JValue::Undefined, JValue::Num(f64::NAN), JValue::Num(-0.0)])),
+            (
+                "b",
+                JValue::Arr(vec![
+                    JValue::Undefined,
+                    JValue::Num(f64::NAN),
+                    JValue::Num(-0.0),
+                ]),
+            ),
             ("c", JValue::from("q\"\\\u{1}\u{2028}")),
             ("d", JValue::Num(1e21)),
             ("e", JValue::Num(0.1)),

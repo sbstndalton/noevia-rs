@@ -5,8 +5,7 @@
 //! the output as `length * 0.75` minus one per trailing `=` (truncated), and drops what does not
 //! fit. Ported exactly, so a decoded clientDataJSON hashes to what Node hashed.
 
-const URL_ALPHABET: &[u8; 64] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+const URL_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 fn lookup(unit: Option<u16>) -> u32 {
     let Some(u) = unit else { return 0 };

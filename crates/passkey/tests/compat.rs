@@ -152,7 +152,10 @@ fn authentications_agree_with_simplewebauthn() {
                     signed_in.insert(*k);
                 }
                 if u64::from(*n) != want["newCounter"].as_u64().unwrap() {
-                    bad.push(format!("{name}: counter Rust {n} Node {}", want["newCounter"]));
+                    bad.push(format!(
+                        "{name}: counter Rust {n} Node {}",
+                        want["newCounter"]
+                    ));
                 }
             }
             (Err(e), false) => {
@@ -171,7 +174,11 @@ fn authentications_agree_with_simplewebauthn() {
     }
     assert!(cases.len() >= 300, "only {} assertions", cases.len());
     assert!(ok >= 60, "only {ok} accepted assertions");
-    assert_eq!(signed_in.len(), kinds.len(), "kinds that signed in: {signed_in:?}");
+    assert_eq!(
+        signed_in.len(),
+        kinds.len(),
+        "kinds that signed in: {signed_in:?}"
+    );
     assert!(
         unsafe_accepts.is_empty(),
         "Rust accepts what Node refuses:\n{}",

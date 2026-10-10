@@ -87,8 +87,8 @@ pub struct AuthData {
 
 /// Firefox 117's EdDSA key with a map header of 3 instead of 4 (parseAuthenticatorData).
 const BAD_EDDSA_CBOR: [u8; 17] = [
-    0xa3, 0x01, 0x63, 0x4f, 0x4b, 0x50, 0x03, 0x27, 0x20, 0x67, 0x45, 0x64, 0x32, 0x35, 0x35,
-    0x31, 0x39,
+    0xa3, 0x01, 0x63, 0x4f, 0x4b, 0x50, 0x03, 0x27, 0x20, 0x67, 0x45, 0x64, 0x32, 0x35, 0x35, 0x31,
+    0x39,
 ];
 
 fn clamp(data: &[u8], start: usize, end: usize) -> &[u8] {
@@ -262,7 +262,9 @@ fn credential_shape<'a>(response: &'a JValue, what: &str) -> Result<&'a JValue, 
         _ => false,
     };
     if !same {
-        return Err(VerifyError::exact("Credential ID was not base64url-encoded"));
+        return Err(VerifyError::exact(
+            "Credential ID was not base64url-encoded",
+        ));
     }
     let kind = response.get("type");
     if kind.as_str() != Some("public-key") {
@@ -300,7 +302,9 @@ fn destructure_client<'a>(cd: &'a JValue, name: &str) -> Result<&'a JValue, Veri
 }
 
 fn origin_ok(origin: &JValue, origins: &[String]) -> bool {
-    origin.as_str().is_some_and(|o| origins.iter().any(|e| e == o))
+    origin
+        .as_str()
+        .is_some_and(|o| origins.iter().any(|e| e == o))
 }
 
 /// `verifyRegistrationResponse({ response, expectedChallenge, expectedOrigin, expectedRPID,
@@ -347,7 +351,10 @@ pub fn verify_registration(
             )));
         }
         let status = tb.get("status");
-        if !matches!(status.as_str(), Some("present" | "supported" | "not-supported")) {
+        if !matches!(
+            status.as_str(),
+            Some("present" | "supported" | "not-supported")
+        ) {
             return Err(VerifyError::exact(format!(
                 "Unexpected tokenBinding.status value of \"{}\"",
                 s(status)
@@ -369,7 +376,10 @@ pub fn verify_registration(
     let Some(Cbor::Bytes(auth_data)) = decoded.get_text("authData") else {
         return Err(VerifyError::loose("authData is not a byte string"));
     };
-    let att_stmt = decoded.get_text("attStmt").cloned().unwrap_or(Cbor::Undefined);
+    let att_stmt = decoded
+        .get_text("attStmt")
+        .cloned()
+        .unwrap_or(Cbor::Undefined);
     let parsed = parse_authenticator_data(auth_data)?;
     if !rp_id_matches(&parsed.rp_id_hash, expected.rp_id) {
         return Err(VerifyError::exact("Unexpected RP ID hash"));
@@ -458,7 +468,9 @@ pub fn verify_registration(
                 ));
             }
             let Some(Cbor::Bytes(sig)) = sig else {
-                return Err(VerifyError::loose("attestation signature is not a byte string"));
+                return Err(VerifyError::loose(
+                    "attestation signature is not a byte string",
+                ));
             };
             let mut base = auth_data.clone();
             base.extend_from_slice(&client_hash);
@@ -545,12 +557,20 @@ pub fn verify_authentication(
             expected.origins.join(", ")
         )));
     }
-    let Some(ad) = ar.get("authenticatorData").as_str().filter(|v| b64::is_base64url(v)) else {
+    let Some(ad) = ar
+        .get("authenticatorData")
+        .as_str()
+        .filter(|v| b64::is_base64url(v))
+    else {
         return Err(VerifyError::exact(
             "Credential response authenticatorData was not a base64url string",
         ));
     };
-    let Some(sig) = ar.get("signature").as_str().filter(|v| b64::is_base64url(v)) else {
+    let Some(sig) = ar
+        .get("signature")
+        .as_str()
+        .filter(|v| b64::is_base64url(v))
+    else {
         return Err(VerifyError::exact(
             "Credential response signature was not a base64url string",
         ));
@@ -569,7 +589,10 @@ pub fn verify_authentication(
             ));
         }
         let status = tb.get("status");
-        if !matches!(status.as_str(), Some("present" | "supported" | "notSupported")) {
+        if !matches!(
+            status.as_str(),
+            Some("present" | "supported" | "notSupported")
+        ) {
             return Err(VerifyError::exact(format!(
                 "Unexpected tokenBinding status {}",
                 s(status)
