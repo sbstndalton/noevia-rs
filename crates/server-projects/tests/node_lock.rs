@@ -72,6 +72,9 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
         const p = projects.find((x) => x.id === 'p1');
         p.assets = (p.assets || []).filter(() => true);
       }
+      // An independent owner retains its original base and view throughout the race.
+      const finalPf = createProjectsFile(file, { atomicJson, warn: (m) => { throw new Error(m); } });
+      const finalStale = finalPf.load();
       fs.writeFileSync(file + '.loaded', '');
       const until = Date.now() + 20000;
       while (!fs.readFileSync(file, 'utf8').includes('"img-0"')) {
@@ -86,11 +89,13 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
         else pf.save(projects);
         p.assets = (p.assets || []).filter(() => true);
       }
-      // Both modes finish under identical ordering: Rust signals only after its final write.
+      finalStale.find((p) => p.id === 'p1').chats =
+        Array.from({ length: Number(rounds) }, (_, i) => ({ id: 'chat-' + i }));
+      // Both modes finish with the same truly stale input, after Rust's final write.
       const done = fs.readFileSync(0, 'utf8');
       if (done !== 'rust-done') throw new Error('missing Rust completion signal');
-      if (blind) atomicJson(file, { projects });
-      else pf.save(projects);
+      if (blind) atomicJson(file, { projects: finalStale });
+      else finalPf.save(finalStale);
     "#;
     let mut node = Command::new("node")
         .args([
