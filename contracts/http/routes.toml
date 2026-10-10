@@ -555,8 +555,17 @@ path = "/api/projects/{projectId}"
 owner = "node"
 
 [[route]]
+path = "/api/projects/{id}/assets"
+owner = "rust"
+switch = "NOEVIA_RUST_PROJECTS"
+methods = ["POST"]
+client = false
+
+[[route]]
 path = "/api/projects/{id}/assets/{assetId}"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_PROJECTS"
+methods = ["GET", "DELETE"]
 
 [[route]]
 path = "/api/projects/{projectId}/browser"

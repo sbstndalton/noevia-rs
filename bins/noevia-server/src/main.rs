@@ -69,6 +69,7 @@ async fn main() -> ExitCode {
         config.trust_proxy
     );
     let rust_auth = config.rust_auth.is_some();
+    let rust_projects = config.rust_projects.is_some();
     let app = App::new(config);
     app.statics.warm();
     // Without NOEVIA_RUST_AUTH no route needs an identity, so a refusal is only reported. With it
@@ -108,6 +109,9 @@ async fn main() -> ExitCode {
                 println!("noevia-server: NOEVIA_RUST_AUTH=1, cowork.db writer not open yet: {e}")
             }
             Err(_) => eprintln!("noevia-server: warning: writer check did not run"),
+        }
+        if rust_projects {
+            println!("noevia-server: NOEVIA_RUST_PROJECTS=1, Rust owns the project image routes");
         }
     }
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);

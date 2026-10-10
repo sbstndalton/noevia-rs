@@ -62,3 +62,25 @@ so merging a flip changes nothing live. The switch also:
 `noevia-server --features` lists `rust-auth`: the build answers the switched routes (the web
 supervisor should check it before letting Node refuse the account tables). The switch is removed, with Node's copies of the routes, once Rust-owned sign-in
 is proven live.
+
+## M4: Rust owns project routes, slice by slice (`NOEVIA_RUST_PROJECTS`)
+
+`switch = "NOEVIA_RUST_PROJECTS"` routes are Rust's only while the deployment sets
+`NOEVIA_RUST_PROJECTS=1`, and the front refuses to start with it unless `NOEVIA_RUST_AUTH=1` too
+(the front gates the routes it owns itself, and writes the session upkeep Node's gate wrote). The
+first slice is a project's images: `POST /api/projects/{id}/assets`, `GET` and `DELETE
+/api/projects/{id}/assets/{assetId}` (crates/server-projects `assets`).
+
+`projects.json` cannot have one writer yet (Node's chat routes keep chat metas in it), so while
+the switch is on both processes write it only under one lock (`projects.json.lock`, O_EXCL,
+crates/server-projects `lock` = core `server/rust-projects.cjs`): Rust re-reads it for every change
+and writes Node's exact `atomicJson` bytes; Node re-reads it when it changed and saves by a
+per-project, per-field three-way merge, so neither drops the other's change. With
+`NOEVIA_FRONT=rust`, `NOEVIA_RUST_AUTH_CONFIRMED=1` and `NOEVIA_RUST_PROJECTS_CONFIRMED=1` (the
+supervisor sets the last once `--features` lists `rust-projects`), Node's copies of the image
+writes answer 503 `RUST_PROJECTS_OWNED`.
+
+CI job `corpus-replay-front-rust-projects` replays the corpus through the front with both switches
+(zero differences, Node-only data dir), runs the Node-vs-Rust lock race (`server-projects --test
+node_lock`, with a blind-save control that must lose data), and a negative control where Node is
+told the front owns the image routes but the front does not: the uploads must be refused with 503.

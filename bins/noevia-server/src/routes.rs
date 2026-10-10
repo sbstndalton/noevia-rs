@@ -1,8 +1,9 @@
 //! Route ownership, from contracts/http/routes.toml (compiled in by build.rs). One owner per
 //! route: a request whose route is owner = "rust" (for one of its methods) is answered natively,
 //! everything else goes to Node through the legacy proxy. A route with a `switch` is Rust's only
-//! while that deployment switch is on (M3: NOEVIA_RUST_AUTH, see [`Switches`]); off, it is
-//! Node's, so merging a flip changes nothing until the deployment sets the switch.
+//! while that deployment switch is on (M3: NOEVIA_RUST_AUTH, M4: NOEVIA_RUST_PROJECTS, see
+//! [`Switches`]); off, it is Node's, so merging a flip changes nothing until the deployment sets
+//! the switch.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Owner {
@@ -27,12 +28,16 @@ pub struct Route {
 pub struct Switches {
     /// NOEVIA_RUST_AUTH=1: Rust owns sign-in and the account (M3).
     pub rust_auth: bool,
+    /// NOEVIA_RUST_PROJECTS=1 (only with rust_auth, config.rs): Rust owns the project routes
+    /// ported so far (M4).
+    pub rust_projects: bool,
 }
 
 impl Switches {
     pub fn on(&self, name: &str) -> bool {
         match name {
             "NOEVIA_RUST_AUTH" => self.rust_auth,
+            "NOEVIA_RUST_PROJECTS" => self.rust_projects,
             _ => false,
         }
     }
@@ -60,7 +65,15 @@ pub enum Native {
     Static,
     /// Sign-in and the account (M3, NOEVIA_RUST_AUTH): crates/server-account.
     Account,
+    /// A project's images (M4, NOEVIA_RUST_PROJECTS): crates/server-projects `assets`.
+    ProjectAssets,
 }
+
+/// The routes [`Native::ProjectAssets`] implements.
+const PROJECT_ASSET_ROUTES: &[&str] = &[
+    "/api/projects/{id}/assets",
+    "/api/projects/{id}/assets/{assetId}",
+];
 
 /// The native handler a rust-owned route is implemented by.
 pub fn native_for(route: &Route) -> Option<Native> {
@@ -69,6 +82,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         (_, true, None) => Some(Native::Static),
         (_, false, Some("NOEVIA_RUST_AUTH")) if route.path.starts_with("/api/") => {
             Some(Native::Account)
+        }
+        (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ASSET_ROUTES.contains(&p) => {
+            Some(Native::ProjectAssets)
         }
         _ => None,
     }
@@ -181,10 +197,55 @@ mod tests {
 
     #[test]
     fn switches_by_name() {
-        let on = Switches { rust_auth: true };
+        let on = Switches {
+            rust_auth: true,
+            rust_projects: false,
+        };
         assert!(on.on("NOEVIA_RUST_AUTH"));
+        assert!(!on.on("NOEVIA_RUST_PROJECTS"));
         assert!(!Switches::default().on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_SOMETHING_ELSE"));
+        let both = Switches {
+            rust_auth: true,
+            rust_projects: true,
+        };
+        assert!(both.on("NOEVIA_RUST_PROJECTS"));
+    }
+
+    #[test]
+    fn project_images_are_rusts_only_under_their_switch_and_methods() {
+        let auth = Switches {
+            rust_auth: true,
+            rust_projects: false,
+        };
+        let both = Switches {
+            rust_auth: true,
+            rust_projects: true,
+        };
+        for (m, p) in [
+            ("POST", "/api/projects/p1/assets"),
+            ("GET", "/api/projects/p1/assets/img-1"),
+            ("DELETE", "/api/projects/p1/assets/img-1"),
+        ] {
+            assert_eq!(dispatch(m, p), None, "{m} {p}");
+            assert_eq!(dispatch_under(m, p, auth), None, "{m} {p}");
+            assert_eq!(
+                dispatch_under(m, p, both),
+                Some(Native::ProjectAssets),
+                "{m} {p}"
+            );
+        }
+        for (m, p) in [
+            ("GET", "/api/projects/p1/assets"),
+            ("PUT", "/api/projects/p1/assets/img-1"),
+            ("HEAD", "/api/projects/p1/assets/img-1"),
+            ("POST", "/api/projects/p1/assets/img-1"),
+            ("POST", "/api/projects/p1/upload"),
+            ("DELETE", "/api/projects/p1"),
+            ("GET", "/api/projects/p1/chats"),
+        ] {
+            assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
+        }
     }
 
     #[test]

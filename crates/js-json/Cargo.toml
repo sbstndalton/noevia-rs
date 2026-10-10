@@ -12,5 +12,7 @@ workspace = true
 
 [dependencies]
 serde = "1"
-serde_json = "1"
+# float_roundtrip: correctly rounded number parsing, as JSON.parse (the default parser can be one
+# ULP off, so a Rust rewrite of a Node file would change stored numbers).
+serde_json = { version = "1", features = ["float_roundtrip"] }
 sandbox-bridge = { path = "../sandbox-bridge" }

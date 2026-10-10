@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "generator": "node: JSON.stringify(JSON.parse(input), null, 2)",
+  "cases": [
+    {
+      "input": "{\"projects\":[{\"id\":\"p1\",\"name\":\"A \\u2028 é \\\" \\\\ \\u0001\",\"n\":[1,0.1,-0,1e21,1e-7,123456789012345680000],\"e\":{},\"a\":[],\"x\":{\"y\":[[],{}]},\"dup\":1,\"dup\":2}]}",
+      "pretty": "{\n  \"projects\": [\n    {\n      \"id\": \"p1\",\n      \"name\": \"A   é \\\" \\\\ \\u0001\",\n      \"n\": [\n        1,\n        0.1,\n        0,\n        1e+21,\n        1e-7,\n        123456789012345680000\n      ],\n      \"e\": {},\n      \"a\": [],\n      \"x\": {\n        \"y\": [\n          [],\n          {}\n        ]\n      },\n      \"dup\": 2\n    }\n  ]\n}"
+    },
+    {
+      "input": "[]",
+      "pretty": "[]"
+    },
+    {
+      "input": "{}",
+      "pretty": "{}"
+    },
+    {
+      "input": "\"s\"",
+      "pretty": "\"s\""
+    },
+    {
+      "input": "[null,true,false]",
+      "pretty": "[\n  null,\n  true,\n  false\n]"
+    },
+    {
+      "input": "{\"a\":{\"b\":{\"c\":[1,{\"d\":null}]}}}",
+      "pretty": "{\n  \"a\": {\n    \"b\": {\n      \"c\": [\n        1,\n        {\n          \"d\": null\n        }\n      ]\n    }\n  }\n}"
+    }
+  ]
+}

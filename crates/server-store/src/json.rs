@@ -243,6 +243,20 @@ pub fn write_owned_text(
     write_text_atomic(&dir.join(name), text)
 }
 
+/// Writes `dir/name` (a [`crate::SHARED_PROJECT_FILES`] name) atomically with text the caller
+/// serialised (`JSON.stringify(value, null, 2)`, js-json `stringify_pretty`). Only with the M4
+/// switch; the caller holds the file's shared lock (crates/server-projects), which this does not
+/// take.
+pub fn write_shared_projects(
+    dir: &Path,
+    name: &str,
+    text: &str,
+    _switch: crate::RustProjects,
+) -> Result<(), JsonError> {
+    owned_name(crate::SHARED_PROJECT_FILES, name)?;
+    write_text_atomic(&dir.join(name), text)
+}
+
 /// `fs.rmSync(dir/name, { force: true })` for an owned file: a missing file is not an error.
 pub fn remove_owned(dir: &Path, name: &str, _switch: crate::RustAuth) -> Result<(), JsonError> {
     owned_name(crate::OWNED_JSON_FILES, name)?;
@@ -380,6 +394,26 @@ mod tests {
         remove_owned(dir.path(), "account-memory.json", on).unwrap();
         assert!(!dir.path().join("account-memory.json").exists());
         assert!(remove_owned(dir.path(), "projects.json", on).is_err());
+        // projects.json is M4's, with its own switch, and only by that name.
+        let projects = crate::RustProjects::for_tests();
+        write_shared_projects(dir.path(), "projects.json", "{}", projects).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("projects.json")).unwrap(),
+            "{}"
+        );
+        for bad in ["account-memory.json", "../projects.json", "providers.json"] {
+            assert!(
+                write_shared_projects(dir.path(), bad, "{}", projects).is_err(),
+                "{bad}"
+            );
+        }
+        assert_eq!(
+            crate::RustProjects::from_env_value(Some("1")),
+            Some(projects)
+        );
+        for v in [None, Some(""), Some("true"), Some("1 ")] {
+            assert_eq!(crate::RustProjects::from_env_value(v), None, "{v:?}");
+        }
         let owned = ["mine.json"];
         for bad in ["../mine.json", "a/mine.json", "", ".", "..", "theirs.json"] {
             assert!(
