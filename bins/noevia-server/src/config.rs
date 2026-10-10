@@ -3,7 +3,10 @@
 //! STAMP_VERSION (the /api/ready version fallback). New keys: NOEVIA_LEGACY_UPSTREAM (the Node
 //! server, loopback http only) and NOEVIA_WEB_DIST (the built web client, default ./dist, which
 //! is /app/dist in the web image, the directory Node serves). COWORK_CODE_NET_ADDR as in core
-//! code-net-guard.cjs (see code_net.rs; a malformed value stops startup).
+//! code-net-guard.cjs (see code_net.rs; a malformed value stops startup). UI_DATA_DIR and the auth
+//! keys (PUBLIC_ORIGIN, ADDITIONAL_TRUSTED_ORIGINS, UI_AUTH_TOKEN, LEGACY_AUTH_COMPAT,
+//! NOEVIA_FEATURE_NATIVE_CLIENT_AUTH) as core index.cjs reads them, for identity.rs; an invalid
+//! auth value never stops the front (see identity.rs).
 
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -18,6 +21,11 @@ pub struct Config {
     pub stamp_version: Option<String>,
     /// COWORK_CODE_NET_ADDR, parsed as core code-net-guard.cjs does (empty: no guard).
     pub code_net: crate::code_net::CodeNetSpec,
+    /// UI_DATA_DIR, where Node keeps cowork.db. Unset: no identity (every extraction is a 503);
+    /// Node's own default (server/ui-data next to its code) is not guessed.
+    pub data_dir: Option<PathBuf>,
+    /// The auth environment, or why it is invalid.
+    pub auth: Result<server_auth::AuthConfig, String>,
 }
 
 /// Where Node listens. Only `http://<loopback ip>:<port>` is accepted: the proxy forwards session
@@ -99,6 +107,10 @@ impl Config {
             code_net: crate::code_net::CodeNetSpec::parse(
                 &get("COWORK_CODE_NET_ADDR").unwrap_or_default(),
             )?,
+            data_dir: get("UI_DATA_DIR")
+                .filter(|d| !d.is_empty())
+                .map(PathBuf::from),
+            auth: server_auth::AuthConfig::from_lookup(&get),
         })
     }
 }

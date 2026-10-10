@@ -28,7 +28,13 @@ pub fn security_headers(h: &mut HeaderMap, api: bool) {
 
 /// http.cjs json(): Content-Type application/json, Cache-Control no-store.
 pub fn json(status: StatusCode, body: &serde_json::Value, api: bool) -> Response<Body> {
-    let mut res = Response::new(Body::from(body.to_string()));
+    json_text(status, body.to_string(), api)
+}
+
+/// [`json`] with the body already serialised, for bodies whose key order must be Node's
+/// (`JSON.stringify` keeps insertion order; serde_json's map sorts keys).
+pub fn json_text(status: StatusCode, body: String, api: bool) -> Response<Body> {
+    let mut res = Response::new(Body::from(body));
     *res.status_mut() = status;
     let h = res.headers_mut();
     security_headers(h, api);

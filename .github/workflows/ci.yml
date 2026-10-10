@@ -278,3 +278,44 @@ jobs:
         with:
           name: sandbox-bridge-wasm
           path: ${{ runner.temp }}/a.wasm
+
+  auth-differential:
+    # Full-Rust migration M2: crates/server-auth must give Node's verdicts. tools/gen-auth-fixtures.cjs
+    # runs noevia-core's own auth code (at contracts/http/core.ref) over synthetic databases and
+    # requests; the committed fixture must equal that output byte for byte, and the Rust
+    # differential test runs against the freshly generated file as well as the committed one.
+    name: Auth verdicts match Node
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Read the pinned core ref
+        id: ref
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/http/core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::contracts/http/core.ref is not a 40-char SHA"; exit 1; }
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.ref.outputs.sha }}
+          path: core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci --no-fund --no-audit
+        working-directory: core/server
+      - name: Generate the fixture from Node
+        run: NOEVIA_CORE_CHECKOUT="$PWD/core" node tools/gen-auth-fixtures.cjs > "$RUNNER_TEMP/node-auth.v1.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: node-auth-fixture
+          path: ${{ runner.temp }}/node-auth.v1.json
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Rust agrees with the fresh Node output
+        run: NOEVIA_AUTH_FIXTURE="$RUNNER_TEMP/node-auth.v1.json" cargo test --locked -p server-auth --test differential
+      - name: The committed fixture is current
+        run: |
+          cmp crates/server-auth/tests/fixtures/node-auth.v1.json "$RUNNER_TEMP/node-auth.v1.json" \
+            || { echo "::error::regenerate crates/server-auth/tests/fixtures/node-auth.v1.json with tools/gen-auth-fixtures.cjs"; exit 1; }

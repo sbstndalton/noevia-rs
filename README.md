@@ -420,6 +420,24 @@ one slice at a time.
   `crates/docx-text/tests/fixtures/docx-producers.v1.json`, regenerated on a Mac with
   `uv run --python 3.12 --with python-docx tools/gen-docx-producers.py --ocr <noevia-services>/ocr --bin target/release/docx-text`
   (copied into noevia-services the same way).
+- `crates/server-store` (full-Rust migration M2): read-only access to noevia-core's
+  `UI_DATA_DIR/cowork.db` for the Rust front. Opens without CREATE, `query_only`, and an SQLite
+  authorizer that refuses every write, DDL and ATTACH; busy timeout 5000 ms (better-sqlite3's
+  default) and WAL, as Node. Refuses a schema newer than `schema_migrations` v5 (rechecked on
+  every read) or missing a column it reads. Writes only tables in the compiled `OWNED_TABLES`
+  (empty in M2). `json.rs` is Node's `atomicJson` (same temp name, modes and rename,
+  `JSON.stringify` bytes), gated by `OWNED_JSON_FILES` (empty).
+- `crates/server-auth` (M2): noevia-core's request gate, read-only: auth.cjs `authenticate`
+  (session cookie, legacy bearer), device-auth.cjs device tokens and `browserOnly`, `csrfValid`,
+  `originValid` (never wider than Node: after a first-run setup that chose an address other
+  than PUBLIC_ORIGIN, neither address matches, noevia#1254), `nativeClientAuth`, app-passwords.cjs `verifyDav` (Argon2 from the stored PHC),
+  and secrets.cjs key loading with `secrets.key.previous`. Constant-time token compares, no
+  user-existence timing on app passwords (the Argon2 decoy is built at startup).
+  `noevia-server`'s `identity::ValidatedIdentity` uses it (a path WHATWG parsing would change
+  is refused 400 before the gate); no route does yet. Differential table from noevia-core's own code at
+  `contracts/http/core.ref`:
+  `NOEVIA_CORE_CHECKOUT=<noevia-core> node tools/gen-auth-fixtures.cjs > crates/server-auth/tests/fixtures/node-auth.v1.json`
+  (CI regenerates it and requires the committed copy to match).
 
 ## Checks
 
