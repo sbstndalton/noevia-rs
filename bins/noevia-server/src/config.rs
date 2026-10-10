@@ -30,6 +30,9 @@ pub struct Config {
     pub auth: Result<server_auth::AuthConfig, String>,
     /// NOEVIA_RUST_AUTH=1.
     pub rust_auth: Option<server_store::RustAuth>,
+    /// NOEVIA_RUST_PROJECTS=1 (M4); refused without NOEVIA_RUST_AUTH=1, because the front gates the
+    /// routes it owns itself and Node's request gate no longer writes session upkeep then.
+    pub rust_projects: Option<server_store::RustProjects>,
     /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
     /// UI_DATA_DIR); `None` without UI_DATA_DIR.
     pub account: Option<server_account::Settings>,
@@ -94,6 +97,7 @@ impl Config {
     pub fn switches(&self) -> crate::routes::Switches {
         crate::routes::Switches {
             rust_auth: self.rust_auth.is_some(),
+            rust_projects: self.rust_projects.is_some(),
         }
     }
 
@@ -107,6 +111,14 @@ impl Config {
         )?;
         if (upstream.port == port) && is_loopback_or_any(&host) {
             return Err("NOEVIA_LEGACY_UPSTREAM must not be this server's own port".into());
+        }
+        let rust_auth =
+            server_store::RustAuth::from_env_value(get(server_store::RustAuth::ENV).as_deref());
+        let rust_projects = server_store::RustProjects::from_env_value(
+            get(server_store::RustProjects::ENV).as_deref(),
+        );
+        if rust_projects.is_some() && rust_auth.is_none() {
+            return Err("NOEVIA_RUST_PROJECTS=1 needs NOEVIA_RUST_AUTH=1".into());
         }
         Ok(Config {
             host,
@@ -128,9 +140,8 @@ impl Config {
                 .filter(|d| !d.is_empty())
                 .map(|d| server_account::Settings::from_lookup(&get, PathBuf::from(d))),
             auth: server_auth::AuthConfig::from_lookup(&get),
-            rust_auth: server_store::RustAuth::from_env_value(
-                get(server_store::RustAuth::ENV).as_deref(),
-            ),
+            rust_auth,
+            rust_projects,
         })
     }
 }
@@ -197,6 +208,19 @@ mod tests {
             .unwrap();
             assert_eq!(c.rust_auth.is_some(), on, "{v:?}");
             assert_eq!(c.switches().rust_auth, on);
+        }
+    }
+
+    #[test]
+    fn rust_projects_needs_rust_auth() {
+        let up = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021");
+        let c = cfg(&[up, ("NOEVIA_RUST_AUTH", "1"), ("NOEVIA_RUST_PROJECTS", "1")]).unwrap();
+        assert!(c.switches().rust_auth && c.switches().rust_projects);
+        assert!(cfg(&[up, ("NOEVIA_RUST_PROJECTS", "1")]).is_err());
+        for v in ["", "0", "true"] {
+            let c = cfg(&[up, ("NOEVIA_RUST_AUTH", "1"), ("NOEVIA_RUST_PROJECTS", v)]).unwrap();
+            assert!(!c.switches().rust_projects, "{v:?}");
+            assert!(cfg(&[up, ("NOEVIA_RUST_PROJECTS", v)]).is_ok(), "{v:?}");
         }
     }
 

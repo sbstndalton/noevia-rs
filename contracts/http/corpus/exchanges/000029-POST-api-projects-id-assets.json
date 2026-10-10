@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "seq": 29,
+  "request": {
+    "method": "POST",
+    "path": "/api/projects/<id:3>/assets",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "name": "x.png",
+        "mime": "image/png",
+        "dataBase64": "<secret:6>"
+      }
+    }
+  },
+  "response": {
+    "status": 403,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "error": "invalid CSRF token"
+      }
+    }
+  }
+}

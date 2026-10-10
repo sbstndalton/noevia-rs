@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "seq": 96,
+  "request": {
+    "method": "POST",
+    "path": "/api/auth/logout",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:24>; cowork_csrf=<secret:25>",
+      "origin": "<origin>",
+      "user-agent": "node",
+      "x-csrf-token": "<secret:25>"
+    },
+    "body": {
+      "kind": "json",
+      "json": {}
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "set-cookie": [
+        "cowork_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+        "cowork_csrf=; Path=/; SameSite=Lax; Max-Age=0"
+      ],
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "ok": true
+      }
+    }
+  }
+}

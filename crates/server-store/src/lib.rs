@@ -141,6 +141,32 @@ impl RustAuth {
     }
 }
 
+/// The deployment switch for M4 (Rust owns project routes, slice by slice): `NOEVIA_RUST_PROJECTS=1`
+/// (exactly). Without it Rust writes no project file ([`json::write_shared_projects`] and the
+/// project assets need it). The front honours it only together with [`RustAuth`] (it gates the
+/// routes it owns itself). Removed once Rust owns every projects.json writer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustProjects(());
+
+impl RustProjects {
+    /// The environment variable.
+    pub const ENV: &'static str = "NOEVIA_RUST_PROJECTS";
+
+    /// `Some` only for the exact value `1`.
+    pub fn from_env_value(value: Option<&str>) -> Option<Self> {
+        (value == Some("1")).then_some(RustProjects(()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_tests() -> Self {
+        RustProjects(())
+    }
+}
+
+/// The per-user file M4 shares with Node (core `server/rust-projects.cjs`): written by both, each
+/// only under the shared lock (crates/server-projects `lock`) and never from a stale copy.
+pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json"];
+
 /// Columns Rust reads or writes, per table, with the core module that creates them. Each must
 /// exist; Node may add others. (`diary_connectors` is optional: diary-connectors.cjs creates it
 /// when the server wires it up, and Rust only deletes from it when it is there.)

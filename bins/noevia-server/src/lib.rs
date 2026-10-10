@@ -8,6 +8,7 @@ pub mod config;
 pub mod health;
 pub mod identity;
 pub mod legacy_proxy;
+pub mod project_routes;
 pub mod reply;
 pub mod routes;
 pub mod serve;
@@ -23,7 +24,15 @@ use std::sync::Arc;
 /// What `noevia-server --features` lists, one per line.
 /// `rust-auth`: this build answers sign-in and the account under NOEVIA_RUST_AUTH (M3); the web
 /// supervisor should let Node refuse the account tables only when the front reports it.
-pub const FEATURES: &[&str] = &["code-net-guard", "header-read-timeout", "rust-auth"];
+/// `rust-projects`: this build answers a project's image routes under NOEVIA_RUST_PROJECTS (M4)
+/// and writes projects.json under the lock Node shares; the supervisor confirms it to Node the
+/// same way.
+pub const FEATURES: &[&str] = &[
+    "code-net-guard",
+    "header-read-timeout",
+    "rust-auth",
+    "rust-projects",
+];
 
 pub struct App {
     pub config: config::Config,
@@ -83,22 +92,24 @@ async fn handle(
     let path = req.uri().path().to_string();
     let switches = app.config.switches();
     let mut native = routes::dispatch_under(req.method().as_str(), &path, switches);
-    // Node routes on the WHATWG pathname (`new URL(req.url, base)`): a Rust-owned account route is
-    // matched on it too, so "/api/x/../auth/session" is the same route as "/api/auth/session".
+    // Node routes on the WHATWG pathname (`new URL(req.url, base)`): a Rust-owned switched route
+    // is matched on it too, so "/api/x/../auth/session" is the same route as "/api/auth/session".
     let whatwg = identity::whatwg_pathname_of(req.uri());
     if switches.rust_auth {
         if let Some(w) = whatwg.as_deref().filter(|w| *w != path) {
-            if routes::dispatch_under(req.method().as_str(), w, switches)
-                == Some(routes::Native::Account)
-            {
-                native = Some(routes::Native::Account);
+            let on_whatwg = routes::dispatch_under(req.method().as_str(), w, switches);
+            if matches!(
+                on_whatwg,
+                Some(routes::Native::Account | routes::Native::ProjectAssets)
+            ) {
+                native = on_whatwg;
             }
         }
     }
     let served_bundle = match native {
         Some(routes::Native::Ready) => true,
         Some(routes::Native::Static) => static_files::canonical(&path),
-        Some(routes::Native::Account) | None => false,
+        Some(routes::Native::Account | routes::Native::ProjectAssets) | None => false,
     };
     if app.writes.switch().is_some() && !served_bundle {
         // Node's gate wrote these on every request it saw; with NOEVIA_RUST_AUTH it no longer can.
@@ -121,6 +132,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             account_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::ProjectAssets) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            project_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             health::ready(&app.config.upstream, app.version.as_deref()).await

@@ -1,0 +1,20 @@
+[package]
+name = "server-projects"
+version = "0.1.0"
+description = "Full-Rust migration M4: the project routes Rust owns behind NOEVIA_RUST_PROJECTS (first slice: a project's images), over the projects.json Node shares under one lock"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+server-store = { path = "../server-store" }
+js-json = { path = "../js-json" }
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+[dev-dependencies]
+tempfile = "3"
+serde_json = "1"

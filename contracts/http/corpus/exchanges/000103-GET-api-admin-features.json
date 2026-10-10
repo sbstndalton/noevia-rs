@@ -1,0 +1,333 @@
+{
+  "v": 1,
+  "seq": 103,
+  "request": {
+    "method": "GET",
+    "path": "/api/admin/features",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "features": [
+          {
+            "id": "stepSupervision",
+            "name": "stepSupervision",
+            "label": "Step supervision",
+            "description": "Let a decision provider advise whether to continue, verify tool results or pause for review between chat steps. Keeps existing behavior if unavailable. Approvals and execution limits still apply.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_STEP_SUPERVISION",
+            "experimental": true,
+            "unavailable": "Set up the decision service below before enabling this experiment.",
+            "unavailableId": "decisionSetup",
+            "pendingRestart": false
+          },
+          {
+            "id": "systemOneRouting",
+            "name": "systemOneRouting",
+            "label": "System-One routing",
+            "description": "Use the configured decision service to choose Fast, Smart or Code for new Auto-routed messages. Falls back to the current router when unavailable. Manual model choices are unchanged.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_SYSTEM_ONE_ROUTING",
+            "experimental": true,
+            "unavailable": "Not configured. Set COWORK_SYSTEM_ONE_URL to a dedicated local llama.cpp decision-model endpoint, then restart the app.",
+            "unavailableId": "systemOneUrl",
+            "pendingRestart": false
+          },
+          {
+            "id": "toolGate",
+            "name": "toolGate",
+            "label": "Tool gate",
+            "description": "Let the decision service decide when a message needs a tool, then pre-run read-only tools or require the model to call one. Writes still go through the approval card.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_TOOL_GATE",
+            "experimental": true,
+            "unavailable": "Set up the decision service below before enabling this experiment.",
+            "unavailableId": "decisionSetup",
+            "pendingRestart": false
+          },
+          {
+            "id": "previews",
+            "name": "previews",
+            "label": "Preview surfaces",
+            "description": "Show the unbuilt Scheduled, Plugins, Explore and Code previews.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_PREVIEWS",
+            "pendingRestart": false
+          },
+          {
+            "id": "diaryMcpWrite",
+            "name": "diaryMcpWrite",
+            "label": "Diary append tool",
+            "description": "Offer an approval-gated, append-only Diary tool through the in-app MCP server.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_DIARY_MCP_WRITE",
+            "pendingRestart": false
+          },
+          {
+            "id": "deepResearch",
+            "name": "deepResearch",
+            "label": "Deep research",
+            "description": "Administrators can run bounded research jobs that save a cited report to a project.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_DEEP_RESEARCH",
+            "pendingRestart": false
+          },
+          {
+            "id": "offsiteBackup",
+            "name": "offsiteBackup",
+            "label": "Backups",
+            "description": "Nightly encrypted copies of the whole server, to a folder mirrored to Google Drive or to an S3-compatible target.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_OFFSITE_BACKUP",
+            "pendingRestart": false
+          },
+          {
+            "id": "toolRouter",
+            "name": "toolRouter",
+            "label": "Tool routing",
+            "description": "Send only the project's toolboxes that match each message (needs an embedding model); falls back to all of them.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_TOOL_ROUTER",
+            "pendingRestart": false
+          },
+          {
+            "id": "codeHarness",
+            "name": "codeHarness",
+            "label": "Code mode",
+            "description": "Administrators can run a coding harness in a per-task git worktree, with every write through the approval card.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_CODE_HARNESS",
+            "pendingRestart": false
+          },
+          {
+            "id": "plannerReview",
+            "name": "plannerReview",
+            "label": "Planner review (Code mode)",
+            "description": "After a Code task finishes, a reviewer model reads the change and gives an approve or request-changes verdict on a final card. It is advice only: you still accept or decline the change, and a failed or late review falls back to your own review.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_PLANNER_REVIEW",
+            "experimental": true,
+            "unavailable": null,
+            "unavailableId": null,
+            "pendingRestart": false
+          },
+          {
+            "id": "browserExecutor",
+            "name": "browserExecutor",
+            "label": "Browser mode",
+            "description": "Administrators can run a domain-scoped Chromium session as a durable job, with every consequential action through the approval card.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_BROWSER_EXECUTOR",
+            "unavailable": "Needs Playwright installed on this server; it is not in this image.",
+            "unavailableId": "browserPlaywright",
+            "pendingRestart": false
+          },
+          {
+            "id": "constrainedPlanDecoding",
+            "name": "constrainedPlanDecoding",
+            "label": "Constrained plan decoding",
+            "description": "Ask the local llama.cpp engine to constrain the plan artifact to its JSON schema. Adds to the after-the-fact validation and falls back to unconstrained generation for reasoning models or when the engine rejects it.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_CONSTRAINED_PLAN_DECODING",
+            "experimental": true,
+            "unavailable": null,
+            "unavailableId": null,
+            "pendingRestart": false
+          },
+          {
+            "id": "codePipeline",
+            "name": "codePipeline",
+            "label": "Planner pipeline (Code mode)",
+            "description": "Offer a Planner preparation for Code tasks: the Planner writes a plan, the coding agent carries it out, the operator’s tests run in a separate verifier, the Planner reviews the change (at most two rounds of changes) and the Auditor reports what evidence there is. Every write still goes through the approval card, and you accept the result yourself.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_CODE_PIPELINE",
+            "experimental": true,
+            "unavailable": "Needs Code mode running in the code sandbox (CODE_HARNESS_ENDPOINT).",
+            "unavailableId": "codeSandbox",
+            "pendingRestart": false
+          },
+          {
+            "id": "codeMerge",
+            "name": "codeMerge",
+            "label": "Merge reviewed changes (Code mode)",
+            "description": "When you accept a Planner pipeline task, fast-forward the branch it started from to the reviewed commit. Nothing is merged if that branch has moved or the task branch changed after review. Off, accepting records the change without merging it.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_CODE_MERGE",
+            "experimental": true,
+            "unavailable": "Needs Code mode running in the code sandbox (CODE_HARNESS_ENDPOINT).",
+            "unavailableId": "codeSandbox",
+            "pendingRestart": false
+          },
+          {
+            "id": "executorGuard",
+            "name": "executorGuard",
+            "label": "Executor guard (Code mode)",
+            "description": "Check every tool call the coding agent makes against its schema before anything else sees it. A malformed call is refused with the reason, so the agent can correct it; after three, the task stops as blocked. It only adds refusals: every write still goes through the approval card.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_EXECUTOR_GUARD",
+            "experimental": true,
+            "unavailable": null,
+            "unavailableId": null,
+            "pendingRestart": false
+          },
+          {
+            "id": "chatFraming",
+            "name": "chatFraming",
+            "label": "Chat framing",
+            "description": "Suggest a frame for a new chat from its first message: one of your projects, a kind (search, action, idea, question or code), an existing tag and related chats. You accept, edit or dismiss each suggestion before it is applied; an accepted frame shapes the answers in that chat. Without the decision service, chats get no frame.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_CHAT_FRAMING",
+            "experimental": true,
+            "unavailable": "Set up the decision service below before enabling this experiment.",
+            "unavailableId": null,
+            "pendingRestart": false
+          },
+          {
+            "id": "framingReasoner",
+            "name": "framingReasoner",
+            "label": "Framing reasoner",
+            "description": "In chats framed as a lookup or a request to get something done, the reasoner model (Settings, framing roles) condenses what a pre-run read-only tool returned into a short, checked task packet for the answer. Needs Chat framing and the tool gate. Whenever the reasoner is not set, does not fit the memory budget, is too slow or returns something invalid, the answer gets the full tool result as before. Writes still go through the approval card.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_FRAMING_REASONER",
+            "experimental": true,
+            "unavailable": "Set up the decision service below before enabling this experiment.",
+            "unavailableId": null,
+            "pendingRestart": false
+          },
+          {
+            "id": "brainContext",
+            "name": "brainContext",
+            "label": "Brain context",
+            "description": "In a chat with an accepted frame, add short summaries (\"brains\") of up to three chats it links to, so the answer can build on them without reading the whole earlier conversations. Brains are written by the framing reasoner when a mirrored chat goes idle. The total length is an admin setting. Needs Chat framing.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_BRAIN_CONTEXT",
+            "experimental": true,
+            "unavailable": null,
+            "unavailableId": null,
+            "pendingRestart": false
+          },
+          {
+            "id": "provenancePolicy",
+            "name": "provenancePolicy",
+            "label": "Provenance policy",
+            "description": "Before a write runs, check where its recipient, web address, host, path or command came from. If any of it is text from a web page, a connector, a document, the Diary or another untrusted source in this reply, the write always gets its own approval card naming that source, even when you allowed writes for this chat. It only ever adds a question: nothing runs without approval that did not before. It covers text from untrusted sources in the current reply; it does not catch text the model repeats or paraphrases in a later turn.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_PROVENANCE_POLICY",
+            "experimental": true,
+            "unavailable": null,
+            "unavailableId": null,
+            "pendingRestart": false
+          },
+          {
+            "id": "routingModes",
+            "name": "routingModes",
+            "label": "Routing modes",
+            "description": "Let each account choose where Auto sends its chats: only local models, a cloud provider it names, or hybrid. In hybrid a message that looks sensitive (Diary content, passwords, account or card numbers, or the router role judging it private) is never sent to the cloud without asking: you choose Send to cloud or Keep local, and a chat can be set to Force local. A model you pick by hand is used as before, and Diary text and project images still never go to a cloud provider.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_ROUTING_MODES",
+            "experimental": true,
+            "unavailable": null,
+            "unavailableId": null,
+            "pendingRestart": false
+          },
+          {
+            "id": "kiwix",
+            "name": "kiwix",
+            "label": "Offline Wikipedia",
+            "description": "A read-only lookup tool backed by an internal kiwix-serve.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_KIWIX",
+            "pendingRestart": false
+          },
+          {
+            "id": "chatgptOAuth",
+            "name": "chatgptOAuth",
+            "label": "Sign in with ChatGPT",
+            "description": "Let each person connect their own ChatGPT account as a private AI provider. Chats that use it are sent to OpenAI; Diary text, Diary tools and project images never are.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_CHATGPT_OAUTH",
+            "pendingRestart": false
+          },
+          {
+            "id": "nativeClientAuth",
+            "name": "nativeClientAuth",
+            "label": "Native app sign-in",
+            "description": "Let a native app (such as the macOS client) sign in by showing a short code that you approve in this browser. Each device gets its own token, listed with a Revoke button under Security and login. A device acts as you for chats, projects and the Diary, but never for administration or security settings. Turning this off signs every device out for good: their tokens are deleted and each device must be approved again.",
+            "enabled": false,
+            "source": "default",
+            "locked": false,
+            "env": "NOEVIA_FEATURE_NATIVE_CLIENT_AUTH",
+            "unavailable": "Needs TRUST_PROXY on so sign-in limits can tell clients apart.",
+            "unavailableId": "trustProxy",
+            "pendingRestart": false
+          }
+        ]
+      }
+    }
+  }
+}

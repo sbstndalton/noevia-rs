@@ -1243,6 +1243,7 @@ dependencies = [
  "serde_json",
  "server-account",
  "server-auth",
+ "server-projects",
  "server-store",
  "sha2",
  "tempfile",
@@ -1926,6 +1927,17 @@ dependencies = [
  "subtle",
  "tempfile",
  "zeroize",
+]
+
+[[package]]
+name = "server-projects"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rand_core 0.6.4",
+ "serde_json",
+ "server-store",
+ "tempfile",
 ]
 
 [[package]]

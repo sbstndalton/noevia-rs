@@ -1,0 +1,105 @@
+{
+  "v": 1,
+  "seq": 32,
+  "request": {
+    "method": "POST",
+    "path": "/api/chat",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node",
+      "x-csrf-token": "<secret:4>"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "spaceId": "<id:3>",
+        "projectId": "<id:3>",
+        "chatId": null,
+        "message": "Say hello.",
+        "history": []
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-cache, no-transform",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "text/event-stream",
+      "referrer-policy": "same-origin",
+      "x-accel-buffering": "no",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "sse",
+      "events": [
+        {
+          "data": {
+            "type": "meta",
+            "model": "synthetic-chat-model",
+            "chatId": "<id:8>"
+          },
+          "json": true
+        },
+        {
+          "data": {
+            "type": "sources",
+            "sources": [
+              {
+                "id": "notes.md",
+                "file": "notes.md",
+                "snippet": "# Synthetic notes Alpha beta gamma.",
+                "kind": "file"
+              }
+            ]
+          },
+          "json": true
+        },
+        {
+          "data": {
+            "type": "telemetry",
+            "phase": "waiting",
+            "model": "synthetic-chat-model"
+          },
+          "json": true
+        },
+        {
+          "data": {
+            "type": "status",
+            "id": "readingImages",
+            "text": "Reading image sources — model loading and visual processing may take a moment…"
+          },
+          "json": true
+        },
+        {
+          "data": {
+            "type": "status",
+            "id": "generating",
+            "text": "Generating response…"
+          },
+          "json": true
+        },
+        {
+          "data": {
+            "type": "tools_scope",
+            "text": ""
+          },
+          "json": true
+        },
+        {
+          "data": {
+            "type": "error",
+            "text": "Context is still too full after compaction. Reduce attached sources or start a new chat. No messages were deleted."
+          },
+          "json": true
+        }
+      ]
+    }
+  }
+}

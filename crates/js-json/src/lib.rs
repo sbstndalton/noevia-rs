@@ -301,6 +301,63 @@ pub fn stringify(v: &JValue) -> Option<String> {
     Some(out)
 }
 
+/// `JSON.stringify(value, null, 2)`, the bytes core `workspace.cjs` `atomicJson` writes; `None`
+/// for `undefined`. Empty arrays and objects (also objects whose every value is `undefined`) are
+/// `[]` / `{}` on one line, as in JS.
+pub fn stringify_pretty(v: &JValue) -> Option<String> {
+    if matches!(v, JValue::Undefined) {
+        return None;
+    }
+    let mut out = String::new();
+    emit_pretty(v, &mut out, 0);
+    Some(out)
+}
+
+fn newline(out: &mut String, depth: usize) {
+    out.push('\n');
+    for _ in 0..depth {
+        out.push_str("  ");
+    }
+}
+
+fn emit_pretty(v: &JValue, out: &mut String, depth: usize) {
+    match v {
+        JValue::Arr(items) if !items.is_empty() => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                newline(out, depth + 1);
+                emit_pretty(item, out, depth + 1);
+            }
+            newline(out, depth);
+            out.push(']');
+        }
+        JValue::Obj(items) if items.iter().any(|(_, x)| !matches!(x, JValue::Undefined)) => {
+            out.push('{');
+            let mut first = true;
+            for (k, item) in items {
+                if matches!(item, JValue::Undefined) {
+                    continue;
+                }
+                if !first {
+                    out.push(',');
+                }
+                first = false;
+                newline(out, depth + 1);
+                quote(k, out);
+                out.push_str(": ");
+                emit_pretty(item, out, depth + 1);
+            }
+            newline(out, depth);
+            out.push('}');
+        }
+        JValue::Obj(_) => out.push_str("{}"),
+        other => emit(other, out),
+    }
+}
+
 /// `String(value)` throws a TypeError for an object with an own `toString` (not callable in
 /// JSON data), and V8 gives up on arrays nested thousands deep.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -370,6 +427,36 @@ pub fn js_slice(s: &str, n: usize) -> String {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    /// Node's own output (tests/fixtures/stringify-pretty.v1.json, written by node from the inputs).
+    #[test]
+    fn stringify_pretty_is_nodes_atomic_json() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/stringify-pretty.v1.json"))
+                .unwrap();
+        let cases = fixture["cases"].as_array().unwrap();
+        assert!(cases.len() >= 6);
+        for case in cases {
+            let input = case["input"].as_str().unwrap();
+            let v = parse(input).unwrap();
+            assert_eq!(
+                stringify_pretty(&v).unwrap(),
+                case["pretty"].as_str().unwrap(),
+                "{input}"
+            );
+        }
+        assert_eq!(stringify_pretty(&JValue::Undefined), None);
+        let all_undefined = JValue::obj([("a", JValue::Undefined)]);
+        assert_eq!(stringify_pretty(&all_undefined).unwrap(), "{}");
+        let arr = JValue::Arr(vec![
+            JValue::Undefined,
+            JValue::obj([("a", JValue::Undefined), ("b", JValue::Num(1.0))]),
+        ]);
+        assert_eq!(
+            stringify_pretty(&arr).unwrap(),
+            "[\n  null,\n  {\n    \"b\": 1\n  }\n]"
+        );
+    }
 
     #[test]
     fn parse_keeps_js_order_and_duplicates() {

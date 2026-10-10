@@ -63,7 +63,7 @@ fn first_header(h: &axum::http::HeaderMap, name: header::HeaderName) -> String {
 }
 
 /// Reads at most `limit` + 1 bytes of the body.
-async fn read_body(body: Body, limit: usize) -> Result<server_account::Body, ()> {
+pub(crate) async fn read_body(body: Body, limit: usize) -> Result<server_account::Body, ()> {
     let mut out = server_account::Body::default();
     let mut body = body;
     while let Some(frame) = body.frame().await {

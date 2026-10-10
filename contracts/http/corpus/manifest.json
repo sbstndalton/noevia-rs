@@ -2,7 +2,7 @@
   "v": 1,
   "generator": "noevia-core tools/contract-corpus/generate.cjs",
   "seed": "empty",
-  "note": "Replay against a server started on an empty UI_DATA_DIR; the setup code is read from that dir once the server has written it. Passwords are synthetic.",
+  "note": "Replay against a server started on an empty UI_DATA_DIR; the setup code is read from that dir once the server has written it. Passwords and the image data are synthetic.",
   "inputs": {
     "<secret:5>": {
       "file": "first-run-setup-code"
@@ -10,11 +10,14 @@
     "<secret:2>": {
       "value": "contract-corpus-Synthetic-pw-1"
     },
-    "<secret:9>": {
+    "<secret:6>": {
+      "value": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+    },
+    "<secret:10>": {
       "value": "contract-corpus-Synthetic-pw-2"
     }
   },
-  "exchanges": 168,
+  "exchanges": 184,
   "dropped": 0,
   "covered": [
     "GET /api/ready",
@@ -30,14 +33,19 @@
     "POST /api/projects",
     "POST /api/projects/<id:3>/config",
     "GET /api/projects/<id:3>/chats",
+    "POST /api/projects/<id:3>/assets",
+    "POST /api/projects/no-such-project/assets",
+    "GET /api/projects/<id:3>/assets/<id:4>",
+    "GET /api/projects/<id:3>/assets/no-such-image",
     "POST /api/chat",
-    "GET /api/chats/<id:4>/history",
-    "GET /api/chats/<id:4>/context",
-    "GET /api/chats/<id:4>/context-window",
-    "GET /api/projects/<id:3>/chats/<id:4>",
+    "GET /api/chats/<id:8>/history",
+    "GET /api/chats/<id:8>/context",
+    "GET /api/chats/<id:8>/context-window",
+    "GET /api/projects/<id:3>/chats/<id:8>",
     "GET /api/freechats",
     "POST /api/admin/invitations",
     "POST /api/auth/invitations/accept",
+    "DELETE /api/projects/<id:3>/assets/<id:4>",
     "GET /api/admin/users",
     "POST /api/auth/login/password",
     "PUT /api/profile/appearance",
@@ -51,16 +59,16 @@
     "PUT /api/profile/features",
     "POST /api/profile/app-passwords",
     "GET /api/profile/app-passwords",
-    "DELETE /api/profile/app-passwords/<id:7>",
+    "DELETE /api/profile/app-passwords/<id:11>",
     "POST /api/auth/login/passkey/options",
     "POST /api/auth/login/passkey/verify",
     "POST /api/auth/passkeys/register/verify",
     "PATCH /api/auth/passkeys/missing-passkey-id",
-    "POST /api/admin/users/<id:6>/recovery",
+    "POST /api/admin/users/<id:10>/recovery",
     "POST /api/auth/recovery/complete",
     "POST /api/admin/users/00000000-0000-4000-8000-000000000000/recovery",
-    "DELETE /api/auth/sessions/<id:13>",
-    "PUT /api/admin/users/<id:6>/disabled",
+    "DELETE /api/auth/sessions/<id:17>",
+    "PUT /api/admin/users/<id:10>/disabled",
     "POST /api/auth/logout",
     "GET /api/account/retention",
     "GET /api/admin/decision-settings",
@@ -135,8 +143,8 @@
     "DELETE /api/auth/devices/missing-device-id",
     "DELETE /api/profile/app-passwords/missing-app-password",
     "DELETE /api/freechats/missing-free-chat",
-    "DELETE /api/projects/<id:3>/chats/<id:4>",
+    "DELETE /api/projects/<id:3>/chats/<id:8>",
     "DELETE /api/projects/<id:3>",
-    "DELETE /api/admin/users/<id:6>"
+    "DELETE /api/admin/users/<id:10>"
   ]
 }
