@@ -6,9 +6,10 @@
 //!   Node sees `close` and stops (a chat stops generating), exactly as when it faced the client.
 //! - Nothing is buffered: request and response bodies pass frame by frame, so SSE events and
 //!   streamed fetch bodies reach the client as Node writes them.
-//! - Request bodies are capped at [`BODY_CAP`], just above the largest body any Node route reads
-//!   (32 MiB: a stored chat history, a workspace import ZIP), so Node's own per-route 413s still
-//!   answer everything it would refuse itself.
+//! - Request bodies are capped at 33 MiB, except POST /api/projects/:id/upload,
+//!   which allows 80 MiB + 512 KiB: base64 for a 60 MiB PDF plus Node's bounded JSON envelope
+//!   (noevia#1273). Both declared and streamed lengths are checked; Node still applies its own
+//!   file, tenant and route limits.
 //! - Headers pass unchanged (several Set-Cookie included) except hop-by-hop ones and
 //!   X-Forwarded-For, which Node reads as the client address only with TRUST_PROXY=true
 //!   (auth.cjs clientAddress: the rightmost entry, if it is an IP). The proxy works that address
@@ -27,9 +28,25 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
-/// 33 MiB: above every Node route's own limit (STORED_HISTORY_BYTES and the import MAX_UPLOAD,
-/// both 32 MiB).
+/// Default request limit: 33 MiB (stored history and workspace imports allow 32 MiB).
 pub const BODY_CAP: u64 = 33 * 1024 * 1024;
+/// Matches core's upload readBody limit: base64 for 60 MiB + a 512 KiB JSON envelope.
+pub const UPLOAD_BODY_CAP: u64 = 80 * 1024 * 1024 + 512 * 1024;
+
+fn request_body_cap(req: &Request<Body>) -> u64 {
+    let upload_id = req
+        .uri()
+        .path()
+        .strip_prefix("/api/projects/")
+        .and_then(|suffix| suffix.strip_suffix("/upload"));
+    if req.method() == axum::http::Method::POST
+        && upload_id.is_some_and(|id| !id.is_empty() && !id.contains('/'))
+    {
+        UPLOAD_BODY_CAP
+    } else {
+        BODY_CAP
+    }
+}
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -91,10 +108,11 @@ impl Drop for AbortOnDrop {
     }
 }
 
-/// The client's request body on its way to Node, cut at [`BODY_CAP`].
+/// The client's request body on its way to Node, cut at the selected route limit.
 struct CappedBody {
     inner: Body,
     seen: u64,
+    cap: u64,
     over: Arc<AtomicBool>,
 }
 
@@ -110,7 +128,7 @@ impl HttpBody for CappedBody {
             Poll::Ready(Some(Ok(frame))) => {
                 if let Some(data) = frame.data_ref() {
                     self.seen = self.seen.saturating_add(data.len() as u64);
-                    if self.seen > BODY_CAP {
+                    if self.seen > self.cap {
                         self.over.store(true, Ordering::SeqCst);
                         return Poll::Ready(Some(Err("request body over the cap".into())));
                     }
@@ -188,12 +206,13 @@ impl LegacyProxy {
                 api,
             )
         };
+        let cap = request_body_cap(&req);
         let declared = req
             .headers()
             .get(header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.trim().parse::<u64>().ok());
-        if declared.is_some_and(|n| n > BODY_CAP) {
+        if declared.is_some_and(|n| n > cap) {
             return too_large();
         }
         let (mut parts, body) = req.into_parts();
@@ -217,6 +236,7 @@ impl LegacyProxy {
         let body = CappedBody {
             inner: body,
             seen: 0,
+            cap,
             over: Arc::clone(&over),
         };
         let upstream_req = Request::from_parts(parts, body);
@@ -253,6 +273,38 @@ impl LegacyProxy {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upload_limit_is_restricted_to_exact_post_route() {
+        for route in [
+            "/api/projects/synthetic/upload",
+            "/api/projects/synthetic/upload?background=1",
+            "/api/projects/encoded%20id/upload",
+        ] {
+            let req = Request::post(route).body(Body::empty()).unwrap();
+            assert_eq!(request_body_cap(&req), UPLOAD_BODY_CAP);
+        }
+        for route in [
+            "/api/projects//upload",
+            "/api/projects/a/b/upload",
+            "/api/projects/a/upload/",
+            "/api/projects/a/documents",
+            "/api/chat",
+            "/api/import",
+            "/api/projects/a/upload-extra",
+        ] {
+            let req = Request::post(route).body(Body::empty()).unwrap();
+            assert_eq!(request_body_cap(&req), BODY_CAP, "{route}");
+        }
+        for method in ["GET", "PUT", "DELETE"] {
+            let req = Request::builder()
+                .method(method)
+                .uri("/api/projects/synthetic/upload")
+                .body(Body::empty())
+                .unwrap();
+            assert_eq!(request_body_cap(&req), BODY_CAP, "{method}");
+        }
+    }
 
     fn xff(values: &[&str]) -> HeaderMap {
         let mut h = HeaderMap::new();
