@@ -7,7 +7,7 @@
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
-      "cookie": "cowork_session=<secret:20>; cowork_csrf=<secret:21>",
+      "cookie": "cowork_session=<secret:19>; cowork_csrf=<secret:20>",
       "origin": "<origin>",
       "user-agent": "node"
     },

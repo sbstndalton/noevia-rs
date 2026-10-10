@@ -34,7 +34,7 @@
           "approvalNeeded": true
         },
         "sendKey": "<secret:11>",
-        "locale": "system",
+        "locale": "nb-NO",
         "updatedAt": "<ts>",
         "options": {
           "notificationEvents": [
@@ -42,8 +42,8 @@
             "approvalNeeded"
           ],
           "sendKeys": [
-            "<secret:12>",
-            "<secret:11>"
+            "<secret:11>",
+            "<secret:12>"
           ],
           "locales": [
             "system",

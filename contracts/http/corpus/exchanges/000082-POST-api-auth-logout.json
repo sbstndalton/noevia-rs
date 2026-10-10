@@ -8,10 +8,10 @@
     "headers": {
       "accept": "application/json, text/event-stream",
       "content-type": "application/json",
-      "cookie": "cowork_session=<secret:24>; cowork_csrf=<secret:25>",
+      "cookie": "cowork_session=<secret:23>; cowork_csrf=<secret:24>",
       "origin": "<origin>",
       "user-agent": "node",
-      "x-csrf-token": "<secret:25>"
+      "x-csrf-token": "<secret:24>"
     },
     "body": {
       "kind": "json",

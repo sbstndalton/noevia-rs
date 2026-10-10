@@ -7,7 +7,7 @@
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
-      "cookie": "cowork_session=<secret:24>; cowork_csrf=<secret:25>",
+      "cookie": "cowork_session=<secret:23>; cowork_csrf=<secret:24>",
       "origin": "<origin>",
       "user-agent": "node"
     },
@@ -38,7 +38,7 @@
           "diaryEnabled": false,
           "onboarded": true
         },
-        "csrfToken": "<secret:25>",
+        "csrfToken": "<secret:24>",
         "legacy": false
       }
     }

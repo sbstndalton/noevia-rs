@@ -16,8 +16,8 @@
     "body": {
       "kind": "json",
       "json": {
-        "token": "<secret:32>",
-        "password": "<secret:33>"
+        "token": "<secret:31>",
+        "password": "<secret:32>"
       }
     }
   },

@@ -36,7 +36,7 @@
       "json": {
         "options": {
           "rpId": "127.0.0.1",
-          "challenge": "<secret:27>",
+          "challenge": "<secret:26>",
           "allowCredentials": [
             {
               "id": "<id:14>",
@@ -82,7 +82,7 @@
           "timeout": 60000,
           "userVerification": "required"
         },
-        "challengeToken": "<secret:28>"
+        "challengeToken": "<secret:27>"
       }
     }
   }

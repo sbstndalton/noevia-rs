@@ -33,7 +33,7 @@
       "kind": "json",
       "json": {
         "options": {
-          "challenge": "<secret:29>",
+          "challenge": "<secret:28>",
           "rp": {
             "name": "noevia",
             "id": "127.0.0.1"
@@ -61,7 +61,7 @@
           "attestation": "none",
           "excludeCredentials": [],
           "authenticatorSelection": {
-            "residentKey": "<secret:30>",
+            "residentKey": "<secret:29>",
             "userVerification": "required",
             "requireResidentKey": false
           },
@@ -70,7 +70,7 @@
           },
           "hints": []
         },
-        "challengeToken": "<secret:31>"
+        "challengeToken": "<secret:30>"
       }
     }
   }
