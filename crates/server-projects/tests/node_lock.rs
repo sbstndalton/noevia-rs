@@ -166,6 +166,50 @@ fn without_the_merge_nodes_saves_drop_rusts_images() {
     assert!(!assets.contains(&"img-0".to_string()), "{assets:?}");
 }
 
+// A stress writer may receive the production three-second Busy refusal: flock provides no
+// fairness guarantee. Retry only Busy, under one overall test budget; never drop an increment.
+fn stress_lock(file: &std::path::Path, deadline: std::time::Instant) -> lock::FileLock {
+    stress_lock_with_busy(file, deadline, || {})
+}
+
+fn stress_lock_with_busy(
+    file: &std::path::Path,
+    deadline: std::time::Instant,
+    mut busy: impl FnMut(),
+) -> lock::FileLock {
+    loop {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "stress lock budget exhausted"
+        );
+        match lock::acquire(file) {
+            Ok(held) => return held,
+            Err(lock::LockError::Busy) => busy(),
+            Err(e) => panic!("stress lock error: {e:?}"),
+        }
+    }
+}
+
+#[test]
+fn stress_retry_handles_busy_from_an_actual_holder() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("counter");
+    let held = lock::acquire(&file).unwrap();
+    let (send, receive) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        stress_lock_with_busy(
+            &file,
+            std::time::Instant::now() + std::time::Duration::from_secs(10),
+            || send.send(()).unwrap(),
+        )
+    });
+    receive
+        .recv_timeout(std::time::Duration::from_secs(6))
+        .unwrap();
+    drop(held);
+    drop(worker.join().unwrap());
+}
+
 /// The two halves are one lock: Node processes (flock(1) on an inherited descriptor) and Rust
 /// threads (std File::try_lock) incrementing one counter are never both inside and lose nothing.
 #[test]
@@ -177,12 +221,16 @@ fn node_processes_and_rust_threads_share_one_flock() {
     let script = r#"
       const fs = require('fs'); const [core, f] = process.argv.slice(1);
       const rp = require(core + '/server/rust-projects.cjs');
-      for (let i = 0; i < 100; i++) rp.withFileLock(f, () => {
-        fs.mkdirSync(f + '.inside'); // EEXIST: two inside
-        const n = Number(fs.readFileSync(f, 'utf8'));
-        fs.writeFileSync(f, String(n + 1));
-        fs.rmdirSync(f + '.inside');
-      });
+      const deadline = Date.now() + 30000;
+      for (let i = 0; i < 100;) {
+        if (Date.now() >= deadline) throw new Error('stress lock budget exhausted');
+        try { rp.withFileLock(f, () => {
+          fs.mkdirSync(f + '.inside'); // EEXIST: two inside
+          const n = Number(fs.readFileSync(f, 'utf8'));
+          fs.writeFileSync(f, String(n + 1));
+          fs.rmdirSync(f + '.inside');
+        }); i++; } catch (e) { if (e.code !== 'PROJECTS_BUSY') throw e; }
+      }
     "#;
     let nodes: Vec<_> = (0..2)
         .map(|_| {
@@ -192,6 +240,7 @@ fn node_processes_and_rust_threads_share_one_flock() {
                 .expect("node on PATH")
         })
         .collect();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     let threads: Vec<_> = (0..3)
         .map(|_| {
             let file = file.clone();
@@ -202,7 +251,7 @@ fn node_processes_and_rust_threads_share_one_flock() {
                     std::path::PathBuf::from(p)
                 };
                 for _ in 0..100 {
-                    let _held = lock::acquire(&file).unwrap();
+                    let _held = stress_lock(&file, deadline);
                     std::fs::create_dir(&inside).expect("two inside");
                     let n: u64 = std::fs::read_to_string(&file).unwrap().parse().unwrap();
                     std::fs::write(&file, (n + 1).to_string()).unwrap();
