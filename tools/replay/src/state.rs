@@ -8,6 +8,20 @@ use serde_json::{json, Map, Value};
 use std::path::Path;
 use std::process::Command;
 
+/// Diffs two snapshots. Both are already masked, so `<origin>` stands for itself (it was bound
+/// to each run's own origin when the snapshot was taken).
+pub fn compare(expected: &Value, actual: &Value) -> Vec<crate::diff::Diff> {
+    let mut diffs = Vec::new();
+    crate::diff::json(
+        expected,
+        actual,
+        "state",
+        &mut Bindings::new("<origin>"),
+        &mut diffs,
+    );
+    diffs
+}
+
 pub fn snapshot(dir: &Path, db_name: &str, ignore: &[String], b: &Bindings) -> Value {
     let mut files = Vec::new();
     walk(dir, dir, ignore, b, &mut files);
@@ -156,6 +170,14 @@ pub fn mask(v: Value, col: &str, b: &Bindings) -> Value {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn snapshots_compare_placeholders_literally() {
+        let a = json!({"settings": [{"key": "public_origin", "value": "<origin>"}], "u": "<id:1>"});
+        assert!(compare(&a, &a.clone()).is_empty());
+        let b = json!({"settings": [{"key": "public_origin", "value": "http://x"}], "u": "<id:1>"});
+        assert_eq!(compare(&a, &b).len(), 1);
+    }
 
     #[test]
     fn masks_times_hashes_and_bound_values() {

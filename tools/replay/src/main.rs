@@ -25,7 +25,7 @@
 //! Exit status: 0 clean, 1 differences, 2 usage or setup error.
 
 use replay::bind::Bindings;
-use replay::{corpus, diff, http, routes, state, Options, Outcome};
+use replay::{corpus, http, routes, state, Options, Outcome};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
@@ -313,14 +313,7 @@ fn run(a: &Args) -> Result<bool, String> {
         if let Some(p) = a.one("expect-state") {
             let text = std::fs::read_to_string(p).map_err(|e| format!("read {p}: {e}"))?;
             let expected: Value = serde_json::from_str(&text).map_err(|e| format!("{p}: {e}"))?;
-            let mut diffs = Vec::new();
-            diff::json(
-                &expected,
-                &snap,
-                "state",
-                &mut Bindings::new(""),
-                &mut diffs,
-            );
+            let diffs = state::compare(&expected, &snap);
             for d in &diffs {
                 println!("STATE {}: expected {} got {}", d.at, d.expected, d.actual);
             }
