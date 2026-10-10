@@ -1084,3 +1084,35 @@ fn sign_in_with_rp(w: &World, key: &Key, signed_rp: &str, origin: &str, now: i64
     );
     (s, r.body)
 }
+
+#[test]
+fn a_cookie_and_a_device_token_together_are_refused() {
+    let w = world(true);
+    let mut owner = Browser::new("10.0.0.1");
+    setup(&w, &mut owner);
+    let req = Request {
+        method: "GET".into(),
+        path: "/api/auth/session".into(),
+        creds: Creds {
+            cookie: Some(format!("cowork_session={}", owner.session.clone().unwrap())),
+            authorization: Some("Bearer nva_synthetic".into()),
+            origin: None,
+            csrf: None,
+            method: "GET".into(),
+        },
+        user_agent: String::new(),
+        content_type: String::new(),
+        client_ip: "10.0.0.1".into(),
+        body: Body::default(),
+    };
+    let Outcome::Reply(r) = w.acct.handle(&req, T0) else {
+        panic!("passed")
+    };
+    assert_eq!(
+        (r.status, r.body.as_str()),
+        (
+            400,
+            r#"{"error":"Send either a session cookie or a bearer token, not both.","code":"ambiguous_credentials"}"#
+        )
+    );
+}
