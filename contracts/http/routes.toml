@@ -682,7 +682,8 @@ owner = "node"
 
 [[route]]
 path = "/api/sampling-settings"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_SAMPLING_SETTINGS"
 
 [[route]]
 path = "/api/setup/complete"

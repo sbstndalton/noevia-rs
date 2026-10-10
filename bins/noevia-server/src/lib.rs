@@ -11,6 +11,7 @@ pub mod legacy_proxy;
 pub mod project_routes;
 pub mod reply;
 pub mod routes;
+pub mod sampling_settings_routes;
 pub mod serve;
 pub mod static_files;
 pub mod upkeep;
@@ -34,6 +35,7 @@ pub const FEATURES: &[&str] = &[
     "rust-auth",
     "rust-projects",
     "rust-usage",
+    "rust-sampling-settings",
 ];
 
 pub struct App {
@@ -49,6 +51,7 @@ pub struct App {
     /// The account routes while NOEVIA_RUST_AUTH is on (M3).
     pub accounts: Arc<account_routes::AccountLayer>,
     pub usage: Arc<usage_routes::UsageLayer>,
+    pub sampling_settings: Arc<tokio::sync::Semaphore>,
 }
 
 impl App {
@@ -68,6 +71,7 @@ impl App {
             writes,
             accounts,
             usage: Arc::new(usage_routes::UsageLayer::default()),
+            sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -105,7 +109,10 @@ async fn handle(
             if matches!(
                 on_whatwg,
                 Some(
-                    routes::Native::Account | routes::Native::ProjectAssets | routes::Native::Usage
+                    routes::Native::Account
+                        | routes::Native::ProjectAssets
+                        | routes::Native::Usage
+                        | routes::Native::SamplingSettings
                 )
             ) {
                 native = on_whatwg;
@@ -115,7 +122,12 @@ async fn handle(
     let served_bundle = match native {
         Some(routes::Native::Ready) => true,
         Some(routes::Native::Static) => static_files::canonical(&path),
-        Some(routes::Native::Account | routes::Native::ProjectAssets | routes::Native::Usage)
+        Some(
+            routes::Native::Account
+            | routes::Native::ProjectAssets
+            | routes::Native::Usage
+            | routes::Native::SamplingSettings,
+        )
         | None => false,
     };
     if app.writes.switch().is_some() && !served_bundle {
@@ -139,6 +151,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             account_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::SamplingSettings) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            sampling_settings_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Usage) => {
             let Some(p) = whatwg else {

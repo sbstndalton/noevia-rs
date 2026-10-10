@@ -32,6 +32,7 @@ pub struct Switches {
     /// ported so far (M4).
     pub rust_projects: bool,
     pub rust_usage: bool,
+    pub rust_sampling_settings: bool,
 }
 
 impl Switches {
@@ -40,6 +41,7 @@ impl Switches {
             "NOEVIA_RUST_AUTH" => self.rust_auth,
             "NOEVIA_RUST_PROJECTS" => self.rust_projects,
             "NOEVIA_RUST_USAGE" => self.rust_usage,
+            "NOEVIA_RUST_SAMPLING_SETTINGS" => self.rust_sampling_settings,
             _ => false,
         }
     }
@@ -70,6 +72,7 @@ pub enum Native {
     /// A project's images (M4, NOEVIA_RUST_PROJECTS): crates/server-projects `assets`.
     ProjectAssets,
     Usage,
+    SamplingSettings,
 }
 
 /// The routes [`Native::ProjectAssets`] implements.
@@ -88,6 +91,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         }
         (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ASSET_ROUTES.contains(&p) => {
             Some(Native::ProjectAssets)
+        }
+        ("/api/sampling-settings", false, Some("NOEVIA_RUST_SAMPLING_SETTINGS")) => {
+            Some(Native::SamplingSettings)
         }
         ("/api/usage" | "/api/usage/aggregate", false, Some("NOEVIA_RUST_USAGE")) => {
             Some(Native::Usage)
@@ -207,6 +213,7 @@ mod tests {
             rust_auth: true,
             rust_projects: false,
             rust_usage: false,
+            rust_sampling_settings: false,
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -216,6 +223,7 @@ mod tests {
             rust_auth: true,
             rust_projects: true,
             rust_usage: false,
+            rust_sampling_settings: false,
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -226,11 +234,13 @@ mod tests {
             rust_auth: true,
             rust_projects: false,
             rust_usage: false,
+            rust_sampling_settings: false,
         };
         let both = Switches {
             rust_auth: true,
             rust_projects: true,
             rust_usage: false,
+            rust_sampling_settings: false,
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
@@ -290,6 +300,7 @@ mod tests {
         let on = Switches {
             rust_auth: true,
             rust_usage: true,
+            rust_sampling_settings: false,
             ..Default::default()
         };
         for p in ["/api/usage", "/api/usage/aggregate"] {
@@ -297,6 +308,21 @@ mod tests {
                 assert_eq!(dispatch(m, p), None);
                 assert_eq!(dispatch_under(m, p, on), Some(Native::Usage));
             }
+        }
+    }
+    #[test]
+    fn sampling_owns_all_methods_only_when_switched_on() {
+        let on = Switches {
+            rust_auth: true,
+            rust_sampling_settings: true,
+            ..Default::default()
+        };
+        for m in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+            assert_eq!(dispatch(m, "/api/sampling-settings"), None);
+            assert_eq!(
+                dispatch_under(m, "/api/sampling-settings", on),
+                Some(Native::SamplingSettings)
+            );
         }
     }
 }
