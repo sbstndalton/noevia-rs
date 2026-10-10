@@ -2,13 +2,16 @@
   "v": 1,
   "generator": "noevia-core tools/contract-corpus/generate.cjs",
   "seed": "empty",
-  "note": "Replay against a server started on an empty UI_DATA_DIR; the setup code is read from that dir once the server has written it. Passwords are synthetic.",
+  "note": "Replay against a server started on an empty UI_DATA_DIR; the setup code is read from that dir once the server has written it. Passwords and the image data are synthetic.",
   "inputs": {
     "<secret:5>": {
       "file": "first-run-setup-code"
     },
     "<secret:2>": {
       "value": "contract-corpus-Synthetic-pw-1"
+    },
+    "<secret:6>": {
+      "value": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
     },
     "<secret:10>": {
       "value": "contract-corpus-Synthetic-pw-2"
