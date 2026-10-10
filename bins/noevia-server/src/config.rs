@@ -33,6 +33,9 @@ pub struct Config {
     /// NOEVIA_RUST_PROJECTS=1 (M4); refused without NOEVIA_RUST_AUTH=1, because the front gates the
     /// routes it owns itself and Node's request gate no longer writes session upkeep then.
     pub rust_projects: Option<server_store::RustProjects>,
+    /// M6 requires native identity/upkeep.
+    pub rust_usage: bool,
+    pub usage_clock: Result<server_usage::summary::Clock, server_usage::Fault>,
     /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
     /// UI_DATA_DIR); `None` without UI_DATA_DIR.
     pub account: Option<server_account::Settings>,
@@ -98,6 +101,7 @@ impl Config {
         crate::routes::Switches {
             rust_auth: self.rust_auth.is_some(),
             rust_projects: self.rust_projects.is_some(),
+            rust_usage: self.rust_usage,
         }
     }
 
@@ -119,6 +123,10 @@ impl Config {
         );
         if rust_projects.is_some() && rust_auth.is_none() {
             return Err("NOEVIA_RUST_PROJECTS=1 needs NOEVIA_RUST_AUTH=1".into());
+        }
+        let rust_usage = get("NOEVIA_RUST_USAGE").as_deref() == Some("1");
+        if rust_usage && rust_auth.is_none() {
+            return Err("NOEVIA_RUST_USAGE=1 needs NOEVIA_RUST_AUTH=1".into());
         }
         Ok(Config {
             host,
@@ -142,6 +150,8 @@ impl Config {
             auth: server_auth::AuthConfig::from_lookup(&get),
             rust_auth,
             rust_projects,
+            rust_usage,
+            usage_clock: server_usage::summary::Clock::system(&get),
         })
     }
 }
@@ -243,5 +253,25 @@ mod tests {
             ("UI_PORT", "x")
         ])
         .is_err());
+    }
+    #[test]
+    fn usage_needs_native_auth_and_defaults_off() {
+        assert!(
+            !cfg(&[("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021")])
+                .unwrap()
+                .rust_usage
+        );
+        assert!(cfg(&[
+            ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021"),
+            ("NOEVIA_RUST_USAGE", "1")
+        ])
+        .is_err());
+        let c = cfg(&[
+            ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021"),
+            ("NOEVIA_RUST_USAGE", "1"),
+            ("NOEVIA_RUST_AUTH", "1"),
+        ])
+        .unwrap();
+        assert!(c.switches().rust_usage);
     }
 }

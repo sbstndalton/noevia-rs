@@ -82,6 +82,12 @@ fn registrations_agree_with_simplewebauthn() {
             },
         );
         let want = &c["result"];
+        if name.starts_with(STRICTER_THAN_NODE) {
+            assert!(
+                matches!(&got, Err(e) if e.message == "packed self attestation alg does not match the credential public key alg"),
+                "{name}: every named algorithm mismatch must receive the specific refusal, got {got:?}"
+            );
+        }
         match (&got, want["ok"].as_bool().unwrap()) {
             (Ok(cred), true) => {
                 ok += 1;

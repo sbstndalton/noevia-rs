@@ -30,7 +30,11 @@ struct Entry {
 }
 
 /// The switches a route may name (bins/noevia-server src/routes.rs `Switches`).
-const SWITCHES: &[&str] = &["NOEVIA_RUST_AUTH", "NOEVIA_RUST_PROJECTS"];
+const SWITCHES: &[&str] = &[
+    "NOEVIA_RUST_AUTH",
+    "NOEVIA_RUST_PROJECTS",
+    "NOEVIA_RUST_USAGE",
+];
 
 fn yes() -> bool {
     true
