@@ -422,6 +422,7 @@ async fn headers_cookies_and_forwarded_for() {
 #[tokio::test]
 async fn request_body_cap() {
     check_request_body_cap(
+        "default-cap",
         "/api/chat",
         "/api/import",
         noevia_server::legacy_proxy::BODY_CAP,
@@ -432,6 +433,7 @@ async fn request_body_cap() {
 #[tokio::test]
 async fn upload_request_body_cap() {
     check_request_body_cap(
+        "upload-cap",
         "/api/projects/synthetic/upload?background=1",
         "/api/projects/synthetic/upload",
         noevia_server::legacy_proxy::UPLOAD_BODY_CAP,
@@ -439,9 +441,9 @@ async fn upload_request_body_cap() {
     .await;
 }
 
-async fn check_request_body_cap(route: &str, accepted_route: &str, cap: u64) {
+async fn check_request_body_cap(tag: &str, route: &str, accepted_route: &str, cap: u64) {
     let (up, up_addr) = start_upstream().await;
-    let front = start_front(up_addr, &dist_dir("cap"), false).await;
+    let front = start_front(up_addr, &dist_dir(tag), false).await;
     // Declared too large: refused without touching Node.
     let (res, _c) = call(
         front,
@@ -475,10 +477,7 @@ async fn check_request_body_cap(route: &str, accepted_route: &str, cap: u64) {
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        matches!(status, Ok(s) if s == 413) || status.is_err(),
-        "{status:?}"
-    );
+    assert_eq!(status.unwrap(), hyper::StatusCode::PAYLOAD_TOO_LARGE);
     // Exactly the cap passes.
     let (res, _c) = call(
         front,
