@@ -219,6 +219,14 @@ async fn switched_routes_are_answered_by_the_front() {
     let (s, _, _) = call(addr, "POST", "/api/auth/logout", &w, "").await;
     assert_eq!(s, 200);
 
+    // http.cjs readJson: a body over 1 MiB is a 413 with Node's message.
+    let big = format!("{{\"username\":\"{}\"}}", "x".repeat(1024 * 1024));
+    let (s, _, body) = call(addr, "POST", "/api/auth/login/password", &[origin], &big).await;
+    assert_eq!(
+        (s, body.as_str()),
+        (413, r#"{"error":"Request exceeds size limit"}"#)
+    );
+
     let seen = hits.lock().unwrap().clone();
     assert_eq!(
         seen,
