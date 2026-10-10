@@ -31,3 +31,16 @@ cargo run -p replay -- coverage --corpus contracts/http/corpus --routes contract
 
 A Rust server is replayed the same way with its own `--server-cmd` (it must answer the same mock
 model and Diary), and `--expect-state target/node-state.json` compares the data dirs it leaves.
+
+## M1: the Rust front (`bins/noevia-server`)
+
+`noevia-server` compiles `routes.toml` in (build.rs) and answers the `owner = "rust"` routes
+itself: `GET /api/ready` and, through the `catch_all` entry, the built web client with its SPA
+fallback (core `static-files.cjs` / `spa-routes.cjs`). Everything else, including Node's own
+non-/api pages listed at the end of the file, is streamed to Node by `src/legacy_proxy.rs`. Its
+tests fail when a rust route has no native handler or a node route does not reach the proxy. CI
+job `corpus-replay-front` replays the corpus through the front (`tools/front/replay-front.sh`)
+with zero differences and the same final data dir as a Node-direct run.
+
+Follow-up once the front is live: delete core's `static-files.cjs`, `spa-routes.cjs` and
+`createReadyRoutes` (Node then answers neither), not before.
