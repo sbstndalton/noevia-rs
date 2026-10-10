@@ -1,0 +1,23 @@
+[package]
+name = "server-usage"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+[lints]
+workspace = true
+[dependencies]
+serde_json = "1"
+serde = "1"
+indexmap = "2"
+chrono = "0.4"
+chrono-tz = "0.10"
+iana-time-zone = "0.1"
+icu_collator = "2"
+icu_locale = "2"
+rustix = { version = "1", features = ["fs"] }
+server-store = { path = "../server-store" }
+[dev-dependencies]
+proptest = "1"
+tempfile = "3"

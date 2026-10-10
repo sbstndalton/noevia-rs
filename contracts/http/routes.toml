@@ -714,11 +714,13 @@ owner = "node"
 
 [[route]]
 path = "/api/usage"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_USAGE"
 
 [[route]]
 path = "/api/usage/aggregate"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_USAGE"
 
 [[route]]
 path = "/api/workspace"

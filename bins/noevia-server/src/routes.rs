@@ -31,6 +31,7 @@ pub struct Switches {
     /// NOEVIA_RUST_PROJECTS=1 (only with rust_auth, config.rs): Rust owns the project routes
     /// ported so far (M4).
     pub rust_projects: bool,
+    pub rust_usage: bool,
 }
 
 impl Switches {
@@ -38,6 +39,7 @@ impl Switches {
         match name {
             "NOEVIA_RUST_AUTH" => self.rust_auth,
             "NOEVIA_RUST_PROJECTS" => self.rust_projects,
+            "NOEVIA_RUST_USAGE" => self.rust_usage,
             _ => false,
         }
     }
@@ -67,6 +69,7 @@ pub enum Native {
     Account,
     /// A project's images (M4, NOEVIA_RUST_PROJECTS): crates/server-projects `assets`.
     ProjectAssets,
+    Usage,
 }
 
 /// The routes [`Native::ProjectAssets`] implements.
@@ -85,6 +88,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         }
         (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ASSET_ROUTES.contains(&p) => {
             Some(Native::ProjectAssets)
+        }
+        ("/api/usage" | "/api/usage/aggregate", false, Some("NOEVIA_RUST_USAGE")) => {
+            Some(Native::Usage)
         }
         _ => None,
     }
@@ -200,6 +206,7 @@ mod tests {
         let on = Switches {
             rust_auth: true,
             rust_projects: false,
+            rust_usage: false,
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -208,6 +215,7 @@ mod tests {
         let both = Switches {
             rust_auth: true,
             rust_projects: true,
+            rust_usage: false,
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -217,10 +225,12 @@ mod tests {
         let auth = Switches {
             rust_auth: true,
             rust_projects: false,
+            rust_usage: false,
         };
         let both = Switches {
             rust_auth: true,
             rust_projects: true,
+            rust_usage: false,
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
@@ -274,5 +284,19 @@ mod tests {
         assert_eq!(pattern_matches("/api/x/new", "/api/x/new"), Some(4));
         assert_eq!(pattern_matches("/api/x/{id}", "/api/x/"), None);
         assert_eq!(pattern_matches("/api/m{*?}", "/api/m"), Some(3));
+    }
+    #[test]
+    fn usage_owns_all_methods_only_when_switched_on() {
+        let on = Switches {
+            rust_auth: true,
+            rust_usage: true,
+            ..Default::default()
+        };
+        for p in ["/api/usage", "/api/usage/aggregate"] {
+            for m in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+                assert_eq!(dispatch(m, p), None);
+                assert_eq!(dispatch_under(m, p, on), Some(Native::Usage));
+            }
+        }
     }
 }

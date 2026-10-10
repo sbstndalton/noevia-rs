@@ -14,6 +14,7 @@ pub mod routes;
 pub mod serve;
 pub mod static_files;
 pub mod upkeep;
+pub mod usage_routes;
 
 use axum::body::Body;
 use axum::extract::{ConnectInfo, State};
@@ -32,6 +33,7 @@ pub const FEATURES: &[&str] = &[
     "header-read-timeout",
     "rust-auth",
     "rust-projects",
+    "rust-usage",
 ];
 
 pub struct App {
@@ -46,6 +48,7 @@ pub struct App {
     pub writes: Arc<upkeep::WriterLayer>,
     /// The account routes while NOEVIA_RUST_AUTH is on (M3).
     pub accounts: Arc<account_routes::AccountLayer>,
+    pub usage: Arc<usage_routes::UsageLayer>,
 }
 
 impl App {
@@ -64,6 +67,7 @@ impl App {
             identity,
             writes,
             accounts,
+            usage: Arc::new(usage_routes::UsageLayer::default()),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -100,7 +104,9 @@ async fn handle(
             let on_whatwg = routes::dispatch_under(req.method().as_str(), w, switches);
             if matches!(
                 on_whatwg,
-                Some(routes::Native::Account | routes::Native::ProjectAssets)
+                Some(
+                    routes::Native::Account | routes::Native::ProjectAssets | routes::Native::Usage
+                )
             ) {
                 native = on_whatwg;
             }
@@ -109,7 +115,8 @@ async fn handle(
     let served_bundle = match native {
         Some(routes::Native::Ready) => true,
         Some(routes::Native::Static) => static_files::canonical(&path),
-        Some(routes::Native::Account | routes::Native::ProjectAssets) | None => false,
+        Some(routes::Native::Account | routes::Native::ProjectAssets | routes::Native::Usage)
+        | None => false,
     };
     if app.writes.switch().is_some() && !served_bundle {
         // Node's gate wrote these on every request it saw; with NOEVIA_RUST_AUTH it no longer can.
@@ -132,6 +139,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             account_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::Usage) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            usage_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::ProjectAssets) => {
             let Some(p) = whatwg else {
