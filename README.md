@@ -429,10 +429,12 @@ one slice at a time.
   `JSON.stringify` bytes), gated by `OWNED_JSON_FILES` (empty).
 - `crates/server-auth` (M2): noevia-core's request gate, read-only: auth.cjs `authenticate`
   (session cookie, legacy bearer), device-auth.cjs device tokens and `browserOnly`, `csrfValid`,
-  `originValid`, `nativeClientAuth`, app-passwords.cjs `verifyDav` (Argon2 from the stored PHC),
+  `originValid` (never wider than Node: after a first-run setup that chose an address other
+  than PUBLIC_ORIGIN, neither address matches, noevia#1254), `nativeClientAuth`, app-passwords.cjs `verifyDav` (Argon2 from the stored PHC),
   and secrets.cjs key loading with `secrets.key.previous`. Constant-time token compares, no
-  user-existence timing on app passwords. `noevia-server`'s `identity::ValidatedIdentity` uses
-  it; no route does yet. Differential table from noevia-core's own code at
+  user-existence timing on app passwords (the Argon2 decoy is built at startup).
+  `noevia-server`'s `identity::ValidatedIdentity` uses it (a path WHATWG parsing would change
+  is refused 400 before the gate); no route does yet. Differential table from noevia-core's own code at
   `contracts/http/core.ref`:
   `NOEVIA_CORE_CHECKOUT=<noevia-core> node tools/gen-auth-fixtures.cjs > crates/server-auth/tests/fixtures/node-auth.v1.json`
   (CI regenerates it and requires the committed copy to match).

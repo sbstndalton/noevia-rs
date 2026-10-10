@@ -367,8 +367,12 @@ async function setupOriginScenario(tmp) {
   const dataDir = path.join(tmp, 'setup-origin-differs');
   fs.mkdirSync(dataDir, { recursive: true });
   const opts = { dataDir, publicOrigin: P, rpId: '', legacyToken: '', legacyCompat: false, trustProxy: true, additionalOrigins: env.additionalOrigins };
+  // Settings Node reads at boot go in first (a throwaway createAuth runs the migrations), as in
+  // buildScenario; the first-run setup code it wrote stays valid for the next one.
+  const first = createAuth({ dataDir, publicOrigin: '', rpId: '' });
+  first.db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('previous_origins',?)").run(JSON.stringify(['https://old.example.test']));
+  first.db.close();
   const live = createAuth(opts);
-  live.db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('previous_origins',?)").run(JSON.stringify(['https://old.example.test']));
   const setupCode = fs.readFileSync(path.join(dataDir, 'first-run-setup-code'), 'utf8').trim();
   const res = { setHeader: () => {} };
   const r = await live.setup({ headers: {}, method: 'POST', socket: { remoteAddress: '127.0.0.1' } }, res,
