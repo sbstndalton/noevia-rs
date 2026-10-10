@@ -1,0 +1,25 @@
+[package]
+name = "noevia-ocr"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+[features]
+default = []
+native-ocr = []
+[lints]
+workspace = true
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
+base64 = "0.22"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tower = { version = "0.5", features = ["util"] }
+docx-text = { path = "../../crates/docx-text" }
+serde_json = "1"
+nix = { version = "0.30", features = ["signal", "process"] }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "process", "fs", "io-util"] }
+[dev-dependencies]
+proptest = "1"
