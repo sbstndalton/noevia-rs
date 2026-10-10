@@ -424,9 +424,14 @@ one slice at a time.
   `UI_DATA_DIR/cowork.db` for the Rust front. Opens without CREATE, `query_only`, and an SQLite
   authorizer that refuses every write, DDL and ATTACH; busy timeout 5000 ms (better-sqlite3's
   default) and WAL, as Node. Refuses a schema newer than `schema_migrations` v5 (rechecked on
-  every read) or missing a column it reads. Writes only tables in the compiled `OWNED_TABLES`
-  (empty in M2). `json.rs` is Node's `atomicJson` (same temp name, modes and rename,
-  `JSON.stringify` bytes), gated by `OWNED_JSON_FILES` (empty).
+  every read) or missing a column it reads. M3: `Writer` writes only what the compiled
+  `OWNED_TABLES` grants (the auth tables, per-table INSERT/UPDATE/DELETE; `audit_events`
+  append-only; `diary_connectors` delete-only for recovery), `settings` only for
+  `OWNED_SETTING_KEYS` through key-checked helpers, with `foreign_keys = ON`; it opens only with
+  the deployment switch `NOEVIA_RUST_AUTH=1` (`RustAuth`). Node refuses the same writes while the
+  switch is on (noevia-core `server/rust-auth.cjs`). `json.rs` is Node's `atomicJson` (same temp
+  name, modes and rename, `JSON.stringify` bytes), gated by `OWNED_JSON_FILES` (the account-*.json
+  records) and the switch.
 - `crates/server-auth` (M2): noevia-core's request gate, read-only: auth.cjs `authenticate`
   (session cookie, legacy bearer), device-auth.cjs device tokens and `browserOnly`, `csrfValid`,
   `originValid` (never wider than Node: after a first-run setup that chose an address other
@@ -434,7 +439,12 @@ one slice at a time.
   and secrets.cjs key loading with `secrets.key.previous`. Constant-time token compares, no
   user-existence timing on app passwords (the Argon2 decoy is built at startup).
   `noevia-server`'s `identity::ValidatedIdentity` uses it (a path WHATWG parsing would change
-  is refused 400 before the gate); no route does yet. Differential table from noevia-core's own code at
+  is refused 400 before the gate). M3 `upkeep`: the writes Node's gate made on every request
+  (a live session's `last_seen_at`, a rejected session's DELETE, a device grant's `last_used_at`
+  at most once a minute), which the front makes before proxying while `NOEVIA_RUST_AUTH=1`; the
+  differential table records each case's writes and Rust must make the same ones. Under the
+  switch the address is the restart rule (`origin_from_settings`), as Node then re-reads it.
+  Differential table from noevia-core's own code at
   `contracts/http/core.ref`:
   `NOEVIA_CORE_CHECKOUT=<noevia-core> node tools/gen-auth-fixtures.cjs > crates/server-auth/tests/fixtures/node-auth.v1.json`
   (CI regenerates it and requires the committed copy to match).
