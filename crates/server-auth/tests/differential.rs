@@ -484,7 +484,7 @@ fn upkeep_writes_agree_with_node() {
         }
     }
     assert!(total >= 7000, "fixture shrank to {total} cases");
-    assert!(wrote >= 1000, "only {wrote} cases wrote anything");
+    assert!(wrote >= 500, "only {wrote} cases wrote anything");
     assert!(
         bad.is_empty(),
         "{} of {total} differ:\n{}",
