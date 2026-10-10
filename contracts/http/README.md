@@ -72,8 +72,8 @@ first slice is a project's images: `POST /api/projects/{id}/assets`, `GET` and `
 /api/projects/{id}/assets/{assetId}` (crates/server-projects `assets`).
 
 `projects.json` cannot have one writer yet (Node's chat routes keep chat metas in it), so while
-the switch is on both processes write it only under one lock (`projects.json.lock`, O_EXCL,
-crates/server-projects `lock` = core `server/rust-projects.cjs`): Rust re-reads it for every change
+the switch is on both processes write it only under one lock (flock(2) LOCK_EX on a long-lived
+`projects.json.lock`, crates/server-projects `lock` = core `server/rust-projects.cjs`): Rust re-reads it for every change
 and writes Node's exact `atomicJson` bytes; Node re-reads it when it changed and saves by a
 per-project, per-field three-way merge, so neither drops the other's change. With
 `NOEVIA_FRONT=rust`, `NOEVIA_RUST_AUTH_CONFIRMED=1` and `NOEVIA_RUST_PROJECTS_CONFIRMED=1` (the

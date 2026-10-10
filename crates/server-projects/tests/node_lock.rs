@@ -34,9 +34,7 @@ fn lock_constants_match_node() {
         .unwrap();
     for (name, value) in [
         ("LOCK_SUFFIX", format!("'{}'", lock::SUFFIX)),
-        ("LOCK_STALE_MS", lock::STALE_MS.to_string()),
         ("LOCK_WAIT_MS", lock::WAIT_MS.to_string()),
-        ("LOCK_RETRY_MS", lock::RETRY_MS.to_string()),
     ] {
         let line = format!("const {name} = {value};");
         assert!(src.contains(&line), "rust-projects.cjs lacks `{line}`");
@@ -134,7 +132,7 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
             .unwrap_or_default()
     };
     assert_eq!(v["projects"][1]["name"], "Other");
-    assert!(!dir.path().join("projects.json.lock").exists());
+    assert!(dir.path().join("projects.json.lock").exists(), "long-lived");
     (ids("chats"), ids("assets"), text)
 }
 
@@ -166,4 +164,93 @@ fn without_the_merge_nodes_saves_drop_rusts_images() {
     let (_chats, assets, _) = race(&core, true);
     // Its view never had img-0, and it saved after img-0 was written: img-0 is gone for good.
     assert!(!assets.contains(&"img-0".to_string()), "{assets:?}");
+}
+
+/// The two halves are one lock: Node processes (flock(1) on an inherited descriptor) and Rust
+/// threads (std File::try_lock) incrementing one counter are never both inside and lose nothing.
+#[test]
+fn node_processes_and_rust_threads_share_one_flock() {
+    let Some(core) = core() else { return };
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("counter");
+    std::fs::write(&file, "0").unwrap();
+    let script = r#"
+      const fs = require('fs'); const [core, f] = process.argv.slice(1);
+      const rp = require(core + '/server/rust-projects.cjs');
+      for (let i = 0; i < 100; i++) rp.withFileLock(f, () => {
+        fs.mkdirSync(f + '.inside'); // EEXIST: two inside
+        const n = Number(fs.readFileSync(f, 'utf8'));
+        fs.writeFileSync(f, String(n + 1));
+        fs.rmdirSync(f + '.inside');
+      });
+    "#;
+    let nodes: Vec<_> = (0..2)
+        .map(|_| {
+            Command::new("node")
+                .args(["-e", script, &core, file.to_str().unwrap()])
+                .spawn()
+                .expect("node on PATH")
+        })
+        .collect();
+    let threads: Vec<_> = (0..3)
+        .map(|_| {
+            let file = file.clone();
+            std::thread::spawn(move || {
+                let inside = {
+                    let mut p = file.as_os_str().to_owned();
+                    p.push(".inside");
+                    std::path::PathBuf::from(p)
+                };
+                for _ in 0..100 {
+                    let _held = lock::acquire(&file).unwrap();
+                    std::fs::create_dir(&inside).expect("two inside");
+                    let n: u64 = std::fs::read_to_string(&file).unwrap().parse().unwrap();
+                    std::fs::write(&file, (n + 1).to_string()).unwrap();
+                    std::fs::remove_dir(&inside).unwrap();
+                }
+            })
+        })
+        .collect();
+    for t in threads {
+        t.join().unwrap();
+    }
+    for mut n in nodes {
+        assert!(n.wait().unwrap().success(), "node side failed");
+    }
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "500");
+}
+
+/// A Node holder killed mid-hold: Rust gets the lock at once (no staleness wait), and while it
+/// was alive Rust waited WAIT_MS and gave up Busy.
+#[test]
+fn a_killed_node_holder_releases_the_lock() {
+    let Some(core) = core() else { return };
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(store::PROJECTS_FILE);
+    let script = r#"
+      const [core, f] = process.argv.slice(1);
+      require(core + '/server/rust-projects.cjs').withFileLock(f, () => {
+        require('fs').writeFileSync(f + '.held', '');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60000);
+      });
+    "#;
+    let mut node = Command::new("node")
+        .args(["-e", script, &core, file.to_str().unwrap()])
+        .spawn()
+        .expect("node on PATH");
+    let held = dir.path().join("projects.json.held");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !held.exists() {
+        assert!(std::time::Instant::now() < until, "node never held");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let t0 = std::time::Instant::now();
+    assert!(matches!(lock::acquire(&file), Err(lock::LockError::Busy)));
+    let waited = i64::try_from(t0.elapsed().as_millis()).unwrap();
+    assert!(waited >= lock::WAIT_MS - 100, "waited {waited} ms");
+    node.kill().unwrap();
+    node.wait().unwrap();
+    let t0 = std::time::Instant::now();
+    drop(lock::acquire(&file).unwrap());
+    assert!(t0.elapsed() < std::time::Duration::from_secs(1));
 }

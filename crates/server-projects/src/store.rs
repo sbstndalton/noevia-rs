@@ -227,11 +227,12 @@ mod tests {
             text.ends_with("      \"chats\": [],\n      \"assets\": []\n    }\n  ]\n}"),
             "{text}"
         );
-        assert!(!dir.path().join("projects.json.lock").exists());
+        // The lock file is long-lived (flock on it; never unlinked).
+        assert!(dir.path().join("projects.json.lock").exists());
         let names: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()
             .map(|e| e.unwrap().file_name())
             .collect();
-        assert_eq!(names.len(), 1, "no temp or lock file left: {names:?}");
+        assert_eq!(names.len(), 2, "no temp file left: {names:?}");
     }
 }

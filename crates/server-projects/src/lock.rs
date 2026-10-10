@@ -1,36 +1,32 @@
 //! The lock projects.json writers share with Node during the transition (core
-//! `server/rust-projects.cjs` withFileLock; keep the constants equal): `<file>.lock`, created with
-//! O_CREAT|O_EXCL and mode 0600, holding `"<pid> <ms>\n"`, removed on release. A writer waits up
-//! to [`WAIT_MS`], retrying every [`RETRY_MS`]; a lock older than [`STALE_MS`] belongs to a writer
-//! that died mid-write and is removed. A hold is one read-modify-write.
+//! `server/rust-projects.cjs` withFileLock; keep the constants equal): an OS advisory lock,
+//! flock(2) LOCK_EX, on `<file>.lock` (mode 0600), a long-lived file that is created once and
+//! never unlinked (unlinking would let two writers lock two different inodes). flock and fcntl
+//! locks do not interoperate on Linux, so both sides use flock: Rust through std's
+//! `File::try_lock` (flock(LOCK_EX|LOCK_NB) on Linux), Node through util-linux `flock(1)` on an
+//! inherited descriptor. A writer that dies releases the lock with its descriptor: no staleness
+//! rule. A writer waits up to [`WAIT_MS`], retrying every [`RETRY_MS`], then gives up (Busy).
+//! A hold is one read-modify-write.
 
-use std::io::Write as _;
+use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const SUFFIX: &str = ".lock";
-pub const STALE_MS: i64 = 10_000;
 pub const WAIT_MS: i64 = 3_000;
 pub const RETRY_MS: u64 = 5;
 
 #[derive(Debug)]
 pub enum LockError {
-    /// Held by a live writer for longer than [`WAIT_MS`]: Node's 503 PROJECTS_BUSY.
+    /// Held by another writer for longer than [`WAIT_MS`]: Node's 503 PROJECTS_BUSY.
     Busy,
     Io(std::io::Error),
 }
 
-/// Held until dropped.
+/// Held until dropped (closing the descriptor releases the flock; the file stays).
 #[derive(Debug)]
 pub struct FileLock {
-    path: PathBuf,
-}
-
-impl Drop for FileLock {
-    fn drop(&mut self) {
-        // Removed as stale by another writer: nothing to release.
-        let _ = std::fs::remove_file(&self.path);
-    }
+    _file: File,
 }
 
 fn now_ms() -> i64 {
@@ -40,9 +36,11 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-fn mtime_ms(m: &std::fs::Metadata) -> Option<i64> {
-    let t = m.modified().ok()?.duration_since(UNIX_EPOCH).ok()?;
-    i64::try_from(t.as_millis()).ok()
+/// The lock file's path for `file`.
+pub fn path_for(file: &Path) -> PathBuf {
+    let mut path = file.as_os_str().to_owned();
+    path.push(SUFFIX);
+    PathBuf::from(path)
 }
 
 /// Takes the lock for `file` (the data file, not the lock's own name).
@@ -58,49 +56,25 @@ pub fn acquire_with(
     now: &dyn Fn() -> i64,
     sleep: &dyn Fn(u64),
 ) -> Result<FileLock, LockError> {
-    let mut path = file.as_os_str().to_owned();
-    path.push(SUFFIX);
-    let path = PathBuf::from(path);
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let f = options.open(path_for(file)).map_err(LockError::Io)?;
     let deadline = now().saturating_add(WAIT_MS);
     loop {
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        match options.open(&path) {
-            Ok(mut f) => {
-                let lock = FileLock { path };
-                f.write_all(format!("{} {}\n", std::process::id(), now()).as_bytes())
-                    .map_err(LockError::Io)?;
-                return Ok(lock);
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                let held = match std::fs::metadata(&path) {
-                    Ok(m) => Some(m),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-                    Err(e) => return Err(LockError::Io(e)),
-                };
-                if let Some(m) = &held {
-                    if mtime_ms(m).is_some_and(|t| now().saturating_sub(t) > STALE_MS) {
-                        match std::fs::remove_file(&path) {
-                            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-                                return Err(LockError::Io(e))
-                            }
-                            _ => continue,
-                        }
-                    }
-                }
+        match f.try_lock() {
+            Ok(()) => return Ok(FileLock { _file: f }),
+            Err(TryLockError::WouldBlock) => {
                 if now() >= deadline {
                     return Err(LockError::Busy);
                 }
-                if held.is_some() {
-                    sleep(RETRY_MS);
-                }
+                sleep(RETRY_MS);
             }
-            Err(e) => return Err(LockError::Io(e)),
+            Err(TryLockError::Error(e)) => return Err(LockError::Io(e)),
         }
     }
 }
@@ -110,59 +84,56 @@ pub fn acquire_with(
 mod tests {
     use super::*;
     use std::cell::Cell;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
-    fn exclusive_released_on_drop_mode_and_content() {
+    fn exclusive_released_on_drop_never_unlinked_mode() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("projects.json");
         let lock_path = dir.path().join("projects.json.lock");
         {
             let _held = acquire(&file).unwrap();
-            let text = std::fs::read_to_string(&lock_path).unwrap();
-            let (pid, ms) = text.trim_end().split_once(' ').unwrap();
-            assert_eq!(pid, std::process::id().to_string());
-            assert!(ms.parse::<i64>().unwrap() > 0);
-            assert!(text.ends_with('\n'));
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 let mode = std::fs::metadata(&lock_path).unwrap().permissions().mode();
                 assert_eq!(mode & 0o777, 0o600);
             }
+            let clock = Cell::new(now_ms());
+            let now = || clock.get();
+            let sleep = |ms: u64| clock.set(clock.get() + i64::try_from(ms).unwrap());
+            assert!(matches!(
+                acquire_with(&file, &now, &sleep),
+                Err(LockError::Busy)
+            ));
+            assert!(clock.get() - now_ms() >= WAIT_MS - 1_000);
         }
-        assert!(!lock_path.exists());
+        assert!(lock_path.exists(), "the lock file is long-lived");
+        drop(acquire(&file).unwrap());
     }
 
     #[test]
-    fn a_live_lock_is_waited_for_then_busy_a_stale_one_is_removed() {
+    fn threads_racing_are_never_both_inside() {
         let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("projects.json");
-        let lock_path = dir.path().join("projects.json.lock");
-        std::fs::write(&lock_path, "1 1\n").unwrap();
-        let clock = Cell::new(now_ms());
-        let slept = Cell::new(0u64);
-        let now = || clock.get();
-        let sleep = |ms: u64| {
-            slept.set(slept.get() + ms);
-            clock.set(clock.get() + i64::try_from(ms).unwrap());
-        };
-        assert!(matches!(
-            acquire_with(&file, &now, &sleep),
-            Err(LockError::Busy)
-        ));
-        assert!(i64::try_from(slept.get()).unwrap() >= WAIT_MS);
-        assert!(lock_path.exists(), "a live lock is not broken");
-        // The same file, older than STALE_MS.
-        let old =
-            SystemTime::now() - Duration::from_millis(u64::try_from(STALE_MS).unwrap() + 1000);
-        std::fs::File::options()
-            .write(true)
-            .open(&lock_path)
-            .unwrap()
-            .set_modified(old)
-            .unwrap();
-        let held = acquire(&file).unwrap();
-        drop(held);
-        assert!(!lock_path.exists());
+        let file = std::sync::Arc::new(dir.path().join("projects.json"));
+        let inside = std::sync::Arc::new(AtomicUsize::new(0));
+        let total = std::sync::Arc::new(AtomicUsize::new(0));
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let (file, inside, total) = (file.clone(), inside.clone(), total.clone());
+                std::thread::spawn(move || {
+                    for _ in 0..100 {
+                        let _held = acquire(&file).unwrap();
+                        assert_eq!(inside.fetch_add(1, Ordering::SeqCst), 0, "two inside");
+                        total.fetch_add(1, Ordering::SeqCst);
+                        inside.fetch_sub(1, Ordering::SeqCst);
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert_eq!(total.load(Ordering::SeqCst), 800);
     }
 }

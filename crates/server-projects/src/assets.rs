@@ -619,7 +619,7 @@ mod tests {
     #[test]
     fn a_held_lock_is_a_503_and_nothing_is_left_behind() {
         let f = Fixture::new(ONE);
-        std::fs::write(f.user().join("projects.json.lock"), "1 1\n").unwrap();
+        let _held = crate::lock::acquire(&f.user().join("projects.json")).unwrap();
         let body = format!("{{\"mime\":\"image/png\",\"dataBase64\":\"{PNG}\"}}");
         let r = post_json(&f, "proj-1", &body);
         assert_eq!(
