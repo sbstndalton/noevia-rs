@@ -84,3 +84,7 @@ CI job `corpus-replay-front-rust-projects` replays the corpus through the front 
 (zero differences, Node-only data dir), runs the Node-vs-Rust lock race (`server-projects --test
 node_lock`, with a blind-save control that must lose data), and a negative control where Node is
 told the front owns the image routes but the front does not: the uploads must be refused with 503.
+
+`core.sha256` records the twice-fetched, byte-identical codeload archive SHA-256 for
+`core.ref` (metadata; existing replay CI consumes the single SHA in `core.ref`).
+The core#61 landing provides the required native OCR front acceptance gate (#1271).
