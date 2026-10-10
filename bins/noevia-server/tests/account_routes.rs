@@ -143,7 +143,7 @@ async fn switched_routes_are_answered_by_the_front() {
 
     let (s, h, body) = call(addr, "GET", "/api/setup/status", &[], "").await;
     assert_eq!(s, 200, "{body}");
-    assert!(h.get("x-upstream").is_none());
+    assert!(!h.contains_key("x-upstream"));
     assert_eq!(
         body,
         r#"{"configured":false,"publicOrigin":"http://127.0.0.1:18021"}"#
@@ -183,7 +183,7 @@ async fn switched_routes_are_answered_by_the_front() {
     )
     .await;
     assert_eq!(s, 200);
-    assert!(h.get("x-upstream").is_none());
+    assert!(!h.contains_key("x-upstream"));
     // A foreign origin is refused before any sign-in work.
     let (s, _, body) = call(
         addr,
