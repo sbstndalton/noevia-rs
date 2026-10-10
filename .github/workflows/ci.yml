@@ -265,6 +265,25 @@ jobs:
             --server-cmd "exec env NOEVIA_RUST_AUTH=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/replay-front-report.json" --state-out "$RUNNER_TEMP/rust-auth-state.json" \
             --expect-state "$RUNNER_TEMP/node-state.json"
+      - name: "Negative control: Node alone with the switch on refuses the account writes"
+        # Proves the guard engaged in the run above: without the front, sign-in and setup must fail
+        # with 503 (core server/rust-auth.cjs), so the clean replay was the front's work.
+        run: |
+          set -uo pipefail
+          if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+              --ignore-body hours --ignore-body peakHour/hour \
+              --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \
+              --server-cmd "exec env NOEVIA_RUST_AUTH=1 node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+              --report "$RUNNER_TEMP/control-report.json"; then
+            echo "::error::Node with NOEVIA_RUST_AUTH=1 replayed clean: the single-writer guard did not engage"; exit 1
+          fi
+          python3 - "$RUNNER_TEMP/control-report.json" <<'PY'
+          import json, sys
+          rows = json.load(open(sys.argv[1]))
+          setup = [r for r in rows if r["path"] == "/api/setup/complete" and r["expectedStatus"] == 201]
+          assert setup and all(r["status"] == 503 for r in setup), setup
+          print("negative control: Node refused setup with", setup[0]["status"])
+          PY
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

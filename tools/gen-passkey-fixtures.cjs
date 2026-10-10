@@ -30,7 +30,8 @@ if (!checkout) {
 const server = path.join(path.resolve(checkout), 'server');
 const from = (m) => require(require.resolve(m, { paths: [server] }));
 const swa = from('@simplewebauthn/server');
-const swaPkg = from('@simplewebauthn/server/package.json');
+// Not an exported subpath: read the installed manifest directly.
+const swaPkg = JSON.parse(require('node:fs').readFileSync(path.join(server, 'node_modules/@simplewebauthn/server/package.json'), 'utf8'));
 const cbor = from('@levischuck/tiny-cbor');
 
 const b64u = (b) => Buffer.from(b).toString('base64url');
