@@ -144,9 +144,16 @@ async fn usage_auth_admin_tenant_methods_and_omission() {
     db.execute("DELETE FROM sessions WHERE user_id=?1", [A])
         .unwrap();
     assert_eq!(call(addr, "GET", "/api/usage", admin, "").await.0, 401);
+    // #1283: restore the synthetic member and prove identity before omitting ownership.
+    db.execute(
+        "INSERT OR REPLACE INTO sessions VALUES(?1,?2,?3,?4,?4,?5,'ua','127.0.0.1')",
+        (hex("member-token"), B, hex("csrf"), now, now + 86400000),
+    )
+    .unwrap();
+    assert_eq!(call(addr, "GET", "/api/usage", member, "").await.0, 200);
     tx.send(()).unwrap();
     task.await.unwrap();
-    // Omission control: removing switch ownership forwards to the dead legacy server, never 200.
+    // Omission control must reach the unavailable legacy upstream with valid identity.
     let mut env = env;
     env.insert("NOEVIA_RUST_USAGE", "0".into());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -160,7 +167,7 @@ async fn usage_auth_admin_tenant_methods_and_omission() {
             let _ = rx.await;
         },
     ));
-    assert_ne!(call(addr, "GET", "/api/usage", member, "").await.0, 200);
+    assert_eq!(call(addr, "GET", "/api/usage", member, "").await.0, 502);
     tx.send(()).unwrap();
     task.await.unwrap();
 }
