@@ -134,7 +134,7 @@ function registrationResponse(key, opts = {}) {
   if (opts.packedSelf) {
     fmt = 'packed';
     const sig = key.sign(Buffer.concat([ad, sha256(Buffer.from(cdj, 'base64url'))]));
-    attStmt = new Map([['alg', key.alg], ['sig', u8(opts.badSig ? Buffer.from(sig).fill(1, 8, 9) : sig)]]);
+    attStmt = new Map([['alg', opts.stmtAlg ?? key.alg], ['sig', u8(opts.badSig ? Buffer.from(sig).fill(1, 8, 9) : sig)]]);
   }
   const ao = opts.attestationObject || b64u(enc(new Map([['fmt', fmt], ['attStmt', attStmt], ['authData', u8(ad)]])));
   const id = opts.id ?? b64u(credId);
@@ -249,6 +249,11 @@ async function main() {
   await reg('packed self attestation', registrationResponse(k, { packedSelf: true }));
   await reg('packed self attestation eddsa', registrationResponse(e, { packedSelf: true }));
   await reg('packed self attestation bad signature', registrationResponse(k, { packedSelf: true, badSig: true }));
+  // attStmt.alg that differs from the credential key's alg (WebAuthn 8.2: self attestation must use
+  // the credential's own alg). The signature is genuine; Node's verdict is recorded either way.
+  await reg('packed self attestation alg mismatch (ES256 key, RS256 statement)', registrationResponse(k, { packedSelf: true, stmtAlg: -257 }));
+  await reg('packed self attestation alg mismatch (ES256 key, EdDSA statement)', registrationResponse(k, { packedSelf: true, stmtAlg: -8 }));
+  await reg('packed self attestation alg mismatch (EdDSA key, ES256 statement)', registrationResponse(e, { packedSelf: true, stmtAlg: -7 }));
   await reg('packed without alg', registrationResponse(k, { fmt: 'packed', attStmt: new Map([['sig', u8(Buffer.alloc(8))]]) }));
   await reg('packed without sig', registrationResponse(k, { fmt: 'packed', attStmt: new Map([['alg', -7]]) }));
   await reg('packed invalid alg', registrationResponse(k, { fmt: 'packed', attStmt: new Map([['alg', -1], ['sig', u8(Buffer.alloc(8))]]) }));

@@ -53,10 +53,17 @@ fn expected(v: &Value) -> (String, Vec<String>, String) {
     )
 }
 
+/// Registrations Rust refuses on purpose although @simplewebauthn v14 may accept them: packed
+/// self attestation whose attStmt.alg is not the credential key's alg (Node lets the statement's
+/// alg choose the hash; WebAuthn 8.2 says it must be the key's own). The fixture records Node's
+/// verdict either way; where Node also refuses, the normal comparison applies.
+const STRICTER_THAN_NODE: &str = "packed self attestation alg mismatch";
+
 #[test]
 fn registrations_agree_with_simplewebauthn() {
     let f = fixture();
-    let (mut ok, mut exact, mut bad, mut unsafe_accepts) = (0, 0, Vec::new(), Vec::new());
+    let (mut ok, mut exact, mut stricter, mut bad, mut unsafe_accepts) =
+        (0, 0, 0, Vec::new(), Vec::new());
     let cases = f["registrations"].as_array().unwrap();
     for c in cases {
         let name = c["name"].as_str().unwrap();
@@ -106,9 +113,27 @@ fn registrations_agree_with_simplewebauthn() {
             (Ok(_), false) => {
                 unsafe_accepts.push(format!("{name}: Node refused: {}", want["message"]))
             }
+            (Err(e), true) if name.starts_with(STRICTER_THAN_NODE) => {
+                // Deliberately stricter: the refusal must name the mismatch, not be a lookalike.
+                if !e.message.contains("alg does not match") {
+                    bad.push(format!("{name}: refused for another reason: {e}"));
+                }
+                stricter += 1;
+            }
             (Err(e), true) => bad.push(format!("{name}: Rust refused ({e}), Node accepted")),
         }
     }
+    let mismatches = cases
+        .iter()
+        .filter(|c| c["name"].as_str().unwrap().starts_with(STRICTER_THAN_NODE))
+        .count();
+    assert!(mismatches >= 3, "only {mismatches} alg-mismatch cases");
+    // Rust refuses every mismatch: where Node accepted it counts as stricter, where Node refused too
+    // it was compared above (and could not have been accepted: that is an unsafe accept).
+    assert!(
+        stricter <= mismatches,
+        "{stricter} stricter refusals of {mismatches} cases"
+    );
     assert!(cases.len() >= 40, "only {} registrations", cases.len());
     assert!(ok >= 18, "only {ok} accepted registrations");
     assert!(exact >= 15, "only {exact} exact refusals");

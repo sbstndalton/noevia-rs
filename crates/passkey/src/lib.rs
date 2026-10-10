@@ -472,6 +472,15 @@ pub fn verify_registration(
                     "attestation signature is not a byte string",
                 ));
             };
+            // Self attestation (no x5c) is signed by the credential key itself, so the statement
+            // must name that key's algorithm (WebAuthn 8.2). @simplewebauthn v14 does not check
+            // this and lets attStmt.alg pick the hash; this server refuses (a deliberate stricter
+            // verdict, listed in tests/compat.rs).
+            if !matches!((a, alg), (Some(Cbor::Num(stmt_alg)), key_alg) if stmt_alg == key_alg) {
+                return Err(VerifyError::loose(
+                    "packed self attestation alg does not match the credential public key alg",
+                ));
+            }
             let mut base = auth_data.clone();
             base.extend_from_slice(&client_hash);
             cose::verify(&key, sig, &base, a).map_err(VerifyError::loose)?

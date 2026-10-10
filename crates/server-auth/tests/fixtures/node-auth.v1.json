@@ -1,7 +1,7 @@
 {
  "version": 1,
  "generator": "tools/gen-auth-fixtures.cjs",
- "core": "57122a7347f61e3d1dfd7590da91e939dd26cea8",
+ "core": "0243e9c9d05d2b2f216481249c4e0db4ab8d282b",
  "now": 1800000000000,
  "scenarios": [
   {
