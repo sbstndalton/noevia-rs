@@ -359,6 +359,7 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-front" \
             --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/replay-front-report.json" --state-out "$RUNNER_TEMP/rust-projects-state.json" \
+            --state-ignore '*projects.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"
       - name: "Negative control: Node told the front owns the image routes refuses their writes"
         # The same run with the front started without the switch: the image writes reach Node,
