@@ -12,6 +12,8 @@
 //!   --timeout SECS         per-request timeout (default 120)
 //!   --bind PH=VALUE        bind a placeholder before replaying (repeatable)
 //!   --ignore-header NAME   leave a response header out of the comparison (repeatable)
+//!   --ignore-body PATH     leave a JSON body path (`hours`, `peakHour/hour`) out of the
+//!                          comparison (repeatable); for wall-clock-dependent values
 //!   --state-out FILE       write the data dir snapshot (tree + cowork.db) after the replay
 //!   --expect-state FILE    diff the snapshot against FILE (one written by --state-out)
 //!   --state-ignore PATH    leave a path (or `*suffix`) out of the snapshot (repeatable)
@@ -279,6 +281,11 @@ fn run(a: &Args) -> Result<bool, String> {
             .all("ignore-header")
             .into_iter()
             .map(str::to_ascii_lowercase)
+            .collect(),
+        ignore_body: a
+            .all("ignore-body")
+            .into_iter()
+            .map(str::to_string)
             .collect(),
         data_dir: work.clone(),
         now: REQUEST_TS.to_string(),

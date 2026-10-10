@@ -150,6 +150,7 @@ fn opts(port: u16) -> Options {
         base: http::Base::parse(&format!("http://127.0.0.1:{port}")).unwrap(),
         timeout: Duration::from_secs(5),
         ignore_headers: Vec::new(),
+        ignore_body: Vec::new(),
         data_dir: None,
         now: "2026-01-01T00:00:00.000Z".into(),
     }
@@ -222,4 +223,15 @@ fn a_manifest_input_outside_the_data_dir_is_refused() {
         .unwrap_err()
         .contains("inside the data dir"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn ignored_body_paths_match_on_segment_boundaries() {
+    let ig = vec!["hours".to_string(), "peakHour/hour".to_string()];
+    assert!(replay::body_ignored("body/hours", &ig));
+    assert!(replay::body_ignored("body/hours/3", &ig));
+    assert!(replay::body_ignored("body/peakHour/hour", &ig));
+    assert!(!replay::body_ignored("body/hoursTotal", &ig));
+    assert!(!replay::body_ignored("body/peakHour/count", &ig));
+    assert!(!replay::body_ignored("status", &ig));
 }

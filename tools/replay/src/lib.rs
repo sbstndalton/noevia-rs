@@ -32,6 +32,9 @@ pub struct Options {
     pub timeout: Duration,
     /// Response headers to leave out of the comparison (lower-case).
     pub ignore_headers: Vec<String>,
+    /// JSON body paths (`hours`, `peakHour/hour`) to leave out of the comparison: values that
+    /// depend on the wall clock at replay time, not on the server's behaviour.
+    pub ignore_body: Vec<String>,
     /// The server's data directory, for file inputs (the first-run setup code).
     pub data_dir: Option<PathBuf>,
     /// Text the `<ts>` placeholder becomes in a request.
@@ -204,6 +207,14 @@ fn build(ex: &Exchange, f: &mut Filler<'_>) -> Result<Built, String> {
     })
 }
 
+/// True when a diff location (`body/hours/3`) is at or under an ignored body path.
+pub fn body_ignored(at: &str, ignore: &[String]) -> bool {
+    ignore.iter().any(|p| {
+        let p = format!("body/{}", p.trim_matches('/'));
+        at == p || at.starts_with(&format!("{p}/"))
+    })
+}
+
 fn compare(
     ex: &Exchange,
     res: &http::Response,
@@ -316,6 +327,9 @@ pub fn replay_one(ex: &Exchange, corpus: &Corpus, opts: &Options, b: &mut Bindin
         Ok(res) => {
             outcome.actual_status = Some(res.status);
             compare(ex, &res, opts, b, &mut outcome.diffs);
+            outcome
+                .diffs
+                .retain(|d| !body_ignored(&d.at, &opts.ignore_body));
         }
         Err(e) => outcome.error = Some(e),
     }
