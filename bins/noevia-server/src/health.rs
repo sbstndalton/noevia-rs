@@ -2,7 +2,8 @@
 //! `{ready, version}`, no tenant or upstream detail.
 //!
 //! While Node still answers most routes, the front is ready only once Node is: `ready` is true
-//! when the upstream's own /api/ready says so (probed per call, 2 s bound). `version` follows
+//! when the upstream's own /api/ready says so (probed per call, 2 s bound); until then the
+//! answer is a 503 with `ready: false`. `version` follows
 //! version-resolve.cjs: dist/version.json, then STAMP_VERSION, then what Node reports (its
 //! package.json fallbacks), then "unknown". GET /api/health stays Node's: it is authenticated and
 //! probes the provider, the Diary sidecar and retrieval for the signed-in account.
@@ -75,11 +76,15 @@ pub async fn ready(upstream: &Upstream, local: Option<&str>) -> Response<Body> {
         .map(str::to_string)
         .or(upstream_version)
         .unwrap_or_else(|| "unknown".into());
-    reply::json(
-        StatusCode::OK,
-        &json!({ "ready": ready, "version": version }),
-        true,
-    )
+    // Node only ever answers this once it is listening, so a client never saw `ready: false` with
+    // a 200 from it; a front whose Node is not up yet answers 503 (the web client's
+    // checkApiCompatibility and the replayer read !ok as "not yet").
+    let status = if ready {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    reply::json(status, &json!({ "ready": ready, "version": version }), true)
 }
 
 #[cfg(test)]

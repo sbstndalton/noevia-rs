@@ -449,7 +449,7 @@ async fn request_body_cap() {
 }
 
 #[tokio::test]
-async fn node_down_is_a_502_and_not_ready() {
+async fn node_down_is_a_502_and_ready_is_a_503() {
     // A port nothing listens on.
     let free = TcpListener::bind("127.0.0.1:0")
         .await
@@ -462,7 +462,8 @@ async fn node_down_is_a_502_and_not_ready() {
     let (res, _c) = call(front, "GET", "/api/workspace", &[], b"").await;
     assert_eq!(res.status(), 502);
     let (res, _c) = call(front, "GET", "/api/ready", &[], b"").await;
-    assert_eq!(res.status(), 200);
+    assert_eq!(res.status(), 503);
+    assert_eq!(res.headers()["x-noevia-api"], "1");
     assert_eq!(text(res).await, r#"{"ready":false,"version":"unknown"}"#);
     // The bundle is still served.
     let (res, _c) = call(front, "GET", "/c/x", &[], b"").await;
