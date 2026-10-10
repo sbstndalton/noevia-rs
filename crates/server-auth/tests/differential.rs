@@ -144,17 +144,8 @@ fn request_verdicts_agree_with_node() {
     );
 }
 
-/// Review F1: first-run setup chose an address other than PUBLIC_ORIGIN. Node accepts the setup
-/// address until it restarts and PUBLIC_ORIGIN after; Rust must accept neither where either Node
-/// refuses, and (since both are ambiguous to it) exactly what both accept.
-#[test]
-fn setup_origin_never_wider_than_either_node() {
-    let f = fixtures();
-    let sc = &f["setupOrigin"];
-    assert_ne!(
-        sc["liveOrigin"], sc["restartedOrigin"],
-        "scenario lost its point"
-    );
+/// Rust's verdict on every origin of one setup scenario, as `(origin, rust, live, restarted)`.
+fn setup_verdicts(sc: &Value, origin_from_settings: bool) -> Vec<(String, bool, bool, bool)> {
     let mut db_sc = sc.clone();
     db_sc["db"]["rows"]
         .as_object_mut()
@@ -164,22 +155,75 @@ fn setup_origin_never_wider_than_either_node() {
     let built = build(&db_sc);
     let mut cfg_sc = sc.clone();
     cfg_sc["nativeClientAuth"] = Value::Bool(false);
-    let auth = Authenticator::new(config(&cfg_sc));
+    let mut cfg = config(&cfg_sc);
+    cfg.origin_from_settings = origin_from_settings;
+    let auth = Authenticator::new(cfg);
+    sc["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| {
+            let origin = c["origin"].as_str().unwrap();
+            let creds = Creds {
+                origin: (!origin.is_empty()).then(|| origin.to_string()),
+                method: "POST".to_string(),
+                ..Creds::default()
+            };
+            (
+                origin.to_string(),
+                built.store.read(|r| auth.origin_valid(r, &creds)).unwrap(),
+                c["live"].as_bool().unwrap(),
+                c["restarted"].as_bool().unwrap(),
+            )
+        })
+        .collect()
+}
+
+/// First-run setup chose an address (S) other than PUBLIC_ORIGIN (P). Since noevia#1254 setup also
+/// stores public_origin_admin = S, so Node's live and restarted origin agree (S) and Rust, which
+/// reads the admin row, must accept exactly what Node accepts.
+#[test]
+fn setup_origin_matches_node_now_that_setup_stores_the_admin_row() {
+    let f = fixtures();
+    let sc = &f["setupOrigin"];
+    assert_eq!(sc["liveOrigin"], sc["restartedOrigin"]);
+    assert_eq!(sc["liveOrigin"], "https://setup.example.test");
+    let rows = sc["db"]["rows"]["settings"].as_array().unwrap();
+    let setting = |k: &str| rows.iter().find(|r| r["key"] == k).map(|r| r["value"].clone());
+    assert_eq!(
+        setting("public_origin_admin"),
+        Some(Value::from("https://setup.example.test"))
+    );
+    let mut accepted = 0;
+    for (origin, got, live, restarted) in setup_verdicts(sc, false) {
+        assert_eq!(live, restarted, "origin {origin:?}: Node states diverge");
+        assert_eq!(got, live, "origin {origin:?}: Rust {got}, Node {live}");
+        accepted += usize::from(got);
+    }
+    assert!(accepted >= 3, "scenario accepts almost nothing ({accepted})");
+}
+
+/// Review F1, legacy state: a database set up before noevia#1254 has settings.public_origin = S, no
+/// public_origin_admin row, and PUBLIC_ORIGIN = P. Node accepts S until it restarts and P after;
+/// Rust must accept neither where either Node refuses, and (both being ambiguous to it) exactly
+/// what both accept.
+#[test]
+fn legacy_setup_origin_never_wider_than_either_node() {
+    let f = fixtures();
+    let sc = &f["legacySetupOrigin"];
+    assert_ne!(
+        sc["liveOrigin"], sc["restartedOrigin"],
+        "scenario lost its point"
+    );
+    let rows = sc["db"]["rows"]["settings"].as_array().unwrap();
+    assert!(
+        rows.iter().all(|r| r["key"] != "public_origin_admin"),
+        "legacy scenario must have no public_origin_admin row"
+    );
     let (mut live_only, mut restarted_only) = (0, 0);
-    for c in sc["cases"].as_array().unwrap() {
-        let origin = c["origin"].as_str().unwrap();
-        let (live, restarted) = (
-            c["live"].as_bool().unwrap(),
-            c["restarted"].as_bool().unwrap(),
-        );
+    for (origin, got, live, restarted) in setup_verdicts(sc, false) {
         live_only += usize::from(live && !restarted);
         restarted_only += usize::from(restarted && !live);
-        let creds = Creds {
-            origin: (!origin.is_empty()).then(|| origin.to_string()),
-            method: "POST".to_string(),
-            ..Creds::default()
-        };
-        let got = built.store.read(|r| auth.origin_valid(r, &creds)).unwrap();
         assert_eq!(
             got,
             live && restarted,
@@ -495,31 +539,14 @@ fn upkeep_writes_agree_with_node() {
 
 /// M3: with NOEVIA_RUST_AUTH on, Node re-reads the address on every use (core auth.cjs
 /// refreshOrigin), which is exactly what a restarted Node does; Rust then agrees with that Node
-/// on every origin, with no ambiguous case left.
+/// on every origin, with no ambiguous case left. Holds for the legacy state (no admin row) and for
+/// the current one.
 #[test]
 fn with_rust_auth_the_origin_is_the_restart_rule() {
     let f = fixtures();
-    let sc = &f["setupOrigin"];
-    let mut db_sc = sc.clone();
-    db_sc["db"]["rows"]
-        .as_object_mut()
-        .unwrap()
-        .entry("settings")
-        .or_insert(Value::Array(vec![]));
-    let built = build(&db_sc);
-    let mut cfg_sc = sc.clone();
-    cfg_sc["nativeClientAuth"] = Value::Bool(false);
-    let mut cfg = config(&cfg_sc);
-    cfg.origin_from_settings = true;
-    let auth = Authenticator::new(cfg);
-    for c in sc["cases"].as_array().unwrap() {
-        let origin = c["origin"].as_str().unwrap();
-        let creds = Creds {
-            origin: (!origin.is_empty()).then(|| origin.to_string()),
-            method: "POST".to_string(),
-            ..Creds::default()
-        };
-        let got = built.store.read(|r| auth.origin_valid(r, &creds)).unwrap();
-        assert_eq!(got, c["restarted"].as_bool().unwrap(), "origin {origin:?}");
+    for key in ["legacySetupOrigin", "setupOrigin"] {
+        for (origin, got, _, restarted) in setup_verdicts(&f[key], true) {
+            assert_eq!(got, restarted, "{key}: origin {origin:?}");
+        }
     }
 }
