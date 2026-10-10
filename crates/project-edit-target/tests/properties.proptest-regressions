@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc e5fd951568ae6e1b7a4c50e43e84929b269f596ea2d3c12c26525cb86456c1d8 # shrinks to (pf, rf, connected, files, i) = (Some("noevia projects/A"), Some(""), true, [F { name: Some("noevia projects/A/Text/y.yaml"), source: None, attachment: Some((Some("partial"), Some("Documents"))), document: false }, F { name: Some("y.yaml"), source: None, attachment: Some((Some("stored"), Some("Text"))), document: false }], 1)

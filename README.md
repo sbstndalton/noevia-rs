@@ -184,6 +184,15 @@ one slice at a time.
   `0x`/`0o`/`0b` number wider than 53 bits are undecided (refused). In `dav-parse.wasm` as
   `llamacpp_presets`. Table from noevia-core (`node tools/gen-llamacpp-presets-fixtures.cjs`),
   copied byte-for-byte to `crates/llamacpp-presets/tests/fixtures/llamacpp-presets.v1.json`.
+- `crates/project-edit-target`: noevia-core's project-edit-target.cjs `planEdit`: which stored
+  file a project edit tool (`project_append_file`, `project_replace_text`) may change, the plain
+  name the write path gets and the stored path it writes (the approval card's pinned target,
+  noevia#648, #687; a plain-named file in a project with connected storage moves to
+  `<folder>/Text/<name>`). The host never allows more with it (PROJECT_EDIT_TARGET_IMPL=wasm): an
+  edit goes ahead only when both give the identical plan. Stricter only past the 8 MiB input cap or
+  the work budget. In `dav-parse.wasm` as `project_edit_target`. Table from noevia-core
+  (`node tools/gen-project-edit-target-fixtures.cjs`), copied byte-for-byte to
+  `crates/project-edit-target/tests/fixtures/project-edit-target.v1.json`.
 - `crates/egress` + `bins/egress-proxy` (sbstndalton/noevia#926): deny-by-default egress
   proxy for coding tasks (port of `code-egress.cjs` + `ssrf.cjs` `isPrivateIp`).
   `egress-proxy --grants <file.json> --listen 127.0.0.1:<port>`. Its differential corpus is
