@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 use proptest::prelude::*;
 use serde_json::{json, Value};
 use server_usage::summary::{summarize, Clock, Usage};
@@ -29,12 +34,18 @@ fn pinned_node_reporting() {
     assert_eq!(
         f["core"],
         std::env::var("NOEVIA_USAGE_CORE_SHA")
-            .unwrap_or_else(|_| "2975ee7d3204035598c99ddf8acfe17d42e03067".into())
+            .unwrap_or_else(|_| "b068daa7454de0a2f113571d4e56ee464f6f7470".into())
     );
-    for c in f["cases"].as_array().unwrap() {
+    let ordered: server_usage::input::Input = serde_json::from_str(&text).unwrap();
+    let server_usage::input::Input::Array(cases) = ordered.get("cases").unwrap() else {
+        panic!("cases")
+    };
+    for (c, input) in f["cases"].as_array().unwrap().iter().zip(cases) {
         let clock = Clock::new(c["tz"].as_str().unwrap(), c["locale"].as_str().unwrap()).unwrap();
         let mut usage = Usage::default();
-        usage.merge(&c["store"], false).unwrap();
+        usage
+            .merge_input(input.get("store").unwrap(), false)
+            .unwrap();
         let got = summarize(
             &usage,
             &clock,

@@ -16,3 +16,5 @@ pub enum Fault {
     Database,
 }
 pub mod read;
+
+pub mod input;

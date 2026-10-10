@@ -52,18 +52,18 @@ fn ordered<T>(map: &IndexMap<String, T>) -> Vec<(&String, &T)> {
     });
     out
 }
-fn entries(v: &Value) -> Vec<(String, Value)> {
+fn entries(v: &crate::input::Input) -> Vec<(String, crate::input::Input)> {
     let mut out: Vec<_> = match v {
-        Value::Object(m) => m.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-        Value::Array(a) => a
+        crate::input::Input::Object(m) => m.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+        crate::input::Input::Array(a) => a
             .iter()
             .enumerate()
             .map(|(i, v)| (i.to_string(), v.clone()))
             .collect(),
-        Value::String(s) => s
+        crate::input::Input::Scalar(Value::String(s)) => s
             .encode_utf16()
             .enumerate()
-            .map(|(i, _)| (i.to_string(), Value::Null))
+            .map(|(i, _)| (i.to_string(), crate::input::Input::Scalar(Value::Null)))
             .collect(),
         _ => Vec::new(),
     };
@@ -74,6 +74,14 @@ fn entries(v: &Value) -> Vec<(String, Value)> {
         _ => Ordering::Equal,
     });
     out
+}
+fn input_prop(v: &crate::input::Input, k: &str) -> crate::input::Input {
+    match v {
+        crate::input::Input::Object(m) => m.get(k).cloned(),
+        crate::input::Input::Array(a) => index(k).and_then(|i| a.get(i as usize)).cloned(),
+        _ => None,
+    }
+    .unwrap_or(crate::input::Input::Scalar(Value::Null))
 }
 fn set(v: &mut Value, k: &str, x: Value) {
     if let Some(m) = v.as_object_mut() {
@@ -129,22 +137,35 @@ impl Usage {
     /// Aggregate's mergeUsage discards non-date keys/non-object buckets. Own reads preserve
     /// direct bucket lookup semantics; all dates emitted below are valid civil dates.
     pub fn merge(&mut self, store: &Value, aggregate: bool) -> Result<(), Fault> {
-        for (day, v) in entries(&prop(store, "days")) {
-            if aggregate && (!day_shape(&day) || !matches!(v, Value::Object(_) | Value::Array(_))) {
+        self.merge_input(&crate::input::Input::from_value(store), aggregate)
+    }
+    pub fn merge_input(
+        &mut self,
+        store: &crate::input::Input,
+        aggregate: bool,
+    ) -> Result<(), Fault> {
+        for (day, v) in entries(&input_prop(store, "days")) {
+            if aggregate
+                && (!day_shape(&day)
+                    || !matches!(
+                        v,
+                        crate::input::Input::Object(_) | crate::input::Input::Array(_)
+                    ))
+            {
                 continue;
             }
             let target = slot(&mut self.days, day, &mut self.keys)?;
-            target.totals.add(Totals::from(&v));
-            for (k, v) in entries(&prop(&v, "models")) {
-                slot(&mut target.models, k, &mut self.keys)?.add(Totals::from(&v));
+            target.totals.add(Totals::from(&v.value()));
+            for (k, v) in entries(&input_prop(&v, "models")) {
+                slot(&mut target.models, k, &mut self.keys)?.add(Totals::from(&v.value()));
             }
-            for (k, v) in entries(&prop(&v, "tools")) {
+            for (k, v) in entries(&input_prop(&v, "tools")) {
                 let n = slot(&mut target.tools, k, &mut self.keys)?;
-                *n = (*n + count(&v)).min(SAFE_INTEGER);
+                *n = (*n + count(&v.value())).min(SAFE_INTEGER);
             }
-            for (k, v) in entries(&prop(&v, "hours")) {
+            for (k, v) in entries(&input_prop(&v, "hours")) {
                 let n = slot(&mut target.hours, k, &mut self.keys)?;
-                *n = (*n + count(&v)).min(SAFE_INTEGER);
+                *n = (*n + count(&v.value())).min(SAFE_INTEGER);
             }
         }
         Ok(())
@@ -310,19 +331,9 @@ pub fn summarize(
             t
         })
         .collect();
-    // Preserve Node's expression/evaluation order, including f64 subtraction rounding.
-    model_rows.sort_by(|a, b| {
-        let d = count(&prop(b, "input")) + count(&prop(b, "output"))
-            - count(&prop(a, "input"))
-            - count(&prop(a, "output"));
-        if d < 0.0 {
-            Ordering::Less
-        } else if d > 0.0 {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        }
-    });
+    // #1286: compare combined weights, preserving insertion order for equal weights.
+    model_rows.sort_by(model_compare);
+
     let collator = Collator::try_new(clock.locale.clone().into(), CollatorOptions::default())
         .map_err(|_| Fault::Clock)?;
     let mut tool_rows: Vec<_> = ordered(&tools)
@@ -355,4 +366,28 @@ pub fn summarize(
     Ok(
         json!({"days":days,"allTime":total(retention),"last7":total(7),"last30":total(30),"activeDays":buckets.iter().filter(|b|b.replies>0.0).count(),"currentStreak":streak,"longestStreak":longest,"models":model_rows,"tools":tool_rows,"hours":hour_rows,"peakHour":peak,"retentionDays":retention,"timeZone":clock.timezone}),
     )
+}
+
+fn model_compare(a: &Value, b: &Value) -> Ordering {
+    let aw = count(&prop(a, "input")) + count(&prop(a, "output"));
+    let bw = count(&prop(b, "input")) + count(&prop(b, "output"));
+    bw.partial_cmp(&aw).unwrap_or(Ordering::Equal)
+}
+#[cfg(test)]
+mod sort_properties {
+    use super::*;
+    use proptest::prelude::*;
+    proptest! {
+        #[test]
+        fn model_comparator_is_reflexive_and_antisymmetric(ai in 0f64..SAFE_INTEGER, ao in 0f64..SAFE_INTEGER, bi in 0f64..SAFE_INTEGER, bo in 0f64..SAFE_INTEGER) {
+            let a=json!({"input":ai,"output":ao}); let b=json!({"input":bi,"output":bo});
+            prop_assert_eq!(model_compare(&a,&a),Ordering::Equal);
+            prop_assert_eq!(model_compare(&a,&b),model_compare(&b,&a).reverse());
+        }
+    }
+    #[test]
+    fn fractional_safe_integer_self_comparison_is_equal() {
+        let row = json!({"input":SAFE_INTEGER,"output":0.1});
+        assert_eq!(model_compare(&row, &row), Ordering::Equal);
+    }
 }

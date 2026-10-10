@@ -11,6 +11,7 @@ const stores=[{days:{}},{days:{'2026-10-10':{input:1.25,output:2.75,replies:0.5,
  {days:{'2026-10-10':{input:1e99,output:-1,replies:'5',models:{huge:{input:1e99,output:1},negative:{input:-1},fraction:{input:0.1,output:0.2}},tools:{negative:-1,bad:'5',fine:1.1},hours:{24:10,'01':5,23:0.1}}}},
  {days:Object.fromEntries(['2025-10-10','2025-10-11','2026-10-05','2026-10-06','2026-10-07','2026-10-09','bad','2026-99-99'].map(day=>[day,{input:2,replies:1,models:{day:{input:2}}}]))},
  {days:{'2011-12-31':{replies:1},'2024-03-10':{replies:1},'2024-11-03':{replies:2}}}];
+stores.push(JSON.parse(fs.readFileSync(path.join(__dirname,'../crates/server-usage/tests/fixtures/model-sort.json'),'utf8')));
 const cases=[];
 for(const tz of ['UTC','America/New_York','Europe/Oslo','Pacific/Apia'])for(const locale of ['en-US','sv-SE','de-DE'])for(const now of ['2026-10-10T01:00:00Z','2024-03-10T07:30:00Z','2024-11-03T05:30:00Z','2011-12-31T01:00:00Z'])for(const [i,store]of stores.entries()){
  const input={store,now,retentionDays:i===3?365:30};

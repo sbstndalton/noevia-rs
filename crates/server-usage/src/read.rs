@@ -1,7 +1,6 @@
 //! Bounded capability-relative reads. Never follow user/file symlinks; no usage writes.
 use crate::{summary::Usage, Fault, ACCOUNT_CAP, FILE_CAP, TOTAL_CAP};
 use rustix::fs::{open, openat, Mode, OFlags};
-use serde_json::Value;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -13,7 +12,7 @@ fn valid_user(id: &str) -> bool {
 enum ReadResult {
     Missing,
     Invalid(u64),
-    Value(Value, u64),
+    Value(crate::input::Input, u64),
 }
 fn read(data: &Path, uid: &str) -> Result<ReadResult, Fault> {
     if !valid_user(uid) {
@@ -40,7 +39,7 @@ fn read(data: &Path, uid: &str) -> Result<ReadResult, Fault> {
         let length = bytes.len() as u64;
         // Node readFile('utf8') replaces invalid UTF-8; use the same decoding before JSON.
         let text = String::from_utf8_lossy(&bytes);
-        let value = serde_json::from_str::<Value>(&text).ok();
+        let value = serde_json::from_str::<crate::input::Input>(&text).ok();
         Ok(match value {
             Some(v) => ReadResult::Value(v, length),
             None => ReadResult::Invalid(length),
@@ -55,8 +54,11 @@ fn read(data: &Path, uid: &str) -> Result<ReadResult, Fault> {
 pub fn own(data: &Path, uid: &str) -> Result<Usage, Fault> {
     let mut out = Usage::default();
     if let ReadResult::Value(v, _) = read(data, uid)? {
-        if matches!(v.get("days"), Some(Value::Object(_) | Value::Array(_))) {
-            out.merge(&v, false)?;
+        if matches!(
+            v.get("days"),
+            Some(crate::input::Input::Object(_) | crate::input::Input::Array(_))
+        ) {
+            out.merge_input(&v, false)?;
         }
     }
     Ok(out)
@@ -124,11 +126,11 @@ impl AggregateReader {
                     if total > TOTAL_CAP {
                         return Err(Fault::Limit);
                     }
-                    if !matches!(v.get("days"), Some(Value::Object(_))) {
+                    if !matches!(v.get("days"), Some(crate::input::Input::Object(_))) {
                         value.unreadable += 1;
                         continue;
                     }
-                    value.store.merge(&v, true)?;
+                    value.store.merge_input(&v, true)?;
                 }
             }
         }
