@@ -1,0 +1,64 @@
+{
+  "v": 1,
+  "seq": 35,
+  "request": {
+    "method": "GET",
+    "path": "/api/chats/<id:8>/context-window",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "meter": {
+          "model": "synthetic-chat-model",
+          "limit": 8192,
+          "limitSource": "Conservative fallback; backend limit unavailable",
+          "estimated": true,
+          "used": 17119,
+          "reserve": 2048,
+          "safety": 1229,
+          "parts": [
+            {
+              "name": "Messages & summary",
+              "tokens": 16496
+            },
+            {
+              "name": "Instructions, memory & sources",
+              "tokens": 279
+            },
+            {
+              "name": "Tools",
+              "tokens": 344
+            }
+          ],
+          "free": 0,
+          "threshold": 4915,
+          "updatedAt": "<ts>",
+          "historyCount": 1,
+          "compactedAt": null,
+          "covered": 0
+        }
+      }
+    }
+  }
+}

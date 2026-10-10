@@ -1,0 +1,92 @@
+{
+  "v": 1,
+  "seq": 31,
+  "request": {
+    "method": "GET",
+    "path": "/api/workspace",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "projects": [
+          {
+            "id": "<id:3>",
+            "name": "Synthetic project",
+            "goal": "Contract corpus",
+            "instructions": "Answer very briefly.",
+            "pinned": false,
+            "archived": false,
+            "sourceFolders": [],
+            "memories": [],
+            "files": [
+              {
+                "name": "notes.md",
+                "content": "# Synthetic notes\n\nAlpha beta gamma."
+              }
+            ],
+            "model": "synthetic-chat-model",
+            "routing": "auto",
+            "modes": [
+              "chat"
+            ],
+            "toolboxes": [
+              "core"
+            ],
+            "chats": [],
+            "createdAt": "<ts>",
+            "updatedAt": "<ts>",
+            "instructionSkills": {},
+            "assets": [
+              {
+                "id": "<id:4>",
+                "name": "pixel.png",
+                "mime": "image/png",
+                "bytes": 70
+              },
+              {
+                "id": "<id:5>",
+                "name": "loose.gif",
+                "mime": "image/gif",
+                "bytes": 12
+              },
+              {
+                "id": "<id:6>",
+                "name": "a,,7",
+                "mime": "image/webp",
+                "bytes": 70
+              },
+              {
+                "id": "<id:7>",
+                "name": "two-byte.png",
+                "mime": "image/png",
+                "bytes": 4
+              }
+            ]
+          }
+        ],
+        "freeChats": []
+      }
+    }
+  }
+}

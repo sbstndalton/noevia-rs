@@ -1,22 +1,21 @@
 {
   "v": 1,
-  "seq": 80,
+  "seq": 96,
   "request": {
     "method": "POST",
-    "path": "/api/auth/login/password",
+    "path": "/api/auth/logout",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
       "content-type": "application/json",
+      "cookie": "cowork_session=<secret:24>; cowork_csrf=<secret:25>",
       "origin": "<origin>",
-      "user-agent": "node"
+      "user-agent": "node",
+      "x-csrf-token": "<secret:25>"
     },
     "body": {
       "kind": "json",
-      "json": {
-        "username": "synthetic-admin",
-        "password": "<secret:2>"
-      }
+      "json": {}
     }
   },
   "response": {
@@ -27,8 +26,8 @@
       "content-type": "application/json",
       "referrer-policy": "same-origin",
       "set-cookie": [
-        "cowork_session=<secret:22>; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
-        "cowork_csrf=<secret:23>; Path=/; SameSite=Lax; Max-Age=2592000"
+        "cowork_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
+        "cowork_csrf=; Path=/; SameSite=Lax; Max-Age=0"
       ],
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
@@ -37,16 +36,7 @@
     "body": {
       "kind": "json",
       "json": {
-        "user": {
-          "id": "<id:1>",
-          "username": "synthetic-admin",
-          "displayName": "Synthetic Admin Renamed",
-          "role": "admin",
-          "disabled": false,
-          "diaryEnabled": false,
-          "onboarded": true
-        },
-        "csrfToken": "<secret:23>"
+        "ok": true
       }
     }
   }

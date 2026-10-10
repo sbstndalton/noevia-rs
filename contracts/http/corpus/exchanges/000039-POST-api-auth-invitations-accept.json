@@ -1,9 +1,9 @@
 {
   "v": 1,
-  "seq": 80,
+  "seq": 39,
   "request": {
     "method": "POST",
-    "path": "/api/auth/login/password",
+    "path": "/api/auth/invitations/accept",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -14,21 +14,24 @@
     "body": {
       "kind": "json",
       "json": {
-        "username": "synthetic-admin",
-        "password": "<secret:2>"
+        "token": "<secret:7>",
+        "username": "synthetic-member",
+        "displayName": "Synthetic Member",
+        "password": "<secret:10>",
+        "diaryEnabled": false
       }
     }
   },
   "response": {
-    "status": 200,
+    "status": 201,
     "headers": {
       "cache-control": "no-store",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       "content-type": "application/json",
       "referrer-policy": "same-origin",
       "set-cookie": [
-        "cowork_session=<secret:22>; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
-        "cowork_csrf=<secret:23>; Path=/; SameSite=Lax; Max-Age=2592000"
+        "cowork_session=<secret:8>; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
+        "cowork_csrf=<secret:9>; Path=/; SameSite=Lax; Max-Age=2592000"
       ],
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
@@ -38,15 +41,15 @@
       "kind": "json",
       "json": {
         "user": {
-          "id": "<id:1>",
-          "username": "synthetic-admin",
-          "displayName": "Synthetic Admin Renamed",
-          "role": "admin",
+          "id": "<id:10>",
+          "username": "synthetic-member",
+          "displayName": "Synthetic Member",
+          "role": "member",
           "disabled": false,
           "diaryEnabled": false,
-          "onboarded": true
+          "onboarded": false
         },
-        "csrfToken": "<secret:23>"
+        "csrfToken": "<secret:9>"
       }
     }
   }

@@ -1,21 +1,24 @@
 {
   "v": 1,
-  "seq": 80,
+  "seq": 23,
   "request": {
     "method": "POST",
-    "path": "/api/auth/login/password",
+    "path": "/api/projects/<id:3>/assets",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
       "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
       "origin": "<origin>",
-      "user-agent": "node"
+      "user-agent": "node",
+      "x-csrf-token": "<secret:4>"
     },
     "body": {
       "kind": "json",
       "json": {
-        "username": "synthetic-admin",
-        "password": "<secret:2>"
+        "name": "loose.gif",
+        "mime": "image/gif",
+        "dataBase64": "R0lG OD lh\nAQAB!AAAA=ignored"
       }
     }
   },
@@ -26,10 +29,6 @@
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       "content-type": "application/json",
       "referrer-policy": "same-origin",
-      "set-cookie": [
-        "cowork_session=<secret:22>; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
-        "cowork_csrf=<secret:23>; Path=/; SameSite=Lax; Max-Age=2592000"
-      ],
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
       "x-noevia-api": "1"
@@ -37,16 +36,12 @@
     "body": {
       "kind": "json",
       "json": {
-        "user": {
-          "id": "<id:1>",
-          "username": "synthetic-admin",
-          "displayName": "Synthetic Admin Renamed",
-          "role": "admin",
-          "disabled": false,
-          "diaryEnabled": false,
-          "onboarded": true
-        },
-        "csrfToken": "<secret:23>"
+        "asset": {
+          "id": "<id:5>",
+          "name": "loose.gif",
+          "mime": "image/gif",
+          "bytes": 12
+        }
       }
     }
   }

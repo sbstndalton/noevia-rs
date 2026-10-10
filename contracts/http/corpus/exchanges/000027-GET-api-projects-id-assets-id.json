@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "seq": 27,
+  "request": {
+    "method": "GET",
+    "path": "/api/projects/<id:3>/assets/<id:4>",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "private, max-age=86400",
+      "content-security-policy": "default-src 'none'; sandbox",
+      "content-type": "image/png",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "bytes",
+      "length": 70
+    }
+  }
+}
