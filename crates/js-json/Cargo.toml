@@ -1,0 +1,16 @@
+[package]
+name = "js-json"
+version = "0.1.0"
+description = "JSON with JavaScript's semantics for ports of Node handlers: JSON.parse into ordered values, JSON.stringify bytes, String(), truthiness"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = "1"
+serde_json = "1"
+sandbox-bridge = { path = "../sandbox-bridge" }

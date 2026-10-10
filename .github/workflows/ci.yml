@@ -279,6 +279,44 @@ jobs:
           name: sandbox-bridge-wasm
           path: ${{ runner.temp }}/a.wasm
 
+  passkey-compat:
+    # Full-Rust migration M3: passkeys registered under Node must sign in under Rust and the
+    # reverse. tools/gen-passkey-fixtures.cjs builds registrations and assertions with a software
+    # authenticator and has noevia-core's own @simplewebauthn/server v14 (at contracts/http/core.ref)
+    # verify each; crates/passkey must reach every verdict, store exactly what auth.cjs stores and
+    # return the same counter. Keys are random per run, so the test runs on the fresh output.
+    name: Passkeys verify like @simplewebauthn
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Read the pinned core ref
+        id: ref
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/http/core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::contracts/http/core.ref is not a 40-char SHA"; exit 1; }
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.ref.outputs.sha }}
+          path: core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci --no-fund --no-audit
+        working-directory: core/server
+      - name: Generate registrations and assertions with @simplewebauthn
+        run: NOEVIA_CORE_CHECKOUT="$PWD/core" node tools/gen-passkey-fixtures.cjs > "$RUNNER_TEMP/simplewebauthn-v14.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: passkey-fixture
+          path: ${{ runner.temp }}/simplewebauthn-v14.json
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Rust agrees with @simplewebauthn on the fresh output
+        run: NOEVIA_PASSKEY_FIXTURE="$RUNNER_TEMP/simplewebauthn-v14.json" cargo test --locked -p passkey --test compat
+
   auth-differential:
     # Full-Rust migration M2: crates/server-auth must give Node's verdicts. tools/gen-auth-fixtures.cjs
     # runs noevia-core's own auth code (at contracts/http/core.ref) over synthetic databases and
