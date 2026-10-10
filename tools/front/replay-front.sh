@@ -16,7 +16,14 @@ legacy=$((port + 1000))
 # front, which answers sign-in itself with NOEVIA_RUST_AUTH=1 (M3; serve.cjs then runs Node as
 # behind that front: read-only for the account tables).
 origin="${PUBLIC_ORIGIN:-http://127.0.0.1:$port}"
-UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" \
+# Like build/web-supervisor.sh: Node's write guard is confirmed only by a front that lists rust-auth.
+unset NOEVIA_RUST_AUTH_CONFIRMED
+confirmed=""
+if [ "${NOEVIA_RUST_AUTH:-}" = 1 ]; then
+  "$front" --features | grep -qx rust-auth || { echo "replay-front: $front has no rust-auth" >&2; exit 2; }
+  confirmed=1
+fi
+UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" \
   node "$core/tools/contract-corpus/serve.cjs" &
 node_pid=$!
 PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" "$front" &

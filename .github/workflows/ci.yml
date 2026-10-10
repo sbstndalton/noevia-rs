@@ -269,13 +269,14 @@ jobs:
             --expect-state "$RUNNER_TEMP/node-state.json"
       - name: "Negative control: Node alone with the switch on refuses the account writes"
         # Proves the guard engaged in the run above: without the front, sign-in and setup must fail
-        # with 503 (core server/rust-auth.cjs), so the clean replay was the front's work.
+        # with 503 (core server/rust-auth.cjs), so the clean replay was the front's work. The
+        # confirmation is what the supervisor (or replay-front.sh) gives Node after checking the front.
         run: |
           set -uo pipefail
           if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
               --ignore-body hours --ignore-body peakHour/hour \
               --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \
-              --server-cmd "exec env NOEVIA_RUST_AUTH=1 node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+              --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CONFIRMED=1 node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
               --report "$RUNNER_TEMP/control-report.json"; then
             echo "::error::Node with NOEVIA_RUST_AUTH=1 replayed clean: the single-writer guard did not engage"; exit 1
           fi
