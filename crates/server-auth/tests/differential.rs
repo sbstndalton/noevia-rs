@@ -189,7 +189,11 @@ fn setup_origin_matches_node_now_that_setup_stores_the_admin_row() {
     assert_eq!(sc["liveOrigin"], sc["restartedOrigin"]);
     assert_eq!(sc["liveOrigin"], "https://setup.example.test");
     let rows = sc["db"]["rows"]["settings"].as_array().unwrap();
-    let setting = |k: &str| rows.iter().find(|r| r["key"] == k).map(|r| r["value"].clone());
+    let setting = |k: &str| {
+        rows.iter()
+            .find(|r| r["key"] == k)
+            .map(|r| r["value"].clone())
+    };
     assert_eq!(
         setting("public_origin_admin"),
         Some(Value::from("https://setup.example.test"))
@@ -200,7 +204,10 @@ fn setup_origin_matches_node_now_that_setup_stores_the_admin_row() {
         assert_eq!(got, live, "origin {origin:?}: Rust {got}, Node {live}");
         accepted += usize::from(got);
     }
-    assert!(accepted >= 3, "scenario accepts almost nothing ({accepted})");
+    assert!(
+        accepted >= 3,
+        "scenario accepts almost nothing ({accepted})"
+    );
 }
 
 /// Review F1, legacy state: a database set up before noevia#1254 has settings.public_origin = S, no
