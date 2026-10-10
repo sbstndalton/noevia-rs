@@ -1,7 +1,6 @@
 //! noevia-server binary: reads the environment (see config.rs), listens on UI_HOST:UI_PORT.
 
-use noevia_server::{config::Config, router, App};
-use std::net::SocketAddr;
+use noevia_server::{config::Config, serve, App};
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -32,6 +31,13 @@ async fn terminated() {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // build/web-supervisor.sh asks before choosing this front (sbstndalton/noevia#1246).
+    if std::env::args().nth(1).as_deref() == Some("--features") {
+        for f in noevia_server::FEATURES {
+            println!("{f}");
+        }
+        return ExitCode::SUCCESS;
+    }
     let config = match Config::from_lookup(|k| std::env::var(k).ok()) {
         Ok(c) => c,
         Err(e) => {
@@ -64,10 +70,9 @@ async fn main() -> ExitCode {
     );
     let app = App::new(config);
     app.statics.warm();
-    let service = router(app).into_make_service_with_connect_info::<SocketAddr>();
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let mut stop_wait = stop_rx.clone();
-    let server = axum::serve(listener, service).with_graceful_shutdown(async move {
+    let server = serve::serve(listener, app, serve::Limits::default(), async move {
         let mut rx = stop_rx;
         let _ = rx.wait_for(|s| *s).await;
     });
@@ -80,13 +85,7 @@ async fn main() -> ExitCode {
         tokio::time::sleep(DRAIN).await;
     };
     tokio::select! {
-        r = server => match r {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("noevia-server: {e}");
-                ExitCode::from(1)
-            }
-        },
+        () = server => ExitCode::SUCCESS,
         _ = drained => ExitCode::SUCCESS,
     }
 }

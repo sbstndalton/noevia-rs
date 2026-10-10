@@ -2,7 +2,8 @@
 //! UI_HOST (default 0.0.0.0), UI_PORT (default 8021), TRUST_PROXY (exactly "true" enables it),
 //! STAMP_VERSION (the /api/ready version fallback). New keys: NOEVIA_LEGACY_UPSTREAM (the Node
 //! server, loopback http only) and NOEVIA_WEB_DIST (the built web client, default ./dist, which
-//! is /app/dist in the web image, the directory Node serves).
+//! is /app/dist in the web image, the directory Node serves). COWORK_CODE_NET_ADDR as in core
+//! code-net-guard.cjs (see code_net.rs; a malformed value stops startup).
 
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -15,6 +16,8 @@ pub struct Config {
     pub upstream: Upstream,
     pub dist: PathBuf,
     pub stamp_version: Option<String>,
+    /// COWORK_CODE_NET_ADDR, parsed as core code-net-guard.cjs does (empty: no guard).
+    pub code_net: crate::code_net::CodeNetSpec,
 }
 
 /// Where Node listens. Only `http://<loopback ip>:<port>` is accepted: the proxy forwards session
@@ -93,6 +96,9 @@ impl Config {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("dist")),
             stamp_version: get("STAMP_VERSION").filter(|v| !v.is_empty()),
+            code_net: crate::code_net::CodeNetSpec::parse(
+                &get("COWORK_CODE_NET_ADDR").unwrap_or_default(),
+            )?,
         })
     }
 }

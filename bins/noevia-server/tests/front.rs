@@ -1,6 +1,6 @@
 //! End-to-end tests of the front against a fake Node upstream: route ownership, streaming (SSE
 //! flushes per event), client-abort propagation, header and X-Forwarded-For rules, the body cap,
-//! the static bundle and /api/ready.
+//! the static bundle, /api/ready, the code-network guard and the connection timeouts.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use bytes::Bytes;
@@ -9,11 +9,13 @@ use hyper::body::Incoming;
 use hyper::{Request, Response};
 use noevia_server::config::Config;
 use noevia_server::routes::{Owner, ROUTES};
+use noevia_server::serve::{serve, Limits};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
 
@@ -125,21 +127,33 @@ fn dist_dir(tag: &str) -> PathBuf {
 }
 
 async fn start_front(upstream: SocketAddr, dist: &Path, trust_proxy: bool) -> SocketAddr {
+    let extra: &[(&str, &str)] = if trust_proxy {
+        &[("TRUST_PROXY", "true")]
+    } else {
+        &[]
+    };
+    start_front_with(upstream, dist, extra, Limits::default(), "127.0.0.1").await
+}
+
+async fn start_front_with(
+    upstream: SocketAddr,
+    dist: &Path,
+    extra: &[(&str, &str)],
+    limits: Limits,
+    bind: &str,
+) -> SocketAddr {
     let mut env = HashMap::new();
     env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{upstream}"));
     env.insert("UI_PORT", "1".to_string());
     env.insert("NOEVIA_WEB_DIST", dist.display().to_string());
-    if trust_proxy {
-        env.insert("TRUST_PROXY", "true".to_string());
+    for (k, v) in extra {
+        env.insert(k, v.to_string());
     }
     let config = Config::from_lookup(|k| env.get(k).cloned()).unwrap();
     let app = noevia_server::App::new(config);
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = TcpListener::bind((bind, 0)).await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let svc = noevia_server::router(app).into_make_service_with_connect_info::<SocketAddr>();
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, svc).await;
-    });
+    tokio::spawn(serve(listener, app, limits, std::future::pending()));
     addr
 }
 
@@ -628,4 +642,234 @@ async fn missing_bundle_is_a_read_error_like_node() {
     assert_eq!(text(res).await, r#"{"error":"read error"}"#);
     let (res, _c) = call(front, "GET", "/nope", &[], b"").await;
     assert_eq!(res.status(), 404);
+}
+
+/// A raw HTTP/1.1 exchange: the bytes the front sent back before closing (or `None` if it
+/// kept the connection open past `within`).
+async fn raw(addr: SocketAddr, send: &[u8], within: Duration) -> Option<Vec<u8>> {
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    s.write_all(send).await.unwrap();
+    let mut out = Vec::new();
+    tokio::time::timeout(within, async {
+        let mut buf = [0u8; 4096];
+        loop {
+            match s.read(&mut buf).await {
+                Ok(0) | Err(_) => return,
+                Ok(n) => out.extend_from_slice(&buf[..n]),
+            }
+        }
+    })
+    .await
+    .ok()
+    .map(|()| out)
+}
+
+fn status_of(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .to_string()
+}
+
+#[tokio::test]
+async fn code_network_requests_get_a_bare_403_before_any_dispatch() {
+    let (up, up_addr) = start_upstream().await;
+    let dist = dist_dir("codenet");
+    let front = start_front_with(
+        up_addr,
+        &dist,
+        &[("COWORK_CODE_NET_ADDR", "127.0.0.2")],
+        Limits::default(),
+        "0.0.0.0",
+    )
+    .await;
+    let port = front.port();
+    let lo1 = SocketAddr::from(([127, 0, 0, 1], port));
+    let lo2 = SocketAddr::from(([127, 0, 0, 2], port));
+
+    // Not the guarded address: proxied, static and ready as usual.
+    let (res, _c) = call(lo1, "GET", "/api/whoami", &[], b"").await;
+    assert_eq!(res.headers().get("x-upstream").unwrap(), "1");
+    let (res, _c) = call(lo1, "GET", "/", &[], b"").await;
+    assert_eq!(res.status(), 200);
+    assert_eq!(up.hits.lock().unwrap().as_slice(), ["GET /api/whoami"]);
+
+    // The same refusal where 127.0.0.1 itself is the guarded address (runs on every OS).
+    let guarded_lo1 = start_front_with(
+        up_addr,
+        &dist,
+        &[("COWORK_CODE_NET_ADDR", "127.0.0.1")],
+        Limits::default(),
+        "127.0.0.1",
+    )
+    .await;
+    let (res, _c) = call(guarded_lo1, "GET", "/api/whoami", &[], b"").await;
+    assert_eq!(res.status(), 403);
+    assert_eq!(up.hits.lock().unwrap().as_slice(), ["GET /api/whoami"]);
+
+    // 127.0.0.2 needs the whole of 127/8 on loopback (Linux, CI); macOS only has 127.0.0.1.
+    let reachable = matches!(
+        tokio::time::timeout(Duration::from_secs(2), TcpStream::connect(lo2)).await,
+        Ok(Ok(_))
+    );
+    if !reachable {
+        #[cfg(target_os = "linux")]
+        panic!("127.0.0.2 should be reachable on Linux");
+        #[cfg(not(target_os = "linux"))]
+        return;
+    }
+    for (method, path) in [
+        ("GET", "/api/whoami"),
+        ("POST", "/api/chat"),
+        ("GET", "/"),
+        ("GET", "/assets/app-abc123.js"),
+        ("GET", "/api/ready"),
+    ] {
+        let (res, _c) = call(lo2, method, path, &[], b"").await;
+        assert_eq!(res.status(), 403, "{method} {path}");
+        let h = res.headers();
+        assert_eq!(h.get("content-length").unwrap(), "0");
+        assert_eq!(h.get("cache-control").unwrap(), "no-store");
+        assert!(h.get("x-upstream").is_none() && h.get("content-security-policy").is_none());
+        assert_eq!(text(res).await, "", "{method} {path}");
+    }
+    // Nothing reached Node, not even the readiness probe's caller.
+    assert_eq!(up.hits.lock().unwrap().as_slice(), ["GET /api/whoami"]);
+}
+
+#[test]
+fn a_malformed_code_net_spec_stops_startup() {
+    for bad in ["bad_host", "fe80::1%eth0", "caf\u{e9}"] {
+        let env: HashMap<&str, String> = [
+            (
+                "NOEVIA_LEGACY_UPSTREAM",
+                "http://127.0.0.1:9021".to_string(),
+            ),
+            ("COWORK_CODE_NET_ADDR", bad.to_string()),
+        ]
+        .into_iter()
+        .collect();
+        assert!(
+            Config::from_lookup(|k| env.get(k).cloned()).is_err(),
+            "{bad}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_half_sent_request_is_closed_within_the_header_bound() {
+    let (up, up_addr) = start_upstream().await;
+    let limits = Limits {
+        header_read: Duration::from_millis(500),
+        keep_alive_idle: Duration::from_secs(60),
+        max_connections: 16,
+    };
+    let front = start_front_with(up_addr, &dist_dir("slow"), &[], limits, "127.0.0.1").await;
+    // A request line and part of the headers, then nothing.
+    let t = std::time::Instant::now();
+    let got = raw(
+        front,
+        b"GET /api/whoami HTTP/1.1\r\nHost: front.test\r\nX-Half",
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(got.is_some(), "a half-sent request was kept open");
+    assert!(t.elapsed() < Duration::from_secs(3));
+
+    // Trickling bytes does not extend the bound (slowloris).
+    let mut s = TcpStream::connect(front).await.unwrap();
+    let t = std::time::Instant::now();
+    s.write_all(b"GET / HTTP/1.1\r\n").await.unwrap();
+    let closed = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if s.write_all(b"X-A: b\r\n").await.is_err() {
+                return;
+            }
+            let mut buf = [0u8; 64];
+            if let Ok(Ok(0)) =
+                tokio::time::timeout(Duration::from_millis(100), s.read(&mut buf)).await
+            {
+                return;
+            }
+        }
+    })
+    .await;
+    assert!(closed.is_ok(), "a trickled request was kept open");
+    assert!(t.elapsed() < Duration::from_secs(3));
+    assert!(up.hits.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn idle_keep_alive_closes_but_a_live_stream_does_not() {
+    let (up, up_addr) = start_upstream().await;
+    let limits = Limits {
+        header_read: Duration::from_secs(30),
+        keep_alive_idle: Duration::from_millis(400),
+        max_connections: 16,
+    };
+    let front = start_front_with(up_addr, &dist_dir("idle"), &[], limits, "127.0.0.1").await;
+    // One full request, then idle: answered, then closed after the idle bound.
+    let t = std::time::Instant::now();
+    let got = raw(
+        front,
+        b"GET /api/whoami HTTP/1.1\r\nHost: front.test\r\n\r\n",
+        Duration::from_secs(5),
+    )
+    .await
+    .expect("idle keep-alive connection was kept open");
+    assert!(
+        status_of(&got).starts_with("HTTP/1.1 200"),
+        "{}",
+        status_of(&got)
+    );
+    assert!(t.elapsed() < Duration::from_secs(3));
+
+    // An SSE response that is quiet for longer than the idle bound stays open.
+    let (res, _c) = call(front, "GET", "/api/stream", &[], b"").await;
+    let mut body = res.into_body();
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    let tx = up.stream.lock().unwrap().take();
+    let mut tx = tx.expect("stream started");
+    tx.send_data(Bytes::from_static(b"data: late\n\n"))
+        .await
+        .unwrap();
+    let frame = tokio::time::timeout(Duration::from_secs(2), body.frame())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        frame.into_data().unwrap(),
+        Bytes::from_static(b"data: late\n\n")
+    );
+}
+
+#[tokio::test]
+async fn connections_past_the_cap_wait_for_a_free_slot() {
+    let (_up, up_addr) = start_upstream().await;
+    let limits = Limits {
+        header_read: Duration::from_secs(30),
+        keep_alive_idle: Duration::from_secs(60),
+        max_connections: 1,
+    };
+    let front = start_front_with(up_addr, &dist_dir("cap1"), &[], limits, "127.0.0.1").await;
+    let first = client(front).await;
+    // The second connection is accepted by the kernel but not served while the first is open.
+    let second = raw(
+        front,
+        b"GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+        Duration::from_millis(500),
+    )
+    .await;
+    assert!(second.is_none(), "served past the cap");
+    drop(first);
+    let third = raw(
+        front,
+        b"GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    assert!(status_of(&third).starts_with("HTTP/1.1 200"));
 }

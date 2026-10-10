@@ -44,3 +44,15 @@ pub fn json(status: StatusCode, body: &serde_json::Value, api: bool) -> Response
 pub fn error(status: StatusCode, message: &str, api: bool) -> Response<Body> {
     json(status, &serde_json::json!({ "error": message }), api)
 }
+
+/// code-net-guard.cjs deny(): 403, no body, no detail. The guard runs before index.cjs sets its
+/// headers, so these three are the only ones.
+pub fn code_net_refused() -> Response<Body> {
+    let mut res = Response::new(Body::empty());
+    *res.status_mut() = StatusCode::FORBIDDEN;
+    let h = res.headers_mut();
+    h.insert(header::CONTENT_LENGTH, HeaderValue::from_static("0"));
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    h.insert(header::CONNECTION, HeaderValue::from_static("close"));
+    res
+}

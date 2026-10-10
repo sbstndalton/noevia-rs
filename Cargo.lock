@@ -938,6 +938,7 @@ dependencies = [
  "base64",
  "brotli",
  "bytes",
+ "code-net-guard",
  "flate2",
  "http-body",
  "http-body-util",
@@ -948,6 +949,7 @@ dependencies = [
  "sha2",
  "tokio",
  "toml",
+ "tower",
 ]
 
 [[package]]
