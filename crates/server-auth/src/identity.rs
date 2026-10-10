@@ -279,16 +279,16 @@ impl Authenticator {
     /// (and updates them on Settings → Web address); this reads the same settings rows each time:
     /// `public_origin_admin || PUBLIC_ORIGIN || public_origin`, and ADDITIONAL_TRUSTED_ORIGINS plus
     /// `previous_origins`. Where the two could differ (an origin renamed out of the five kept, until
-    /// Node restarts) this one refuses and Node accepts, never the reverse; the one exception is
-    /// first-run setup with PUBLIC_ORIGIN set to a different address, see [`Self::current_origin`].
+    /// Node restarts; first-run setup choosing an address other than PUBLIC_ORIGIN, see
+    /// [`CurrentOrigin::Ambiguous`]) this one refuses and Node accepts, never the reverse.
     pub fn origin_valid(&self, r: &Reader<'_>, creds: &Creds) -> Result<bool, StoreError> {
-        let origin = self.current_origin(r)?;
-        if origin.is_empty() {
-            return Ok(true);
-        }
+        let current = self.current_origin(r)?;
         let supplied = creds.origin.as_deref().unwrap_or("");
-        if supplied.is_empty() || supplied == origin {
-            return Ok(true);
+        match &current {
+            CurrentOrigin::Unset => return Ok(true),
+            _ if supplied.is_empty() => return Ok(true),
+            CurrentOrigin::Exact(o) if o == supplied => return Ok(true),
+            _ => {}
         }
         if self.config.additional_origins.iter().any(|o| o == supplied) {
             return Ok(true);
@@ -296,18 +296,37 @@ impl Authenticator {
         Ok(previous_origins(r)?.iter().any(|o| o == supplied))
     }
 
-    /// The origin Node's `originValid` compares with, as Node computes it at boot. After a
-    /// first-run setup Node uses the address chosen in setup until it restarts, even when
-    /// PUBLIC_ORIGIN names another; this follows the restart value (PUBLIC_ORIGIN).
-    pub fn current_origin(&self, r: &Reader<'_>) -> Result<String, StoreError> {
+    /// The origin Node's `originValid` compares with, as far as the database can tell.
+    pub fn current_origin(&self, r: &Reader<'_>) -> Result<CurrentOrigin, StoreError> {
         if let Some(a) = setting(r, "public_origin_admin")?.filter(|s| !s.is_empty()) {
-            return Ok(a);
+            return Ok(CurrentOrigin::Exact(a));
         }
+        let setup = setting(r, "public_origin")?.unwrap_or_default();
         if !self.config.public_origin.is_empty() {
-            return Ok(self.config.public_origin.clone());
+            if !setup.is_empty() && setup != self.config.public_origin {
+                return Ok(CurrentOrigin::Ambiguous);
+            }
+            return Ok(CurrentOrigin::Exact(self.config.public_origin.clone()));
         }
-        Ok(setting(r, "public_origin")?.unwrap_or_default())
+        if setup.is_empty() {
+            return Ok(CurrentOrigin::Unset);
+        }
+        Ok(CurrentOrigin::Exact(setup))
     }
+}
+
+/// What [`Authenticator::current_origin`] found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CurrentOrigin {
+    /// No address anywhere: Node's `originValid` accepts every request.
+    Unset,
+    /// The one address Node compares with.
+    Exact(String),
+    /// No `public_origin_admin`, PUBLIC_ORIGIN set, and a first-run setup address that differs.
+    /// Node compares with the setup address from setup until it restarts and with PUBLIC_ORIGIN
+    /// after; nothing in the database says which, so neither matches (only an empty Origin,
+    /// ADDITIONAL_TRUSTED_ORIGINS and `previous_origins` are accepted).
+    Ambiguous,
 }
 
 /// `JSON.parse(setting('previous_origins') || '[]').filter(o => typeof o === 'string')`, `[]` when

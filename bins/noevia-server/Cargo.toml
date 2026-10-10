@@ -25,6 +25,7 @@ http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "client", "server"] }
 code-net-guard = { path = "../../crates/code-net-guard" }
 server-auth = { path = "../../crates/server-auth" }
+url = "2.5"
 server-store = { path = "../../crates/server-store" }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 serde_json = "1"

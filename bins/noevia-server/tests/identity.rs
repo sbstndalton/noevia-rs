@@ -85,6 +85,7 @@ fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/api/test/who", get(who).post(who))
         .route("/api/admin/who", get(who))
+        .route("/api/{*rest}", get(who))
         .with_state(app)
 }
 
@@ -253,4 +254,64 @@ async fn fails_closed_until_the_store_is_usable() {
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "maybe"),
     ]);
     assert!(matches!(bad.identity.status(), Status::Refused(_)));
+}
+
+/// Review F2: Node gates on the WHATWG-parsed pathname. A path parsing would change is refused
+/// with Node's badRequestUrl 400 before the gate, so a device token can never reach a browser-only
+/// path ("/api/admin/...") by spelling it "/api/test/../admin/...".
+#[tokio::test]
+async fn paths_whatwg_parsing_changes_are_refused_before_the_gate() {
+    let dir = tempfile::tempdir().unwrap();
+    let _node = seed(dir.path());
+    let d = dir.path().display().to_string();
+    let app = app(&[
+        ("UI_DATA_DIR", &d),
+        ("TRUST_PROXY", "true"),
+        ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "true"),
+    ]);
+    let bearer = format!("Bearer {DEVICE}");
+    for path in [
+        "/api/test/../admin/who",
+        "/api/test/%2e%2e/admin/who",
+        "/api/test/%2E%2E/admin/who",
+        "/api/test/.%2e/admin/who",
+        "/api/test/./who",
+        "/api/test/%2e/who",
+        "/api/test/x/..",
+    ] {
+        for headers in [vec![("authorization", bearer.as_str())], vec![]] {
+            let (s, h, body) = call(&app, "GET", path, &headers).await;
+            assert_eq!(
+                (s, body.as_str()),
+                (StatusCode::BAD_REQUEST, r#"{"error":"invalid URL"}"#),
+                "{path}"
+            );
+            assert_eq!(h["cache-control"], "no-store");
+        }
+    }
+    // Backslashes: http::Uri accepts them and WHATWG turns them into "/", so the extractor refuses.
+    for path in ["/api/test\\..\\admin\\who", "/api/test\\admin\\who"] {
+        let uri: axum::http::Uri = path.parse().unwrap();
+        let (s, _, _) = call(&app, "GET", &uri.to_string(), &[("authorization", &bearer)]).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{path}");
+    }
+    // Paths parsing leaves alone still reach the gate.
+    let (s, _, body) = call(
+        &app,
+        "GET",
+        "/api/test/a%2Fb..c",
+        &[("authorization", &bearer)],
+    )
+    .await;
+    assert_eq!((s, body.as_str()), (StatusCode::OK, "u-1 member"));
+    let (s, _, body) = call(
+        &app,
+        "GET",
+        "/api/test/who?x=/../admin",
+        &[("authorization", &bearer)],
+    )
+    .await;
+    assert_eq!((s, body.as_str()), (StatusCode::OK, "u-1 member"));
+    let (s, _, _) = call(&app, "GET", "/api/admin/who", &[("authorization", &bearer)]).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
 }

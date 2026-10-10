@@ -895,8 +895,10 @@ fn classify_words(input: &[Word], depth: usize, work: &mut Work, via_exec: bool)
             words = words.get(1..).unwrap_or(&[]);
             prefixed = true;
         }
+        // Node returns one(NONE) here, which keeps `standable` true even after `xargs`
+        // (`xargs FOO=bar` runs a program chosen at run time); stricter here, never looser.
         let Some(first) = words.first() else {
-            return Ok(one(Action::None, true));
+            return Ok(one(Action::None, standable));
         };
         let name = last_component(first);
         let Some(with_arg) = wrapper_args(name) else {
@@ -2301,6 +2303,8 @@ mod tests {
         assert!(cls("git -c alias.x=push x").contains(r#""standable":false"#));
         assert!(cls("echo x > out.txt").contains(r#""paths":["out.txt"]"#));
         assert!(cls("sh -c 'rm x'").contains(r#""standable":false"#));
+        assert!(cls("xargs FOO=bar").contains(r#""standable":false"#));
+        assert!(cls("xargs FOO=bar \u{a0}").contains(r#""standable":false"#));
     }
 
     #[test]

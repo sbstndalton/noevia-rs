@@ -50,6 +50,12 @@ fn decoy() -> &'static str {
     })
 }
 
+/// Compute the decoy hash now (one Argon2 hash, ~tens of ms), so the first missing-account
+/// check does not also pay for building it and stand out by its timing. Called at startup.
+pub fn warm() -> bool {
+    !decoy().is_empty()
+}
+
 /// Spend one verification's time against the decoy; always false.
 pub fn burn(password: &str) -> bool {
     let _ = verify(decoy(), password);
@@ -78,6 +84,7 @@ mod tests {
         assert!(!verify(&h, "correct horse battery stapl"));
         assert!(!verify("not a hash", "x"));
         assert!(!verify("", ""));
+        assert!(warm());
         assert!(!decoy().is_empty());
         assert!(!burn("anything"));
     }

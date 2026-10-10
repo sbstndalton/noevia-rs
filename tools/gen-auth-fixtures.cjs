@@ -125,14 +125,14 @@ async function seed(db, { users = true } = {}) {
 const SEEDED_TABLES = ['users', 'user_features', 'sessions', 'device_grants', 'device_tokens', 'app_passwords', 'settings'];
 const SEEDED_SETTINGS = new Set(['public_origin', 'public_origin_admin', 'previous_origins', 'feature:nativeClientAuth']);
 
-function dump(db) {
+function dump(db, tables = SEEDED_TABLES) {
   const schema = db.prepare("SELECT type,name,tbl_name AS tbl,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type DESC,name").all();
   const columns = {};
   for (const t of db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()) {
     columns[t.name] = db.prepare(`SELECT name FROM pragma_table_info('${t.name}') ORDER BY cid`).all().map((c) => c.name);
   }
   const rows = {};
-  for (const t of SEEDED_TABLES) {
+  for (const t of tables) {
     let all = db.prepare(`SELECT * FROM ${t} ORDER BY rowid`).all();
     if (t === 'settings') all = all.filter((r) => SEEDED_SETTINGS.has(r.key));
     rows[t] = all;
@@ -356,6 +356,39 @@ async function buildScenario(sc, tmp) {
   return { db: authService.db, authService, deviceAuth, requestAuth, dataDir };
 }
 
+// First-run setup choosing an address other than PUBLIC_ORIGIN (review F1). Node keeps the chosen
+// address in memory until it restarts, then uses PUBLIC_ORIGIN; Rust cannot tell which Node is
+// running, so its verdict must be no wider than either. Only settings are dumped: setup writes a
+// user with a random id and a randomly salted hash, and origin checks never read users.
+async function setupOriginScenario(tmp) {
+  const P = 'https://noevia.example.test';
+  const S = 'https://setup.example.test';
+  const env = { publicOrigin: P, additionalOrigins: ['http://192.168.1.20:8021'], legacyToken: '', legacyCompat: false };
+  const dataDir = path.join(tmp, 'setup-origin-differs');
+  fs.mkdirSync(dataDir, { recursive: true });
+  const opts = { dataDir, publicOrigin: P, rpId: '', legacyToken: '', legacyCompat: false, trustProxy: true, additionalOrigins: env.additionalOrigins };
+  const live = createAuth(opts);
+  live.db.prepare("INSERT OR REPLACE INTO settings(key,value) VALUES('previous_origins',?)").run(JSON.stringify(['https://old.example.test']));
+  const setupCode = fs.readFileSync(path.join(dataDir, 'first-run-setup-code'), 'utf8').trim();
+  const res = { setHeader: () => {} };
+  const r = await live.setup({ headers: {}, method: 'POST', socket: { remoteAddress: '127.0.0.1' } }, res,
+    { setupCode, username: 'firstadmin', password: 'synthetic setup password 0001', publicOrigin: S });
+  if (r.status !== 201) throw new Error(`setup returned ${r.status}`);
+  const restarted = createAuth(opts);
+  const origins = [P, S, '', 'http://192.168.1.20:8021', 'https://old.example.test', 'https://evil.example.test', 'null'];
+  const verdicts = (a) => origins.map((origin) => !!a.originValid({ headers: origin ? { origin } : {}, method: 'POST', socket: { remoteAddress: '127.0.0.1' } }));
+  const liveV = verdicts(live);
+  const restartedV = verdicts(restarted);
+  const out = {
+    name: 'setup-origin-differs', env, db: dump(live.db, ['settings']),
+    liveOrigin: live.origin, restartedOrigin: restarted.origin,
+    cases: origins.map((origin, i) => ({ origin, live: liveV[i], restarted: restartedV[i] })),
+  };
+  restarted.db.close();
+  live.db.close();
+  return out;
+}
+
 async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'noevia-m2-auth-'));
   try {
@@ -376,9 +409,14 @@ async function main() {
       ];
       const dav = [];
       for (const [username, password, scope] of davInputs) dav.push({ username, password, scope, expect: await app.verifyDav(username, password, scope) });
-      out.scenarios.push({ name: sc.name, env: sc.env, nativeClientAuth: sc.nativeClientAuth, db, cases, fuzz, dav });
+      // No public_origin_admin, PUBLIC_ORIGIN set and a setup address that differs: Node may hold
+      // either one (see setupOriginScenario), so Rust matches neither (review F1).
+      const st = (k) => sc.settings[k] || '';
+      const originAmbiguous = !st('public_origin_admin') && !!sc.env.publicOrigin && !!st('public_origin') && st('public_origin') !== sc.env.publicOrigin;
+      out.scenarios.push({ name: sc.name, env: sc.env, nativeClientAuth: sc.nativeClientAuth, originAmbiguous, db, cases, fuzz, dav });
       ctx.db.close();
     }
+    out.setupOrigin = await setupOriginScenario(tmp);
     // Pure helpers, tabled once.
     out.parseCookies = cookieFuzz(0xc00c1e, 2500).map((header) => ({ header, expect: parseCookies({ headers: { cookie: header } }) }));
     out.bearerToken = ['', 'Bearer nva_x', 'Bearer nva_', 'bearer nva_x', 'Bearer  nva_x  ', 'Bearer nva_x y', 'Bearer\tnva_x', 'Bearer nva_x', 'Bearernva_x',
@@ -388,7 +426,8 @@ async function main() {
       .map((cookie) => ({ cookie, expect: deviceLib.hasSessionCookie({ headers: { cookie } }) }));
     const paths = ['/api/admin', '/api/admin/', '/api/admin/users', '/api/adminx', '/api/profile', '/api/profile/', '/api/profile/app-passwords/1',
       '/api/integrations/storage', '/api/integrations/storage/test', '/api/integrations/storage/files', '/api/integrations/storage/nextcloud/login',
-      '/api/connectors/', '/api/connectors/x', '/api/connectors', '/api/mcp-keys', '/api/mcp-oauth/cb', '/api/providers/chatgpt', '/api/providers', '/api/auth/device/approve', ''];
+      '/api/connectors/', '/api/connectors/x', '/api/connectors', '/api/mcp-keys', '/api/mcp-oauth/cb', '/api/providers/chatgpt', '/api/providers', '/api/auth/device/approve', '',
+      '/api/x/../admin/users', '/api/x/%2e%2e/admin', '/api/x/%2E%2E/profile', '/api\\admin', '/api/x\\..\\admin', '/api/./admin', '/api/connectors/../mcp-keys'];
     out.browserOnly = [];
     for (const p of paths) for (const m of ['GET', 'HEAD', 'POST', 'put', 'DELETE']) out.browserOnly.push({ path: p, method: m, expect: deviceLib.browserOnly(p, m) });
     // nativeClientAuth resolution (features.cjs): env override, the stored admin setting, TRUST_PROXY availability.

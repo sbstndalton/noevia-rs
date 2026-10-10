@@ -72,7 +72,15 @@ async fn main() -> ExitCode {
     app.statics.warm();
     // Reported, never fatal in M2: no route needs an identity yet (identity.rs).
     let layer = std::sync::Arc::clone(&app.identity);
-    match tokio::task::spawn_blocking(move || layer.status()).await {
+    // The Argon2 decoy is built once; build it before the first request can time it.
+    match tokio::task::spawn_blocking(move || {
+        if !server_auth::password::warm() {
+            eprintln!("noevia-server: warning: Argon2 decoy unavailable");
+        }
+        layer.status()
+    })
+    .await
+    {
         Ok(noevia_server::identity::Status::Ready) => {
             println!("noevia-server: identity ready (read-only cowork.db)")
         }

@@ -115,6 +115,20 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// `new URL(req.url, 'http://h').pathname`, or None when it does not parse.
+pub fn whatwg_pathname(parts: &Parts) -> Option<String> {
+    let target = parts
+        .uri
+        .path_and_query()
+        .map_or_else(|| parts.uri.path(), |pq| pq.as_str());
+    let base = url::Url::parse("http://h").ok()?;
+    let parsed = url::Url::options()
+        .base_url(Some(&base))
+        .parse(target)
+        .ok()?;
+    Some(parsed.path().to_string())
+}
+
 /// A request Node's gate lets through, with who it is.
 #[derive(Debug, Clone)]
 pub struct ValidatedIdentity(pub Identity);
@@ -124,6 +138,8 @@ pub enum Rejection {
     Refused(Refusal),
     /// The store or the auth configuration is not usable: 503, never signed in.
     Unavailable,
+    /// The path is not the one WHATWG URL parsing gives (http.cjs badRequestUrl): 400.
+    BadUrl,
 }
 
 impl IntoResponse for Rejection {
@@ -147,6 +163,9 @@ impl IntoResponse for Rejection {
                 r#"{"error":"This needs a signed-in browser session.","code":"browser_session_required"}"#.to_string(),
                 true,
             ),
+            Rejection::BadUrl => {
+                reply::json(StatusCode::BAD_REQUEST, &serde_json::json!({"error": "invalid URL"}), true)
+            }
             Rejection::Unavailable => reply::error(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Sign-in is unavailable right now. Try again shortly.",
@@ -163,8 +182,14 @@ impl FromRequestParts<Arc<App>> for ValidatedIdentity {
         parts: &mut Parts,
         app: &Arc<App>,
     ) -> Result<Self, Self::Rejection> {
-        let creds = creds_of(parts);
+        // Node gates on `new URL(req.url, base).pathname`; a path that WHATWG parsing changes
+        // ("..", "%2e", "\\") would be gated here on a different path than Node's, so it is refused
+        // before the gate, like Node's badRequestUrl (review F2).
         let path = parts.uri.path().to_string();
+        if whatwg_pathname(parts).as_deref() != Some(path.as_str()) {
+            return Err(Rejection::BadUrl);
+        }
+        let creds = creds_of(parts);
         let layer = Arc::clone(&app.identity);
         let now = now_ms();
         tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, &path, now))

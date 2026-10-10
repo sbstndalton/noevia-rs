@@ -23,5 +23,5 @@ pub mod request;
 pub mod secrets;
 
 pub use config::AuthConfig;
-pub use identity::{Authenticator, Credential, Identity, PublicUser, Refusal, Role};
+pub use identity::{Authenticator, Credential, CurrentOrigin, Identity, PublicUser, Refusal, Role};
 pub use request::Creds;

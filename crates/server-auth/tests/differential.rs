@@ -32,11 +32,16 @@ fn request_verdicts_agree_with_node() {
     let f = fixtures();
     let mut mismatches = Vec::new();
     let mut unsafe_accepts = Vec::new();
-    let (mut total, mut accepted) = (0usize, 0usize);
+    let (mut total, mut accepted, mut ambiguous_refusals) = (0usize, 0usize, 0usize);
     for sc in f["scenarios"].as_array().unwrap() {
         let built = build(sc);
         let auth = Authenticator::new(config(sc));
         let name = sc["name"].as_str().unwrap();
+        // Node may hold either the setup address or PUBLIC_ORIGIN here (review F1); Rust refuses a
+        // request whose Origin is PUBLIC_ORIGIN that this one Node instance accepts. Only that one
+        // difference, in the strict direction, is allowed.
+        let ambiguous = sc["originAmbiguous"].as_bool().unwrap();
+        let p_origin = sc["env"]["publicOrigin"].as_str().unwrap();
         let named = sc["cases"].as_array().unwrap().iter().map(|c| {
             (
                 c["name"].as_str().unwrap().to_string(),
@@ -84,7 +89,13 @@ fn request_verdicts_agree_with_node() {
                 mismatches.push(format!("{name} / {case}: csrf Rust {csrf}"));
             }
             let origin = built.store.read(|r| auth.origin_valid(r, &creds)).unwrap();
-            if expect["origin"] != origin {
+            let strict_ok = ambiguous
+                && !origin
+                && expect["origin"] == true
+                && creds.origin.as_deref() == Some(p_origin);
+            if strict_ok {
+                ambiguous_refusals += 1;
+            } else if expect["origin"] != origin {
                 if origin {
                     unsafe_accepts.push(format!("{name} / {case}: origin"));
                 }
@@ -97,6 +108,9 @@ fn request_verdicts_agree_with_node() {
                 };
                 let g = refusal_name(auth.gate(&built.store, &c, path, now).unwrap());
                 let want = expect["gates"][i].as_str().unwrap();
+                if strict_ok && g == "csrf" && want == "allow" {
+                    continue;
+                }
                 if g != want {
                     if g == "allow" {
                         unsafe_accepts.push(format!("{name} / {case}: gate {method} {path}"));
@@ -109,6 +123,10 @@ fn request_verdicts_agree_with_node() {
         }
     }
     assert!(total >= 7000, "fixture shrank to {total} cases");
+    assert!(
+        ambiguous_refusals > 0,
+        "no case exercises the ambiguous-origin refusal"
+    );
     assert!(
         accepted >= 500,
         "too few accepted cases ({accepted}) to mean anything"
@@ -124,6 +142,51 @@ fn request_verdicts_agree_with_node() {
         mismatches.len(),
         mismatches.join("\n")
     );
+}
+
+/// Review F1: first-run setup chose an address other than PUBLIC_ORIGIN. Node accepts the setup
+/// address until it restarts and PUBLIC_ORIGIN after; Rust must accept neither where either Node
+/// refuses, and (since both are ambiguous to it) exactly what both accept.
+#[test]
+fn setup_origin_never_wider_than_either_node() {
+    let f = fixtures();
+    let sc = &f["setupOrigin"];
+    assert_ne!(
+        sc["liveOrigin"], sc["restartedOrigin"],
+        "scenario lost its point"
+    );
+    let mut db_sc = sc.clone();
+    db_sc["db"]["rows"]
+        .as_object_mut()
+        .unwrap()
+        .entry("settings")
+        .or_insert(Value::Array(vec![]));
+    let built = build(&db_sc);
+    let mut cfg_sc = sc.clone();
+    cfg_sc["nativeClientAuth"] = Value::Bool(false);
+    let auth = Authenticator::new(config(&cfg_sc));
+    let (mut live_only, mut restarted_only) = (0, 0);
+    for c in sc["cases"].as_array().unwrap() {
+        let origin = c["origin"].as_str().unwrap();
+        let (live, restarted) = (
+            c["live"].as_bool().unwrap(),
+            c["restarted"].as_bool().unwrap(),
+        );
+        live_only += usize::from(live && !restarted);
+        restarted_only += usize::from(restarted && !live);
+        let creds = Creds {
+            origin: (!origin.is_empty()).then(|| origin.to_string()),
+            method: "POST".to_string(),
+            ..Creds::default()
+        };
+        let got = built.store.read(|r| auth.origin_valid(r, &creds)).unwrap();
+        assert_eq!(
+            got,
+            live && restarted,
+            "origin {origin:?}: Rust {got}, Node live {live}, restarted {restarted}"
+        );
+    }
+    assert_eq!((live_only, restarted_only), (1, 1));
 }
 
 #[test]
