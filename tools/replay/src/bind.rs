@@ -16,8 +16,8 @@ pub enum Tok {
     Lit(String),
     /// `<secret:N>` or `<id:N>`: bound on first match, compared after.
     Var(String),
-    /// `<ts>` (any timestamp), `<num>` (a measured duration or rate) or `<url:name>` (a configured
-    /// upstream URL): any non-empty run, never bound.
+    /// `<ts>` (any timestamp), `<num>` (a measured duration or rate), `<version>` (a build stamp)
+    /// or `<url:name>` (a configured upstream URL): any non-empty run, never bound.
     Any,
     /// `<origin>`: the base URL's origin.
     Origin,
@@ -56,7 +56,7 @@ fn placeholder_at(s: &str) -> Option<(Tok, usize)> {
     let end = s.find('>')?;
     let inner = s.get(1..end)?;
     let tok = match inner {
-        "ts" | "num" => Tok::Any,
+        "ts" | "num" | "version" => Tok::Any,
         // A configured upstream (`<url:inference>`): its host and port belong to the run.
         u if u.strip_prefix("url:").is_some_and(|n| {
             !n.is_empty() && n.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
@@ -286,6 +286,7 @@ mod tests {
         assert!(b.matches("updated <ts> ok", "updated 2026-10-09T00:00:00Z ok"));
         assert!(!b.matches("<ts>", ""));
         assert!(b.matches("<num>", "41.5"));
+        assert!(b.matches("<version>", "0.2.0"));
         assert!(b.matches("<url:inference>/v1", "http://127.0.0.1:5/v1"));
         assert_eq!(tokens("<url:>"), vec![Tok::Lit("<url:>".into())]);
         assert!(b.matches("<origin>/x", "http://h:9/x"));
