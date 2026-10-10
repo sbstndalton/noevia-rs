@@ -276,6 +276,7 @@ fn pure_helpers_agree_with_node() {
             legacy_compat: false,
             trust_proxy: c["trustProxy"].as_str() == Some("true"),
             native_client_auth_env: native,
+            origin_from_settings: false,
         };
         match (&c["expect"], parsed) {
             (Value::String(e), Err(_)) if e == "error" => {}
@@ -371,5 +372,154 @@ fn json_stringify_agrees_with_node() {
             "{}",
             c["value"]
         );
+    }
+}
+
+/// M3: the writes Node's `requestAuth.authenticate` makes as a side effect (a live session's
+/// `last_seen_at`, a rejected session's DELETE, a device grant's `last_used_at`), which Rust's
+/// upkeep takes over while it owns those tables. Every named and fuzz case, every scenario.
+#[test]
+fn upkeep_writes_agree_with_node() {
+    use server_store::rusqlite::Connection;
+    use std::collections::BTreeMap;
+    type Snap = (BTreeMap<String, i64>, BTreeMap<String, i64>);
+    fn snap(c: &Connection) -> Snap {
+        let read = |sql: &str| -> BTreeMap<String, i64> {
+            let mut st = c.prepare(sql).unwrap();
+            st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        (
+            read("SELECT id_hash, last_seen_at FROM sessions"),
+            read("SELECT id, last_used_at FROM device_grants"),
+        )
+    }
+    fn diff(
+        a: &BTreeMap<String, i64>,
+        b: &BTreeMap<String, i64>,
+    ) -> serde_json::Map<String, Value> {
+        let mut out = serde_json::Map::new();
+        for k in a.keys().chain(b.keys()) {
+            if a.get(k) != b.get(k) {
+                out.insert(k.clone(), b.get(k).map_or(Value::Null, |v| Value::from(*v)));
+            }
+        }
+        out
+    }
+    let f = fixtures();
+    let switch = server_store::RustAuth::from_env_value(Some("1")).unwrap();
+    let (mut total, mut wrote, mut bad) = (0usize, 0usize, Vec::new());
+    for sc in f["scenarios"].as_array().unwrap() {
+        let built = build(sc);
+        let auth = Authenticator::new(config(sc));
+        let writer = server_store::Writer::open(built.dir.path(), switch).unwrap();
+        let node = Connection::open(server_store::db_path(built.dir.path())).unwrap();
+        let base = snap(&node);
+        let name = sc["name"].as_str().unwrap();
+        let cases = sc["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .chain(sc["fuzz"].as_array().unwrap().iter());
+        for (i, c) in cases.enumerate() {
+            let input = &c["input"];
+            let want = c["expect"]
+                .get("writes")
+                .expect("fixture predates M3: regenerate it with tools/gen-auth-fixtures.cjs");
+            total += 1;
+            auth.upkeep(&writer, &creds(input, "GET"), now(&f, input))
+                .unwrap();
+            let after = snap(&node);
+            let mut got = serde_json::Map::new();
+            let s = diff(&base.0, &after.0);
+            let g = diff(&base.1, &after.1);
+            if !s.is_empty() {
+                got.insert("sessions".into(), Value::Object(s));
+            }
+            if !g.is_empty() {
+                got.insert("grants".into(), Value::Object(g));
+            }
+            let got = Value::Object(got);
+            if got != Value::Object(serde_json::Map::new()) {
+                wrote += 1;
+            }
+            if &got != want {
+                bad.push(format!("{name} #{i} {input}: Rust {got} Node {want}"));
+            }
+            // Back to the scenario's rows for the next case.
+            node.execute_batch("DELETE FROM sessions").unwrap();
+            for (table, rows) in sc["db"]["rows"].as_object().unwrap() {
+                if table != "sessions" && table != "device_grants" {
+                    continue;
+                }
+                for row in rows.as_array().unwrap() {
+                    let o = row.as_object().unwrap();
+                    if table == "sessions" {
+                        node.execute(
+                            "INSERT INTO sessions VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+                            (
+                                o["id_hash"].as_str(),
+                                o["user_id"].as_str(),
+                                o["csrf_hash"].as_str(),
+                                o["created_at"].as_i64(),
+                                o["last_seen_at"].as_i64(),
+                                o["expires_at"].as_i64(),
+                                o["user_agent"].as_str(),
+                                o["ip"].as_str(),
+                            ),
+                        )
+                        .unwrap();
+                    } else {
+                        node.execute(
+                            "UPDATE device_grants SET last_used_at=?1 WHERE id=?2",
+                            (o["last_used_at"].as_i64(), o["id"].as_str()),
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+            assert_eq!(snap(&node), base);
+        }
+    }
+    assert!(total >= 7000, "fixture shrank to {total} cases");
+    assert!(wrote >= 1000, "only {wrote} cases wrote anything");
+    assert!(
+        bad.is_empty(),
+        "{} of {total} differ:\n{}",
+        bad.len(),
+        bad.join("\n")
+    );
+}
+
+/// M3: with NOEVIA_RUST_AUTH on, Node re-reads the address on every use (core auth.cjs
+/// refreshOrigin), which is exactly what a restarted Node does; Rust then agrees with that Node
+/// on every origin, with no ambiguous case left.
+#[test]
+fn with_rust_auth_the_origin_is_the_restart_rule() {
+    let f = fixtures();
+    let sc = &f["setupOrigin"];
+    let mut db_sc = sc.clone();
+    db_sc["db"]["rows"]
+        .as_object_mut()
+        .unwrap()
+        .entry("settings")
+        .or_insert(Value::Array(vec![]));
+    let built = build(&db_sc);
+    let mut cfg_sc = sc.clone();
+    cfg_sc["nativeClientAuth"] = Value::Bool(false);
+    let mut cfg = config(&cfg_sc);
+    cfg.origin_from_settings = true;
+    let auth = Authenticator::new(cfg);
+    for c in sc["cases"].as_array().unwrap() {
+        let origin = c["origin"].as_str().unwrap();
+        let creds = Creds {
+            origin: (!origin.is_empty()).then(|| origin.to_string()),
+            method: "POST".to_string(),
+            ..Creds::default()
+        };
+        let got = built.store.read(|r| auth.origin_valid(r, &creds)).unwrap();
+        assert_eq!(got, c["restarted"].as_bool().unwrap(), "origin {origin:?}");
     }
 }

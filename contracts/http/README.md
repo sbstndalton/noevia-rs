@@ -44,3 +44,20 @@ with zero differences and the same final data dir as a Node-direct run.
 
 Follow-up once the front is live: delete core's `static-files.cjs`, `spa-routes.cjs` and
 `createReadyRoutes` (Node then answers neither), not before.
+
+## M3: Rust owns sign-in and the account (`NOEVIA_RUST_AUTH`)
+
+A route may name a deployment `switch`. `owner = "rust"` with `switch = "NOEVIA_RUST_AUTH"`
+takes effect only while the deployment sets `NOEVIA_RUST_AUTH=1`; without it the route is Node's,
+so merging a flip changes nothing live. The switch also:
+
+- opens server-store's `Writer` (crates/server-store `OWNED_TABLES`, `OWNED_SETTING_KEYS`,
+  `OWNED_JSON_FILES`): the auth tables, with per-table access, and nothing else;
+- makes the front write what Node's request gate wrote on every request (server-auth `upkeep`:
+  `sessions.last_seen_at`, rejected sessions, `device_grants.last_used_at`) before it proxies;
+- with `NOEVIA_FRONT=rust`, makes Node refuse to write the same tables (noevia-core
+  `server/rust-auth.cjs`), so each row has one writer, and re-read the public address from
+  settings on every use.
+
+`noevia-server --features` lists `rust-auth` when the build understands the switch. The switch is
+removed, with Node's copies of the routes, once Rust-owned sign-in is proven live.

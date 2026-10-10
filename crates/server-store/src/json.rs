@@ -182,6 +182,10 @@ fn quote(s: &str) -> String {
 /// The write itself; callers outside this crate go through [`write_owned`].
 pub(crate) fn write_atomic(file: &Path, value: &Value, format: Format) -> Result<(), JsonError> {
     let text = stringify(value, format)?;
+    write_text_atomic(file, &text)
+}
+
+fn write_text_atomic(file: &Path, text: &str) -> Result<(), JsonError> {
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(dir) = file.parent().filter(|d| !d.as_os_str().is_empty()) {
         let mut builder = std::fs::DirBuilder::new();
@@ -215,10 +219,47 @@ pub(crate) fn write_atomic(file: &Path, value: &Value, format: Format) -> Result
     Ok(result?)
 }
 
-/// Writes `dir/name` atomically, only when `name` is in [`crate::OWNED_JSON_FILES`] (empty in
-/// M2, so this always refuses) and is a plain file name.
-pub fn write_owned(dir: &Path, name: &str, value: &Value, format: Format) -> Result<(), JsonError> {
+/// Writes `dir/name` atomically, only when `name` is in [`crate::OWNED_JSON_FILES`] and is a
+/// plain file name; the switch must be on ([`crate::RustAuth`]).
+pub fn write_owned(
+    dir: &Path,
+    name: &str,
+    value: &Value,
+    format: Format,
+    _switch: crate::RustAuth,
+) -> Result<(), JsonError> {
     write_owned_from(crate::OWNED_JSON_FILES, dir, name, value, format)
+}
+
+/// [`write_owned`] for text the caller already serialised (with `JSON.stringify`'s key order,
+/// which `serde_json::Map` does not keep).
+pub fn write_owned_text(
+    dir: &Path,
+    name: &str,
+    text: &str,
+    _switch: crate::RustAuth,
+) -> Result<(), JsonError> {
+    owned_name(crate::OWNED_JSON_FILES, name)?;
+    write_text_atomic(&dir.join(name), text)
+}
+
+/// `fs.rmSync(dir/name, { force: true })` for an owned file: a missing file is not an error.
+pub fn remove_owned(dir: &Path, name: &str, _switch: crate::RustAuth) -> Result<(), JsonError> {
+    owned_name(crate::OWNED_JSON_FILES, name)?;
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    match std::fs::remove_file(dir.join(name)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(JsonError::Io(e)),
+        _ => Ok(()),
+    }
+}
+
+fn owned_name(owned: &[&str], name: &str) -> Result<(), JsonError> {
+    let plain =
+        !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', '\0']);
+    if !plain || !owned.contains(&name) {
+        return Err(JsonError::NotOwned(name.chars().take(64).collect()));
+    }
+    Ok(())
 }
 
 fn write_owned_from(
@@ -228,11 +269,7 @@ fn write_owned_from(
     value: &Value,
     format: Format,
 ) -> Result<(), JsonError> {
-    let plain =
-        !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', '\0']);
-    if !plain || !owned.contains(&name) {
-        return Err(JsonError::NotOwned(name.chars().take(64).collect()));
-    }
+    owned_name(owned, name)?;
     write_atomic(&dir.join(name), value, format)
 }
 
@@ -322,11 +359,27 @@ mod tests {
     #[test]
     fn only_owned_plain_names_are_written() {
         let dir = tempfile::tempdir().unwrap();
-        // M2: nothing is owned.
+        // Only the account files are owned, never the workspace's own files.
+        let on = crate::RustAuth::for_tests();
         assert!(matches!(
-            write_owned(dir.path(), "preferences.json", &json!({}), Format::Pretty),
+            write_owned(
+                dir.path(),
+                "preferences.json",
+                &json!({}),
+                Format::Pretty,
+                on
+            ),
             Err(JsonError::NotOwned(_))
         ));
+        write_owned_text(dir.path(), "account-memory.json", "{\"b\":1,\"a\":2}", on).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("account-memory.json")).unwrap(),
+            "{\"b\":1,\"a\":2}"
+        );
+        remove_owned(dir.path(), "account-memory.json", on).unwrap();
+        remove_owned(dir.path(), "account-memory.json", on).unwrap();
+        assert!(!dir.path().join("account-memory.json").exists());
+        assert!(remove_owned(dir.path(), "projects.json", on).is_err());
         let owned = ["mine.json"];
         for bad in ["../mine.json", "a/mine.json", "", ".", "..", "theirs.json"] {
             assert!(

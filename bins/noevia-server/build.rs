@@ -22,7 +22,14 @@ struct Entry {
     catch_all: bool,
     #[serde(default = "yes")]
     client: bool,
+    /// A deployment switch the owner flip depends on: `owner = "rust"` takes effect only while
+    /// the named environment variable is on (M3: NOEVIA_RUST_AUTH). Off, the route is Node's.
+    #[serde(default)]
+    switch: Option<String>,
 }
+
+/// The switches a route may name (bins/noevia-server src/routes.rs `Switches`).
+const SWITCHES: &[&str] = &["NOEVIA_RUST_AUTH"];
 
 fn yes() -> bool {
     true
@@ -58,9 +65,25 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         let _ = r.client;
+        let switch = match r.switch.as_deref() {
+            None => "None".to_string(),
+            Some(sw) if SWITCHES.contains(&sw) => {
+                if r.owner != "rust" || r.catch_all {
+                    return Err(format!(
+                        "routes.toml {}: a switch only gates an owner = \"rust\" route",
+                        r.path
+                    )
+                    .into());
+                }
+                format!("Some({sw:?})")
+            }
+            Some(other) => {
+                return Err(format!("routes.toml {}: unknown switch {other:?}", r.path).into())
+            }
+        };
         writeln!(
             out,
-            "    Route {{ path: {:?}, owner: {owner}, methods: &{:?}, catch_all: {} }},",
+            "    Route {{ path: {:?}, owner: {owner}, methods: &{:?}, catch_all: {}, switch: {switch} }},",
             r.path, r.methods, r.catch_all
         )?;
     }

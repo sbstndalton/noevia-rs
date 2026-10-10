@@ -176,14 +176,35 @@ function gate(requestAuth, authService, r, authn, method, p) {
   return 'allow';
 }
 
+/** What the request gate wrote: Node's authenticate moves sessions.last_seen_at, deletes a
+ *  rejected session and touches device_grants.last_used_at (M3: Rust's upkeep does the same). */
+function watched(db) {
+  return {
+    sessions: Object.fromEntries(db.prepare('SELECT id_hash, last_seen_at FROM sessions').all().map((r) => [r.id_hash, r.last_seen_at])),
+    grants: Object.fromEntries(db.prepare('SELECT id, last_used_at FROM device_grants').all().map((r) => [r.id, r.last_used_at])),
+  };
+}
+
+function effects(before, after) {
+  const out = {};
+  for (const table of ['sessions', 'grants']) {
+    for (const k of new Set([...Object.keys(before[table]), ...Object.keys(after[table])])) {
+      const a = before[table][k]; const b = after[table][k];
+      if (a !== b) (out[table] ||= {})[k] = b === undefined ? null : b;
+    }
+  }
+  return out;
+}
+
 function evaluate(ctx, input, { gates = true } = {}) {
   const { db, authService, requestAuth } = ctx;
   db.exec('SAVEPOINT fixture_case');
   try {
     clock = input.now ?? NOW;
     const r = fakeReq(input);
+    const before = watched(db);
     const authn = requestAuth.authenticate(r);
-    const out = { authn: verdict(authn) };
+    const out = { authn: verdict(authn), writes: effects(before, watched(db)) };
     if (gates) {
       out.csrf = authn ? !!requestAuth.csrfValid(r, authn) : false;
       out.origin = !!authService.originValid(r);

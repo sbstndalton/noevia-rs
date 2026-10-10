@@ -68,6 +68,16 @@ impl IdentityLayer {
         Ok(store)
     }
 
+    /// The request gate's authenticator, unless the auth environment is invalid.
+    pub fn authenticator(&self) -> Option<&Authenticator> {
+        self.auth.as_ref().ok()
+    }
+
+    /// The read-only store (blocking: opens it the first time).
+    pub fn store_blocking(&self) -> Result<Arc<Store>, StoreError> {
+        self.store()
+    }
+
     /// Blocking: opens the store if needed.
     pub fn status(&self) -> Status {
         if let Err(e) = &self.auth {
@@ -108,7 +118,8 @@ pub fn creds_of(parts: &Parts) -> Creds {
     )
 }
 
-fn now_ms() -> i64 {
+/// `Date.now()`.
+pub fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))

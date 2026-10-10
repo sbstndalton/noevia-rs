@@ -68,9 +68,11 @@ async fn main() -> ExitCode {
         config.upstream.authority(),
         config.trust_proxy
     );
+    let rust_auth = config.rust_auth.is_some();
     let app = App::new(config);
     app.statics.warm();
-    // Reported, never fatal in M2: no route needs an identity yet (identity.rs).
+    // Without NOEVIA_RUST_AUTH no route needs an identity, so a refusal is only reported. With it
+    // Rust owns sign-in: a schema newer than this build stops the front (identity.rs).
     let layer = std::sync::Arc::clone(&app.identity);
     // The Argon2 decoy is built once; build it before the first request can time it.
     match tokio::task::spawn_blocking(move || {
@@ -88,9 +90,25 @@ async fn main() -> ExitCode {
             println!("noevia-server: identity unavailable for now: {why}")
         }
         Ok(noevia_server::identity::Status::Refused(why)) => {
+            if rust_auth {
+                eprintln!("noevia-server: NOEVIA_RUST_AUTH=1 but identity is refused: {why}");
+                return ExitCode::from(1);
+            }
             eprintln!("noevia-server: warning: identity refused: {why}")
         }
         Err(_) => eprintln!("noevia-server: warning: identity check did not run"),
+    }
+    if rust_auth {
+        let writes = std::sync::Arc::clone(&app.writes);
+        match tokio::task::spawn_blocking(move || writes.writer().map(|_| ())).await {
+            Ok(Ok(())) => println!(
+                "noevia-server: NOEVIA_RUST_AUTH=1, Rust owns sign-in and the account tables"
+            ),
+            Ok(Err(e)) => {
+                println!("noevia-server: NOEVIA_RUST_AUTH=1, cowork.db writer not open yet: {e}")
+            }
+            Err(_) => eprintln!("noevia-server: warning: writer check did not run"),
+        }
     }
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let mut stop_wait = stop_rx.clone();

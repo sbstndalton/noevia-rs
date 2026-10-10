@@ -15,6 +15,10 @@ pub struct AuthConfig {
     pub trust_proxy: bool,
     /// features.cjs parseEnv(NOEVIA_FEATURE_NATIVE_CLIENT_AUTH): `None` when unset or blank.
     pub native_client_auth_env: Option<bool>,
+    /// NOEVIA_RUST_AUTH=1 (M3): Node re-reads the public address from settings on every use
+    /// (core auth.cjs refreshOrigin), so the address is the restart rule's
+    /// (`public_origin_admin || PUBLIC_ORIGIN || public_origin`), never ambiguous.
+    pub origin_from_settings: bool,
 }
 
 impl std::fmt::Debug for AuthConfig {
@@ -27,6 +31,7 @@ impl std::fmt::Debug for AuthConfig {
             .field("legacy_compat", &self.legacy_compat)
             .field("trust_proxy", &self.trust_proxy)
             .field("native_client_auth_env", &self.native_client_auth_env)
+            .field("origin_from_settings", &self.origin_from_settings)
             .finish()
     }
 }
@@ -81,6 +86,10 @@ impl AuthConfig {
             native_client_auth_env: parse_feature_env(
                 get("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH").as_deref(),
             )?,
+            origin_from_settings: server_store::RustAuth::from_env_value(
+                get(server_store::RustAuth::ENV).as_deref(),
+            )
+            .is_some(),
         })
     }
 

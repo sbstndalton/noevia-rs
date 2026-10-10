@@ -14,19 +14,25 @@
 //!   column Rust reads ([`REQUIRED_COLUMNS`]: some of Node's columns arrive without a version
 //!   bump, e.g. `users.credential_epoch`). The check reruns whenever SQLite's schema cookie
 //!   changes, so a Node upgrade under a running front fails closed instead of misreading;
-//! - writes only tables in the compiled [`OWNED_TABLES`] list, through [`Writer`], whose
-//!   authorizer denies writes to any other table and all DDL. In M2 the list is empty, so
-//!   [`Writer::open`] refuses: Rust writes nothing in `cowork.db`.
+//! - writes only what the compiled [`OWNED_TABLES`] list grants, through [`Writer`], whose
+//!   authorizer denies every other write and all DDL. M3 (Rust owns sign-in and the account):
+//!   the list is the auth tables, each with the statements Rust may run on it ([`Access`]), and
+//!   `settings` rows only for the keys in [`OWNED_SETTING_KEYS`], through
+//!   [`WriteTx::set_setting`] and friends. A [`Writer`] opens only with the deployment switch
+//!   ([`RustAuth`], `NOEVIA_RUST_AUTH=1`); without it Rust writes nothing in `cowork.db`, as in
+//!   M2. Node refuses the same writes while the switch is on (core `server/rust-auth.cjs`), so
+//!   each owned row has one writer.
 //!
 //! [`json`] has Node's `atomicJson` (core `server/workspace.cjs`) write-then-rename, gated the
-//! same way by [`OWNED_JSON_FILES`] (empty in M2).
+//! same way by [`OWNED_JSON_FILES`] and the switch.
 
 pub mod json;
 
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Params, Row, TransactionBehavior};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// The database file inside UI_DATA_DIR (core auth.cjs).
@@ -40,14 +46,104 @@ pub const BUSY_TIMEOUT: Duration = Duration::from_millis(5000);
 /// A newer database was migrated by a Node this build does not know: refused.
 pub const KNOWN_SCHEMA_VERSION: i64 = 5;
 
-/// Tables Rust may write. Empty in M2: Node is the only writer of `cowork.db`.
-pub const OWNED_TABLES: &[&str] = &[];
+/// The statements Rust may run on an owned table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Access {
+    /// INSERT, UPDATE and DELETE.
+    Full,
+    /// INSERT and UPDATE (UPSERT included); rows are never deleted by Rust (an account is
+    /// deleted by Node, whose cleanup spans its own stores, and the rows go with it by cascade).
+    InsertUpdate,
+    /// INSERT only. `audit_events` is shared: every Node module appends too, nobody rewrites.
+    Append,
+    /// DELETE only: an account recovery revokes the account's Diary connectors, a table Node
+    /// otherwise owns.
+    DeleteOnly,
+}
 
-/// JSON files (by file name) Rust may write with [`json::write_owned`]. Empty in M2.
-pub const OWNED_JSON_FILES: &[&str] = &[];
+impl Access {
+    fn allows(self, action: &AuthAction<'_>) -> bool {
+        matches!(
+            (self, action),
+            (Access::Full, _)
+                | (
+                    Access::InsertUpdate,
+                    AuthAction::Insert { .. } | AuthAction::Update { .. }
+                )
+                | (Access::Append, AuthAction::Insert { .. })
+                | (Access::DeleteOnly, AuthAction::Delete { .. })
+        )
+    }
+}
 
-/// Columns Rust reads, per table, with the core module that creates them. Each must exist; Node
-/// may add others.
+/// What Rust writes once it owns sign-in and the account (M3, `NOEVIA_RUST_AUTH=1`): the tables
+/// core auth.cjs, device-auth.cjs and app-passwords.cjs write from the routes Rust now serves.
+/// Node's guard (core `server/rust-auth.cjs`) refuses the same set; the few Node writers that
+/// stay are listed there (account deletion, Settings → Web address, the DAV listener's
+/// `app_passwords.last_used_at`, revoking every device grant when the feature is switched off).
+pub const OWNED_TABLES: &[(&str, Access)] = &[
+    ("sessions", Access::Full),
+    ("users", Access::InsertUpdate),
+    ("user_features", Access::InsertUpdate),
+    ("user_appearance", Access::InsertUpdate),
+    ("passkeys", Access::Full),
+    ("challenges", Access::Full),
+    ("invitations", Access::Full),
+    ("recoveries", Access::Full),
+    ("device_authorizations", Access::Full),
+    ("device_grants", Access::Full),
+    ("device_tokens", Access::Full),
+    ("app_passwords", Access::Full),
+    ("audit_events", Access::Append),
+    ("diary_connectors", Access::DeleteOnly),
+];
+
+/// `settings` keys Rust writes (only through [`WriteTx::set_setting`],
+/// [`WriteTx::insert_setting_if_absent`] and [`WriteTx::delete_setting_if`]): the first-run
+/// setup code's hash (consumed by setup; Node still writes it at boot, before any account
+/// exists), the address setup chose (`public_origin`, and `public_origin_admin` when it differs
+/// from PUBLIC_ORIGIN; Settings → Web address in Node writes that one too), and the passkey
+/// decoy key.
+pub const OWNED_SETTING_KEYS: &[&str] = &[
+    "setup_code_hash",
+    "public_origin",
+    "public_origin_admin",
+    "passkey_decoy_key",
+];
+
+/// JSON files (by file name, in a user's workspace directory) Rust may write with
+/// [`json::write_owned`]: core account-instructions.cjs, account-memory.cjs and
+/// account-preferences.cjs.
+pub const OWNED_JSON_FILES: &[&str] = &[
+    "account-instructions.json",
+    "account-memory.json",
+    "account-preferences.json",
+];
+
+/// The deployment switch for M3: `NOEVIA_RUST_AUTH=1` (exactly). Without it no [`Writer`] opens
+/// and no owned JSON file is written, so merging M3 changes nothing until the switch is set.
+/// Removed once Rust-owned sign-in is proven, together with Node's copies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustAuth(());
+
+impl RustAuth {
+    /// The environment variable.
+    pub const ENV: &'static str = "NOEVIA_RUST_AUTH";
+
+    /// `Some` only for the exact value `1`.
+    pub fn from_env_value(value: Option<&str>) -> Option<Self> {
+        (value == Some("1")).then_some(RustAuth(()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_tests() -> Self {
+        RustAuth(())
+    }
+}
+
+/// Columns Rust reads or writes, per table, with the core module that creates them. Each must
+/// exist; Node may add others. (`diary_connectors` is optional: diary-connectors.cjs creates it
+/// when the server wires it up, and Rust only deletes from it when it is there.)
 pub const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ("schema_migrations", &["version"]),
     ("settings", &["key", "value"]),
@@ -60,8 +156,10 @@ pub const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
             "display_name",
             "role",
             "password_hash",
+            "webauthn_user_id",
             "disabled_at",
             "created_at",
+            "updated_at",
             "credential_epoch",
         ],
     ),
@@ -74,22 +172,124 @@ pub const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
             "created_at",
             "last_seen_at",
             "expires_at",
+            "user_agent",
+            "ip",
         ],
     ),
-    ("user_features", &["user_id", "diary_enabled", "onboarded"]),
+    (
+        "passkeys",
+        &[
+            "id",
+            "user_id",
+            "name",
+            "public_key",
+            "webauthn_user_id",
+            "counter",
+            "device_type",
+            "backed_up",
+            "transports",
+            "created_at",
+            "last_used_at",
+            "rp_id",
+        ],
+    ),
+    (
+        "challenges",
+        &["id_hash", "user_id", "kind", "challenge", "expires_at"],
+    ),
+    (
+        "invitations",
+        &[
+            "token_hash",
+            "created_by",
+            "role",
+            "expires_at",
+            "used_at",
+            "created_at",
+        ],
+    ),
+    (
+        "recoveries",
+        &[
+            "token_hash",
+            "user_id",
+            "created_by",
+            "expires_at",
+            "used_at",
+            "created_at",
+        ],
+    ),
+    (
+        "audit_events",
+        &[
+            "id",
+            "actor_user_id",
+            "target_user_id",
+            "action",
+            "detail",
+            "created_at",
+        ],
+    ),
+    (
+        "user_features",
+        &["user_id", "diary_enabled", "onboarded", "updated_at"],
+    ),
+    ("user_appearance", &["user_id", "value", "updated_at"]),
     // device-auth.cjs ensureDeviceSchema, called from createAuth.
     (
+        "device_authorizations",
+        &[
+            "device_code_hash",
+            "user_code_hash",
+            "client_name",
+            "ip",
+            "user_agent",
+            "created_at",
+            "expires_at",
+            "interval_ms",
+            "last_poll_at",
+            "status",
+            "user_id",
+            "decided_at",
+        ],
+    ),
+    (
         "device_grants",
-        &["id", "user_id", "client_name", "last_used_at", "expires_at"],
+        &[
+            "id",
+            "user_id",
+            "client_name",
+            "created_at",
+            "last_used_at",
+            "expires_at",
+            "ip",
+            "user_agent",
+        ],
     ),
     (
         "device_tokens",
-        &["token_hash", "grant_id", "kind", "expires_at"],
+        &[
+            "token_hash",
+            "grant_id",
+            "kind",
+            "created_at",
+            "expires_at",
+            "used_at",
+            "replaced_by",
+        ],
     ),
     // app-passwords.cjs createAppPasswords, called from createAuth.
     (
         "app_passwords",
-        &["id", "user_id", "scope", "password_hash"],
+        &[
+            "id",
+            "user_id",
+            "name",
+            "scope",
+            "password_hash",
+            "created_at",
+            "last_used_at",
+        ],
     ),
 ];
 
@@ -105,7 +305,7 @@ pub enum StoreError {
     NotReady(String),
     /// Node migrated past what this build knows. Never read: an update of noevia-rs is needed.
     SchemaTooNew { found: i64, known: i64 },
-    /// A write to a table not in [`OWNED_TABLES`], or any write while it is empty.
+    /// A write [`OWNED_TABLES`] does not grant, or any write without the switch.
     NotOwned(String),
     /// An SQLite error (the message never contains bound values).
     Sqlite(String),
@@ -160,19 +360,39 @@ fn read_only_authorizer(ctx: AuthContext<'_>) -> Authorization {
     }
 }
 
-/// The writer's authorizer: the reader's set plus INSERT/UPDATE/DELETE on `owned` tables only.
-/// DDL stays denied: Rust never writes schema while Node is the migrator.
+/// The writer's authorizer: the reader's set plus what `owned` grants, on the main database only;
+/// `settings` only while `settings_open` is set (inside the key-checked setting helpers). DDL
+/// stays denied: Rust never writes schema while Node is the migrator.
+///
+/// SQLite consults the authorizer when a statement is prepared (and re-prepared after a schema
+/// change), including the programs it compiles for foreign-key actions, so a cascade can only
+/// reach tables this grants too.
 fn owned_authorizer(
-    owned: &'static [&'static str],
+    owned: &'static [(&'static str, Access)],
+    settings_open: Arc<AtomicBool>,
 ) -> impl FnMut(AuthContext<'_>) -> Authorization {
     move |ctx: AuthContext<'_>| match ctx.action {
         AuthAction::Insert { table_name }
         | AuthAction::Delete { table_name }
         | AuthAction::Update { table_name, .. } => {
-            if owned.contains(&table_name) && ctx.database_name == Some("main") {
-                Authorization::Allow
-            } else {
-                Authorization::Deny
+            if ctx.database_name != Some("main") {
+                return Authorization::Deny;
+            }
+            if table_name == "settings" {
+                let open = settings_open.load(Ordering::SeqCst)
+                    && matches!(
+                        ctx.action,
+                        AuthAction::Insert { .. } | AuthAction::Delete { .. }
+                    );
+                return if open {
+                    Authorization::Allow
+                } else {
+                    Authorization::Deny
+                };
+            }
+            match owned.iter().find(|(t, _)| *t == table_name) {
+                Some((_, access)) if access.allows(&ctx.action) => Authorization::Allow,
+                _ => Authorization::Deny,
             }
         }
         _ => read_only_authorizer(ctx),
@@ -280,6 +500,10 @@ fn open_inner(
         // A second line of defence after the read-only open; set before the authorizer, which
         // refuses every pragma with a value.
         conn.pragma_update(None, "query_only", true)?;
+    } else {
+        // core auth.cjs: `db.pragma('foreign_keys = ON')` on every connection that writes, so
+        // deleting a grant deletes its tokens and the REFERENCES checks hold for Rust's rows too.
+        conn.pragma_update(None, "foreign_keys", true)?;
     }
     conn.authorizer(Some(authorizer))?;
     verify(&conn)?;
@@ -367,11 +591,67 @@ impl Reader<'_> {
 /// writer's owned tables.
 pub struct WriteTx<'a> {
     conn: &'a Connection,
+    settings_open: &'a AtomicBool,
+}
+
+/// Opens the `settings` grant for one statement (prepared uncached, so no authorized statement
+/// outlives it) and closes it again whatever happens.
+struct SettingsWindow<'a>(&'a AtomicBool);
+
+impl Drop for SettingsWindow<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
 }
 
 impl WriteTx<'_> {
     pub fn reader(&self) -> Reader<'_> {
         Reader { conn: self.conn }
+    }
+
+    fn settings_statement<P: Params>(
+        &self,
+        key: &str,
+        sql: &str,
+        params: P,
+    ) -> Result<usize, StoreError> {
+        if !OWNED_SETTING_KEYS.contains(&key) {
+            return Err(StoreError::NotOwned(format!(
+                "settings key {}",
+                key.chars().take(64).collect::<String>()
+            )));
+        }
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        let mut stmt = self.conn.prepare(sql)?;
+        Ok(stmt.execute(params)?)
+    }
+
+    /// `INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)` for an owned key.
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<usize, StoreError> {
+        self.settings_statement(
+            key,
+            "INSERT OR REPLACE INTO settings(key,value) VALUES(?1,?2)",
+            [key, value],
+        )
+    }
+
+    /// `INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)` for an owned key.
+    pub fn insert_setting_if_absent(&self, key: &str, value: &str) -> Result<usize, StoreError> {
+        self.settings_statement(
+            key,
+            "INSERT OR IGNORE INTO settings(key,value) VALUES(?1,?2)",
+            [key, value],
+        )
+    }
+
+    /// `DELETE FROM settings WHERE key=? AND value=?` for an owned key: the number deleted.
+    pub fn delete_setting_if(&self, key: &str, value: &str) -> Result<usize, StoreError> {
+        self.settings_statement(
+            key,
+            "DELETE FROM settings WHERE key=?1 AND value=?2",
+            [key, value],
+        )
     }
 
     /// Runs one statement; a write outside the owned tables fails with [`StoreError::NotOwned`].
@@ -394,32 +674,38 @@ fn sql_target(sql: &str) -> String {
     words.join(" ")
 }
 
-/// A read-write connection limited to [`OWNED_TABLES`]. With the list empty (M2) it cannot be
-/// opened at all.
+/// A read-write connection limited to what [`OWNED_TABLES`] grants. Opens only with the
+/// deployment switch.
 pub struct Writer {
     inner: Mutex<Inner>,
+    settings_open: Arc<AtomicBool>,
 }
 
 impl Writer {
-    pub fn open(data_dir: &Path) -> Result<Self, StoreError> {
+    pub fn open(data_dir: &Path, _switch: RustAuth) -> Result<Self, StoreError> {
         Self::open_owning(data_dir, OWNED_TABLES)
     }
 
-    fn open_owning(data_dir: &Path, owned: &'static [&'static str]) -> Result<Self, StoreError> {
+    fn open_owning(
+        data_dir: &Path,
+        owned: &'static [(&'static str, Access)],
+    ) -> Result<Self, StoreError> {
         if owned.is_empty() {
             return Err(StoreError::NotOwned(
                 "any table (OWNED_TABLES is empty)".into(),
             ));
         }
+        let settings_open = Arc::new(AtomicBool::new(false));
         // READ_WRITE without CREATE: the file must already exist (Node made it).
         let inner = open_inner(
             data_dir,
             OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
             false,
-            owned_authorizer(owned),
+            owned_authorizer(owned, Arc::clone(&settings_open)),
         )?;
         Ok(Writer {
             inner: Mutex::new(inner),
+            settings_open,
         })
     }
 
@@ -433,8 +719,27 @@ impl Writer {
         let tx = inner
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let out = f(&WriteTx { conn: &tx })?;
+        let out = f(&WriteTx {
+            conn: &tx,
+            settings_open: &self.settings_open,
+        })?;
         tx.commit()?;
+        Ok(out)
+    }
+
+    /// Runs `f` in one deferred read transaction on the writer's connection (reads see the
+    /// writer's own commits at once).
+    pub fn read<T>(
+        &self,
+        f: impl FnOnce(&Reader<'_>) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        let mut inner = self.inner.lock().map_err(|_| StoreError::Poisoned)?;
+        inner.ensure_current()?;
+        let tx = inner
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Deferred)?;
+        let out = f(&Reader { conn: &tx })?;
+        tx.finish()?;
         Ok(out)
     }
 }

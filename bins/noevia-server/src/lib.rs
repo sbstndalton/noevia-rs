@@ -11,6 +11,7 @@ pub mod reply;
 pub mod routes;
 pub mod serve;
 pub mod static_files;
+pub mod upkeep;
 
 use axum::body::Body;
 use axum::extract::{ConnectInfo, State};
@@ -19,7 +20,9 @@ use axum::Router;
 use std::sync::Arc;
 
 /// What `noevia-server --features` lists, one per line.
-pub const FEATURES: &[&str] = &["code-net-guard", "header-read-timeout"];
+/// `rust-auth`: this build understands NOEVIA_RUST_AUTH (M3), so the web supervisor may let Node
+/// refuse the auth tables only when the front reports it.
+pub const FEATURES: &[&str] = &["code-net-guard", "header-read-timeout", "rust-auth"];
 
 pub struct App {
     pub config: config::Config,
@@ -27,8 +30,10 @@ pub struct App {
     pub statics: static_files::StaticFiles,
     pub version: Option<String>,
     pub code_net: Arc<code_net::CodeNetGuard>,
-    /// The validated identity for Rust-owned routes; no route uses it in M2.
+    /// The validated identity for Rust-owned routes.
     pub identity: Arc<identity::IdentityLayer>,
+    /// The cowork.db writer while NOEVIA_RUST_AUTH is on (M3).
+    pub writes: Arc<upkeep::WriterLayer>,
 }
 
 impl App {
@@ -41,8 +46,10 @@ impl App {
         let code_net = code_net::CodeNetGuard::new(&config.code_net, lookup);
         let version = health::local_version(&config.dist, config.stamp_version.as_deref());
         let identity = Arc::new(identity::IdentityLayer::new(&config));
+        let writes = Arc::new(upkeep::WriterLayer::new(&config));
         Arc::new(App {
             identity,
+            writes,
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -69,7 +76,28 @@ async fn handle(
         }
     }
     let path = req.uri().path().to_string();
-    match routes::dispatch(req.method().as_str(), &path) {
+    let native = routes::dispatch_under(req.method().as_str(), &path, app.config.switches());
+    let served_bundle = match native {
+        Some(routes::Native::Ready) => true,
+        Some(routes::Native::Static) => static_files::canonical(&path),
+        None => false,
+    };
+    if app.writes.switch().is_some() && !served_bundle {
+        // Node's gate wrote these on every request it saw; with NOEVIA_RUST_AUTH it no longer can.
+        let creds = server_auth::Creds::from_headers(
+            req.method().as_str(),
+            req.headers()
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_bytes())),
+        );
+        let (identity, writes) = (Arc::clone(&app.identity), Arc::clone(&app.writes));
+        let now = identity::now_ms();
+        let _ = tokio::task::spawn_blocking(move || {
+            writes.upkeep_blocking(identity.authenticator(), &creds, now)
+        })
+        .await;
+    }
+    match native {
         Some(routes::Native::Ready) => {
             health::ready(&app.config.upstream, app.version.as_deref()).await
         }
