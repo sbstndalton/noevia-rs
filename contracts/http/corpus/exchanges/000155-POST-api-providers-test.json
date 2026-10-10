@@ -1,22 +1,25 @@
 {
   "v": 1,
-  "seq": 31,
+  "seq": 155,
   "request": {
-    "method": "GET",
-    "path": "/api/admin/users",
+    "method": "POST",
+    "path": "/api/providers/test",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
-      "cookie": "cowork_session=<secret:7>; cowork_csrf=<secret:8>",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
       "origin": "<origin>",
-      "user-agent": "node"
+      "user-agent": "node",
+      "x-csrf-token": "<secret:4>"
     },
     "body": {
-      "kind": "empty"
+      "kind": "json",
+      "json": {}
     }
   },
   "response": {
-    "status": 403,
+    "status": 400,
     "headers": {
       "cache-control": "no-store",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
@@ -29,7 +32,7 @@
     "body": {
       "kind": "json",
       "json": {
-        "error": "administrator required"
+        "error": "valid baseUrl required"
       }
     }
   }

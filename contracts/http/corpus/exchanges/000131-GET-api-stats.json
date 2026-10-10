@@ -1,9 +1,9 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 131,
   "request": {
     "method": "GET",
-    "path": "/api/account/instructions",
+    "path": "/api/stats",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -29,44 +29,20 @@
     "body": {
       "kind": "json",
       "json": {
-        "text": "Answer briefly.",
-        "style": "concise",
-        "advanced": {
-          "length": "auto",
-          "tone": "formal",
-          "formatting": "auto",
-          "emoji": "auto"
-        },
-        "language": "Norwegian",
-        "updatedAt": "<ts>",
-        "maxChars": 4000,
-        "styles": [
-          "default",
-          "concise",
-          "detailed"
-        ],
-        "advancedOptions": {
-          "length": [
-            "auto",
-            "short",
-            "long"
-          ],
-          "tone": [
-            "auto",
-            "casual",
-            "formal"
-          ],
-          "formatting": [
-            "auto",
-            "minimal",
-            "structured"
-          ],
-          "emoji": [
-            "auto",
-            "none",
-            "some"
-          ]
-        }
+        "up": false,
+        "telemetryScope": null,
+        "mtp": [],
+        "tokensPerSecond": null,
+        "timeToFirstToken": null,
+        "inputTokens": null,
+        "outputTokens": null,
+        "inputTokensTotal": null,
+        "outputTokensTotal": null,
+        "requestCount": null,
+        "cpuPercent": null,
+        "gpuPercent": null,
+        "vramGb": null,
+        "memoryGb": null
       }
     }
   }

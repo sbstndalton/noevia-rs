@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 84,
   "request": {
     "method": "GET",
     "path": "/api/account/instructions",

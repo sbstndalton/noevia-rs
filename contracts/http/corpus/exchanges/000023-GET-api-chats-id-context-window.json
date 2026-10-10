@@ -1,9 +1,9 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 23,
   "request": {
     "method": "GET",
-    "path": "/api/account/instructions",
+    "path": "/api/chats/<id:4>/context-window",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -29,43 +29,34 @@
     "body": {
       "kind": "json",
       "json": {
-        "text": "Answer briefly.",
-        "style": "concise",
-        "advanced": {
-          "length": "auto",
-          "tone": "formal",
-          "formatting": "auto",
-          "emoji": "auto"
-        },
-        "language": "Norwegian",
-        "updatedAt": "<ts>",
-        "maxChars": 4000,
-        "styles": [
-          "default",
-          "concise",
-          "detailed"
-        ],
-        "advancedOptions": {
-          "length": [
-            "auto",
-            "short",
-            "long"
+        "meter": {
+          "model": "synthetic-chat-model",
+          "limit": 8192,
+          "limitSource": "Conservative fallback; backend limit unavailable",
+          "estimated": true,
+          "used": 648,
+          "reserve": 2048,
+          "safety": 1229,
+          "parts": [
+            {
+              "name": "Messages & summary",
+              "tokens": 25
+            },
+            {
+              "name": "Instructions, memory & sources",
+              "tokens": 279
+            },
+            {
+              "name": "Tools",
+              "tokens": 344
+            }
           ],
-          "tone": [
-            "auto",
-            "casual",
-            "formal"
-          ],
-          "formatting": [
-            "auto",
-            "minimal",
-            "structured"
-          ],
-          "emoji": [
-            "auto",
-            "none",
-            "some"
-          ]
+          "free": 4267,
+          "threshold": 4915,
+          "updatedAt": "<ts>",
+          "historyCount": 1,
+          "compactedAt": null,
+          "covered": 0
         }
       }
     }

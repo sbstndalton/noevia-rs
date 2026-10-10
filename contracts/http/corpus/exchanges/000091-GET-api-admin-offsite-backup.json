@@ -1,9 +1,9 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 91,
   "request": {
     "method": "GET",
-    "path": "/api/account/instructions",
+    "path": "/api/admin/offsite-backup",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -29,44 +29,28 @@
     "body": {
       "kind": "json",
       "json": {
-        "text": "Answer briefly.",
-        "style": "concise",
-        "advanced": {
-          "length": "auto",
-          "tone": "formal",
-          "formatting": "auto",
-          "emoji": "auto"
+        "enabled": false,
+        "ready": false,
+        "reason": "Off-site backups are turned off (Settings → Features).",
+        "reasonCode": "off",
+        "reasonGaps": [],
+        "busy": null,
+        "schedule": "Daily at 03:00 (server time)",
+        "scheduleHour": 3,
+        "retention": "Keeps 7 daily, 4 weekly and 6 monthly snapshots",
+        "retentionPolicy": {
+          "daily": 7,
+          "weekly": 4,
+          "monthly": 6
         },
-        "language": "Norwegian",
-        "updatedAt": "<ts>",
-        "maxChars": 4000,
-        "styles": [
-          "default",
-          "concise",
-          "detailed"
-        ],
-        "advancedOptions": {
-          "length": [
-            "auto",
-            "short",
-            "long"
-          ],
-          "tone": [
-            "auto",
-            "casual",
-            "formal"
-          ],
-          "formatting": [
-            "auto",
-            "minimal",
-            "structured"
-          ],
-          "emoji": [
-            "auto",
-            "none",
-            "some"
-          ]
-        }
+        "destinationFolder": null,
+        "destination": null,
+        "google": null,
+        "paths": 1,
+        "lastBackup": null,
+        "lastVerify": null,
+        "lastError": null,
+        "snapshots": null
       }
     }
   }

@@ -1,9 +1,9 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 17,
   "request": {
     "method": "GET",
-    "path": "/api/account/instructions",
+    "path": "/api/workspace",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -29,44 +29,37 @@
     "body": {
       "kind": "json",
       "json": {
-        "text": "Answer briefly.",
-        "style": "concise",
-        "advanced": {
-          "length": "auto",
-          "tone": "formal",
-          "formatting": "auto",
-          "emoji": "auto"
-        },
-        "language": "Norwegian",
-        "updatedAt": "<ts>",
-        "maxChars": 4000,
-        "styles": [
-          "default",
-          "concise",
-          "detailed"
+        "projects": [
+          {
+            "id": "<id:3>",
+            "name": "Synthetic project",
+            "goal": "Contract corpus",
+            "instructions": "Answer briefly.",
+            "pinned": false,
+            "archived": false,
+            "sourceFolders": [],
+            "memories": [],
+            "files": [
+              {
+                "name": "notes.md",
+                "content": "# Synthetic notes\n\nAlpha beta gamma."
+              }
+            ],
+            "model": "synthetic-chat-model",
+            "routing": "auto",
+            "modes": [
+              "chat"
+            ],
+            "toolboxes": [
+              "core"
+            ],
+            "chats": [],
+            "createdAt": "<ts>",
+            "updatedAt": "<ts>",
+            "instructionSkills": {}
+          }
         ],
-        "advancedOptions": {
-          "length": [
-            "auto",
-            "short",
-            "long"
-          ],
-          "tone": [
-            "auto",
-            "casual",
-            "formal"
-          ],
-          "formatting": [
-            "auto",
-            "minimal",
-            "structured"
-          ],
-          "emoji": [
-            "auto",
-            "none",
-            "some"
-          ]
-        }
+        "freeChats": []
       }
     }
   }

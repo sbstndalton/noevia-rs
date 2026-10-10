@@ -1,9 +1,9 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 86,
   "request": {
     "method": "GET",
-    "path": "/api/account/instructions",
+    "path": "/api/account/preferences",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -29,42 +29,34 @@
     "body": {
       "kind": "json",
       "json": {
-        "text": "Answer briefly.",
-        "style": "concise",
-        "advanced": {
-          "length": "auto",
-          "tone": "formal",
-          "formatting": "auto",
-          "emoji": "auto"
+        "notifications": {
+          "replyFinished": false,
+          "approvalNeeded": true
         },
-        "language": "Norwegian",
+        "sendKey": "<secret:11>",
+        "locale": "system",
         "updatedAt": "<ts>",
-        "maxChars": 4000,
-        "styles": [
-          "default",
-          "concise",
-          "detailed"
-        ],
-        "advancedOptions": {
-          "length": [
-            "auto",
-            "short",
-            "long"
+        "options": {
+          "notificationEvents": [
+            "replyFinished",
+            "approvalNeeded"
           ],
-          "tone": [
-            "auto",
-            "casual",
-            "formal"
+          "sendKeys": [
+            "<secret:12>",
+            "<secret:11>"
           ],
-          "formatting": [
-            "auto",
-            "minimal",
-            "structured"
-          ],
-          "emoji": [
-            "auto",
-            "none",
-            "some"
+          "locales": [
+            "system",
+            "en-GB",
+            "en-US",
+            "de-DE",
+            "es-ES",
+            "fr-FR",
+            "it-IT",
+            "nb-NO",
+            "nl-NL",
+            "pt-BR",
+            "sv-SE"
           ]
         }
       }

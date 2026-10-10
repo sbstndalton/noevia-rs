@@ -1,18 +1,28 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 38,
   "request": {
-    "method": "GET",
+    "method": "PUT",
     "path": "/api/account/instructions",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
       "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
       "origin": "<origin>",
-      "user-agent": "node"
+      "user-agent": "node",
+      "x-csrf-token": "<secret:4>"
     },
     "body": {
-      "kind": "empty"
+      "kind": "json",
+      "json": {
+        "text": " Answer briefly. ",
+        "style": "concise",
+        "language": "Norwegian",
+        "advanced": {
+          "tone": "formal"
+        }
+      }
     }
   },
   "response": {

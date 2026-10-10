@@ -1,18 +1,22 @@
 {
   "v": 1,
-  "seq": 31,
+  "seq": 15,
   "request": {
-    "method": "GET",
-    "path": "/api/admin/users",
+    "method": "PATCH",
+    "path": "/api/profile",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
-      "cookie": "cowork_session=<secret:7>; cowork_csrf=<secret:8>",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>",
       "origin": "<origin>",
       "user-agent": "node"
     },
     "body": {
-      "kind": "empty"
+      "kind": "json",
+      "json": {
+        "displayName": "no csrf"
+      }
     }
   },
   "response": {
@@ -29,7 +33,7 @@
     "body": {
       "kind": "json",
       "json": {
-        "error": "administrator required"
+        "error": "invalid CSRF token"
       }
     }
   }

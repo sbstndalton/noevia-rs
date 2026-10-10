@@ -1,9 +1,9 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 118,
   "request": {
     "method": "GET",
-    "path": "/api/account/instructions",
+    "path": "/api/plugins/directory",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -16,7 +16,7 @@
     }
   },
   "response": {
-    "status": 200,
+    "status": 502,
     "headers": {
       "cache-control": "no-store",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
@@ -29,43 +29,10 @@
     "body": {
       "kind": "json",
       "json": {
-        "text": "Answer briefly.",
-        "style": "concise",
-        "advanced": {
-          "length": "auto",
-          "tone": "formal",
-          "formatting": "auto",
-          "emoji": "auto"
-        },
-        "language": "Norwegian",
-        "updatedAt": "<ts>",
-        "maxChars": 4000,
-        "styles": [
-          "default",
-          "concise",
-          "detailed"
-        ],
-        "advancedOptions": {
-          "length": [
-            "auto",
-            "short",
-            "long"
-          ],
-          "tone": [
-            "auto",
-            "casual",
-            "formal"
-          ],
-          "formatting": [
-            "auto",
-            "minimal",
-            "structured"
-          ],
-          "emoji": [
-            "auto",
-            "none",
-            "some"
-          ]
+        "error": "The directory could not be reached right now.",
+        "source": {
+          "label": "MCP registry",
+          "home": "https://registry.modelcontextprotocol.io"
         }
       }
     }

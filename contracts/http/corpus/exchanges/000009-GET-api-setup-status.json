@@ -1,13 +1,12 @@
 {
   "v": 1,
-  "seq": 31,
+  "seq": 9,
   "request": {
     "method": "GET",
-    "path": "/api/admin/users",
+    "path": "/api/setup/status",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
-      "cookie": "cowork_session=<secret:7>; cowork_csrf=<secret:8>",
       "origin": "<origin>",
       "user-agent": "node"
     },
@@ -16,7 +15,7 @@
     }
   },
   "response": {
-    "status": 403,
+    "status": 200,
     "headers": {
       "cache-control": "no-store",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
@@ -29,7 +28,8 @@
     "body": {
       "kind": "json",
       "json": {
-        "error": "administrator required"
+        "configured": true,
+        "publicOrigin": "<origin>"
       }
     }
   }

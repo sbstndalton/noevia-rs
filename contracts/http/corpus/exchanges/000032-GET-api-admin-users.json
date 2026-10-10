@@ -1,9 +1,9 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 32,
   "request": {
     "method": "GET",
-    "path": "/api/account/instructions",
+    "path": "/api/admin/users",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -29,44 +29,26 @@
     "body": {
       "kind": "json",
       "json": {
-        "text": "Answer briefly.",
-        "style": "concise",
-        "advanced": {
-          "length": "auto",
-          "tone": "formal",
-          "formatting": "auto",
-          "emoji": "auto"
-        },
-        "language": "Norwegian",
-        "updatedAt": "<ts>",
-        "maxChars": 4000,
-        "styles": [
-          "default",
-          "concise",
-          "detailed"
-        ],
-        "advancedOptions": {
-          "length": [
-            "auto",
-            "short",
-            "long"
-          ],
-          "tone": [
-            "auto",
-            "casual",
-            "formal"
-          ],
-          "formatting": [
-            "auto",
-            "minimal",
-            "structured"
-          ],
-          "emoji": [
-            "auto",
-            "none",
-            "some"
-          ]
-        }
+        "users": [
+          {
+            "id": "<id:1>",
+            "username": "synthetic-admin",
+            "displayName": "Synthetic Admin Renamed",
+            "role": "admin",
+            "disabled": false,
+            "diaryEnabled": false,
+            "onboarded": true
+          },
+          {
+            "id": "<id:6>",
+            "username": "synthetic-member",
+            "displayName": "Synthetic Member",
+            "role": "member",
+            "disabled": false,
+            "diaryEnabled": false,
+            "onboarded": false
+          }
+        ]
       }
     }
   }

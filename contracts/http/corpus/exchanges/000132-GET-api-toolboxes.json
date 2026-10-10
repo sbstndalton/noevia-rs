@@ -1,9 +1,9 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 132,
   "request": {
     "method": "GET",
-    "path": "/api/account/instructions",
+    "path": "/api/toolboxes",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -29,43 +29,32 @@
     "body": {
       "kind": "json",
       "json": {
-        "text": "Answer briefly.",
-        "style": "concise",
-        "advanced": {
-          "length": "auto",
-          "tone": "formal",
-          "formatting": "auto",
-          "emoji": "auto"
-        },
-        "language": "Norwegian",
-        "updatedAt": "<ts>",
-        "maxChars": 4000,
-        "styles": [
-          "default",
-          "concise",
-          "detailed"
+        "toolboxes": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "inApp": true,
+            "toolCount": 2,
+            "estTokens": 276
+          }
         ],
-        "advancedOptions": {
-          "length": [
-            "auto",
-            "short",
-            "long"
-          ],
-          "tone": [
-            "auto",
-            "casual",
-            "formal"
-          ],
-          "formatting": [
-            "auto",
-            "minimal",
-            "structured"
-          ],
-          "emoji": [
-            "auto",
-            "none",
-            "some"
-          ]
+        "prefill": {
+          "targetMs": "<num>",
+          "models": {
+            "synthetic-chat-model": {
+              "buckets": 1,
+              "tokensPerSecond": null,
+              "range": [
+                12,
+                12
+              ]
+            }
+          }
+        },
+        "mcp": {
+          "configured": false
         }
       }
     }

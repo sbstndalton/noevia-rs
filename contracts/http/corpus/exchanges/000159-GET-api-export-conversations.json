@@ -1,13 +1,13 @@
 {
   "v": 1,
-  "seq": 31,
+  "seq": 159,
   "request": {
     "method": "GET",
-    "path": "/api/admin/users",
+    "path": "/api/export/conversations",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
-      "cookie": "cowork_session=<secret:7>; cowork_csrf=<secret:8>",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
       "origin": "<origin>",
       "user-agent": "node"
     },
@@ -16,21 +16,20 @@
     }
   },
   "response": {
-    "status": 403,
+    "status": 200,
     "headers": {
       "cache-control": "no-store",
+      "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-10.zip\"",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-      "content-type": "application/json",
+      "content-type": "application/zip",
       "referrer-policy": "same-origin",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
       "x-noevia-api": "1"
     },
     "body": {
-      "kind": "json",
-      "json": {
-        "error": "administrator required"
-      }
+      "kind": "bytes",
+      "length": 1107
     }
   }
 }

@@ -1,13 +1,13 @@
 {
   "v": 1,
-  "seq": 31,
+  "seq": 111,
   "request": {
     "method": "GET",
-    "path": "/api/admin/users",
+    "path": "/api/models/autotune/untuned",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
-      "cookie": "cowork_session=<secret:7>; cowork_csrf=<secret:8>",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
       "origin": "<origin>",
       "user-agent": "node"
     },
@@ -16,7 +16,7 @@
     }
   },
   "response": {
-    "status": 403,
+    "status": 404,
     "headers": {
       "cache-control": "no-store",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
@@ -29,7 +29,7 @@
     "body": {
       "kind": "json",
       "json": {
-        "error": "administrator required"
+        "error": "Auto-tune is unavailable"
       }
     }
   }

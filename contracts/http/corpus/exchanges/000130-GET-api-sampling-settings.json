@@ -1,9 +1,9 @@
 {
   "v": 1,
-  "seq": 39,
+  "seq": 130,
   "request": {
     "method": "GET",
-    "path": "/api/account/instructions",
+    "path": "/api/sampling-settings",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -29,44 +29,24 @@
     "body": {
       "kind": "json",
       "json": {
-        "text": "Answer briefly.",
-        "style": "concise",
-        "advanced": {
-          "length": "auto",
-          "tone": "formal",
-          "formatting": "auto",
-          "emoji": "auto"
+        "enabled": true,
+        "presets": {
+          "general": {},
+          "coding": {
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "repeat_penalty": 1.05
+          },
+          "creative": {
+            "temperature": 0.9,
+            "top_p": 0.95
+          },
+          "reasoning": {
+            "temperature": 0.5
+          }
         },
-        "language": "Norwegian",
-        "updatedAt": "<ts>",
-        "maxChars": 4000,
-        "styles": [
-          "default",
-          "concise",
-          "detailed"
-        ],
-        "advancedOptions": {
-          "length": [
-            "auto",
-            "short",
-            "long"
-          ],
-          "tone": [
-            "auto",
-            "casual",
-            "formal"
-          ],
-          "formatting": [
-            "auto",
-            "minimal",
-            "structured"
-          ],
-          "emoji": [
-            "auto",
-            "none",
-            "some"
-          ]
-        }
+        "version": 1,
+        "admin": true
       }
     }
   }

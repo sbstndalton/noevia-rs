@@ -1,13 +1,13 @@
 {
   "v": 1,
-  "seq": 31,
+  "seq": 81,
   "request": {
     "method": "GET",
-    "path": "/api/admin/users",
+    "path": "/api/auth/session",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
-      "cookie": "cowork_session=<secret:7>; cowork_csrf=<secret:8>",
+      "cookie": "cowork_session=<secret:24>; cowork_csrf=<secret:25>",
       "origin": "<origin>",
       "user-agent": "node"
     },
@@ -16,7 +16,7 @@
     }
   },
   "response": {
-    "status": 403,
+    "status": 200,
     "headers": {
       "cache-control": "no-store",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
@@ -29,7 +29,17 @@
     "body": {
       "kind": "json",
       "json": {
-        "error": "administrator required"
+        "user": {
+          "id": "<id:1>",
+          "username": "synthetic-admin",
+          "displayName": "Synthetic Admin Renamed",
+          "role": "admin",
+          "disabled": false,
+          "diaryEnabled": false,
+          "onboarded": true
+        },
+        "csrfToken": "<secret:25>",
+        "legacy": false
       }
     }
   }
