@@ -12,6 +12,8 @@
 //!   --timeout SECS         per-request timeout (default 120)
 //!   --bind PH=VALUE        bind a placeholder before replaying (repeatable)
 //!   --ignore-header NAME   leave a response header out of the comparison (repeatable)
+//!   --ignore-body PATH     leave a JSON body path (`hours`, `peakHour/hour`) out of the
+//!                          comparison (repeatable); for wall-clock-dependent values
 //!   --state-out FILE       write the data dir snapshot (tree + cowork.db) after the replay
 //!   --expect-state FILE    diff the snapshot against FILE (one written by --state-out)
 //!   --state-ignore PATH    leave a path (or `*suffix`) out of the snapshot (repeatable)
@@ -25,7 +27,7 @@
 //! Exit status: 0 clean, 1 differences, 2 usage or setup error.
 
 use replay::bind::Bindings;
-use replay::{corpus, diff, http, routes, state, Options, Outcome};
+use replay::{corpus, http, routes, state, Options, Outcome};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitCode, Stdio};
@@ -280,6 +282,11 @@ fn run(a: &Args) -> Result<bool, String> {
             .into_iter()
             .map(str::to_ascii_lowercase)
             .collect(),
+        ignore_body: a
+            .all("ignore-body")
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
         data_dir: work.clone(),
         now: REQUEST_TS.to_string(),
     };
@@ -313,14 +320,7 @@ fn run(a: &Args) -> Result<bool, String> {
         if let Some(p) = a.one("expect-state") {
             let text = std::fs::read_to_string(p).map_err(|e| format!("read {p}: {e}"))?;
             let expected: Value = serde_json::from_str(&text).map_err(|e| format!("{p}: {e}"))?;
-            let mut diffs = Vec::new();
-            diff::json(
-                &expected,
-                &snap,
-                "state",
-                &mut Bindings::new(""),
-                &mut diffs,
-            );
+            let diffs = state::compare(&expected, &snap);
             for d in &diffs {
                 println!("STATE {}: expected {} got {}", d.at, d.expected, d.actual);
             }

@@ -6,6 +6,13 @@
 # CI (routes-check job) fails when the client names a path that is missing here. Parameter
 # names do not matter for the match ({id} == {chatId}); {*} is a computed segment, {*?} an
 # optional suffix or query. A path kept for a non-web caller sets client = false.
+#
+# M1: bins/noevia-server (the Rust front) reads this file at build time. A route with
+# owner = "rust" is answered natively, for the listed `methods` (all methods when absent); every
+# other request is proxied to Node (bins/noevia-server/src/legacy_proxy.rs). Its tests fail when a
+# rust route has no native handler or a node route does not reach the proxy. The non-/api entries
+# at the end are the pages; `catch_all = true` is the build bundle + SPA fallback (core
+# static-files.cjs, spa-routes.cjs) for every non-/api path no other entry names.
 
 [[route]]
 path = "/api/account/instructions"
@@ -581,7 +588,8 @@ owner = "node"
 
 [[route]]
 path = "/api/ready"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/reasoning-settings"
@@ -638,3 +646,34 @@ owner = "node"
 [[route]]
 path = "/api/workspace"
 owner = "node"
+
+# Non-/api pages (M1). Node answers these before its static fallback, so they stay Node's.
+[[route]]
+path = "/about"
+owner = "node"
+client = false
+
+[[route]]
+path = "/privacy"
+owner = "node"
+client = false
+
+[[route]]
+path = "/.well-known/webauthn"
+owner = "node"
+client = false
+
+# /device answers a JSON 404 while the nativeClientAuth feature is off (routes/device-auth.cjs).
+[[route]]
+path = "/device"
+owner = "node"
+client = false
+
+# The built web client: a file of the bundle (cache headers, ETag, br/gzip as static-files.cjs),
+# else index.html for a client place (spa-routes.cjs), else a JSON 404.
+[[route]]
+path = "/{*}"
+owner = "rust"
+methods = ["GET", "HEAD"]
+catch_all = true
+client = false
