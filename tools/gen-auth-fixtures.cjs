@@ -381,11 +381,17 @@ async function buildScenario(sc, tmp) {
 // address in memory until it restarts, then uses PUBLIC_ORIGIN; Rust cannot tell which Node is
 // running, so its verdict must be no wider than either. Only settings are dumped: setup writes a
 // user with a random id and a randomly salted hash, and origin checks never read users.
-async function setupOriginScenario(tmp) {
+// First-run setup with an address (S) other than PUBLIC_ORIGIN (P). Since noevia#1254 (core#58)
+// setup also stores public_origin_admin = S, so the live and the restarted Node both trust S.
+// With legacy=true the database is put back into the state setup left before that fix
+// (settings.public_origin = S, no public_origin_admin row; databases set up earlier can still be
+// in it): the live Node still holds S in memory, a restarted one resolves P.
+async function setupOriginScenario(tmp, legacy) {
   const P = 'https://noevia.example.test';
   const S = 'https://setup.example.test';
   const env = { publicOrigin: P, additionalOrigins: ['http://192.168.1.20:8021'], legacyToken: '', legacyCompat: false };
-  const dataDir = path.join(tmp, 'setup-origin-differs');
+  const name = legacy ? 'setup-origin-legacy' : 'setup-origin-differs';
+  const dataDir = path.join(tmp, name);
   fs.mkdirSync(dataDir, { recursive: true });
   const opts = { dataDir, publicOrigin: P, rpId: '', legacyToken: '', legacyCompat: false, trustProxy: true, additionalOrigins: env.additionalOrigins };
   // Settings Node reads at boot go in first (a throwaway createAuth runs the migrations), as in
@@ -399,13 +405,17 @@ async function setupOriginScenario(tmp) {
   const r = await live.setup({ headers: {}, method: 'POST', socket: { remoteAddress: '127.0.0.1' } }, res,
     { setupCode, username: 'firstadmin', password: 'synthetic setup password 0001', publicOrigin: S });
   if (r.status !== 201) throw new Error(`setup returned ${r.status}`);
+  const stored = (k) => live.db.prepare('SELECT value FROM settings WHERE key=?').get(k)?.value ?? null;
+  if (stored('public_origin') !== S) throw new Error('setup did not store public_origin');
+  if (legacy) live.db.prepare("DELETE FROM settings WHERE key='public_origin_admin'").run();
+  else if (stored('public_origin_admin') !== S) throw new Error('setup did not store public_origin_admin');
   const restarted = createAuth(opts);
   const origins = [P, S, '', 'http://192.168.1.20:8021', 'https://old.example.test', 'https://evil.example.test', 'null'];
   const verdicts = (a) => origins.map((origin) => !!a.originValid({ headers: origin ? { origin } : {}, method: 'POST', socket: { remoteAddress: '127.0.0.1' } }));
   const liveV = verdicts(live);
   const restartedV = verdicts(restarted);
   const out = {
-    name: 'setup-origin-differs', env, db: dump(live.db, ['settings']),
+    name, env, db: dump(live.db, ['settings']),
     liveOrigin: live.origin, restartedOrigin: restarted.origin,
     cases: origins.map((origin, i) => ({ origin, live: liveV[i], restarted: restartedV[i] })),
   };
@@ -441,7 +451,8 @@ async function main() {
       out.scenarios.push({ name: sc.name, env: sc.env, nativeClientAuth: sc.nativeClientAuth, originAmbiguous, db, cases, fuzz, dav });
       ctx.db.close();
     }
-    out.setupOrigin = await setupOriginScenario(tmp);
+    out.setupOrigin = await setupOriginScenario(tmp, false);
+    out.legacySetupOrigin = await setupOriginScenario(tmp, true);
     // Pure helpers, tabled once.
     out.parseCookies = cookieFuzz(0xc00c1e, 2500).map((header) => ({ header, expect: parseCookies({ headers: { cookie: header } }) }));
     out.bearerToken = ['', 'Bearer nva_x', 'Bearer nva_', 'bearer nva_x', 'Bearer  nva_x  ', 'Bearer nva_x y', 'Bearer\tnva_x', 'Bearer nva_x', 'Bearernva_x',
