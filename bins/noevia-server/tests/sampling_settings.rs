@@ -207,6 +207,43 @@ async fn sampling_identity_admin_methods_audit_caps_and_omission() {
     );
     db.execute_batch("DROP TRIGGER sampling_audit_abort")
         .unwrap();
+    for normalized in [
+        "/api/x/../sampling-settings",
+        "/api/x/%2e%2e/sampling-settings",
+    ] {
+        assert_eq!(call(addr, "GET", normalized, "", "", "").await.0, 401);
+        assert_eq!(
+            call(addr, "PUT", normalized, member, &trusted, "null").await,
+            (403, serde_json::json!({"error":"Administrator required"}))
+        );
+        assert_eq!(
+            call(addr, "PUT", normalized, admin, "", r#"{"enabled":true}"#)
+                .await
+                .0,
+            403
+        );
+        let (status, value) = call(addr, "GET", normalized, member, "", "").await;
+        assert_eq!(status, 200);
+        assert_eq!(value["enabled"], true);
+        assert_eq!(
+            call(
+                addr,
+                "PUT",
+                normalized,
+                admin,
+                &trusted,
+                r#"{"enabled":true}"#
+            )
+            .await,
+            (200, serde_json::json!({"enabled":true}))
+        );
+    }
+    let normalized_audits:Vec<(String,Option<String>,String)>=db.prepare("SELECT actor_user_id,target_user_id,detail FROM audit_events WHERE action='sampling.autoPresets' ORDER BY id").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap().collect::<Result<_,_>>().unwrap();
+    assert_eq!(normalized_audits.len(), 4);
+    assert!(normalized_audits
+        .iter()
+        .skip(2)
+        .all(|row| *row == (A.into(), None, "{\"enabled\":true}".into())));
     let over = format!(
         r#"{{"enabled":false,"extra":"{}"}}"#,
         "a".repeat(server_sampling_settings::BODY_LIMIT)
@@ -242,7 +279,13 @@ async fn sampling_identity_admin_methods_audit_caps_and_omission() {
             .0,
         200
     );
-    assert_eq!(call(addr, "GET", p, member, "", "").await.0, 502);
+    for path in [
+        p,
+        "/api/x/../sampling-settings",
+        "/api/x/%2e%2e/sampling-settings",
+    ] {
+        assert_eq!(call(addr, "GET", path, member, "", "").await.0, 502);
+    }
     tx.send(()).unwrap();
     task.await.unwrap();
 }

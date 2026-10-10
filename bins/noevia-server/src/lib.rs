@@ -109,7 +109,10 @@ async fn handle(
             if matches!(
                 on_whatwg,
                 Some(
-                    routes::Native::Account | routes::Native::ProjectAssets | routes::Native::Usage
+                    routes::Native::Account
+                        | routes::Native::ProjectAssets
+                        | routes::Native::Usage
+                        | routes::Native::SamplingSettings
                 )
             ) {
                 native = on_whatwg;
