@@ -13,6 +13,7 @@
     "legacyCompat": false
    },
    "nativeClientAuth": false,
+   "originAmbiguous": false,
    "db": {
     "schema": [
      {
@@ -18477,6 +18478,7 @@
     "legacyCompat": true
    },
    "nativeClientAuth": true,
+   "originAmbiguous": false,
    "db": {
     "schema": [
      {
@@ -37298,6 +37300,7 @@
     "legacyCompat": true
    },
    "nativeClientAuth": false,
+   "originAmbiguous": true,
    "db": {
     "schema": [
      {
@@ -55959,6 +55962,7 @@
     "legacyCompat": true
    },
    "nativeClientAuth": true,
+   "originAmbiguous": false,
    "db": {
     "schema": [
      {
@@ -72139,6 +72143,7 @@
     "legacyCompat": false
    },
    "nativeClientAuth": true,
+   "originAmbiguous": false,
    "db": {
     "schema": [
      {
@@ -90935,6 +90940,349 @@
    ]
   }
  ],
+ "setupOrigin": {
+  "name": "setup-origin-differs",
+  "env": {
+   "publicOrigin": "https://noevia.example.test",
+   "additionalOrigins": [
+    "http://192.168.1.20:8021"
+   ],
+   "legacyToken": "",
+   "legacyCompat": false
+  },
+  "db": {
+   "schema": [
+    {
+     "type": "table",
+     "name": "app_passwords",
+     "tbl": "app_passwords",
+     "sql": "CREATE TABLE app_passwords(\n    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n    name TEXT NOT NULL, scope TEXT NOT NULL CHECK(scope IN ('lan','public')),\n    password_hash TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER\n  )"
+    },
+    {
+     "type": "table",
+     "name": "audit_events",
+     "tbl": "audit_events",
+     "sql": "CREATE TABLE audit_events(\n      id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id TEXT, target_user_id TEXT,\n      action TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL\n    )"
+    },
+    {
+     "type": "table",
+     "name": "challenges",
+     "tbl": "challenges",
+     "sql": "CREATE TABLE challenges(\n      id_hash TEXT PRIMARY KEY, user_id TEXT, kind TEXT NOT NULL, challenge TEXT NOT NULL,\n      expires_at INTEGER NOT NULL\n    )"
+    },
+    {
+     "type": "table",
+     "name": "device_authorizations",
+     "tbl": "device_authorizations",
+     "sql": "CREATE TABLE device_authorizations(\n      device_code_hash TEXT PRIMARY KEY, user_code_hash TEXT NOT NULL UNIQUE,\n      client_name TEXT NOT NULL, ip TEXT NOT NULL, user_agent TEXT NOT NULL,\n      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, interval_ms INTEGER NOT NULL,\n      last_poll_at INTEGER, status TEXT NOT NULL CHECK(status IN ('pending','approved','denied')),\n      user_id TEXT REFERENCES users(id) ON DELETE CASCADE, decided_at INTEGER\n    )"
+    },
+    {
+     "type": "table",
+     "name": "device_grants",
+     "tbl": "device_grants",
+     "sql": "CREATE TABLE device_grants(\n      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n      client_name TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER NOT NULL,\n      expires_at INTEGER NOT NULL, ip TEXT NOT NULL, user_agent TEXT NOT NULL\n    )"
+    },
+    {
+     "type": "table",
+     "name": "device_tokens",
+     "tbl": "device_tokens",
+     "sql": "CREATE TABLE device_tokens(\n      token_hash TEXT PRIMARY KEY, grant_id TEXT NOT NULL REFERENCES device_grants(id) ON DELETE CASCADE,\n      kind TEXT NOT NULL CHECK(kind IN ('access','refresh')), created_at INTEGER NOT NULL,\n      expires_at INTEGER NOT NULL, used_at INTEGER, replaced_by TEXT\n    )"
+    },
+    {
+     "type": "table",
+     "name": "invitations",
+     "tbl": "invitations",
+     "sql": "CREATE TABLE invitations(\n      token_hash TEXT PRIMARY KEY, created_by TEXT NOT NULL REFERENCES users(id),\n      role TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, created_at INTEGER NOT NULL\n    )"
+    },
+    {
+     "type": "table",
+     "name": "passkeys",
+     "tbl": "passkeys",
+     "sql": "CREATE TABLE passkeys(\n      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n      name TEXT NOT NULL, public_key BLOB NOT NULL, webauthn_user_id TEXT NOT NULL,\n      counter INTEGER NOT NULL, device_type TEXT NOT NULL, backed_up INTEGER NOT NULL,\n      transports TEXT NOT NULL, created_at INTEGER NOT NULL, last_used_at INTEGER\n    , rp_id TEXT)"
+    },
+    {
+     "type": "table",
+     "name": "recoveries",
+     "tbl": "recoveries",
+     "sql": "CREATE TABLE recoveries(\n      token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n      created_by TEXT NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL,\n      used_at INTEGER, created_at INTEGER NOT NULL\n    )"
+    },
+    {
+     "type": "table",
+     "name": "schema_migrations",
+     "tbl": "schema_migrations",
+     "sql": "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)"
+    },
+    {
+     "type": "table",
+     "name": "sessions",
+     "tbl": "sessions",
+     "sql": "CREATE TABLE sessions(\n      id_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n      csrf_hash TEXT NOT NULL, created_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL,\n      expires_at INTEGER NOT NULL, user_agent TEXT NOT NULL, ip TEXT NOT NULL\n    )"
+    },
+    {
+     "type": "table",
+     "name": "settings",
+     "tbl": "settings",
+     "sql": "CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    },
+    {
+     "type": "table",
+     "name": "storage_connections",
+     "tbl": "storage_connections",
+     "sql": "CREATE TABLE storage_connections(\n      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,\n      kind TEXT NOT NULL, base_url TEXT NOT NULL DEFAULT '', bucket TEXT NOT NULL DEFAULT '',\n      username TEXT NOT NULL DEFAULT '',\n      secret TEXT NOT NULL DEFAULT '', corpus_root TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL\n    , region TEXT NOT NULL DEFAULT 'us-east-1')"
+    },
+    {
+     "type": "table",
+     "name": "user_appearance",
+     "tbl": "user_appearance",
+     "sql": "CREATE TABLE user_appearance(\n      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,\n      value TEXT NOT NULL, updated_at INTEGER NOT NULL\n    )"
+    },
+    {
+     "type": "table",
+     "name": "user_features",
+     "tbl": "user_features",
+     "sql": "CREATE TABLE user_features(\n      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,\n      diary_enabled INTEGER NOT NULL DEFAULT 0, onboarded INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL\n    , insights_badge INTEGER NOT NULL DEFAULT 0, insights_seen_at INTEGER)"
+    },
+    {
+     "type": "table",
+     "name": "users",
+     "tbl": "users",
+     "sql": "CREATE TABLE users(\n      id TEXT PRIMARY KEY, username TEXT NOT NULL, username_norm TEXT NOT NULL UNIQUE,\n      display_name TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','member')),\n      password_hash TEXT NOT NULL, webauthn_user_id TEXT NOT NULL UNIQUE,\n      disabled_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL\n    , credential_epoch INTEGER NOT NULL DEFAULT 0)"
+    },
+    {
+     "type": "index",
+     "name": "app_passwords_user",
+     "tbl": "app_passwords",
+     "sql": "CREATE INDEX app_passwords_user ON app_passwords(user_id)"
+    },
+    {
+     "type": "index",
+     "name": "challenges_expires_at_idx",
+     "tbl": "challenges",
+     "sql": "CREATE INDEX challenges_expires_at_idx ON challenges(expires_at)"
+    },
+    {
+     "type": "index",
+     "name": "device_authorizations_expires_idx",
+     "tbl": "device_authorizations",
+     "sql": "CREATE INDEX device_authorizations_expires_idx ON device_authorizations(expires_at)"
+    },
+    {
+     "type": "index",
+     "name": "device_grants_user_idx",
+     "tbl": "device_grants",
+     "sql": "CREATE INDEX device_grants_user_idx ON device_grants(user_id)"
+    },
+    {
+     "type": "index",
+     "name": "device_tokens_grant_idx",
+     "tbl": "device_tokens",
+     "sql": "CREATE INDEX device_tokens_grant_idx ON device_tokens(grant_id)"
+    }
+   ],
+   "columns": {
+    "app_passwords": [
+     "id",
+     "user_id",
+     "name",
+     "scope",
+     "password_hash",
+     "created_at",
+     "last_used_at"
+    ],
+    "audit_events": [
+     "id",
+     "actor_user_id",
+     "target_user_id",
+     "action",
+     "detail",
+     "created_at"
+    ],
+    "challenges": [
+     "id_hash",
+     "user_id",
+     "kind",
+     "challenge",
+     "expires_at"
+    ],
+    "device_authorizations": [
+     "device_code_hash",
+     "user_code_hash",
+     "client_name",
+     "ip",
+     "user_agent",
+     "created_at",
+     "expires_at",
+     "interval_ms",
+     "last_poll_at",
+     "status",
+     "user_id",
+     "decided_at"
+    ],
+    "device_grants": [
+     "id",
+     "user_id",
+     "client_name",
+     "created_at",
+     "last_used_at",
+     "expires_at",
+     "ip",
+     "user_agent"
+    ],
+    "device_tokens": [
+     "token_hash",
+     "grant_id",
+     "kind",
+     "created_at",
+     "expires_at",
+     "used_at",
+     "replaced_by"
+    ],
+    "invitations": [
+     "token_hash",
+     "created_by",
+     "role",
+     "expires_at",
+     "used_at",
+     "created_at"
+    ],
+    "passkeys": [
+     "id",
+     "user_id",
+     "name",
+     "public_key",
+     "webauthn_user_id",
+     "counter",
+     "device_type",
+     "backed_up",
+     "transports",
+     "created_at",
+     "last_used_at",
+     "rp_id"
+    ],
+    "recoveries": [
+     "token_hash",
+     "user_id",
+     "created_by",
+     "expires_at",
+     "used_at",
+     "created_at"
+    ],
+    "schema_migrations": [
+     "version",
+     "applied_at"
+    ],
+    "sessions": [
+     "id_hash",
+     "user_id",
+     "csrf_hash",
+     "created_at",
+     "last_seen_at",
+     "expires_at",
+     "user_agent",
+     "ip"
+    ],
+    "settings": [
+     "key",
+     "value"
+    ],
+    "storage_connections": [
+     "user_id",
+     "kind",
+     "base_url",
+     "bucket",
+     "username",
+     "secret",
+     "corpus_root",
+     "updated_at",
+     "region"
+    ],
+    "user_appearance": [
+     "user_id",
+     "value",
+     "updated_at"
+    ],
+    "user_features": [
+     "user_id",
+     "diary_enabled",
+     "onboarded",
+     "updated_at",
+     "insights_badge",
+     "insights_seen_at"
+    ],
+    "users": [
+     "id",
+     "username",
+     "username_norm",
+     "display_name",
+     "role",
+     "password_hash",
+     "webauthn_user_id",
+     "disabled_at",
+     "created_at",
+     "updated_at",
+     "credential_epoch"
+    ]
+   },
+   "rows": {
+    "settings": [
+     {
+      "key": "previous_origins",
+      "value": "[\"https://old.example.test\"]"
+     },
+     {
+      "key": "public_origin",
+      "value": "https://setup.example.test"
+     }
+    ]
+   },
+   "migrations": [
+    1,
+    2,
+    3,
+    4,
+    5
+   ]
+  },
+  "liveOrigin": "https://setup.example.test",
+  "restartedOrigin": "https://noevia.example.test",
+  "cases": [
+   {
+    "origin": "https://noevia.example.test",
+    "live": false,
+    "restarted": true
+   },
+   {
+    "origin": "https://setup.example.test",
+    "live": true,
+    "restarted": false
+   },
+   {
+    "origin": "",
+    "live": true,
+    "restarted": true
+   },
+   {
+    "origin": "http://192.168.1.20:8021",
+    "live": true,
+    "restarted": true
+   },
+   {
+    "origin": "https://old.example.test",
+    "live": true,
+    "restarted": true
+   },
+   {
+    "origin": "https://evil.example.test",
+    "live": false,
+    "restarted": false
+   },
+   {
+    "origin": "null",
+    "live": false,
+    "restarted": false
+   }
+  ]
+ },
  "parseCookies": [
   {
    "header": "==",
@@ -102647,6 +102995,181 @@
    "path": "",
    "method": "DELETE",
    "expect": false
+  },
+  {
+   "path": "/api/x/../admin/users",
+   "method": "GET",
+   "expect": false
+  },
+  {
+   "path": "/api/x/../admin/users",
+   "method": "HEAD",
+   "expect": false
+  },
+  {
+   "path": "/api/x/../admin/users",
+   "method": "POST",
+   "expect": false
+  },
+  {
+   "path": "/api/x/../admin/users",
+   "method": "put",
+   "expect": false
+  },
+  {
+   "path": "/api/x/../admin/users",
+   "method": "DELETE",
+   "expect": false
+  },
+  {
+   "path": "/api/x/%2e%2e/admin",
+   "method": "GET",
+   "expect": false
+  },
+  {
+   "path": "/api/x/%2e%2e/admin",
+   "method": "HEAD",
+   "expect": false
+  },
+  {
+   "path": "/api/x/%2e%2e/admin",
+   "method": "POST",
+   "expect": false
+  },
+  {
+   "path": "/api/x/%2e%2e/admin",
+   "method": "put",
+   "expect": false
+  },
+  {
+   "path": "/api/x/%2e%2e/admin",
+   "method": "DELETE",
+   "expect": false
+  },
+  {
+   "path": "/api/x/%2E%2E/profile",
+   "method": "GET",
+   "expect": false
+  },
+  {
+   "path": "/api/x/%2E%2E/profile",
+   "method": "HEAD",
+   "expect": false
+  },
+  {
+   "path": "/api/x/%2E%2E/profile",
+   "method": "POST",
+   "expect": false
+  },
+  {
+   "path": "/api/x/%2E%2E/profile",
+   "method": "put",
+   "expect": false
+  },
+  {
+   "path": "/api/x/%2E%2E/profile",
+   "method": "DELETE",
+   "expect": false
+  },
+  {
+   "path": "/api\\admin",
+   "method": "GET",
+   "expect": false
+  },
+  {
+   "path": "/api\\admin",
+   "method": "HEAD",
+   "expect": false
+  },
+  {
+   "path": "/api\\admin",
+   "method": "POST",
+   "expect": false
+  },
+  {
+   "path": "/api\\admin",
+   "method": "put",
+   "expect": false
+  },
+  {
+   "path": "/api\\admin",
+   "method": "DELETE",
+   "expect": false
+  },
+  {
+   "path": "/api/x\\..\\admin",
+   "method": "GET",
+   "expect": false
+  },
+  {
+   "path": "/api/x\\..\\admin",
+   "method": "HEAD",
+   "expect": false
+  },
+  {
+   "path": "/api/x\\..\\admin",
+   "method": "POST",
+   "expect": false
+  },
+  {
+   "path": "/api/x\\..\\admin",
+   "method": "put",
+   "expect": false
+  },
+  {
+   "path": "/api/x\\..\\admin",
+   "method": "DELETE",
+   "expect": false
+  },
+  {
+   "path": "/api/./admin",
+   "method": "GET",
+   "expect": false
+  },
+  {
+   "path": "/api/./admin",
+   "method": "HEAD",
+   "expect": false
+  },
+  {
+   "path": "/api/./admin",
+   "method": "POST",
+   "expect": false
+  },
+  {
+   "path": "/api/./admin",
+   "method": "put",
+   "expect": false
+  },
+  {
+   "path": "/api/./admin",
+   "method": "DELETE",
+   "expect": false
+  },
+  {
+   "path": "/api/connectors/../mcp-keys",
+   "method": "GET",
+   "expect": false
+  },
+  {
+   "path": "/api/connectors/../mcp-keys",
+   "method": "HEAD",
+   "expect": false
+  },
+  {
+   "path": "/api/connectors/../mcp-keys",
+   "method": "POST",
+   "expect": true
+  },
+  {
+   "path": "/api/connectors/../mcp-keys",
+   "method": "put",
+   "expect": true
+  },
+  {
+   "path": "/api/connectors/../mcp-keys",
+   "method": "DELETE",
+   "expect": true
   }
  ],
  "features": [
