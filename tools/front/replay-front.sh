@@ -12,11 +12,21 @@ core="${1:?usage: replay-front.sh <noevia-core dir> <noevia-server binary>}"
 front="${2:?usage: replay-front.sh <noevia-core dir> <noevia-server binary>}"
 port="${UI_PORT:?UI_PORT is required}"
 legacy=$((port + 1000))
-# Node must see the origin the browser (here: the replayer) uses, which is the front's.
-UI_PORT="$legacy" PUBLIC_ORIGIN="${PUBLIC_ORIGIN:-http://127.0.0.1:$port}" \
+# Node must see the origin the browser (here: the replayer) uses, which is the front's; so must the
+# front, which answers sign-in itself with NOEVIA_RUST_AUTH=1 (M3; serve.cjs then runs Node as
+# behind that front: read-only for the account tables).
+origin="${PUBLIC_ORIGIN:-http://127.0.0.1:$port}"
+# Like build/web-supervisor.sh: Node's write guard is confirmed only by a front that lists rust-auth.
+unset NOEVIA_RUST_AUTH_CONFIRMED
+confirmed=""
+if [ "${NOEVIA_RUST_AUTH:-}" = 1 ]; then
+  "$front" --features | grep -qx rust-auth || { echo "replay-front: $front has no rust-auth" >&2; exit 2; }
+  confirmed=1
+fi
+UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" \
   node "$core/tools/contract-corpus/serve.cjs" &
 node_pid=$!
-NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" "$front" &
+PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" "$front" &
 front_pid=$!
 trap 'kill "$node_pid" "$front_pid" 2>/dev/null || true' INT TERM EXIT
 # Either one exiting ends the run (the replayer then sees the server go away).

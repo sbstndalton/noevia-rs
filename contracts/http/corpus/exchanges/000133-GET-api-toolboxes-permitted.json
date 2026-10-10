@@ -1,0 +1,175 @@
+{
+  "v": 1,
+  "seq": 133,
+  "request": {
+    "method": "GET",
+    "path": "/api/toolboxes/permitted",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "mode": "chat",
+        "projectId": null,
+        "boxes": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "inApp": true,
+            "state": "available",
+            "reason": null,
+            "reasonCode": null,
+            "active": true,
+            "tools": [
+              {
+                "name": "get_current_time",
+                "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                "write": false,
+                "permission": "allowed",
+                "reason": null,
+                "reasonCode": null
+              },
+              {
+                "name": "read_project_file",
+                "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                "write": false,
+                "permission": "allowed",
+                "reason": null,
+                "reasonCode": null
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "inApp": true,
+            "state": "unavailable",
+            "reason": "Connect this account in Settings → Connected apps first.",
+            "reasonCode": "connect",
+            "active": false,
+            "tools": [
+              {
+                "name": "drive_search_files",
+                "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                "write": false,
+                "permission": "unavailable",
+                "reason": "Connect this account in Settings → Connected apps first.",
+                "reasonCode": "connect"
+              },
+              {
+                "name": "drive_read_file",
+                "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                "write": false,
+                "permission": "unavailable",
+                "reason": "Connect this account in Settings → Connected apps first.",
+                "reasonCode": "connect"
+              },
+              {
+                "name": "drive_get_metadata",
+                "description": "Get a Google Drive file's name, type, size, dates and link.",
+                "write": false,
+                "permission": "unavailable",
+                "reason": "Connect this account in Settings → Connected apps first.",
+                "reasonCode": "connect"
+              },
+              {
+                "name": "drive_list_recent",
+                "description": "List the most recently changed files in Google Drive.",
+                "write": false,
+                "permission": "unavailable",
+                "reason": "Connect this account in Settings → Connected apps first.",
+                "reasonCode": "connect"
+              },
+              {
+                "name": "drive_create_file",
+                "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                "write": true,
+                "permission": "unavailable",
+                "reason": "Connect this account in Settings → Connected apps first.",
+                "reasonCode": "connect"
+              },
+              {
+                "name": "drive_update_file",
+                "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                "write": true,
+                "permission": "unavailable",
+                "reason": "Connect this account in Settings → Connected apps first.",
+                "reasonCode": "connect"
+              },
+              {
+                "name": "drive_trash_file",
+                "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                "write": true,
+                "permission": "unavailable",
+                "reason": "Connect this account in Settings → Connected apps first.",
+                "reasonCode": "connect"
+              }
+            ]
+          },
+          {
+            "id": "code",
+            "label": "Coding harness",
+            "source": "code",
+            "inApp": true,
+            "active": false,
+            "reasonCode": "codeNeedsCowork",
+            "description": "Read, edit and run commands in a registered repository. Every edit and command asks first.",
+            "state": "unavailable",
+            "reason": "Switch this session to Cowork to use the coding harness.",
+            "tools": [
+              {
+                "name": "read_repository",
+                "description": "Read files in the chosen repository.",
+                "write": false,
+                "permission": "unavailable",
+                "reason": "Switch this session to Cowork to use the coding harness.",
+                "reasonCode": "codeNeedsCowork"
+              },
+              {
+                "name": "edit_file",
+                "description": "Change files on a task branch.",
+                "write": true,
+                "permission": "unavailable",
+                "reason": "Switch this session to Cowork to use the coding harness.",
+                "reasonCode": "codeNeedsCowork"
+              },
+              {
+                "name": "execute_command",
+                "description": "Run a command in the sandbox.",
+                "write": true,
+                "permission": "unavailable",
+                "reason": "Switch this session to Cowork to use the coding harness.",
+                "reasonCode": "codeNeedsCowork"
+              }
+            ]
+          }
+        ],
+        "computedAt": "<ts>"
+      }
+    }
+  }
+}

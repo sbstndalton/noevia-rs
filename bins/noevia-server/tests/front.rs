@@ -13,7 +13,7 @@ use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
 use hyper::{Request, Response};
 use noevia_server::config::Config;
-use noevia_server::routes::{Owner, ROUTES};
+use noevia_server::routes::{Owner, Switches, ROUTES};
 use noevia_server::serve::{serve, Limits};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -240,7 +240,8 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
             }
             continue;
         }
-        match r.owner {
+        // With every deployment switch off (the default), a switched flip is still Node's.
+        match r.owner_under(Switches::default()) {
             Owner::Rust => {
                 let method = r.methods.first().copied().unwrap_or("GET");
                 let (res, _c) = call(front, method, &path, &[], b"").await;

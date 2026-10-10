@@ -51,8 +51,14 @@ pub struct PublicUser {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Credential {
-    /// A `cowork_session` cookie. `csrf_hash` is the row's, for [`csrf_valid`].
-    Session { id_hash: String, csrf_hash: String },
+    /// A `cowork_session` cookie. `csrf_hash` is the row's, for [`csrf_valid`];
+    /// `credential_epoch` is the account's `users.credential_epoch` read with the session
+    /// (Node's `authn.session.credential_epoch`; `None` when not an integer).
+    Session {
+        id_hash: String,
+        csrf_hash: String,
+        credential_epoch: Option<i64>,
+    },
     /// UI_AUTH_TOKEN with LEGACY_AUTH_COMPAT: acts as the oldest enabled admin.
     Legacy,
     /// A native-client access token (`nva_…`).
@@ -196,7 +202,7 @@ impl Authenticator {
         let now = now_ms as f64;
         if let Some(raw) = creds.cookie("cowork_session").filter(|v| !v.is_empty()) {
             let sql = format!(
-                "SELECT s.id_hash AS id_hash, s.csrf_hash AS csrf_hash, s.expires_at AS expires_at, s.last_seen_at AS last_seen_at, {USER_COLS}
+                "SELECT s.id_hash AS id_hash, s.csrf_hash AS csrf_hash, s.expires_at AS expires_at, s.last_seen_at AS last_seen_at, u.credential_epoch AS credential_epoch, {USER_COLS}
                  FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id_hash=?1"
             );
             let found = r.row(&sql, [js::digest(&raw)], |row| {
@@ -206,9 +212,10 @@ impl Authenticator {
                     get(row, "csrf_hash")?,
                     get(row, "expires_at")?,
                     get(row, "last_seen_at")?,
+                    get(row, "credential_epoch")?,
                 ))
             })?;
-            if let Some((u, id_hash, csrf_hash, expires_at, last_seen_at)) = found {
+            if let Some((u, id_hash, csrf_hash, expires_at, last_seen_at, epoch)) = found {
                 let live = !js::truthy(&u.disabled_at)
                     && gt(js::number(&expires_at), now)
                     && gt(js::number(&last_seen_at).map(|l| l + IDLE_MS), now);
@@ -224,6 +231,10 @@ impl Authenticator {
                             credential: Credential::Session {
                                 id_hash: id_hash.to_string(),
                                 csrf_hash: csrf_hash.to_string(),
+                                credential_epoch: match epoch {
+                                    Value::Integer(i) => Some(i),
+                                    _ => None,
+                                },
                             },
                         }));
                     }

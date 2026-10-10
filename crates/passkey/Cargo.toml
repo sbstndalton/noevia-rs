@@ -1,0 +1,27 @@
+[package]
+name = "passkey"
+version = "0.1.0"
+description = "WebAuthn registration and authentication verification with @simplewebauthn/server v14's rules, accepting the credentials noevia-core stored with it (COSE blobs as tiny-cbor re-encodes them, counters, backup flags)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+sha1 = { version = "0.10", features = ["oid"] }
+sha2 = "0.10"
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+p384 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+p521 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
+
+[dev-dependencies]
+serde_json = "1"
+p256 = { version = "0.13", features = ["ecdsa", "std"] }
+ed25519-dalek = { version = "2", features = ["std", "rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }

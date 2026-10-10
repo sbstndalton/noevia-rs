@@ -13,18 +13,25 @@
 # rust route has no native handler or a node route does not reach the proxy. The non-/api entries
 # at the end are the pages; `catch_all = true` is the build bundle + SPA fallback (core
 # static-files.cjs, spa-routes.cjs) for every non-/api path no other entry names.
+#
+# M3: `switch = "NOEVIA_RUST_AUTH"` makes an owner = "rust" flip take effect only while the
+# deployment sets NOEVIA_RUST_AUTH=1 (sign-in and the account, crates/server-account); without it
+# the route is Node's. `methods` lists what Rust answers; other methods stay Node's.
 
 [[route]]
 path = "/api/account/instructions"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/account/memory"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/account/preferences"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/account/retention"
@@ -48,7 +55,9 @@ owner = "node"
 
 [[route]]
 path = "/api/admin/invitations"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/admin/mcp-directory"
@@ -104,7 +113,9 @@ owner = "node"
 
 [[route]]
 path = "/api/admin/users"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["GET"]
 
 [[route]]
 path = "/api/admin/users/{id}"
@@ -112,11 +123,15 @@ owner = "node"
 
 [[route]]
 path = "/api/admin/users/{id}/disabled"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["PUT"]
 
 [[route]]
 path = "/api/admin/users/{id}/recovery"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/admin/web-address"
@@ -124,63 +139,101 @@ owner = "node"
 
 [[route]]
 path = "/api/auth/device/approve"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+
+[[route]]
+path = "/api/auth/device/code"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+client = false
+
+[[route]]
+path = "/api/auth/device/token"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+client = false
 
 [[route]]
 path = "/api/auth/device/lookup"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/auth/devices"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/auth/devices/{id}"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/auth/invitations/accept"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/auth/login/passkey/options"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/auth/login/passkey/verify"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/auth/login/password"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/auth/logout"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/auth/passkeys/register/options"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/auth/passkeys/register/verify"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/auth/passkeys/{id}"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["DELETE", "PATCH"]
 
 [[route]]
 path = "/api/auth/recovery/complete"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/auth/session"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["GET"]
 
 [[route]]
 path = "/api/auth/sessions/{id}"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["DELETE"]
 
 [[route]]
 path = "/api/auto-roles"
@@ -448,19 +501,26 @@ owner = "node"
 
 [[route]]
 path = "/api/profile"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["GET", "PATCH"]
 
 [[route]]
 path = "/api/profile/app-passwords"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/profile/app-passwords/{*}"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["DELETE"]
 
 [[route]]
 path = "/api/profile/appearance"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/profile/diary-connectors"
@@ -472,11 +532,15 @@ owner = "node"
 
 [[route]]
 path = "/api/profile/features"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["PUT"]
 
 [[route]]
 path = "/api/profile/onboarding"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/profile/sharing"
@@ -613,11 +677,15 @@ owner = "node"
 
 [[route]]
 path = "/api/setup/complete"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["POST"]
 
 [[route]]
 path = "/api/setup/status"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_AUTH"
+methods = ["GET"]
 
 [[route]]
 path = "/api/stats"

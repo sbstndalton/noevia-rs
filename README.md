@@ -448,6 +448,26 @@ one slice at a time.
   `contracts/http/core.ref`:
   `NOEVIA_CORE_CHECKOUT=<noevia-core> node tools/gen-auth-fixtures.cjs > crates/server-auth/tests/fixtures/node-auth.v1.json`
   (CI regenerates it and requires the committed copy to match).
+- `crates/js-json` (M3): JSON with JavaScript's semantics for ported handlers: `JSON.parse` into
+  ordered values (a repeated key keeps its first place), `JSON.stringify` bytes, `String()`,
+  truthiness, UTF-16 lengths and slices.
+- `crates/passkey` (M3): @simplewebauthn/server v14's `verifyRegistrationResponse` and
+  `verifyAuthenticationResponse` as core auth.cjs calls them, check for check, so passkeys Node
+  stored sign in under Rust: @hexagon/base64's lenient decoding, tiny-cbor's decode/re-encode
+  (the stored `public_key`), the authenticator-data walk, COSE EC2 (P-256/384/521), RSA (PKCS#1
+  v1.5, PSS) and Ed25519. Attestation `none` and `packed` self-attestation; other formats are
+  refused (stricter). Compatibility: `NOEVIA_CORE_CHECKOUT=<noevia-core> node tools/gen-passkey-fixtures.cjs`
+  builds registrations and assertions with a software authenticator, verified by core's own
+  @simplewebauthn; `tests/compat.rs` must agree on every verdict, stored field and exact message
+  (CI job `passkey-compat` runs it on a fresh run; keys are random per run).
+- `crates/server-account` (M3): core's sign-in and account routes (routes/auth.cjs open and
+  account mounts, routes/device-auth.cjs, routes/account.cjs for instructions/memory/preferences)
+  over server-store's writer, in index.cjs's order with Node's bodies, statuses, cookies, audit
+  details and in-memory rate limits; Argon2 bounded to 4 at a time like Node's thread pool.
+  `noevia-server` answers the `switch = "NOEVIA_RUST_AUTH"` routes with it while the switch is
+  on; what Node's chain would hand on goes to Node. CI job `corpus-replay-front-rust-auth`
+  replays the corpus that way with zero differences and Node's final data dir, plus a negative
+  control (Node alone with the switch refuses setup).
 
 ## Checks
 

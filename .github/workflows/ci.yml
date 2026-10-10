@@ -205,6 +205,98 @@ jobs:
             ${{ runner.temp }}/node-state.json
           if-no-files-found: ignore
 
+  corpus-replay-front-rust-auth:
+    # Full-Rust migration M3: the same corpus through the front with the deployment switch on.
+    # The front answers sign-in and the account itself (crates/server-account), Node behind it
+    # refuses to write the account tables (core server/rust-auth.cjs), and the replay must still
+    # show zero differences and leave the data dir a Node-only run leaves.
+    name: Contract corpus replays clean with Rust owning sign-in (NOEVIA_RUST_AUTH=1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Read the pinned core ref
+        id: ref
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/http/core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::contracts/http/core.ref is not a 40-char SHA"; exit 1; }
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.ref.outputs.sha }}
+          path: core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci --no-fund --no-audit
+        working-directory: core/server
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build dav-parse.wasm at core's pinned noevia-rs ref
+        working-directory: core
+        run: |
+          set -euo pipefail
+          eval "$(grep -E '^(NOEVIA_RS_REF|NOEVIA_RS_SHA256|DAV_PARSE_WASM_SHA256)=[0-9a-f]+$' server/dav-parse.lock)"
+          [[ "$NOEVIA_RS_REF" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::dav-parse.lock NOEVIA_RS_REF is not a 40-char SHA"; exit 1; }
+          curl -fsSL "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$NOEVIA_RS_REF" -o "$RUNNER_TEMP/rs.tgz"
+          echo "$NOEVIA_RS_SHA256  $RUNNER_TEMP/rs.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/rs-pin" && tar -xzf "$RUNNER_TEMP/rs.tgz" --strip-components=1 -C "$RUNNER_TEMP/rs-pin"
+          "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
+          echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo build --locked -p replay -p noevia-server
+      - name: Node's guard refuses exactly the tables and keys server-store owns
+        run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-store --test node_guard
+      - name: Replay against Node directly (reference data dir)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/seed"
+          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+            --ignore-body hours --ignore-body peakHour/hour \
+            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
+            --server-cmd "exec node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+            --state-out "$RUNNER_TEMP/node-state.json"
+      - name: Replay through the Rust front with NOEVIA_RUST_AUTH=1
+        run: |
+          set -euo pipefail
+          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+            --ignore-body hours --ignore-body peakHour/hour \
+            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-front" \
+            --server-cmd "exec env NOEVIA_RUST_AUTH=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
+            --report "$RUNNER_TEMP/replay-front-report.json" --state-out "$RUNNER_TEMP/rust-auth-state.json" \
+            --expect-state "$RUNNER_TEMP/node-state.json"
+      - name: "Negative control: Node alone with the switch on refuses the account writes"
+        # Proves the guard engaged in the run above: without the front, sign-in and setup must fail
+        # with 503 (core server/rust-auth.cjs), so the clean replay was the front's work. The
+        # confirmation is what the supervisor (or replay-front.sh) gives Node after checking the front.
+        run: |
+          set -uo pipefail
+          if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+              --ignore-body hours --ignore-body peakHour/hour \
+              --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \
+              --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CONFIRMED=1 node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+              --report "$RUNNER_TEMP/control-report.json"; then
+            echo "::error::Node with NOEVIA_RUST_AUTH=1 replayed clean: the single-writer guard did not engage"; exit 1
+          fi
+          python3 - "$RUNNER_TEMP/control-report.json" <<'PY'
+          import json, sys
+          rows = json.load(open(sys.argv[1]))
+          setup = [r for r in rows if r["path"] == "/api/setup/complete" and r["expectedStatus"] == 201]
+          assert setup and all(r["status"] == 503 for r in setup), setup
+          print("negative control: Node refused setup with", setup[0]["status"])
+          PY
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: replay-front-rust-auth
+          path: |
+            ${{ runner.temp }}/replay-front-report.json
+            ${{ runner.temp }}/node-state.json
+            ${{ runner.temp }}/rust-auth-state.json
+          if-no-files-found: ignore
+
   dav-parse-wasm:
     # noevia#967 (+ #976 s3-list-parse, #978 storage-path, #977 upload-sniff, #979 secret-envelope, #980 mcp-frame, #1002 chat-template-caps and provider-error, #1003 autotune-plan, #1062 tune-contention, #769/#740 prompt-framing, #1079 long-profile, s3-sign, #795 ssrf-policy, #516/#704 stream-guard, gguf-meta, policy-leaves, review-verdict, tool-exchange, mcp-servers, decision, code-net-guard, role-context, completeness-report, task-lifecycle, llamacpp-autoconfig, code-actions, project-file-names, provider-egress, browser-policy, tool-gate, toolboxes-permitted, llamacpp-presets, project-edit-target in the same module): dav-parse.wasm is consumed by noevia-core at a pinned sha256, so the build must be
     # reproducible. Build it twice from clean target dirs, require identical bytes, and record the
@@ -278,6 +370,44 @@ jobs:
         with:
           name: sandbox-bridge-wasm
           path: ${{ runner.temp }}/a.wasm
+
+  passkey-compat:
+    # Full-Rust migration M3: passkeys registered under Node must sign in under Rust and the
+    # reverse. tools/gen-passkey-fixtures.cjs builds registrations and assertions with a software
+    # authenticator and has noevia-core's own @simplewebauthn/server v14 (at contracts/http/core.ref)
+    # verify each; crates/passkey must reach every verdict, store exactly what auth.cjs stores and
+    # return the same counter. Keys are random per run, so the test runs on the fresh output.
+    name: Passkeys verify like @simplewebauthn
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Read the pinned core ref
+        id: ref
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/http/core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::contracts/http/core.ref is not a 40-char SHA"; exit 1; }
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.ref.outputs.sha }}
+          path: core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci --no-fund --no-audit
+        working-directory: core/server
+      - name: Generate registrations and assertions with @simplewebauthn
+        run: NOEVIA_CORE_CHECKOUT="$PWD/core" node tools/gen-passkey-fixtures.cjs > "$RUNNER_TEMP/simplewebauthn-v14.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: passkey-fixture
+          path: ${{ runner.temp }}/simplewebauthn-v14.json
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Rust agrees with @simplewebauthn on the fresh output
+        run: NOEVIA_PASSKEY_FIXTURE="$RUNNER_TEMP/simplewebauthn-v14.json" cargo test --locked -p passkey --test compat
 
   auth-differential:
     # Full-Rust migration M2: crates/server-auth must give Node's verdicts. tools/gen-auth-fixtures.cjs

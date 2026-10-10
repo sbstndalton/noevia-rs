@@ -58,13 +58,18 @@ pub enum Native {
     Ready,
     /// The web bundle with SPA fallback (core static-files.cjs + spa-routes.cjs).
     Static,
+    /// Sign-in and the account (M3, NOEVIA_RUST_AUTH): crates/server-account.
+    Account,
 }
 
 /// The native handler a rust-owned route is implemented by.
 pub fn native_for(route: &Route) -> Option<Native> {
-    match (route.path, route.catch_all) {
-        ("/api/ready", false) => Some(Native::Ready),
-        (_, true) => Some(Native::Static),
+    match (route.path, route.catch_all, route.switch) {
+        ("/api/ready", false, None) => Some(Native::Ready),
+        (_, true, None) => Some(Native::Static),
+        (_, false, Some("NOEVIA_RUST_AUTH")) if route.path.starts_with("/api/") => {
+            Some(Native::Account)
+        }
         _ => None,
     }
 }

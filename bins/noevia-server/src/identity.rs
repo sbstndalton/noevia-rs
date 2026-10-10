@@ -1,18 +1,16 @@
 //! The validated identity for Rust-owned routes (full-Rust migration M2): server-auth's port of
 //! core index.cjs's session gate over a read-only `UI_DATA_DIR/cowork.db`.
 //!
-//! No route uses it yet: every auth route is still owner = "node" in contracts/http/routes.toml
-//! and Node keeps answering (and gating) everything it owns, so live behaviour is unchanged.
-//! A future Rust-owned handler takes [`ValidatedIdentity`] as an argument; the request then only
+//! A Rust-owned handler takes [`ValidatedIdentity`] as an argument; the request then only
 //! reaches the handler when Node's gate would have let it through, and is refused with Node's
-//! exact 401/403 otherwise.
+//! exact 401/403 otherwise. The M3 account routes (account_routes.rs, crates/server-account) run
+//! the same gate inside their own pipeline, because Node's open mounts come before it.
 //!
 //! Fail closed: until `cowork.db` exists and has the schema this build knows, or when the auth
 //! environment is invalid (an unknown NOEVIA_FEATURE_NATIVE_CLIENT_AUTH value, which also stops
-//! Node), every extraction answers 503 and nothing is treated as signed in. That does not stop the
-//! front, which keeps proxying to Node: while no route needs an identity, refusing to start would
-//! only take the proxy down. Once a Rust-owned route depends on it, main() should exit on
-//! [`Status::Refused`] (schema newer than known) instead of logging it.
+//! Node), every extraction answers 503 and nothing is treated as signed in. Without
+//! NOEVIA_RUST_AUTH no route needs an identity and the front keeps proxying; with it, main()
+//! exits on [`Status::Refused`] (schema newer than known).
 
 use crate::reply;
 use crate::App;
@@ -128,10 +126,14 @@ pub fn now_ms() -> i64 {
 
 /// `new URL(req.url, 'http://h').pathname`, or None when it does not parse.
 pub fn whatwg_pathname(parts: &Parts) -> Option<String> {
-    let target = parts
-        .uri
+    whatwg_pathname_of(&parts.uri)
+}
+
+/// [`whatwg_pathname`] for a request URI.
+pub fn whatwg_pathname_of(uri: &axum::http::Uri) -> Option<String> {
+    let target = uri
         .path_and_query()
-        .map_or_else(|| parts.uri.path(), |pq| pq.as_str());
+        .map_or_else(|| uri.path(), |pq| pq.as_str());
     let base = url::Url::parse("http://h").ok()?;
     let parsed = url::Url::options()
         .base_url(Some(&base))

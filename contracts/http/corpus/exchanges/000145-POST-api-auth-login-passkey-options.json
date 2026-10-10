@@ -1,0 +1,89 @@
+{
+  "v": 1,
+  "seq": 145,
+  "request": {
+    "method": "POST",
+    "path": "/api/auth/login/passkey/options",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node",
+      "x-csrf-token": "<secret:4>"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "username": "synthetic-admin"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "options": {
+          "rpId": "127.0.0.1",
+          "challenge": "<secret:26>",
+          "allowCredentials": [
+            {
+              "id": "<id:14>",
+              "transports": [
+                "internal",
+                "hybrid"
+              ],
+              "type": "public-key"
+            },
+            {
+              "id": "<id:15>",
+              "transports": [
+                "internal",
+                "hybrid"
+              ],
+              "type": "public-key"
+            },
+            {
+              "id": "<id:16>",
+              "transports": [
+                "internal",
+                "hybrid"
+              ],
+              "type": "public-key"
+            },
+            {
+              "id": "<id:17>",
+              "transports": [
+                "internal",
+                "hybrid"
+              ],
+              "type": "public-key"
+            },
+            {
+              "id": "<id:18>",
+              "transports": [
+                "internal",
+                "hybrid"
+              ],
+              "type": "public-key"
+            }
+          ],
+          "timeout": 60000,
+          "userVerification": "required"
+        },
+        "challengeToken": "<secret:27>"
+      }
+    }
+  }
+}

@@ -29,16 +29,16 @@
     "body": {
       "kind": "json",
       "json": {
-        "text": "",
-        "style": "default",
+        "text": "Answer briefly.",
+        "style": "concise",
         "advanced": {
           "length": "auto",
-          "tone": "auto",
+          "tone": "formal",
           "formatting": "auto",
           "emoji": "auto"
         },
-        "language": "",
-        "updatedAt": null,
+        "language": "Norwegian",
+        "updatedAt": "<ts>",
         "maxChars": 4000,
         "styles": [
           "default",
