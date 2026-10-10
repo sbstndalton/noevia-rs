@@ -20,9 +20,7 @@ use axum::Router;
 use std::sync::Arc;
 
 /// What `noevia-server --features` lists, one per line.
-/// `rust-auth`: this build understands NOEVIA_RUST_AUTH (M3), so the web supervisor may let Node
-/// refuse the auth tables only when the front reports it.
-pub const FEATURES: &[&str] = &["code-net-guard", "header-read-timeout", "rust-auth"];
+pub const FEATURES: &[&str] = &["code-net-guard", "header-read-timeout"];
 
 pub struct App {
     pub config: config::Config,
