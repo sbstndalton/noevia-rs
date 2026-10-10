@@ -16,7 +16,8 @@ pub enum Tok {
     Lit(String),
     /// `<secret:N>` or `<id:N>`: bound on first match, compared after.
     Var(String),
-    /// `<ts>`: any non-empty run, never bound.
+    /// `<ts>` (any timestamp) or `<num>` (a measured duration or rate): any non-empty run, never
+    /// bound.
     Any,
     /// `<origin>`: the base URL's origin.
     Origin,
@@ -55,7 +56,7 @@ fn placeholder_at(s: &str) -> Option<(Tok, usize)> {
     let end = s.find('>')?;
     let inner = s.get(1..end)?;
     let tok = match inner {
-        "ts" => Tok::Any,
+        "ts" | "num" => Tok::Any,
         "origin" => Tok::Origin,
         _ => {
             let (kind, n) = inner.split_once(':')?;
@@ -277,6 +278,7 @@ mod tests {
         let mut b = Bindings::new("http://h:9/");
         assert!(b.matches("updated <ts> ok", "updated 2026-10-09T00:00:00Z ok"));
         assert!(!b.matches("<ts>", ""));
+        assert!(b.matches("<num>", "41.5"));
         assert!(b.matches("<origin>/x", "http://h:9/x"));
         assert!(!b.matches("<origin>/x", "http://evil/x"));
     }
