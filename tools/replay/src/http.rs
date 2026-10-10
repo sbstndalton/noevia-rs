@@ -34,6 +34,17 @@ impl Base {
         Ok(Self { host, port })
     }
 
+    /// `localhost`, `127.0.0.0/8` or `::1`. A name other than `localhost` is not trusted to
+    /// resolve to loopback.
+    pub fn is_loopback(&self) -> bool {
+        let host = self.host.trim_start_matches('[').trim_end_matches(']');
+        host.eq_ignore_ascii_case("localhost")
+            || host
+                .parse::<std::net::IpAddr>()
+                .map(|ip| ip.is_loopback())
+                .unwrap_or(false)
+    }
+
     pub fn origin(&self) -> String {
         if self.port == 80 {
             format!("http://{}", self.host)
@@ -237,6 +248,26 @@ mod tests {
         );
         assert!(Base::parse("https://x").is_err());
         assert!(Base::parse("http://x/api").is_err());
+    }
+
+    #[test]
+    fn only_loopback_bases_are_local() {
+        for ok in [
+            "http://127.0.0.1:1",
+            "http://localhost:2",
+            "http://127.1.2.3",
+            "http://[::1]:3",
+        ] {
+            assert!(Base::parse(ok).unwrap().is_loopback(), "{ok}");
+        }
+        for bad in [
+            "http://10.0.0.5:1",
+            "http://noevia.example",
+            "http://0.0.0.0:1",
+            "http://127.0.0.1.evil.example",
+        ] {
+            assert!(!Base::parse(bad).unwrap().is_loopback(), "{bad}");
+        }
     }
 
     #[test]

@@ -17,6 +17,8 @@
 //!   --state-ignore PATH    leave a path (or `*suffix`) out of the snapshot (repeatable)
 //!   --report FILE          write the outcomes as JSON
 //!   --stop-on-first        stop at the first exchange that differs
+//!   --allow-remote         accept a --base that is not loopback (the replay sends session
+//!                          cookies, CSRF tokens and synthetic passwords to it)
 //! replay coverage --corpus DIR --routes contracts/http/routes.toml
 //!   list routes with no recorded exchange
 //!
@@ -43,7 +45,7 @@ impl Args {
             let Some(name) = k.strip_prefix("--") else {
                 return Err(format!("unexpected argument {k}"));
             };
-            if name == "stop-on-first" {
+            if name == "stop-on-first" || name == "allow-remote" {
                 a.switches.push(name.to_string());
                 continue;
             }
@@ -217,8 +219,14 @@ fn write_json(path: &str, v: &Value) -> Result<(), String> {
 }
 
 fn run(a: &Args) -> Result<bool, String> {
-    let corpus = corpus::load(Path::new(a.need("corpus")?))?;
     let base = http::Base::parse(a.need("base")?)?;
+    if !base.is_loopback() && !a.switches.iter().any(|s| s == "allow-remote") {
+        return Err(format!(
+            "--base {} is not a loopback address; pass --allow-remote to replay against a remote server",
+            base.origin()
+        ));
+    }
+    let corpus = corpus::load(Path::new(a.need("corpus")?))?;
     let work: Option<PathBuf> = if let Some(seed) = a.one("seed") {
         let work = match a.one("work") {
             Some(w) => PathBuf::from(w),
@@ -405,6 +413,28 @@ mod tests {
             .success();
         assert!(!alive, "the background child {pid} outlived the replay");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_remote_base_is_refused_without_allow_remote() {
+        let argv = |extra: &[&str]| {
+            let mut v: Vec<String> = [
+                "--corpus",
+                "/nonexistent-corpus",
+                "--base",
+                "http://10.1.2.3:8021",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+            v.extend(extra.iter().map(|s| s.to_string()));
+            Args::parse(&v).unwrap()
+        };
+        let err = run(&argv(&[])).unwrap_err();
+        assert!(err.contains("--allow-remote"), "{err}");
+        // With the switch the base is accepted and the run goes on to the corpus.
+        let err = run(&argv(&["--allow-remote"])).unwrap_err();
+        assert!(!err.contains("--allow-remote"), "{err}");
     }
 
     #[test]
