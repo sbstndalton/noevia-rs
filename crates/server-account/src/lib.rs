@@ -17,6 +17,7 @@
 //! audit details and rate limits are Node's; the differences are listed in the crate README
 //! section of noevia-rs (stricter refusals only).
 
+pub mod argon;
 pub mod rate;
 pub mod unicode;
 pub mod util;

@@ -119,10 +119,12 @@ pub fn hash_password(pw: &str) -> Result<String, Fault> {
     use argon2::password_hash::{PasswordHasher, SaltString};
     let params = argon2::Params::new(19456, 2, 1, Some(32)).map_err(|_| Fault::Internal)?;
     let salt = SaltString::generate(&mut rand_core::OsRng);
-    argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params)
-        .hash_password(pw.as_bytes(), &salt)
-        .map(|h| h.to_string())
-        .map_err(|_| Fault::Internal)
+    crate::argon::bounded(|| {
+        argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params)
+            .hash_password(pw.as_bytes(), &salt)
+            .map(|h| h.to_string())
+            .map_err(|_| Fault::Internal)
+    })
 }
 
 fn reply_signed_in(
@@ -313,8 +315,8 @@ fn password_login(acct: &Account, req: &Request, body: &JValue, now: i64) -> Han
         .as_ref()
         .filter(|(_, _, disabled, _)| !server_auth::js::truthy(disabled));
     let ok = match usable {
-        Some((_, Value::Text(h), _, _)) => server_auth::password::verify(h, &password),
-        _ => server_auth::password::burn(&password),
+        Some((_, Value::Text(h), _, _)) => crate::argon::verify(h, &password),
+        _ => crate::argon::burn(&password),
     };
     let signed_in = match (ok, usable) {
         (true, Some((id, _, _, epoch))) => acct

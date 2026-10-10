@@ -933,3 +933,154 @@ fn feature_off_hides_device_paths() {
     let (s, v, _) = call(&w, &mut b, "POST", "/api/auth/device/code", "{}", T0);
     assert_eq!((s, v["error"].clone()), (404, "not found".into()));
 }
+
+/// A P-256 passkey made outside the routes (as a row Node stored), and an assertion for it.
+struct Key {
+    sk: p256::ecdsa::SigningKey,
+    id: String,
+}
+
+fn stored_key(w: &World, user_id: &str, rp_id: Option<&str>) -> Key {
+    use passkey::cbor::{encode, Cbor};
+    let sk = p256::ecdsa::SigningKey::random(&mut rand_core::OsRng);
+    let pt = sk.verifying_key().to_encoded_point(false);
+    let cose = encode(&Cbor::Map(vec![
+        (Cbor::Num(1.0), Cbor::Num(2.0)),
+        (Cbor::Num(3.0), Cbor::Num(-7.0)),
+        (Cbor::Num(-1.0), Cbor::Num(1.0)),
+        (Cbor::Num(-2.0), Cbor::Bytes(pt.x().unwrap().to_vec())),
+        (Cbor::Num(-3.0), Cbor::Bytes(pt.y().unwrap().to_vec())),
+    ]));
+    let id = passkey::b64::from_buffer(&server_account::util::random_bytes(16));
+    w.node
+        .execute(
+            "INSERT INTO passkeys(id,user_id,name,public_key,webauthn_user_id,counter,device_type,backed_up,transports,created_at,rp_id) VALUES(?1,?2,'Old',?3,'w',0,'multiDevice',1,'[\"internal\"]',1,?4)",
+            (&id, user_id, &cose, rp_id),
+        )
+        .unwrap();
+    Key { sk, id }
+}
+
+fn sign_in(w: &World, key: &Key, rp: &str, origin: &str, now: i64) -> (u16, String) {
+    use p256::ecdsa::signature::Signer;
+    use sha2::Digest;
+    let mut anon = Browser::new("10.0.0.30");
+    let (s, v, _) = call(
+        w,
+        &mut anon,
+        "POST",
+        "/api/auth/login/passkey/options",
+        r#"{"username":"owner"}"#,
+        now,
+    );
+    assert_eq!(s, 200);
+    assert_eq!(v["options"]["rpId"], rp, "the ceremony's RP ID");
+    let challenge = v["options"]["challenge"].as_str().unwrap().to_string();
+    let token = v["challengeToken"].as_str().unwrap().to_string();
+    let b64 = passkey::b64::from_buffer;
+    let mut ad = sha2::Sha256::digest(rp.as_bytes()).to_vec();
+    ad.push(0x05);
+    ad.extend([0, 0, 0, 0]);
+    let cdj = b64(format!(
+        r#"{{"type":"webauthn.get","challenge":"{challenge}","origin":"{origin}"}}"#
+    )
+    .as_bytes());
+    let mut base = ad.clone();
+    base.extend(sha2::Sha256::digest(passkey::b64::to_buffer(&cdj)));
+    let sig: p256::ecdsa::Signature = key.sk.sign(&base);
+    let body = serde_json::json!({"challengeToken": token, "response": {"id": key.id, "rawId": key.id, "type": "public-key",
+        "response": {"clientDataJSON": cdj, "authenticatorData": b64(&ad), "signature": b64(sig.to_der().as_bytes())}}});
+    let (s, _, r) = call(
+        w,
+        &mut anon,
+        "POST",
+        "/api/auth/login/passkey/verify",
+        &body.to_string(),
+        now + 1,
+    );
+    (s, r.body)
+}
+
+#[test]
+fn legacy_and_renamed_passkeys_keep_signing_in() {
+    let w = world(false);
+    let mut owner = Browser::new("10.0.0.1");
+    let uid = setup(&w, &mut owner);
+    // rp_id NULL (a row from before passkeys remembered their RP): the current RP ID.
+    let legacy = stored_key(&w, &uid, None);
+    assert_eq!(
+        sign_in(&w, &legacy, "noevia.example.test", ORIGIN, T0).0,
+        200
+    );
+    // Renamed site: the only passkey was made under the old name. The ceremony uses that RP ID and
+    // the old address is still an accepted origin (previous_origins).
+    w.node.execute("DELETE FROM passkeys", []).unwrap();
+    w.node
+        .execute(
+            "INSERT INTO settings VALUES('previous_origins','[\"https://old.example.test\"]')",
+            [],
+        )
+        .unwrap();
+    let old = stored_key(&w, &uid, Some("old.example.test"));
+    let (s, body) = sign_in(
+        &w,
+        &old,
+        "old.example.test",
+        "https://old.example.test",
+        T0 + 10,
+    );
+    assert_eq!(s, 200, "{body}");
+    // The wrong RP for that key is refused.
+    let (s, _) = {
+        let mut anon = Browser::new("10.0.0.31");
+        let (_, v, _) = call(
+            &w,
+            &mut anon,
+            "POST",
+            "/api/auth/login/passkey/options",
+            r#"{"username":"owner"}"#,
+            T0 + 20,
+        );
+        assert_eq!(v["options"]["rpId"], "old.example.test");
+        sign_in_with_rp(&w, &old, "noevia.example.test", ORIGIN, T0 + 30)
+    };
+    assert_eq!(s, 401);
+}
+
+fn sign_in_with_rp(w: &World, key: &Key, signed_rp: &str, origin: &str, now: i64) -> (u16, String) {
+    use p256::ecdsa::signature::Signer;
+    use sha2::Digest;
+    let mut anon = Browser::new("10.0.0.32");
+    let (_, v, _) = call(
+        w,
+        &mut anon,
+        "POST",
+        "/api/auth/login/passkey/options",
+        r#"{"username":"owner"}"#,
+        now,
+    );
+    let challenge = v["options"]["challenge"].as_str().unwrap().to_string();
+    let token = v["challengeToken"].as_str().unwrap().to_string();
+    let b64 = passkey::b64::from_buffer;
+    let mut ad = sha2::Sha256::digest(signed_rp.as_bytes()).to_vec();
+    ad.push(0x05);
+    ad.extend([0, 0, 0, 0]);
+    let cdj = b64(format!(
+        r#"{{"type":"webauthn.get","challenge":"{challenge}","origin":"{origin}"}}"#
+    )
+    .as_bytes());
+    let mut base = ad.clone();
+    base.extend(sha2::Sha256::digest(passkey::b64::to_buffer(&cdj)));
+    let sig: p256::ecdsa::Signature = key.sk.sign(&base);
+    let body = serde_json::json!({"challengeToken": token, "response": {"id": key.id, "rawId": key.id, "type": "public-key",
+        "response": {"clientDataJSON": cdj, "authenticatorData": b64(&ad), "signature": b64(sig.to_der().as_bytes())}}});
+    let (s, _, r) = call(
+        w,
+        &mut anon,
+        "POST",
+        "/api/auth/login/passkey/verify",
+        &body.to_string(),
+        now + 1,
+    );
+    (s, r.body)
+}
