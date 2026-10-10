@@ -1,0 +1,18 @@
+[package]
+name = "project-edit-target"
+version = "0.1.0"
+description = "noevia-core's project-edit-target.cjs planEdit in Rust: which stored file a project edit tool may change and the path it writes; the host only ever uses it to refuse more"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+upload-sniff = { path = "../upload-sniff" }
+
+[dev-dependencies]
+proptest = "1"
