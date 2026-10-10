@@ -13,16 +13,21 @@
   inputs a replay must supply (the setup code file, the synthetic passwords). Refresh it with
   `tools/contracts/refresh-corpus.sh <noevia-core run id>`.
 
-Replay against a server started on a fresh copy of an empty data dir:
+- `core.ref`: the noevia-core commit the CI job `corpus-replay-node` boots to prove the corpus
+  replays clean against Node.
+
+Replay against Node booted the way the corpus was recorded (noevia-core
+`tools/contract-corpus/serve.cjs`: the same mock model and Diary, outbound connections refused,
+`UI_DATA_DIR` = a fresh copy of the seed):
 
 ```sh
-mkdir -p /tmp/empty-seed
+mkdir -p "$PWD/target/empty-seed"
 cargo run -p replay -- run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
-  --seed /tmp/empty-seed --server-cmd 'node /path/to/noevia-core/server/index.cjs' \
-  --server-env INFERENCE_BASE_URL=http://127.0.0.1:<mock> --server-env MODEL_MANAGER_KIND=none \
-  --state-out node-state.json
+  --seed "$PWD/target/empty-seed" \
+  --server-cmd "exec node <noevia-core>/tools/contract-corpus/serve.cjs" \
+  --state-out target/node-state.json
 cargo run -p replay -- coverage --corpus contracts/http/corpus --routes contracts/http/routes.toml
 ```
 
-The server under test needs the same mock model and Diary the corpus was recorded against
-(`generate.cjs` starts them; a replay harness that starts them too is follow-up work).
+A Rust server is replayed the same way with its own `--server-cmd` (it must answer the same mock
+model and Diary), and `--expect-state target/node-state.json` compares the data dirs it leaves.
