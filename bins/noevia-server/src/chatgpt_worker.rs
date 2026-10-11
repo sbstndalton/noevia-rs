@@ -818,12 +818,19 @@ mod ingress_tests {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod owned_tests {
+    static TEST_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn test_serial() -> std::sync::MutexGuard<'static, ()> {
+        TEST_SERIAL
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+    }
     use super::*;
     use server_auth::AuthConfig;
     use server_store::rusqlite::Connection;
     const NOW: i64 = 1_800_000_000_000;
     #[test]
     fn m6_reaper_busy_is_not_cleanup() {
+        let _serial = test_serial();
         let (_directory, _database, worker) =
             setup(Arc::new(OwnedPrefilter::ready(false, vec![]).unwrap()));
         let registry = GLOBAL.lock().unwrap();
@@ -879,6 +886,7 @@ mod owned_tests {
     }
     #[tokio::test]
     async fn global_pre_auth_drop_and_confirmed_join() {
+        let _serial = test_serial();
         let (_d, _c, w) = setup(Arc::new(OwnedPrefilter::pending()));
         let mut tickets = Vec::new();
         for i in 0..8 {
@@ -894,8 +902,12 @@ mod owned_tests {
         assert!(!admitted, "ROUTING_ASSERT/worker/global");
         assert_eq!(w.active().unwrap(), 0);
     }
+    // Independent Tokio test runtimes retain this test-only guard through awaited cleanup.
+    // Helpers and spawned tasks never acquire it, so there is no runtime dependency cycle.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn owner_cancel_before_status_and_old_signal() {
+        let _serial = test_serial();
         use std::sync::atomic::AtomicBool;
         let (_d, _c, mut w) = setup(Arc::new(OwnedPrefilter::ready(false, vec![]).unwrap()));
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
@@ -937,8 +949,12 @@ mod owned_tests {
         new.shutdown().unwrap();
         assert_eq!(reply.status, 200);
     }
+    // Independent Tokio test runtimes retain this test-only guard through awaited cleanup.
+    // Helpers and spawned tasks never acquire it, so there is no runtime dependency cycle.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn quarantine_keeps_all_permits_until_cleanup() {
+        let _serial = test_serial();
         use std::sync::atomic::AtomicBool;
         let (_d, _c, mut w) = setup(Arc::new(OwnedPrefilter::ready(false, vec![]).unwrap()));
         let done = Arc::new(AtomicBool::new(false));
@@ -958,8 +974,12 @@ mod owned_tests {
         assert!(refused && held == 8, "ROUTING_ASSERT/worker/quarantine");
         assert_eq!(w.active().unwrap(), 0);
     }
+    // Independent Tokio test runtimes retain this test-only guard through awaited cleanup.
+    // Helpers and spawned tasks never acquire it, so there is no runtime dependency cycle.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn joined_slot_contention_retains_handle() {
+        let _serial = test_serial();
         let (_d, _c, w) = setup(Arc::new(OwnedPrefilter::ready(false, vec![]).unwrap()));
         let reply = w
             .submit(input("cowork_session=invalid"))
@@ -984,8 +1004,12 @@ mod owned_tests {
         w.shutdown().unwrap();
         assert_eq!(w.active().unwrap(), 0);
     }
+    // Independent Tokio test runtimes retain this test-only guard through awaited cleanup.
+    // Helpers and spawned tasks never acquire it, so there is no runtime dependency cycle.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn pending_prefilter_deadline_and_broken() {
+        let _serial = test_serial();
         let (_d, _c, w) = setup(Arc::new(OwnedPrefilter::pending()));
         let mut request = input("cowork_session=live");
         request.arrival = Instant::now() - Duration::from_millis(1990);

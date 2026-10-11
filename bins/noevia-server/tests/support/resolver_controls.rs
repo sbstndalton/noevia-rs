@@ -5,6 +5,13 @@
     clippy::panic
 )]
 use super::*;
+
+static TEST_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+fn test_serial() -> std::sync::MutexGuard<'static, ()> {
+    TEST_SERIAL
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
 fn fixture() -> std::path::PathBuf {
     let path = std::path::PathBuf::from("/tmp/m6-resolver-fixture-v1");
     assert!(
@@ -109,6 +116,7 @@ fn bounds_protocol_cache_properties() {
 }
 #[test]
 fn global_publication_and_positive_reap() {
+    let _serial = test_serial();
     let r = Resolver::construct(
         Spec::parse("egress").unwrap(),
         Executable::Fixture(fixture()),
@@ -146,6 +154,7 @@ fn global_publication_and_positive_reap() {
 }
 #[test]
 fn cancellation_retains_capacity_until_join() {
+    let _serial = test_serial();
     let r = Resolver::construct(
         Spec::parse("blocked").unwrap(),
         Executable::Fixture(fixture()),
@@ -166,6 +175,7 @@ fn cancellation_retains_capacity_until_join() {
 }
 #[test]
 fn closed_process_protocol_failures() {
+    let _serial = test_serial();
     for host in [
         "stale",
         "suffix",
@@ -195,6 +205,7 @@ fn closed_process_protocol_failures() {
 }
 #[test]
 fn whole_attempt_deadline_reaps_blocked_helper() {
+    let _serial = test_serial();
     let r = Resolver::construct(
         Spec::parse("blocked").unwrap(),
         Executable::Fixture(fixture()),
@@ -246,6 +257,7 @@ fn selected_expiry_assertion() {
 #[test]
 #[allow(clippy::bool_assert_comparison)]
 fn selected_global_configuration_assertion() {
+    let _serial = test_serial();
     let r = Resolver::new(Spec::parse("127.0.0.2").unwrap()).unwrap();
     assert_eq!(
         matches!(
@@ -258,6 +270,7 @@ fn selected_global_configuration_assertion() {
 }
 #[test]
 fn selected_reap_guard_assertion() {
+    let _serial = test_serial();
     let r = Resolver::new(Spec::parse("").unwrap()).unwrap();
     r.owner.lease.store(true, Ordering::Release);
     assert_eq!(r.shutdown(), Err(Fault::Cleanup));
@@ -387,6 +400,7 @@ pub(super) fn injected_controller_panic() {
 }
 #[test]
 fn controller_panic_keeps_child_and_global_quarantine() {
+    let _serial = test_serial();
     let r = Resolver::construct(
         Spec::parse("egress").unwrap(),
         Executable::PanicFixture(fixture()),
@@ -429,6 +443,7 @@ fn controller_panic_keeps_child_and_global_quarantine() {
 }
 #[test]
 fn actual_partial_and_nx_frames_remain_unavailable() {
+    let _serial = test_serial();
     let r = Resolver::construct(
         Spec::parse("partial nx").unwrap(),
         Executable::Fixture(fixture()),
