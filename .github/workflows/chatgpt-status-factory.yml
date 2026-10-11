@@ -1,0 +1,119 @@
+name: Native ChatGPT status factory qualification
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  factory-linux:
+    name: Native ChatGPT status finite factory and Rust router
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: rs
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: rs
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: 010735c7d86d30269ab3f4a351b2135faea1c8e7
+          path: oracle-core
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          toolchain: 1.99.0
+          components: clippy, rustfmt
+      - name: Prepare exact locked factory dependencies outside source
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/m6-build-evidence"
+          run_capture() {
+            local label="$1" rc=0
+            shift
+            "$@" > "$evidence/$label.stdout" 2> "$evidence/$label.stderr" || rc=$?
+            printf '%s\n' "$rc" > "$evidence/$label.status"
+            return "$rc"
+          }
+          npm_root="$RUNNER_TEMP/m6-npm"
+          mkdir "$evidence" "$npm_root"
+          core="$GITHUB_WORKSPACE/oracle-core"
+          [[ "$(git -C "$core" rev-parse HEAD)" == 010735c7d86d30269ab3f4a351b2135faea1c8e7 ]]
+          [[ "$(git -C "$core" rev-parse 'HEAD^{tree}')" == 345adfa12da083eb5888ec232dc2d86b9b0383a5 ]]
+          [[ -z "$(git -C "$core" status --porcelain)" ]]
+          git -C "$core" show HEAD:server/package.json > "$npm_root/package.json"
+          git -C "$core" show HEAD:server/package-lock.json > "$npm_root/package-lock.json"
+          run_capture npm npm ci --prefix "$npm_root" --no-fund --no-audit
+          rustc --version --verbose > "$evidence/rustc.txt"
+          uname -a > "$evidence/kernel.txt"
+          run_capture fetch cargo fetch --locked
+      - name: Compile scoped tool and actual library test artifact
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/m6-target
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/m6-build-evidence"
+          run_capture() {
+            local label="$1" rc=0
+            shift
+            "$@" > "$evidence/$label.stdout" 2> "$evidence/$label.stderr" || rc=$?
+            printf '%s\n' "$rc" > "$evidence/$label.status"
+            return "$rc"
+          }
+          run_capture tool-build cargo build --offline --locked -p replay --bin chatgpt-status-contracts --message-format=json
+          run_capture lib-build cargo test --offline --locked -p noevia-server --no-default-features --features rust-chatgpt-status --lib --no-run --message-format=json
+          run_capture lib-clippy cargo clippy --offline --locked -p noevia-server --no-default-features --features rust-chatgpt-status --lib --profile test --message-format=json -- -D warnings
+          run_capture tool-clippy cargo clippy --offline --locked -p replay --bin chatgpt-status-contracts --profile test --message-format=json -- -D warnings
+          run_capture fmt rustfmt --edition 2021 --config skip_children=true --check tools/replay/src/bin/chatgpt-status-contracts.rs tools/replay/src/bin/support/chatgpt_status_linux_ci.rs tools/replay/src/bin/support/chatgpt_status_dependencies.rs bins/noevia-server/src/support/chatgpt_status_differential.rs
+      - name: One fresh Linux factory capture, negative control, then seven Rust rows
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/m6-target
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/m6-build-evidence"
+          run_capture() {
+            local label="$1" rc=0
+            shift
+            "$@" > "$evidence/$label.stdout" 2> "$evidence/$label.stderr" || rc=$?
+            printf '%s\n' "$rc" > "$evidence/$label.status"
+            return "$rc"
+          }
+          python3 - "$evidence/lib-build.stdout" "$evidence/lib-test-path" "$evidence/tool-build.stdout" "$evidence/tool-path" <<'PYARTIFACT'
+          import json, pathlib, sys
+          for input_path, output_path, name, kind, test in [
+              (sys.argv[1], sys.argv[2], 'noevia_server', ['lib'], True),
+              (sys.argv[3], sys.argv[4], 'chatgpt-status-contracts', ['bin'], False),
+          ]:
+              rows=[json.loads(line) for line in pathlib.Path(input_path).read_text().splitlines()]
+              candidates=[r['executable'] for r in rows if r.get('reason')=='compiler-artifact' and r.get('target',{}).get('name')==name and r.get('target',{}).get('kind')==kind and r.get('profile',{}).get('test') is test and r.get('executable')]
+              assert len(candidates)==1, 'unique actual executable required'
+              finished=[r for r in rows if r.get('reason')=='build-finished']
+              assert len(finished)==1 and finished[0].get('success') is True, 'successful actual build required'
+              executable=pathlib.Path(candidates[0])
+              assert executable.is_absolute() and executable.resolve(strict=True)==executable and executable.is_file(), 'canonical actual executable required'
+              pathlib.Path(output_path).write_text(str(executable)+'\n')
+          PYARTIFACT
+          core="$GITHUB_WORKSPACE/oracle-core"
+          tool="$(cat "$evidence/tool-path")"
+          node_path="$(realpath "$(command -v node)")"
+          run_capture inventory "$tool" inventory-linux-dependencies --installed-root "$RUNNER_TEMP/m6-npm" --core-checkout "$core" --owned-output "$RUNNER_TEMP/m6-linux-dependencies"
+          run_capture qualification "$tool" qualify-linux-factory --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-linux-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-linux-dependencies/dependency-inventory.json" --node "$node_path" --lib-test "$(cat "$evidence/lib-test-path")" --source-checkout "$PWD" --owned-output "$RUNNER_TEMP/m6-linux-factory"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-chatgpt-status-finite-factory
+          path: |
+            ${{ runner.temp }}/m6-build-evidence
+            ${{ runner.temp }}/m6-linux-dependencies
+            ${{ runner.temp }}/m6-linux-factory
+          if-no-files-found: error
