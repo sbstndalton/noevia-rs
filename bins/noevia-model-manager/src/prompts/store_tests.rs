@@ -717,3 +717,155 @@ print(json.dumps({'list':db.list_prompts(),'selected':[dict(r) for r in db.promp
     prompts.response(Operation::Delete(ids[0])).await.unwrap();
     assert_eq!(read(&ids)["selected"].as_array().unwrap().len(), 3);
 }
+
+// Compile the probe on author Mac as well; execute it only on qualified Linux.
+#[cfg_attr(target_os = "linux", test)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn sqlite_locks_survive_raw_startup_verification() {
+    let Some(python) = std::env::var_os("PYTHON") else {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "CI requires Python lock probe"
+        );
+        return;
+    };
+    let root = root();
+    let s = open(root.path());
+    const PROBE: &str = r#"
+import errno,fcntl,os,sys
+with open(sys.argv[1],'r+b') as f:
+    try:
+        fcntl.lockf(f,fcntl.LOCK_EX|fcntl.LOCK_NB,510,1073741826,os.SEEK_SET)
+    except OSError as e:
+        if e.errno not in (errno.EACCES,errno.EAGAIN): raise
+        print('blocked')
+    else:
+        print('acquired')
+"#;
+    let mut command = std::process::Command::new(python);
+    command.env_clear().args(["-c", PROBE]).arg(&s.path);
+    let output = prompts_process::bounded(command, Vec::new(), Duration::from_secs(12)).unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // A separate process cannot acquire SQLite's main-DB shared-byte range
+    // exclusively while this native WAL connection is alive. Its close cannot
+    // affect native process locks. A raw startup close would make this succeed.
+    assert_eq!(output.stdout, b"blocked\n");
+    assert_eq!(s.check(), Ok(()));
+}
+
+#[tokio::test]
+async fn actual_python_concurrent_reader_snapshot_and_native_delete_visibility() {
+    use sha2::{Digest, Sha256};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let Some(source) = std::env::var_os("NOEVIA_PROMPTS_APP") else {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "CI requires actual concurrent reader"
+        );
+        return;
+    };
+    let source = PathBuf::from(source);
+    assert!(source.is_absolute());
+    let source = source.canonicalize().unwrap();
+    assert_eq!(
+        format!(
+            "{:x}",
+            Sha256::digest(std::fs::read(source.join("db.py")).unwrap())
+        ),
+        crate::prompts::tests::oracle()["sources"]["db.py"]["sha256"]
+    );
+    let root = root();
+    let prompts = Prompts::open_with_clock(root.path(), || Ok(1_700_000_000.125))
+        .await
+        .unwrap();
+    let added: serde_json::Value = serde_json::from_slice(
+        &prompts
+            .response(Operation::Add(
+                "held snapshot".into(),
+                "visible body".into(),
+            ))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let id = added["id"].as_i64().unwrap();
+    let socket = root.path().join("reader.sock");
+    let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    const READ: &str = r#"
+import importlib.util,json,socket,sys,types
+from pathlib import Path
+source=Path(sys.argv[1]);root=Path(sys.argv[2]);pid=int(sys.argv[4])
+app=types.ModuleType('app');app.__path__=[str(source)];sys.modules['app']=app
+config=types.ModuleType('app.config');config.settings=types.SimpleNamespace(data_dir=root);sys.modules['app.config']=config
+spec=importlib.util.spec_from_file_location('app.db',source/'db.py');db=importlib.util.module_from_spec(spec);spec.loader.exec_module(db)
+c=db._conn();c.execute('BEGIN')
+before=[dict(r) for r in c.execute('SELECT * FROM prompts WHERE id=?',[pid])]
+with socket.socket(socket.AF_UNIX) as peer:
+    peer.settimeout(7);peer.connect(sys.argv[3]);peer.sendall(b'R')
+    if peer.recv(1)!=b'C': raise RuntimeError('reader handshake failed')
+    held=[dict(r) for r in c.execute('SELECT * FROM prompts WHERE id=?',[pid])]
+c.rollback();c.close()
+print(json.dumps({'before':before,'held':held,'after':[dict(r) for r in db.prompts_by_ids([pid])],'list':db.list_prompts()}))
+"#;
+    let mut command =
+        std::process::Command::new(std::env::var_os("PYTHON").expect("actual Python required"));
+    command
+        .env_clear()
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .args(["-c", READ])
+        .arg(&source)
+        .arg(root.path())
+        .arg(&socket)
+        .arg(id.to_string());
+    let reader = tokio::task::spawn_blocking(move || {
+        prompts_process::bounded(command, Vec::new(), Duration::from_secs(12))
+    });
+    // Collect the handshake result before asserting, then always join the owned
+    // bounded subprocess. Dropping the socket on failure releases the reader;
+    // the helper's finite deadline handles failures before it connects.
+    let exchange: std::result::Result<serde_json::Value, String> = async {
+        let (mut peer, _) = tokio::time::timeout(Duration::from_secs(3), listener.accept())
+            .await
+            .map_err(|_| "reader accept deadline")?
+            .map_err(|_| "reader accept failed")?;
+        let mut ready = [0];
+        tokio::time::timeout(Duration::from_secs(3), peer.read_exact(&mut ready))
+            .await
+            .map_err(|_| "reader ready deadline")?
+            .map_err(|_| "reader ready failed")?;
+        if ready != *b"R" {
+            return Err("reader ready marker".into());
+        }
+        let deleted = prompts
+            .response(Operation::Delete(id))
+            .await
+            .map_err(|_| "native delete failed")?;
+        tokio::time::timeout(Duration::from_secs(3), peer.write_all(b"C"))
+            .await
+            .map_err(|_| "reader release deadline")?
+            .map_err(|_| "reader release failed")?;
+        serde_json::from_slice(&deleted).map_err(|_| "native readback invalid".into())
+    }
+    .await;
+    let output = reader.await.unwrap().unwrap();
+    let deleted = exchange.unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let actual: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(actual["before"].as_array().unwrap().len(), 1);
+    assert_eq!(actual["held"], actual["before"]);
+    assert!(actual["after"].as_array().unwrap().is_empty());
+    assert_eq!(actual["list"], deleted["prompts"]);
+    assert_eq!(actual["before"][0]["name"], "held snapshot");
+    assert_eq!(actual["before"][0]["body"], "visible body");
+    let listed: serde_json::Value =
+        serde_json::from_slice(&prompts.response(Operation::List).await.unwrap()).unwrap();
+    assert_eq!(listed, deleted);
+}

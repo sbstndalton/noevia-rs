@@ -363,6 +363,9 @@ impl Store {
             return Err(Error::Store);
         }
         identities.push((path.clone(), metadata.dev(), metadata.ino()));
+        // POSIX close of any descriptor on this inode cancels this process's
+        // SQLite locks. Finish raw verification before SQLite can acquire them.
+        drop(file);
         let db = sql(Connection::open_with_flags(
             &path,
             OpenFlags::SQLITE_OPEN_READ_WRITE

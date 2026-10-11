@@ -16,6 +16,8 @@ Symlink ancestry and final database/sidecar/lock files, unsupported file types, 
 
 The parent retains its store Arc and writer lease until the child is confirmed reaped, including kill failure, wait error and timeout paths (#1369). Cancellation is observed before writes and on each SQLite VM operation, including short INSERT/DELETE resumed after busy waits (#1364). There is no cancellation rollback guarantee after a completed commit. Filesystem calls, SQLite I/O, OS process reap and worker Drop/join have no guaranteed hard elapsed bound; the cooperative deadlines do not establish OS syscall cancellation.
 
+Raw nofollow verification of the main database finishes and closes its descriptor before SQLite opens (#1376). Closing another descriptor for the same database inode while SQLite is alive can cancel all of the process's POSIX SQLite locks; metadata checks during the store lifetime use pathname metadata without opening or closing raw database descriptors. The dedicated writer lock is a separate inode and remains held for the store lifetime. Qualification requires sequential and concurrent actual Python reader visibility plus a Linux cross-process main-database lock probe; Mac reader evidence alone does not certify Linux behavior.
+
 ## Fixed bounds and explicit restrictions
 
 | Resource | Bound |
