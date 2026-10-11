@@ -119,9 +119,8 @@ fn classify_native(stdout: &str, stderr: &str, code: i32, name: &str) -> bool {
         return false;
     }
     let mut lines = stderr.lines().peekable();
-    if lines.peek().is_some_and(|l| l.starts_with("   Compiling ")) {
-        if lines.next() != Some("   Compiling noevia-server v0.1.0 (/Users/sebastiandalton/noevia-work/m6-chatgpt-status-private/bins/noevia-server)") { return false; }
-    }
+    if lines.peek().is_some_and(|l| l.starts_with("   Compiling "))
+        && lines.next() != Some("   Compiling noevia-server v0.1.0 (/Users/sebastiandalton/noevia-work/m6-chatgpt-status-private/bins/noevia-server)") { return false; }
     let Some(finished) = lines
         .next()
         .and_then(|s| {
