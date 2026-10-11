@@ -6,10 +6,12 @@
 #![forbid(unsafe_code)]
 
 pub mod admission;
+pub mod child_request;
 pub mod isolated;
 pub mod json;
 pub mod protocol;
 pub mod request_ipc;
+pub mod response_ipc;
 
 pub const LIST_BYTES: usize = 4 * 1024 * 1024;
 pub const TEXT_BYTES: usize = 800_000;

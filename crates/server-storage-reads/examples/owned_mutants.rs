@@ -75,6 +75,8 @@ fn run() -> Result<(), String> {
             "json.rs",
             "protocol.rs",
             "request_ipc.rs",
+            "response_ipc.rs",
+            "child_request.rs",
         ] {
             fs::copy(
                 source.join("src").join(file),
