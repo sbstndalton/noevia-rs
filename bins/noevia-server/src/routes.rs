@@ -32,6 +32,7 @@ pub struct Switches {
     /// ported so far (M4).
     pub rust_projects: bool,
     pub rust_usage: bool,
+    pub rust_chatgpt_status: bool,
     pub rust_sampling_settings: bool,
     pub rust_reasoning_settings: bool,
     pub rust_routing_mode: bool,
@@ -43,6 +44,7 @@ impl Switches {
             "NOEVIA_RUST_AUTH" => self.rust_auth,
             "NOEVIA_RUST_PROJECTS" => self.rust_projects,
             "NOEVIA_RUST_USAGE" => self.rust_usage,
+            "NOEVIA_RUST_CHATGPT_STATUS" => self.rust_chatgpt_status,
             "NOEVIA_RUST_SAMPLING_SETTINGS" => self.rust_sampling_settings,
             "NOEVIA_RUST_REASONING_SETTINGS" => self.rust_reasoning_settings,
             "NOEVIA_RUST_ROUTING_MODE" => self.rust_routing_mode,
@@ -79,6 +81,7 @@ pub enum Native {
     SamplingSettings,
     ReasoningSettings,
     RoutingMode,
+    ChatgptStatus,
 }
 
 /// The routes [`Native::ProjectAssets`] implements.
@@ -90,6 +93,9 @@ const PROJECT_ASSET_ROUTES: &[&str] = &[
 /// The native handler a rust-owned route is implemented by.
 pub fn native_for(route: &Route) -> Option<Native> {
     match (route.path, route.catch_all, route.switch) {
+        ("/api/providers/chatgpt", false, Some("NOEVIA_RUST_CHATGPT_STATUS")) => {
+            Some(Native::ChatgptStatus)
+        }
         (
             "/api/routing-mode" | "/api/routing-mode/allowed",
             false,
@@ -176,6 +182,13 @@ pub fn dispatch(method: &str, path: &str) -> Option<Native> {
 
 /// [`dispatch`] under the deployment switches that are on.
 pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Native> {
+    // This ownership slice uses an exact pathname; generic trailing-slash trimming
+    // must never hand a sibling/HEAD/OPTIONS to the native adapter.
+    if route_for(path).is_some_and(|r| r.switch == Some("NOEVIA_RUST_CHATGPT_STATUS"))
+        && (path != "/api/providers/chatgpt" || method != "GET")
+    {
+        return None;
+    }
     let route = route_for(path)?;
     if route.owner_under(switches) != Owner::Rust {
         return None;
@@ -227,6 +240,7 @@ mod tests {
             rust_auth: true,
             rust_projects: false,
             rust_usage: false,
+            rust_chatgpt_status: false,
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
@@ -239,6 +253,7 @@ mod tests {
             rust_auth: true,
             rust_projects: true,
             rust_usage: false,
+            rust_chatgpt_status: false,
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
@@ -252,6 +267,7 @@ mod tests {
             rust_auth: true,
             rust_projects: false,
             rust_usage: false,
+            rust_chatgpt_status: false,
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
@@ -260,6 +276,7 @@ mod tests {
             rust_auth: true,
             rust_projects: true,
             rust_usage: false,
+            rust_chatgpt_status: false,
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,

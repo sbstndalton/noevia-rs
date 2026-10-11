@@ -14,6 +14,10 @@ workspace = true
 name = "replay"
 path = "src/main.rs"
 
+[[bin]]
+name = "chatgpt-status-contracts"
+path = "src/bin/chatgpt-status-contracts.rs"
+
 [dependencies]
 httparse = "1"
 chrono = "0.4"

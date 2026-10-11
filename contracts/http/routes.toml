@@ -629,7 +629,9 @@ owner = "node"
 
 [[route]]
 path = "/api/providers/chatgpt"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+switch = "NOEVIA_RUST_CHATGPT_STATUS"
 
 [[route]]
 path = "/api/providers/chatgpt/device"

@@ -1632,6 +1632,7 @@ dependencies = [
  "toml",
  "tower",
  "url",
+ "zeroize",
 ]
 
 [[package]]

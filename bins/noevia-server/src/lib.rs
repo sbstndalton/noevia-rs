@@ -3,6 +3,7 @@
 //! gives to Rust and proxies every other request to Node ([`legacy_proxy`], deleted with Node).
 
 pub mod account_routes;
+pub mod chatgpt_status_routes;
 pub mod chatgpt_worker;
 pub mod code_net;
 pub mod code_net_resolver;
@@ -44,6 +45,8 @@ pub const FEATURES: &[&str] = &[
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
     "rust-routing-mode",
+    #[cfg(feature = "rust-chatgpt-status")]
+    "rust-chatgpt-status",
 ];
 
 pub struct App {
@@ -52,6 +55,9 @@ pub struct App {
     pub statics: static_files::StaticFiles,
     pub version: Option<String>,
     pub code_net: Arc<code_net::CodeNetGuard>,
+    pub owned_resolver: Option<Result<code_net_resolver::Resolver, code_net_resolver::Fault>>,
+    pub chatgpt_status:
+        Option<Result<Arc<chatgpt_status_routes::StatusOwner>, chatgpt_status_routes::Fault>>,
     /// The validated identity for Rust-owned routes.
     pub identity: Arc<identity::IdentityLayer>,
     /// The cowork.db writer while NOEVIA_RUST_AUTH is on (M3).
@@ -73,7 +79,42 @@ impl App {
 
     /// [`App::new`] with the code-network guard's host lookups made by `lookup`.
     pub fn with_lookup(config: config::Config, lookup: code_net::Lookup) -> Arc<Self> {
-        let code_net = code_net::CodeNetGuard::new(&config.code_net, lookup);
+        let owned_resolver = if config.rust_chatgpt_status {
+            Some(
+                chatgpt_status_routes::StatusOwner::preflight(&config)
+                    .map_err(|_| code_net_resolver::Fault::Stopping)
+                    .and_then(|()| {
+                        config
+                            .status_resolver
+                            .clone()
+                            .ok_or(code_net_resolver::Fault::Input)
+                    })
+                    .and_then(code_net_resolver::Resolver::new),
+            )
+        } else {
+            None
+        };
+        let chatgpt_status = if config.rust_chatgpt_status {
+            Some(
+                owned_resolver
+                    .as_ref()
+                    .and_then(|r| r.as_ref().ok())
+                    .ok_or(chatgpt_status_routes::Fault::Configuration)
+                    .and_then(|r| chatgpt_status_routes::StatusOwner::new(&config, r.clone())),
+            )
+        } else {
+            None
+        };
+        // Native selection uses only the shared retained resolver, never legacy Tokio DNS.
+        let legacy_disabled = code_net::CodeNetSpec::default();
+        let code_net = code_net::CodeNetGuard::new(
+            if config.rust_chatgpt_status {
+                &legacy_disabled
+            } else {
+                &config.code_net
+            },
+            lookup,
+        );
         let version = health::local_version(&config.dist, config.stamp_version.as_deref());
         let identity = Arc::new(identity::IdentityLayer::new(&config));
         let writes = Arc::new(upkeep::WriterLayer::new(&config));
@@ -98,6 +139,8 @@ impl App {
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
             code_net,
+            owned_resolver,
+            chatgpt_status,
             config,
         })
     }
@@ -108,6 +151,26 @@ async fn handle(
     ConnectInfo(conn): ConnectInfo<serve::Conn>,
     req: Request<Body>,
 ) -> Response<Body> {
+    // Exclusive interception before legacy guard, identity/writer or shared upkeep.
+    if app.config.rust_chatgpt_status && chatgpt_status_routes::candidate(&req) {
+        return chatgpt_status_routes::serve(&app, conn, req).await;
+    }
+    if let Some(resolver) = &app.owned_resolver {
+        let refused = match resolver {
+            Ok(r) => {
+                code_net::shared_refuses(
+                    r,
+                    conn.local,
+                    req.extensions().get::<serve::Arrival>().copied(),
+                )
+                .await
+            }
+            Err(_) => true,
+        };
+        if refused {
+            return reply::code_net_refused();
+        }
+    }
     // Before any dispatch (static, ready, proxy): a request that arrived on web's own
     // code-network address gets 403 and nothing else (#1246). No local address: refuse.
     if app.code_net.enabled() {
@@ -152,7 +215,8 @@ async fn handle(
             | routes::Native::Usage
             | routes::Native::SamplingSettings
             | routes::Native::ReasoningSettings
-            | routes::Native::RoutingMode,
+            | routes::Native::RoutingMode
+            | routes::Native::ChatgptStatus,
         )
         | None => false,
     };
@@ -172,6 +236,11 @@ async fn handle(
         .await;
     }
     match native {
+        Some(routes::Native::ChatgptStatus) => reply::error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Sign-in is unavailable right now. Try again shortly.",
+            true,
+        ),
         Some(routes::Native::RoutingMode) => {
             let Some(p) = whatwg else {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
@@ -209,7 +278,17 @@ async fn handle(
             project_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
-            health::ready(&app.config.upstream, app.version.as_deref()).await
+            health::ready_with_native(
+                &app.config.upstream,
+                app.version.as_deref(),
+                !app.config.rust_chatgpt_status
+                    || app
+                        .chatgpt_status
+                        .as_ref()
+                        .and_then(|s| s.as_ref().ok())
+                        .is_some_and(|s| s.ready()),
+            )
+            .await
         }
         Some(routes::Native::Static) if static_files::canonical(&path) => {
             let statics = app.statics.clone();

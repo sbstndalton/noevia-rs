@@ -13,6 +13,20 @@
 use std::net::IpAddr;
 use std::path::PathBuf;
 
+/// Bounded startup-only key handoff. Debug never includes its contents.
+#[derive(Clone)]
+pub struct PreviousStatusKey(std::sync::Arc<zeroize::Zeroizing<String>>);
+impl std::fmt::Debug for PreviousStatusKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreviousStatusKey").finish_non_exhaustive()
+    }
+}
+impl PreviousStatusKey {
+    pub(crate) fn text(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub host: String,
@@ -35,6 +49,10 @@ pub struct Config {
     pub rust_projects: Option<server_store::RustProjects>,
     /// M6 requires native identity/upkeep.
     pub rust_usage: bool,
+    pub rust_chatgpt_status: bool,
+    pub status_resolver: Option<crate::code_net_resolver::Spec>,
+    pub status_previous: Option<PreviousStatusKey>,
+    pub status_product_env: Option<String>,
     pub rust_reasoning_settings: Option<server_store::RustReasoningSettings>,
     pub rust_routing_mode: Option<server_store::RustRoutingMode>,
     pub routing_feature_env: Option<bool>,
@@ -106,6 +124,7 @@ impl Config {
             rust_auth: self.rust_auth.is_some(),
             rust_projects: self.rust_projects.is_some(),
             rust_usage: self.rust_usage,
+            rust_chatgpt_status: self.rust_chatgpt_status,
             rust_sampling_settings: self.rust_sampling_settings.is_some(),
             rust_reasoning_settings: self.rust_reasoning_settings.is_some(),
             rust_routing_mode: self.rust_routing_mode.is_some(),
@@ -132,6 +151,41 @@ impl Config {
             return Err("NOEVIA_RUST_PROJECTS=1 needs NOEVIA_RUST_AUTH=1".into());
         }
         let rust_usage = get("NOEVIA_RUST_USAGE").as_deref() == Some("1");
+        let rust_chatgpt_status = get("NOEVIA_RUST_CHATGPT_STATUS").as_deref() == Some("1");
+        if rust_chatgpt_status && (rust_auth.is_none() || !cfg!(feature = "rust-chatgpt-status")) {
+            return Err(
+                "NOEVIA_RUST_CHATGPT_STATUS=1 needs RustAuth and compiled rust-chatgpt-status"
+                    .into(),
+            );
+        }
+        let code_net_raw = get("COWORK_CODE_NET_ADDR").unwrap_or_default();
+        let status_resolver = if rust_chatgpt_status {
+            Some(
+                crate::code_net_resolver::Spec::parse(&code_net_raw).map_err(|_| {
+                    "COWORK_CODE_NET_ADDR exceeds the supported native resolver dialect".to_owned()
+                })?,
+            )
+        } else {
+            None
+        };
+        let (status_previous, status_product_env) = if rust_chatgpt_status {
+            let previous = get("SECRETS_KEY_PREVIOUS").map(zeroize::Zeroizing::new);
+            if previous.as_ref().is_some_and(|s| s.len() > 4096) {
+                return Err("SECRETS_KEY_PREVIOUS exceeds native status input limit".into());
+            }
+            let product = get("NOEVIA_FEATURE_CHATGPT_OAUTH");
+            if product.as_ref().is_some_and(|s| s.len() > 256)
+                || chatgpt_status::feature_env(product.as_deref()).is_err()
+            {
+                return Err("Invalid NOEVIA_FEATURE_CHATGPT_OAUTH".into());
+            }
+            (
+                previous.map(|s| PreviousStatusKey(std::sync::Arc::new(s))),
+                product,
+            )
+        } else {
+            (None, None)
+        };
         if rust_usage && rust_auth.is_none() {
             return Err("NOEVIA_RUST_USAGE=1 needs NOEVIA_RUST_AUTH=1".into());
         }
@@ -172,6 +226,20 @@ impl Config {
         } else {
             None
         };
+        let auth = server_auth::AuthConfig::from_lookup(&get);
+        if rust_chatgpt_status && auth.is_err() {
+            return Err("native status auth configuration is invalid".into());
+        }
+        let data_dir = get("UI_DATA_DIR")
+            .filter(|d| !d.is_empty())
+            .map(PathBuf::from);
+        if rust_chatgpt_status
+            && data_dir
+                .as_ref()
+                .is_some_and(|p| !p.is_absolute() || p.as_os_str().len() > 4096)
+        {
+            return Err("native status data directory is invalid".into());
+        }
         Ok(Config {
             host,
             port,
@@ -182,19 +250,19 @@ impl Config {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("dist")),
             stamp_version: get("STAMP_VERSION").filter(|v| !v.is_empty()),
-            code_net: crate::code_net::CodeNetSpec::parse(
-                &get("COWORK_CODE_NET_ADDR").unwrap_or_default(),
-            )?,
-            data_dir: get("UI_DATA_DIR")
-                .filter(|d| !d.is_empty())
-                .map(PathBuf::from),
+            code_net: crate::code_net::CodeNetSpec::parse(&code_net_raw)?,
+            data_dir,
             account: get("UI_DATA_DIR")
                 .filter(|d| !d.is_empty())
                 .map(|d| server_account::Settings::from_lookup(&get, PathBuf::from(d))),
-            auth: server_auth::AuthConfig::from_lookup(&get),
+            auth,
             rust_auth,
             rust_projects,
             rust_usage,
+            rust_chatgpt_status,
+            status_resolver,
+            status_previous,
+            status_product_env,
             rust_sampling_settings,
             rust_reasoning_settings,
             rust_routing_mode,

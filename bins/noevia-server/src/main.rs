@@ -62,7 +62,15 @@ fn main() -> ExitCode {
         .enable_all()
         .build()
     {
-        Ok(runtime) => runtime.block_on(normal_main()),
+        Ok(runtime) => {
+            let status = runtime.block_on(normal_main());
+            noevia_server::health::shutdown_owned_probes();
+            if noevia_server::chatgpt_status_routes::shutdown_process_owners() {
+                status
+            } else {
+                ExitCode::FAILURE
+            }
+        }
         Err(_) => ExitCode::FAILURE,
     }
 }
@@ -105,6 +113,11 @@ async fn normal_main() -> ExitCode {
     let rust_auth = config.rust_auth.is_some();
     let rust_projects = config.rust_projects.is_some();
     let app = App::new(config);
+    let native_owner = app
+        .chatgpt_status
+        .as_ref()
+        .and_then(|s| s.as_ref().ok())
+        .cloned();
     app.statics.warm();
     // Without NOEVIA_RUST_AUTH no route needs an identity, so a refusal is only reported. With it
     // Rust owns sign-in: a schema newer than this build stops the front (identity.rs).
@@ -156,6 +169,9 @@ async fn normal_main() -> ExitCode {
     });
     tokio::spawn(async move {
         terminated().await;
+        if let Some(owner) = native_owner {
+            owner.request_shutdown();
+        }
         let _ = stop_tx.send(true);
     });
     let drained = async {

@@ -18,9 +18,11 @@ path = "src/main.rs"
 default = []
 rust-reasoning-settings = []
 rust-routing-mode = []
+rust-chatgpt-status = []
 
 [dependencies]
 rustix = { version = "=1.1.5", features = ["fs", "process", "time"] }
+zeroize = "=1.9.1"
 chatgpt-status = { path = "../../crates/chatgpt-status" }
 server-routing-mode = { path = "../../crates/server-routing-mode" }
 server-reasoning-settings = { path = "../../crates/server-reasoning-settings" }

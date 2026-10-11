@@ -43,6 +43,10 @@ pub struct Conn {
     pub local: Option<SocketAddr>,
 }
 
+/// Immutable arrival of this completed HTTP request at the first Hyper callback.
+#[derive(Clone, Copy, Debug)]
+pub struct Arrival(pub Instant);
+
 impl Connected<IncomingStream<'_, TcpListener>> for Conn {
     fn connect_info(stream: IncomingStream<'_, TcpListener>) -> Self {
         Conn {
@@ -249,6 +253,7 @@ async fn serve_connection(
     };
     let act = Arc::clone(&activity);
     let svc = hyper::service::service_fn(move |mut req: Request<Incoming>| {
+        req.extensions_mut().insert(Arrival(Instant::now()));
         let router = router.clone();
         act.in_flight.fetch_add(1, Ordering::Relaxed);
         act.touch();

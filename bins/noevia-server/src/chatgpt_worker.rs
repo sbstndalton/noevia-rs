@@ -1,4 +1,4 @@
-//! Private owned worker substrate. No HTTP interception or real resolver lifecycle is wired.
+//! Owned native status jobs; production consumes the front's shared Resolver snapshot.
 use chatgpt_status::{ExternalContext, ExternalFailure, ExternalStatus};
 use server_auth::{Authenticator, Creds, Refusal};
 use server_store::{
@@ -56,8 +56,26 @@ pub struct JobInput {
     creds: Creds,
     local: Option<SocketAddr>,
     digest: [u8; 32],
+    ingress_fault: Option<Reply>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReapFault {
+    Busy,
+    Cleanup,
 }
 impl JobInput {
+    /// A fixed rejected-input envelope, admitted under the same global job lease.
+    /// It owns no unbounded raw credentials; prefilter denial precedes the fault.
+    pub fn rejected(arrival: Instant, now_ms: i64, local: Option<SocketAddr>) -> Self {
+        Self {
+            arrival,
+            now_ms,
+            local,
+            creds: Creds::from_headers("GET", std::iter::empty::<(&str, &[u8])>()),
+            digest: Sha256::digest(b"noevia/chatgpt/ingress-fault/v1").into(),
+            ingress_fault: Some(bad_input()),
+        }
+    }
     pub fn from_headers<'a>(
         arrival: Instant,
         now_ms: i64,
@@ -135,6 +153,7 @@ impl JobInput {
             creds,
             local,
             digest: digest.finalize().into(),
+            ingress_fault: None,
         }))
     }
 }
@@ -148,18 +167,29 @@ enum PrefilterState {
 pub struct OwnedPrefilter {
     enabled: bool,
     state: Mutex<PrefilterState>,
+    resolver: Option<crate::code_net_resolver::Resolver>,
 }
 impl OwnedPrefilter {
+    /// Production shares the exact controller owner; no independent cache/publication.
+    pub fn shared(resolver: crate::code_net_resolver::Resolver) -> Self {
+        Self {
+            enabled: true,
+            state: Mutex::new(PrefilterState::Pending),
+            resolver: Some(resolver),
+        }
+    }
     pub fn ready(enabled: bool, addresses: Vec<String>) -> Result<Self, Reply> {
         Ok(Self {
             enabled,
             state: Mutex::new(Self::addresses(addresses)?),
+            resolver: None,
         })
     }
     pub fn pending() -> Self {
         Self {
             enabled: true,
             state: Mutex::new(PrefilterState::Pending),
+            resolver: None,
         }
     }
     fn addresses(addresses: Vec<String>) -> Result<PrefilterState, Reply> {
@@ -178,15 +208,30 @@ impl OwnedPrefilter {
         )))
     }
     pub fn publish(&self, addresses: Vec<String>) -> Result<(), Reply> {
+        if self.resolver.is_some() {
+            return Err(unavailable());
+        }
         let next = Self::addresses(addresses)?;
         *self.state.try_lock().map_err(|_| unavailable())? = next;
         Ok(())
     }
     pub fn mark_broken(&self) -> Result<(), Reply> {
+        if self.resolver.is_some() {
+            return Err(unavailable());
+        }
         *self.state.try_lock().map_err(|_| unavailable())? = PrefilterState::Broken;
         Ok(())
     }
     fn check(&self, local: Option<SocketAddr>) -> Result<Option<bool>, Reply> {
+        if let Some(resolver) = &self.resolver {
+            if local.is_none() {
+                return Ok(Some(true));
+            }
+            return resolver
+                .snapshot()
+                .map(|s| s.refuses(local.map(|a| a.ip()), Instant::now()))
+                .map_err(|_| unavailable());
+        }
         if !self.enabled {
             return Ok(Some(false));
         }
@@ -295,7 +340,12 @@ impl JobTicket {
             tokio::time::timeout(self.deadline.saturating_duration_since(Instant::now()), rx).await;
         self.received = true;
         match result {
-            Ok(Ok(reply)) => reply,
+            Ok(Ok(reply))
+                if Instant::now() < self.deadline
+                    || (reply.status == 403 && reply.body.is_empty()) =>
+            {
+                reply
+            }
             _ => {
                 self.signal.cancel();
                 unavailable()
@@ -399,18 +449,21 @@ impl OwnedStatusWorker {
     }
     /// Try-only registry access. Kernel close/join may stall; ownership/permits remain retained.
     pub fn reap(&self) -> Result<usize, Reply> {
+        self.reap_owned().map_err(|_| unavailable())
+    }
+    pub fn reap_owned(&self) -> Result<usize, ReapFault> {
         let entries: Vec<_> = GLOBAL
             .try_lock()
-            .map_err(|_| unavailable())?
+            .map_err(|_| ReapFault::Busy)?
             .iter()
             .filter(|e| e.service == self.inner.id)
             .cloned()
             .collect();
         let mut released = 0;
         for entry in entries {
-            let mut slot = entry.joined.try_lock().map_err(|_| unavailable())?;
+            let mut slot = entry.joined.try_lock().map_err(|_| ReapFault::Busy)?;
             let h = {
-                let mut slot = entry.handle.try_lock().map_err(|_| unavailable())?;
+                let mut slot = entry.handle.try_lock().map_err(|_| ReapFault::Busy)?;
                 if slot.as_ref().is_some_and(JoinHandle::is_finished) {
                     slot.take()
                 } else {
@@ -420,7 +473,7 @@ impl OwnedStatusWorker {
             if let Some(h) = h {
                 match h.join() {
                     Ok(done) => *slot = Some(done),
-                    Err(_) => return Err(unavailable()),
+                    Err(_) => return Err(ReapFault::Cleanup),
                 }
             }
             if let Some(done) = slot.as_mut() {
@@ -431,7 +484,7 @@ impl OwnedStatusWorker {
                     }
                 }
                 if done.cleanup.is_empty() {
-                    let mut active = GLOBAL.try_lock().map_err(|_| unavailable())?;
+                    let mut active = GLOBAL.try_lock().map_err(|_| ReapFault::Busy)?;
                     let n = active.len();
                     active.retain(|e| e.id != entry.id);
                     released += n - active.len();
@@ -515,6 +568,9 @@ fn pipeline(inner: &Inner, entry: &Entry, input: JobInput) -> (Reply, Done) {
                 Some(false) => break,
                 None => thread::park_timeout(Duration::from_millis(5)),
             }
+        }
+        if let Some(fault) = input.ingress_fault {
+            return Err(fault);
         }
         let root =
             QualifiedRoot::open(&inner.path, &entry.signal.budget).map_err(|_| unavailable())?;
@@ -766,6 +822,20 @@ mod owned_tests {
     use server_auth::AuthConfig;
     use server_store::rusqlite::Connection;
     const NOW: i64 = 1_800_000_000_000;
+    #[test]
+    fn m6_reaper_busy_is_not_cleanup() {
+        let (_directory, _database, worker) =
+            setup(Arc::new(OwnedPrefilter::ready(false, vec![]).unwrap()));
+        let registry = GLOBAL.lock().unwrap();
+        let observed = worker.reap_owned();
+        drop(registry);
+        worker.shutdown().unwrap();
+        assert_eq!(
+            observed,
+            Err(ReapFault::Busy),
+            "M6_WORKER_ASSERT/maintenance-busy"
+        );
+    }
     fn setup(prefilter: Arc<OwnedPrefilter>) -> (tempfile::TempDir, Connection, OwnedStatusWorker) {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("secrets.key"), [7; 32]).unwrap();

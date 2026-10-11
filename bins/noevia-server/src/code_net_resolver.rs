@@ -767,3 +767,9 @@ fn controller(owner: &Owner, fixture: Executable) -> Result<(), Fault> {
 #[cfg(test)]
 #[path = "../tests/support/resolver_controls.rs"]
 mod tests;
+
+/// CLOSED sibling controls only; production executable selection remains unchanged.
+#[cfg(test)]
+pub(crate) fn closed_fixture(spec: Spec, path: std::path::PathBuf) -> Result<Resolver, Fault> {
+    Resolver::construct(spec, Executable::Fixture(path))
+}

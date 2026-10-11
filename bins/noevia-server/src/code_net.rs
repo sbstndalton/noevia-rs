@@ -30,6 +30,40 @@ const RESOLVE_TIMEOUT: Duration = Duration::from_secs(5);
 const RETRY: Duration = Duration::from_secs(5);
 const MAX_RETRY: Duration = Duration::from_secs(5 * 60);
 
+/// Native-selected general front: same Resolver snapshot as status jobs, with
+/// original first-callback arrival and finite fail-closed pending handling.
+pub async fn shared_refuses(
+    resolver: &crate::code_net_resolver::Resolver,
+    local: Option<SocketAddr>,
+    arrival: Option<crate::serve::Arrival>,
+) -> bool {
+    if local.is_none() {
+        return true;
+    }
+    loop {
+        match resolver
+            .snapshot()
+            .map(|s| s.refuses(local.map(|a| a.ip()), std::time::Instant::now()))
+        {
+            Ok(Some(refused)) => return refused,
+            Err(_) => return true,
+            Ok(None) => {}
+        }
+        let Some(crate::serve::Arrival(at)) = arrival else {
+            return true;
+        };
+        let now = std::time::Instant::now();
+        if at > now || now.saturating_duration_since(at) >= Duration::from_secs(2) {
+            return true;
+        }
+        tokio::time::sleep(
+            Duration::from_millis(5)
+                .min((at + Duration::from_secs(2)).saturating_duration_since(now)),
+        )
+        .await;
+    }
+}
+
 fn utf16(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
 }
