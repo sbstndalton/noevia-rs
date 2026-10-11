@@ -1,5 +1,7 @@
 //! Complete prompt writer, default off. DATA_DIR must remain trusted and stable (#1357).
-//! SQLite canonicalizes names: identity checks detect substitution, not hostile rename races.
+//! Root/ancestor, main DB and writer-lock identities are stable. SQLite-managed WAL/SHM
+//! may disappear or be recreated; present companions must pass file safety checks.
+//! SQLite canonicalizes names: checks do not defend hostile concurrent rename races.
 mod encoding;
 mod literals;
 mod store;

@@ -271,6 +271,122 @@ fn lock_symlink_writable_special_and_replacement_fail_closed() {
     assert_eq!(run(&mut s, Operation::List), Err(Error::Store));
 }
 #[test]
+fn sqlite_companion_lifecycle_allows_checkpoint_removal_and_recreation() {
+    let root = root();
+    let mut s = open(root.path());
+    let added = run(&mut s, Operation::Add("before".into(), "kept".into())).unwrap();
+    let identities = s.identities.clone();
+    // Keep old inodes allocated so recreation cannot merely reuse their numbers.
+    let old_wal = File::open(root.path().join("model_loader.db-wal")).unwrap();
+    let old_shm = File::open(root.path().join("model_loader.db-shm")).unwrap();
+    // SQLite itself checkpoints and removes companions when leaving WAL mode.
+    // No active SQLite companion is manually unlinked or replaced by this test.
+    s.db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")
+        .unwrap();
+    for suffix in ["-wal", "-shm"] {
+        assert_eq!(
+            std::fs::symlink_metadata(root.path().join(format!("model_loader.db{suffix}")))
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound
+        );
+    }
+    assert_eq!(s.check(), Ok(()));
+    assert_eq!(
+        run(&mut s, Operation::List).unwrap()["prompts"],
+        added["prompts"]
+    );
+    s.db.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
+    let after = run(&mut s, Operation::Add("after".into(), "visible".into())).unwrap();
+    for (suffix, old) in [("-wal", old_wal), ("-shm", old_shm)] {
+        let new = safe_file(&root.path().join(format!("model_loader.db{suffix}")), false)
+            .unwrap()
+            .unwrap();
+        let old = old.metadata().unwrap();
+        assert_ne!((new.dev(), new.ino()), (old.dev(), old.ino()));
+    }
+    assert_eq!(s.identities, identities);
+    assert_eq!(after["prompts"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        run(&mut s, Operation::Delete(added["id"].as_i64().unwrap())).unwrap()["prompts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn sqlite_companion_lifecycle_rejects_unsafe_present_files_before_write() {
+    use std::os::unix::fs::PermissionsExt;
+    for suffix in ["-wal", "-shm"] {
+        for kind in ["symlink", "directory", "hardlink", "writable"] {
+            let root = root();
+            let mut s = open(root.path());
+            let path = root.path().join(format!("model_loader.db{suffix}"));
+            let held = root.path().join("held-companion");
+            std::fs::rename(&path, &held).unwrap();
+            let outside = root.path().join("synthetic-other");
+            std::fs::write(&outside, "").unwrap();
+            match kind {
+                "symlink" => std::os::unix::fs::symlink(&outside, &path).unwrap(),
+                "directory" => std::fs::create_dir(&path).unwrap(),
+                "hardlink" => std::fs::hard_link(&outside, &path).unwrap(),
+                "writable" => {
+                    std::fs::write(&path, "").unwrap();
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o620))
+                        .unwrap();
+                }
+                _ => unreachable!(),
+            }
+            assert_eq!(s.check(), Err(Error::Store), "{suffix} {kind}");
+            assert_eq!(
+                run(&mut s, Operation::Add("never".into(), "written".into())),
+                Err(Error::Store),
+                "{suffix} {kind}"
+            );
+            // Restore the SQLite-owned companion before any SQL or connection drop.
+            if kind == "directory" {
+                std::fs::remove_dir(&path).unwrap();
+            } else {
+                std::fs::remove_file(&path).unwrap();
+            }
+            std::fs::rename(&held, &path).unwrap();
+            assert!(run(&mut s, Operation::List).unwrap()["prompts"]
+                .as_array()
+                .unwrap()
+                .is_empty());
+        }
+    }
+}
+
+#[test]
+fn sqlite_companion_lifecycle_keeps_root_database_and_lock_identity_strict() {
+    for name in ["model_loader.db", "model_loader.db.prompts.lock"] {
+        let root = root();
+        let mut s = open(root.path());
+        let path = root.path().join(name);
+        let held = root.path().join("held-core-file");
+        std::fs::rename(&path, &held).unwrap();
+        std::fs::write(&path, "").unwrap();
+        assert_eq!(run(&mut s, Operation::List), Err(Error::Store), "{name}");
+        std::fs::remove_file(&path).unwrap();
+        std::fs::rename(&held, &path).unwrap();
+        assert_eq!(s.check(), Ok(()));
+    }
+    let outer = root();
+    let path = outer.path().join("stable-root");
+    std::fs::create_dir(&path).unwrap();
+    let mut s = open(&path);
+    let held = outer.path().join("held-root");
+    std::fs::rename(&path, &held).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    assert_eq!(run(&mut s, Operation::List), Err(Error::Store));
+    std::fs::remove_dir(&path).unwrap();
+    std::fs::rename(&held, &path).unwrap();
+    assert_eq!(s.check(), Ok(()));
+}
+#[test]
 fn expired_or_cancelled_request_never_starts_a_write() {
     let root = root();
     let mut s = open(root.path());

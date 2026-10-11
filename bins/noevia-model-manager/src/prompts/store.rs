@@ -392,15 +392,6 @@ impl Store {
         sql(store.db.execute_batch("CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE TABLE IF NOT EXISTS prompts(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,body TEXT NOT NULL,created_at REAL NOT NULL);"))?;
         store.schema()?;
         store.check()?;
-        for suffix in ["-wal", "-shm"] {
-            let sidecar = store
-                .path
-                .with_file_name(format!("model_loader.db{suffix}"));
-            if let Some(m) = safe_file(&sidecar, true)? {
-                store.identities.try_reserve(1).map_err(|_| Error::Limit)?;
-                store.identities.push((sidecar, m.dev(), m.ino()));
-            }
-        }
         Ok(store)
     }
     fn budget(&mut self, deadline: Instant, cancel: Arc<AtomicBool>) -> Result<()> {
@@ -439,6 +430,12 @@ impl Store {
                 return Err(Error::Store);
             }
         }
+        // SQLite readers may checkpoint and remove/recreate WAL and SHM. These
+        // companions have no permanent inode identity; every present companion
+        // still passes the same no-symlink, regular-file, link/owner/mode checks.
+        // Root ancestors, main DB and writer lock retain permanent identities.
+        // As at open, DATA_DIR must be trusted and stable: these path checks do
+        // not anchor SQLite against hostile concurrent same-UID rename races.
         for suffix in ["", "-wal", "-shm", ".prompts.lock"] {
             safe_file(
                 &self.path.with_file_name(format!("model_loader.db{suffix}")),
@@ -590,7 +587,7 @@ impl Store {
                 return Err(Error::Limit);
             }
             if length > 0 {
-                return Ok(());
+                return self.check();
             }
         }
         let have = self.list()?;
@@ -602,7 +599,7 @@ impl Store {
         }
         self.check()?;
         sql(self.db.execute("INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",params![SEED_KEY,"1"]))?;
-        Ok(())
+        self.check()
     }
     fn run(&mut self, op: Operation, deadline: Instant, cancel: &AtomicBool) -> Result<Vec<u8>> {
         self.check()?;
@@ -622,6 +619,9 @@ impl Store {
         // Mutations have committed. Readback is deliberately a separate statement.
         self.check()?;
         let rows = self.list()?;
+        // Readback may recreate SQLite companions; validate their safety before
+        // returning success as well as before SQLite touches the named paths.
+        self.check()?;
         let mut writer = Bytes {
             bytes: Vec::new(),
             deadline,
