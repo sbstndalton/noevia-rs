@@ -928,6 +928,7 @@ dependencies = [
  "serde_json",
  "server-auth",
  "server-store",
+ "sha2",
  "storage-path",
  "tempfile",
  "tokio",
