@@ -43,7 +43,7 @@ fn assertions(
         "canonical_root_default_and_alias_policy_is_pure" => ("main.rs", &["assert!(\n                super::prompt_data_dir_from([(alias.into(),"]),
         "schema_comments_strings_and_quoted_names_cannot_fake_autoincrement" => ("prompts/store_tests.rs", &["assert!(\n            matches!(Store::open(root.path()), Err(Error::Store)),"]),
         "prompt_selector_preserves_unrelated_dispatch_and_auth_first" => ("prompts/tests.rs", &["assert_eq!(request(on.clone(), \"GET\", path, \"\", true).await.0, 404);"]),
-        "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap" if before == "let mut warned = false;" => ("child_lifecycle.rs", &["assert!(self.lease.upgrade().is_some());\n            self.kills"]),
+        "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap" if before == "let mut warned = false;" => ("child_lifecycle.rs", &["assert!(self.lease.upgrade().is_some());\n            self.kills", "assert!(self.lease.upgrade().is_some());\n            match self.waits"]),
         "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap" => ("child_lifecycle.rs", &["assert!(child.waits.is_empty());"]),
         "malformed_json_diagnostics_match_actual_fastapi_character_offsets" => ("prompts/tests.rs", &["assert_eq!(\n            response.0,\n            case[\"expected\"][\"status\"].as_u64().unwrap() as u16,"]),
         "explicit_raw_input_restrictions_have_actual_oracle_proof_and_no_writes" => ("prompts/tests.rs", &["assert_eq!(\n            actual.0,", "assert_eq!(actual.1, case[\"request\"][\"native_refusal\"][\"body\"]);"]),
@@ -333,6 +333,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
+    #[test]
+    fn premature_lease_drop_binds_kill_and_wait_assertions_only() {
+        let test = "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap";
+        let expected = assertions("child_lifecycle.rs", "let mut warned = false;", test).unwrap();
+        assert_eq!(expected.len(), 2);
+        let other = assertions(
+            "child_lifecycle.rs",
+            "let mut failure = child.request_kill().err();",
+            test,
+        )
+        .unwrap();
+        assert_eq!(other.len(), 1);
+        let literal = assertions(
+            "prompts/literals.rs",
+            "Bench: coding",
+            "literal_bytes_and_python_coercion_from_real_oracle",
+        )
+        .unwrap();
+        for assertion in &expected {
+            let out=format!("\nrunning 1 test\nchild_lifecycle::tests::{test} --- FAILED\n\n---- child_lifecycle::tests::{test} stdout ----\nthread 'child_lifecycle::tests::{test}' (55) panicked at {}:{}:13:\nassertion failed: self.lease.upgrade().is_some()\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured;\n",assertion.path,assertion.line);
+            assert!(semantic_failure(Some(101), &out, "", test, &expected));
+            assert!(!semantic_failure(Some(101), &out, "", test, &other));
+            assert!(!semantic_failure(Some(101), &out, "", test, &literal));
+            for (code, invalid) in [
+                (Some(0), out.clone()),
+                (
+                    Some(101),
+                    out.replace(
+                        &format!("{}:{}:", assertion.path, assertion.line),
+                        &format!("{}:1:", assertion.path),
+                    ),
+                ),
+                (Some(101), out.replace(test, "other_test")),
+                (
+                    Some(101),
+                    out.replace(
+                        "assertion failed: self.lease.upgrade().is_some()",
+                        "called `Result::unwrap()` on an `Err` value: setup",
+                    ),
+                ),
+                (
+                    Some(101),
+                    out.replace(
+                        "assertion failed: self.lease.upgrade().is_some()",
+                        "fixture setup failed",
+                    ),
+                ),
+            ] {
+                assert!(!semantic_failure(code, &invalid, "", test, &expected));
+            }
+        }
+    }
     #[test]
     fn boolean_coercion_binds_post_tuple_and_explicit_coercion_only() {
         let test = "literal_bytes_and_python_coercion_from_real_oracle";
