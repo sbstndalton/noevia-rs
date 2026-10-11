@@ -139,3 +139,6 @@ mod tests {
         assert_eq!(super::add(usize::MAX, 1), Err(super::Error::Limit));
     }
 }
+
+/// Bounded native conversation Markdown policy (#1317); no HTTP ownership.
+pub mod markdown;
