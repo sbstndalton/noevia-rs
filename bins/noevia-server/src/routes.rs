@@ -35,6 +35,7 @@ pub struct Switches {
     pub rust_sampling_settings: bool,
     pub rust_reasoning_settings: bool,
     pub rust_routing_mode: bool,
+    pub rust_storage_reads: bool,
 }
 
 impl Switches {
@@ -46,6 +47,7 @@ impl Switches {
             "NOEVIA_RUST_SAMPLING_SETTINGS" => self.rust_sampling_settings,
             "NOEVIA_RUST_REASONING_SETTINGS" => self.rust_reasoning_settings,
             "NOEVIA_RUST_ROUTING_MODE" => self.rust_routing_mode,
+            "NOEVIA_RUST_STORAGE_READS" => self.rust_storage_reads,
             _ => false,
         }
     }
@@ -79,6 +81,7 @@ pub enum Native {
     SamplingSettings,
     ReasoningSettings,
     RoutingMode,
+    StorageMetadata,
 }
 
 /// The routes [`Native::ProjectAssets`] implements.
@@ -90,6 +93,9 @@ const PROJECT_ASSET_ROUTES: &[&str] = &[
 /// The native handler a rust-owned route is implemented by.
 pub fn native_for(route: &Route) -> Option<Native> {
     match (route.path, route.catch_all, route.switch) {
+        ("/api/integrations/storage", false, Some("NOEVIA_RUST_STORAGE_READS")) => {
+            Some(Native::StorageMetadata)
+        }
         (
             "/api/routing-mode" | "/api/routing-mode/allowed",
             false,
@@ -177,6 +183,11 @@ pub fn dispatch(method: &str, path: &str) -> Option<Native> {
 /// [`dispatch`] under the deployment switches that are on.
 pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Native> {
     let route = route_for(path)?;
+    if route.switch == Some("NOEVIA_RUST_STORAGE_READS")
+        && (path != "/api/integrations/storage" || method != "GET" || !switches.rust_auth)
+    {
+        return None;
+    }
     if route.owner_under(switches) != Owner::Rust {
         return None;
     }
@@ -230,6 +241,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_storage_reads: false,
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -242,6 +254,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_storage_reads: false,
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -255,6 +268,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_storage_reads: false,
         };
         let both = Switches {
             rust_auth: true,
@@ -263,6 +277,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_storage_reads: false,
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),

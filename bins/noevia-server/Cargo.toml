@@ -18,8 +18,11 @@ path = "src/main.rs"
 default = []
 rust-reasoning-settings = []
 rust-routing-mode = []
+rust-storage-reads = ["dep:server-storage-reads", "dep:zeroize"]
 
 [dependencies]
+server-storage-reads = { path = "../../crates/server-storage-reads", optional = true }
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"], optional = true }
 server-routing-mode = { path = "../../crates/server-routing-mode" }
 server-reasoning-settings = { path = "../../crates/server-reasoning-settings" }
 server-sampling-settings = { path = "../../crates/server-sampling-settings" }

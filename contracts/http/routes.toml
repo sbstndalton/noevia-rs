@@ -369,7 +369,9 @@ owner = "node"
 
 [[route]]
 path = "/api/integrations/storage"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+switch = "NOEVIA_RUST_STORAGE_READS"
 
 [[route]]
 path = "/api/integrations/storage/file"
