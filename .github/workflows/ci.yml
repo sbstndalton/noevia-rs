@@ -13,10 +13,13 @@ jobs:
     name: Rust fmt, clippy, test
     runs-on: ubuntu-latest
     env:
+      RUSTUP_TOOLCHAIN: 1.99.0
       NOEVIA_DOCLING_REFERENCE: ${{ github.workspace }}/.ci-docling/docling
       NOEVIA_LAYA_REFERENCE: ${{ github.workspace }}/.ci-laya/laya
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Install explicit qualification toolchain
+        run: rustup toolchain install 1.99.0 --profile minimal --component clippy --component rustfmt --target wasm32-unknown-unknown
       - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
         with:
           components: clippy, rustfmt
@@ -52,11 +55,108 @@ jobs:
       - name: cargo clippy
         if: steps.pkgs.outputs.any == 'true'
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: 010735c7d86d30269ab3f4a351b2135faea1c8e7
+          path: m6-worker-core
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      - name: Fresh immutable auth/device factory prerequisite (#1373)
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/m6-worker-build"
+          source="$RUNNER_TEMP/m6-worker-source"
+          npm_root="$RUNNER_TEMP/m6-worker-npm"
+          core="$GITHUB_WORKSPACE/m6-worker-core"
+          mkdir -m 700 "$evidence" "$npm_root"
+          run_capture() {
+            local label="$1" rc=0
+            shift
+            printf '%s\n' "$@" > "$evidence/$label.argv"
+            "$@" > "$evidence/$label.stdout" 2> "$evidence/$label.stderr" || rc=$?
+            printf '%s\n' "$rc" > "$evidence/$label.status"
+            return "$rc"
+          }
+          head="$(git rev-parse HEAD)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          run_capture source-checkout git worktree add --detach "$source" "$head"
+          [[ "$(git -C "$source" rev-parse HEAD)" == "$head" ]]
+          [[ "$(git -C "$source" rev-parse 'HEAD^{tree}')" == "$tree" ]]
+          [[ -z "$(git -C "$source" status --porcelain --untracked-files=all)" ]]
+          [[ "$(git -C "$core" rev-parse HEAD)" == 010735c7d86d30269ab3f4a351b2135faea1c8e7 ]]
+          [[ "$(git -C "$core" rev-parse 'HEAD^{tree}')" == 345adfa12da083eb5888ec232dc2d86b9b0383a5 ]]
+          [[ -z "$(git -C "$core" status --porcelain --untracked-files=all)" ]]
+          git -C "$core" show HEAD:server/package.json > "$npm_root/package.json"
+          git -C "$core" show HEAD:server/package-lock.json > "$npm_root/package-lock.json"
+          echo "f3f9375884302c7dcdd7fb510b7804f5dadcdced8ccabdc827638378353db19c  $npm_root/package.json" | sha256sum -c -
+          echo "ad078a36d1f9b72ba7ffeb2fa945deca872ea81742c8fe1ed5c9323ddcf497e9  $npm_root/package-lock.json" | sha256sum -c -
+          run_capture npm npm ci --prefix "$npm_root" --no-fund --no-audit
+          run_capture rust-version rustc -vV
+          grep -qx 'release: 1.99.0' "$evidence/rust-version.stdout"
+          cd "$source"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/m6-worker-target"
+          export NOEVIA_WORKER_AUTH_JOB="${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${GITHUB_JOB}"
+          export NOEVIA_WORKER_AUTH_SOURCE_HEAD="$head"
+          export NOEVIA_WORKER_AUTH_SOURCE_TREE="$tree"
+          export NOEVIA_WORKER_AUTH_REFERENCE_ROOT="$RUNNER_TEMP/m6-worker-auth"
+          export NOEVIA_WORKER_AUTH_REFERENCE="$NOEVIA_WORKER_AUTH_REFERENCE_ROOT/worker-binding.json"
+          printf '%s\n' "NOEVIA_WORKER_AUTH_JOB=$NOEVIA_WORKER_AUTH_JOB" "NOEVIA_WORKER_AUTH_SOURCE_HEAD=$head" "NOEVIA_WORKER_AUTH_SOURCE_TREE=$tree" "NOEVIA_WORKER_AUTH_REFERENCE_ROOT=$NOEVIA_WORKER_AUTH_REFERENCE_ROOT" "NOEVIA_WORKER_AUTH_REFERENCE=$NOEVIA_WORKER_AUTH_REFERENCE" >> "$GITHUB_ENV"
+          run_capture tool-build cargo build --locked -p replay --bin chatgpt-status-contracts --message-format=json
+          tool="$CARGO_TARGET_DIR/debug/chatgpt-status-contracts"
+          run_capture tool-selection "$tool" select-cargo-artifact tool "$evidence/tool-build.stdout"
+          [[ "$(cat "$evidence/tool-selection.stdout")" == "$tool" ]]
+          node_path="$(realpath "$(command -v node)")"
+          sha256sum "$tool" "$node_path" > "$evidence/executables.sha256"
+          run_capture inventory "$tool" inventory-linux-dependencies --installed-root "$npm_root" --core-checkout "$core" --owned-output "$RUNNER_TEMP/m6-worker-dependencies"
+          run_capture capture "$tool" capture-linux-worker-auth --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-worker-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-worker-dependencies/dependency-inventory.json" --node "$node_path" --source-checkout "$source" --owned-output "$NOEVIA_WORKER_AUTH_REFERENCE_ROOT"
+          run_capture verification "$tool" verify-linux-worker-auth --reference-binding "$NOEVIA_WORKER_AUTH_REFERENCE"
+          sha256sum -c "$evidence/executables.sha256"
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+      - name: Compile closed Rust resolver fixture before server tests (#1373)
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/m6-resolver-fixture"
+          fixture=/tmp/m6-resolver-fixture-v1
+          test ! -e "$evidence" && test ! -L "$evidence"
+          test ! -e "$fixture" && test ! -L "$fixture"
+          mkdir -m 700 "$evidence"
+          git rev-parse HEAD 'HEAD^{tree}' > "$evidence/source.identity"
+          sha256sum bins/noevia-server/tests/support/resolver_fixture.rs > "$evidence/source.sha256"
+          compiler="$(rustup which rustc)"
+          sha256sum "$compiler" > "$evidence/compiler.sha256"
+          "$compiler" -vV > "$evidence/compiler.version"
+          grep -qx 'release: 1.99.0' "$evidence/compiler.version"
+          printf '%s\n' "$compiler" --edition=2024 bins/noevia-server/tests/support/resolver_fixture.rs -o "$fixture" > "$evidence/command.txt"
+          set +e
+          "$compiler" --edition=2024 bins/noevia-server/tests/support/resolver_fixture.rs -o "$fixture" > "$evidence/build.stdout" 2> "$evidence/build.stderr"
+          code=$?
+          set -e
+          printf '%s\n' "$code" > "$evidence/build.status"
+          test "$code" = 0
+          sha256sum -c "$evidence/source.sha256"
+          test -f "$fixture" && test ! -L "$fixture"
+          chmod 700 "$fixture"
+          sha256sum "$fixture" > "$evidence/binary.sha256"
       - name: cargo test
         if: steps.pkgs.outputs.any == 'true'
         run: cargo test --locked --workspace
       - name: Optimized code-actions performance qualification (#1328)
         run: cargo test --locked --release -p code-actions --test deep_find --test properties -- --test-threads=1
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: rust-auth-device-prerequisites
+          path: |
+            ${{ runner.temp }}/m6-worker-build
+            ${{ runner.temp }}/m6-worker-dependencies
+            ${{ runner.temp }}/m6-worker-auth
+            ${{ runner.temp }}/m6-resolver-fixture
+          if-no-files-found: ignore
 
   laya-native:
     name: Native Laya HTTP and retained worker lifecycle
@@ -225,8 +325,12 @@ jobs:
     # run here by name as well as in the workspace tests.
     name: Contract corpus replays clean through the Rust front
     runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.0
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Install explicit qualification toolchain
+        run: rustup toolchain install 1.99.0 --profile minimal --component clippy --component rustfmt --target wasm32-unknown-unknown
       - name: Read the pinned core ref
         id: ref
         run: |
@@ -260,6 +364,93 @@ jobs:
           echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo build --locked -p replay -p noevia-server
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: 010735c7d86d30269ab3f4a351b2135faea1c8e7
+          path: m6-worker-core
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      - name: Fresh immutable auth/device factory prerequisite (#1373)
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/m6-worker-build"
+          source="$RUNNER_TEMP/m6-worker-source"
+          npm_root="$RUNNER_TEMP/m6-worker-npm"
+          core="$GITHUB_WORKSPACE/m6-worker-core"
+          mkdir -m 700 "$evidence" "$npm_root"
+          run_capture() {
+            local label="$1" rc=0
+            shift
+            printf '%s\n' "$@" > "$evidence/$label.argv"
+            "$@" > "$evidence/$label.stdout" 2> "$evidence/$label.stderr" || rc=$?
+            printf '%s\n' "$rc" > "$evidence/$label.status"
+            return "$rc"
+          }
+          head="$(git rev-parse HEAD)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          run_capture source-checkout git worktree add --detach "$source" "$head"
+          [[ "$(git -C "$source" rev-parse HEAD)" == "$head" ]]
+          [[ "$(git -C "$source" rev-parse 'HEAD^{tree}')" == "$tree" ]]
+          [[ -z "$(git -C "$source" status --porcelain --untracked-files=all)" ]]
+          [[ "$(git -C "$core" rev-parse HEAD)" == 010735c7d86d30269ab3f4a351b2135faea1c8e7 ]]
+          [[ "$(git -C "$core" rev-parse 'HEAD^{tree}')" == 345adfa12da083eb5888ec232dc2d86b9b0383a5 ]]
+          [[ -z "$(git -C "$core" status --porcelain --untracked-files=all)" ]]
+          git -C "$core" show HEAD:server/package.json > "$npm_root/package.json"
+          git -C "$core" show HEAD:server/package-lock.json > "$npm_root/package-lock.json"
+          echo "f3f9375884302c7dcdd7fb510b7804f5dadcdced8ccabdc827638378353db19c  $npm_root/package.json" | sha256sum -c -
+          echo "ad078a36d1f9b72ba7ffeb2fa945deca872ea81742c8fe1ed5c9323ddcf497e9  $npm_root/package-lock.json" | sha256sum -c -
+          run_capture npm npm ci --prefix "$npm_root" --no-fund --no-audit
+          run_capture rust-version rustc -vV
+          grep -qx 'release: 1.99.0' "$evidence/rust-version.stdout"
+          cd "$source"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/m6-worker-target"
+          export NOEVIA_WORKER_AUTH_JOB="${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${GITHUB_JOB}"
+          export NOEVIA_WORKER_AUTH_SOURCE_HEAD="$head"
+          export NOEVIA_WORKER_AUTH_SOURCE_TREE="$tree"
+          export NOEVIA_WORKER_AUTH_REFERENCE_ROOT="$RUNNER_TEMP/m6-worker-auth"
+          export NOEVIA_WORKER_AUTH_REFERENCE="$NOEVIA_WORKER_AUTH_REFERENCE_ROOT/worker-binding.json"
+          printf '%s\n' "NOEVIA_WORKER_AUTH_JOB=$NOEVIA_WORKER_AUTH_JOB" "NOEVIA_WORKER_AUTH_SOURCE_HEAD=$head" "NOEVIA_WORKER_AUTH_SOURCE_TREE=$tree" "NOEVIA_WORKER_AUTH_REFERENCE_ROOT=$NOEVIA_WORKER_AUTH_REFERENCE_ROOT" "NOEVIA_WORKER_AUTH_REFERENCE=$NOEVIA_WORKER_AUTH_REFERENCE" >> "$GITHUB_ENV"
+          run_capture tool-build cargo build --locked -p replay --bin chatgpt-status-contracts --message-format=json
+          tool="$CARGO_TARGET_DIR/debug/chatgpt-status-contracts"
+          run_capture tool-selection "$tool" select-cargo-artifact tool "$evidence/tool-build.stdout"
+          [[ "$(cat "$evidence/tool-selection.stdout")" == "$tool" ]]
+          node_path="$(realpath "$(command -v node)")"
+          sha256sum "$tool" "$node_path" > "$evidence/executables.sha256"
+          run_capture inventory "$tool" inventory-linux-dependencies --installed-root "$npm_root" --core-checkout "$core" --owned-output "$RUNNER_TEMP/m6-worker-dependencies"
+          run_capture capture "$tool" capture-linux-worker-auth --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-worker-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-worker-dependencies/dependency-inventory.json" --node "$node_path" --source-checkout "$source" --owned-output "$NOEVIA_WORKER_AUTH_REFERENCE_ROOT"
+          run_capture verification "$tool" verify-linux-worker-auth --reference-binding "$NOEVIA_WORKER_AUTH_REFERENCE"
+          sha256sum -c "$evidence/executables.sha256"
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+      - name: Compile closed Rust resolver fixture before server tests (#1373)
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/m6-resolver-fixture"
+          fixture=/tmp/m6-resolver-fixture-v1
+          test ! -e "$evidence" && test ! -L "$evidence"
+          test ! -e "$fixture" && test ! -L "$fixture"
+          mkdir -m 700 "$evidence"
+          git rev-parse HEAD 'HEAD^{tree}' > "$evidence/source.identity"
+          sha256sum bins/noevia-server/tests/support/resolver_fixture.rs > "$evidence/source.sha256"
+          compiler="$(rustup which rustc)"
+          sha256sum "$compiler" > "$evidence/compiler.sha256"
+          "$compiler" -vV > "$evidence/compiler.version"
+          grep -qx 'release: 1.99.0' "$evidence/compiler.version"
+          printf '%s\n' "$compiler" --edition=2024 bins/noevia-server/tests/support/resolver_fixture.rs -o "$fixture" > "$evidence/command.txt"
+          set +e
+          "$compiler" --edition=2024 bins/noevia-server/tests/support/resolver_fixture.rs -o "$fixture" > "$evidence/build.stdout" 2> "$evidence/build.stderr"
+          code=$?
+          set -e
+          printf '%s\n' "$code" > "$evidence/build.status"
+          test "$code" = 0
+          sha256sum -c "$evidence/source.sha256"
+          test -f "$fixture" && test ! -L "$fixture"
+          chmod 700 "$fixture"
+          sha256sum "$fixture" > "$evidence/binary.sha256"
       - name: Front tests (SSE flush, client abort, forwarding, body cap, route ownership, code-net guard, timeouts)
         run: cargo test --locked -p noevia-server
       - name: Replay against Node directly (reference data dir)
@@ -285,6 +476,10 @@ jobs:
         with:
           name: replay-front
           path: |
+            ${{ runner.temp }}/m6-worker-build
+            ${{ runner.temp }}/m6-worker-dependencies
+            ${{ runner.temp }}/m6-worker-auth
+            ${{ runner.temp }}/m6-resolver-fixture
             ${{ runner.temp }}/replay-front-report.json
             ${{ runner.temp }}/node-state.json
           if-no-files-found: ignore
@@ -974,8 +1169,12 @@ jobs:
     name: Required native reasoning default contracts
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.0
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install explicit qualification toolchain
+        run: rustup toolchain install 1.99.0 --profile minimal --component clippy --component rustfmt --target wasm32-unknown-unknown
       - name: Read actual merged core pin
         id: core
         run: |
@@ -1024,6 +1223,93 @@ jobs:
           PYORACLE
           NOEVIA_REASONING_FIXTURE="$RUNNER_TEMP/node-reasoning.json" NOEVIA_REASONING_CORE_SHA="$(cat contracts/http/core.ref)" cargo test --locked -p server-reasoning-settings
       - run: cargo clippy --locked -p server-reasoning-settings -p noevia-server --all-targets --features rust-reasoning-settings -- -D warnings
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: 010735c7d86d30269ab3f4a351b2135faea1c8e7
+          path: m6-worker-core
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      - name: Fresh immutable auth/device factory prerequisite (#1373)
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/m6-worker-build"
+          source="$RUNNER_TEMP/m6-worker-source"
+          npm_root="$RUNNER_TEMP/m6-worker-npm"
+          core="$GITHUB_WORKSPACE/m6-worker-core"
+          mkdir -m 700 "$evidence" "$npm_root"
+          run_capture() {
+            local label="$1" rc=0
+            shift
+            printf '%s\n' "$@" > "$evidence/$label.argv"
+            "$@" > "$evidence/$label.stdout" 2> "$evidence/$label.stderr" || rc=$?
+            printf '%s\n' "$rc" > "$evidence/$label.status"
+            return "$rc"
+          }
+          head="$(git rev-parse HEAD)"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          run_capture source-checkout git worktree add --detach "$source" "$head"
+          [[ "$(git -C "$source" rev-parse HEAD)" == "$head" ]]
+          [[ "$(git -C "$source" rev-parse 'HEAD^{tree}')" == "$tree" ]]
+          [[ -z "$(git -C "$source" status --porcelain --untracked-files=all)" ]]
+          [[ "$(git -C "$core" rev-parse HEAD)" == 010735c7d86d30269ab3f4a351b2135faea1c8e7 ]]
+          [[ "$(git -C "$core" rev-parse 'HEAD^{tree}')" == 345adfa12da083eb5888ec232dc2d86b9b0383a5 ]]
+          [[ -z "$(git -C "$core" status --porcelain --untracked-files=all)" ]]
+          git -C "$core" show HEAD:server/package.json > "$npm_root/package.json"
+          git -C "$core" show HEAD:server/package-lock.json > "$npm_root/package-lock.json"
+          echo "f3f9375884302c7dcdd7fb510b7804f5dadcdced8ccabdc827638378353db19c  $npm_root/package.json" | sha256sum -c -
+          echo "ad078a36d1f9b72ba7ffeb2fa945deca872ea81742c8fe1ed5c9323ddcf497e9  $npm_root/package-lock.json" | sha256sum -c -
+          run_capture npm npm ci --prefix "$npm_root" --no-fund --no-audit
+          run_capture rust-version rustc -vV
+          grep -qx 'release: 1.99.0' "$evidence/rust-version.stdout"
+          cd "$source"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/m6-worker-target"
+          export NOEVIA_WORKER_AUTH_JOB="${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${GITHUB_JOB}"
+          export NOEVIA_WORKER_AUTH_SOURCE_HEAD="$head"
+          export NOEVIA_WORKER_AUTH_SOURCE_TREE="$tree"
+          export NOEVIA_WORKER_AUTH_REFERENCE_ROOT="$RUNNER_TEMP/m6-worker-auth"
+          export NOEVIA_WORKER_AUTH_REFERENCE="$NOEVIA_WORKER_AUTH_REFERENCE_ROOT/worker-binding.json"
+          printf '%s\n' "NOEVIA_WORKER_AUTH_JOB=$NOEVIA_WORKER_AUTH_JOB" "NOEVIA_WORKER_AUTH_SOURCE_HEAD=$head" "NOEVIA_WORKER_AUTH_SOURCE_TREE=$tree" "NOEVIA_WORKER_AUTH_REFERENCE_ROOT=$NOEVIA_WORKER_AUTH_REFERENCE_ROOT" "NOEVIA_WORKER_AUTH_REFERENCE=$NOEVIA_WORKER_AUTH_REFERENCE" >> "$GITHUB_ENV"
+          run_capture tool-build cargo build --locked -p replay --bin chatgpt-status-contracts --message-format=json
+          tool="$CARGO_TARGET_DIR/debug/chatgpt-status-contracts"
+          run_capture tool-selection "$tool" select-cargo-artifact tool "$evidence/tool-build.stdout"
+          [[ "$(cat "$evidence/tool-selection.stdout")" == "$tool" ]]
+          node_path="$(realpath "$(command -v node)")"
+          sha256sum "$tool" "$node_path" > "$evidence/executables.sha256"
+          run_capture inventory "$tool" inventory-linux-dependencies --installed-root "$npm_root" --core-checkout "$core" --owned-output "$RUNNER_TEMP/m6-worker-dependencies"
+          run_capture capture "$tool" capture-linux-worker-auth --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-worker-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-worker-dependencies/dependency-inventory.json" --node "$node_path" --source-checkout "$source" --owned-output "$NOEVIA_WORKER_AUTH_REFERENCE_ROOT"
+          run_capture verification "$tool" verify-linux-worker-auth --reference-binding "$NOEVIA_WORKER_AUTH_REFERENCE"
+          sha256sum -c "$evidence/executables.sha256"
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+      - name: Compile closed Rust resolver fixture before server tests (#1373)
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/m6-resolver-fixture"
+          fixture=/tmp/m6-resolver-fixture-v1
+          test ! -e "$evidence" && test ! -L "$evidence"
+          test ! -e "$fixture" && test ! -L "$fixture"
+          mkdir -m 700 "$evidence"
+          git rev-parse HEAD 'HEAD^{tree}' > "$evidence/source.identity"
+          sha256sum bins/noevia-server/tests/support/resolver_fixture.rs > "$evidence/source.sha256"
+          compiler="$(rustup which rustc)"
+          sha256sum "$compiler" > "$evidence/compiler.sha256"
+          "$compiler" -vV > "$evidence/compiler.version"
+          grep -qx 'release: 1.99.0' "$evidence/compiler.version"
+          printf '%s\n' "$compiler" --edition=2024 bins/noevia-server/tests/support/resolver_fixture.rs -o "$fixture" > "$evidence/command.txt"
+          set +e
+          "$compiler" --edition=2024 bins/noevia-server/tests/support/resolver_fixture.rs -o "$fixture" > "$evidence/build.stdout" 2> "$evidence/build.stderr"
+          code=$?
+          set -e
+          printf '%s\n' "$code" > "$evidence/build.status"
+          test "$code" = 0
+          sha256sum -c "$evidence/source.sha256"
+          test -f "$fixture" && test ! -L "$fixture"
+          chmod 700 "$fixture"
+          sha256sum "$fixture" > "$evidence/binary.sha256"
       - run: cargo test --locked -p noevia-server --features rust-reasoning-settings
       - name: Compiled capability and isolated featureless startup refusal
         run: |
@@ -1046,6 +1332,10 @@ jobs:
         with:
           name: native-reasoning-contracts
           path: |
+            ${{ runner.temp }}/m6-worker-build
+            ${{ runner.temp }}/m6-worker-dependencies
+            ${{ runner.temp }}/m6-worker-auth
+            ${{ runner.temp }}/m6-resolver-fixture
             ${{ runner.temp }}/reasoning-front/*json
             ${{ runner.temp }}/node-reasoning.json
             omission.log

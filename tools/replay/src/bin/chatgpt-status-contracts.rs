@@ -6,6 +6,7 @@ mod support {
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     match std::env::args().nth(1).as_deref() {
+        Some("select-cargo-artifact") => select_cargo_artifact(),
         Some("inventory-linux-dependencies")
         | Some("qualify-linux-factory")
         | Some("capture-linux-worker-auth") => {
@@ -71,6 +72,67 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => Err("fixed qualification subcommand required".into()),
     }
+}
+
+// Source-owned replacement for workflow JSON parsing. Selection is restricted to
+// the two existing qualification targets and checks the actual Cargo profile.
+fn select_cargo_artifact() -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Read;
+    let args: Vec<String> = std::env::args().skip(2).take(3).collect();
+    let [kind, input] = args.as_slice() else {
+        return Err("exact artifact kind and Cargo JSON path required".into());
+    };
+    let (name, target_kind, test) = match kind.as_str() {
+        "tool" => ("chatgpt-status-contracts", "bin", false),
+        "library-test" => ("noevia_server", "lib", true),
+        _ => return Err("fixed qualification artifact required".into()),
+    };
+    let mut bytes = Vec::new();
+    std::fs::File::open(input)?
+        .take(8 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)?;
+    require(bytes.len() <= 8 * 1024 * 1024, "bounded Cargo JSON")?;
+    let mut candidate = None;
+    let mut finished = 0;
+    for line in std::str::from_utf8(&bytes)?.lines() {
+        let row: serde_json::Value = serde_json::from_str(line)?;
+        if row.get("reason").and_then(serde_json::Value::as_str) == Some("build-finished") {
+            require(
+                row.get("success").and_then(serde_json::Value::as_bool) == Some(true),
+                "actual Cargo success",
+            )?;
+            finished += 1;
+        }
+        if row.get("reason").and_then(serde_json::Value::as_str) == Some("compiler-artifact")
+            && row
+                .pointer("/target/name")
+                .and_then(serde_json::Value::as_str)
+                == Some(name)
+            && row.pointer("/target/kind") == Some(&serde_json::json!([target_kind]))
+            && row
+                .pointer("/profile/test")
+                .and_then(serde_json::Value::as_bool)
+                == Some(test)
+            && row.get("executable").is_some_and(|v| !v.is_null())
+        {
+            require(candidate.is_none(), "unique qualification artifact")?;
+            candidate = Some(
+                row.get("executable")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or("artifact path")?
+                    .to_owned(),
+            );
+        }
+    }
+    require(finished == 1, "one actual Cargo completion")?;
+    let candidate = candidate.ok_or("qualification artifact missing")?;
+    let path = std::path::Path::new(&candidate);
+    require(
+        path.is_absolute() && path.canonicalize()? == path && path.is_file(),
+        "canonical actual artifact",
+    )?;
+    println!("{candidate}");
+    Ok(())
 }
 
 #[allow(dead_code)]

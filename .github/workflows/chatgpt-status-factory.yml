@@ -9,6 +9,8 @@ jobs:
     name: Native ChatGPT status finite factory and Rust router
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.0
     defaults:
       run:
         shell: bash
@@ -31,6 +33,8 @@ jobs:
         with:
           toolchain: 1.99.0
           components: clippy, rustfmt
+      - name: Install explicit qualification toolchain
+        run: rustup toolchain install 1.99.0 --profile minimal --component clippy --component rustfmt --target wasm32-unknown-unknown
       - name: Prepare exact locked factory dependencies outside source
         run: |
           set -euo pipefail
@@ -51,8 +55,11 @@ jobs:
           [[ -z "$(git -C "$core" status --porcelain)" ]]
           git -C "$core" show HEAD:server/package.json > "$npm_root/package.json"
           git -C "$core" show HEAD:server/package-lock.json > "$npm_root/package-lock.json"
+          echo "f3f9375884302c7dcdd7fb510b7804f5dadcdced8ccabdc827638378353db19c  $npm_root/package.json" | sha256sum -c -
+          echo "ad078a36d1f9b72ba7ffeb2fa945deca872ea81742c8fe1ed5c9323ddcf497e9  $npm_root/package-lock.json" | sha256sum -c -
           run_capture npm npm ci --prefix "$npm_root" --no-fund --no-audit
           rustc --version --verbose > "$evidence/rustc.txt"
+          grep -qx 'release: 1.99.0' "$evidence/rustc.txt"
           uname -a > "$evidence/kernel.txt"
           run_capture fetch cargo fetch --locked
       - name: Compile scoped tool and actual library test artifact
@@ -88,26 +95,15 @@ jobs:
             printf '%s\n' "$rc" > "$evidence/$label.status"
             return "$rc"
           }
-          python3 - "$evidence/lib-build.stdout" "$evidence/lib-test-path" "$evidence/tool-build.stdout" "$evidence/tool-path" <<'PYARTIFACT'
-          import json, pathlib, sys
-          for input_path, output_path, name, kind, test in [
-              (sys.argv[1], sys.argv[2], 'noevia_server', ['lib'], True),
-              (sys.argv[3], sys.argv[4], 'chatgpt-status-contracts', ['bin'], False),
-          ]:
-              rows=[json.loads(line) for line in pathlib.Path(input_path).read_text().splitlines()]
-              candidates=[r['executable'] for r in rows if r.get('reason')=='compiler-artifact' and r.get('target',{}).get('name')==name and r.get('target',{}).get('kind')==kind and r.get('profile',{}).get('test') is test and r.get('executable')]
-              assert len(candidates)==1, 'unique actual executable required'
-              finished=[r for r in rows if r.get('reason')=='build-finished']
-              assert len(finished)==1 and finished[0].get('success') is True, 'successful actual build required'
-              executable=pathlib.Path(candidates[0])
-              assert executable.is_absolute() and executable.resolve(strict=True)==executable and executable.is_file(), 'canonical actual executable required'
-              pathlib.Path(output_path).write_text(str(executable)+'\n')
-          PYARTIFACT
+          tool="$CARGO_TARGET_DIR/debug/chatgpt-status-contracts"
+          run_capture tool-selection "$tool" select-cargo-artifact tool "$evidence/tool-build.stdout"
+          run_capture lib-selection "$tool" select-cargo-artifact library-test "$evidence/lib-build.stdout"
+          [[ "$(cat "$evidence/tool-selection.stdout")" == "$tool" ]]
           core="$GITHUB_WORKSPACE/oracle-core"
-          tool="$(cat "$evidence/tool-path")"
+          tool="$(cat "$evidence/tool-selection.stdout")"
           node_path="$(realpath "$(command -v node)")"
           run_capture inventory "$tool" inventory-linux-dependencies --installed-root "$RUNNER_TEMP/m6-npm" --core-checkout "$core" --owned-output "$RUNNER_TEMP/m6-linux-dependencies"
-          run_capture qualification "$tool" qualify-linux-factory --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-linux-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-linux-dependencies/dependency-inventory.json" --node "$node_path" --lib-test "$(cat "$evidence/lib-test-path")" --source-checkout "$PWD" --owned-output "$RUNNER_TEMP/m6-linux-factory"
+          run_capture qualification "$tool" qualify-linux-factory --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-linux-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-linux-dependencies/dependency-inventory.json" --node "$node_path" --lib-test "$(cat "$evidence/lib-selection.stdout")" --source-checkout "$PWD" --owned-output "$RUNNER_TEMP/m6-linux-factory"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
