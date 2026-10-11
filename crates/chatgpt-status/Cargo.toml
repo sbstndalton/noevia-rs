@@ -1,0 +1,26 @@
+[package]
+name = "chatgpt-status"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+[workspace]
+[dependencies]
+secret-envelope = { path = "../secret-envelope" }
+policy-leaves = { path = "../policy-leaves" }
+js-json = { path = "../js-json" }
+rustix = { version = "1", features = ["fs", "process"] }
+zeroize = { version = "=1.9.1", features = ["alloc"] }
+[dev-dependencies]
+serde_json = "1"
+tempfile = "3"
+proptest = "1"
+sha2 = "0.10"
+[lints.rust]
+unsafe_code = "forbid"
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
