@@ -29,13 +29,13 @@
     "body": {
       "kind": "json",
       "json": {
-        "budgetGib": 16,
+        "budgetGib": 4,
         "source": "deployment",
         "defaultGib": 16,
         "minGib": 2,
-        "maxGib": 1024,
-        "hostRamGib": null,
-        "limited": false,
+        "maxGib": 4,
+        "hostRamGib": 8,
+        "limited": true,
         "models": null
       }
     }

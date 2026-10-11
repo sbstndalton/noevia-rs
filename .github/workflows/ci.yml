@@ -707,7 +707,10 @@ jobs:
           cargo build --locked -p replay -p noevia-server --features rust-reasoning-settings
           target/debug/noevia-server --features | grep -qx rust-reasoning-settings
       - name: Actual spawn and actual budget factory synthetic input seam
-        run: target/debug/corpus-launcher verify "$PWD/core"
+        run: |
+          target/debug/corpus-launcher verify "$PWD/core"
+          target/debug/corpus-launcher verify-omission "$PWD/core"
+          target/debug/host-control "$PWD/core" "$PWD/contracts/http/corpus" "$RUNNER_TEMP/wrong-host"
       - name: Full actual merged-core replay, equal state, valid identity omission and zero fallback writes
         run: sh tools/front/reasoning-contracts.sh "$PWD/core" "$PWD/target/debug/noevia-server" "$PWD/target/debug/replay" "$RUNNER_TEMP/reasoning-front"
       - if: always()

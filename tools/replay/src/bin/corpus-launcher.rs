@@ -59,7 +59,9 @@ fn run() -> Result<(), String> {
                 output.ok_or("capture requires output directory")?,
             ],
         ),
-        "serve" | "verify" | "wrong-host" if output.is_none() => ("serve.cjs", vec![]),
+        "serve" | "verify" | "verify-omission" | "wrong-host" if output.is_none() => {
+            ("serve.cjs", vec![])
+        }
         _ => return Err("unsupported synthetic launcher arguments".into()),
     };
     let directory = temporary()?;
@@ -81,18 +83,38 @@ fn run() -> Result<(), String> {
             return Err(e);
         }
     };
-    if mode == "verify" {
+    if mode == "verify" || mode == "verify-omission" {
+        if mode == "verify-omission" {
+            let source = std::fs::read_to_string(&wrapper).map_err(|e| e.to_string())?;
+            let omitted = source.replace("[args[0],args[1],'--require',preload,args[2]]", "args");
+            if omitted == source {
+                return Err("fixture omission control target missing".into());
+            }
+            std::fs::write(&wrapper, omitted).map_err(|e| e.to_string())?;
+        }
         let verify = include_str!("../synthetic-host-verify.cjs")
             .replace("__WRAPPER__", &js(&wrapper.to_string_lossy())?)
             .replace("__CORE__", &js(&core.to_string_lossy())?);
         let status = Command::new("node")
             .arg("-e")
             .arg(verify)
-            .status()
+            .output()
             .map_err(|e| e.to_string());
         let _ = std::fs::remove_dir_all(&directory);
         return match status {
-            Ok(s) if s.success() => Ok(()),
+            Ok(s) if s.status.success() && mode == "verify" => {
+                print!("{}", String::from_utf8_lossy(&s.stdout));
+                Ok(())
+            }
+            Ok(s)
+                if !s.status.success()
+                    && mode == "verify-omission"
+                    && String::from_utf8_lossy(&s.stderr)
+                        .contains("FIXTURE_SPAWN_PRELOAD_REQUIRED") =>
+            {
+                println!("missing fixture seam rejected by actual spawn qualification");
+                Ok(())
+            }
             Ok(_) => Err("actual spawn/factory qualification failed".into()),
             Err(e) => Err(e),
         };
@@ -141,7 +163,20 @@ fn run() -> Result<(), String> {
             serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?;
-        let provenance = serde_json::json!({"core":include_str!("../../../../contracts/http/core.ref").trim(),"generator":"actual core tools/contract-corpus/generate.cjs","hostInput":{"module":"server/inference-budget.cjs","collaborator":"readMeminfo","memTotalKib":8388608},"exchanges":193,"dropped":0});
+        let hashes = Command::new("node").args(["-e", "const fs=require('node:fs'),crypto=require('node:crypto');const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');console.log(JSON.stringify({node:process.version,generatorSha256:hash(process.argv[1]),wasmSha256:hash(process.argv[2])}));"])
+            .arg(core.join("tools/contract-corpus/generate.cjs"))
+            .arg(core.join("server/wasm/dav-parse.wasm")).output().map_err(|e|e.to_string())?;
+        if !hashes.status.success() {
+            return Err("actual source provenance hashing failed".into());
+        }
+        let hashes: serde_json::Value =
+            serde_json::from_slice(&hashes.stdout).map_err(|e| e.to_string())?;
+        if hashes.get("wasmSha256").and_then(serde_json::Value::as_str)
+            != Some("040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd87cb2e978575")
+        {
+            return Err("actual core WASM provenance mismatch".into());
+        }
+        let provenance = serde_json::json!({"core":include_str!("../../../../contracts/http/core.ref").trim(),"node":hashes.get("node"),"generatorSha256":hashes.get("generatorSha256"),"wasmSha256":hashes.get("wasmSha256"),"generator":"actual core tools/contract-corpus/generate.cjs","hostInput":{"module":"server/inference-budget.cjs","collaborator":"readMeminfo","memTotalKib":8388608},"exchanges":193,"dropped":0});
         std::fs::write(
             Path::new(out).join("SOURCE_ORACLE.json"),
             serde_json::to_vec_pretty(&provenance).map_err(|e| e.to_string())?,

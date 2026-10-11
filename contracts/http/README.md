@@ -109,3 +109,26 @@ midnight capture ordering, malformed/gapped/reordered windows, retention/timezon
 wrong anchors, nondate drift, full export filename format, and real TCP replay
 with opt-in/off and wrong-date refusal. Qualification mutations removing window
 ordering, request-anchor checks, or calendar wiring must fail these tests.
+
+### Fixed synthetic host input (#1329)
+
+Every required corpus replay uses the Rust-owned `corpus-launcher` against the
+actual commit in `core.ref`. It adds a preload only to the literal actual corpus
+server child spawn. The preload supplies `MemTotal: 8388608 kB` through the
+existing `createInferenceBudget` `readMeminfo` collaborator; the actual core
+module computes every public budget field. This fixture does not change core
+runtime policy or read/patch the host filesystem. Existing spawn options,
+authentication confirmations, signals and child cleanup remain intact.
+
+For a fresh synthetic capture, build `cargo build --locked -p replay`, then run
+`target/debug/corpus-launcher capture /absolute/actual-core /absolute/new-output`.
+The capture retains the owned UTC calendar contract and writes source, runtime,
+WASM checksum and host-input provenance. The refresh helper refuses raw
+host-dependent CI artifacts. The checked-in corpus requires both calendar and
+fixed-host provenance in focused Rust tests.
+
+The mandatory reasoning job verifies the actual spawn and factory seam, rejects
+a removed preload, and runs `host-control` with a 12 GiB input. That full replay
+must reject exactly the strict `budgetGib`, `hostRamGib` and `maxGib` fields;
+all other fields and statuses remain checked. The regular 8 GiB Node baseline
+and native front must match all 193 exchanges and final state.

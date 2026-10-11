@@ -32,7 +32,7 @@ async function execute(wrapped) {
   const original=await execute(false),wrapped=await execute(true);
   assert.equal(JSON.stringify(original.calls[0].args),JSON.stringify(['--require',guard,server]));
   const injected=wrapped.calls[0].args;
-  assert.equal(JSON.stringify(injected),JSON.stringify(['--require',guard,'--require',path.join(path.dirname(wrapper),'host-input.cjs'),server]));
+  assert.equal(JSON.stringify(injected),JSON.stringify(['--require',guard,'--require',path.join(path.dirname(wrapper),'host-input.cjs'),server]),'FIXTURE_SPAWN_PRELOAD_REQUIRED');
   assert.equal(JSON.stringify(original.calls[0].options),JSON.stringify(wrapped.calls[0].options));
   assert.throws(()=>wrapped.cp.spawn(process.execPath,['--require',guard,server,'unexpected'],{}),/spawn changed/);
   const options={env:{KEEP:'same'},stdio:'inherit'};
