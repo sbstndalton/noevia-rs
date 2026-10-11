@@ -1,9 +1,18 @@
 //! Private CLOSED whole-route qualification. No live endpoint or arbitrary subprocess.
 mod support {
     pub mod chatgpt_status_dependencies;
+    pub mod chatgpt_status_linux_ci;
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     match std::env::args().nth(1).as_deref() {
+        Some("inventory-linux-dependencies") | Some("qualify-linux-factory") => {
+            let args: Vec<String> = std::env::args().skip(1).take(16).collect();
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&support::chatgpt_status_linux_ci::dispatch(&args)?)?
+            );
+            Ok(())
+        }
         Some("copy-dependencies") => {
             let value = support::chatgpt_status_dependencies::copy()?;
             println!("{}", serde_json::to_string_pretty(&value)?);

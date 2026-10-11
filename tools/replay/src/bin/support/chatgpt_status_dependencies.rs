@@ -365,8 +365,19 @@ fn validate_installed_manifest(directory: &Path, data: &[u8], lock: &Value) -> R
 
 /// Qualification input paths only; never production configuration. Inventories
 /// establish current byte identity, not registry integrity or installation ancestry.
-#[allow(clippy::indexing_slicing)] // Only serde_json string-key indexing after path destructuring.
 pub fn materialize(args: &[String]) -> Result<Value> {
+    materialize_with_runtime(args, None, None)
+}
+// Private sibling-only Linux orchestration supplies its freshly captured metadata
+// and evidence-retaining invoker. Neither is accepted from command-line JSON.
+type EvidenceInvoker<'a> =
+    dyn Fn(&Path, &[&str], &Path, std::time::Duration) -> Result<Vec<u8>> + 'a;
+#[allow(clippy::indexing_slicing)] // Same bounded serde_json indexing as the original materializer.
+pub(super) fn materialize_with_runtime(
+    args: &[String],
+    verified_runtime: Option<&[u8]>,
+    evidence: Option<&EvidenceInvoker<'_>>,
+) -> Result<Value> {
     use std::time::{Duration, Instant};
     require(args.len() == 10, "exact five qualification path pairs")?;
     let names = [
@@ -403,11 +414,15 @@ pub fn materialize(args: &[String]) -> Result<Value> {
         paths.try_into().map_err(|_| "exact path count")?;
     let (core, deps, inventory, node, out) = (&core, &deps, &inventory, &node, &out);
     require(!out.exists(), "fresh owned topology required")?;
-    let deadline = Instant::now() + Duration::from_secs(60);
+    let deadline =
+        Instant::now() + Duration::from_secs(if verified_runtime.is_some() { 45 } else { 60 });
     let invoke = |program: &Path, argv: &[&str]| -> Result<Vec<u8>> {
         let remaining = deadline
             .checked_duration_since(Instant::now())
             .ok_or("materialization deadline")?;
+        if let Some(evidence) = evidence {
+            return evidence(program, argv, core, remaining.min(Duration::from_secs(15)));
+        }
         let mut command = std::process::Command::new(program);
         command
             .args(argv)
@@ -582,7 +597,11 @@ pub fn materialize(args: &[String]) -> Result<Value> {
         "complete dependency inventory before create",
     )?;
     let node_bytes = read(node, 128 * 1024 * 1024)?;
-    let runtime = invoke(node, &["-p", "JSON.stringify({version:process.version,abi:process.versions.modules,platform:process.platform,arch:process.arch})"])?;
+    let runtime = if let Some(runtime) = verified_runtime {
+        runtime.to_vec()
+    } else {
+        invoke(node, &["-p", "JSON.stringify({version:process.version,abi:process.versions.modules,platform:process.platform,arch:process.arch})"])?
+    };
     require(runtime.len() <= 1024, "runtime metadata cap")?;
     let runtime: Value = serde_json::from_slice(&runtime)?;
     require(

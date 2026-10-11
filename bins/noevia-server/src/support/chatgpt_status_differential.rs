@@ -138,6 +138,11 @@ fn reference() -> Result<Vec<Value>> {
             }),
         "finite one-origin loaded module inventory",
     )?;
+    validate_rows(rows)?;
+    Ok(rows.clone())
+}
+fn validate_rows(rows: &[Value]) -> Result<()> {
+    require(rows.len() == IDS.len(), "seven reference rows")?;
     for (row, id) in rows.iter().zip(IDS) {
         keys(
             row,
@@ -196,7 +201,7 @@ fn reference() -> Result<Vec<Value>> {
             require(route.is_null(), "missing public response stays absent")?;
         }
     }
-    Ok(rows.clone())
+    Ok(())
 }
 #[derive(Debug, PartialEq, Eq)]
 struct Difference {
@@ -249,7 +254,9 @@ fn compare(expected: &[Value], actual: &[Value]) -> Result<Vec<Difference>> {
 }
 #[test]
 fn current_factory_comparator_rejects_grant_timestamp_delta() -> Result<()> {
-    let expected = reference()?;
+    grant_negative(reference()?)
+}
+fn grant_negative(expected: Vec<Value>) -> Result<()> {
     let mut changed = expected.clone();
     let row = changed
         .iter_mut()
@@ -407,7 +414,9 @@ async fn wait_idle(owner: &crate::chatgpt_status_routes::StatusOwner) -> Result<
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn current_factory_seven_rows_through_rust_router() -> Result<()> {
-    let expected = reference()?;
+    router_positive(reference()?).await
+}
+async fn router_positive(expected: Vec<Value>) -> Result<()> {
     let directory = tempfile::tempdir()?;
     fs::write(directory.path().join("secrets.key"), [7; 32])?;
     let db = Connection::open(server_store::db_path(directory.path()))?;
@@ -470,4 +479,221 @@ async fn current_factory_seven_rows_through_rust_router() -> Result<()> {
     db.close().map_err(|(_, e)| e)?;
     require(healthy, "actual retained owner teardown healthy")?;
     result
+}
+
+fn portable_field<'a>(value: &'a Value, key: &str) -> &'a Value {
+    match value.get(key) {
+        Some(value) => value,
+        None => &Value::Null,
+    }
+}
+// Only the two portable test entry points read this cwd-owned binding. Production
+// code, clocks and historical Darwin reference remain independent of it.
+fn portable_read(path: &Path, cap: usize) -> Result<Vec<u8>> {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(
+            (rustix::fs::OFlags::NOFOLLOW
+                | rustix::fs::OFlags::NONBLOCK
+                | rustix::fs::OFlags::CLOEXEC)
+                .bits() as i32,
+        )
+        .open(path)?;
+    let meta = file.metadata()?;
+    require(
+        meta.is_file()
+            && meta.nlink() == 1
+            && meta.mode() & 0o777 == 0o600
+            && meta.len() <= cap as u64,
+        "portable private singleton cap/mode",
+    )?;
+    let mut bytes = Vec::new();
+    file.take((cap + 1) as u64).read_to_end(&mut bytes)?;
+    require(bytes.len() <= cap, "portable complete read cap")?;
+    Ok(bytes)
+}
+fn portable_json(
+    root: &Path,
+    name: &str,
+    binding: &Value,
+    field: &str,
+    cap: usize,
+) -> Result<Value> {
+    let bytes = portable_read(&root.join(name), cap)?;
+    require(
+        binding.get(field).and_then(Value::as_str)
+            == Some(format!("{:x}", Sha256::digest(&bytes)).as_str()),
+        "portable reference complete hash",
+    )?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+fn linux_reference() -> Result<Vec<Value>> {
+    let cwd = fs::canonicalize(std::env::current_dir()?)?;
+    require(
+        fs::symlink_metadata(&cwd)?.mode() & 0o777 == 0o700,
+        "private qualification cwd",
+    )?;
+    let binding: Value = serde_json::from_slice(&portable_read(
+        &cwd.join("m6-ci-reference-binding.json"),
+        8192,
+    )?)?;
+    keys(
+        &binding,
+        &[
+            "version",
+            "root",
+            "capture_sha256",
+            "manifest_sha256",
+            "certificate_sha256",
+            "core_commit",
+            "core_tree",
+            "now",
+            "input_sha256",
+            "adapter_sha256",
+            "schema_sha256",
+            "ids",
+            "runtime",
+        ],
+    )?;
+    require(
+        (*portable_field(&binding, "version")) == 1
+            && (*portable_field(&binding, "core_commit"))
+                == "010735c7d86d30269ab3f4a351b2135faea1c8e7"
+            && (*portable_field(&binding, "core_tree"))
+                == "345adfa12da083eb5888ec232dc2d86b9b0383a5"
+            && (*portable_field(&binding, "now")) == NOW
+            && (*portable_field(&binding, "ids")) == json!(IDS)
+            && (*portable_field(&binding, "schema_sha256"))
+                == format!("{:x}", Sha256::digest(SCHEMA.as_bytes())),
+        "portable fixed baseline/clock/schema/ids",
+    )?;
+    let root = cwd.join("oracle");
+    require(
+        fs::canonicalize(&root)? == root
+            && (*portable_field(&binding, "root")) == root.to_str().ok_or("portable root utf8")?,
+        "canonical owned oracle root",
+    )?;
+    let manifest = portable_json(
+        &root,
+        "qualification-manifest.json",
+        &binding,
+        "manifest_sha256",
+        2 * 1024 * 1024,
+    )?;
+    let certificate = portable_json(
+        &root,
+        "capture-certificate.json",
+        &binding,
+        "certificate_sha256",
+        2 * 1024 * 1024,
+    )?;
+    let raw = portable_json(
+        &root,
+        "capture.stdout",
+        &binding,
+        "capture_sha256",
+        1024 * 1024,
+    )?;
+    let input = portable_json(
+        &root,
+        "qualification-input.json",
+        &binding,
+        "input_sha256",
+        8192,
+    )?;
+    require(
+        (*portable_field(&manifest, "core_commit")) == (*portable_field(&binding, "core_commit"))
+            && (*portable_field(&manifest, "core_tree"))
+                == (*portable_field(&binding, "core_tree"))
+            && (*portable_field(&manifest, "canonical_output"))
+                == (*portable_field(&binding, "root"))
+            && (*portable_field(&manifest, "runtime")) == (*portable_field(&binding, "runtime"))
+            && *portable_field(portable_field(&manifest, "runtime"), "platform") == "linux"
+            && *portable_field(portable_field(&manifest, "runtime"), "version") == "v22.23.3"
+            && *portable_field(portable_field(&manifest, "runtime"), "abi") == "127"
+            && (*portable_field(&manifest, "input_sha256"))
+                == (*portable_field(&binding, "input_sha256"))
+            && (*portable_field(&manifest, "adapter_sha256"))
+                == (*portable_field(&binding, "adapter_sha256"))
+            && (*portable_field(&input, "now")) == NOW
+            && (*portable_field(&input, "schema_sql")) == SCHEMA
+            && (*portable_field(&input, "schema_sha256"))
+                == (*portable_field(&binding, "schema_sha256"))
+            && (*portable_field(&certificate, "manifest")) == manifest
+            && (*portable_field(&certificate, "stdout_sha256"))
+                == (*portable_field(&binding, "capture_sha256"))
+            && (*portable_field(&certificate, "stderr_sha256"))
+                == format!("{:x}", Sha256::digest(b""))
+            && (*portable_field(&certificate, "raw_exit_code")) == 0,
+        "portable fresh capture provenance",
+    )?;
+    keys(&raw, &["node", "abi", "cases", "modules"])?;
+    require(
+        (*portable_field(&raw, "node")) == "v22.23.3"
+            && (*portable_field(&raw, "abi")) == "127"
+            && (*portable_field(&certificate, "cases")) == (*portable_field(&raw, "cases")),
+        "portable raw dialect/cases",
+    )?;
+    let rows = (*portable_field(&raw, "cases"))
+        .as_array()
+        .ok_or("portable cases")?;
+    validate_rows(rows)?;
+    let modules = (*portable_field(&raw, "modules"))
+        .as_array()
+        .ok_or("portable modules")?;
+    let files = (*portable_field(&manifest, "files"))
+        .as_array()
+        .ok_or("portable source files")?;
+    let loaded = (*portable_field(&certificate, "loaded_files"))
+        .as_array()
+        .ok_or("portable loaded binding")?;
+    require(
+        !modules.is_empty()
+            && modules.len() <= 512
+            && loaded.len() == modules.len()
+            && files.len() <= 5120,
+        "portable finite inventories",
+    )?;
+    let mut unique = std::collections::BTreeSet::new();
+    for (module, certified) in modules.iter().zip(loaded) {
+        let name = module.as_str().ok_or("portable loaded path")?;
+        require(
+            name.len() <= 4096 && unique.insert(name),
+            "portable unique loaded path",
+        )?;
+        let path = Path::new(name);
+        require(
+            fs::canonicalize(path)? == path,
+            "portable canonical loaded file",
+        )?;
+        let relative = path
+            .strip_prefix(&root)?
+            .to_str()
+            .ok_or("portable loaded utf8")?;
+        let file = files
+            .iter()
+            .find(|f| (*portable_field(f, "path")) == relative)
+            .ok_or("portable loaded source identity")?;
+        require(
+            file == certified && (*portable_field(file, "destination_mode")) == "100600",
+            "portable certified loaded source",
+        )?;
+        let bytes = portable_read(path, 16 * 1024 * 1024)?;
+        require(
+            (*portable_field(file, "sha256")) == format!("{:x}", Sha256::digest(&bytes))
+                && (*portable_field(file, "bytes")) == bytes.len(),
+            "portable loaded bytes identity",
+        )?;
+    }
+    Ok(rows.clone())
+}
+#[test]
+fn linux_factory_comparator_rejects_grant_timestamp_delta() -> Result<()> {
+    grant_negative(linux_reference()?)?;
+    println!("M6_LINUX_NEGATIVE grants.last_used_at +1 rejected");
+    Ok(())
+}
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn linux_factory_seven_rows_through_rust_router() -> Result<()> {
+    router_positive(linux_reference()?).await
 }
