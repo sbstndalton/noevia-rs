@@ -6,6 +6,14 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+#[path = "../../../tools/replay/src/bin/support/chatgpt_worker_auth_oracle.rs"]
+mod worker_oracle;
+static TEST_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+fn test_serial() -> std::sync::MutexGuard<'static, ()> {
+    TEST_SERIAL
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
 const SCHEMA: &str = include_str!("../../../crates/server-store/tests/fixtures/node-schema.sql");
 const NOW: i64 = 1_800_000_000_000;
 fn fixture() -> (tempfile::TempDir, Connection) {
@@ -13,8 +21,7 @@ fn fixture() -> (tempfile::TempDir, Connection) {
     std::fs::write(d.path().join("secrets.key"), [7; 32]).unwrap();
     let c = Connection::open(server_store::db_path(d.path())).unwrap();
     c.execute_batch(SCHEMA).unwrap();
-    c.execute_batch("CREATE TABLE chatgpt_oauth_tokens(user_id TEXT PRIMARY KEY,data_enc TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'connected',updated_at INTEGER NOT NULL); INSERT INTO settings VALUES('feature:chatgptOAuth','true');").unwrap();
-    c.execute_batch(&format!("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('u','A','a','A','admin','x','w',1,1); INSERT INTO sessions VALUES('{}','u','c',1,{}, {},'ua','ip'); INSERT INTO sessions VALUES('{}','u','c',1,{}, {},'ua','ip'); INSERT INTO device_grants VALUES('g','u','Mac',1,{}, {},'ip','ua'); INSERT INTO device_tokens VALUES('{}','g','access',1,{},NULL,NULL);",server_auth::js::digest("live"),NOW-1000,NOW+99999,server_auth::js::digest("idle"),NOW-604800000,NOW+99999,NOW-60000,NOW+99999,server_auth::js::digest("nva_device"),NOW+99999)).unwrap();
+    c.execute_batch(&worker_oracle::setup_sql()).unwrap();
     (d, c)
 }
 fn auth() -> Authenticator {
@@ -54,8 +61,11 @@ fn input(cookie: &str, bearer: &str) -> JobInput {
     .unwrap()
     .unwrap()
 }
+// Independent test runtimes retain this guard through awaited cleanup; tasks never acquire it.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn worker_real_auth_upkeep_and_status_cases() {
+    let _serial = test_serial();
     for (cookie, bearer, code) in [
         ("cowork_session=live", "", 200),
         ("cowork_session=idle", "", 401),
@@ -106,8 +116,11 @@ async fn worker_real_auth_upkeep_and_status_cases() {
         w.shutdown().unwrap();
     }
 }
+// Independent test runtimes retain this guard through awaited cleanup; tasks never acquire it.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn worker_product_off_prefilter_and_busy_upkeep() {
+    let _serial = test_serial();
     let (d, c) = fixture();
     c.execute_batch("UPDATE settings SET value='false' WHERE key='feature:chatgptOAuth'; DROP TABLE chatgpt_oauth_tokens;").unwrap();
     let w = worker(&d, Arc::new(OwnedPrefilter::ready(false, vec![]).unwrap()));
@@ -158,6 +171,7 @@ async fn worker_product_off_prefilter_and_busy_upkeep() {
 }
 #[test]
 fn worker_input_exact_method_header_and_arrival() {
+    let _serial = test_serial();
     assert!(JobInput::from_headers(
         Instant::now(),
         NOW,
@@ -203,8 +217,11 @@ fn worker_input_exact_method_header_and_arrival() {
     w.shutdown().unwrap();
 }
 
+// Independent test runtimes retain this guard through awaited cleanup; tasks never acquire it.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn worker_new_cookie_origin_recent_device_and_account_boundaries() {
+    let _serial = test_serial();
     for (headers, change, code) in [
         (
             vec![
@@ -271,50 +288,24 @@ async fn worker_new_cookie_origin_recent_device_and_account_boundaries() {
     }
 }
 
+// Independent test runtimes retain this guard through awaited cleanup; tasks never acquire it.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn worker_actual_node_oracle_new_cases() {
-    const SEAM: &str = r#"'use strict';
-const path=require('node:path');
-const [checkout,dataDir,cookie,bearer]=process.argv.slice(2);
-const from=m=>require(path.join(checkout,'server',m));
-const now=1800000000000; Date.now=()=>now;
-const {createAuth,createRateLimiter}=from('auth.cjs');
-const lib=from('device-auth.cjs');
-const a=createAuth({dataDir,publicOrigin:'',rpId:'',trustProxy:true});
-const d=lib.createDeviceAuth({db:a.db,audit:()=>{},publicUser:a.publicUser,rate:createRateLimiter(),clientAddress:()=> '127.0.0.1',origin:()=>a.origin,now:()=>now,addressesTrusted:true});
-const r=lib.createRequestAuth({enabled:()=>true,deviceAuth:d,authService:a});
-const req={method:'GET',headers:{cookie,authorization:bearer},socket:{remoteAddress:'127.0.0.1'}};
-const id=r.authenticate(req);
-process.stdout.write(JSON.stringify({authenticated:!!id,browserOnly:r.browserOnly(id,'/api/providers/chatgpt','GET'),sessions:a.db.prepare('SELECT id_hash,last_seen_at FROM sessions ORDER BY id_hash').all(),grants:a.db.prepare('SELECT id,last_used_at FROM device_grants ORDER BY id').all()}));a.db.close();
-"#;
-    for (cookie, bearer) in [
+    let _serial = test_serial();
+    let reference =
+        worker_oracle::reference_at(&std::env::var("NOEVIA_WORKER_AUTH_REFERENCE").unwrap())
+            .unwrap();
+    for ((cookie, bearer), expected) in [
         ("cowork_session=live", ""),
         ("cowork_session=idle", ""),
         ("", "Bearer nva_device"),
         ("cowork_session=live", "Bearer nva_device"),
         ("", ""),
-    ] {
-        let (node_dir, node_db) = fixture();
-        let seam = node_dir.path().join("oracle.cjs");
-        std::fs::write(&seam, SEAM).unwrap();
-        let output = std::process::Command::new("/tmp/m6-status-bounded-command")
-            .args([
-                "/opt/homebrew/opt/node@22/bin/node",
-                seam.to_str().unwrap(),
-                "/private/tmp/sol-routing-core010735-oracle",
-                node_dir.path().to_str().unwrap(),
-                cookie,
-                bearer,
-            ])
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "actual Node seam failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let expected: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        drop(node_db);
+    ]
+    .into_iter()
+    .zip(reference)
+    {
         let (d, c) = fixture();
         let w = worker(&d, Arc::new(OwnedPrefilter::ready(false, vec![]).unwrap()));
         let reply = w.submit(input(cookie, bearer)).unwrap().wait().await;
@@ -337,8 +328,11 @@ process.stdout.write(JSON.stringify({authenticated:!!id,browserOnly:r.browserOnl
     }
 }
 
+// Independent test runtimes retain this guard through awaited cleanup; tasks never acquire it.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn worker_auth_static_vm_exhaustion() {
+    let _serial = test_serial();
     let (d, c) = fixture();
     c.execute_batch("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100000) INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) SELECT 'bulk'||x,'B'||x,'b'||x,'B','admin','x','w'||x,100001-x,1 FROM n;").unwrap();
     let auth = Authenticator::new(AuthConfig {
@@ -366,4 +360,27 @@ async fn worker_auth_static_vm_exhaustion() {
         .await;
     w.shutdown().unwrap();
     assert_eq!(reply.status, 503, "ROUTING_ASSERT/worker/auth_vm");
+}
+
+#[test]
+fn worker_oracle_rejects_grant_timestamp_delta() {
+    let reference =
+        worker_oracle::reference_at(&std::env::var("NOEVIA_WORKER_AUTH_REFERENCE").unwrap())
+            .unwrap();
+    let mut changed = reference.clone();
+    let row = changed.get_mut(2).unwrap();
+    let value = row
+        .get_mut("grants")
+        .unwrap()
+        .get_mut(0)
+        .unwrap()
+        .get_mut("last_used_at")
+        .unwrap();
+    let original = value.as_i64().unwrap();
+    *value = serde_json::json!(original + 1);
+    assert_eq!(
+        worker_oracle::differences(&reference, &changed).unwrap(),
+        vec!["device/grants/0/last_used_at"]
+    );
+    println!("M6_WORKER_NEGATIVE grants.last_used_at +1 rejected");
 }

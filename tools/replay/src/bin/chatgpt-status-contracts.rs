@@ -2,10 +2,13 @@
 mod support {
     pub mod chatgpt_status_dependencies;
     pub mod chatgpt_status_linux_ci;
+    pub mod chatgpt_worker_auth_oracle;
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     match std::env::args().nth(1).as_deref() {
-        Some("inventory-linux-dependencies") | Some("qualify-linux-factory") => {
+        Some("inventory-linux-dependencies")
+        | Some("qualify-linux-factory")
+        | Some("capture-linux-worker-auth") => {
             let args: Vec<String> = std::env::args().skip(1).take(16).collect();
             println!(
                 "{}",

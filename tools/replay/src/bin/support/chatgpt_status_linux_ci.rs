@@ -970,10 +970,306 @@ fn qualify(args: &[String]) -> Result<Value> {
     )?;
     operation
 }
+// The worker seam has five independent databases and no status-factory invocation.
+fn capture_worker(args: &[String]) -> Result<Value> {
+    use super::chatgpt_worker_auth_oracle as worker;
+    let paths = options(
+        args,
+        &[
+            "--core-checkout",
+            "--dependency-root",
+            "--dependency-inventory",
+            "--node",
+            "--source-checkout",
+            "--owned-output",
+        ],
+    )?;
+    let [checkout, deps, inventory, node, source, out]: [PathBuf; 6] =
+        paths.try_into().map_err(|_| "worker paths")?;
+    disjoint(
+        &out,
+        &[
+            checkout.clone(),
+            deps.clone(),
+            inventory.clone(),
+            node.clone(),
+            source.clone(),
+        ],
+    )?;
+    private_dir(&out)?;
+    let operation = (|| -> Result<Value> {
+        require(
+            cfg!(target_os = "linux"),
+            "worker capture actual Linux only",
+        )?;
+        let deadline = Instant::now() + Duration::from_secs(120);
+        core(&out, &checkout)?;
+        let identity = source_identity(&out, &source)?;
+        let executable = fs::canonicalize(std::env::current_exe()?)?;
+        let tool_sha = binary_copy(&executable, &out.join("executed-coordinator.bin"))?;
+        let node_sha = crate::hash(&read(&node, 128 * 1024 * 1024)?);
+        save(
+            &out.join("node-preexecution.bin"),
+            &read(&node, 128 * 1024 * 1024)?,
+        )?;
+        let inventory_sha = crate::hash(&read(&inventory, 2 * 1024 * 1024)?);
+        json_save(
+            &out.join("execution-inputs.json"),
+            &json!({"coordinator":executable,"coordinator_sha256":tool_sha,"node":node,"node_sha256":node_sha,"inventory_sha256":inventory_sha,"source":identity,"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"schema_sha256":worker::hash(worker::SCHEMA.as_bytes()),"setup_sha256":worker::hash(worker::SETUP.as_bytes())}),
+        )?;
+        let attest = || -> Result<()> {
+            require(
+                Instant::now() < deadline,
+                "worker overall cooperative deadline",
+            )?;
+            source_check(&source, &identity)?;
+            check_hash(&executable, &tool_sha, 128 * 1024 * 1024)?;
+            check_hash(&node, &node_sha, 128 * 1024 * 1024)?;
+            check_hash(&inventory, &inventory_sha, 2 * 1024 * 1024)
+        };
+        attest()?;
+        let metadata = run(
+            &out,
+            "node-metadata",
+            &node,
+            &["-p", METADATA],
+            &out,
+            vec![],
+            Duration::from_secs(15),
+        )?;
+        require(metadata.len() <= 1024, "worker metadata cap")?;
+        let runtime: Value = serde_json::from_slice(&metadata)?;
+        require(
+            field(&runtime, "version") == "v22.23.3"
+                && field(&runtime, "abi") == "127"
+                && field(&runtime, "platform") == "linux"
+                && field(&runtime, "arch")
+                    .as_str()
+                    .is_some_and(|a| matches!(a, "x64" | "arm64")),
+            "worker Linux dialect",
+        )?;
+        attest()?;
+        let oracle = out.join("oracle");
+        let materialize_args = [
+            "--core-checkout",
+            text(&checkout)?,
+            "--dependency-root",
+            text(&deps)?,
+            "--dependency-inventory",
+            text(&inventory)?,
+            "--node",
+            text(&node)?,
+            "--owned-output",
+            text(&oracle)?,
+        ]
+        .map(str::to_owned);
+        let counter = Cell::new(0usize);
+        let invoker =
+            |program: &Path, argv: &[&str], cwd: &Path, limit: Duration| -> Result<Vec<u8>> {
+                require(
+                    program == Path::new("/usr/bin/git"),
+                    "worker materializer fixed Git",
+                )?;
+                let count = counter.get();
+                require(count < 1030, "worker Git count cap")?;
+                counter.set(count + 1);
+                let remaining = deadline
+                    .checked_duration_since(Instant::now())
+                    .ok_or("worker deadline")?;
+                run(
+                    &out,
+                    &format!("materialize-git-{count:04}"),
+                    program,
+                    argv,
+                    cwd,
+                    vec![],
+                    limit.min(remaining),
+                )
+            };
+        let manifest = super::chatgpt_status_dependencies::materialize_with_runtime(
+            &materialize_args,
+            Some(&metadata),
+            Some(&invoker),
+        )?;
+        require(
+            field(&manifest, "node_sha256").as_str() == Some(node_sha.as_str())
+                && field(&manifest, "runtime") == &runtime,
+            "worker materialized runtime",
+        )?;
+        let rows = field(&manifest, "files")
+            .as_array()
+            .ok_or("worker materialized rows")?;
+        require(rows.len() <= 5120, "worker materialized count")?;
+        let topology = || -> Result<()> {
+            for row in rows {
+                let file = oracle.join(field(row, "path").as_str().ok_or("worker manifest path")?);
+                let m = fs::symlink_metadata(&file)?;
+                require(
+                    m.is_file()
+                        && m.nlink() == 1
+                        && m.mode() & 0o7777 == 0o600
+                        && Some(m.len()) == field(row, "bytes").as_u64(),
+                    "worker file class/mode/size",
+                )?;
+                check_hash(
+                    &file,
+                    field(row, "sha256").as_str().ok_or("worker file SHA")?,
+                    16 * 1024 * 1024,
+                )?;
+            }
+            Ok(())
+        };
+        let trace = |raw: &Value| -> Result<Vec<Value>> {
+            let modules = field(raw, "modules")
+                .as_array()
+                .ok_or("worker actual modules")?;
+            require(
+                !modules.is_empty() && modules.len() <= 512,
+                "worker actual loaded cap",
+            )?;
+            let mut unique = BTreeSet::new();
+            let mut loaded = Vec::new();
+            for name in modules {
+                let name = name.as_str().ok_or("worker module path")?;
+                require(
+                    name.len() <= 4096 && unique.insert(name),
+                    "worker unique bounded module",
+                )?;
+                let file = Path::new(name);
+                require(
+                    fs::canonicalize(file)? == file,
+                    "worker canonical loaded path",
+                )?;
+                let relative = file
+                    .strip_prefix(&oracle)?
+                    .to_str()
+                    .ok_or("worker relative module")?;
+                let row = rows
+                    .iter()
+                    .find(|r| field(r, "path") == relative)
+                    .ok_or("worker unlisted loaded module")?;
+                let m = fs::symlink_metadata(file)?;
+                require(
+                    m.is_file()
+                        && m.nlink() == 1
+                        && m.mode() & 0o7777 == 0o600
+                        && Some(m.len()) == field(row, "bytes").as_u64(),
+                    "worker loaded metadata",
+                )?;
+                check_hash(
+                    file,
+                    field(row, "sha256").as_str().ok_or("worker loaded SHA")?,
+                    16 * 1024 * 1024,
+                )?;
+                loaded.push(row.clone());
+            }
+            Ok(loaded)
+        };
+        const NATIVE: &str="const path=require('path'); const root=process.cwd(); const Database=require(path.join(root,'node_modules/better-sqlite3')); const db=new Database(':memory:'); try { require(path.join(root,'node_modules/@node-rs/argon2')); require(path.join(root,'node_modules/sqlite-vec')).load(db); } finally { db.close(); } process.stdout.write(JSON.stringify({version:process.version,abi:process.versions.modules,platform:process.platform,modules:Object.keys(require.cache).sort()}));";
+        attest()?;
+        topology()?;
+        let native = run(
+            &out,
+            "native-preflight",
+            &node,
+            &["-e", NATIVE],
+            &oracle,
+            vec![],
+            Duration::from_secs(15),
+        )?;
+        require(native.len() <= 1024 * 1024, "worker native output cap")?;
+        let native: Value = serde_json::from_slice(&native)?;
+        require(
+            field(&native, "version") == "v22.23.3"
+                && field(&native, "abi") == "127"
+                && field(&native, "platform") == "linux",
+            "worker actual native dialect",
+        )?;
+        let native_loaded = trace(&native)?;
+        let fixtures = oracle.join("worker-fixtures");
+        private_dir(&fixtures)?;
+        save(&out.join("worker-adapter.cjs"), worker::ADAPTER.as_bytes())?;
+        let mut result = Vec::new();
+        let mut captures = Vec::new();
+        for ((cookie, bearer), id) in [
+            ("cowork_session=live", ""),
+            ("cowork_session=idle", ""),
+            ("", "Bearer nva_device"),
+            ("cowork_session=live", "Bearer nva_device"),
+            ("", ""),
+        ]
+        .into_iter()
+        .zip(worker::IDS)
+        {
+            let directory = fixtures.join(id);
+            private_dir(&directory)?;
+            save(&directory.join("secrets.key"), &[7; 32])?;
+            let input = serde_json::to_vec(
+                &json!({"checkout":oracle,"dataDir":directory,"cookie":cookie,"bearer":bearer,"schema":worker::SCHEMA,"setup":worker::setup_sql()}),
+            )?;
+            require(input.len() <= 64 * 1024, "worker fixed input cap")?;
+            save(&out.join(format!("input-{id}.json")), &input)?;
+            attest()?;
+            topology()?;
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .ok_or("worker deadline")?;
+            let raw = run(
+                &out,
+                &format!("capture-{id}"),
+                &node,
+                &["-e", worker::ADAPTER],
+                &oracle,
+                input,
+                remaining.min(Duration::from_secs(15)),
+            )?;
+            require(raw.len() <= 1024 * 1024, "worker semantic output cap")?;
+            let value: Value = serde_json::from_slice(&raw)?;
+            require(
+                field(&value, "node") == "v22.23.3"
+                    && field(&value, "abi") == "127"
+                    && field(&value, "platform") == "linux",
+                "worker capture dialect",
+            )?;
+            let loaded = trace(&value)?;
+            let mut payload = field(&value, "payload").clone();
+            payload
+                .as_object_mut()
+                .ok_or("worker payload object")?
+                .insert("id".into(), json!(id));
+            result.push(payload);
+            captures.push(json!({"id":id,"stdout_sha256":crate::hash(&raw),"stderr_sha256":crate::hash(b""),"status_sha256":crate::hash(&read(&out.join(format!("capture-{id}.status.json")),8192)?),"loaded":loaded,"input_sha256":crate::hash(&read(&out.join(format!("input-{id}.json")),64*1024)?)}));
+            attest()?;
+            topology()?;
+        }
+        worker::validate(&result)?;
+        json_save(&out.join("worker-reference.json"), &json!(result))?;
+        let certificate = json!({"core_commit":worker::CORE,"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"rows":result,"captures":captures,"native_loaded":native_loaded,"native_stdout_sha256":crate::hash(&read(&out.join("native-preflight.stdout"),1024*1024)?),"native_stderr_sha256":crate::hash(b""),"native_status_sha256":crate::hash(&read(&out.join("native-preflight.status.json"),8192)?),"scope":"five independent predecessor auth/device factory methods; no Node public headers/index/current core/defaultoff/supervisor/fullM6/native dylib ancestry proof"});
+        json_save(&out.join("worker-certificate.json"), &certificate)?;
+        let binding = json!({"version":1,"root":out,"core_commit":worker::CORE,"core_tree":worker::TREE,"now":worker::NOW,"ids":worker::IDS,"runtime":runtime,"node_sha256":node_sha,"schema_sha256":worker::hash(worker::SCHEMA.as_bytes()),"setup_sha256":worker::hash(worker::SETUP.as_bytes()),"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"test_sha256":worker::hash(include_bytes!("../../../../../bins/noevia-server/tests/chatgpt_worker.rs")),"certificate_sha256":crate::hash(&read(&out.join("worker-certificate.json"),2*1024*1024)?),"manifest_sha256":crate::hash(&read(&oracle.join("qualification-manifest.json"),2*1024*1024)?),"reference_sha256":crate::hash(&read(&out.join("worker-reference.json"),1024*1024)?),"source_head":field(&identity,"head"),"source_tree":field(&identity,"tree"),"tool_sha256":tool_sha});
+        json_save(&out.join("worker-binding.json"), &binding)?;
+        worker::reference_at(text(&out.join("worker-binding.json"))?)?;
+        attest()?;
+        topology()?;
+        Ok(binding)
+    })();
+    json_save(
+        &out.join("worker-outcome.json"),
+        &match &operation {
+            Ok(_) => json!({"outer_code":0,"completed":true}),
+            Err(e) => {
+                json!({"outer_code":1,"completed":false,"typed_failure":"worker-setup-or-child-failure","message":e.to_string()})
+            }
+        },
+    )?;
+    operation
+}
+
 pub fn dispatch(args: &[String]) -> Result<Value> {
     match args.split_first() {
         Some((name, args)) if name == "inventory-linux-dependencies" => inventory(args),
         Some((name, args)) if name == "qualify-linux-factory" => qualify(args),
+        Some((name, args)) if name == "capture-linux-worker-auth" => capture_worker(args),
         _ => Err("fixed Linux qualification subcommand".into()),
     }
 }
