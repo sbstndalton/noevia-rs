@@ -1,0 +1,14 @@
+{
+  "core": "641917e2447a0b6c91d7e54cc665085b32555b92",
+  "dropped": 0,
+  "exchanges": 193,
+  "generator": "actual core tools/contract-corpus/generate.cjs",
+  "hostInput": {
+    "collaborator": "readMeminfo",
+    "memTotalKib": 8388608,
+    "module": "server/inference-budget.cjs"
+  },
+  "node": "v22.23.3",
+  "generatorSha256": "78e856313e456f0d2f7342753640dc1079681aa5f232ff36c1bec4453d849a10",
+  "wasmSha256": "040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd87cb2e978575"
+}

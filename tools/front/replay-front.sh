@@ -18,11 +18,12 @@ legacy=$((port + 1000))
 origin="${PUBLIC_ORIGIN:-http://127.0.0.1:$port}"
 # Like build/web-supervisor.sh: Node's write guard is confirmed only by a front that lists rust-auth
 # (M3), and its projects.json coordination only by one that lists rust-projects (M4, which needs M3).
-unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED
+unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED
 confirmed=""
 projects_confirmed=""
 usage_confirmed=""
 sampling_confirmed=""
+reasoning_confirmed=""
 if [ "${NOEVIA_RUST_AUTH:-}" = 1 ]; then
   "$front" --features | grep -qx rust-auth || { echo "replay-front: $front has no rust-auth" >&2; exit 2; }
   confirmed=1
@@ -42,13 +43,21 @@ if [ "${NOEVIA_RUST_SAMPLING_SETTINGS:-}" = 1 ]; then
   "$front" --features | grep -qx rust-sampling-settings || { echo "replay-front: no rust-sampling-settings" >&2; exit 2; }
   sampling_confirmed=1
 fi
+if [ "${NOEVIA_RUST_REASONING_SETTINGS:-}" = 1 ]; then
+  [ -n "$confirmed" ] || { echo "replay-front: reasoning default needs native auth" >&2; exit 2; }
+  "$front" --features | grep -qx rust-reasoning-settings || { echo "replay-front: no rust-reasoning-settings" >&2; exit 2; }
+  reasoning_confirmed=1
+fi
 UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" \
-  NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" \
-  node "$core/tools/contract-corpus/serve.cjs" &
+  NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$reasoning_confirmed" \
+  "$(dirname "$front")/corpus-launcher" serve "$core" &
 node_pid=$!
 # CI's M4 negative control only: Node is told the front owns the project image routes, the front is
 # started without the switch, so those writes must reach Node and be refused.
-if [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_SAMPLING_SETTINGS:-}" = 1 ]; then
+if [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_REASONING_SETTINGS:-}" = 1 ]; then
+  # Valid native identity remains; Node is still confirmed and must refuse the owned PUT.
+  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_REASONING_SETTINGS "$front" &
+elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_SAMPLING_SETTINGS:-}" = 1 ]; then
   # Test-only omission: valid native auth continues; confirmed Node sampling must refuse.
   PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_SAMPLING_SETTINGS "$front" &
 elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_USAGE:-}" = 1 ]; then

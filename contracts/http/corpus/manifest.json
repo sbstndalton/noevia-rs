@@ -1,24 +1,9 @@
 {
-  "v": 1,
-  "generator": "noevia-core tools/contract-corpus/generate.cjs",
-  "seed": "empty",
-  "note": "Replay against a server started on an empty UI_DATA_DIR; the setup code is read from that dir once the server has written it. Passwords and the image data are synthetic.",
-  "inputs": {
-    "<secret:5>": {
-      "file": "first-run-setup-code"
-    },
-    "<secret:2>": {
-      "value": "contract-corpus-Synthetic-pw-1"
-    },
-    "<secret:6>": {
-      "value": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
-    },
-    "<secret:10>": {
-      "value": "contract-corpus-Synthetic-pw-2"
-    }
+  "calendarContract": {
+    "timeZone": "UTC",
+    "usageWindowDays": 365,
+    "version": 1
   },
-  "exchanges": 184,
-  "dropped": 0,
   "covered": [
     "GET /api/ready",
     "GET /api/health",
@@ -47,6 +32,8 @@
     "POST /api/auth/invitations/accept",
     "DELETE /api/projects/<id:3>/assets/<id:4>",
     "GET /api/admin/users",
+    "PUT /api/reasoning-settings",
+    "GET /api/reasoning-settings",
     "POST /api/auth/login/password",
     "PUT /api/profile/appearance",
     "GET /api/profile/appearance",
@@ -107,7 +94,6 @@
     "GET /api/providers",
     "GET /api/providers/chatgpt",
     "GET /api/providers/default/models",
-    "GET /api/reasoning-settings",
     "GET /api/routing-default",
     "GET /api/routing-mode",
     "GET /api/routing-mode/allowed",
@@ -147,9 +133,24 @@
     "DELETE /api/projects/<id:3>",
     "DELETE /api/admin/users/<id:10>"
   ],
-  "calendarContract": {
-    "version": 1,
-    "timeZone": "UTC",
-    "usageWindowDays": 365
-  }
+  "dropped": 0,
+  "exchanges": 193,
+  "generator": "noevia-core tools/contract-corpus/generate.cjs",
+  "inputs": {
+    "<secret:10>": {
+      "value": "contract-corpus-Synthetic-pw-2"
+    },
+    "<secret:2>": {
+      "value": "contract-corpus-Synthetic-pw-1"
+    },
+    "<secret:5>": {
+      "file": "first-run-setup-code"
+    },
+    "<secret:6>": {
+      "value": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+    }
+  },
+  "note": "Replay against a server started on an empty UI_DATA_DIR; the setup code is read from that dir once the server has written it. Passwords and the image data are synthetic.",
+  "seed": "empty",
+  "v": 1
 }

@@ -665,8 +665,11 @@ owner = "rust"
 methods = ["GET"]
 
 [[route]]
+# GET/provider capability and every non-PUT method remain explicitly Node-owned.
 path = "/api/reasoning-settings"
-owner = "node"
+owner = "rust"
+methods = ["PUT"]
+switch = "NOEVIA_RUST_REASONING_SETTINGS"
 
 [[route]]
 path = "/api/routing-default"

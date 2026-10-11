@@ -165,7 +165,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work" \
-            --server-cmd "exec node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+            --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --report "$RUNNER_TEMP/replay-report.json" --state-out "$RUNNER_TEMP/node-state.json"
           target/debug/replay coverage --corpus contracts/http/corpus --routes contracts/http/routes.toml | tail -1
       - if: always()
@@ -230,7 +230,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
-            --server-cmd "exec node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+            --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --state-out "$RUNNER_TEMP/node-state.json"
       - name: Replay through the Rust front
         run: |
@@ -301,7 +301,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
-            --server-cmd "exec node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+            --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --state-out "$RUNNER_TEMP/node-state.json"
       - name: Replay through the Rust front with NOEVIA_RUST_AUTH=1
         run: |
@@ -321,7 +321,7 @@ jobs:
           if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
               --ignore-body hours --ignore-body peakHour/hour \
               --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \
-              --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CONFIRMED=1 node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+              --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CONFIRMED=1 '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
               --report "$RUNNER_TEMP/control-report.json"; then
             echo "::error::Node with NOEVIA_RUST_AUTH=1 replayed clean: the single-writer guard did not engage"; exit 1
           fi
@@ -394,7 +394,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
-            --server-cmd "exec node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+            --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --state-out "$RUNNER_TEMP/node-state.json"
       - name: Replay through the Rust front with NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1
         run: |
@@ -641,3 +641,84 @@ jobs:
           if target/debug/noevia-ocr; then echo '::error::featureless binary started'; exit 1; fi
           cargo build --locked -p noevia-ocr --features native-ocr
           test "$(target/debug/noevia-ocr --features)" = native-ocr
+
+  reasoning-native:
+    name: Required native reasoning default contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read actual merged core pin
+        id: core
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/http/core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core.outputs.sha }}
+          path: core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: npm ci --no-fund --no-audit
+        working-directory: core/server
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Build the independently checksum-pinned actual-core WASM
+        run: |
+          set -euo pipefail
+          eval "$(grep -E '^(NOEVIA_RS_REF|NOEVIA_RS_SHA256|DAV_PARSE_WASM_SHA256)=[0-9a-f]+$' core/server/dav-parse.lock)"
+          [[ "$NOEVIA_RS_REF" =~ ^[0-9a-f]{40}$ ]]
+          curl -fsSL "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$NOEVIA_RS_REF" -o "$RUNNER_TEMP/reasoning-wasm.tgz"
+          echo "$NOEVIA_RS_SHA256  $RUNNER_TEMP/reasoning-wasm.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/reasoning-wasm"
+          tar -xzf "$RUNNER_TEMP/reasoning-wasm.tgz" --strip-components=1 -C "$RUNNER_TEMP/reasoning-wasm"
+          "$RUNNER_TEMP/reasoning-wasm/tools/build-dav-parse-wasm.sh" "$GITHUB_WORKSPACE/core/server/wasm/dav-parse.wasm"
+          echo "$DAV_PARSE_WASM_SHA256  core/server/wasm/dav-parse.wasm" | sha256sum -c -
+      - name: Checked-in corpus retains strict request-anchored calendar checks
+        run: cargo test --locked -p replay calendar
+      - name: Regenerate actual Node SQLite oracle and require its full contract
+        run: |
+          set -euo pipefail
+          node crates/server-reasoning-settings/tests/oracle.cjs "$PWD/core" "$RUNNER_TEMP/node-reasoning.json"
+          python3 - "$RUNNER_TEMP/node-reasoning.json" <<'PYORACLE'
+          import json,sys
+          a=json.load(open(sys.argv[1]));b=json.load(open('crates/server-reasoning-settings/tests/fixtures/node-reasoning.v1.json'))
+          a.pop('node');b.pop('node')
+          assert a==b,'actual merged core oracle changed'
+          assert len(a['cases'])==52
+          PYORACLE
+          NOEVIA_REASONING_FIXTURE="$RUNNER_TEMP/node-reasoning.json" NOEVIA_REASONING_CORE_SHA="$(cat contracts/http/core.ref)" cargo test --locked -p server-reasoning-settings
+      - run: cargo clippy --locked -p server-reasoning-settings -p noevia-server --all-targets --features rust-reasoning-settings -- -D warnings
+      - run: cargo test --locked -p noevia-server --features rust-reasoning-settings
+      - name: Compiled capability and isolated featureless startup refusal
+        run: |
+          set -euo pipefail
+          cargo build --locked --target-dir target/reasoning-featureless -p noevia-server --no-default-features
+          if target/reasoning-featureless/debug/noevia-server --features | grep -qx rust-reasoning-settings; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 NOEVIA_RUST_AUTH=1 NOEVIA_RUST_REASONING_SETTINGS=1 target/reasoning-featureless/debug/noevia-server > omission.log 2>&1; then exit 1; fi
+          grep -q 'needs compiled rust-reasoning-settings' omission.log
+          cargo build --locked -p replay -p noevia-server --features rust-reasoning-settings
+          target/debug/noevia-server --features | grep -qx rust-reasoning-settings
+      - name: Actual spawn and actual budget factory synthetic input seam
+        run: |
+          target/debug/corpus-launcher verify "$PWD/core"
+          target/debug/corpus-launcher verify-omission "$PWD/core"
+          target/debug/host-control "$PWD/core" "$PWD/contracts/http/corpus" "$RUNNER_TEMP/wrong-host"
+      - name: Full actual merged-core replay, equal state, valid identity omission and zero fallback writes
+        run: sh tools/front/reasoning-contracts.sh "$PWD/core" "$PWD/target/debug/noevia-server" "$PWD/target/debug/replay" "$RUNNER_TEMP/reasoning-front"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-reasoning-contracts
+          path: |
+            ${{ runner.temp }}/reasoning-front/*json
+            ${{ runner.temp }}/node-reasoning.json
+            omission.log
+          if-no-files-found: error

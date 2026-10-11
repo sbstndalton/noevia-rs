@@ -35,6 +35,7 @@ pub struct Config {
     pub rust_projects: Option<server_store::RustProjects>,
     /// M6 requires native identity/upkeep.
     pub rust_usage: bool,
+    pub rust_reasoning_settings: Option<server_store::RustReasoningSettings>,
     pub rust_sampling_settings: Option<server_store::RustSamplingSettings>,
     pub usage_clock: Result<server_usage::summary::Clock, server_usage::Fault>,
     /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
@@ -104,6 +105,7 @@ impl Config {
             rust_projects: self.rust_projects.is_some(),
             rust_usage: self.rust_usage,
             rust_sampling_settings: self.rust_sampling_settings.is_some(),
+            rust_reasoning_settings: self.rust_reasoning_settings.is_some(),
         }
     }
 
@@ -138,6 +140,20 @@ impl Config {
             } else {
                 None
             };
+        let rust_reasoning_settings =
+            if get(server_store::RustReasoningSettings::ENV).as_deref() == Some("1") {
+                let auth =
+                    rust_auth.ok_or("NOEVIA_RUST_REASONING_SETTINGS=1 needs NOEVIA_RUST_AUTH=1")?;
+                if !cfg!(feature = "rust-reasoning-settings") {
+                    return Err(
+                        "NOEVIA_RUST_REASONING_SETTINGS=1 needs compiled rust-reasoning-settings"
+                            .into(),
+                    );
+                }
+                server_store::RustReasoningSettings::from_env_value(Some("1"), auth)
+            } else {
+                None
+            };
         Ok(Config {
             host,
             port,
@@ -162,6 +178,7 @@ impl Config {
             rust_projects,
             rust_usage,
             rust_sampling_settings,
+            rust_reasoning_settings,
             usage_clock: server_usage::summary::Clock::system(&get),
         })
     }
@@ -311,6 +328,36 @@ mod tests {
             .unwrap()
             .switches()
             .rust_sampling_settings
+        );
+    }
+    #[test]
+    fn reasoning_requires_exact_selector_auth_and_compiled_capability() {
+        let base = [("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9")];
+        for value in ["", "0", "true", "01"] {
+            let mut env = base.to_vec();
+            env.push(("NOEVIA_RUST_REASONING_SETTINGS", value));
+            assert!(cfg(&env).unwrap().rust_reasoning_settings.is_none());
+        }
+        assert!(cfg(&[
+            ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9"),
+            ("NOEVIA_RUST_REASONING_SETTINGS", "1")
+        ])
+        .is_err());
+        let enabled = cfg(&[
+            ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9"),
+            ("NOEVIA_RUST_AUTH", "1"),
+            ("NOEVIA_RUST_REASONING_SETTINGS", "1"),
+        ]);
+        if cfg!(feature = "rust-reasoning-settings") {
+            assert!(enabled.unwrap().rust_reasoning_settings.is_some());
+        } else {
+            assert!(enabled
+                .unwrap_err()
+                .contains("compiled rust-reasoning-settings"));
+        }
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-reasoning-settings"),
+            cfg!(feature = "rust-reasoning-settings")
         );
     }
 }

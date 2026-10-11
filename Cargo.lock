@@ -1571,6 +1571,7 @@ dependencies = [
  "server-account",
  "server-auth",
  "server-projects",
+ "server-reasoning-settings",
  "server-sampling-settings",
  "server-store",
  "server-usage",
@@ -2396,6 +2397,16 @@ version = "0.1.0"
 dependencies = [
  "js-json",
  "rand_core 0.6.4",
+ "serde_json",
+ "server-store",
+ "tempfile",
+]
+
+[[package]]
+name = "server-reasoning-settings"
+version = "0.1.0"
+dependencies = [
+ "proptest",
  "serde_json",
  "server-store",
  "tempfile",

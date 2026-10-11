@@ -117,6 +117,42 @@ mod calendar_manifest_tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
     #[test]
+    fn checked_in_native_http_corpus_requires_fixed_host_provenance() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/http/corpus");
+        let provenance: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.join("SOURCE_ORACLE.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            provenance.get("core").and_then(serde_json::Value::as_str),
+            Some(include_str!("../../../contracts/http/core.ref").trim())
+        );
+        assert_eq!(
+            provenance.get("hostInput"),
+            Some(
+                &serde_json::json!({"module":"server/inference-budget.cjs","collaborator":"readMeminfo","memTotalKib":8388608})
+            )
+        );
+        let response: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(dir.join("exchanges/000139-GET-api-models-inference-budget.json"))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            response.pointer("/response/body/json/hostRamGib"),
+            Some(&serde_json::json!(8))
+        );
+    }
+    #[test]
+    fn checked_in_native_http_corpus_requires_calendar_contract() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/http/corpus");
+        let corpus = load(&dir).unwrap();
+        assert!(
+            corpus.utc_calendar,
+            "native HTTP corpus must retain its strict UTC calendar contract"
+        );
+        assert_eq!(corpus.exchanges.len(), 193);
+    }
+    #[test]
     fn calendar_contract_is_explicit_and_exact() {
         let dir =
             std::env::temp_dir().join(format!("replay-calendar-manifest-{}", std::process::id()));
