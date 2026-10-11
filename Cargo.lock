@@ -1553,9 +1553,11 @@ dependencies = [
  "hyper",
  "hyper-util",
  "model-autoconfig",
+ "model-files",
  "proptest",
  "regex",
  "reqwest",
+ "rusqlite",
  "rustix",
  "serde",
  "serde_json",
@@ -2065,6 +2067,7 @@ dependencies = [
  "rustix",
  "serde_json",
  "sha2",
+ "tempfile",
 ]
 
 [[package]]

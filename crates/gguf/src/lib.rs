@@ -9,6 +9,8 @@
 mod json;
 pub mod node;
 mod pyfmt;
+/// Python's bounded finite-float rendering, shared by native service compatibility code.
+pub use pyfmt::py_float_repr;
 mod raw;
 mod summary;
 

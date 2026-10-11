@@ -5,6 +5,62 @@
     clippy::indexing_slicing
 )]
 use std::{os::unix::fs::PermissionsExt, process::Command};
+#[allow(dead_code)]
+#[path = "../src/bin/support/prompts_process.rs"]
+mod prompts_process;
+// New prompt cases use the same bounded pump as the immutable Python oracle.
+// Retained predecessor cases below keep their previous launch implementation.
+trait PromptBounded {
+    fn prompt_output(&mut self) -> Result<prompts_process::Output, String>;
+}
+impl PromptBounded for Command {
+    fn prompt_output(&mut self) -> Result<prompts_process::Output, String> {
+        prompts_process::bounded_with(self, Vec::new(), std::time::Duration::from_secs(12), |_| {})
+    }
+}
+#[test]
+fn prompt_process_pump_caps_stalls_inherited_pipes_and_early_exit() {
+    let python = std::env::var_os("PYTHON").unwrap_or_else(|| "python3".into());
+    for (code, expected, duration) in [
+        (
+            "import time;time.sleep(2)",
+            "child deadline exceeded",
+            std::time::Duration::from_millis(40),
+        ),
+        (
+            "import sys;sys.stderr.write('x'*65537)",
+            "child output limit exceeded",
+            std::time::Duration::from_secs(2),
+        ),
+        (
+            "import sys;sys.stdout.write('x'*16777217)",
+            "child output limit exceeded",
+            std::time::Duration::from_secs(5),
+        ),
+        (
+            "import os,time;pid=os.fork();time.sleep(2) if pid==0 else os._exit(0)",
+            "child deadline exceeded",
+            std::time::Duration::from_millis(40),
+        ),
+    ] {
+        let mut command = Command::new(&python);
+        command.env_clear().args(["-c", code]);
+        assert_eq!(
+            prompts_process::bounded(command, Vec::new(), duration)
+                .err()
+                .unwrap(),
+            expected
+        );
+    }
+    let mut command = Command::new(&python);
+    command
+        .env_clear()
+        .args(["-c", "import sys;print('synthetic');sys.exit(7)"]);
+    let output =
+        prompts_process::bounded(command, Vec::new(), std::time::Duration::from_secs(2)).unwrap();
+    assert_eq!(output.status.code(), Some(7));
+    assert_eq!(output.stdout, b"synthetic\n");
+}
 #[cfg(feature = "native-logs")]
 static CHILD_PORTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[cfg(feature = "native-logs")]
@@ -39,6 +95,7 @@ fn command(path: &std::path::Path, marker: &std::path::Path) -> Command {
         .env_remove("MODEL_MANAGER_IMPL")
         .env_remove("MODEL_MANAGER_HOST_IMPL")
         .env_remove("MODEL_MANAGER_SECTIONS_IMPL")
+        .env_remove("MODEL_MANAGER_PROMPTS_IMPL")
         .env_remove("MODEL_LOADER_TOKEN")
         .env_remove("LLAMA_CONTAINERS")
         .env_remove("DOCKER_HOST");
@@ -78,6 +135,165 @@ fn invalid_selector_and_invalid_token_never_spawn_child() {
 }
 
 #[test]
+fn prompts_selector_omission_and_python_confirmation_are_closed_before_db_or_child() {
+    let (dir, marker) = owned_uvicorn();
+    let database = dir.path().join("data");
+    for (parent, prompts) in [("python", "rust"), ("rust", "invalid"), ("invalid", "rust")] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", parent)
+            .env("MODEL_MANAGER_PROMPTS_IMPL", prompts)
+            .env("DATA_DIR", &database)
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(!database.exists());
+        assert!(!marker.exists());
+    }
+    if !cfg!(feature = "native-prompts") {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", "rust")
+            .env("MODEL_MANAGER_PROMPTS_IMPL", "rust")
+            .env("DATA_DIR", &database)
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("compiled native-prompts"));
+        assert!(!database.exists());
+        assert!(!marker.exists());
+    }
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script,"#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let output = command(dir.path(), &marker)
+        .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "1")
+        .prompt_output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(42));
+    assert_eq!(std::fs::read_to_string(marker).unwrap(), "unset");
+    assert!(!database.exists());
+}
+
+#[cfg(feature = "native-prompts")]
+#[test]
+fn native_prompts_reject_case_folded_data_dir_aliases_before_side_effects() {
+    let (dir, marker) = owned_uvicorn();
+    let database = dir.path().join("data");
+    for alias in ["data_dir", "Data_Dir", "dAtA_dIr"] {
+        for canonical in [false, true] {
+            let mut cmd = command(dir.path(), &marker);
+            cmd.env("MODEL_MANAGER_IMPL", "rust")
+                .env("MODEL_MANAGER_PROMPTS_IMPL", "rust")
+                .env_remove("DATA_DIR")
+                .env(alias, &database);
+            if canonical {
+                cmd.env("DATA_DIR", dir.path().join("canonical"));
+            }
+            let output = cmd.prompt_output().unwrap();
+            assert!(!output.status.success());
+            assert!(String::from_utf8_lossy(&output.stderr).contains("canonical DATA_DIR"));
+            assert!(!database.exists());
+            assert!(!dir.path().join("canonical").exists());
+            assert!(!marker.exists());
+        }
+    }
+    // Python keeps its existing case-insensitive configuration policy.
+    let output = command(dir.path(), &marker)
+        .env("data_dir", &database)
+        .prompt_output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(42));
+    assert!(!database.exists());
+}
+
+#[cfg(feature = "native-prompts")]
+#[cfg_attr(target_os = "linux", test)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn native_prompt_readiness_precedes_exact_private_child_confirmation() {
+    let _ports = child_ports();
+    let (dir, marker) = owned_uvicorn();
+    // A root-owned sticky temporary parent requires a private owned next directory.
+    let database = tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .unwrap();
+    std::fs::write(dir.path().join("uvicorn"),"#!/bin/sh\n[ -f \"$DATA_DIR/model_loader.db\" ] || exit 43\nprintf '%s\\n%s\\n%s\\n' \"$NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED\" \"$DATA_DIR\" \"$*\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let output = command(dir.path(), &marker)
+        .env("MODEL_MANAGER_IMPL", "rust")
+        .env("MODEL_MANAGER_PROMPTS_IMPL", "rust")
+        .env("DATA_DIR", database.path())
+        .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "untrusted")
+        .prompt_output()
+        .unwrap();
+    if !String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited") {
+        use std::os::unix::fs::MetadataExt;
+        let root = std::fs::symlink_metadata(database.path())
+            .ok()
+            .map(|m| (m.uid(), m.mode()));
+        let parent = database
+            .path()
+            .parent()
+            .and_then(|p| std::fs::symlink_metadata(p).ok())
+            .map(|m| (m.uid(), m.mode()));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("prompt readiness fixture: root_uid_mode={root:?} parent_uid_mode={parent:?} euid={} exit_code={:?} marker_exists={} database_exists={} store_error={} address_in_use={}",
+            rustix::process::geteuid().as_raw(), output.status.code(), marker.exists(),
+            database.path().join("model_loader.db").exists(), stderr.contains("Error: Store"),
+            stderr.contains("AddrInUse"));
+    }
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited")
+    );
+    assert_eq!(
+        std::fs::read_to_string(marker).unwrap(),
+        format!(
+            "1\n{}\napp.main:app --host 127.0.0.1 --port 8091\n",
+            database.path().display()
+        )
+    );
+    let db = rusqlite::Connection::open(database.path().join("model_loader.db")).unwrap();
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM prompts", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        4
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT value FROM kv WHERE key='bench_prompts_seeded'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "1"
+    );
+    // The reaped parent released its writer lock; a second owner can now acquire it.
+    let lock = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open(database.path().join("model_loader.db.prompts.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+}
+
+#[cfg(feature = "native-logs")]
+#[test]
+fn native_parent_with_prompts_off_replaces_inherited_confirmation_without_database() {
+    let _ports = child_ports();
+    let (dir, marker) = owned_uvicorn();
+    let database = dir.path().join("absent");
+    std::fs::write(dir.path().join("uvicorn"),"#!/bin/sh\nprintf '%s' \"$NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let output = command(dir.path(), &marker)
+        .env("MODEL_MANAGER_IMPL", "rust")
+        .env("DATA_DIR", &database)
+        .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "1")
+        .prompt_output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited")
+    );
+    assert_eq!(std::fs::read(marker).unwrap(), b"0");
+    assert!(!database.exists());
+}
+
+#[test]
 fn advertised_feature_matches_build_and_never_spawns_child() {
     let (dir, marker) = owned_uvicorn();
     let output = command(dir.path(), &marker)
@@ -93,6 +309,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         }
         if cfg!(feature = "native-sections") {
             expected.push_str("native-sections\n");
+        }
+        if cfg!(feature = "native-prompts") {
+            expected.push_str("native-prompts\n");
         }
         assert_eq!(output.stdout, expected.as_bytes());
     }
