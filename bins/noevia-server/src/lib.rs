@@ -49,7 +49,13 @@ pub const FEATURES: &[&str] = &[
     "rust-chatgpt-status",
 ];
 
+#[cfg(all(test, feature = "rust-chatgpt-status"))]
+#[path = "support/chatgpt_status_differential.rs"]
+mod chatgpt_status_differential;
+
 pub struct App {
+    #[cfg(all(test, feature = "rust-chatgpt-status"))]
+    status_test_now: Option<i64>,
     pub config: config::Config,
     pub proxy: legacy_proxy::LegacyProxy,
     pub statics: static_files::StaticFiles,
@@ -127,6 +133,8 @@ impl App {
                 .and_then(server_routing_mode::storage::Root::open)
         });
         Arc::new(App {
+            #[cfg(all(test, feature = "rust-chatgpt-status"))]
+            status_test_now: None,
             identity,
             writes,
             accounts,

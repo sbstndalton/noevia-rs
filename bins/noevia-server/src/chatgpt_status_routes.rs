@@ -431,6 +431,15 @@ fn unavailable() -> Response<Body> {
         true,
     )
 }
+fn request_wall_now(app: &crate::App) -> i64 {
+    #[cfg(all(test, feature = "rust-chatgpt-status"))]
+    if let Some(now) = app.status_test_now {
+        return now;
+    }
+    #[cfg(not(all(test, feature = "rust-chatgpt-status")))]
+    let _ = app;
+    crate::identity::now_ms()
+}
 pub async fn serve(app: &crate::App, conn: Conn, req: Request<Body>) -> Response<Body> {
     if conn.local.is_none() {
         return reply::code_net_refused();
@@ -469,7 +478,7 @@ pub async fn serve(app: &crate::App, conn: Conn, req: Request<Body>) -> Response
         .map_or(req.uri().path(), |s| s.as_str());
     let input = match JobInput::from_headers(
         arrival,
-        crate::identity::now_ms(),
+        request_wall_now(app),
         req.method().as_str(),
         target,
         conn.local,
@@ -478,7 +487,7 @@ pub async fn serve(app: &crate::App, conn: Conn, req: Request<Body>) -> Response
             .map(|(k, v)| (k.as_str(), v.as_bytes())),
     ) {
         Ok(Some(input)) => input,
-        Err(_) => JobInput::rejected(arrival, crate::identity::now_ms(), conn.local),
+        Err(_) => JobInput::rejected(arrival, request_wall_now(app), conn.local),
         Ok(None) => return unavailable(),
     };
     let ticket = match worker.submit(input) {
