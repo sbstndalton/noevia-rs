@@ -577,6 +577,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "docling-service"
+version = "0.1.0"
+dependencies = [
+ "nix",
+ "proptest",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "docx-text"
 version = "0.1.0"
 dependencies = [
@@ -1486,6 +1497,14 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+]
+
+[[package]]
+name = "noevia-docling"
+version = "0.1.0"
+dependencies = [
+ "docling-service",
+ "tokio",
 ]
 
 [[package]]

@@ -1,0 +1,15 @@
+[package]
+name = "noevia-docling"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+[features]
+default = []
+native-docling = []
+[lints]
+workspace = true
+[dependencies]
+docling-service = { path = "../../crates/docling-service" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process"] }
