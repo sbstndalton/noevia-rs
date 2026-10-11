@@ -5,6 +5,62 @@
     clippy::indexing_slicing
 )]
 use std::{os::unix::fs::PermissionsExt, process::Command};
+#[allow(dead_code)]
+#[path = "../src/bin/support/prompts_process.rs"]
+mod prompts_process;
+// New prompt cases use the same bounded pump as the immutable Python oracle.
+// Retained predecessor cases below keep their previous launch implementation.
+trait PromptBounded {
+    fn prompt_output(&mut self) -> Result<prompts_process::Output, String>;
+}
+impl PromptBounded for Command {
+    fn prompt_output(&mut self) -> Result<prompts_process::Output, String> {
+        prompts_process::bounded_with(self, Vec::new(), std::time::Duration::from_secs(12), |_| {})
+    }
+}
+#[test]
+fn prompt_process_pump_caps_stalls_inherited_pipes_and_early_exit() {
+    let python = std::env::var_os("PYTHON").unwrap_or_else(|| "python3".into());
+    for (code, expected, duration) in [
+        (
+            "import time;time.sleep(2)",
+            "child deadline exceeded",
+            std::time::Duration::from_millis(40),
+        ),
+        (
+            "import sys;sys.stderr.write('x'*65537)",
+            "child output limit exceeded",
+            std::time::Duration::from_secs(2),
+        ),
+        (
+            "import sys;sys.stdout.write('x'*16777217)",
+            "child output limit exceeded",
+            std::time::Duration::from_secs(5),
+        ),
+        (
+            "import os,time;pid=os.fork();time.sleep(2) if pid==0 else os._exit(0)",
+            "child deadline exceeded",
+            std::time::Duration::from_millis(40),
+        ),
+    ] {
+        let mut command = Command::new(&python);
+        command.env_clear().args(["-c", code]);
+        assert_eq!(
+            prompts_process::bounded(command, Vec::new(), duration)
+                .err()
+                .unwrap(),
+            expected
+        );
+    }
+    let mut command = Command::new(&python);
+    command
+        .env_clear()
+        .args(["-c", "import sys;print('synthetic');sys.exit(7)"]);
+    let output =
+        prompts_process::bounded(command, Vec::new(), std::time::Duration::from_secs(2)).unwrap();
+    assert_eq!(output.status.code(), Some(7));
+    assert_eq!(output.stdout, b"synthetic\n");
+}
 #[cfg(feature = "native-logs")]
 static CHILD_PORTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[cfg(feature = "native-logs")]
@@ -87,7 +143,7 @@ fn prompts_selector_omission_and_python_confirmation_are_closed_before_db_or_chi
             .env("MODEL_MANAGER_IMPL", parent)
             .env("MODEL_MANAGER_PROMPTS_IMPL", prompts)
             .env("DATA_DIR", &database)
-            .output()
+            .prompt_output()
             .unwrap();
         assert!(!output.status.success());
         assert!(!database.exists());
@@ -98,7 +154,7 @@ fn prompts_selector_omission_and_python_confirmation_are_closed_before_db_or_chi
             .env("MODEL_MANAGER_IMPL", "rust")
             .env("MODEL_MANAGER_PROMPTS_IMPL", "rust")
             .env("DATA_DIR", &database)
-            .output()
+            .prompt_output()
             .unwrap();
         assert!(!output.status.success());
         assert!(String::from_utf8_lossy(&output.stderr).contains("compiled native-prompts"));
@@ -109,7 +165,7 @@ fn prompts_selector_omission_and_python_confirmation_are_closed_before_db_or_chi
     std::fs::write(&script,"#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
     let output = command(dir.path(), &marker)
         .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "1")
-        .output()
+        .prompt_output()
         .unwrap();
     assert_eq!(output.status.code(), Some(42));
     assert_eq!(std::fs::read_to_string(marker).unwrap(), "unset");
@@ -131,7 +187,7 @@ fn native_prompts_reject_case_folded_data_dir_aliases_before_side_effects() {
             if canonical {
                 cmd.env("DATA_DIR", dir.path().join("canonical"));
             }
-            let output = cmd.output().unwrap();
+            let output = cmd.prompt_output().unwrap();
             assert!(!output.status.success());
             assert!(String::from_utf8_lossy(&output.stderr).contains("canonical DATA_DIR"));
             assert!(!database.exists());
@@ -142,7 +198,7 @@ fn native_prompts_reject_case_folded_data_dir_aliases_before_side_effects() {
     // Python keeps its existing case-insensitive configuration policy.
     let output = command(dir.path(), &marker)
         .env("data_dir", &database)
-        .output()
+        .prompt_output()
         .unwrap();
     assert_eq!(output.status.code(), Some(42));
     assert!(!database.exists());
@@ -160,7 +216,7 @@ fn native_prompt_readiness_precedes_exact_private_child_confirmation() {
         .env("MODEL_MANAGER_PROMPTS_IMPL", "rust")
         .env("DATA_DIR", database.path())
         .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "untrusted")
-        .output()
+        .prompt_output()
         .unwrap();
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited")
@@ -207,7 +263,7 @@ fn native_parent_with_prompts_off_replaces_inherited_confirmation_without_databa
         .env("MODEL_MANAGER_IMPL", "rust")
         .env("DATA_DIR", &database)
         .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "1")
-        .output()
+        .prompt_output()
         .unwrap();
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited")

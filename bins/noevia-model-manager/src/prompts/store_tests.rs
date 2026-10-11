@@ -5,6 +5,9 @@
     clippy::panic
 )]
 use super::*;
+#[allow(dead_code)]
+#[path = "../bin/support/prompts_process.rs"]
+mod prompts_process;
 fn root() -> tempfile::TempDir {
     // Production rejects symlink ancestors. macOS's usual /var temporary root is a symlink.
     let path = std::env::var_os("S1_PROMPTS_TEST_ROOT")
@@ -168,7 +171,7 @@ fn schema_comments_strings_and_quoted_names_cannot_fake_autoincrement() {
         drop(db);
         assert!(
             matches!(Store::open(root.path()), Err(Error::Store)),
-            "{extra}"
+            "PROMPTS_ASSERT:schema-autoincrement {extra}"
         );
     }
     let root = root();
@@ -236,8 +239,9 @@ fn failed_readback_does_not_undo_committed_post_or_delete() {
         observer
             .query_row("SELECT name FROM prompts WHERE id=1", [], |r| r
                 .get::<_, String>(0))
+            .optional()
             .unwrap(),
-        "committed"
+        Some("committed".to_owned())
     );
     assert_eq!(run(&mut s, Operation::Delete(1)), Err(Error::Limit));
     assert_eq!(
@@ -517,14 +521,17 @@ spec=importlib.util.spec_from_file_location('app.db',source/'db.py');db=importli
 print(json.dumps({'list':db.list_prompts(),'selected':[dict(r) for r in db.prompts_by_ids(json.loads(sys.argv[3]))]}))
 "#;
     let read = |ids: &[i64]| {
+        let mut command =
+            std::process::Command::new(std::env::var_os("PYTHON").expect("actual Python required"));
+        command
+            .env_clear()
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .args(["-c", READ])
+            .arg(&source)
+            .arg(root.path())
+            .arg(serde_json::to_string(ids).unwrap());
         let output =
-            std::process::Command::new(std::env::var_os("PYTHON").expect("actual Python required"))
-                .args(["-c", READ])
-                .arg(&source)
-                .arg(root.path())
-                .arg(serde_json::to_string(ids).unwrap())
-                .output()
-                .unwrap();
+            prompts_process::bounded(command, Vec::new(), Duration::from_secs(12)).unwrap();
         assert!(
             output.status.success(),
             "{}",

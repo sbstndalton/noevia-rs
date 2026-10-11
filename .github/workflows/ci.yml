@@ -680,6 +680,7 @@ jobs:
   native-prompts:
     name: Native prompt CRUD, seed, actual Python differential and omission
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -687,15 +688,51 @@ jobs:
           repository: sbstndalton/noevia-services
           ref: 2360cb51f6475122ba0aa3d32272849a63028d66
           path: prompts-services
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 6c233f4a05730ed5dccd7997ae601e9999eaa6d7
+          path: prompts-runtime
+      - name: Read actual merged core pin
+        id: prompts-core
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/http/core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.prompts-core.outputs.sha }}
+          path: prompts-core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: npm ci --no-fund --no-audit
+        working-directory: prompts-core/server
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
         with:
           components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Install recorded oracle framework resolution
-        run: python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+        run: |
+          python3 -m pip install -r prompts-runtime/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Build independently pinned actual-core WASM prerequisite
+        run: |
+          set -euo pipefail
+          eval "$(grep -E '^(NOEVIA_RS_REF|NOEVIA_RS_SHA256|DAV_PARSE_WASM_SHA256)=[0-9a-f]+$' prompts-core/server/dav-parse.lock)"
+          [[ "$NOEVIA_RS_REF" =~ ^[0-9a-f]{40}$ ]]
+          curl -fsSL "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$NOEVIA_RS_REF" -o "$RUNNER_TEMP/prompts-wasm.tgz"
+          echo "$NOEVIA_RS_SHA256  $RUNNER_TEMP/prompts-wasm.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/prompts-wasm"
+          tar -xzf "$RUNNER_TEMP/prompts-wasm.tgz" --strip-components=1 -C "$RUNNER_TEMP/prompts-wasm"
+          "$RUNNER_TEMP/prompts-wasm/tools/build-dav-parse-wasm.sh" "$GITHUB_WORKSPACE/prompts-core/server/wasm/dav-parse.wasm"
+          echo "$DAV_PARSE_WASM_SHA256  prompts-core/server/wasm/dav-parse.wasm" | sha256sum -c -
       - name: Execute immutable actual Python API and SQLite oracle
         env:
           PYTHON: python3
@@ -719,10 +756,23 @@ jobs:
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
       - name: Native prompt behavior mutations must fail assertions
         run: cargo run --locked -q -p noevia-model-manager --bin check-prompts-mutations
+      - name: Actual public front, Node proxy and native prompt binary differential
+        env:
+          PYTHON: python3
+        run: |
+          cargo build --locked -p noevia-model-manager --features native-prompts
+          cargo build --locked -p noevia-server --bin noevia-server
+          cargo build --locked -p replay --bin corpus-launcher --bin prompts-contracts
+          cargo clippy --locked -p replay --bin corpus-launcher --bin prompts-contracts -- -D warnings
+          cargo test --locked -p replay --bin prompts-contracts
+          target/debug/corpus-launcher verify "$PWD/prompts-core"
+          target/debug/prompts-contracts "$PWD/prompts-core" "$PWD/prompts-runtime/model-manager/app" "$RUNNER_TEMP/prompts-publicfront.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: native-prompts-actual-python-oracle
-          path: ${{ runner.temp }}/prompts.json
+          path: |
+            ${{ runner.temp }}/prompts.json
+            ${{ runner.temp }}/prompts-publicfront.json
 
   native-ocr:
     name: Native OCR matches the pinned Python sidecar (real engines)

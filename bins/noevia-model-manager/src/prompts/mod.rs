@@ -115,6 +115,11 @@ pub enum Route {
     Invalid,
 }
 pub fn classify(raw: &str) -> Route {
+    // Establish ownership using only the fixed ASCII namespace. Malformed bytes in
+    // another owner's path must retain that owner's dispatch and timeout policy.
+    if !prompt_namespace(raw) {
+        return Route::NotOwned;
+    }
     if raw.len() > 8192 {
         return Route::Invalid;
     }
@@ -141,6 +146,28 @@ pub fn classify(raw: &str) -> Route {
         return Route::Redirect(canonical.to_owned());
     }
     item.map_or(Route::Collection, |id| Route::Item(id.to_owned()))
+}
+fn prompt_namespace(raw: &str) -> bool {
+    let mut bytes = raw.bytes();
+    fn decoded(bytes: &mut impl Iterator<Item = u8>) -> Option<u8> {
+        let byte = bytes.next()?;
+        if byte != b'%' {
+            return Some(byte);
+        }
+        let high = char::from(bytes.next()?).to_digit(16)?;
+        let low = char::from(bytes.next()?).to_digit(16)?;
+        u8::try_from(high * 16 + low).ok()
+    }
+    for expected in b"/api/v1/prompts" {
+        if decoded(&mut bytes) != Some(*expected) {
+            return false;
+        }
+    }
+    match bytes.next() {
+        None | Some(b'/') => true,
+        Some(b'%') => bytes.next() == Some(b'2') && matches!(bytes.next(), Some(b'f' | b'F')),
+        _ => false,
+    }
 }
 pub fn parse_id(id: &str) -> Result<i64, Error> {
     if id.len() > 64 {

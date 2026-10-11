@@ -153,6 +153,13 @@ fn run() -> Result<(), String> {
             Path::new(&output.ok_or("capture artifact directory required")?),
         );
     }
+    let prompts_port = if mode.starts_with("prompts-") {
+        Some(prompt_port(
+            output.as_deref().ok_or("synthetic prompt port required")?,
+        )?)
+    } else {
+        None
+    };
     let (entry, argv) = match mode.as_str() {
         "capture" => (
             "generate.cjs",
@@ -161,6 +168,11 @@ fn run() -> Result<(), String> {
                 output.ok_or("capture requires output directory")?,
             ],
         ),
+        "prompts-serve" | "prompts-absent" | "prompts-wrong-token" | "prompts-port-omitted"
+            if output.is_some() =>
+        {
+            ("serve.cjs", vec![])
+        }
         "serve" | "verify" | "verify-omission" | "wrong-host" if output.is_none() => {
             ("serve.cjs", vec![])
         }
@@ -172,6 +184,8 @@ fn run() -> Result<(), String> {
         &directory,
         entry,
         &argv,
+        prompts_port,
+        &mode,
         if mode == "wrong-host" {
             "MemTotal:        12582912 kB\n"
         } else {
@@ -240,11 +254,42 @@ fn run() -> Result<(), String> {
     let _ = std::fs::remove_dir_all(&directory);
     Err(error.to_string())
 }
+fn prompt_port(raw: &str) -> Result<u16, String> {
+    if raw.is_empty() || raw.len() > 5 || !raw.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("invalid synthetic prompt port".into());
+    }
+    raw.parse::<u16>()
+        .ok()
+        .filter(|p| *p != 0)
+        .ok_or_else(|| "invalid synthetic prompt port".into())
+}
+fn prompts_override(port: Option<u16>, control: &str) -> Result<String, String> {
+    let Some(port) = port else {
+        return Ok(String::new());
+    };
+    if control == "prompts-absent" {
+        return Ok(String::new());
+    }
+    let url = js(&format!("http://127.0.0.1:{port}"))?;
+    let token = js(if control == "prompts-wrong-token" {
+        "synthetic-prompts-wrong-token-0123456789abcdef"
+    } else {
+        "synthetic-prompts-publicfront-token-0123456789abcdef"
+    })?;
+    let ports = if control == "prompts-port-omitted" {
+        String::new()
+    } else {
+        format!(",NOEVIA_CORPUS_ALLOWED_PORTS:options.env.NOEVIA_CORPUS_ALLOWED_PORTS+',{port}'")
+    };
+    Ok(format!("options={{...options,env:{{...options.env,MODEL_LOADER_URL:{url},MODEL_LOADER_TOKEN:{token}{ports}}}}};"))
+}
 fn prepare(
     core: &Path,
     directory: &Path,
     entry: &str,
     argv: &[String],
+    prompts_port: Option<u16>,
+    prompts_control: &str,
     meminfo: &str,
 ) -> Result<PathBuf, String> {
     let preload = directory.join("host-input.cjs");
@@ -279,7 +324,11 @@ fn prepare(
             "__ARGS__",
             &serde_json::to_string(argv).map_err(|e| e.to_string())?,
         )
-        .replace("__TEMP__", &js(&directory.to_string_lossy())?);
+        .replace("__TEMP__", &js(&directory.to_string_lossy())?)
+        .replace(
+            "__PROMPTS_OVERRIDE__",
+            &prompts_override(prompts_port, prompts_control)?,
+        );
     std::fs::write(&wrapper, source).map_err(|e| e.to_string())?;
     Ok(wrapper)
 }
@@ -295,6 +344,26 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod capture_tests {
     use super::*;
+    #[test]
+    fn prompt_override_is_explicit_bounded_and_default_absent() {
+        assert_eq!(prompts_override(None, "serve").unwrap(), "");
+        assert_eq!(prompt_port("8090").unwrap(), 8090);
+        for port in ["0", "65536", "-1", " 8090", "8090/path", "localhost", "1\n"] {
+            assert!(prompt_port(port).is_err());
+        }
+        let override_ = prompts_override(Some(8090), "prompts-serve").unwrap();
+        assert!(override_.contains("MODEL_LOADER_URL:\"http://127.0.0.1:8090\""));
+        assert!(override_.contains(
+            "NOEVIA_CORPUS_ALLOWED_PORTS:options.env.NOEVIA_CORPUS_ALLOWED_PORTS+',8090'"
+        ));
+        assert_eq!(prompts_override(Some(8090), "prompts-absent").unwrap(), "");
+        assert!(prompts_override(Some(8090), "prompts-wrong-token")
+            .unwrap()
+            .contains("synthetic-prompts-wrong-token"));
+        let omitted = prompts_override(Some(8090), "prompts-port-omitted").unwrap();
+        assert!(omitted.contains("MODEL_LOADER_URL"));
+        assert!(!omitted.contains("NOEVIA_CORPUS_ALLOWED_PORTS"));
+    }
     #[test]
     fn exact_domains_counts_and_zero_drops() {
         let baseline = serde_json::json!({"exchanges":193,"dropped":0,"captureDomain":"baseline"});

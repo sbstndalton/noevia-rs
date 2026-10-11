@@ -185,6 +185,72 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
 fn root() -> tempfile::TempDir {
     tempfile::tempdir_in(std::env::current_dir().unwrap()).unwrap()
 }
+#[test]
+fn prompt_namespace_preserves_unrelated_malformed_ownership() {
+    for path in [
+        "/api/v1/not-owned/%zz",
+        "/api/v1/sections/%ff",
+        "/api/v1/promptsfoo/%zz",
+        "/api/v1/%zz/prompts",
+        "/api/v1/prompts%zz",
+    ] {
+        assert_eq!(classify(path), Route::NotOwned, "{path}");
+    }
+    assert_eq!(
+        classify(&format!("/other/{}", "x".repeat(8192))),
+        Route::NotOwned
+    );
+    for path in [
+        "/api/v1/prompts/%zz",
+        "/api/v1/%70rompts/%ff",
+        "/api/v1/prompts%2f1",
+    ] {
+        assert_eq!(classify(path), Route::Invalid, "{path}");
+    }
+    assert_eq!(classify("/api/v1/%70rompts"), Route::Collection);
+    assert_eq!(
+        classify("/api/v1/prompts/"),
+        Route::Redirect("/api/v1/prompts".into())
+    );
+}
+#[tokio::test]
+async fn prompt_selector_preserves_unrelated_dispatch_and_auth_first() {
+    let root = root();
+    let mut on = state(root.path()).await;
+    for path in ["/api/v1/not-owned/%zz", "/api/v1/not-owned/%ff"] {
+        assert_eq!(request(on.clone(), "GET", path, "", true).await.0, 404);
+        assert_eq!(request(on.clone(), "GET", path, "", false).await.0, 401);
+    }
+    assert_eq!(
+        request(on.clone(), "GET", "/api/v1/prompts/%zz", "", true)
+            .await
+            .0,
+        400
+    );
+    assert_eq!(
+        request(on.clone(), "GET", "/api/v1/prompts/%zz", "", false)
+            .await
+            .0,
+        401
+    );
+    let ordinary = request(on.clone(), "GET", "/api/v1/sections/ordinary", "", true).await;
+    let malformed = request(on.clone(), "GET", "/api/v1/sections/%zz", "", true).await;
+    std::sync::Arc::get_mut(&mut on).unwrap().prompts = None;
+    assert_eq!(
+        request(on.clone(), "GET", "/api/v1/sections/ordinary", "", true).await,
+        ordinary
+    );
+    assert_eq!(
+        request(on.clone(), "GET", "/api/v1/sections/%zz", "", true).await,
+        malformed
+    );
+    assert_eq!(
+        request(on, "GET", "/api/v1/not-owned/%zz", "", true)
+            .await
+            .0,
+        404
+    );
+}
 async fn request(
     state: std::sync::Arc<crate::StateData>,
     method: &str,
