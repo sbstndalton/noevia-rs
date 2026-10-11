@@ -149,11 +149,31 @@ fn timestamp() -> Result<f64> {
         .map_err(|_| Error::Store)?
         .as_secs_f64())
 }
+#[cfg_attr(test, track_caller)]
 fn io<T>(r: std::io::Result<T>) -> Result<T> {
-    r.map_err(|_| Error::Store)
+    #[cfg(test)]
+    let caller = std::panic::Location::caller();
+    r.map_err(|_error| {
+        #[cfg(test)]
+        eprintln!(
+            "prompts test I/O failure at {caller}: kind={:?}",
+            _error.kind()
+        );
+        Error::Store
+    })
 }
+#[cfg_attr(test, track_caller)]
 fn sql<T>(r: rusqlite::Result<T>) -> Result<T> {
-    r.map_err(|_| Error::Store)
+    #[cfg(test)]
+    let caller = std::panic::Location::caller();
+    r.map_err(|_error| {
+        #[cfg(test)]
+        eprintln!(
+            "prompts test SQL failure at {caller}: code={:?}",
+            _error.sqlite_error()
+        );
+        Error::Store
+    })
 }
 fn safe_file(path: &Path, optional: bool) -> Result<Option<std::fs::Metadata>> {
     let metadata = match std::fs::symlink_metadata(path) {
@@ -167,6 +187,15 @@ fn safe_file(path: &Path, optional: bool) -> Result<Option<std::fs::Metadata>> {
         || (metadata.uid() != 0 && metadata.uid() != uid)
         || metadata.mode() & 0o022 != 0
     {
+        #[cfg(test)]
+        eprintln!(
+            "prompts test safe-file rejection: regular={} nlink={} uid={} euid={} mode={:o}",
+            metadata.is_file(),
+            metadata.nlink(),
+            metadata.uid(),
+            uid,
+            metadata.mode()
+        );
         return Err(Error::Store);
     }
     Ok(Some(metadata))
@@ -391,11 +420,22 @@ impl Store {
     }
     fn check(&self) -> Result<()> {
         if Instant::now() >= self.deadline || self.cancel.load(Ordering::Relaxed) {
+            #[cfg(test)]
+            eprintln!(
+                "prompts test check budget: expired={} cancelled={}",
+                Instant::now() >= self.deadline,
+                self.cancel.load(Ordering::Relaxed)
+            );
             return Err(Error::Store);
         }
         for (path, dev, ino) in &self.identities {
             let m = io(std::fs::symlink_metadata(path))?;
             if m.dev() != *dev || m.ino() != *ino || m.file_type().is_symlink() {
+                #[cfg(test)]
+                eprintln!(
+                    "prompts test identity mismatch: expected_dev={dev} expected_ino={ino} actual_dev={} actual_ino={} symlink={}",
+                    m.dev(), m.ino(), m.file_type().is_symlink()
+                );
                 return Err(Error::Store);
             }
         }

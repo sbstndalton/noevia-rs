@@ -482,6 +482,24 @@ async fn cancelled_busy_delete_cannot_commit_after_unlock() {
 #[tokio::test]
 async fn actual_python_indirect_readers_observe_native_commits_on_same_file() {
     use sha2::{Digest, Sha256};
+    fn snapshot(root: &Path, stage: &str) {
+        for name in [
+            ".",
+            "model_loader.db",
+            "model_loader.db-wal",
+            "model_loader.db-shm",
+            "model_loader.db.prompts.lock",
+        ] {
+            match std::fs::symlink_metadata(root.join(name)) {
+                Ok(m) => eprintln!(
+                    "prompts reader {stage} {name}: dev={} ino={} uid={} mode={:o} nlink={} len={} regular={} directory={} symlink={}",
+                    m.dev(), m.ino(), m.uid(), m.mode(), m.nlink(), m.len(),
+                    m.is_file(), m.is_dir(), m.file_type().is_symlink()
+                ),
+                Err(e) => eprintln!("prompts reader {stage} {name}: kind={:?}", e.kind()),
+            }
+        }
+    }
     let Some(source) = std::env::var_os("NOEVIA_PROMPTS_APP") else {
         assert!(
             std::env::var_os("CI").is_none(),
@@ -519,13 +537,13 @@ async fn actual_python_indirect_readers_observe_native_commits_on_same_file() {
         ids.push(result["id"].as_i64().unwrap());
     }
     const READ: &str = r#"
-import importlib.util,json,sys,types
+import importlib.util,json,sqlite3,sys,types
 from pathlib import Path
 source=Path(sys.argv[1]);root=Path(sys.argv[2])
 app=types.ModuleType('app');app.__path__=[str(source)];sys.modules['app']=app
 config=types.ModuleType('app.config');config.settings=types.SimpleNamespace(data_dir=root);sys.modules['app.config']=config
 spec=importlib.util.spec_from_file_location('app.db',source/'db.py');db=importlib.util.module_from_spec(spec);spec.loader.exec_module(db)
-print(json.dumps({'list':db.list_prompts(),'selected':[dict(r) for r in db.prompts_by_ids(json.loads(sys.argv[3]))]}))
+print(json.dumps({'list':db.list_prompts(),'selected':[dict(r) for r in db.prompts_by_ids(json.loads(sys.argv[3]))], 'runtime':{'python':sys.version.split()[0],'executable':sys.executable,'sqlite':sqlite3.sqlite_version}}))
 "#;
     let read = |ids: &[i64]| {
         let mut command =
@@ -546,9 +564,25 @@ print(json.dumps({'list':db.list_prompts(),'selected':[dict(r) for r in db.promp
         );
         serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()
     };
+    eprintln!("prompts reader native SQLite={}", rusqlite::version());
+    snapshot(root.path(), "before-python");
+    let python_start = Instant::now();
     let actual = read(&ids);
-    let listed: serde_json::Value =
-        serde_json::from_slice(&prompts.response(Operation::List).await.unwrap()).unwrap();
+    eprintln!(
+        "prompts reader actual runtime={} elapsed_ms={}",
+        actual["runtime"],
+        python_start.elapsed().as_millis()
+    );
+    snapshot(root.path(), "after-python");
+    let native_start = Instant::now();
+    let native = prompts.response(Operation::List).await;
+    eprintln!(
+        "prompts reader native list success={} elapsed_ms={}",
+        native.is_ok(),
+        native_start.elapsed().as_millis()
+    );
+    snapshot(root.path(), "after-native-list");
+    let listed: serde_json::Value = serde_json::from_slice(&native.unwrap()).unwrap();
     assert_eq!(actual["list"], listed["prompts"]);
     assert_eq!(
         actual["selected"]
