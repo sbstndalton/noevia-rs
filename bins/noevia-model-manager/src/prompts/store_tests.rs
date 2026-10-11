@@ -869,3 +869,38 @@ print(json.dumps({'before':before,'held':held,'after':[dict(r) for r in db.promp
         serde_json::from_slice(&prompts.response(Operation::List).await.unwrap()).unwrap();
     assert_eq!(listed, deleted);
 }
+
+#[test]
+fn sticky_temporary_parent_requires_private_owned_prompt_root() {
+    use std::os::unix::fs::PermissionsExt;
+    // Canonical /tmp is /private/tmp on author Mac, /tmp on qualified Linux.
+    let parent = std::fs::canonicalize("/tmp").unwrap();
+    let metadata = std::fs::symlink_metadata(&parent).unwrap();
+    assert!(metadata.is_dir());
+    assert_eq!(metadata.uid(), 0);
+    assert_ne!(metadata.mode() & 0o1000, 0);
+    assert_ne!(metadata.mode() & 0o022, 0);
+    let root = tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir_in(parent)
+        .unwrap();
+    assert_eq!(
+        std::fs::symlink_metadata(root.path()).unwrap().uid(),
+        rustix::process::geteuid().as_raw()
+    );
+    // Explicit permissions make the negative independent of ambient umask.
+    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(matches!(Store::open(root.path()), Err(Error::Store)));
+    assert!(!root.path().join("model_loader.db").exists());
+    assert!(!root.path().join("model_loader.db.prompts.lock").exists());
+    std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut store = open(root.path());
+    store.seed().unwrap();
+    assert_eq!(
+        run(&mut store, Operation::List).unwrap()["prompts"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+}

@@ -204,12 +204,17 @@ fn native_prompts_reject_case_folded_data_dir_aliases_before_side_effects() {
     assert!(!database.exists());
 }
 
-#[cfg(all(target_os = "linux", feature = "native-prompts"))]
-#[test]
+#[cfg(feature = "native-prompts")]
+#[cfg_attr(target_os = "linux", test)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn native_prompt_readiness_precedes_exact_private_child_confirmation() {
     let _ports = child_ports();
     let (dir, marker) = owned_uvicorn();
-    let database = tempfile::tempdir().unwrap();
+    // A root-owned sticky temporary parent requires a private owned next directory.
+    let database = tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .unwrap();
     std::fs::write(dir.path().join("uvicorn"),"#!/bin/sh\n[ -f \"$DATA_DIR/model_loader.db\" ] || exit 43\nprintf '%s\\n%s\\n%s\\n' \"$NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED\" \"$DATA_DIR\" \"$*\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
     let output = command(dir.path(), &marker)
         .env("MODEL_MANAGER_IMPL", "rust")
@@ -218,6 +223,22 @@ fn native_prompt_readiness_precedes_exact_private_child_confirmation() {
         .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "untrusted")
         .prompt_output()
         .unwrap();
+    if !String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited") {
+        use std::os::unix::fs::MetadataExt;
+        let root = std::fs::symlink_metadata(database.path())
+            .ok()
+            .map(|m| (m.uid(), m.mode()));
+        let parent = database
+            .path()
+            .parent()
+            .and_then(|p| std::fs::symlink_metadata(p).ok())
+            .map(|m| (m.uid(), m.mode()));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("prompt readiness fixture: root_uid_mode={root:?} parent_uid_mode={parent:?} euid={} exit_code={:?} marker_exists={} database_exists={} store_error={} address_in_use={}",
+            rustix::process::geteuid().as_raw(), output.status.code(), marker.exists(),
+            database.path().join("model_loader.db").exists(), stderr.contains("Error: Store"),
+            stderr.contains("AddrInUse"));
+    }
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited")
     );
