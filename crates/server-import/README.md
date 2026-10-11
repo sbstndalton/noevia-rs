@@ -56,6 +56,9 @@ ECMAScript Unicode lowercase behavior is supported.
 Admission caps are 64 MiB for combined compact input+explicit snapshot
 serialization, depth 64, 262144 values+object keys, output 64 MiB, chats 2000,
 snapshot projects 2000 and each existing/tombstone/ID-supply list 16000.
+Depth counts the full compact snapshot: root at 0, projects array at 1,
+project object at 2 and name value at 3. A snapshot name containing 61 nested
+arrays with a scalar leaf reaches depth 64; 62 nested arrays are refused.
 Clock must be finite; options must be positive and at most their defaults.
 The snapshot serialization counted for admission uses
 `{projects:[{id,name}],existingChatIds:[],tombstones:[],generatedIds:[],now,maxMessages,maxChars}`

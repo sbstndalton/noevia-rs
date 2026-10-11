@@ -514,8 +514,9 @@ fn emit_history(out: &mut Buffer, history: &History<'_>) -> Result<(), Error> {
 ///
 /// Caller parsing/allocation is OUTSIDE this API's contract. This function preflights an already
 /// constructed finite plain-data JValue and the tenant snapshot before building any plan. Data
-/// plus snapshot string/name serialization must total at most64MiB; aggregate values+keys are
-/// capped at262144 nodes and depth64. It returns a stricter typed refusal for unsupported input,
+/// plus compact snapshot serialization must total at most64MiB; aggregate values+keys are
+/// capped at262144 nodes. Depth64 includes the snapshot root/projects/project/name scaffolding,
+/// with the name value starting at depth3. It returns a stricter typed refusal for unsupported input,
 /// never a substituted public400 error or silent replacement text. Logical bounds are not RSS/OOM
 /// guarantees. Only the future authenticated Rust caller may apply this plan to its own tenant.
 pub fn plan_import<'a>(data: &'a JValue, snapshot: Snapshot<'a>) -> Result<String, Error> {
@@ -565,7 +566,8 @@ pub fn plan_import<'a>(data: &'a JValue, snapshot: Snapshot<'a>) -> Result<Strin
     for project in snapshot.projects {
         budget.bytes("{\"id\":,\"name\":}".len())?;
         budget.bytes(string_bytes(project.id)?)?;
-        preflight(project.name, 0, &mut budget)?;
+        // Compact snapshot nesting: root0 / projects1 / project object2 / name3.
+        preflight(project.name, 3, &mut budget)?;
     }
     for list in [
         snapshot.existing_chat_ids,

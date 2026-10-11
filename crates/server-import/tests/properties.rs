@@ -222,3 +222,29 @@ fn depth_nodes_bytes_and_snapshot_limits_refuse_before_planning() {
     context.projects = &projects;
     assert_eq!(plan_import(&small, context), Err(Error::Limit));
 }
+
+#[test]
+fn compact_snapshot_name_depth_includes_three_scaffold_levels() {
+    let data = input(json!([]));
+    for (nested_arrays, accepted) in [(61, true), (62, false)] {
+        let mut name = JValue::Null;
+        for _ in 0..nested_arrays {
+            name = JValue::Arr(vec![name]);
+        }
+        let projects = [Project {
+            id: "p-depth",
+            name: &name,
+        }];
+        let mut context = Snapshot::empty(&[], 0.0);
+        context.projects = &projects;
+        let result = plan_import(&data, context);
+        if accepted {
+            assert!(
+                result.is_ok(),
+                "61 arrays plus snapshot scaffolding reaches64"
+            );
+        } else {
+            assert_eq!(result, Err(Error::Limit));
+        }
+    }
+}
