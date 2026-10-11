@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
-use noevia_model_manager::{docker::UnixDocker, router, validate_token, Redactor, StateData};
+use noevia_model_manager::{
+    docker::UnixDocker, router, validate_token, Redactor, StateData, LEGACY_TIMEOUT,
+};
 use std::{os::unix::process::CommandExt, sync::Arc, time::Duration};
 
 #[tokio::main]
@@ -50,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let legacy = reqwest::Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(5))
+        .timeout(LEGACY_TIMEOUT)
         .build()?;
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;
     // Refuse an existing loopback listener before spawn: ownership is never borrowed from

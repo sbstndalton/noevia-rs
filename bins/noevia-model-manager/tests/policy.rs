@@ -53,6 +53,7 @@ fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(2),
         legacy: reqwest::Client::builder()
+            .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .unwrap(),
@@ -260,6 +261,52 @@ async fn timeout_returns_native_refusal_without_fallback() {
             .status(),
         504
     );
+}
+
+#[tokio::test]
+async fn python_owned_response_can_exceed_native_log_timeout() {
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+    let listener = TcpListener::bind("127.0.0.1:8091").await.unwrap();
+    let (received, wait) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        while !request.ends_with(b"\r\n\r\n") {
+            let mut chunk = [0u8; 512];
+            let n = socket.read(&mut chunk).await.unwrap();
+            assert!(n > 0);
+            request.extend_from_slice(&chunk[..n]);
+            assert!(request.len() < 8192);
+        }
+        assert!(String::from_utf8_lossy(&request).starts_with("GET /api/v1/settings HTTP/1.1\r\n"));
+        received.send(()).unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+        socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 18\r\nConnection: close\r\n\r\n{\"synthetic\":true}").await.unwrap();
+    });
+    let router = noevia_model_manager::router(fixture(fake(), ""));
+    let request = tokio::spawn(async move {
+        router
+            .oneshot(
+                Request::get("/api/v1/settings")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    });
+    wait.await.unwrap();
+    tokio::time::pause();
+    tokio::time::advance(std::time::Duration::from_secs(6)).await;
+    let response = request.await.unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        response.into_body().collect().await.unwrap().to_bytes(),
+        "{\"synthetic\":true}"
+    );
+    server.await.unwrap();
 }
 proptest! {
     #[test]

@@ -6,6 +6,10 @@ use bytes::Bytes;
 use http_body_util::{BodyExt, Empty};
 use hyper::{client::conn::http1, Request, StatusCode};
 use hyper_util::rt::TokioIo;
+use serde::{
+    de::{IgnoredAny, SeqAccess, Visitor},
+    Deserializer,
+};
 use std::path::PathBuf;
 use tokio::net::UnixStream;
 
@@ -172,8 +176,7 @@ impl DockerRead for UnixDocker {
             if status != StatusCode::OK {
                 return Err("docker unreachable");
             }
-            let inventory: Vec<ContainerSummary> =
-                serde_json::from_slice(&raw).map_err(|_| "Docker inventory refused")?;
+            let inventory = bounded_inventory(&raw)?;
             if inventory.len() > INVENTORY_CAP {
                 return Err("container inventory exceeded limit");
             }
@@ -251,6 +254,48 @@ impl DockerRead for UnixDocker {
             decode_frames(&raw, tty)
         })
     }
+}
+
+fn bounded_inventory(raw: &[u8]) -> Result<Vec<ContainerSummary>, &'static str> {
+    let exceeded = std::cell::Cell::new(false);
+    struct Inventory<'a>(&'a std::cell::Cell<bool>);
+    impl<'de> Visitor<'de> for Inventory<'_> {
+        type Value = Vec<ContainerSummary>;
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("a bounded Docker container array")
+        }
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            let mut out = Vec::new();
+            loop {
+                if out.len() == INVENTORY_CAP {
+                    if seq.next_element::<IgnoredAny>()?.is_some() {
+                        self.0.set(true);
+                        return Err(serde::de::Error::custom("inventory cap"));
+                    }
+                    break;
+                }
+                let Some(container) = seq.next_element::<ContainerSummary>()? else {
+                    break;
+                };
+                out.try_reserve(1)
+                    .map_err(|_| serde::de::Error::custom("allocation refused"))?;
+                out.push(container);
+            }
+            Ok(out)
+        }
+    }
+    let mut deserializer = serde_json::Deserializer::from_slice(raw);
+    let result = deserializer
+        .deserialize_seq(Inventory(&exceeded))
+        .map_err(|_| {
+            if exceeded.get() {
+                "container inventory exceeded limit"
+            } else {
+                "Docker inventory refused"
+            }
+        })?;
+    deserializer.end().map_err(|_| "Docker inventory refused")?;
+    Ok(result)
 }
 
 pub fn decode_frames(raw: &[u8], tty: bool) -> Result<Vec<u8>, &'static str> {

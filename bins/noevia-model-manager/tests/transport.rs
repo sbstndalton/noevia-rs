@@ -150,6 +150,25 @@ async fn oversized_valid_json_never_reaches_parser() {
     // The bounded reader may close before the test peer finishes sending.
     let _ = peer.await;
 }
+
+#[tokio::test]
+async fn inventory_count_is_capped_while_deserializing() {
+    // A malformed Id in the sentinel must never enter ContainerSummary deserialization:
+    // otherwise the error changes to a protocol refusal before the later vector count.
+    for last in [r#"{"Id":"abc"}"#, r#"{"Id":42}"#] {
+        let raw = format!("[{},{}]", vec![r#"{"Id":"abc"}"#; 1024].join(","), last);
+        let (_dir, docker, peer) = peer(vec![(
+            "/containers/json?all=true&limit=1025&size=false".into(),
+            json_response(&raw),
+        )])
+        .await;
+        assert_eq!(
+            docker.containers().await.unwrap_err(),
+            "container inventory exceeded limit"
+        );
+        peer.await.unwrap();
+    }
+}
 proptest::proptest! {
     #[test]
     fn hostile_frames_always_return(bytes in proptest::collection::vec(proptest::prelude::any::<u8>(),0..4096)) {let _=decode_frames(&bytes,false);}

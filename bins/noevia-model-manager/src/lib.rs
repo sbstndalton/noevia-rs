@@ -18,6 +18,7 @@ pub const LOG_CAP: usize = 1024 * 1024;
 const INVENTORY_CAP: usize = 1024;
 const REQUEST_CAP: usize = 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(5);
+pub const LEGACY_TIMEOUT: Duration = Duration::from_secs(600);
 type Job<'a, T> = Pin<Box<dyn Future<Output = Result<T, &'static str>> + Send + 'a>>;
 
 #[derive(Clone, Debug)]
@@ -26,7 +27,8 @@ pub struct Container {
     pub first_image_tag: String,
 }
 
-/// Production uses Bollard; synthetic adapters are confined to tests.
+/// Production uses bounded native Unix ingress and Bollard model/query types.
+/// Synthetic adapters are confined to tests.
 pub trait DockerRead: Send + Sync {
     fn containers(&self) -> Job<'_, Vec<Container>>;
     fn logs<'a>(&'a self, name: &'a str, tail: usize) -> Job<'a, Vec<u8>>;
@@ -281,7 +283,12 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
         Ok(p) => p,
         Err(_) => return detail(StatusCode::SERVICE_UNAVAILABLE, "service is busy"),
     };
-    let result = tokio::time::timeout(TIMEOUT, dispatch(state.clone(), req)).await;
+    let native = path
+        .strip_prefix("/api/v1/backends/")
+        .and_then(|p| p.strip_suffix("/logs"))
+        .is_some();
+    let budget = if native { TIMEOUT } else { LEGACY_TIMEOUT };
+    let result = tokio::time::timeout(budget, dispatch(state.clone(), req)).await;
     drop(permit);
     match result {
         Ok(r) => r,

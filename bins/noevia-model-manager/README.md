@@ -22,9 +22,10 @@ explicit frame decoding replace those codecs. No extra HTTP proxy is inserted.
 Only exact GET list/inspect/image-inspect/log operations are admitted. First image RepoTag
 is used for discovery, including stopped containers; explicit configured names remain allowed.
 
-Limits: four concurrent HTTP requests, five seconds per request, 8 KiB URI and Docker
+Limits: four concurrent HTTP requests, five seconds per native logs request, 600 seconds
+for Python-owned traffic (the existing public proxy budget), 8 KiB URI and Docker
 header parser buffer, 32 Docker headers, 1 MiB Docker response before parsing, 1,024
-containers (a sentinel result refuses oversized inventories), 256-byte container names,
+containers (a bounded serde visitor refuses a sentinel before growing its inventory), 256-byte container names,
 1 MiB log input, 2 MiB redacted output, 4,000 returned lines, and 4 KiB search text.
 Python-owned request/response proxy bodies are capped at 1/16 MiB. Docker errors are
 sanitized; redirects, ambiguous framing, invalid/truncated frames and cap breaches refuse.
