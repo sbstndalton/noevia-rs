@@ -19,6 +19,16 @@ for n in tree.body:
 space={'re':re}; exec(compile(ast.Module(body=selected,type_ignores=[]),str(p),'exec'),space)
 cases=[]
 lines=['plain engine log','Authorization: Bearer abcdefghijklmnop123456','HF_TOKEN=hf_abcdefghijklmnopqrstuvwxyz0123','config {"api_key": "sk-live-abcdefghijklmnopqrstuv", "ctx": 8192}','remote https://admin:hunter2secret@nextcloud.example/remote.php','cookie cowork_session=deadbeefcafebabe1234 ok','token: abc123xyz','n_tokens = 512','prompt tokens: 40','slot session: 3','n_ctx_slot = 8192','fatal failure','warn: pending','wrn pending','err pending','bearer ABCDEFGH','aws AKIA1234567890123456','github ghp_abcdefghijklmnopqrstuvwxyz','jwt eyJabcdefgh.abcdefgh.abcdefgh','APİ_KEY=syntheticSECRETxyz','apı_key=syntheticSECRETxyz','ſecret=syntheticSECRETxyz','']
+# Actual Python adversarial cases for each differing Unicode class and exemption.
+adversarial=['AKIA1234567890123456'+c for c in ['\u0301','\u203f']]
+for c in ['\x1c','\x1d','\x1e','\x1f','\u0085','\u00a0','\u2028']:
+    adversarial += ['password'+c+'=syntheticSECRET','Authorization'+c+':syntheticSECRET','bearer'+c+'syntheticSECRET']
+for c in ['\u0301','\u203f','\u200c','\u200d','\u2054','\u20dd']:
+    adversarial += ['n_'+c+'password=syntheticSECRET','n_'+c+'token=syntheticSECRET']
+for raw in adversarial:
+    for q in ['', 'syntheticSECRET', 'AKIA1234567890123456']:
+        space['services']=types.SimpleNamespace(_effective_container_names=lambda:['synthetic-engine'],container_logs=lambda name,tail:(True,raw))
+        cases.append(dict(adversarial=True,raw=raw,q=q,level='',tail=400,clamped=400,answer=space['backend_logs']('synthetic-engine',q,'',400)))
 for raw in lines+['a\r\nb\r\n','a\x0bb\x1cc\u0085d\u2028e\u2029','\n\n','']:
     for q,level,tail in [('', '',400),('hunter2','',0),('WARN','warn',-9),('','error',99999)]:
         observed=[]

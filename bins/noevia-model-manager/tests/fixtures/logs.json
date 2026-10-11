@@ -3,6 +3,1381 @@
   "services_sha256": "eb11d5357f4e309d2dadf2c01346d404df6d568d5eb579d01eb89c45a7d92a18",
   "cases": [
     {
+      "adversarial": true,
+      "raw": "AKIA1234567890123456́",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "[redacted]́"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "AKIA1234567890123456́",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "AKIA1234567890123456́",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "AKIA1234567890123456‿",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "[redacted]‿"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "AKIA1234567890123456‿",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "AKIA1234567890123456‿",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001c=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "password",
+          "=syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001c=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "=syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001c=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001c:syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "Authorization",
+          ":syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001c:syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          ":syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001c:syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001csyntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "bearer",
+          "syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001csyntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001csyntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001d=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "password",
+          "=syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001d=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "=syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001d=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001d:syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "Authorization",
+          ":syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001d:syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          ":syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001d:syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001dsyntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "bearer",
+          "syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001dsyntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001dsyntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001e=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "password",
+          "=syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001e=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "=syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001e=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001e:syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "Authorization",
+          ":syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001e:syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          ":syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001e:syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001esyntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "bearer",
+          "syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001esyntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001esyntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001f=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "password\u001f=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001f=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password\u001f=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001f:syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "Authorization\u001f:[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001f:syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization\u001f:syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001fsyntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "bearer\u001f[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001fsyntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer\u001fsyntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "password",
+          "=syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "=syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization:syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "Authorization",
+          ":syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization:syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          ":syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization:syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearersyntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "bearer",
+          "syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearersyntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearersyntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password =syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "password =[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password =syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password =syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization :syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "Authorization :[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization :syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization :syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "bearer [redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password =syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "password",
+          "=syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password =syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "=syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "password =syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization :syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "Authorization",
+          ":syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization :syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          ":syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "Authorization :syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "bearer",
+          "syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "syntheticSECRET"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "bearer syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_́password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_́password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_́password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_́password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_́token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_́token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_́token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_́token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‿password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_‿password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‿password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‿password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‿token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_‿token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‿token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‿token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‌password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_‌password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‌password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‌password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‌token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_‌token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‌token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‌token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‍password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_‍password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‍password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‍password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‍token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_‍token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‍token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_‍token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⁔password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_⁔password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⁔password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⁔password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⁔token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_⁔token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⁔token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⁔token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⃝password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_⃝password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⃝password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⃝password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⃝token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_⃝token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⃝token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_⃝token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
       "raw": "plain engine log",
       "q": "",
       "level": "",

@@ -99,6 +99,14 @@ pub struct Redactor {
     patterns: Vec<(Regex, &'static str)>,
     keys: Regex,
 }
+// Python re uses str.isalnum plus underscore for word characters; Rust regex
+// additionally includes marks and connector punctuation. Python whitespace also
+// includes the four information separators. Nested classes preserve negation.
+fn python_classes(pattern: &str) -> String {
+    pattern
+        .replace(r"\w", r"[\p{L}\p{N}_]")
+        .replace(r"\s", r"[\s\x1c-\x1f]")
+}
 impl Redactor {
     pub fn new() -> Result<Self, regex::Error> {
         let mut patterns = Vec::new();
@@ -118,19 +126,19 @@ impl Redactor {
             (r"hf_[A-Za-z0-9]{20,}", "[redacted]"),
             (r"sk-[A-Za-z0-9_-]{16,}", "[redacted]"),
             (r"gh[pousr]_[A-Za-z0-9]{20,}", "[redacted]"),
-            (r"AKIA[0-9A-Z]{16}\b", "[redacted]"),
+            (r"AKIA[0-9A-Z]{16}", "[redacted]"),
             (
                 r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
                 "[redacted]",
             ),
         ] {
-            patterns.push((Regex::new(p)?, replacement));
+            patterns.push((Regex::new(&python_classes(p))?, replacement));
         }
         Ok(Self {
             patterns,
-            keys: Regex::new(
+            keys: Regex::new(&python_classes(
                 r#"(?i)(([\w.-]*(?:ap[iİı][_-]?key|ap[iİı]key|token|secret|password|passwd|pwd|credent[iİı]al|cook[iİı]e|sess[iİı]on)[\w.-]*)[\"']?\s*[:=]\s*[\"']?)([^\s,;&\"']+)"#,
-            )?,
+            ))?,
         })
     }
     pub fn redact(&self, line: &str) -> Result<String, &'static str> {
@@ -151,7 +159,7 @@ impl Redactor {
                         let value = caps.get(3).map(|m| m.as_str()).unwrap_or_default();
                         // Broader redaction is intentional: numeric-looking credentials and token
                         // suffixes are also scrubbed. Preserve established numeric counter fields.
-                        let counter = key.starts_with("n_")
+                        let counter = (key.starts_with("n_") && key.is_ascii())
                             || key == "tokens"
                             || key == "token_count"
                             || (key == "session"
@@ -182,6 +190,9 @@ impl Redactor {
             return Err("log input exceeded limit");
         }
         let decoded = String::from_utf8_lossy(raw);
+        // Scrub across line separators before splitting: a separator between a key
+        // and its value must not turn the value into an unlabelled secret line.
+        let decoded = self.redact(&decoded)?;
         // Python's contextual Unicode lower differs from Rust. Non-ASCII search is refused
         // rather than potentially letting a secret-dependent filter differ from the oracle.
         if !q.is_ascii() {

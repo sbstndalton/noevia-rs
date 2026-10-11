@@ -96,7 +96,18 @@ fn actual_python_policy_goldens() {
                 row["level"].as_str().unwrap(),
             )
             .unwrap();
-        assert_eq!(json!({"ok":true,"lines":lines}), row["answer"], "{row}");
+        if row["adversarial"].as_bool() == Some(true) {
+            assert!(
+                !lines.iter().any(|line| line.contains("syntheticSECRET")
+                    || line.contains("AKIA1234567890123456")),
+                "{row}"
+            );
+            if !row["q"].as_str().unwrap().is_empty() {
+                assert!(lines.is_empty(), "{row}");
+            }
+        } else {
+            assert_eq!(json!({"ok":true,"lines":lines}), row["answer"], "{row}");
+        }
     }
 }
 #[tokio::test]
@@ -311,5 +322,46 @@ proptest! {
         let raw=format!("password={secret}"); let redactor=Redactor::new().unwrap();
         prop_assert!(!redactor.redact(&raw).unwrap().contains(&secret));
         prop_assert!(redactor.filter(raw.as_bytes(),&secret,"").unwrap().is_empty());
+    }
+}
+
+#[test]
+fn unicode_credentials_never_survive_output_or_secret_queries() {
+    let redactor = Redactor::new().unwrap();
+    for separator in [
+        "\u{301}", "\u{203f}", "\u{200c}", "\u{200d}", "\u{2054}", "\u{20dd}", "é",
+    ] {
+        for key in ["password", "token", "secret", "api_key", "cookie"] {
+            let raw = format!("n_{separator}{key}=syntheticSECRET");
+            assert!(!redactor.redact(&raw).unwrap().contains("syntheticSECRET"));
+            assert!(redactor
+                .filter(raw.as_bytes(), "syntheticSECRET", "")
+                .unwrap()
+                .is_empty());
+        }
+    }
+    for separator in ['\u{1c}', '\u{1d}', '\u{1e}', '\u{1f}', '\u{85}', '\u{a0}'] {
+        for raw in [
+            format!("password{separator}=syntheticSECRET"),
+            format!("Authorization{separator}:syntheticSECRET"),
+            format!("bearer{separator}syntheticSECRET"),
+        ] {
+            assert!(!redactor.redact(&raw).unwrap().contains("syntheticSECRET"));
+            assert!(redactor
+                .filter(raw.as_bytes(), "syntheticSECRET", "")
+                .unwrap()
+                .is_empty());
+        }
+    }
+    for suffix in ["\u{301}", "\u{203f}", "a"] {
+        let raw = format!("AKIA1234567890123456{suffix}");
+        assert!(!redactor
+            .redact(&raw)
+            .unwrap()
+            .contains("AKIA1234567890123456"));
+        assert!(redactor
+            .filter(raw.as_bytes(), "AKIA1234567890123456", "")
+            .unwrap()
+            .is_empty());
     }
 }
