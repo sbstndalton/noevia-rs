@@ -347,6 +347,45 @@ impl ExitObservation {
     fn accepts(self) -> bool {
         self.exited && self.code == Some(0) && self.signal.is_none() && !self.killed && !self.dumped
     }
+    fn accepts_for(self, role: OwnedRole, mode: RunMode, owned_term_sent: bool) -> bool {
+        if self.accepts() {
+            return true;
+        }
+        // Only the direct qualification shim re-raises our successfully sent TERM.
+        let direct_fixture = matches!(role, OwnedRole::PythonFixture)
+            && matches!(
+                mode,
+                RunMode::Python
+                    | RunMode::PromptsAbsent
+                    | RunMode::PromptsWrongToken
+                    | RunMode::PromptsPortOmitted
+                    | RunMode::PublicInvalid
+            );
+        direct_fixture
+            && owned_term_sent
+            && !self.exited
+            && self.code.is_none()
+            && self.signal == Some(15)
+            && self.killed
+            && !self.dumped
+    }
+    fn matches_reaped(self, status: std::process::ExitStatus) -> bool {
+        use std::os::unix::process::ExitStatusExt;
+        if self.accepts() {
+            status.success()
+                && status.code() == self.code
+                && status.signal().is_none()
+                && !status.core_dumped()
+        } else {
+            !self.exited
+                && self.code.is_none()
+                && self.killed
+                && !self.dumped
+                && status.code().is_none()
+                && status.signal() == self.signal
+                && !status.core_dumped()
+        }
+    }
 }
 #[derive(Clone, Copy)]
 enum ShutdownStage {
@@ -574,7 +613,7 @@ impl Owned {
             if let Some(status) = observed {
                 let observation = ExitObservation::from_status(&status);
                 // Failure retains numeric identity until fallback group signal precedes wait.
-                if !observation.accepts() {
+                if !observation.accepts_for(self.role, self.mode, true) {
                     return Err(self.shutdown_refusal(
                         ShutdownStage::ExitStatus,
                         observation,
@@ -592,7 +631,7 @@ impl Owned {
                     }
                 };
                 self.leader.reaped = true;
-                if !status.success() {
+                if !observation.matches_reaped(status) {
                     return Err(self.shutdown_refusal(ShutdownStage::Wait, observation, deadline));
                 }
                 return Ok(());
@@ -1667,5 +1706,93 @@ mod tests {
             assert_eq!(role.name(), name);
         }
         Ok(())
+    }
+
+    #[test]
+    fn role_scoped_term_requires_owned_signal_and_matching_reap() {
+        use std::os::unix::process::ExitStatusExt;
+        let normal = ExitObservation {
+            code: Some(0),
+            exited: true,
+            ..Default::default()
+        };
+        let term = ExitObservation {
+            signal: Some(15),
+            killed: true,
+            ..Default::default()
+        };
+        let roles = [
+            OwnedRole::RustManager,
+            OwnedRole::RustFront,
+            OwnedRole::NodeLauncher,
+            OwnedRole::PythonFixture,
+            OwnedRole::ClosedControl,
+        ];
+        for role in roles {
+            assert!(normal.accepts_for(role, RunMode::Python, true));
+            assert!(normal.matches_reaped(std::process::ExitStatus::from_raw(0)));
+            assert!(!normal.matches_reaped(std::process::ExitStatus::from_raw(15)));
+            assert_eq!(
+                term.accepts_for(role, RunMode::Python, true),
+                matches!(role, OwnedRole::PythonFixture)
+            );
+            assert!(!term.accepts_for(role, RunMode::Python, false));
+        }
+        for mode in [
+            RunMode::Python,
+            RunMode::PromptsAbsent,
+            RunMode::PromptsWrongToken,
+            RunMode::PromptsPortOmitted,
+            RunMode::PublicInvalid,
+        ] {
+            assert!(term.accepts_for(OwnedRole::PythonFixture, mode, true));
+        }
+        for mode in [
+            RunMode::Rust,
+            RunMode::RustStartup,
+            RunMode::RustOff,
+            RunMode::ClosedControl,
+        ] {
+            assert!(!term.accepts_for(OwnedRole::PythonFixture, mode, true));
+        }
+        assert!(term.matches_reaped(std::process::ExitStatus::from_raw(15)));
+        for raw in [0, 1 << 8, 2, 9, 15 | 128] {
+            assert!(!term.matches_reaped(std::process::ExitStatus::from_raw(raw)));
+        }
+        for invalid in [
+            ExitObservation {
+                signal: Some(2),
+                ..term
+            },
+            ExitObservation {
+                signal: Some(9),
+                ..term
+            },
+            ExitObservation {
+                code: Some(0),
+                ..term
+            },
+            ExitObservation {
+                dumped: true,
+                ..term
+            },
+            ExitObservation {
+                exited: true,
+                ..term
+            },
+            ExitObservation {
+                killed: false,
+                ..term
+            },
+            ExitObservation {
+                code: Some(1),
+                exited: true,
+                ..Default::default()
+            },
+            ExitObservation::default(),
+        ] {
+            assert!(!invalid.accepts_for(OwnedRole::PythonFixture, RunMode::Python, true));
+        }
+        assert!(RunMode::parse("future-role-or-mode").is_err());
     }
 }
