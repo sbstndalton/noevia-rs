@@ -400,19 +400,57 @@ fn normalized(response: &Response) -> Result<Value> {
         json!({"status":response.status,"body":body,"cache_control":response.header("cache-control")}),
     )
 }
-fn ready(base: &Base, children: &mut [&mut Owned]) -> Result<()> {
+#[derive(Clone, Copy)]
+enum Readiness {
+    CoreOrFront,
+    Manager,
+}
+impl Readiness {
+    fn path(self) -> &'static str {
+        match self {
+            Self::CoreOrFront => "/api/ready",
+            Self::Manager => "/api/v1/health",
+        }
+    }
+    fn accepts(self, response: &Response) -> bool {
+        response.status == 200
+            && match self {
+                Self::CoreOrFront => true,
+                Self::Manager => serde_json::from_slice::<Value>(&response.body)
+                    .is_ok_and(|body| body == json!({"ok":true})),
+            }
+    }
+}
+fn ready(base: &Base, children: &mut [&mut Owned], readiness: Readiness) -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(20);
+    ready_until(base, children, readiness, deadline)
+}
+fn ready_until(
+    base: &Base,
+    children: &mut [&mut Owned],
+    readiness: Readiness,
+    deadline: Instant,
+) -> Result<()> {
     loop {
+        require(
+            Instant::now() < deadline,
+            "actual startup readiness deadline",
+        )?;
         for child in children.iter_mut() {
             child.pump()?;
         }
-        if request(base, "GET", "/api/ready", &[], &[]).is_ok_and(|r| r.status == 200) {
-            return Ok(());
-        }
         require(
             Instant::now() < deadline,
-            "actual core/front readiness deadline",
+            "actual startup readiness deadline",
         )?;
+        let response = request(base, "GET", readiness.path(), &[], &[]);
+        require(
+            Instant::now() < deadline,
+            "actual startup readiness deadline",
+        )?;
+        if response.is_ok_and(|response| readiness.accepts(&response)) {
+            return Ok(());
+        }
         thread::sleep(Duration::from_millis(20));
     }
 }
@@ -539,6 +577,14 @@ fn run_mode(
     }
     drop(guards);
     let mut manager = Owned::spawn(manager_command)?;
+    ready(
+        &Base {
+            host: "127.0.0.1".into(),
+            port: 8090,
+        },
+        &mut [&mut manager],
+        Readiness::Manager,
+    )?;
     let core_listener = TcpListener::bind("127.0.0.1:0")?;
     let front_listener = TcpListener::bind("127.0.0.1:0")?;
     let core_port = core_listener.local_addr()?.port();
@@ -574,6 +620,7 @@ fn run_mode(
             port: core_port,
         },
         &mut [&mut manager, &mut node],
+        Readiness::CoreOrFront,
     )?;
     drop(front_listener);
     let mut front = Command::new(bins.join("noevia-server"));
@@ -589,9 +636,35 @@ fn run_mode(
             format!("http://127.0.0.1:{core_port}"),
         );
     let mut front = Owned::spawn(front)?;
-    ready(&base, &mut [&mut manager, &mut node, &mut front])?;
+    ready(
+        &base,
+        &mut [&mut manager, &mut node, &mut front],
+        Readiness::CoreOrFront,
+    )?;
     let (mut admin, mut member) = session(&base, &root.join("ui-data"))?;
     if mode.starts_with("prompts-") {
+        if mode == "prompts-wrong-token" {
+            let upstream = request(
+                &Base {
+                    host: "127.0.0.1".into(),
+                    port: 8090,
+                },
+                "GET",
+                "/api/v1/prompts",
+                &[(
+                    "X-Model-Loader-Token".into(),
+                    "synthetic-prompts-wrong-token-0123456789abcdef".into(),
+                )],
+                &[],
+            )?;
+            require(
+                upstream.status == 401,
+                &format!(
+                    "synthetic upstream wrong-token expected 401, observed {}",
+                    upstream.status
+                ),
+            )?;
+        }
         let member_response = member.call(&base, "GET", "/api/model-manager/prompts", &[], true)?;
         require(
             member_response.status == 403,
@@ -775,12 +848,13 @@ fn main() -> Result<()> {
     require(args.next().is_none(), "unexpected arguments")?;
     let python_only = mode.as_deref() == Some(std::ffi::OsStr::new("--python-only"));
     let negative_only = mode.as_deref() == Some(std::ffi::OsStr::new("--negative-only"));
+    let wrong_token_only = mode.as_deref() == Some(std::ffi::OsStr::new("--wrong-token-only"));
     require(
-        mode.is_none() || python_only || negative_only,
+        mode.is_none() || python_only || negative_only || wrong_token_only,
         "unknown qualification mode",
     )?;
     require(
-        python_only || negative_only || cfg!(target_os = "linux"),
+        python_only || negative_only || wrong_token_only || cfg!(target_os = "linux"),
         "actual native binary qualification requires Linux",
     )?;
     let exe = std::env::current_exe()?;
@@ -792,10 +866,13 @@ fn main() -> Result<()> {
             "prompts-wrong-token",
             "prompts-port-omitted",
         ] {
+            if wrong_token_only && control != "prompts-wrong-token" {
+                continue;
+            }
             controls.extend(run_mode(&core, &app, bins, control, &dependencies)?);
         }
     }
-    if negative_only {
+    if negative_only || wrong_token_only {
         artifact(
             &output,
             &json!({"provenance":provenance,"native_binary_qualified":false,"negative_controls":controls}),
@@ -847,6 +924,80 @@ mod tests {
         clippy::indexing_slicing
     )]
     use super::*;
+    #[test]
+    fn fixed_health_predicate_and_expired_budget() {
+        let response = |status, body: &[u8]| Response {
+            status,
+            headers: Vec::new(),
+            body: body.to_vec(),
+        };
+        assert_eq!(Readiness::Manager.path(), "/api/v1/health");
+        assert_eq!(Readiness::CoreOrFront.path(), "/api/ready");
+        assert!(Readiness::Manager.accepts(&response(200, b"{\"ok\":true}")));
+        for (status, body) in [
+            (401, &b"{\"ok\":true}"[..]),
+            (200, &b"{\"ok\":false}"[..]),
+            (200, &b"{}"[..]),
+            (200, &b"broken"[..]),
+            (200, &b"{\"ok\":true,\"extra\":1}"[..]),
+        ] {
+            assert!(!Readiness::Manager.accepts(&response(status, body)));
+        }
+        assert!(Readiness::CoreOrFront.accepts(&response(200, b"arbitrary")));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let base = Base {
+            host: "127.0.0.1".into(),
+            port: listener.local_addr().unwrap().port(),
+        };
+        assert!(ready_until(&base, &mut [], Readiness::Manager, Instant::now()).is_err());
+        assert_eq!(
+            listener.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+    }
+    #[test]
+    fn owned_synthetic_manager_health_ready_before_request() {
+        const MARKER: &str = "NOEVIA_SYNTHETIC_READY_PORT";
+        if let Ok(port) = std::env::var(MARKER) {
+            let listener = TcpListener::bind(("127.0.0.1", port.parse::<u16>().unwrap())).unwrap();
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            stream
+                .set_write_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            let mut header = Vec::new();
+            while !header.ends_with(b"\r\n\r\n") {
+                assert!(header.len() < 4096);
+                let mut byte = [0];
+                stream.read_exact(&mut byte).unwrap();
+                header.push(byte[0]);
+            }
+            assert!(header.starts_with(b"GET /api/v1/health HTTP/1.1\r\n"));
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}").unwrap();
+            return;
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command.env_clear().env(MARKER, port.to_string()).args([
+            "--exact",
+            "tests::owned_synthetic_manager_health_ready_before_request",
+        ]);
+        let mut child = Owned::spawn(command).unwrap();
+        ready(
+            &Base {
+                host: "127.0.0.1".into(),
+                port,
+            },
+            &mut [&mut child],
+            Readiness::Manager,
+        )
+        .unwrap();
+    }
     #[test]
     fn timestamp_mask_is_limited_to_finite_prompt_rows() {
         let response = |body: Value| Response {
