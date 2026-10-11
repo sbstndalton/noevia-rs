@@ -967,66 +967,6 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
     fake.finish()?;
     Ok(rows)
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn exited_child_diagnostics_never_reflect_synthetic_credentials() {
-        let sentinel = "synthetic-qualification-credential-0123456789";
-        for (prefix, kind) in [
-            ("ModuleNotFoundError:", "module-unavailable"),
-            ("Error:", "child-error"),
-            ("corpus-launcher:", "launcher-error"),
-            ("arbitrary stderr", "child-exited"),
-        ] {
-            let raw = format!("{prefix} password={sentinel}\n");
-            let summary = diagnostic_summary(raw.as_bytes());
-            assert_eq!(summary, format!("owned synthetic server exited before qualification: kind={kind} stderr_bytes={} stderr_sha256={:x}", raw.len(), Sha256::digest(raw.as_bytes())));
-            assert!(!summary.contains(sentinel));
-            assert!(!summary.contains("password="));
-        }
-    }
-    #[test]
-    fn native_child_confirmation_semantics() -> Result<()> {
-        let runtime = qualification_path(
-            "NOEVIA_DIAGNOSE_SERVICES_SOURCE",
-            "/Users/sebastiandalton/noevia-work/s1-prompts-services",
-        );
-        let mut oracle = serde_json::Map::new();
-        for (key, path) in [
-            ("api", "model-manager/app/api.py"),
-            ("main", "model-manager/app/main.py"),
-            ("services", "model-manager/app/services.py"),
-            ("diagnose", "model-manager/app/diagnose.py"),
-        ] {
-            oracle.insert(
-                key.into(),
-                Value::String(String::from_utf8(git(
-                    &runtime,
-                    &["show", &format!("{RUNTIME}:{path}")],
-                )?)?),
-            );
-        }
-        oracle.insert("logs".into(), json!({"synthetic-only":""}));
-        let exe = std::env::current_exe()?;
-        let bins = exe
-            .parent()
-            .and_then(Path::parent)
-            .ok_or("owned test binary parent")?;
-        let rows = run_mode(
-            Path::new("/private/tmp/sol-routing-core010735-oracle"),
-            bins,
-            "rust-confirmation-check",
-            &Value::Object(oracle),
-        )?;
-        let marker = rows
-            .first()
-            .and_then(|row| row.get("child_confirmation"))
-            .ok_or("observed child confirmation")?;
-        assert_eq!(marker, &json!("1"));
-        Ok(())
-    }
-}
 fn featureless_control() -> Result<()> {
     let root = tempfile::tempdir()?;
     let binary = Path::new("/tmp/s1-diagnose-featureless-manager");
@@ -1293,4 +1233,64 @@ fn main() -> Result<()> {
         "public diagnosis semantic difference",
     )?;
     Ok(())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn exited_child_diagnostics_never_reflect_synthetic_credentials() {
+        let sentinel = "synthetic-qualification-credential-0123456789";
+        for (prefix, kind) in [
+            ("ModuleNotFoundError:", "module-unavailable"),
+            ("Error:", "child-error"),
+            ("corpus-launcher:", "launcher-error"),
+            ("arbitrary stderr", "child-exited"),
+        ] {
+            let raw = format!("{prefix} password={sentinel}\n");
+            let summary = diagnostic_summary(raw.as_bytes());
+            assert_eq!(summary, format!("owned synthetic server exited before qualification: kind={kind} stderr_bytes={} stderr_sha256={:x}", raw.len(), Sha256::digest(raw.as_bytes())));
+            assert!(!summary.contains(sentinel));
+            assert!(!summary.contains("password="));
+        }
+    }
+    #[test]
+    fn native_child_confirmation_semantics() -> Result<()> {
+        let runtime = qualification_path(
+            "NOEVIA_DIAGNOSE_SERVICES_SOURCE",
+            "/Users/sebastiandalton/noevia-work/s1-prompts-services",
+        );
+        let mut oracle = serde_json::Map::new();
+        for (key, path) in [
+            ("api", "model-manager/app/api.py"),
+            ("main", "model-manager/app/main.py"),
+            ("services", "model-manager/app/services.py"),
+            ("diagnose", "model-manager/app/diagnose.py"),
+        ] {
+            oracle.insert(
+                key.into(),
+                Value::String(String::from_utf8(git(
+                    &runtime,
+                    &["show", &format!("{RUNTIME}:{path}")],
+                )?)?),
+            );
+        }
+        oracle.insert("logs".into(), json!({"synthetic-only":""}));
+        let exe = std::env::current_exe()?;
+        let bins = exe
+            .parent()
+            .and_then(Path::parent)
+            .ok_or("owned test binary parent")?;
+        let rows = run_mode(
+            Path::new("/private/tmp/sol-routing-core010735-oracle"),
+            bins,
+            "rust-confirmation-check",
+            &Value::Object(oracle),
+        )?;
+        let marker = rows
+            .first()
+            .and_then(|row| row.get("child_confirmation"))
+            .ok_or("observed child confirmation")?;
+        assert_eq!(marker, &json!("1"));
+        Ok(())
+    }
 }

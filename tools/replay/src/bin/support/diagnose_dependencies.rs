@@ -26,21 +26,6 @@ fn require(ok: bool, message: &str) -> Result<()> {
         Err(message.into())
     }
 }
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn queue_admits_exact_cap_and_refuses_plus_one_before_growth() {
-        for cap in [128, 4096] {
-            let mut pending = Vec::new();
-            for value in 0..cap {
-                assert!(super::push_bounded(&mut pending, value, cap).is_ok());
-            }
-            assert_eq!(pending.len(), cap);
-            assert!(super::push_bounded(&mut pending, cap, cap).is_err());
-            assert_eq!(pending.len(), cap);
-        }
-    }
-}
 fn push_bounded<T>(pending: &mut Vec<T>, value: T, cap: usize) -> Result<()> {
     require(pending.len() < cap, "dependency pending inventory cap")?;
     pending.try_reserve(1)?;
@@ -206,4 +191,19 @@ pub fn copy(source: &Path, destination: &Path, expected: &[Vec<u8>; 2]) -> Resul
     Ok(
         json!({"source":source,"destination":destination,"roots":ROOTS,"closure":closure,"files":inventory,"total_bytes":total,"caps":{"files":4096,"packages":128,"total_bytes":33554432,"single_file_bytes":16777216},"install_or_download":false}),
     )
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn queue_admits_exact_cap_and_refuses_plus_one_before_growth() {
+        for cap in [128, 4096] {
+            let mut pending = Vec::new();
+            for value in 0..cap {
+                assert!(super::push_bounded(&mut pending, value, cap).is_ok());
+            }
+            assert_eq!(pending.len(), cap);
+            assert!(super::push_bounded(&mut pending, cap, cap).is_err());
+            assert_eq!(pending.len(), cap);
+        }
+    }
 }

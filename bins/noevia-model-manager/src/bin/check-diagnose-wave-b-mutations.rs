@@ -163,6 +163,9 @@ fn git(args: &[&str]) -> Result<Vec<u8>, String> {
     }
     Ok(output.stdout)
 }
+fn pin_owned_cargo_output(command: &mut Command) {
+    command.env("CARGO_TERM_COLOR", "never");
+}
 fn cargo(case: &Case, build: bool) -> Command {
     let mut command = Command::new("cargo");
     command.args([
@@ -197,6 +200,7 @@ fn cargo(case: &Case, build: bool) -> Command {
         ]);
     }
     command.env_remove("RUST_BACKTRACE");
+    pin_owned_cargo_output(&mut command);
     command
 }
 fn execute() -> Result<(), String> {
@@ -336,8 +340,11 @@ fn main() -> Result<(), String> {
 mod tests {
     use super::*;
     #[test]
-    fn current_child_confirmation_inventory_is_exact() {
-        let case = cases().into_iter().last().unwrap();
+    fn current_child_confirmation_inventory_is_exact() -> Result<(), String> {
+        let case = cases()
+            .into_iter()
+            .last()
+            .ok_or("fixed final case absent")?;
         let out = format!("\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:100:9:\nassertion `left == right` failed\n  left: String(\"0\")\n right: String(\"1\")\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.01s\n\n", t=case.test,p=case.test_path);
         let err = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running unittests src/bin/diagnose-contracts.rs (/target/debug/deps/diagnose_contracts-0123456789abcdef)\nerror: test failed, to rerun pass `-p replay --bin diagnose-contracts`\n";
         let check = |out: &str| {
@@ -360,25 +367,33 @@ mod tests {
         ] {
             assert!(!check(&bad));
         }
+        Ok(())
     }
     #[test]
-    fn production_plan_binds_unique_current_locations() {
+    fn production_plan_binds_unique_current_locations() -> Result<(), String> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         for case in cases() {
-            let source = read(&root.join(case.source), 4 * 1024 * 1024).unwrap();
-            let source = std::str::from_utf8(&source).unwrap();
+            let source = read(&root.join(case.source), 4 * 1024 * 1024)?;
+            let source = std::str::from_utf8(&source).map_err(|e| e.to_string())?;
             assert_eq!(source.matches(case.before).count(), 1, "{}", case.id);
             if case.id == "python-fallback" {
                 assert_eq!(source.matches(".request(state, name, deadline)").count(), 1);
             }
-            let tests = read(&root.join(case.test_path), 4 * 1024 * 1024).unwrap();
-            let (line, column) = location(std::str::from_utf8(&tests).unwrap(), &case).unwrap();
+            let tests = read(&root.join(case.test_path), 4 * 1024 * 1024)?;
+            let (line, column) = location(
+                std::str::from_utf8(&tests).map_err(|e| e.to_string())?,
+                &case,
+            )?;
             assert!(line > 0 && matches!(column, 5 | 9));
         }
+        Ok(())
     }
     #[test]
-    fn strict_complete_transcript_rejects_setup_caps_and_wrong_locations() {
-        let case = cases().into_iter().next().unwrap();
+    fn strict_complete_transcript_rejects_setup_caps_and_wrong_locations() -> Result<(), String> {
+        let case = cases()
+            .into_iter()
+            .next()
+            .ok_or("fixed first case absent")?;
         let out=format!("\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:104:5:\nassertion `left == right` failed\n  left: Some(\"wrong\")\n right: Some(\"expected\")\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.01s\n\n",t=case.test,p=case.test_path);
         let err="   Compiling noevia-model-manager v0.1.0 (/owned/bins/noevia-model-manager)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running tests/diagnose_transport.rs (/target/debug/deps/diagnose_transport-0123456789abcdef)\nerror: test failed, to rerun pass `-p noevia-model-manager --test diagnose_transport`\n";
         let check = |code, out: &str, err: &str| {
@@ -418,5 +433,29 @@ mod tests {
         for code in [None, Some(0), Some(1)] {
             assert!(!check(code, &out, err));
         }
+        Ok(())
+    }
+    #[test]
+    fn owned_cargo_output_overrides_inherited_color() -> Result<(), String> {
+        let mut command = Command::new("cargo");
+        command.env("CARGO_TERM_COLOR", "always");
+        pin_owned_cargo_output(&mut command);
+        for command in [
+            command,
+            cargo(
+                &cases().into_iter().next().ok_or("fixed case absent")?,
+                false,
+            ),
+            cargo(
+                &cases().into_iter().next().ok_or("fixed case absent")?,
+                true,
+            ),
+        ] {
+            assert!(command
+                .get_envs()
+                .any(|(key, value)| key == "CARGO_TERM_COLOR"
+                    && value == Some(std::ffi::OsStr::new("never"))));
+        }
+        Ok(())
     }
 }

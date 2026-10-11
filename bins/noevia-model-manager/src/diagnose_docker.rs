@@ -147,6 +147,89 @@ pub fn identifier(value: &str) -> Result<&str, Error> {
         Ok(value)
     }
 }
+/// Observes bytes read from the owned peer without interpreting or reflecting them.
+struct ObservedUnix {
+    socket: UnixStream,
+    response_bytes: Arc<AtomicBool>,
+}
+fn observe_response_bytes(observed: &AtomicBool, before: usize, after: usize) {
+    if after > before {
+        observed.store(true, Ordering::Release);
+    }
+}
+impl tokio::io::AsyncRead for ObservedUnix {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buffer: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        let before = buffer.filled().len();
+        let result = std::pin::Pin::new(&mut this.socket).poll_read(cx, buffer);
+        observe_response_bytes(&this.response_bytes, before, buffer.filled().len());
+        result
+    }
+}
+impl tokio::io::AsyncWrite for ObservedUnix {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bytes: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.get_mut().socket).poll_write(cx, bytes)
+    }
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().socket).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().socket).poll_shutdown(cx)
+    }
+}
+/// Only typed, known I/O causes before any response byte can be ordinary.
+/// Unknown causes, bounded-chain exhaustion and protocol errors fail closed.
+fn pre_response_error(
+    error: &(dyn std::error::Error + 'static),
+    observed: bool,
+    protocol_error: bool,
+) -> Error {
+    if observed || protocol_error {
+        return Error::Refused;
+    }
+    let mut source = Some(error);
+    for _ in 0..8 {
+        let Some(error) = source else {
+            return Error::Refused;
+        };
+        if error
+            .downcast_ref::<hyper::Error>()
+            .is_some_and(|error| error.is_parse() || error.is_incomplete_message())
+        {
+            return Error::Refused;
+        }
+        if let Some(error) = error.downcast_ref::<std::io::Error>() {
+            return if matches!(
+                error.kind(),
+                std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::ConnectionAborted
+                    | std::io::ErrorKind::BrokenPipe
+                    | std::io::ErrorKind::NotConnected
+                    | std::io::ErrorKind::TimedOut
+            ) {
+                Error::Ordinary
+            } else {
+                Error::Refused
+            };
+        }
+        source = error.source();
+    }
+    Error::Refused
+}
 pub(crate) async fn read(
     socket: &Path,
     operation: Read<'_>,
@@ -158,6 +241,11 @@ pub(crate) async fn read(
     let socket = UnixStream::connect(socket)
         .await
         .map_err(|_| Error::Ordinary)?;
+    let response_bytes = Arc::new(AtomicBool::new(false));
+    let socket = ObservedUnix {
+        socket,
+        response_bytes: Arc::clone(&response_bytes),
+    };
     let (mut sender, connection) = http1::Builder::new()
         .max_buf_size(8192)
         .handshake(TokioIo::new(socket))
@@ -173,10 +261,13 @@ pub(crate) async fn read(
         .header("connection", "close")
         .body(Empty::<Bytes>::new())
         .map_err(|_| Error::Refused)?;
-    let response = sender
-        .send_request(request)
-        .await
-        .map_err(|_| Error::Refused)?;
+    let response = sender.send_request(request).await.map_err(|error| {
+        pre_response_error(
+            &error,
+            response_bytes.load(Ordering::Acquire),
+            error.is_parse() || error.is_incomplete_message(),
+        )
+    })?;
     if response.headers().len() > 32
         || response
             .headers()
@@ -733,5 +824,59 @@ pub fn classify(raw: &str) -> Route {
         Route::Redirect(format!("/api/v1/backends/{item}/diagnose"))
     } else {
         Route::Item(item.to_owned())
+    }
+}
+
+#[cfg(test)]
+mod transport_error_tests {
+    use super::*;
+    #[derive(Debug)]
+    struct Chain(Box<dyn std::error::Error>);
+    impl std::fmt::Display for Chain {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("fixed synthetic cause")
+        }
+    }
+    impl std::error::Error for Chain {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(self.0.as_ref())
+        }
+    }
+    #[test]
+    fn typed_pre_response_boundary_and_observation_fail_closed() {
+        for kind in [
+            std::io::ErrorKind::ConnectionReset,
+            std::io::ErrorKind::BrokenPipe,
+        ] {
+            let io = std::io::Error::from(kind);
+            assert_eq!(pre_response_error(&io, false, false), Error::Ordinary);
+            assert_eq!(pre_response_error(&io, true, false), Error::Refused);
+            assert_eq!(pre_response_error(&io, false, true), Error::Refused);
+            let mut cause: Box<dyn std::error::Error> = Box::new(io);
+            for _ in 0..8 {
+                cause = Box::new(Chain(cause));
+            }
+            assert_eq!(
+                pre_response_error(cause.as_ref(), false, false),
+                Error::Refused
+            );
+        }
+        for kind in [std::io::ErrorKind::UnexpectedEof, std::io::ErrorKind::Other] {
+            assert_eq!(
+                pre_response_error(&std::io::Error::from(kind), false, false),
+                Error::Refused
+            );
+        }
+        assert_eq!(
+            pre_response_error(&std::fmt::Error, false, false),
+            Error::Refused
+        );
+        let observed = AtomicBool::new(false);
+        observe_response_bytes(&observed, 0, 0);
+        assert!(!observed.load(Ordering::Acquire));
+        observe_response_bytes(&observed, 0, 1);
+        assert!(observed.load(Ordering::Acquire));
+        observe_response_bytes(&observed, 1, 1);
+        assert!(observed.load(Ordering::Acquire));
     }
 }
