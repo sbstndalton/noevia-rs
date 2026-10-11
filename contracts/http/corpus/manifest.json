@@ -4,6 +4,7 @@
     "usageWindowDays": 365,
     "version": 1
   },
+  "captureDomain": "baseline",
   "covered": [
     "GET /api/ready",
     "GET /api/health",

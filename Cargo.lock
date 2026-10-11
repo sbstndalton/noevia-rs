@@ -1603,6 +1603,7 @@ dependencies = [
  "server-auth",
  "server-projects",
  "server-reasoning-settings",
+ "server-routing-mode",
  "server-sampling-settings",
  "server-store",
  "server-usage",
@@ -2061,7 +2062,9 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "httparse",
+ "rustix",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -2440,6 +2443,18 @@ dependencies = [
  "proptest",
  "serde_json",
  "server-store",
+ "tempfile",
+]
+
+[[package]]
+name = "server-routing-mode"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "rustix",
+ "serde_json",
+ "server-store",
+ "sha2",
  "tempfile",
 ]
 

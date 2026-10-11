@@ -34,6 +34,7 @@ pub struct Switches {
     pub rust_usage: bool,
     pub rust_sampling_settings: bool,
     pub rust_reasoning_settings: bool,
+    pub rust_routing_mode: bool,
 }
 
 impl Switches {
@@ -44,6 +45,7 @@ impl Switches {
             "NOEVIA_RUST_USAGE" => self.rust_usage,
             "NOEVIA_RUST_SAMPLING_SETTINGS" => self.rust_sampling_settings,
             "NOEVIA_RUST_REASONING_SETTINGS" => self.rust_reasoning_settings,
+            "NOEVIA_RUST_ROUTING_MODE" => self.rust_routing_mode,
             _ => false,
         }
     }
@@ -76,6 +78,7 @@ pub enum Native {
     Usage,
     SamplingSettings,
     ReasoningSettings,
+    RoutingMode,
 }
 
 /// The routes [`Native::ProjectAssets`] implements.
@@ -87,6 +90,11 @@ const PROJECT_ASSET_ROUTES: &[&str] = &[
 /// The native handler a rust-owned route is implemented by.
 pub fn native_for(route: &Route) -> Option<Native> {
     match (route.path, route.catch_all, route.switch) {
+        (
+            "/api/routing-mode" | "/api/routing-mode/allowed",
+            false,
+            Some("NOEVIA_RUST_ROUTING_MODE"),
+        ) => Some(Native::RoutingMode),
         ("/api/ready", false, None) => Some(Native::Ready),
         (_, true, None) => Some(Native::Static),
         (_, false, Some("NOEVIA_RUST_AUTH")) if route.path.starts_with("/api/") => {
@@ -221,6 +229,7 @@ mod tests {
             rust_usage: false,
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
+            rust_routing_mode: false,
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -232,6 +241,7 @@ mod tests {
             rust_usage: false,
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
+            rust_routing_mode: false,
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -244,6 +254,7 @@ mod tests {
             rust_usage: false,
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
+            rust_routing_mode: false,
         };
         let both = Switches {
             rust_auth: true,
@@ -251,6 +262,7 @@ mod tests {
             rust_usage: false,
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
+            rust_routing_mode: false,
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
@@ -312,6 +324,7 @@ mod tests {
             rust_usage: true,
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
+            rust_routing_mode: false,
             ..Default::default()
         };
         for p in ["/api/usage", "/api/usage/aggregate"] {

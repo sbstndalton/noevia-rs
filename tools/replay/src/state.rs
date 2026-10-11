@@ -32,7 +32,53 @@ pub fn snapshot(dir: &Path, db_name: &str, ignore: &[String], b: &Bindings) -> V
     } else {
         Value::Null
     };
-    json!({ "files": files, "db": db })
+    // Routing configuration requires content equality, not merely a matching filename. Capture
+    // only this fixed normalized account file; never read provider/account private stores.
+    let mut routing = Map::new();
+    if let Ok(users) = std::fs::read_dir(dir.join("users")) {
+        for user in users.filter_map(Result::ok) {
+            let path = user.path().join("routing-mode.json");
+            if std::fs::symlink_metadata(&path).is_ok() {
+                use std::io::Read;
+                let value = (|| -> Result<String, ()> {
+                    let fd = rustix::fs::open(
+                        &path,
+                        rustix::fs::OFlags::RDONLY
+                            | rustix::fs::OFlags::NOFOLLOW
+                            | rustix::fs::OFlags::NONBLOCK,
+                        rustix::fs::Mode::empty(),
+                    )
+                    .map_err(|_| ())?;
+                    let stat = rustix::fs::fstat(&fd).map_err(|_| ())?;
+                    if rustix::fs::FileType::from_raw_mode(stat.st_mode)
+                        != rustix::fs::FileType::RegularFile
+                        || stat.st_nlink != 1
+                    {
+                        return Err(());
+                    }
+                    let mut bytes = Vec::new();
+                    std::fs::File::from(fd)
+                        .take(1025)
+                        .read_to_end(&mut bytes)
+                        .map_err(|_| ())?;
+                    if bytes.len() > 1024 {
+                        return Err(());
+                    }
+                    String::from_utf8(bytes).map_err(|_| ())
+                })();
+                if let Ok(rel) = path.strip_prefix(dir) {
+                    routing.insert(
+                        b.unbind(&rel.to_string_lossy()),
+                        match value {
+                            Ok(text) => Value::String(text),
+                            Err(()) => json!({"error":"routing configuration unavailable"}),
+                        },
+                    );
+                }
+            }
+        }
+    }
+    json!({ "files": files, "db": db, "routingModeFiles": routing })
 }
 
 fn walk(root: &Path, dir: &Path, ignore: &[String], b: &Bindings, out: &mut Vec<String>) {

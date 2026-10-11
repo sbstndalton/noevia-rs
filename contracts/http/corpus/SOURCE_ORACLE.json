@@ -1,9 +1,11 @@
 {
-  "core": "4f978ec2e636c9a4a82c40b876765156e8a746e9",
+  "captureDomain": "baseline",
+  "core": "010735c7d86d30269ab3f4a351b2135faea1c8e7",
+  "coreArchiveSha256": "0c43134dc1aad5af9fb464d84041b6712be4df0d4094ab0d95f63ff4893d0705",
   "dropped": 0,
   "exchanges": 193,
   "generator": "actual core tools/contract-corpus/generate.cjs",
-  "generatorSha256": "78e856313e456f0d2f7342753640dc1079681aa5f232ff36c1bec4453d849a10",
+  "generatorSha256": "264ff1d9751a20ead3ea6f6fb3a0f57931ebb6607c64161f1198e68047e803f9",
   "hostInput": {
     "collaborator": "readMeminfo",
     "memTotalKib": 8388608,

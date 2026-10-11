@@ -6,6 +6,105 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 const MEMINFO: &str = "MemTotal:        8388608 kB\n";
+#[allow(dead_code)]
+#[path = "../../../qualification/process.rs"]
+mod process;
+fn bounded(command: Command) -> Result<process::Output, String> {
+    process::bounded(command, Vec::new(), std::time::Duration::from_secs(600))
+}
+fn capture_domain() -> (&'static str, u64) {
+    if std::env::var("NOEVIA_ROUTING_CORPUS").as_deref() == Ok("1") {
+        ("routing-mode", 220)
+    } else {
+        ("baseline", 193)
+    }
+}
+fn validate_capture(
+    manifest: &serde_json::Value,
+    domain: &str,
+    count: u64,
+    recorded: u64,
+) -> Result<(), String> {
+    if manifest
+        .get("exchanges")
+        .and_then(serde_json::Value::as_u64)
+        != Some(count)
+        || manifest.get("dropped").and_then(serde_json::Value::as_u64) != Some(0)
+        || recorded != count
+        || manifest
+            .get("captureDomain")
+            .is_some_and(|value| value.as_str() != Some(domain))
+    {
+        return Err("actual corpus capture domain/count/drop mismatch".into());
+    }
+    Ok(())
+}
+fn finalize_capture(core: &Path, out: &Path) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let (domain, count) = capture_domain();
+    let path = out.join("manifest.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    let recorded = std::fs::read_dir(out.join("exchanges"))
+        .map_err(|e| e.to_string())?
+        .try_fold(0_u64, |count, entry| -> Result<u64, String> {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.file_type().map_err(|e| e.to_string())?.is_file()
+                || entry.path().extension().and_then(|e| e.to_str()) != Some("json")
+            {
+                return Err("unexpected capture entry".into());
+            }
+            Ok(count + 1)
+        })?;
+    validate_capture(&manifest, domain, count, recorded)?;
+    let owned: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../contracts/http/corpus/manifest.json"
+    ))
+    .map_err(|e| e.to_string())?;
+    let calendar = owned
+        .get("calendarContract")
+        .ok_or("owned calendar contract missing")?
+        .clone();
+    if calendar != serde_json::json!({"version":1,"timeZone":"UTC","usageWindowDays":365}) {
+        return Err("owned calendar contract changed".into());
+    }
+    let object = manifest
+        .as_object_mut()
+        .ok_or("capture manifest not object")?;
+    object.insert("calendarContract".into(), calendar);
+    object.insert("captureDomain".into(), domain.into());
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let hash = |file: &Path| -> Result<String, String> {
+        Ok(format!(
+            "{:x}",
+            Sha256::digest(std::fs::read(file).map_err(|e| e.to_string())?)
+        ))
+    };
+    let wasm = hash(&core.join("server/wasm/dav-parse.wasm"))?;
+    if wasm != "040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd87cb2e978575" {
+        return Err("actual core WASM provenance mismatch".into());
+    }
+    let mut command = Command::new("node");
+    command.arg("--version");
+    let version = bounded(command)?;
+    let node = String::from_utf8_lossy(&version.stdout).trim().to_owned();
+    if !version.status.success() || node != "v22.23.3" {
+        return Err("actual capture requires Node22.23.3".into());
+    }
+    let provenance = serde_json::json!({"core":include_str!("../../../../contracts/http/core.ref").trim(),"coreArchiveSha256":include_str!("../../../../contracts/http/core.sha256").trim(),"captureDomain":domain,"node":node,"generatorSha256":hash(&core.join("tools/contract-corpus/generate.cjs"))?,"wasmSha256":wasm,"generator":"actual core tools/contract-corpus/generate.cjs","hostInput":{"module":"server/inference-budget.cjs","collaborator":"readMeminfo","memTotalKib":8388608},"exchanges":count,"dropped":0});
+    std::fs::write(
+        out.join("SOURCE_ORACLE.json"),
+        serde_json::to_vec_pretty(&provenance).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    println!("actual capture domain={domain} count={count} zero drops verified");
+    Ok(())
+}
 fn js(value: &str) -> Result<String, String> {
     serde_json::to_string(value).map_err(|e| e.to_string())
 }
@@ -39,17 +138,20 @@ fn run() -> Result<(), String> {
     if args.next().is_some() {
         return Err("too many arguments".into());
     }
-    let sha = Command::new("git")
-        .arg("-C")
-        .arg(&core)
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let mut command = Command::new("git");
+    command.arg("-C").arg(&core).args(["rev-parse", "HEAD"]);
+    let sha = bounded(command)?;
     if !sha.status.success()
         || String::from_utf8_lossy(&sha.stdout).trim()
             != include_str!("../../../../contracts/http/core.ref").trim()
     {
         return Err("synthetic launcher requires the actual pinned core commit".into());
+    }
+    if mode == "finalize-capture" {
+        return finalize_capture(
+            &core,
+            Path::new(&output.ok_or("capture artifact directory required")?),
+        );
     }
     let (entry, argv) = match mode.as_str() {
         "capture" => (
@@ -95,11 +197,9 @@ fn run() -> Result<(), String> {
         let verify = include_str!("../synthetic-host-verify.cjs")
             .replace("__WRAPPER__", &js(&wrapper.to_string_lossy())?)
             .replace("__CORE__", &js(&core.to_string_lossy())?);
-        let status = Command::new("node")
-            .arg("-e")
-            .arg(verify)
-            .output()
-            .map_err(|e| e.to_string());
+        let mut command = Command::new("node");
+        command.arg("-e").arg(verify);
+        let status = bounded(command);
         let _ = std::fs::remove_dir_all(&directory);
         return match status {
             Ok(s) if s.status.success() && mode == "verify" => {
@@ -120,69 +220,20 @@ fn run() -> Result<(), String> {
         };
     }
     if mode == "capture" {
-        let status = Command::new("node")
-            .arg(&wrapper)
-            .status()
-            .map_err(|e| e.to_string());
+        let mut command = Command::new("node");
+        command.arg(&wrapper);
+        let result = bounded(command);
         let _ = std::fs::remove_dir_all(&directory);
-        match status {
-            Ok(status) if status.success() => {}
-            Ok(_) => return Err("actual Node capture failed".into()),
-            Err(e) => return Err(e),
+        let result = result?;
+        print!("{}", String::from_utf8_lossy(&result.stdout));
+        eprint!("{}", String::from_utf8_lossy(&result.stderr));
+        if !result.status.success() {
+            return Err("actual Node capture failed".into());
         }
-        let out = argv.get(1).ok_or("capture output missing")?;
-        let manifest_path = Path::new(out).join("manifest.json");
-        let mut manifest: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(&manifest_path).map_err(|e| e.to_string())?)
-                .map_err(|e| e.to_string())?;
-        if manifest
-            .get("exchanges")
-            .and_then(serde_json::Value::as_u64)
-            != Some(193)
-            || manifest.get("dropped").and_then(serde_json::Value::as_u64) != Some(0)
-        {
-            return Err("actual corpus capture changed count or dropped exchanges".into());
-        }
-        let owned: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../contracts/http/corpus/manifest.json"
-        ))
-        .map_err(|e| e.to_string())?;
-        let calendar = owned
-            .get("calendarContract")
-            .ok_or("owned calendar contract missing")?
-            .clone();
-        if calendar != serde_json::json!({"version":1,"timeZone":"UTC","usageWindowDays":365}) {
-            return Err("owned calendar contract changed".into());
-        }
-        manifest
-            .as_object_mut()
-            .ok_or("capture manifest is not an object")?
-            .insert("calendarContract".into(), calendar);
-        std::fs::write(
-            &manifest_path,
-            serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
-        let hashes = Command::new("node").args(["-e", "const fs=require('node:fs'),crypto=require('node:crypto');const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');console.log(JSON.stringify({node:process.version,generatorSha256:hash(process.argv[1]),wasmSha256:hash(process.argv[2])}));"])
-            .arg(core.join("tools/contract-corpus/generate.cjs"))
-            .arg(core.join("server/wasm/dav-parse.wasm")).output().map_err(|e|e.to_string())?;
-        if !hashes.status.success() {
-            return Err("actual source provenance hashing failed".into());
-        }
-        let hashes: serde_json::Value =
-            serde_json::from_slice(&hashes.stdout).map_err(|e| e.to_string())?;
-        if hashes.get("wasmSha256").and_then(serde_json::Value::as_str)
-            != Some("040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd87cb2e978575")
-        {
-            return Err("actual core WASM provenance mismatch".into());
-        }
-        let provenance = serde_json::json!({"core":include_str!("../../../../contracts/http/core.ref").trim(),"node":hashes.get("node"),"generatorSha256":hashes.get("generatorSha256"),"wasmSha256":hashes.get("wasmSha256"),"generator":"actual core tools/contract-corpus/generate.cjs","hostInput":{"module":"server/inference-budget.cjs","collaborator":"readMeminfo","memTotalKib":8388608},"exchanges":193,"dropped":0});
-        std::fs::write(
-            Path::new(out).join("SOURCE_ORACLE.json"),
-            serde_json::to_vec_pretty(&provenance).map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
-        return Ok(());
+        return finalize_capture(
+            &core,
+            Path::new(argv.get(1).ok_or("capture output missing")?),
+        );
     }
     // Replacing this process preserves the actual Node launcher's signal and child-reap handlers.
     let error = Command::new("node").arg(&wrapper).exec();
@@ -239,5 +290,28 @@ fn main() -> ExitCode {
             eprintln!("corpus-launcher: {e}");
             ExitCode::from(2)
         }
+    }
+}
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+    #[test]
+    fn exact_domains_counts_and_zero_drops() {
+        let baseline = serde_json::json!({"exchanges":193,"dropped":0,"captureDomain":"baseline"});
+        let routing =
+            serde_json::json!({"exchanges":220,"dropped":0,"captureDomain":"routing-mode"});
+        assert!(validate_capture(&baseline, "baseline", 193, 193).is_ok());
+        assert!(validate_capture(&routing, "routing-mode", 220, 220).is_ok());
+        assert!(validate_capture(&baseline, "routing-mode", 220, 193).is_err());
+        assert!(validate_capture(&routing, "baseline", 193, 220).is_err());
+        assert!(validate_capture(&routing, "other", 220, 220).is_err());
+        assert!(validate_capture(&routing, "routing-mode", 220, 219).is_err());
+        assert!(validate_capture(
+            &serde_json::json!({"exchanges":220,"dropped":1}),
+            "routing-mode",
+            220,
+            220
+        )
+        .is_err());
     }
 }
