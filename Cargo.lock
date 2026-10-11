@@ -1311,6 +1311,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "laya-service"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "nix",
+ "prompt-framing",
+ "proptest",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1509,6 +1523,19 @@ dependencies = [
  "docling-service",
  "nix",
  "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "noevia-laya"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "laya-service",
+ "nix",
+ "serde_json",
+ "sha2",
  "tempfile",
  "tokio",
 ]
