@@ -4,6 +4,8 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
+#[path = "support/bounded_input.rs"]
+mod bounded_input;
 use server_store::{
     bounded::{BoundedStore, BoundedUpkeepWriter, Budget, Fault, QualifiedRoot},
     rusqlite::{types::Value, Connection},
@@ -489,7 +491,7 @@ fn focused_mutant_certificates() -> Result<(), String> {
     if !resume {
         std::fs::create_dir(&dir).map_err(|_| "new evidence directory")?;
     }
-    let source = std::fs::read_to_string(root.join("crates/server-store/tests/bounded.rs"))
+    let source = bounded_input::text(&root.join("crates/server-store/tests/bounded.rs"), 1048576)
         .map_err(|_| "test source")?;
     if source.len() > 1048576 {
         return Err("source cap".into());
@@ -503,7 +505,7 @@ fn focused_mutant_certificates() -> Result<(), String> {
     let mut proofs = Vec::new();
     for (tag, file, old, new, test, anchor, payload, equal, count) in matrix {
         let path = root.join(file);
-        let original = std::fs::read(&path).map_err(|_| "production source")?;
+        let original = bounded_input::read(&path, 1048576).map_err(|_| "production source")?;
         if original.len() > 1048576 {
             return Err("production source cap".into());
         }
@@ -517,14 +519,15 @@ fn focused_mutant_certificates() -> Result<(), String> {
         let (capture_source, status, stdout, stderr) = if resume
             && dir.join(format!("{tag}.status")).exists()
         {
-            if std::fs::read(dir.join(format!("{tag}.source.rs"))).map_err(|_| "retained source")?
+            if bounded_input::read(&dir.join(format!("{tag}.source.rs")), 1048576)
+                .map_err(|_| "retained source")?
                 != changed.as_bytes()
             {
                 return Err("retained mutation source mismatch".into());
             }
-            let captured = std::fs::read_to_string(dir.join(format!("{tag}.assertions.rs")))
+            let captured = bounded_input::text(&dir.join(format!("{tag}.assertions.rs")), 1048576)
                 .map_err(|_| "retained assertions")?;
-            let status = std::fs::read_to_string(dir.join(format!("{tag}.status")))
+            let status = bounded_input::text(&dir.join(format!("{tag}.status")), 32)
                 .map_err(|_| "retained status")?;
             if status != "Some(101)" {
                 return Err("retained status".into());
@@ -532,8 +535,10 @@ fn focused_mutant_certificates() -> Result<(), String> {
             (
                 captured,
                 Some(101),
-                std::fs::read(dir.join(format!("{tag}.stdout"))).map_err(|_| "retained stdout")?,
-                std::fs::read(dir.join(format!("{tag}.stderr"))).map_err(|_| "retained stderr")?,
+                bounded_input::read(&dir.join(format!("{tag}.stdout")), 8388608)
+                    .map_err(|_| "retained stdout")?,
+                bounded_input::read(&dir.join(format!("{tag}.stderr")), 65536)
+                    .map_err(|_| "retained stderr")?,
             )
         } else {
             let output = Command::new("/tmp/m6-status-bounded-command")
@@ -614,7 +619,7 @@ fn focused_mutant_certificates() -> Result<(), String> {
         }
         proofs.push(serde_json::json!({"tag":tag,"file":file,"witness":proof}));
         drop(restore);
-        if std::fs::read(&path).map_err(|_| "restore read")? != original {
+        if bounded_input::read(&path, 1048576).map_err(|_| "restore read")? != original {
             return Err("restore byte mismatch".into());
         }
     }
@@ -637,11 +642,12 @@ fn retained_certificate_forged_controls() -> Result<(), String> {
         ("vm", "cancellation_vm_busy_and_immutable_job_slots", "assert_eq!(\n        vm.err().map(|e| e.fault),\n        Some(Fault::Cap),\n        \"ROUTING_ASSERT/store/vm\"\n    );", "ROUTING_ASSERT/store/vm", true),
     ];
     for (name, test, anchor, tag, equal) in matrix {
-        let source = std::fs::read_to_string(dir.join(format!("{name}.assertions.rs")))
+        let source = bounded_input::text(&dir.join(format!("{name}.assertions.rs")), 1048576)
             .map_err(|_| "source")?;
-        let out = std::fs::read(dir.join(format!("{name}.stdout"))).map_err(|_| "stdout")?;
-        let err =
-            std::fs::read_to_string(dir.join(format!("{name}.stderr"))).map_err(|_| "stderr")?;
+        let out = bounded_input::read(&dir.join(format!("{name}.stdout")), 8388608)
+            .map_err(|_| "stdout")?;
+        let err = bounded_input::text(&dir.join(format!("{name}.stderr")), 65536)
+            .map_err(|_| "stderr")?;
         certificate(
             &source,
             test,
@@ -765,4 +771,366 @@ fn retained_certificate_forged_controls() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[test]
+fn aggregate_precopy_exact_and_overflow_boundaries() {
+    for many in [false, true] {
+        let (d, _c) = db();
+        let b = budget();
+        let root = QualifiedRoot::open(d.path(), &b).unwrap();
+        let mut reader = BoundedStore::open(&root, &b).unwrap();
+        let query = format!(
+            "SELECT {}",
+            (0..17)
+                .map(|i| format!("?1 AS c{i}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let called = AtomicBool::new(false);
+        let result = reader.read(|r| {
+            if many {
+                r.rows(&query, ["x".repeat(4096)], |_| {
+                    called.store(true, Ordering::Release);
+                    Ok(())
+                })
+                .map(|_| ())
+            } else {
+                r.row(&query, ["x".repeat(4096)], |_| {
+                    called.store(true, Ordering::Release);
+                    Ok(())
+                })
+                .map(|_| ())
+            }
+        });
+        assert_eq!(
+            result.err().map(|e| e.fault),
+            Some(Fault::Cap),
+            "ROUTING_ASSERT/store/aggregate"
+        );
+        assert!(!called.load(Ordering::Acquire));
+        reader.close().unwrap();
+    }
+    for cumulative in [false, true] {
+        let (d, _c) = db();
+        let b = budget();
+        let root = QualifiedRoot::open(d.path(), &b).unwrap();
+        let mut reader = BoundedStore::open(&root, &b).unwrap();
+        let cols = if cumulative { 8 } else { 16 };
+        let query = format!(
+            "SELECT {}{}",
+            (0..cols)
+                .map(|i| format!("?1 AS c{i}"))
+                .collect::<Vec<_>>()
+                .join(","),
+            if cumulative {
+                " UNION ALL SELECT ?1,?1,?1,?1,?1,?1,?1,?1"
+            } else {
+                ""
+            }
+        );
+        reader
+            .read(|r| r.rows(&query, ["x".repeat(4096)], |_| Ok(())))
+            .unwrap();
+        let called = AtomicBool::new(false);
+        let extra = reader.read(|r| {
+            r.row("SELECT 'x' AS extra", [], |_| {
+                called.store(true, Ordering::Release);
+                Ok(())
+            })
+        });
+        assert_eq!(extra.err().map(|e| e.fault), Some(Fault::Cap));
+        assert!(!called.load(Ordering::Acquire));
+        reader.close().unwrap();
+    }
+}
+
+#[test]
+fn fk_topology_refuses_cross_owner_cascade_before_delta() {
+    for action in ["CASCADE", "SET NULL"] {
+        let (d, c) = db();
+        c.execute_batch(&format!("ALTER TABLE sessions ADD COLUMN parent_session TEXT REFERENCES sessions(id_hash) ON DELETE {action}; INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('v','V','v','V','member','x','v',1,1); INSERT INTO sessions(id_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at,user_agent,ip,parent_session) VALUES('other','v','c',1,1,9,'ua','ip','s');")).unwrap();
+        let b = budget();
+        let root = QualifiedRoot::open(d.path(), &b).unwrap();
+        let mut w = BoundedUpkeepWriter::open(&root, auth(), &b).unwrap();
+        let result = w.write(|tx| tx.execute("DELETE FROM sessions WHERE id_hash='s'", []));
+        assert!(result.is_err(), "ROUTING_ASSERT/store/fk_cascade");
+        w.close().unwrap();
+        assert_eq!(
+            c.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            c.query_row(
+                "SELECT parent_session FROM sessions WHERE id_hash='other'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "s"
+        );
+    }
+}
+
+#[test]
+fn fk_topology_valid_schema_and_malformed_edges() {
+    let (d, c) = db();
+    c.execute_batch("INSERT INTO device_grants VALUES('g','u','Mac',1,1,9,'ip','ua'); CREATE TABLE optional_app(user_id TEXT REFERENCES users(id) ON DELETE CASCADE, data TEXT);").unwrap();
+    let b = budget();
+    let root = QualifiedRoot::open(d.path(), &b).unwrap();
+    let mut w = BoundedUpkeepWriter::open(&root, auth(), &b).unwrap();
+    w.write(|tx| {
+        tx.execute("UPDATE sessions SET last_seen_at=2 WHERE id_hash='s'", [])?;
+        tx.execute("UPDATE device_grants SET last_used_at=2 WHERE id='g'", [])?;
+        tx.execute("DELETE FROM sessions WHERE id_hash='s'", [])?;
+        Ok(())
+    })
+    .unwrap();
+    w.close().unwrap();
+    assert_eq!(
+        c.query_row(
+            "SELECT last_used_at FROM device_grants WHERE id='g'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        2
+    );
+    for change in [
+        "CREATE TABLE bad(parent TEXT REFERENCES sessions(id_hash) ON DELETE CASCADE)",
+        "CREATE TABLE bad(parent TEXT REFERENCES sessions ON DELETE CASCADE)",
+        "ALTER TABLE sessions ADD COLUMN bad TEXT REFERENCES users(id)",
+        "CREATE UNIQUE INDEX seen ON sessions(last_seen_at); ALTER TABLE sessions ADD COLUMN parent_seen INTEGER REFERENCES sessions(last_seen_at) ON UPDATE CASCADE",
+        "CREATE UNIQUE INDEX used ON device_grants(last_used_at); CREATE TABLE bad(parent INTEGER REFERENCES device_grants(last_used_at) ON UPDATE CASCADE)",
+        "CREATE TABLE bad(parent TEXT REFERENCES device_grants(id) ON DELETE CASCADE)",
+    ] {
+        let (d,c)=db();c.execute_batch(change).unwrap();let b=budget();let root=QualifiedRoot::open(d.path(),&b).unwrap();let mut w=BoundedUpkeepWriter::open(&root,auth(),&b).unwrap();
+        assert!(w.write(|tx|tx.execute("UPDATE sessions SET last_seen_at=2 WHERE id_hash='s'",[])).is_err());w.close().unwrap();
+        assert_eq!(c.query_row("SELECT last_seen_at FROM sessions WHERE id_hash='s'",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+    }
+    for replacement in [
+        "user_id TEXT NOT NULL REFERENCES users(id) ON DELETE SET NULL",
+        "user_id TEXT NOT NULL REFERENCES users ON DELETE CASCADE",
+        "user_id TEXT NOT NULL",
+    ] {
+        let schema=SCHEMA.replace("user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,\n  csrf_hash TEXT NOT NULL",&format!("{replacement},\n  csrf_hash TEXT NOT NULL"));
+        let schema = if replacement == "user_id TEXT NOT NULL" {
+            schema.replace("expires_at INTEGER NOT NULL, user_agent TEXT NOT NULL, ip TEXT NOT NULL\n);", "expires_at INTEGER NOT NULL, user_agent TEXT NOT NULL, ip TEXT NOT NULL, FOREIGN KEY(user_id,csrf_hash) REFERENCES users(id,username) ON DELETE CASCADE\n);")
+        } else {
+            schema
+        };
+        let d = tempfile::tempdir().unwrap();
+        let c = Connection::open(server_store::db_path(d.path())).unwrap();
+        c.execute_batch(&schema).unwrap();
+        let b = budget();
+        let root = QualifiedRoot::open(d.path(), &b).unwrap();
+        let mut r = BoundedStore::open(&root, &b).unwrap();
+        assert!(r.read(|_| Ok(())).is_err());
+        r.close().unwrap();
+    }
+}
+
+#[test]
+fn fk_metadata_caps_and_cancel() {
+    let (d, c) = db();
+    for i in 0..65 {
+        c.execute_batch(&format!("CREATE TABLE extra{i}(id TEXT)"))
+            .unwrap();
+    }
+    let b = budget();
+    let root = QualifiedRoot::open(d.path(), &b).unwrap();
+    let mut r = BoundedStore::open(&root, &b).unwrap();
+    assert_eq!(r.read(|_| Ok(())).err().map(|e| e.fault), Some(Fault::Cap));
+    r.close().unwrap();
+    let (d, _c) = db();
+    let b = budget();
+    let root = QualifiedRoot::open(d.path(), &b).unwrap();
+    let mut r = BoundedStore::open(&root, &b).unwrap();
+    b.cancellation().cancel();
+    let called = AtomicBool::new(false);
+    assert_eq!(
+        r.read(|_| {
+            called.store(true, Ordering::Release);
+            Ok(())
+        })
+        .err()
+        .map(|e| e.fault),
+        Some(Fault::Cancelled)
+    );
+    assert!(!called.load(Ordering::Acquire));
+    r.close().unwrap();
+}
+
+#[test]
+fn bounded_input_regular_growth_symlink_fifo() {
+    use std::io::Write;
+    let d = tempfile::tempdir().unwrap();
+    let path = d.path().join("input");
+    std::fs::write(&path, vec![b'x'; 8193]).unwrap();
+    assert!(bounded_input::read(&path, 8192).is_err());
+    std::fs::write(&path, vec![b'x'; 8192]).unwrap();
+    assert_eq!(bounded_input::read(&path, 8192).unwrap().len(), 8192);
+    std::fs::write(&path, vec![b'x'; 4096]).unwrap();
+    let mut first = true;
+    assert!(bounded_input::read_with(&path, 4096, || {
+        if first {
+            first = false;
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap();
+            f.write_all(b"x").unwrap();
+        }
+    })
+    .is_err());
+    let link = d.path().join("link");
+    std::os::unix::fs::symlink(&path, &link).unwrap();
+    assert!(bounded_input::read(&link, 8192).is_err());
+    let hard = d.path().join("hard");
+    std::fs::hard_link(&path, &hard).unwrap();
+    assert!(bounded_input::read(&hard, 8192).is_err());
+    std::fs::remove_file(hard).unwrap();
+    assert!(bounded_input::read(d.path(), 8192).is_err());
+    let fifo = d.path().join("fifo");
+    assert!(std::process::Command::new("/tmp/m6-status-bounded-command")
+        .arg("/usr/bin/mkfifo")
+        .arg(&fifo)
+        .status()
+        .unwrap()
+        .success());
+    let start = Instant::now();
+    assert!(bounded_input::read(&fifo, 8192).is_err());
+    assert!(start.elapsed() < Duration::from_secs(1));
+}
+
+#[test]
+#[ignore = "explicit finite repair mutant matrix only"]
+fn repair_mutant_certificates() -> Result<(), String> {
+    use std::{path::PathBuf, process::Command};
+    struct Restore(PathBuf, Vec<u8>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            if std::fs::write(&self.0, &self.1).is_err() {
+                eprintln!("MUTATION RESTORE FAILED");
+            }
+        }
+    }
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = PathBuf::from(
+        std::env::var("NOEVIA_BOUNDED_REPAIR_EVIDENCE").map_err(|_| "new evidence directory")?,
+    );
+    std::fs::create_dir(&dir).map_err(|_| "new evidence directory")?;
+    let path = root.join("crates/server-store/src/bounded.rs");
+    let original = bounded_input::read(&path, 1048576)?;
+    let text = std::str::from_utf8(&original).map_err(|_| "production UTF8")?;
+    let source = bounded_input::text(&root.join("crates/server-store/tests/bounded.rs"), 1048576)?;
+    let cases=[
+        ("aggregate","aggregate_precopy_exact_and_overflow_boundaries","assert_eq!(\n            result.err().map(|e| e.fault),\n            Some(Fault::Cap),\n            \"ROUTING_ASSERT/store/aggregate\"\n        );","ROUTING_ASSERT/store/aggregate",true),
+        ("fk","fk_topology_refuses_cross_owner_cascade_before_delta","assert!(result.is_err(), \"ROUTING_ASSERT/store/fk_cascade\");","ROUTING_ASSERT/store/fk_cascade",false),
+    ];
+    let mut proofs = Vec::new();
+    for (tag, test, anchor, payload, equal) in cases {
+        let changed = if tag == "aggregate" {
+            if text.matches("if total > 65536 {").count() != 1
+                || text.matches(".filter(|n| *n <= 65536)").count() != 2
+            {
+                return Err("aggregate exact mutation inventory".into());
+            }
+            text.replace("if total > 65536 {", "if false {")
+                .replace(".filter(|n| *n <= 65536)", "")
+        } else {
+            let old = "verify_fk_topology(c, b, &mut metadata)?;";
+            if text.matches(old).count() != 1 {
+                return Err("FK exact mutation inventory".into());
+            }
+            text.replace(old, "let _retained_guard = verify_fk_topology;")
+        };
+        let restore = Restore(path.clone(), original.clone());
+        std::fs::write(&path, &changed).map_err(|_| "mutant write")?;
+        let output = Command::new("/tmp/m6-status-bounded-command")
+            .args([
+                "/Users/sebastiandalton/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin/cargo",
+                "test",
+                "--offline",
+                "-p",
+                "server-store",
+                "--test",
+                "bounded",
+                "--target-dir",
+                "/tmp/m6-bounded-store-repair-mutant-target",
+                "--",
+                test,
+                "--exact",
+                "--nocapture",
+            ])
+            .current_dir(&root)
+            .output()
+            .map_err(|_| "bounded child")?;
+        for (suffix, bytes) in [
+            ("source.rs", changed.as_bytes()),
+            ("assertions.rs", source.as_bytes()),
+            ("stdout", output.stdout.as_slice()),
+            ("stderr", output.stderr.as_slice()),
+        ] {
+            std::fs::write(dir.join(format!("{tag}.{suffix}")), bytes)
+                .map_err(|_| "capture write")?;
+        }
+        std::fs::write(
+            dir.join(format!("{tag}.status")),
+            format!("{:?}", output.status.code()),
+        )
+        .map_err(|_| "status write")?;
+        let proof = certificate(
+            &source,
+            test,
+            anchor,
+            payload,
+            equal,
+            output.status.code(),
+            &output.stdout,
+            &output.stderr,
+        )?;
+        proofs.push(serde_json::json!({"tag":tag,"witness":proof}));
+        drop(restore);
+        if bounded_input::read(&path, 1048576)? != original {
+            return Err("restore byte mismatch".into());
+        }
+    }
+    std::fs::write(
+        dir.join("certificate.json"),
+        serde_json::to_vec_pretty(&proofs).map_err(|_| "certificate encoding")?,
+    )
+    .map_err(|_| "certificate write")?;
+    Ok(())
+}
+
+#[test]
+fn fk_row_metadata_caps() {
+    for (tables, edges) in [(1, 65), (5, 64)] {
+        let (d, c) = db();
+        for i in 0..tables {
+            let constraints = (0..edges)
+                .map(|_| "FOREIGN KEY(x) REFERENCES users(id)")
+                .collect::<Vec<_>>()
+                .join(",");
+            c.execute_batch(&format!("CREATE TABLE extra{i}(x TEXT,{constraints})"))
+                .unwrap();
+        }
+        let b = budget();
+        let root = QualifiedRoot::open(d.path(), &b).unwrap();
+        let mut r = BoundedStore::open(&root, &b).unwrap();
+        let called = AtomicBool::new(false);
+        assert_eq!(
+            r.read(|_| {
+                called.store(true, Ordering::Release);
+                Ok(())
+            })
+            .err()
+            .map(|e| e.fault),
+            Some(Fault::Cap)
+        );
+        assert!(!called.load(Ordering::Acquire));
+        r.close().unwrap();
+    }
 }

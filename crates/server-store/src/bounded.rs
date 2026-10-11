@@ -174,11 +174,29 @@ impl Budget {
             }
             total = total.checked_add(n).ok_or_else(|| self.fail_cap())?;
         }
-        if self.0.rows.fetch_add(1, Ordering::AcqRel) >= 64
-            || self.0.bytes.fetch_add(total, Ordering::AcqRel) > 65536usize.saturating_sub(total)
-        {
+        // Refuse a single oversized row before counters or the mapper can advance.
+        if total > 65536 {
             return Err(self.fail_cap());
         }
+        let rows = self.0.rows.load(Ordering::Acquire);
+        let bytes = self.0.bytes.load(Ordering::Acquire);
+        let next_rows = rows.checked_add(1).filter(|n| *n <= 64);
+        let next_bytes = bytes.checked_add(total).filter(|n| *n <= 65536);
+        let (Some(_), Some(_)) = (next_rows, next_bytes) else {
+            return Err(self.fail_cap());
+        };
+        self.0
+            .bytes
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                current.checked_add(total).filter(|n| *n <= 65536)
+            })
+            .map_err(|_| self.fail_cap())?;
+        self.0
+            .rows
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                current.checked_add(1).filter(|n| *n <= 64)
+            })
+            .map_err(|_| self.fail_cap())?;
         Ok(())
     }
     fn result<T>(&self, r: rusqlite::Result<T>) -> Result<T, Error> {
@@ -437,7 +455,9 @@ fn authorize(ctx: AuthContext<'_>, writer: bool) -> Authorization {
             "journal_mode" | "query_only" | "foreign_keys" | "schema_version" => {
                 pragma_value.is_none()
             }
-            "table_info" | "table_xinfo" | "index_list" | "index_xinfo" => pragma_value.is_some(),
+            "table_info" | "table_xinfo" | "index_list" | "index_xinfo" | "foreign_key_list" => {
+                pragma_value.is_some()
+            }
             _ => false,
         },
         AuthAction::Update {
@@ -466,6 +486,101 @@ fn value_text<'a>(row: &'a Row<'_>, i: usize, cap: usize) -> Result<&'a str, Err
         }
         _ => Err(Error::new(Fault::Cap)),
     }
+}
+fn metadata_add(metadata: &mut usize, n: usize) -> Result<(), Error> {
+    *metadata = metadata
+        .checked_add(n)
+        .filter(|n| *n <= 1048576)
+        .ok_or_else(|| Error::new(Fault::Cap))?;
+    Ok(())
+}
+fn verify_fk_topology(c: &Connection, b: &Budget, metadata: &mut usize) -> Result<(), Error> {
+    let mut statement = b.result(c.prepare("SELECT name,length(CAST(sql AS BLOB)) FROM sqlite_schema WHERE type='table' AND substr(name,1,7)!='sqlite_' LIMIT 65"))?;
+    let mut rows = b.result(statement.query([]))?;
+    let mut tables = Vec::new();
+    while let Some(row) = b.result(rows.next())? {
+        b.check()?;
+        if tables.len() >= 64 {
+            return Err(Error::new(Fault::Cap));
+        }
+        let name = value_text(row, 0, 128)?;
+        let length = b.result(row.get::<_, i64>(1))?;
+        if !(0..=65536).contains(&length) {
+            return Err(Error::new(Fault::Cap));
+        }
+        metadata_add(metadata, name.len() + length as usize)?;
+        tables.push(name.to_owned());
+    }
+    let mut total = 0usize;
+    for table in tables {
+        b.check()?;
+        let mut s = b.result(c.prepare(&format!(
+            "PRAGMA foreign_key_list('{}')",
+            table.replace('\'', "''")
+        )))?;
+        let mut rows = b.result(s.query([]))?;
+        let mut count = 0;
+        while let Some(row) = b.result(rows.next())? {
+            b.check()?;
+            count += 1;
+            total += 1;
+            if count > 64 || total > 256 {
+                return Err(Error::new(Fault::Cap));
+            }
+            let id = b.result(row.get::<_, i64>(0))?;
+            let seq = b.result(row.get::<_, i64>(1))?;
+            let target = value_text(row, 2, 128)?;
+            let from = value_text(row, 3, 128)?;
+            let to = match b.result(row.get_ref(4))? {
+                ValueRef::Null => None,
+                ValueRef::Text(bytes) if bytes.len() <= 128 => {
+                    Some(std::str::from_utf8(bytes).map_err(|_| Error::new(Fault::Unavailable))?)
+                }
+                _ => return Err(Error::new(Fault::Cap)),
+            };
+            let update = value_text(row, 5, 16)?;
+            let delete = value_text(row, 6, 16)?;
+            let matching = value_text(row, 7, 16)?;
+            metadata_add(
+                metadata,
+                16 + target.len()
+                    + from.len()
+                    + to.map_or(0, str::len)
+                    + update.len()
+                    + delete.len()
+                    + matching.len(),
+            )?;
+            let exact = |parent: &str, child: &str| {
+                id == 0
+                    && seq == 0
+                    && target.eq_ignore_ascii_case(parent)
+                    && from.eq_ignore_ascii_case(child)
+                    && to.is_some_and(|v| v.eq_ignore_ascii_case("id"))
+                    && update == "NO ACTION"
+                    && delete == "CASCADE"
+                    && matching == "NONE"
+            };
+            let token_edge =
+                table.eq_ignore_ascii_case("device_tokens") && exact("device_grants", "grant_id");
+            if target.eq_ignore_ascii_case("sessions")
+                || (target.eq_ignore_ascii_case("device_grants") && !token_edge)
+                || ((table.eq_ignore_ascii_case("sessions")
+                    || table.eq_ignore_ascii_case("device_grants"))
+                    && !exact("users", "user_id"))
+                || (table.eq_ignore_ascii_case("device_tokens") && !token_edge)
+            {
+                return Err(Error::new(Fault::Unavailable));
+            }
+        }
+        if ["sessions", "device_grants", "device_tokens"]
+            .iter()
+            .any(|v| table.eq_ignore_ascii_case(v))
+            && count != 1
+        {
+            return Err(Error::new(Fault::Unavailable));
+        }
+    }
+    b.check()
 }
 fn verify(c: &Connection, b: &Budget) -> Result<(), Error> {
     b.check()?;
@@ -549,6 +664,7 @@ fn verify(c: &Connection, b: &Budget) -> Result<(), Error> {
             return Err(Error::new(Fault::Unavailable));
         }
     }
+    verify_fk_topology(c, b, &mut metadata)?;
     for (table, key) in [
         ("sessions", "id_hash"),
         ("users", "id"),
