@@ -26,3 +26,60 @@ cargo run --offline --manifest-path crates/chatgpt-status/Cargo.toml --example m
 Pending whole closure: bounded read-only SQLite service with actual schema/identity validation, SQL pre-copy caps, deadline/interrupt/admission leases and retained-root/WAL filesystem qualification; authoritative browser/native auth and exact route/method/default-off switch; persisted product flag read and small confirmed Node synchronization seam; actual front corpus replay/negative controls; authoritative Linux CI; independent Sol6.1 HIGH exact-commit review; publication/merge/release. No live operation, product activation, provider/account credential write or model catalogue behavior is included. Node owns schema and OAuth mutations. Incidental Node workspace/provider/alias/storage migrations are bypassed by the future status route and are not whole-request state parity.
 
 Coverage: direct relevant Node secrets.cjs complete, secret-envelope.cjs complete, Rust secret-envelope complete, js-json complete, sandbox-bridge number formatter, Node index construction/route/auth/workspace-prelude excerpts, workspace migration/read/save excerpts and most complete source output (one combined read truncated), features contract excerpts, actual web ChatGptConnect complete/API status siblings, Rust Store/Reader/verify/open/authorizer and native browser gate excerpts. Integration ADR and owner request directly read. Large combined integration brief/roadmap output was truncated: do not claim complete direct coverage. Complete server dispatch/config/supervisor/auth/store dependency review and all transport/SQLite boundaries remain pending before integration. Fixture inventory is structural; 293 actual output cases are exercised by the differential test. No exhaustive audit, full Node suite, deployed incident or security certification is claimed.
+
+## Private SQLite checkpoint (#1373)
+
+`SqliteService` accepts a fixed absolute data directory, startup previous-key/env
+configuration and an **already authenticated** owner. It never owns HTTP routing,
+authentication, schema initialization or the Node feature cache. The future adapter
+must still supply the bounded Store/auth gate, ownership default OFF, exact GET route,
+Node feature refresh and supervisor integration; those shared files are held.
+
+Each admitted request opens a fresh READ_ONLY/NOFOLLOW connection on its worker.
+Global admission spans service instances (8 including synchronous startup), with
+one owner lease and at most 2 seconds before admission; saturation refuses immediately.
+The request SQL/CPU budget is 2 seconds and approximately 2 million VM operations,
+with immediate busy refusal. Jobs are joinable and their leases survive cancellation,
+HTTP abandonment, errors and shutdown until thread join confirms completion. Job drop
+and service shutdown join workers; neither promises a hard wall-clock return when
+kernel I/O stalls. Connections are never reused, preventing late interrupts from
+reaching another request. SQLite limits are configured before application schema SQL.
+
+Keys retain the existing startup snapshot contract. Product false skips all OAuth
+metadata, row reads and decryption. Base metadata queries are restricted to settings
+and migrations; the 256-object / 1 MiB aggregate schema scan runs only after product
+true. Fresh connections revalidate their read snapshot every time, without schema or
+statement caches. PK/index collation is proved BINARY, and actual nullable TEXT PK
+DDL is accepted while runtime NULL keys/owners are refused.
+
+Named qualification differences: owner ≤1024 UTF8 bytes; ciphertext ≤262144 bytes,
+state ≤64 bytes; nontext/oversized runtime fields, NULL PK rows, incompatible/extra
+schema columns/index qualification and metadata/resource failures refuse as sanitized
+unavailable (future HTTP502). Node may accept/coerce/reconnect for some such values.
+Arbitrary bounded plan values remain intact; named OAuth tokens are not projected.
+
+The directory and pathname parents must remain operator-controlled and stable.
+Retained Root checks reject detectable root/DB changes and symlink/nonregular DB or
+companions; ordinary SQLite VFS canonicalizes paths and is **not** anchored to that
+FD. Concurrent adversarial rename races are outside this qualified deployment
+condition. Existing Node-created WAL/SHM are required; no companion/folder repair.
+SQLite may bookkeep SHM locks/read marks despite read-only database access. This
+is no application/database mutation, not a promise of zero write syscalls.
+Standard allocator OOM, SQLite automatic schema allocation and uncancellable
+regular-file open/read I/O remain limitations; cache size is not a hard RSS cap.
+
+Focused local evidence uses synthetic state only: actual pinned core010735 factories,
+Node22.23.3 and compatible cached better-sqlite3 for 14 real database cases; new
+integration/unit/property tests and semantic SQLite mutants. The historical293 pure
+policy cases were not rerun. Linux CI, whole front/auth/feature corpus and distinct
+Sol6.1HIGH exact security review remain required before publication/integration.
+
+Run focused checks serially (`--test-threads=1`): global owner admission is intentionally
+shared across fixtures. `examples/sqlite_oracle.rs` validates the pinned source and
+runtime and records source/addon/seam hashes; pass the compatible cached dependency
+path explicitly. All its child processes and mutant commands use the existing bounded
+Rust qualification process seam. Never run the actual app to build fixtures.
+
+Application-query qualification: while false, no explicit OAuth schema/token
+projection or decrypt occurs. SQLite open/schema machinery can still internally
+read/parse all schema; no claim excludes physical OAuth sqlite_schema bytes.

@@ -12,6 +12,7 @@ policy-leaves = { path = "../policy-leaves" }
 js-json = { path = "../js-json" }
 rustix = { version = "1", features = ["fs", "process"] }
 zeroize = { version = "=1.9.1", features = ["alloc"] }
+rusqlite = { version = "=0.40.2", features = ["bundled", "hooks", "limits"] }
 [dev-dependencies]
 serde_json = "1"
 tempfile = "3"

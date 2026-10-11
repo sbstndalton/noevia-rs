@@ -1,0 +1,198 @@
+{
+  "cases": [
+    {
+      "answer": {
+        "body": "{\"error\":\"Sign in with ChatGPT is turned off on this server.\"}",
+        "code": 404
+      },
+      "ciphertext": null,
+      "env": null,
+      "id": "default-off",
+      "owner": "u1",
+      "previous": null,
+      "setting": null,
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"state\":\"connected\",\"account\":{\"email\":null,\"plan\":null},\"providerId\":\"chatgpt-oauth\",\"external\":true}",
+        "code": 200
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMDtDC3JqJaprR5Eu9z9VYW3l6D",
+      "env": null,
+      "id": "saved-true",
+      "owner": "u1",
+      "previous": null,
+      "setting": "true",
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"error\":\"Sign in with ChatGPT is turned off on this server.\"}",
+        "code": 404
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMDtDC3JqJaprR5Eu9z9VYW3l6D",
+      "env": null,
+      "id": "saved-false",
+      "owner": "u1",
+      "previous": null,
+      "setting": "false",
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"error\":\"Sign in with ChatGPT is turned off on this server.\"}",
+        "code": 404
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMDtDC3JqJaprR5Eu9z9VYW3l6D",
+      "env": null,
+      "id": "saved-invalid",
+      "owner": "u1",
+      "previous": null,
+      "setting": "TRUE",
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"state\":\"connected\",\"account\":{\"email\":\"x…@b\",\"plan\":[false,null]},\"providerId\":\"chatgpt-oauth\",\"external\":true}",
+        "code": 200
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMDNsMkjz4G1k9UMEkOd9Dssl7cxm47QTJgQGI7HIoXnS7BHpCD1fu2SnS45t2QgGyJ1JNNEsaG",
+      "env": " YES ",
+      "id": "env-true",
+      "owner": "u1",
+      "previous": null,
+      "setting": "false",
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"error\":\"Sign in with ChatGPT is turned off on this server.\"}",
+        "code": 404
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMDtDC3JqJaprR5Eu9z9VYW3l6D",
+      "env": "off",
+      "id": "env-false",
+      "owner": "u1",
+      "previous": null,
+      "setting": "true",
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"state\":\"connected\",\"account\":{\"email\":null,\"plan\":null},\"providerId\":\"chatgpt-oauth\",\"external\":true}",
+        "code": 200
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMDtDC3JqJaprR5Eu9z9VYW3l6D",
+      "env": "  ",
+      "id": "blank-env",
+      "owner": "u1",
+      "previous": null,
+      "setting": "true",
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"state\":\"disconnected\",\"providerId\":\"chatgpt-oauth\",\"external\":true}",
+        "code": 200
+      },
+      "ciphertext": null,
+      "env": "true",
+      "id": "absent",
+      "owner": "u1",
+      "previous": null,
+      "setting": null,
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}",
+        "code": 200
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMD6Hi-261RJHLefho19g7Hs16D",
+      "env": "true",
+      "id": "wrong-owner",
+      "owner": "u1",
+      "previous": null,
+      "setting": null,
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}",
+        "code": 200
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMDqF54rqqAR4eWru-lUzdvhV6RzHMpVQ",
+      "env": "true",
+      "id": "bad-json",
+      "owner": "u1",
+      "previous": null,
+      "setting": null,
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}",
+        "code": 200
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMDtDC3JqJaprR5Eu9z9VYW3l6D",
+      "env": "true",
+      "id": "reconnect",
+      "owner": "u1",
+      "previous": null,
+      "setting": null,
+      "state": "reconnect"
+    },
+    {
+      "answer": {
+        "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}",
+        "code": 200
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMDrvEz-SvflfzYrfATW4_i6EuLz28",
+      "env": "true",
+      "id": "primitive",
+      "owner": "u1",
+      "previous": null,
+      "setting": null,
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"state\":\"connected\",\"account\":{\"email\":null,\"plan\":{\"credential-pattern\":\"preserved\"}},\"providerId\":\"chatgpt-oauth\",\"external\":true}",
+        "code": 200
+      },
+      "ciphertext": "enc:v1:AwMDAwMDAwMDAwMDeryVVt1EzbFGUbpdLQ93FV7c0287Rnx4AWIgLo4zmmKZVYGDmeX1BFu79d_B32LIw8IOR-mNwCTs9TY",
+      "env": "true",
+      "id": "v1",
+      "owner": "u1",
+      "previous": null,
+      "setting": null,
+      "state": "connected"
+    },
+    {
+      "answer": {
+        "body": "{\"state\":\"connected\",\"account\":{\"email\":\"\\ud83d…@b\",\"plan\":true},\"providerId\":\"chatgpt-oauth\",\"external\":true}",
+        "code": 200
+      },
+      "ciphertext": "enc:v2:AwMDAwMDAwMDAwMD6u9aNa7jByALBSXTEF-b9I4UKqWW7pL6t-eHBPkGCWWH0VlLx-C1WBJZLcjIsgxPGmxnU5LN",
+      "env": "true",
+      "id": "previous",
+      "owner": "u1",
+      "previous": 3,
+      "setting": null,
+      "state": "connected"
+    }
+  ],
+  "core": "010735c7d86d30269ab3f4a351b2135faea1c8e7",
+  "dependency_addon_sha256": "1946ab352978b5b3493f99080dc04ed6d0a4157c511c7139cbf50b3d44d8d560",
+  "dependency_version": "12.11.1",
+  "node": "22.23.3",
+  "seam_sha256": "d2eaaeeba89474b5bd3a48d26363a8af004da27f2cf2842a037411617eac9412",
+  "sources": {
+    "server/auth.cjs": "44412c7dcb8bae2bbd3d7b53aa32131f1046d9aa0b776ebcb37c76d190434899",
+    "server/chatgpt-oauth.cjs": "e07192a3fb97c0e388353f909aa18398148e19de481fea2e67a01b2343ea4e2a",
+    "server/features.cjs": "7d0f0f9dd3ab13281fd90083ae249b31a8fc2d15445c9de58e3ced713ba85dde",
+    "server/routes/providers.cjs": "edb31b636db1af83624db8da70b6eaebac01f62ca85eb5e9d4f90d49662a1eee",
+    "server/secret-envelope.cjs": "0a66dff1ad61bf1b54f201e7644ef5c9186bb563e99aa86783feee5cd6d212c1"
+  }
+}
