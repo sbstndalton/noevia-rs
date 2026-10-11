@@ -54,3 +54,8 @@ opt-level = 3
 
 [profile.dev.package.blake2]
 opt-level = 3
+
+# noevia#1373: optimize SHA compression while retaining the coordinator's dev profile.
+# The existing 120s worker deadline still requires fresh CI qualification.
+[profile.dev.package.sha2]
+opt-level = 3

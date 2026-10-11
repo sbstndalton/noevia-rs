@@ -37,8 +37,11 @@ struct ProbeSlot {
     request_waiting: AtomicBool,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
-static OWNED: Mutex<Vec<Arc<ProbeSlot>>> = Mutex::new(Vec::new());
-static STOPPED: AtomicBool = AtomicBool::new(false);
+struct OwnedProbes {
+    slots: Mutex<Vec<Arc<ProbeSlot>>>,
+    stopped: AtomicBool,
+}
+static PROBE_OWNER: OwnedProbes = OwnedProbes::new();
 struct ProbeGuard(Arc<ProbeSlot>);
 impl ProbeGuard {
     fn cancel(&self) {
@@ -91,62 +94,81 @@ fn poll_join(slot: &ProbeSlot, cx: &mut Context<'_>, request: bool) -> Poll<()> 
     slot.joined.store(true, Ordering::Release);
     Poll::Ready(())
 }
-/// Retained bounded slots; Ready from the actual JoinHandle proves task completion.
-/// Cancellation/abort/is_finished alone never release a slot.
-pub fn reap_owned_probes() {
-    let slots = match OWNED.try_lock() {
-        Ok(s) => s.clone(),
-        Err(_) => return,
-    };
-    let waker = Waker::noop();
-    let mut cx = Context::from_waker(waker);
-    for slot in slots.iter().filter(|s| !s.alive.load(Ordering::Acquire)) {
-        let _ = poll_join(slot, &mut cx, false);
+impl OwnedProbes {
+    const fn new() -> Self {
+        Self {
+            slots: Mutex::new(Vec::new()),
+            stopped: AtomicBool::new(false),
+        }
     }
-    if let Ok(mut slots) = OWNED.try_lock() {
-        slots.retain(|s| s.alive.load(Ordering::Acquire) || !s.joined.load(Ordering::Acquire));
+    /// Retained bounded slots; Ready from the actual JoinHandle proves task completion.
+    /// Cancellation/abort/is_finished alone never release a slot.
+    fn reap(&self) {
+        let slots = match self.slots.try_lock() {
+            Ok(s) => s.clone(),
+            Err(_) => return,
+        };
+        let waker = Waker::noop();
+        let mut cx = Context::from_waker(waker);
+        for slot in slots.iter().filter(|s| !s.alive.load(Ordering::Acquire)) {
+            let _ = poll_join(slot, &mut cx, false);
+        }
+        if let Ok(mut slots) = self.slots.try_lock() {
+            slots.retain(|s| s.alive.load(Ordering::Acquire) || !s.joined.load(Ordering::Acquire));
+        }
+    }
+    fn reserve(&self) -> Option<ProbeGuard> {
+        if self.stopped.load(Ordering::Acquire) {
+            return None;
+        }
+        self.reap();
+        let mut slots = self.slots.try_lock().ok()?;
+        if slots.len() >= PROBES || self.stopped.load(Ordering::Acquire) {
+            return None;
+        }
+        let slot = Arc::new(ProbeSlot {
+            alive: AtomicBool::new(true),
+            cancelled: AtomicBool::new(false),
+            joined: AtomicBool::new(false),
+            publication_closed: AtomicBool::new(false),
+            request_waiting: AtomicBool::new(false),
+            task: Mutex::new(None),
+        });
+        slots.push(slot.clone());
+        Some(ProbeGuard(slot))
+    }
+    /// Synchronous main retains readiness tasks after the HTTP drain too.
+    fn shutdown(&self) {
+        self.stopped.store(true, Ordering::Release);
+        loop {
+            let slots = match self.slots.try_lock() {
+                Ok(s) => s.clone(),
+                Err(_) => {
+                    std::thread::park_timeout(Duration::from_millis(10));
+                    continue;
+                }
+            };
+            if slots.is_empty() {
+                return;
+            }
+            for slot in slots {
+                cancel_slot(&slot);
+            }
+            self.reap();
+            std::thread::park_timeout(Duration::from_millis(10));
+        }
     }
 }
+/// Retained bounded slots; Ready from the actual JoinHandle proves task completion.
+pub fn reap_owned_probes() {
+    PROBE_OWNER.reap();
+}
 fn reserve_probe() -> Option<ProbeGuard> {
-    if STOPPED.load(Ordering::Acquire) {
-        return None;
-    }
-    reap_owned_probes();
-    let mut slots = OWNED.try_lock().ok()?;
-    if slots.len() >= PROBES || STOPPED.load(Ordering::Acquire) {
-        return None;
-    }
-    let slot = Arc::new(ProbeSlot {
-        alive: AtomicBool::new(true),
-        cancelled: AtomicBool::new(false),
-        joined: AtomicBool::new(false),
-        publication_closed: AtomicBool::new(false),
-        request_waiting: AtomicBool::new(false),
-        task: Mutex::new(None),
-    });
-    slots.push(slot.clone());
-    Some(ProbeGuard(slot))
+    PROBE_OWNER.reserve()
 }
 /// Synchronous main retains readiness tasks after the HTTP drain too.
 pub fn shutdown_owned_probes() {
-    STOPPED.store(true, Ordering::Release);
-    loop {
-        let slots = match OWNED.try_lock() {
-            Ok(s) => s.clone(),
-            Err(_) => {
-                std::thread::park_timeout(Duration::from_millis(10));
-                continue;
-            }
-        };
-        if slots.is_empty() {
-            return;
-        }
-        for slot in slots {
-            cancel_slot(&slot);
-        }
-        reap_owned_probes();
-        std::thread::park_timeout(Duration::from_millis(10));
-    }
+    PROBE_OWNER.shutdown();
 }
 
 /// version-resolve.cjs readVersionFrom(dist/version.json), else STAMP_VERSION.
@@ -265,47 +287,90 @@ mod m6_owned_controls {
     use super::*;
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn m6_health_capacity_join_and_shutdown_before_publication() {
+        let owner = Arc::new(OwnedProbes::new());
+        let fresh = !owner.stopped.load(Ordering::Acquire)
+            && owner.slots.lock().is_ok_and(|s| s.is_empty());
         let mut guards = Vec::new();
+        let mut published = true;
         for _ in 0..PROBES {
-            let guard = reserve_probe().unwrap();
-            *guard.0.task.lock().unwrap() = Some(tokio::spawn(std::future::pending()));
+            let Some(guard) = owner.reserve() else { break };
+            if let Ok(mut task) = guard.0.task.lock() {
+                *task = Some(tokio::spawn(std::future::pending()));
+            } else {
+                published = false;
+            }
             guards.push(guard);
         }
-        let extra_refused = reserve_probe().is_none();
+        let eight = guards.len() == PROBES && published;
         let references: Vec<_> = guards.iter().map(|g| g.0.clone()).collect();
-        drop(guards);
-        let deadline = std::time::Instant::now() + Duration::from_secs(1);
-        while !OWNED.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
-            reap_owned_probes();
-            tokio::task::yield_now().await;
-        }
-        assert!(extra_refused, "M6_HEALTH_ASSERT/admission-eight");
-        assert!(
+        let distinct = references.iter().enumerate().all(|(i, slot)| {
             references
                 .iter()
-                .all(|s| s.joined.load(Ordering::Acquire) && s.task.lock().unwrap().is_none()),
-            "M6_HEALTH_ASSERT/actual-join"
-        );
-        assert!(OWNED.lock().unwrap().is_empty(), "M6_HEALTH_ASSERT/reaped");
-        // Hold a reserved operation before handle publication. The shutdown
-        // controller may signal cancellation, but must retain this slot until
-        // its actual operation seals publication. Release before assertions.
-        let pending = reserve_probe().unwrap();
-        let slot = pending.0.clone();
-        let shutdown = std::thread::spawn(shutdown_owned_probes);
+                .skip(i + 1)
+                .all(|other| !Arc::ptr_eq(slot, other))
+        });
+        // Retain any unexpectedly admitted ninth operation until cleanup.
+        let extra = owner.reserve();
+        let extra_refused = extra.is_none();
+        drop(extra);
+        drop(guards);
         let deadline = std::time::Instant::now() + Duration::from_secs(1);
-        while !slot.cancelled.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+        while !owner.slots.lock().is_ok_and(|s| s.is_empty())
+            && std::time::Instant::now() < deadline
+        {
+            owner.reap();
             tokio::task::yield_now().await;
         }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        let prematurely_returned = shutdown.is_finished();
-        let retained = OWNED.lock().unwrap().iter().any(|s| Arc::ptr_eq(s, &slot));
-        let no_false_join = !slot.joined.load(Ordering::Acquire);
+        let actual_join = references
+            .iter()
+            .all(|s| s.joined.load(Ordering::Acquire) && s.task.lock().is_ok_and(|t| t.is_none()));
+        let reaped = owner.slots.lock().is_ok_and(|s| s.is_empty());
+        // Hold a reserved operation before handle publication. The shutdown
+        // controller must retain it until its operation seals publication.
+        let pending = owner.reserve();
+        let pending_reserved = pending.is_some();
+        let slot = pending.as_ref().map(|g| g.0.clone());
+        let shutdown_owner = owner.clone();
+        let shutdown = std::thread::spawn(move || shutdown_owner.shutdown());
+        let mut prematurely_returned = false;
+        let mut retained = false;
+        let mut no_false_join = false;
+        let mut cancelled = false;
+        if let Some(slot) = slot.as_ref() {
+            let deadline = std::time::Instant::now() + Duration::from_secs(1);
+            while !slot.cancelled.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+                tokio::task::yield_now().await;
+            }
+            cancelled = slot.cancelled.load(Ordering::Acquire);
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            prematurely_returned = shutdown.is_finished();
+            retained = owner
+                .slots
+                .lock()
+                .is_ok_and(|s| s.iter().any(|s| Arc::ptr_eq(s, slot)));
+            no_false_join = !slot.joined.load(Ordering::Acquire);
+        }
+        // Every guard is released before waiting, including failed preconditions.
         drop(pending);
         while !shutdown.is_finished() {
             tokio::task::yield_now().await;
         }
-        shutdown.join().unwrap();
+        let shutdown_joined = shutdown.join().is_ok();
+        let sealed = slot.as_ref().is_some_and(|s| {
+            s.publication_closed.load(Ordering::Acquire) && s.joined.load(Ordering::Acquire)
+        });
+        let empty = owner.slots.lock().is_ok_and(|s| s.is_empty());
+        assert!(
+            fresh && eight && distinct,
+            "M6_HEALTH_ASSERT/fresh-eight-precondition"
+        );
+        assert!(extra_refused, "M6_HEALTH_ASSERT/admission-eight");
+        assert!(actual_join, "M6_HEALTH_ASSERT/actual-join");
+        assert!(reaped, "M6_HEALTH_ASSERT/reaped");
+        assert!(
+            pending_reserved && cancelled,
+            "M6_HEALTH_ASSERT/pending-precondition"
+        );
         assert!(
             !prematurely_returned,
             "M6_HEALTH_ASSERT/prepublication-shutdown"
@@ -314,14 +379,8 @@ mod m6_owned_controls {
             retained && no_false_join,
             "M6_HEALTH_ASSERT/prepublication-retained"
         );
-        assert!(
-            slot.publication_closed.load(Ordering::Acquire) && slot.joined.load(Ordering::Acquire),
-            "M6_HEALTH_ASSERT/publication-sealed"
-        );
-        assert!(
-            OWNED.lock().unwrap().is_empty(),
-            "M6_HEALTH_ASSERT/shutdown-empty"
-        );
+        assert!(sealed, "M6_HEALTH_ASSERT/publication-sealed");
+        assert!(shutdown_joined && empty, "M6_HEALTH_ASSERT/shutdown-empty");
     }
 }
 
@@ -342,33 +401,59 @@ mod m6_join_waker_controls {
     }
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn m6_health_active_waiter_keeps_join_waker() {
-        let guard = reserve_probe().unwrap();
-        let (release, blocked) = tokio::sync::oneshot::channel::<()>();
-        *guard.0.task.lock().unwrap() = Some(tokio::spawn(async {
-            let _ = blocked.await;
-        }));
-        guard.0.alive.store(false, Ordering::Release);
-        guard.0.publication_closed.store(true, Ordering::Release);
-        guard.0.request_waiting.store(true, Ordering::Release);
-        let active = Arc::new(Count(AtomicUsize::new(0)));
-        let upkeep = Arc::new(Count(AtomicUsize::new(0)));
-        let active_waker = Waker::from(active.clone());
-        let upkeep_waker = Waker::from(upkeep.clone());
-        let mut active_cx = Context::from_waker(&active_waker);
-        let mut upkeep_cx = Context::from_waker(&upkeep_waker);
-        let waiting = poll_join(&guard.0, &mut active_cx, true).is_pending();
-        let maintenance_deferred = poll_join(&guard.0, &mut upkeep_cx, false).is_pending();
-        // Always release the actual driver before any assertion can unwind.
-        let _ = release.send(());
-        let deadline = std::time::Instant::now() + Duration::from_secs(1);
-        while active.0.load(Ordering::Acquire) == 0 && std::time::Instant::now() < deadline {
+        let owner = Arc::new(OwnedProbes::new());
+        let fresh = !owner.stopped.load(Ordering::Acquire)
+            && owner.slots.lock().is_ok_and(|s| s.is_empty());
+        let guard = owner.reserve();
+        let reserved = guard.is_some();
+        let mut published = false;
+        let mut waiting = false;
+        let mut maintenance_deferred = false;
+        let mut active_notified = false;
+        let mut no_replacement = false;
+        if let Some(guard) = guard.as_ref() {
+            let (release, blocked) = tokio::sync::oneshot::channel::<()>();
+            if let Ok(mut task) = guard.0.task.lock() {
+                *task = Some(tokio::spawn(async {
+                    let _ = blocked.await;
+                }));
+                published = true;
+            }
+            guard.0.alive.store(false, Ordering::Release);
+            guard.0.publication_closed.store(true, Ordering::Release);
+            guard.0.request_waiting.store(true, Ordering::Release);
+            let active = Arc::new(Count(AtomicUsize::new(0)));
+            let upkeep = Arc::new(Count(AtomicUsize::new(0)));
+            let active_waker = Waker::from(active.clone());
+            let upkeep_waker = Waker::from(upkeep.clone());
+            let mut active_cx = Context::from_waker(&active_waker);
+            let mut upkeep_cx = Context::from_waker(&upkeep_waker);
+            waiting = poll_join(&guard.0, &mut active_cx, true).is_pending();
+            maintenance_deferred = poll_join(&guard.0, &mut upkeep_cx, false).is_pending();
+            // Always release the actual driver before any assertion can unwind.
+            let _ = release.send(());
+            let deadline = std::time::Instant::now() + Duration::from_secs(1);
+            while active.0.load(Ordering::Acquire) == 0 && std::time::Instant::now() < deadline {
+                tokio::task::yield_now().await;
+            }
+            active_notified = active.0.load(Ordering::Acquire) > 0;
+            no_replacement = upkeep.0.load(Ordering::Acquire) == 0;
+            std::future::poll_fn(|cx| poll_join(&guard.0, cx, true)).await;
+        }
+        drop(guard);
+        owner.reap();
+        // Failed reservation/publication also reaches actual owner teardown.
+        let shutdown_owner = owner.clone();
+        let shutdown = std::thread::spawn(move || shutdown_owner.shutdown());
+        while !shutdown.is_finished() {
             tokio::task::yield_now().await;
         }
-        let active_notified = active.0.load(Ordering::Acquire) > 0;
-        let no_replacement = upkeep.0.load(Ordering::Acquire) == 0;
-        std::future::poll_fn(|cx| poll_join(&guard.0, cx, true)).await;
-        drop(guard);
-        reap_owned_probes();
+        let shutdown_joined = shutdown.join().is_ok();
+        let empty = owner.slots.lock().is_ok_and(|s| s.is_empty());
+        assert!(
+            fresh && reserved && published,
+            "M6_HEALTH_ASSERT/fresh-waker-precondition"
+        );
         assert!(
             waiting && maintenance_deferred,
             "M6_HEALTH_ASSERT/active-waiter-pending"
@@ -378,7 +463,7 @@ mod m6_join_waker_controls {
             "M6_HEALTH_ASSERT/active-waker-preserved"
         );
         assert!(
-            OWNED.lock().unwrap().is_empty(),
+            shutdown_joined && empty,
             "M6_HEALTH_ASSERT/active-waker-joined"
         );
     }
