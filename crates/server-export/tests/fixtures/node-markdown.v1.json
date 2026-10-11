@@ -1,0 +1,728 @@
+{
+  "core": "965598462d64dc04e1df55c3bb7a25d4343380e1",
+  "source": "server/chat-export.cjs chatMarkdown",
+  "sourceSha256": "5cfbfd9353b3963a903f0da70fb191e50c7af9d6f215742c222143e402d62d7c",
+  "cases": [
+    {
+      "id": "persisted",
+      "input": "{\"chat\":{\"title\":\"Synthetic task\",\"updatedAt\":1800000000000},\"history\":[{\"role\":\"user\",\"content\":\"  question\\n\",\"reasoning\":\"SECRET_REASONING\"},{\"role\":\"assistant\",\"content\":\"﻿answer \",\"reasoning\":\"SECRET_REASONING\",\"toolCalls\":[{\"name\":\"Read\"},{\"name\":\"Write\"}]},{\"role\":\"system\",\"content\":\"SECRET_SYSTEM\",\"toolCalls\":{\"broken\":true}}]}",
+      "node": {
+        "text": "# Synthetic task\n\n_Last updated 2027-01-15T08:00:00.000Z_\n\n## You\n\nquestion\n\n## Assistant\n\nanswer\n\n_Tools used: Read, Write_\n"
+      }
+    },
+    {
+      "id": "title-0",
+      "input": "{\"chat\":{\"title\":null},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "content-0",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":null}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "tool-0",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":null}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "title-1",
+      "input": "{\"chat\":{\"title\":false},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "content-1",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":false}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "tool-1",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":false}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "title-2",
+      "input": "{\"chat\":{\"title\":true},\"history\":[]}",
+      "node": {
+        "text": "# true\n"
+      }
+    },
+    {
+      "id": "content-2",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":true}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\ntrue\n"
+      }
+    },
+    {
+      "id": "tool-2",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":true}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n\n_Tools used: true_\n"
+      }
+    },
+    {
+      "id": "title-3",
+      "input": "{\"chat\":{\"title\":0},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "content-3",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":0}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "tool-3",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":0}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "title-4",
+      "input": "{\"chat\":{\"title\":-1},\"history\":[]}",
+      "node": {
+        "text": "# -1\n"
+      }
+    },
+    {
+      "id": "content-4",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":-1}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n-1\n"
+      }
+    },
+    {
+      "id": "tool-4",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":-1}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n\n_Tools used: -1_\n"
+      }
+    },
+    {
+      "id": "title-5",
+      "input": "{\"chat\":{\"title\":0.1},\"history\":[]}",
+      "node": {
+        "text": "# 0.1\n"
+      }
+    },
+    {
+      "id": "content-5",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":0.1}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n0.1\n"
+      }
+    },
+    {
+      "id": "tool-5",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":0.1}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n\n_Tools used: 0.1_\n"
+      }
+    },
+    {
+      "id": "title-6",
+      "input": "{\"chat\":{\"title\":\"\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "content-6",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":\"\"}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "tool-6",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":\"\"}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "title-7",
+      "input": "{\"chat\":{\"title\":\" title \"},\"history\":[]}",
+      "node": {
+        "text": "#  title \n"
+      }
+    },
+    {
+      "id": "content-7",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":\" title \"}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\ntitle\n"
+      }
+    },
+    {
+      "id": "tool-7",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":\" title \"}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n\n_Tools used:  title _\n"
+      }
+    },
+    {
+      "id": "title-8",
+      "input": "{\"chat\":{\"title\":[]},\"history\":[]}",
+      "node": {
+        "text": "# \n"
+      }
+    },
+    {
+      "id": "content-8",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":[]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "tool-8",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":[]}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n\n_Tools used: _\n"
+      }
+    },
+    {
+      "id": "title-9",
+      "input": "{\"chat\":{\"title\":[null,1,[\"x\"]]},\"history\":[]}",
+      "node": {
+        "text": "# ,1,x\n"
+      }
+    },
+    {
+      "id": "content-9",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":[null,1,[\"x\"]]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n,1,x\n"
+      }
+    },
+    {
+      "id": "tool-9",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":[null,1,[\"x\"]]}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n\n_Tools used: ,1,x_\n"
+      }
+    },
+    {
+      "id": "title-10",
+      "input": "{\"chat\":{\"title\":{}},\"history\":[]}",
+      "node": {
+        "text": "# [object Object]\n"
+      }
+    },
+    {
+      "id": "content-10",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":{}}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n[object Object]\n"
+      }
+    },
+    {
+      "id": "tool-10",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":{}}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n\n_Tools used: [object Object]_\n"
+      }
+    },
+    {
+      "id": "title-11",
+      "input": "{\"chat\":{\"title\":{\"valueOf\":1}},\"history\":[]}",
+      "node": {
+        "text": "# [object Object]\n"
+      }
+    },
+    {
+      "id": "content-11",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":{\"valueOf\":1}}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n[object Object]\n"
+      }
+    },
+    {
+      "id": "tool-11",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":{\"valueOf\":1}}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n\n_Tools used: [object Object]_\n"
+      }
+    },
+    {
+      "id": "title-12",
+      "input": "{\"chat\":{\"title\":{\"toString\":1}},\"history\":[]}",
+      "node": {
+        "error": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    },
+    {
+      "id": "content-12",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":{\"toString\":1}}]}",
+      "node": {
+        "error": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    },
+    {
+      "id": "tool-12",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[{\"name\":{\"toString\":1}}]}]}",
+      "node": {
+        "error": "TypeError",
+        "message": "Cannot convert object to primitive value"
+      }
+    },
+    {
+      "id": "date-0",
+      "input": "{\"chat\":{\"updatedAt\":0},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "date-1",
+      "input": "{\"chat\":{\"updatedAt\":false},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "date-2",
+      "input": "{\"chat\":{\"updatedAt\":null},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "date-3",
+      "input": "{\"chat\":{\"updatedAt\":\"\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "date-4",
+      "input": "{\"chat\":{\"updatedAt\":true},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 1970-01-01T00:00:00.001Z_\n"
+      }
+    },
+    {
+      "id": "date-5",
+      "input": "{\"chat\":{\"updatedAt\":-0.5},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 1970-01-01T00:00:00.000Z_\n"
+      }
+    },
+    {
+      "id": "date-6",
+      "input": "{\"chat\":{\"updatedAt\":-1.9},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 1969-12-31T23:59:59.999Z_\n"
+      }
+    },
+    {
+      "id": "date-7",
+      "input": "{\"chat\":{\"updatedAt\":0.9},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 1970-01-01T00:00:00.000Z_\n"
+      }
+    },
+    {
+      "id": "date-8",
+      "input": "{\"chat\":{\"updatedAt\":1.9},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 1970-01-01T00:00:00.001Z_\n"
+      }
+    },
+    {
+      "id": "date-9",
+      "input": "{\"chat\":{\"updatedAt\":-62167219200000},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 0000-01-01T00:00:00.000Z_\n"
+      }
+    },
+    {
+      "id": "date-10",
+      "input": "{\"chat\":{\"updatedAt\":253402300799999},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 9999-12-31T23:59:59.999Z_\n"
+      }
+    },
+    {
+      "id": "date-11",
+      "input": "{\"chat\":{\"updatedAt\":\"0000-01-01T00:00:00.000Z\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 0000-01-01T00:00:00.000Z_\n"
+      }
+    },
+    {
+      "id": "date-12",
+      "input": "{\"chat\":{\"updatedAt\":\"2000-02-29T12:34:57.123Z\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 2000-02-29T12:34:57.123Z_\n"
+      }
+    },
+    {
+      "id": "date-13",
+      "input": "{\"chat\":{\"updatedAt\":\"9999-12-31T23:59:59.999Z\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 9999-12-31T23:59:59.999Z_\n"
+      }
+    },
+    {
+      "id": "date-14",
+      "input": "{\"chat\":{\"updatedAt\":8640000000000001},\"history\":[]}",
+      "node": {
+        "error": "RangeError",
+        "message": "Invalid time value"
+      }
+    },
+    {
+      "id": "date-15",
+      "input": "{\"chat\":{\"updatedAt\":-8640000000000001},\"history\":[]}",
+      "node": {
+        "error": "RangeError",
+        "message": "Invalid time value"
+      }
+    },
+    {
+      "id": "unsupported-date-0",
+      "input": "{\"chat\":{\"updatedAt\":\"2026-01-01\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 2026-01-01T00:00:00.000Z_\n"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-date-1",
+      "input": "{\"chat\":{\"updatedAt\":\"2026-01-01T00:00:00+01:00\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 2025-12-31T23:00:00.000Z_\n"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-date-2",
+      "input": "{\"chat\":{\"updatedAt\":\"2026-02-30T00:00:00.000Z\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 2026-03-02T00:00:00.000Z_\n"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-date-3",
+      "input": "{\"chat\":{\"updatedAt\":\"invalid\"},\"history\":[]}",
+      "node": {
+        "error": "RangeError",
+        "message": "Invalid time value"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-date-4",
+      "input": "{\"chat\":{\"updatedAt\":\"+010000-01-01T00:00:00.000Z\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated +010000-01-01T00:00:00.000Z_\n"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-date-5",
+      "input": "{\"chat\":{\"updatedAt\":253402300800000},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated +010000-01-01T00:00:00.000Z_\n"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-date-6",
+      "input": "{\"chat\":{\"updatedAt\":-62167219200001},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated -000001-12-31T23:59:59.999Z_\n"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-date-7",
+      "input": "{\"chat\":{\"updatedAt\":[]},\"history\":[]}",
+      "node": {
+        "error": "RangeError",
+        "message": "Invalid time value"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-date-8",
+      "input": "{\"chat\":{\"updatedAt\":{}},\"history\":[]}",
+      "node": {
+        "error": "RangeError",
+        "message": "Invalid time value"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-date-9",
+      "input": "{\"chat\":{\"updatedAt\":[\"2026\"]},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 2026-01-01T00:00:00.000Z_\n"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "number-0",
+      "input": "{\"chat\":{\"title\":1e+21},\"history\":[{\"role\":\"user\",\"content\":1e+21,\"toolCalls\":[{\"name\":1e+21}]}]}",
+      "node": {
+        "text": "# 1e+21\n\n## You\n\n1e+21\n\n_Tools used: 1e+21_\n"
+      }
+    },
+    {
+      "id": "number-1",
+      "input": "{\"chat\":{\"title\":100000000000000000000},\"history\":[{\"role\":\"user\",\"content\":100000000000000000000,\"toolCalls\":[{\"name\":100000000000000000000}]}]}",
+      "node": {
+        "text": "# 100000000000000000000\n\n## You\n\n100000000000000000000\n\n_Tools used: 100000000000000000000_\n"
+      }
+    },
+    {
+      "id": "number-2",
+      "input": "{\"chat\":{\"title\":0.000001},\"history\":[{\"role\":\"user\",\"content\":0.000001,\"toolCalls\":[{\"name\":0.000001}]}]}",
+      "node": {
+        "text": "# 0.000001\n\n## You\n\n0.000001\n\n_Tools used: 0.000001_\n"
+      }
+    },
+    {
+      "id": "number-3",
+      "input": "{\"chat\":{\"title\":1e-7},\"history\":[{\"role\":\"user\",\"content\":1e-7,\"toolCalls\":[{\"name\":1e-7}]}]}",
+      "node": {
+        "text": "# 1e-7\n\n## You\n\n1e-7\n\n_Tools used: 1e-7_\n"
+      }
+    },
+    {
+      "id": "number-4",
+      "input": "{\"chat\":{\"title\":1.2345678901234567},\"history\":[{\"role\":\"user\",\"content\":1.2345678901234567,\"toolCalls\":[{\"name\":1.2345678901234567}]}]}",
+      "node": {
+        "text": "# 1.2345678901234567\n\n## You\n\n1.2345678901234567\n\n_Tools used: 1.2345678901234567_\n"
+      }
+    },
+    {
+      "id": "number-5",
+      "input": "{\"chat\":{\"title\":9007199254740991},\"history\":[{\"role\":\"user\",\"content\":9007199254740991,\"toolCalls\":[{\"name\":9007199254740991}]}]}",
+      "node": {
+        "text": "# 9007199254740991\n\n## You\n\n9007199254740991\n\n_Tools used: 9007199254740991_\n"
+      }
+    },
+    {
+      "id": "number-6",
+      "input": "{\"chat\":{\"title\":-9007199254740991},\"history\":[{\"role\":\"user\",\"content\":-9007199254740991,\"toolCalls\":[{\"name\":-9007199254740991}]}]}",
+      "node": {
+        "text": "# -9007199254740991\n\n## You\n\n-9007199254740991\n\n_Tools used: -9007199254740991_\n"
+      }
+    },
+    {
+      "id": "number-7",
+      "input": "{\"chat\":{\"title\":1.7976931348623157e+308},\"history\":[{\"role\":\"user\",\"content\":1.7976931348623157e+308,\"toolCalls\":[{\"name\":1.7976931348623157e+308}]}]}",
+      "node": {
+        "text": "# 1.7976931348623157e+308\n\n## You\n\n1.7976931348623157e+308\n\n_Tools used: 1.7976931348623157e+308_\n"
+      }
+    },
+    {
+      "id": "number-8",
+      "input": "{\"chat\":{\"title\":5e-324},\"history\":[{\"role\":\"user\",\"content\":5e-324,\"toolCalls\":[{\"name\":5e-324}]}]}",
+      "node": {
+        "text": "# 5e-324\n\n## You\n\n5e-324\n\n_Tools used: 5e-324_\n"
+      }
+    },
+    {
+      "id": "leap-0",
+      "input": "{\"chat\":{\"updatedAt\":\"0000-02-29T00:00:00.000Z\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 0000-02-29T00:00:00.000Z_\n"
+      }
+    },
+    {
+      "id": "leap-1",
+      "input": "{\"chat\":{\"updatedAt\":\"2400-02-29T00:00:00.000Z\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 2400-02-29T00:00:00.000Z_\n"
+      }
+    },
+    {
+      "id": "unsupported-calendar-0",
+      "input": "{\"chat\":{\"updatedAt\":\"1900-02-29T00:00:00.000Z\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 1900-03-01T00:00:00.000Z_\n"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-calendar-1",
+      "input": "{\"chat\":{\"updatedAt\":\"2026-12-31T24:00:00.000Z\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 2027-01-01T00:00:00.000Z_\n"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "unsupported-calendar-2",
+      "input": "{\"chat\":{\"updatedAt\":\"2000-02-29T12:34:57.1230Z\"},\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n\n_Last updated 2000-02-29T12:34:57.123Z_\n"
+      },
+      "refusal": "UnsupportedDate"
+    },
+    {
+      "id": "ecma-trim",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":\"\\t\\n\\r         　﻿X﻿\"},{\"role\":\"assistant\",\"content\":\"X\"}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\nX\n\n## Assistant\n\nX\n"
+      }
+    },
+    {
+      "id": "empty-trim",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"user\",\"content\":\"﻿ \\n\"}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "roles",
+      "input": "{\"chat\":{},\"history\":[\"user\",1,false,{},{\"role\":\"system\",\"content\":{\"toString\":1}},{\"role\":\"tool\"},{\"role\":\"User\"},{\"role\":[\"user\"]}]}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "null-chat",
+      "input": "{\"chat\":null,\"history\":[]}",
+      "node": {
+        "error": "TypeError",
+        "message": "Cannot read properties of null (reading 'title')"
+      }
+    },
+    {
+      "id": "null-message",
+      "input": "{\"chat\":{},\"history\":[null]}",
+      "node": {
+        "error": "TypeError",
+        "message": "Cannot read properties of null (reading 'role')"
+      }
+    },
+    {
+      "id": "null-history",
+      "input": "{\"chat\":{},\"history\":null}",
+      "node": {
+        "error": "TypeError",
+        "message": "history is not iterable"
+      }
+    },
+    {
+      "id": "object-history",
+      "input": "{\"chat\":{},\"history\":{}}",
+      "node": {
+        "error": "TypeError",
+        "message": "history is not iterable"
+      }
+    },
+    {
+      "id": "string-history",
+      "input": "{\"chat\":{},\"history\":\"synthetic\"}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "scalar-chat",
+      "input": "{\"chat\":true,\"history\":[]}",
+      "node": {
+        "text": "# Untitled chat\n"
+      }
+    },
+    {
+      "id": "toolCalls-0",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":null}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "toolCalls-1",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":false}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "toolCalls-2",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":0}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "toolCalls-3",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":\"\"}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n"
+      }
+    },
+    {
+      "id": "toolCalls-4",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":{}}]}",
+      "node": {
+        "error": "TypeError",
+        "message": "(m.toolCalls || []).map is not a function"
+      }
+    },
+    {
+      "id": "toolCalls-5",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":true}]}",
+      "node": {
+        "error": "TypeError",
+        "message": "(m.toolCalls || []).map is not a function"
+      }
+    },
+    {
+      "id": "toolCalls-6",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":\"Read\"}]}",
+      "node": {
+        "error": "TypeError",
+        "message": "(m.toolCalls || []).map is not a function"
+      }
+    },
+    {
+      "id": "mixed-tools",
+      "input": "{\"chat\":{},\"history\":[{\"role\":\"assistant\",\"toolCalls\":[null,false,0,\"\",1,\"x\",[],{},{\"name\":[]},{\"name\":[null,1,[\"x\"]]},{\"name\":{\"valueOf\":1}}]}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## Assistant\n\n_(no text)_\n\n_Tools used: , ,1,x, [object Object]_\n"
+      }
+    },
+    {
+      "id": "duplicates",
+      "input": "{\"chat\":{\"title\":\"old\",\"title\":\"new\"},\"history\":[{\"role\":\"system\",\"role\":\"user\",\"content\":\"old\",\"content\":\"new\"}]}",
+      "node": {
+        "text": "# new\n\n## You\n\nnew\n"
+      }
+    },
+    {
+      "id": "negative-zero",
+      "input": "{\"chat\":{\"updatedAt\":-0,\"title\":-0},\"history\":[{\"role\":\"user\",\"content\":-0}]}",
+      "node": {
+        "text": "# Untitled chat\n\n## You\n\n_(no text)_\n"
+      }
+    }
+  ]
+}
