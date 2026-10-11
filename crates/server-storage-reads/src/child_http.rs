@@ -1,4 +1,4 @@
-//! Private one-attempt literal-IP plain HTTP; no resolver/TLS/codecs/activation.
+//! Private one-attempt literal-IP HTTP/TLS; no resolver/codecs/activation.
 use crate::{
     isolated::Error,
     protocol::{Method, Request, TransportFailure},
@@ -33,6 +33,89 @@ use tokio::{
 };
 pub const WIRE: usize = 64 * 1024 * 1024;
 pub const HEADERS: usize = 65536;
+pub const TLS_WIRE: usize = 64 * 1024 * 1024;
+
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod tls_wire_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    struct FixedInput {
+        remaining: usize,
+        maximum: usize,
+    }
+    impl AsyncRead for FixedInput {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            b: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            self.maximum = self.maximum.max(b.remaining());
+            let n = b.remaining().min(self.remaining);
+            b.put_slice([0; STEP].get(..n).unwrap_or_else(|| unreachable!()));
+            self.remaining -= n;
+            Poll::Ready(Ok(()))
+        }
+    }
+    impl AsyncWrite for FixedInput {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            b: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            self.maximum = self.maximum.max(b.len());
+            Poll::Ready(Ok(b.len()))
+        }
+        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+        fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+    #[test]
+    fn encrypted_counter_boundary_and_shared_direction_budget() {
+        runtime()
+            .unwrap_or_else(|_| unreachable!())
+            .block_on(async {
+                let mut io = LimitedIo {
+                    socket: FixedInput {
+                        remaining: TLS_WIRE + 1,
+                        maximum: 0,
+                    },
+                    wire: 0,
+                    limit: TLS_WIRE,
+                    invalid_headers: Arc::new(AtomicBool::new(false)),
+                };
+                let mut output = [0; STEP * 2];
+                for _ in 0..TLS_WIRE / STEP {
+                    assert_eq!(
+                        io.read(&mut output)
+                            .await
+                            .unwrap_or_else(|_| unreachable!()),
+                        STEP
+                    );
+                }
+                assert_eq!(io.wire, TLS_WIRE);
+                output.fill(7);
+                assert!(io.read(&mut output).await.is_err());
+                assert!(output.iter().all(|n| *n == 7));
+                assert!(io.write(b"x").await.is_err());
+                assert_eq!(io.socket.maximum, STEP);
+                let mut io = LimitedIo {
+                    socket: FixedInput {
+                        remaining: 1,
+                        maximum: 0,
+                    },
+                    wire: TLS_WIRE - 1,
+                    limit: TLS_WIRE,
+                    invalid_headers: Arc::new(AtomicBool::new(false)),
+                };
+                assert_eq!(io.write(b"ab").await.unwrap_or_else(|_| unreachable!()), 1);
+                assert!(io.read(&mut output).await.is_err());
+            });
+    }
+}
 const STEP: usize = 4096;
 struct Empty;
 impl Body for Empty {
@@ -51,12 +134,13 @@ impl Body for Empty {
         SizeHint::with_exact(0)
     }
 }
-struct LimitedIo {
-    socket: TcpStream,
+struct LimitedIo<IO> {
+    socket: IO,
     wire: usize,
+    limit: usize,
     invalid_headers: Arc<AtomicBool>,
 }
-impl AsyncRead for LimitedIo {
+impl<IO: AsyncRead + Unpin> AsyncRead for LimitedIo<IO> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -69,7 +153,7 @@ impl AsyncRead for LimitedIo {
         let take = output
             .remaining()
             .min(STEP)
-            .min(WIRE.saturating_sub(self.wire).saturating_add(1));
+            .min(self.limit.saturating_sub(self.wire).saturating_add(1));
         let mut input = ReadBuf::new(
             scratch
                 .get_mut(..take)
@@ -80,7 +164,7 @@ impl AsyncRead for LimitedIo {
             Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
             Poll::Ready(Ok(())) => {
                 let n = input.filled().len();
-                if n > WIRE.saturating_sub(self.wire) {
+                if n > self.limit.saturating_sub(self.wire) {
                     return Poll::Ready(Err(io::Error::other("fixed wire refusal")));
                 }
                 self.wire += n;
@@ -90,13 +174,16 @@ impl AsyncRead for LimitedIo {
         }
     }
 }
-impl AsyncWrite for LimitedIo {
+impl<IO: AsyncWrite + Unpin> AsyncWrite for LimitedIo<IO> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         input: &[u8],
     ) -> Poll<io::Result<usize>> {
-        let take = input.len().min(STEP).min(WIRE.saturating_sub(self.wire));
+        let take = input
+            .len()
+            .min(STEP)
+            .min(self.limit.saturating_sub(self.wire));
         if take == 0 && !input.is_empty() {
             return Poll::Ready(Err(io::Error::other("fixed wire refusal")));
         }
@@ -172,6 +259,39 @@ impl Drop for Driver {
 }
 /// Inputs come from the validated Request codec; caller retains authorization.
 pub async fn execute(request: Request) -> Result<Vec<u8>, Error> {
+    execute_inner(request, None, None).await
+}
+/// Immutable production trust: no external config/root/identity constructor.
+pub struct ProductionTls(Arc<rustls::ClientConfig>);
+impl ProductionTls {
+    /// Must complete before READY or secret-bearing input.
+    pub fn new() -> Result<Self, Error> {
+        let roots =
+            rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .map_err(|_| Error::Setup)?
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+        config.resumption = rustls::client::Resumption::disabled();
+        config.enable_early_data = false;
+        config.enable_sni = true;
+        config.alpn_protocols = vec![b"http/1.1".to_vec()];
+        Ok(Self(Arc::new(config)))
+    }
+}
+pub async fn execute_tls(request: Request, policy: &ProductionTls) -> Result<Vec<u8>, Error> {
+    execute_inner(request, Some(Arc::clone(&policy.0)), None).await
+}
+// Crate-private only. A separate synthetic artifact includes this actual module
+// as local source to supply fixed fixture trust/address; production exports neither.
+pub(crate) async fn execute_inner(
+    request: Request,
+    tls: Option<Arc<rustls::ClientConfig>>,
+    fixture_target: Option<SocketAddr>,
+) -> Result<Vec<u8>, Error> {
     if !matches!(request.body_cap, crate::LIST_BYTES | crate::TEXT_BYTES)
         || request.url.len() > 65536
         || request.headers.len() > 100
@@ -186,7 +306,8 @@ pub async fn execute(request: Request) -> Result<Vec<u8>, Error> {
         Ok(u) => u,
         Err(_) => return failure(Phase::Headers, TransportFailure::Header, cap),
     };
-    if uri.scheme_str() != Some("http") {
+    let encrypted = uri.scheme_str() == Some("https");
+    if uri.scheme_str() != Some("http") && !encrypted || encrypted && tls.is_none() {
         return failure(Phase::Tls, TransportFailure::Tls, cap);
     }
     let Some(authority) = uri.authority() else {
@@ -196,11 +317,30 @@ pub async fn execute(request: Request) -> Result<Vec<u8>, Error> {
         .host()
         .trim_start_matches('[')
         .trim_end_matches(']');
-    let ip: IpAddr = match host.parse() {
-        Ok(ip) => ip,
-        Err(_) => return failure(Phase::Dns, TransportFailure::Dns, cap),
+    let endpoint = match fixture_target {
+        Some(endpoint) if endpoint.ip().is_loopback() && host == "localhost" => endpoint,
+        Some(_) => return Err(Error::Input),
+        None => {
+            let ip: IpAddr = match host.parse() {
+                Ok(ip) => ip,
+                Err(_) => return failure(Phase::Dns, TransportFailure::Dns, cap),
+            };
+            SocketAddr::new(
+                ip,
+                authority
+                    .port_u16()
+                    .unwrap_or(if encrypted { 443 } else { 80 }),
+            )
+        }
     };
-    let endpoint = SocketAddr::new(ip, authority.port_u16().unwrap_or(80));
+    let identity = if encrypted {
+        match rustls::pki_types::ServerName::try_from(host.to_owned()) {
+            Ok(name) => Some(name),
+            Err(_) => return failure(Phase::Tls, TransportFailure::Tls, cap),
+        }
+    } else {
+        None
+    };
     let path = uri.path_and_query().map(|s| s.as_str()).unwrap_or("/");
     let mut outgoing = match HttpRequest::builder()
         .method(match request.method {
@@ -261,6 +401,38 @@ pub async fn execute(request: Request) -> Result<Vec<u8>, Error> {
         }
         Err(_) => return failure(Phase::Tcp, TransportFailure::Timeout, cap),
     };
+    if encrypted {
+        let policy = tls.ok_or(Error::Input)?;
+        let name = identity.ok_or(Error::Input)?;
+        let wire = LimitedIo {
+            socket,
+            wire: 0,
+            limit: TLS_WIRE,
+            invalid_headers: Arc::clone(&invalid_headers),
+        };
+        let connector = tokio_rustls::TlsConnector::from(policy);
+        let stream = match timeout_at(
+            deadline,
+            connector.connect_with(name, wire, |session| session.set_buffer_limit(Some(65536))),
+        )
+        .await
+        {
+            Ok(Ok(stream)) => stream,
+            Ok(Err(_)) => return failure(Phase::Tls, TransportFailure::Tls, cap),
+            Err(_) => return failure(Phase::Tls, TransportFailure::Timeout, cap),
+        };
+        exchange(stream, outgoing, invalid_headers, deadline, cap).await
+    } else {
+        exchange(socket, outgoing, invalid_headers, deadline, cap).await
+    }
+}
+async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
+    socket: IO,
+    outgoing: HttpRequest<Empty>,
+    invalid_headers: Arc<AtomicBool>,
+    deadline: Instant,
+    cap: usize,
+) -> Result<Vec<u8>, Error> {
     let mut builder = http1::Builder::new();
     builder.max_headers(100).max_buf_size(65536);
     let (mut sender, connection) = match timeout_at(
@@ -268,6 +440,7 @@ pub async fn execute(request: Request) -> Result<Vec<u8>, Error> {
         builder.handshake(TokioIo::new(LimitedIo {
             socket,
             wire: 0,
+            limit: WIRE,
             invalid_headers: Arc::clone(&invalid_headers),
         })),
     )
