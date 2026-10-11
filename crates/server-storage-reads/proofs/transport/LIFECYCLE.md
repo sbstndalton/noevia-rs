@@ -63,6 +63,34 @@ Linux AS/CPU/dumpability probes, no-secret-before-READY observer and meaningful
 implementation mutants. Earlier immutable process-seam controls do not certify
 this new owner automatically. No whole cancellation certification is claimed.
 
+### Subsequent owned qualification slice
+
+New owned_controls now proves no stdin bytes before READY (child observes its
+nonblocking pipe before announcing READY); cancellation triggered after actual
+stdin progress; admission held at progress and immediately before reap; inherited
+same-group pipes with exited leader still observable by NOWAIT; spawn failure.
+All four checks passed once. Private observation callbacks are secret-free test
+contracts, not production cancellation hooks. Reap-failure quarantine and Linux
+syscall/limit failures remain pending. Neither docker nor podman executable is
+on this host PATH; no daemon was contacted and no Linux probe is claimed.
+
+Rust owned_mutants copied actual lifecycle source to isolated owned temporary
+crates and changed one source anchor each: READY gating bypass, cancellation
+ignored, admission released at construction. All three compiled, then failed
+their designated test (compile failures do not count). Fixture sources are
+retained under the reported owned temporary directory. These target this finite
+owner only; no full mutation campaign or network guarantee follows.
+
+request_ipc implements a bounded binary owned Request contract: GET/PROPFIND,
+HTTP(S) URL≤64KiB without userinfo,100 headers/name128/value12MiB, aggregate16MiB,
+body cap4MiB/800000, timeout>0≤20s encoded with exact nanoseconds, no Debug/secret
+diagnostics. Caller configured-origin authorization is still mandatory. Decode
+checks every length before copying and rejects malformed/trailing input. Input
+and header copies are Zeroizing where defined. Roundtrip/all truncations/trailing
+data/CRLF refusal passed; nanosecond preservation changed the wire format and its
+affected test reran once. This request contract is not yet consumed by a network
+child; bounded HTTP status/failure metadata and actual pipeline remain pending.
+
 Still held: ordinary HTTP/TLS/codec pipeline, original-host SNI/OS resolver,
 bounded encoded input, header/trailer policy and typed phase retry; full actual
 oracle; parent allocation/sort; async ownership; owner/AAD/auth/CSRF/store/routes;

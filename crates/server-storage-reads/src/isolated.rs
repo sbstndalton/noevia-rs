@@ -111,12 +111,38 @@ fn read_step(pipe: &mut impl Read, output: &mut Vec<u8>, cap: usize) -> Result<b
 /// Takes admission ownership even on spawn failure; no credentials sent before READY.
 /// `command` must identify an owned fixed executable/mode, never a user command.
 pub fn attempt(
+    command: Command,
+    input: Zeroizing<Vec<u8>>,
+    body_cap: usize,
+    deadline: Duration,
+    cancelled: &AtomicBool,
+    permit: Permit,
+) -> Result<Vec<u8>, Error> {
+    attempt_observed(
+        command,
+        input,
+        body_cap,
+        deadline,
+        cancelled,
+        permit,
+        |_, _| {},
+    )
+}
+
+/// Private proof observations only; callbacks must be finite and secret-free.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Observation {
+    InputProgress(usize),
+    BeforeReap,
+}
+pub fn attempt_observed(
     mut command: Command,
     input: Zeroizing<Vec<u8>>,
     body_cap: usize,
     deadline: Duration,
     cancelled: &AtomicBool,
     permit: Permit,
+    mut observe: impl FnMut(Observation, u32),
 ) -> Result<Vec<u8>, Error> {
     if input.len() > INPUT || body_cap > crate::LIST_BYTES {
         return Err(Error::Input);
@@ -194,7 +220,10 @@ pub fn attempt(
                         let bytes = bytes.get(..bytes.len().min(STEP)).ok_or(Error::Input)?;
                         match pipe.write(bytes) {
                             Ok(0) => return Err(Error::Protocol),
-                            Ok(n) => sent += n,
+                            Ok(n) => {
+                                sent += n;
+                                observe(Observation::InputProgress(sent), owned.child.id());
+                            }
                             Err(e) if transient(&e) => {}
                             Err(_) => return Err(Error::Protocol),
                         }
@@ -229,6 +258,7 @@ pub fn attempt(
         out.drain(..offset + 4);
         Ok(out)
     })();
+    observe(Observation::BeforeReap, owned.child.id());
     let success = owned.cleanup()?;
     match result {
         Err(error) => Err(error),

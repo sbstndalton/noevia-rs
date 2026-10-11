@@ -9,6 +9,7 @@ pub mod admission;
 pub mod isolated;
 pub mod json;
 pub mod protocol;
+pub mod request_ipc;
 
 pub const LIST_BYTES: usize = 4 * 1024 * 1024;
 pub const TEXT_BYTES: usize = 800_000;

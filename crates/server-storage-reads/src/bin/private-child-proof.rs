@@ -18,8 +18,28 @@ fn run(mode: &str) -> Result<(), ()> {
             | "fixture-extra"
             | "fixture-exit"
             | "fixture-no-ready"
+            | "fixture-gated"
+            | "fixture-inherited"
+            | "fixture-holder"
     ) {
         return Err(());
+    }
+    if mode == "fixture-holder" {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        return Ok(());
+    }
+    if mode == "fixture-gated" {
+        // Observe the pipe before READY: any byte/EOF is a protocol failure.
+        let stdin = std::io::stdin();
+        let old = rustix::fs::fcntl_getfl(&stdin).map_err(|_| ())?;
+        rustix::fs::fcntl_setfl(&stdin, old | rustix::fs::OFlags::NONBLOCK).map_err(|_| ())?;
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let mut byte = [0];
+        match stdin.lock().read(&mut byte) {
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            _ => return Err(()),
+        }
+        rustix::fs::fcntl_setfl(&stdin, old).map_err(|_| ())?;
     }
     if mode == "fixture-no-ready" {
         std::thread::sleep(std::time::Duration::from_secs(5));
@@ -34,6 +54,17 @@ fn run(mode: &str) -> Result<(), ()> {
         })
         .map_err(|_| ())?;
     stdout.flush().map_err(|_| ())?;
+    if mode == "fixture-inherited" {
+        // Explicit synthetic descendant; stays in the owned group and inherits pipes.
+        let mut command = std::process::Command::new(std::env::current_exe().map_err(|_| ())?);
+        command
+            .arg("fixture-holder")
+            .env_clear()
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit());
+        let _owned_group_descendant = command.spawn().map_err(|_| ())?;
+    }
     if mode == "fixture-stall" {
         std::thread::sleep(std::time::Duration::from_secs(5));
         return Err(());
