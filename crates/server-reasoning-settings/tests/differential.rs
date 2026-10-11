@@ -18,8 +18,11 @@ fn actual_node_reasoning_put_matrix() {
     let fixture: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(
         fixture["core"],
-        std::env::var("NOEVIA_REASONING_CORE_SHA")
-            .unwrap_or_else(|_| "641917e2447a0b6c91d7e54cc665085b32555b92".into())
+        std::env::var("NOEVIA_REASONING_CORE_SHA").unwrap_or_else(|_| include_str!(
+            "../../../contracts/http/core.ref"
+        )
+        .trim()
+        .into())
     );
     for case in fixture["cases"].as_array().unwrap() {
         let dir = tempfile::tempdir().unwrap();
