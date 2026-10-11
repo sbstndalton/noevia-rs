@@ -136,3 +136,82 @@ fn native_js_foreign_authentication_contract_controls() -> Result<(), String> {
     assert!(topology::assert_js_gcm_auth_failure(&wrong_message_type).is_err());
     Ok(())
 }
+
+#[test]
+fn fixed_locked_package_root_contract_controls() -> Result<(), String> {
+    let mut closure = (0..63)
+        .map(|n| format!("synthetic-package-{n}"))
+        .collect::<BTreeSet<_>>();
+    closure.extend(["tslib".into(), "tsyringe".into()]);
+    let roots = topology::expected_package_roots(&closure)?;
+    assert_eq!(roots.len(), 66);
+    let mut manifests = BTreeSet::new();
+    for name in &closure {
+        let version = if name == "tslib" { "2.8.1" } else { "1.0.0" };
+        topology::validate_package_root(
+            &format!("node_modules/{name}"),
+            &json!({"name":name,"version":version}),
+            &json!({"version":version}),
+            &closure,
+            &roots,
+            &mut manifests,
+        )?;
+    }
+    let nested = topology::NESTED_TSLIB_ROOT;
+    let package = json!({"name":"tslib","version":"1.14.1"});
+    let pinned = json!({"version":"1.14.1"});
+    topology::validate_package_root(nested, &package, &pinned, &closure, &roots, &mut manifests)?;
+    topology::validate_package_root_closure(&manifests, &roots)?;
+    assert!(topology::validate_package_root(
+        nested,
+        &package,
+        &pinned,
+        &closure,
+        &roots,
+        &mut manifests
+    )
+    .is_err());
+    for missing in ["node_modules/tslib", nested] {
+        let mut incomplete = manifests.clone();
+        incomplete.remove(missing);
+        assert!(topology::validate_package_root_closure(&incomplete, &roots).is_err());
+    }
+    let mut extra = manifests.clone();
+    extra.insert("node_modules/unaccepted".into());
+    assert!(topology::validate_package_root_closure(&extra, &roots).is_err());
+    for (parent, actual, lock) in [
+        (
+            nested,
+            json!({"name":"wrong","version":"1.14.1"}),
+            pinned.clone(),
+        ),
+        (
+            nested,
+            json!({"name":"tslib","version":"2.8.1"}),
+            json!({"version":"2.8.1"}),
+        ),
+        (nested, package.clone(), json!({"version":"1.14.2"})),
+        ("node_modules/tslib", package.clone(), pinned.clone()),
+        (
+            "node_modules/other/node_modules/tslib",
+            package.clone(),
+            pinned.clone(),
+        ),
+        (
+            "node_modules/unaccepted",
+            json!({"name":"unaccepted","version":"1.0.0"}),
+            json!({"version":"1.0.0"}),
+        ),
+    ] {
+        assert!(topology::validate_package_root(
+            parent,
+            &actual,
+            &lock,
+            &closure,
+            &roots,
+            &mut BTreeSet::new()
+        )
+        .is_err());
+    }
+    Ok(())
+}

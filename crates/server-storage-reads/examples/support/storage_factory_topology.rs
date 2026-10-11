@@ -35,7 +35,7 @@ pub const NOW: i64 = 1_700_000_000_000;
 // Empty means unapproved; neither the CLI nor the tool can approve itself.
 pub const APPROVED_MANIFEST_SHA: &str = "";
 pub const APPROVED_PREFLIGHT_SHA: &str = "";
-pub const GIT_EVIDENCE: &str = "/tmp/m4-storage-factory-git-first-attempt";
+pub const GIT_EVIDENCE: &str = "/tmp/m4-storage-factory-git-second-attempt";
 pub const CAPTURE_ROOT: &str = "/tmp/m4-storage-factory-capture-first-attempt";
 pub const PREFLIGHT_ROOT: &str = "/tmp/m4-storage-factory-preflight-first-attempt";
 pub const SCHEMA: &str = include_str!("../../../server-store/tests/fixtures/node-schema.sql");
@@ -497,6 +497,61 @@ fn command(args: &[&str]) -> Result<Vec<u8>> {
     )?;
     Ok(o.stdout)
 }
+// The immutable proof names 65 top-level packages, while the immutable lock
+// also pins exactly one nested package root. Package identity is path-based.
+pub const NESTED_TSLIB_ROOT: &str = "node_modules/tsyringe/node_modules/tslib";
+pub fn expected_package_roots(closure: &BTreeSet<String>) -> Result<BTreeSet<String>> {
+    require(
+        closure.len() == 65 && closure.contains("tslib") && closure.contains("tsyringe"),
+        "fixed package closure names",
+    )?;
+    let mut roots = closure
+        .iter()
+        .map(|name| format!("node_modules/{name}"))
+        .collect::<BTreeSet<_>>();
+    require(
+        roots.insert(NESTED_TSLIB_ROOT.into()),
+        "nested package root",
+    )?;
+    require(roots.len() == 66, "fixed package root count")?;
+    Ok(roots)
+}
+pub fn validate_package_root(
+    parent: &str,
+    package: &Value,
+    pinned: &Value,
+    closure: &BTreeSet<String>,
+    expected: &BTreeSet<String>,
+    manifests: &mut BTreeSet<String>,
+) -> Result<()> {
+    require(expected.contains(parent), "unexpected locked package root")?;
+    let name = string(package, "name")?;
+    let version = string(package, "version")?;
+    let identity = if parent == NESTED_TSLIB_ROOT {
+        name == "tslib" && version == "1.14.1"
+    } else {
+        parent == format!("node_modules/{name}") && (name != "tslib" || version == "2.8.1")
+    };
+    require(
+        identity
+            && closure.contains(name)
+            && pinned.get("version").and_then(Value::as_str) == Some(version),
+        "locked package identity/version",
+    )?;
+    require(
+        manifests.insert(parent.into()),
+        "duplicate locked package root",
+    )
+}
+pub fn validate_package_root_closure(
+    manifests: &BTreeSet<String>,
+    expected: &BTreeSet<String>,
+) -> Result<()> {
+    require(
+        manifests == expected && manifests.len() == 66,
+        "exact locked package root closure",
+    )
+}
 pub fn materialize(adapter: &str) -> Result<Value> {
     let started = std::time::Instant::now();
     let root = Path::new(ROOT);
@@ -600,6 +655,7 @@ pub fn materialize(adapter: &str) -> Result<Value> {
         .iter()
         .map(|v| v.as_str().map(str::to_string).ok_or("closure name".into()))
         .collect::<Result<BTreeSet<_>>>()?;
+    let expected_roots = expected_package_roots(&closure)?;
     let mut manifests = BTreeSet::new();
     let mut deps_bytes = 0usize;
     for item in rows {
@@ -629,14 +685,13 @@ pub fn materialize(adapter: &str) -> Result<Value> {
             // attested files; only actual lock package roots define versions.
             if let Some(pinned) = lock.get("packages").and_then(|v| v.get(parent)) {
                 let package: Value = serde_json::from_slice(&b).map_err(|_| "package JSON")?;
-                let name = string(&package, "name")?;
-                let version = string(&package, "version")?;
-                require(
-                    pinned.get("version").and_then(Value::as_str) == Some(version)
-                        && parent == format!("node_modules/{name}")
-                        && closure.contains(name)
-                        && manifests.insert(name.to_string()),
-                    "locked package identity/version",
+                validate_package_root(
+                    parent,
+                    &package,
+                    pinned,
+                    &closure,
+                    &expected_roots,
+                    &mut manifests,
                 )?;
             }
         }
@@ -645,10 +700,7 @@ pub fn materialize(adapter: &str) -> Result<Value> {
         push(&mut material, (p, b, None), 5120)?;
     }
     require(deps_bytes == 19_185_089, "dependency total identity")?;
-    require(
-        manifests == closure && manifests.len() == 65,
-        "exact locked package closure",
-    )?;
+    validate_package_root_closure(&manifests, &expected_roots)?;
     let mut queue = vec![(PathBuf::from(DEPS).join("node_modules"), 0usize)];
     let mut visited = 0usize;
     let mut found = BTreeSet::new();
