@@ -47,6 +47,8 @@ impl DockerRead for Fake {
 }
 fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
     Arc::new(StateData {
+        #[cfg(feature = "native-diagnose")]
+        diagnosis: None,
         #[cfg(feature = "native-prompts")]
         prompts: None,
         sections: None,

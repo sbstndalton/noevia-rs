@@ -786,6 +786,120 @@ jobs:
             ${{ runner.temp }}/prompts.json
             ${{ runner.temp }}/prompts-publicfront.json
 
+  native-diagnose:
+    name: Native diagnosis closed transport, actual oracles and ownership
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 6c233f4a05730ed5dccd7997ae601e9999eaa6d7
+          path: diagnose-services
+      - name: Read unchanged actual core pin
+        id: diagnose-core
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/http/core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.diagnose-core.outputs.sha }}
+          path: diagnose-core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Prepare immutable oracle and external locked Node dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install docker==7.1.0 requests==2.34.2 fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3 uvicorn==0.34.0
+          echo "PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+          umask 077
+          dependency_root="$RUNNER_TEMP/diagnose-node-dependencies"
+          mkdir -m 700 "$dependency_root"
+          git -C diagnose-core show '${{ steps.diagnose-core.outputs.sha }}:server/package.json' > "$dependency_root/package.json"
+          git -C diagnose-core show '${{ steps.diagnose-core.outputs.sha }}:server/package-lock.json' > "$dependency_root/package-lock.json"
+          npm ci --prefix "$dependency_root" --no-fund --no-audit
+      - name: Build unchanged actual-core WASM prerequisite
+        run: |
+          set -euo pipefail
+          eval "$(grep -E '^(NOEVIA_RS_REF|NOEVIA_RS_SHA256|DAV_PARSE_WASM_SHA256)=[0-9a-f]+$' diagnose-core/server/dav-parse.lock)"
+          [[ "$NOEVIA_RS_REF" =~ ^[0-9a-f]{40}$ ]]
+          curl -fsSL "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$NOEVIA_RS_REF" -o "$RUNNER_TEMP/diagnose-wasm.tgz"
+          echo "$NOEVIA_RS_SHA256  $RUNNER_TEMP/diagnose-wasm.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/diagnose-wasm"
+          tar -xzf "$RUNNER_TEMP/diagnose-wasm.tgz" --strip-components=1 -C "$RUNNER_TEMP/diagnose-wasm"
+          "$RUNNER_TEMP/diagnose-wasm/tools/build-dav-parse-wasm.sh" "$GITHUB_WORKSPACE/diagnose-core/server/wasm/dav-parse.wasm"
+          echo "$DAV_PARSE_WASM_SHA256  diagnose-core/server/wasm/dav-parse.wasm" | sha256sum -c -
+      - name: Fresh immutable SDK wire and selected FastAPI AST gates
+        env:
+          NOEVIA_DIAGNOSE_SERVICES_SOURCE: ${{ github.workspace }}/diagnose-services
+          NOEVIA_DIAGNOSE_DOCKER_SDK: ${{ env.pythonLocation }}/lib/python3.12/site-packages/docker
+        run: |
+          cargo run --locked -q -p noevia-model-manager --bin generate-diagnose-transport-oracle > "$RUNNER_TEMP/diagnose-sdk.json"
+          cargo run --locked -q -p noevia-model-manager --bin generate-diagnose-transport-oracle -- --routes > "$RUNNER_TEMP/diagnose-routes.json"
+      - name: New closed native transport, route and retained ownership controls
+        env:
+          NOEVIA_DIAGNOSE_SDK_ORACLE: ${{ runner.temp }}/diagnose-sdk.json
+          NOEVIA_DIAGNOSE_ROUTE_ORACLE: ${{ runner.temp }}/diagnose-routes.json
+        run: |
+          cargo clippy --locked -p noevia-model-manager --features native-diagnose --lib --bin noevia-model-manager --bin generate-diagnose-transport-oracle --test diagnose_transport --test diagnose_route --test diagnose_lifecycle -- -D warnings
+          cargo test --locked -p noevia-model-manager --features native-diagnose --test diagnose_transport --test diagnose_route --test diagnose_lifecycle
+      - name: Whole actual public front and explicit default-off controls
+        env:
+          NOEVIA_DIAGNOSE_CORE_SOURCE: ${{ github.workspace }}/diagnose-core
+          NOEVIA_DIAGNOSE_SERVICES_SOURCE: ${{ github.workspace }}/diagnose-services
+          NOEVIA_DIAGNOSE_DEPENDENCIES: ${{ runner.temp }}/diagnose-node-dependencies
+        run: |
+          cargo build --locked -p noevia-model-manager --bin noevia-model-manager --no-default-features
+          cp target/debug/noevia-model-manager /tmp/s1-diagnose-featureless-manager
+          cargo build --locked -p replay --bin diagnose-contracts --bin corpus-launcher
+          target/debug/diagnose-contracts --featureless
+          cargo build --locked -p noevia-model-manager --bin noevia-model-manager --features native-diagnose
+          cargo build --locked -p noevia-server --bin noevia-server
+          cargo clippy --locked -p replay --bin diagnose-contracts -- -D warnings
+          cargo test --locked -p replay --bin diagnose-contracts tests::native_child_confirmation_semantics -- --exact
+          target/debug/corpus-launcher verify "$PWD/diagnose-core"
+          target/debug/diagnose-contracts --startup
+          target/debug/diagnose-contracts --controls
+          target/debug/diagnose-contracts --security
+          target/debug/diagnose-contracts
+      - name: Five new source-bound production diagnosis mutations
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+          NOEVIA_DIAGNOSE_MUTATION_EVIDENCE: ${{ runner.temp }}/diagnose-wave-b-mutations
+          NOEVIA_DIAGNOSE_CORE_SOURCE: ${{ github.workspace }}/diagnose-core
+          NOEVIA_DIAGNOSE_SERVICES_SOURCE: ${{ github.workspace }}/diagnose-services
+          NOEVIA_DIAGNOSE_DEPENDENCIES: ${{ runner.temp }}/diagnose-node-dependencies
+        run: |
+          cargo clippy --locked -p noevia-model-manager --bin check-diagnose-wave-b-mutations -- -D warnings
+          cargo test --locked -p noevia-model-manager --bin check-diagnose-wave-b-mutations
+          cargo build --locked -p noevia-model-manager --bin check-diagnose-wave-b-mutations
+          target/debug/check-diagnose-wave-b-mutations --execute
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-diagnose-closed-qualification
+          path: |
+            ${{ runner.temp }}/diagnose-sdk.json
+            ${{ runner.temp }}/diagnose-routes.json
+            /tmp/s1-diagnose-public-current.json
+            /tmp/s1-diagnose-public-security.json
+            /tmp/s1-diagnose-public-control-*.json
+            /tmp/s1-diagnose-startup-*.json
+            /tmp/s1-diagnose-featureless-control.json
+            ${{ runner.temp }}/diagnose-wave-b-mutations
+
   native-ocr:
     name: Native OCR matches the pinned Python sidecar (real engines)
     runs-on: ubuntu-latest
