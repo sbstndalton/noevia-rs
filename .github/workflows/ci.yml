@@ -856,6 +856,44 @@ jobs:
         run: |
           cargo clippy --locked -p noevia-model-manager --features native-diagnose --lib --bin noevia-model-manager --bin generate-diagnose-transport-oracle --test diagnose_transport --test diagnose_route --test diagnose_lifecycle -- -D warnings
           cargo test --locked -p noevia-model-manager --features native-diagnose --test diagnose_transport --test diagnose_route --test diagnose_lifecycle
+      - name: Actual connected Linux Unix reset witness and retained driver join
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence="$RUNNER_TEMP/diagnose-unix-reset"
+          mkdir -m 700 "$evidence"
+          git rev-parse HEAD 'HEAD^{tree}' > "$evidence/source.identity"
+          sha256sum bins/noevia-model-manager/src/diagnose_docker.rs > "$evidence/source.sha256"
+          uname -srm > "$evidence/runtime.txt"
+          set +e
+          cargo clippy --locked -p noevia-model-manager --features native-diagnose --lib --profile test --message-format=json -- -D warnings > "$evidence/clippy.stdout" 2> "$evidence/clippy.stderr"
+          result=$?
+          printf '%s\n' "$result" > "$evidence/clippy.status"
+          set -e
+          test "$result" -eq 0
+          set +e
+          cargo test --locked -p noevia-model-manager --features native-diagnose --lib --no-run --message-format=json > "$evidence/build.stdout" 2> "$evidence/build.stderr"
+          result=$?
+          printf '%s\n' "$result" > "$evidence/build.status"
+          set -e
+          test "$result" -eq 0
+          binary=$(jq -ser '[.[] | select(.reason == "compiler-artifact" and .target.name == "noevia_model_manager" and .profile.test == true and .executable != null) | .executable] | if length == 1 then .[0] else error("unique owned lib test executable required") end' "$evidence/build.stdout")
+          binary=$(realpath -e "$binary")
+          case "$binary" in "$GITHUB_WORKSPACE"/target/debug/deps/noevia_model_manager-*) ;; *) exit 1 ;; esac
+          leaf=${binary##*/}
+          [[ "$leaf" =~ ^noevia_model_manager-[0-9a-f]{16}$ ]]
+          test -f "$binary" && test -x "$binary"
+          sha256sum -c "$evidence/source.sha256"
+          sha256sum "$binary" > "$evidence/binary.sha256"
+          printf '%s\n' "$binary" '--exact' 'diagnose_docker::transport_error_tests::connected_unix_unread_request_reset_is_ordinary_after_actual_driver_join' '--nocapture' > "$evidence/command.txt"
+          set +e
+          "$binary" --exact diagnose_docker::transport_error_tests::connected_unix_unread_request_reset_is_ordinary_after_actual_driver_join --nocapture > "$evidence/control.stdout" 2> "$evidence/control.stderr"
+          result=$?
+          printf '%s\n' "$result" > "$evidence/control.status"
+          set -e
+          test "$result" -eq 0
+          grep -Fx 'test diagnose_docker::transport_error_tests::connected_unix_unread_request_reset_is_ordinary_after_actual_driver_join ... ok' "$evidence/control.stdout"
+          grep -E '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+$' "$evidence/control.stdout"
       - name: Whole actual public front and explicit default-off controls
         env:
           NOEVIA_DIAGNOSE_CORE_SOURCE: ${{ github.workspace }}/diagnose-core
@@ -894,6 +932,7 @@ jobs:
           path: |
             ${{ runner.temp }}/diagnose-sdk.json
             ${{ runner.temp }}/diagnose-routes.json
+            ${{ runner.temp }}/diagnose-unix-reset
             /tmp/s1-diagnose-public-current.json
             /tmp/s1-diagnose-public-security.json
             /tmp/s1-diagnose-public-control-*.json
