@@ -62,12 +62,14 @@ Set `NOEVIA_DOCLING_REFERENCE` to `docling/` from actual merged services
 `b25a677182097c5ed72221e01fee5d5587aa7043`, archive SHA-256
 `8f9f0b11654a2547f1bf99fddc5b31a60341c92355ed4fc86ad0012c807a7e39`.
 Tests fail when the reference is missing; no silent skip. Source hashes are checked
-before the actual server/isolation/worker modules are copied to synthetic state.
-Only the extraction collaborator is replaced. The generator runs real localhost
+by the Rust-owned test harness before the actual server/isolation/worker modules are copied to synthetic state.
+Only the extraction collaborator is replaced. The Rust example owns source verification, preparation, cases, HTTP exchange and ordered
+serialization. Fixed minimal Python glue loads the actual server and synthetic engine;
+it defines no oracle cases or HTTP policy. The generator runs real localhost
 Python HTTP requests and records 34 JSON cases, including all supported formats.
 
 ```
-python3 tools/gen-docling-fixtures.py "$NOEVIA_DOCLING_REFERENCE" /tmp/docling-http.json
+cargo run --locked -p docling-service --example gen-fixtures -- "$NOEVIA_DOCLING_REFERENCE" /tmp/docling-http.json
 cmp /tmp/docling-http.json crates/docling-service/tests/fixtures/python-http.v1.json
 cargo test -p docling-service
 cargo test -p noevia-docling --test capability

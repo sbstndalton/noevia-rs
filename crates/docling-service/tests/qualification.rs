@@ -2,6 +2,8 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::{path::PathBuf, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+#[path = "support/oracle.rs"]
+mod oracle;
 #[tokio::test]
 async fn actual_python_http_goldens_through_native_real_worker() {
     let source = PathBuf::from(
@@ -9,16 +11,7 @@ async fn actual_python_http_goldens_through_native_real_worker() {
             .expect("required pinned Docling source; see README"),
     );
     let directory = tempfile::tempdir().unwrap();
-    let tools = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tools");
-    let script="import importlib.util,sys,pathlib; spec=importlib.util.spec_from_file_location('oracle',sys.argv[1]); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); m.prepare(pathlib.Path(sys.argv[2]),pathlib.Path(sys.argv[3]))";
-    let status = std::process::Command::new("python3")
-        .args(["-c", script])
-        .arg(tools.join("gen-docling-fixtures.py"))
-        .arg(source)
-        .arg(directory.path())
-        .status()
-        .unwrap();
-    assert!(status.success(), "actual worker source provenance failed");
+    oracle::prepare(&source, directory.path()).unwrap();
     let mut config = docling_service::Config::production(directory.path().to_owned());
     config.python = "python3".into();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -188,26 +181,9 @@ async fn unsupported_methods_and_head_match_production_python312() {
         std::env::var("NOEVIA_DOCLING_REFERENCE").expect("required pinned Docling source"),
     );
     let directory = tempfile::tempdir().unwrap();
-    let tools =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tools/gen-docling-fixtures.py");
-    let script = r#"
-import importlib.util,json,pathlib,sys,threading
-s=importlib.util.spec_from_file_location('oracle',sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
-m.prepare(pathlib.Path(sys.argv[2]),pathlib.Path(sys.argv[3]));sys.path.insert(0,sys.argv[3]);import server
-h=server.ThreadingHTTPServer(('127.0.0.1',0),server.Handler);threading.Thread(target=h.serve_forever,daemon=True).start()
-try:print(json.dumps({'version':list(sys.version_info[:2]),'cases':[{'method':method,'expected':m.exchange(h.server_address[1],method,'/extract',None,None,b'')} for method in ['PUT','DELETE','HEAD']]}))
-finally:h.shutdown();h.server_close();server.runner.close()
-"#;
-    let output = std::process::Command::new("python3")
-        .args(["-c", script])
-        .arg(tools)
-        .arg(source)
-        .arg(directory.path())
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    let reference: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    let production = reference["version"] == serde_json::json!([3, 12]);
+    oracle::prepare(&source, directory.path()).unwrap();
+    let reference = oracle::Server::start(directory.path()).unwrap();
+    let production = reference.production;
     if std::env::var("CI").is_ok() {
         assert!(
             production,
@@ -220,8 +196,9 @@ finally:h.shutdown();h.server_close();server.runner.close()
         listener,
         docling_service::Config::production(directory.path().to_owned()),
     ));
-    for case in reference["cases"].as_array().unwrap() {
-        let method = case["method"].as_str().unwrap();
+    for method in ["PUT", "DELETE", "HEAD"] {
+        let expected =
+            oracle::exchange(reference.port, method, "/extract", None, None, b"").unwrap();
         let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", port))
             .await
             .unwrap();
@@ -251,7 +228,7 @@ finally:h.shutdown();h.server_close();server.runner.close()
         );
         let body = String::from_utf8(bytes[split + 4..].to_vec()).unwrap();
         if production {
-            assert_eq!(body, case["expected"]["body"].as_str().unwrap());
+            assert_eq!(body, expected.get("body").as_str().unwrap());
         } else if method != "HEAD" {
             assert!(body.contains(&format!("Unsupported method ('{method}')")));
         }
@@ -298,4 +275,35 @@ async fn real_worker_maximum_unicode_text_and_page_envelope_fit_frame_cap() {
         2_000_000
     );
     worker.stop().await;
+}
+
+#[test]
+fn rust_oracle_reproduces_fixture_and_refuses_changed_source() {
+    let source = PathBuf::from(
+        std::env::var("NOEVIA_DOCLING_REFERENCE").expect("required pinned Docling source"),
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let output = directory.path().join("fixture.json");
+    oracle::generate(&source, &output).unwrap();
+    assert_eq!(
+        std::fs::read(&output).unwrap(),
+        include_bytes!("fixtures/python-http.v1.json")
+    );
+    let copied = directory.path().join("changed-source");
+    std::fs::create_dir(&copied).unwrap();
+    for (name, _) in oracle::HASHES {
+        std::fs::copy(source.join(name), copied.join(name)).unwrap();
+    }
+    std::fs::write(copied.join("server.py"), "changed source").unwrap();
+    let target = directory.path().join("target");
+    std::fs::create_dir(&target).unwrap();
+    let error = oracle::prepare(&copied, &target).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("source hash mismatch: server.py"));
+    assert_eq!(
+        std::fs::read_dir(target).unwrap().count(),
+        0,
+        "source validation must precede copies/imports"
+    );
 }

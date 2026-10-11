@@ -70,7 +70,7 @@ jobs:
           tar -xzf /tmp/docling-services.tgz -C .ci-docling --strip-components=1
       - name: Actual Python oracle is reproducible
         run: |
-          python3 tools/gen-docling-fixtures.py "$NOEVIA_DOCLING_REFERENCE" /tmp/docling-http.json
+          cargo run --locked -p docling-service --example gen-fixtures -- "$NOEVIA_DOCLING_REFERENCE" /tmp/docling-http.json
           cmp /tmp/docling-http.json crates/docling-service/tests/fixtures/python-http.v1.json
       - name: Native HTTP, frames, cancellation and actual fake-engine worker
         run: cargo test --locked -p docling-service

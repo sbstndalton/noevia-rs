@@ -581,9 +581,11 @@ name = "docling-service"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "js-json",
  "nix",
  "proptest",
  "serde_json",
+ "sha2",
  "tempfile",
  "tokio",
 ]
