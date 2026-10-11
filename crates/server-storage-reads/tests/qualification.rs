@@ -1,9 +1,6 @@
 use server_storage_reads::{admission::Admission, protocol::decoded_fixture};
-use std::{
-    error::Error,
-    io::Write,
-    process::{Command, Stdio},
-};
+use std::{error::Error, process::Command};
+mod support;
 
 #[test]
 fn admission_releases_owner_and_global_slots_without_queue() -> Result<(), Box<dyn Error>> {
@@ -26,19 +23,7 @@ fn admission_releases_owner_and_global_slots_without_queue() -> Result<(), Box<d
 #[test]
 fn actual_http_malformed_utf8_and_named_last_chunk_exception() -> Result<(), Box<dyn Error>> {
     let root = std::env::var("M4_CORE_ORACLE")?;
-    let source = Command::new("git")
-        .args([
-            "-C",
-            &root,
-            "show",
-            "010735c7d86d30269ab3f4a351b2135faea1c8e7:server/http.cjs",
-        ])
-        .output()?;
-    assert!(source.status.success());
-    assert_eq!(
-        source.stdout,
-        std::fs::read(format!("{root}/server/http.cjs"))?
-    );
+    support::checked_source(&root, "http.cjs")?;
     // A small fixed seam calls the actual HTTP helper. Synthetic Response objects
     // establish chunk layout only for this fixture; no real chunk equivalence claim.
     const SEAM: &str = r#"const fs=require('node:fs'),{readCappedText}=require(process.argv[1]+'/server/http.cjs');(async()=>{const out=[];for(const c of JSON.parse(fs.readFileSync(0,'utf8')))out.push(await readCappedText(new Response(Buffer.from(c.bytes)),c.cap));process.stdout.write(JSON.stringify(out));})().catch(()=>{process.exitCode=1});"#;
@@ -59,19 +44,11 @@ fn actual_http_malformed_utf8_and_named_last_chunk_exception() -> Result<(), Box
         .map(|bytes| serde_json::json!({"bytes":bytes,"cap":32}))
         .collect();
     cases.push(serde_json::json!({"bytes":[97,98,99,100],"cap":3}));
-    let mut child =
-        Command::new(std::env::var("M4_NODE").unwrap_or_else(|_| "/opt/homebrew/bin/node".into()))
-            .args(["-e", SEAM, &root])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-    child
-        .stdin
-        .take()
-        .ok_or("no stdin")?
-        .write_all(&serde_json::to_vec(&cases)?)?;
-    let output = child.wait_with_output()?;
+    let mut command =
+        Command::new(std::env::var("M4_NODE").unwrap_or_else(|_| "/opt/homebrew/bin/node".into()));
+    command.args(["-e", SEAM, &root]);
+    let input = support::process::json_input(&serde_json::Value::Array(cases.clone()))?;
+    let output = support::run(command, input)?;
     assert!(
         output.status.success(),
         "actual HTTP seam failed; diagnostics withheld"

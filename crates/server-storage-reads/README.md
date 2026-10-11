@@ -2,7 +2,7 @@
 
 This standalone crate is **not integrated or deployable**. Its parent workspace,
 lock, server, routes, auth, configuration, store and build tools are unchanged.
-Base: Rust `0ae4195aede92a2313af456197d40c17a7bd0683`; actual client oracle:
+Base: Rust `c665b36106505419d80e01a106b0d402f5d157e2`; actual client oracle:
 core `010735c7d86d30269ab3f4a351b2135faea1c8e7`. Web predecessor:
 `f7d21353dee9f11be663d6a9bf3258144f11c5d5`.
 
@@ -63,10 +63,11 @@ Node-owned. No storage credential writer or native remote writer is introduced.
 
 ## Transport allocation hold and concrete direction
 
-The cached reqwest0.12.28 currently has stream-only use, no TLS stack cached here.
-No dependencies were downloaded or TLS adapter guessed. The prospective default
-reqwest adapter is held; it cannot justify a physical allocation cap merely by
-checking an already-returned `Bytes` frame.
+The nested dependency-only proof pins and builds hyper-rustls/rustls and codecs;
+official registry dependencies were fetched with the bounded Rust process seam.
+No transport adapter exists. See [current complete proof status](proofs/transport/ALLOCATION.md)
+for tested harness repairs (#1371), resource qualifications, exact resolver source
+and the proposed owned DNS helper. Physical allocation and work bounds remain held.
 
 Direct cached source evidence:
 
@@ -93,7 +94,8 @@ Direct cached source evidence:
 Approved direction: private hyper-rustls HTTP1 adapter with per-read fixed slices,
 explicit max buffer and max100 parsed headers; single owned response frame at a
 time; independently bounded encoded input; fixed decoded output buffers; strict
-standard Brotli + budget allocator and fixed gzip/deflate streaming buffers.
+standard Brotli and fixed gzip/deflate streaming buffers. Standard allocation may
+terminate on OOM; no custom budget allocator or infallible recovery is assumed.
 `BR_LARGE_WINDOW_REFUSAL` must be a separate named exception with a negative
 synthetic fixture, preserving ordinary br/gzip/deflate behavior where proven.
 Reject unknown/chained encodings unless their bounded decoding semantics are

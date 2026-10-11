@@ -356,8 +356,27 @@ fn to_string(value: &Value) -> Result<Vec<u16>, Failure> {
 }
 
 pub fn quote_units(out: &mut String, units: &[u16]) {
+    quote_decoded(
+        out,
+        char::decode_utf16(units.iter().copied()).map(|c| c.map_err(|e| e.unpaired_surrogate())),
+    );
+}
+pub fn quote_str(out: &mut String, value: &str) {
+    quote_decoded(out, value.chars().map(Ok));
+}
+pub fn quoted_str_bytes(value: &str) -> usize {
+    2 + value
+        .chars()
+        .map(|c| match c {
+            '"' | '\\' | '\u{8}' | '\u{c}' | '\n' | '\r' | '\t' => 2,
+            c if c < '\u{20}' => 6,
+            c => c.len_utf8(),
+        })
+        .sum::<usize>()
+}
+fn quote_decoded(out: &mut String, decoded: impl Iterator<Item = Result<char, u16>>) {
     out.push('"');
-    for decoded in char::decode_utf16(units.iter().copied()) {
+    for decoded in decoded {
         match decoded {
             Ok('"') => out.push_str("\\\""),
             Ok('\\') => out.push_str("\\\\"),
@@ -368,7 +387,7 @@ pub fn quote_units(out: &mut String, units: &[u16]) {
             Ok('\t') => out.push_str("\\t"),
             Ok(c) if c < '\u{20}' => escape_unit(out, c as u16),
             Ok(c) => out.push(c),
-            Err(e) => escape_unit(out, e.unpaired_surrogate()),
+            Err(unit) => escape_unit(out, unit),
         }
     }
     out.push('"');

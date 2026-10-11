@@ -261,3 +261,30 @@ fn s3_repeated_token_and_twenty_page_cap() -> TestResult {
     assert_eq!(t.replies.len(), 1);
     Ok(())
 }
+
+#[test]
+fn snapshot_field_budget_refusals_bound_response_and_skip_transport() -> TestResult {
+    // Named SNAPSHOT_FIELD_BUDGET qualification: private input contracts, not
+    // a zero-difference claim for oversized legacy settings or stored row state.
+    let mutations: [fn(&mut Connection); 6] = [
+        |c| c.base_url = "x".repeat(65537),
+        |c| c.username = "x".repeat(65537),
+        |c| c.corpus_root = "x".repeat(65537),
+        |c| c.bucket = "x".repeat(65537),
+        |c| c.region = "x".repeat(1024 * 1024 + 1),
+        |c| c.secret = Zeroizing::new(vec![b'x'; 8 * 1024 * 1024 + 1]),
+    ];
+    for mutate in mutations {
+        let mut c = connection(Kind::S3);
+        mutate(&mut c);
+        let mut t = Fake::new(vec![]);
+        let error = execute(&c, &units("x.txt"), Operation::Read, &mut t)
+            .err()
+            .ok_or("missing snapshot refusal")?;
+        assert_eq!(error.status, 502);
+        assert_eq!(error.json(), "{\"error\":\"fetch failed\"}");
+        assert!(error.json().len() < 128);
+        assert!(t.requests.is_empty());
+    }
+    Ok(())
+}

@@ -16,6 +16,8 @@ pub const MAX_PAGES: usize = 20;
 pub const MAX_ENTRIES: usize = 10_000;
 pub const BODY_BYTES: usize = 1024 * 1024;
 pub const JSON_DEPTH: usize = 128;
+pub const LIST_ENTRY_BYTES: usize = 16 * 1024 * 1024;
+pub const LIST_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 
 /// Public failure text is fixed or derived only from the requested filename/status.
 /// Do not insert transport diagnostics, endpoints, credentials or response text.

@@ -421,43 +421,121 @@ struct Entry {
     size: Option<String>,
     ext: String,
 }
-fn entries_json(mut entries: Vec<Entry>, path: &str) -> String {
+fn listing_budget() -> Failure {
+    Failure::new(502, "storage listing exceeds resource limit")
+}
+fn preflight(body: &str, target: Option<&str>) -> Result<(), Failure> {
+    let mut total = 0usize;
+    if let Some(target) = target {
+        let blocks = dav_parse::element_texts(body, "response", dav_parse::MAX_RESPONSES + 1);
+        if blocks.len() > dav_parse::MAX_RESPONSES {
+            return Err(listing_budget());
+        }
+        for block in blocks {
+            // Conservative URL resolution allowance includes the whole target
+            // per candidate. Refusal is a named new resource qualification.
+            total = total
+                .checked_add(block.len())
+                .and_then(|n| n.checked_add(target.len()))
+                .ok_or_else(listing_budget)?;
+            if total > crate::LIST_ENTRY_BYTES {
+                return Err(listing_budget());
+            }
+        }
+    } else {
+        for tag in ["CommonPrefixes", "Contents"] {
+            let blocks = dav_parse::element_texts(body, tag, s3_list_parse::MAX_BLOCKS + 1);
+            if blocks.len() > s3_list_parse::MAX_BLOCKS {
+                return Err(listing_budget());
+            }
+            for block in blocks {
+                total = total.checked_add(block.len()).ok_or_else(listing_budget)?;
+                if total > crate::LIST_ENTRY_BYTES {
+                    return Err(listing_budget());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+fn check_entries(entries: &[Entry]) -> Result<(), Failure> {
+    let mut total = 0usize;
+    for e in entries {
+        total = total
+            .checked_add(e.name.len())
+            .and_then(|n| n.checked_add(e.ext.len()))
+            .and_then(|n| n.checked_add(e.size.as_ref().map_or(0, String::len)))
+            .ok_or_else(listing_budget)?;
+        if total > crate::LIST_ENTRY_BYTES {
+            return Err(listing_budget());
+        }
+    }
+    Ok(())
+}
+fn entries_json(mut entries: Vec<Entry>, path: &str) -> Result<String, Failure> {
+    check_entries(&entries)?;
+    let prefix = if path.is_empty() {
+        0
+    } else {
+        json::quoted_str_bytes(path) - 2 + 1
+    };
+    let mut maximum = 2usize;
+    for (index, entry) in entries.iter().enumerate() {
+        let number = size_json(entry.size.as_deref());
+        let fixed = if entry.is_dir {
+            r#"{"name":,"path":,"isDir":true,"size":,"ext":}"#
+        } else {
+            r#"{"name":,"path":,"isDir":false,"size":,"ext":}"#
+        };
+        let size = json::quoted_str_bytes(&entry.name)
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(json::quoted_str_bytes(&entry.ext)))
+            .and_then(|n| {
+                n.checked_add(prefix + fixed.len() + number.len() + usize::from(index > 0))
+            })
+            .ok_or_else(listing_budget)?;
+        maximum = maximum.checked_add(size).ok_or_else(listing_budget)?;
+        if maximum > crate::LIST_OUTPUT_BYTES {
+            return Err(listing_budget());
+        }
+    }
     entries
         .sort_by_cached_key(|entry| entry.name.to_lowercase().encode_utf16().collect::<Vec<_>>());
-    let mut out = String::from("[");
+    let mut out = String::new();
+    out.try_reserve_exact(maximum)
+        .map_err(|_| listing_budget())?;
+    out.push('[');
     for (i, entry) in entries.into_iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
         out.push_str("{\"name\":");
-        json::quote_units(&mut out, &entry.name.encode_utf16().collect::<Vec<_>>());
+        json::quote_str(&mut out, &entry.name);
         out.push_str(",\"path\":");
         let full = if path.is_empty() {
             entry.name
         } else {
             format!("{path}/{}", entry.name)
         };
-        json::quote_units(&mut out, &full.encode_utf16().collect::<Vec<_>>());
+        json::quote_str(&mut out, &full);
         out.push_str(if entry.is_dir {
             ",\"isDir\":true,\"size\":"
         } else {
             ",\"isDir\":false,\"size\":"
         });
-        let size = entry
-            .size
-            .and_then(|s| s.parse::<f64>().ok())
-            .filter(|n| n.is_finite());
-        out.push_str(
-            &size
-                .map(js_json::number_to_string)
-                .unwrap_or_else(|| "null".into()),
-        );
+        out.push_str(&size_json(entry.size.as_deref()));
         out.push_str(",\"ext\":");
-        json::quote_units(&mut out, &entry.ext.encode_utf16().collect::<Vec<_>>());
+        json::quote_str(&mut out, &entry.ext);
         out.push('}');
     }
     out.push(']');
-    out
+    Ok(out)
+}
+fn size_json(size: Option<&str>) -> String {
+    size.and_then(|s| s.parse::<f64>().ok())
+        .filter(|n| n.is_finite())
+        .map(js_json::number_to_string)
+        .unwrap_or_else(|| "null".into())
 }
 
 /// One whole operation. Caller validates auth/CSRF, obtains admission and checks
@@ -519,9 +597,10 @@ pub fn execute(
     if c.kind != Kind::S3 {
         let target = url_for(c, &path, true, &[])?;
         let body = fetch(c, &path, op, &[], transport, deadline)?;
+        preflight(&body.text, Some(&target))?;
         let entries = dav_parse::list_entries(&body.text, &target)
             .map_err(|_| Failure::new(502, "storage listing could not be read"))?;
-        return Ok(entries_json(
+        return entries_json(
             entries
                 .into_iter()
                 .map(|e| Entry {
@@ -532,7 +611,7 @@ pub fn execute(
                 })
                 .collect(),
             &path,
-        ));
+        );
     }
     let root = storage_path::join_root(&c.corpus_root, &path)
         .map_err(|_| Failure::new(502, "storage path could not be checked"))?;
@@ -557,6 +636,7 @@ pub fn execute(
             query.push(("continuation-token", t));
         }
         let body = fetch(c, "", op, &query, transport, deadline)?;
+        preflight(&body.text, None)?;
         let page = s3_list_parse::parse_page(&body.text, &prefix)
             .map_err(|_| Failure::new(502, "storage listing could not be read"))?;
         entries.extend(page.entries.into_iter().map(|e| Entry {
@@ -569,6 +649,7 @@ pub fn execute(
             is_dir: e.is_dir,
             size: e.size,
         }));
+        check_entries(&entries)?;
         if !page.truncated {
             break;
         }
@@ -578,7 +659,7 @@ pub fn execute(
         }
     }
     entries.truncate(MAX_ENTRIES);
-    Ok(entries_json(entries, &path))
+    entries_json(entries, &path)
 }
 
 /// Fixed fixture helper: transport implementors use this after streaming the

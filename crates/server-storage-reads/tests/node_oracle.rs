@@ -1,16 +1,10 @@
 //! Actual pinned storage-client oracle. No policy is copied into JavaScript.
 //! Requires explicit synthetic-only checkout; refuses source drift. No server starts.
 use server_storage_reads::{json, protocol::*};
-use std::{
-    collections::VecDeque,
-    error::Error,
-    io::Write,
-    process::{Command, Stdio},
-    time::Duration,
-};
+use std::{collections::VecDeque, error::Error, process::Command, time::Duration};
 use zeroize::Zeroizing;
 
-const CORE: &str = "010735c7d86d30269ab3f4a351b2135faea1c8e7";
+mod support;
 const SEAM: &str = r#"
 const fs=require('node:fs'), client=require(process.argv[1]+'/server/storage-client.cjs');
 (async()=>{const cases=JSON.parse(fs.readFileSync(0,'utf8')),out=[];
@@ -69,14 +63,7 @@ fn actual_client_deterministic_domain_zero_diff() -> Result<(), Box<dyn Error>> 
         "s3-region.cjs",
         "http.cjs",
     ] {
-        let source = Command::new("git")
-            .args(["-C", &root, "show", &format!("{CORE}:server/{file}")])
-            .output()?;
-        if !source.status.success()
-            || source.stdout != std::fs::read(format!("{root}/server/{file}"))?
-        {
-            return Err(format!("oracle source drift: {file}").into());
-        }
+        support::checked_source(&root, file)?;
     }
     let dav = "<multistatus><response><href>/dav/docs/Z.txt</href><getcontentlength>007</getcontentlength></response><response><href>/dav/docs/a.md</href><getcontentlength>9007199254740993</getcontentlength></response><response><href>https://elsewhere.invalid/dav/docs/skip.txt</href></response></multistatus>";
     let s3 = "<ListBucketResult><CommonPrefixes><Prefix>diary/docs/sub/</Prefix></CommonPrefixes><Contents><Key>diary/docs/z.txt</Key><Size>3</Size></Contents></ListBucketResult>";
@@ -131,21 +118,14 @@ fn actual_client_deterministic_domain_zero_diff() -> Result<(), Box<dyn Error>> 
             });
         }
     }
-    let mut child =
-        Command::new(std::env::var("M4_NODE").unwrap_or_else(|_| "/opt/homebrew/bin/node".into()))
-            .args(["-e", SEAM, &root])
-            .env("STORAGE_PATH_IMPL", "js")
-            .env("S3_SIGN_IMPL", "js")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-    child
-        .stdin
-        .take()
-        .ok_or("missing stdin")?
-        .write_all(&serde_json::to_vec(&cases)?)?;
-    let output = child.wait_with_output()?;
+    let mut command =
+        Command::new(std::env::var("M4_NODE").unwrap_or_else(|_| "/opt/homebrew/bin/node".into()));
+    command
+        .args(["-e", SEAM, &root])
+        .env("STORAGE_PATH_IMPL", "js")
+        .env("S3_SIGN_IMPL", "js");
+    let input = support::process::json_input(&serde_json::Value::Array(cases.clone()))?;
+    let output = support::run(command, input)?;
     if !output.status.success() {
         return Err("actual Node oracle failed (diagnostics withheld)".into());
     }
