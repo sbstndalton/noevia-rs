@@ -16,6 +16,9 @@ storage-path = { path = "../storage-path" }
 s3-list-parse = { path = "../s3-list-parse" }
 s3-sign = { path = "../s3-sign" }
 js-json = { path = "../js-json" }
+server-auth = { path = "../server-auth" }
+server-store = { path = "../server-store" }
+secret-envelope = { path = "../secret-envelope" }
 url = "=2.5.8"
 base64 = "=0.22.1"
 zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
@@ -33,6 +36,7 @@ brotli-decompressor = { version = "=5.0.3", default-features = false, features =
 flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
 
 [dev-dependencies]
+tempfile = "3"
 serde_json = "=1.0.152"
 
 [lints.rust]

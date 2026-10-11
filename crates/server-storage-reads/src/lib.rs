@@ -1,14 +1,17 @@
 //! Private, unintegrated read engine for noevia#1368.
 //!
 //! Private owned child plain HTTP is synthetic-qualified and unintegrated.
-//! No credentials store, routes or authentication are implemented here.
-//! A future authenticated adapter must supply an owner-bound immutable connection
-//! snapshot and a deadline-enforcing transport. Neither trait grants write access.
+//! Private storage row projection binds an already supplied Identity and loaded
+//! SecretKeys. Identity fields are public and require a real gate at a future route.
+//! No route is integrated; the snapshot is read only and does not upgrade envelopes.
+//! A future transport must enforce deadlines. Neither trait grants write access.
 #![forbid(unsafe_code)]
 
 pub mod admission;
 pub mod child_http;
 pub mod child_request;
+pub mod connection_row;
+pub mod owner_secret;
 
 pub mod isolated;
 pub mod json;
