@@ -1619,8 +1619,31 @@ mod tests {
             .map_err(|e| phase("initial-address", e))?
             .port();
         assert!(reusable_probe(port).is_err());
-        let mut client = TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port))
-            .map_err(|e| phase("client-connect", e))?;
+        let listener_reuse = rustix::net::sockopt::socket_reuseaddr(&listener)
+            .map_err(|e| phase("listener-reuse-check", e.into()))?;
+        assert!(listener_reuse);
+        let client_fd = rustix::net::socket(
+            rustix::net::AddressFamily::INET,
+            rustix::net::SocketType::STREAM,
+            Some(rustix::net::ipproto::TCP),
+        )
+        .map_err(|e| phase("client-socket", e.into()))?;
+        rustix::net::sockopt::set_socket_reuseaddr(&client_fd, true)
+            .map_err(|e| phase("client-reuse", e.into()))?;
+        rustix::net::bind(
+            &client_fd,
+            &std::net::SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, 0),
+        )
+        .map_err(|e| phase("client-bind", e.into()))?;
+        rustix::net::connect(
+            &client_fd,
+            &std::net::SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, port),
+        )
+        .map_err(|e| phase("client-connect", e.into()))?;
+        let mut client = TcpStream::from(client_fd);
+        let client_reuse = rustix::net::sockopt::socket_reuseaddr(&client)
+            .map_err(|e| phase("client-reuse-check", e.into()))?;
+        assert!(client_reuse);
         client
             .set_read_timeout(Some(Duration::from_secs(1)))
             .map_err(|e| phase("client-timeout", e))?;
@@ -1630,8 +1653,25 @@ mod tests {
             .map_err(|e| phase("server-timeout", e))?;
         rustix::net::sockopt::set_socket_reuseaddr(&server, true)
             .map_err(|e| phase("server-reuse", e.into()))?;
-        assert!(rustix::net::sockopt::socket_reuseaddr(&server)
-            .map_err(|e| phase("server-reuse-check", e.into()))?);
+        let server_reuse = rustix::net::sockopt::socket_reuseaddr(&server)
+            .map_err(|e| phase("server-reuse-check", e.into()))?;
+        assert!(server_reuse);
+        let client_local = client
+            .local_addr()
+            .map_err(|e| phase("client-local", e))?
+            .port();
+        let client_peer = client
+            .peer_addr()
+            .map_err(|e| phase("client-peer", e))?
+            .port();
+        let server_local = server
+            .local_addr()
+            .map_err(|e| phase("server-local", e))?
+            .port();
+        let server_peer = server
+            .peer_addr()
+            .map_err(|e| phase("server-peer", e))?
+            .port();
         // The client initiates this closed fixture's graceful shutdown.
         client
             .shutdown(std::net::Shutdown::Write)
@@ -1652,9 +1692,11 @@ mod tests {
                 .map_err(|e| phase("client-read-eof", e))?,
             0
         );
+        eprintln!("closed-listener-policy-v1 phase=before-drop listener_port={port} client_local={client_local} client_peer={client_peer} server_local={server_local} server_peer={server_peer} listener_reuse={} client_reuse={} server_reuse={}", u8::from(listener_reuse), u8::from(client_reuse), u8::from(server_reuse));
         drop(client);
         drop(server);
         drop(listener);
+        eprintln!("closed-listener-policy-v1 phase=before-replacement listener_port={port}");
         let replacement = reusable_probe(port).map_err(|e| phase("replacement-bind", e))?;
         assert!(reusable_probe(port).is_err());
         drop(replacement);
