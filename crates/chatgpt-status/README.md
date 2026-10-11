@@ -83,3 +83,25 @@ Rust qualification process seam. Never run the actual app to build fixtures.
 Application-query qualification: while false, no explicit OAuth schema/token
 projection or decrypt occurs. SQLite open/schema machinery can still internally
 read/parse all schema; no claim excludes physical OAuth sqlite_schema bytes.
+
+## Private exact mutation certificate (#1374)
+
+The SQLite runner uses its own source-bound classifier; shared qualification tools
+and all SQLite/key/policy/fixture source remain unchanged. Each selected failure is
+bound to a unique current assertion statement, its owning test, exact source hash,
+path, dynamically derived line/column, assertion kind and expected payload. The two
+VM assertions share an ID but have separate concrete allowed sites; the pre-copy
+loop has one concrete site for its two field iterations. Another site with the same
+ID is refused. Compiler/setup/unwrap, extra panic/test/failure inventories, wrong
+source/policy/location, exit/capture limits and process errors cannot certify a kill.
+
+Run `sqlite_mutants -- /absolute/fresh-evidence-directory` for the complete seven-case
+matrix. Incremental start mode is removed. The runner preserves bounded raw captures,
+exit/error metadata, full mutated/assertion source copies, hashes and exact restoration.
+A final seven-entry certificate is created only after all captures match current source
+and their intended concrete assertions. `sqlite_mutants -- --certify /absolute/evidence`
+recertifies preserved captures without spawning test processes; it reconstructs each
+expected mutant from current unchanged guard source and requires byte/hash equality.
+Rust's empty nocapture failure-details section is allowed only before the single exact
+final failure inventory. This is semantic qualification evidence, not route/publication
+or production integration approval.
