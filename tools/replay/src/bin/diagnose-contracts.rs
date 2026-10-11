@@ -263,7 +263,137 @@ fn nonblocking(pipe: &impl AsFd) -> Result<()> {
     rustix::fs::fcntl_setfl(pipe, flags | rustix::fs::OFlags::NONBLOCK)?;
     Ok(())
 }
+#[derive(Clone, Copy)]
+enum OwnedRole {
+    RustManager,
+    PythonFixture,
+    NodeLauncher,
+    RustFront,
+    #[cfg(test)]
+    ClosedControl,
+}
+impl OwnedRole {
+    fn name(self) -> &'static str {
+        match self {
+            Self::RustManager => "rust-manager",
+            Self::PythonFixture => "python-fixture",
+            Self::NodeLauncher => "node-launcher",
+            Self::RustFront => "rust-front",
+            #[cfg(test)]
+            Self::ClosedControl => "closed-control",
+        }
+    }
+}
+#[derive(Clone, Copy)]
+enum RunMode {
+    Python,
+    Rust,
+    RustStartup,
+    RustOff,
+    PromptsAbsent,
+    PromptsWrongToken,
+    PromptsPortOmitted,
+    PublicInvalid,
+    #[cfg(test)]
+    ClosedControl,
+}
+impl RunMode {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "python" => Ok(Self::Python),
+            "rust" => Ok(Self::Rust),
+            "rust-startup" => Ok(Self::RustStartup),
+            "rust-off" => Ok(Self::RustOff),
+            "prompts-absent" => Ok(Self::PromptsAbsent),
+            "prompts-wrong-token" => Ok(Self::PromptsWrongToken),
+            "prompts-port-omitted" => Ok(Self::PromptsPortOmitted),
+            "public-invalid" => Ok(Self::PublicInvalid),
+            _ => Err("unknown fixed qualification mode".into()),
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            Self::Python => "python",
+            Self::Rust => "rust",
+            Self::RustStartup => "rust-startup",
+            Self::RustOff => "rust-off",
+            Self::PromptsAbsent => "prompts-absent",
+            Self::PromptsWrongToken => "prompts-wrong-token",
+            Self::PromptsPortOmitted => "prompts-port-omitted",
+            Self::PublicInvalid => "public-invalid",
+            #[cfg(test)]
+            Self::ClosedControl => "closed-control",
+        }
+    }
+}
+#[derive(Clone, Copy, Default)]
+struct ExitObservation {
+    code: Option<i32>,
+    signal: Option<i32>,
+    exited: bool,
+    killed: bool,
+    dumped: bool,
+}
+impl ExitObservation {
+    fn from_status(status: &rustix::process::WaitIdStatus) -> Self {
+        Self {
+            code: status.exit_status(),
+            signal: status.terminating_signal(),
+            exited: status.exited(),
+            killed: status.killed(),
+            dumped: status.dumped(),
+        }
+    }
+    fn accepts(self) -> bool {
+        self.exited && self.code == Some(0) && self.signal.is_none() && !self.killed && !self.dumped
+    }
+}
+#[derive(Clone, Copy)]
+enum ShutdownStage {
+    Signal,
+    Observe,
+    ExitStatus,
+    Deadline,
+    Output,
+    Wait,
+    Retention,
+}
+impl ShutdownStage {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Signal => "signal-request",
+            Self::Observe => "status-observation",
+            Self::ExitStatus => "exit-status",
+            Self::Deadline => "deadline",
+            Self::Output => "output",
+            Self::Wait => "actual-wait",
+            Self::Retention => "private-retention",
+        }
+    }
+}
+fn shutdown_summary(
+    role: OwnedRole,
+    mode: RunMode,
+    stage: ShutdownStage,
+    observation: ExitObservation,
+    out: usize,
+    stdout_digest: &Sha256,
+    stderr: &[u8],
+) -> String {
+    let code = observation
+        .code
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| "none".into());
+    let signal = observation
+        .signal
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| "none".into());
+    format!("owned shutdown refused: role={} mode={} stage={} code={code} signal={signal} exited={} killed={} dumped={} stdout_bytes={out} stdout_sha256={:x} stderr_bytes={} stderr_sha256={:x}", role.name(),mode.name(),stage.name(),observation.exited,observation.killed,observation.dumped,stdout_digest.clone().finalize(),stderr.len(),Sha256::digest(stderr))
+}
 struct Owned {
+    role: OwnedRole,
+    mode: RunMode,
+    stdout_digest: Sha256,
     leader: Leader,
     stdout: std::process::ChildStdout,
     stderr: std::process::ChildStderr,
@@ -312,7 +442,7 @@ fn retain_private_diagnostic(raw: &[u8]) -> Result<()> {
     Ok(())
 }
 impl Owned {
-    fn spawn(mut command: Command) -> Result<Self> {
+    fn spawn(mut command: Command, role: OwnedRole, mode: RunMode) -> Result<Self> {
         command
             .process_group(0)
             .stdin(Stdio::null())
@@ -325,6 +455,9 @@ impl Owned {
         let stdout = leader.child.stdout.take().ok_or("child stdout absent")?;
         let stderr = leader.child.stderr.take().ok_or("child stderr absent")?;
         let owned = Self {
+            role,
+            mode,
+            stdout_digest: Sha256::new(),
             leader,
             stdout,
             stderr,
@@ -336,72 +469,30 @@ impl Owned {
         nonblocking(&owned.stderr)?;
         Ok(owned)
     }
-    fn finish(&mut self) -> Result<()> {
-        rustix::process::kill_process(self.pid()?, rustix::process::Signal::TERM)?;
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            use rustix::process::{waitid, WaitId, WaitIdOptions};
-            if let Some(status) = waitid(
-                WaitId::Pid(self.pid()?),
-                WaitIdOptions::EXITED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT,
-            )? {
-                // Failure retains numeric identity until fallback group signal precedes wait.
-                require(
-                    status.exit_status() == Some(0),
-                    "owned server graceful exit failed",
-                )?;
-                let status = self.leader.child.wait()?;
-                self.leader.reaped = true;
-                require(status.success(), "owned server wait status changed")?;
-                return Ok(());
-            }
-            require(
-                Instant::now() < deadline,
-                "owned server graceful reap deadline",
-            )?;
-            // Bounded drain prevents a full pipe from blocking foreground shutdown.
-            for pipe in [
-                &mut self.stdout as &mut dyn Read,
-                &mut self.stderr as &mut dyn Read,
-            ] {
-                let mut chunk = [0; 4096];
-                match pipe.read(&mut chunk) {
-                    Ok(n) => {
-                        self.out += n;
-                        require(self.out <= 131072, "shutdown output cap")?;
-                    }
-                    Err(e)
-                        if matches!(
-                            e.kind(),
-                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
-                        ) => {}
-                    Err(e) => return Err(e.into()),
-                }
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-    }
-    fn pid(&self) -> Result<rustix::process::Pid> {
-        i32::try_from(self.leader.child.id())
-            .ok()
-            .and_then(rustix::process::Pid::from_raw)
-            .ok_or("child identity".into())
-    }
-    fn pump(&mut self) -> Result<()> {
+    fn drain_pair(&mut self) -> Result<()> {
         fn step(
             pipe: &mut impl Read,
             count: &mut usize,
-            diagnostic: Option<&mut Vec<u8>>,
+            bytes: Option<&mut Vec<u8>>,
+            digest: Option<&mut Sha256>,
         ) -> Result<()> {
             let mut chunk = [0; 4096];
             match pipe.read(&mut chunk) {
                 Ok(n) => {
-                    *count += n;
-                    require(*count <= 65_536, "child output cap")?;
-                    if let Some(diagnostic) = diagnostic {
-                        diagnostic.try_reserve(n)?;
-                        diagnostic.extend_from_slice(chunk.get(..n).ok_or("diagnostic count")?);
+                    require(n <= 65_536usize.saturating_sub(*count), "child output cap")?;
+                    let value = chunk.get(..n).ok_or("diagnostic count")?;
+                    if let Some(bytes) = bytes {
+                        require(
+                            n <= 65_536usize.saturating_sub(bytes.len()),
+                            "child diagnostic cap",
+                        )?;
+                        bytes.try_reserve(n)?;
+                        bytes.extend_from_slice(value);
                     }
+                    if let Some(digest) = digest {
+                        digest.update(value);
+                    }
+                    *count += n;
                     Ok(())
                 }
                 Err(e)
@@ -415,8 +506,114 @@ impl Owned {
                 Err(e) => Err(e.into()),
             }
         }
-        step(&mut self.stdout, &mut self.out, None)?;
-        step(&mut self.stderr, &mut self.err, Some(&mut self.diagnostic))?;
+        // One bounded read per pipe per round; stderr is never starved by stdout.
+        let stdout = step(
+            &mut self.stdout,
+            &mut self.out,
+            None,
+            Some(&mut self.stdout_digest),
+        );
+        let stderr = step(
+            &mut self.stderr,
+            &mut self.err,
+            Some(&mut self.diagnostic),
+            None,
+        );
+        stdout?;
+        stderr?;
+        Ok(())
+    }
+    fn shutdown_refusal(
+        &mut self,
+        mut stage: ShutdownStage,
+        observation: ExitObservation,
+        deadline: Instant,
+    ) -> Box<dyn std::error::Error> {
+        // Drain only currently available bytes; remote EOF and kernel waits are not deadlines.
+        for _ in 0..16 {
+            if Instant::now() >= deadline {
+                break;
+            }
+            if self.drain_pair().is_err() {
+                stage = ShutdownStage::Output;
+                break;
+            }
+        }
+        if retain_private_diagnostic(&self.diagnostic).is_err() {
+            stage = ShutdownStage::Retention;
+        }
+        shutdown_summary(
+            self.role,
+            self.mode,
+            stage,
+            observation,
+            self.out,
+            &self.stdout_digest,
+            &self.diagnostic,
+        )
+        .into()
+    }
+    fn finish(&mut self) -> Result<()> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let pending = ExitObservation::default();
+        let pid = self.pid()?;
+        if rustix::process::kill_process(pid, rustix::process::Signal::TERM).is_err() {
+            return Err(self.shutdown_refusal(ShutdownStage::Signal, pending, deadline));
+        }
+        loop {
+            use rustix::process::{waitid, WaitId, WaitIdOptions};
+            let observed = match waitid(
+                WaitId::Pid(pid),
+                WaitIdOptions::EXITED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT,
+            ) {
+                Ok(value) => value,
+                Err(_) => {
+                    return Err(self.shutdown_refusal(ShutdownStage::Observe, pending, deadline))
+                }
+            };
+            if let Some(status) = observed {
+                let observation = ExitObservation::from_status(&status);
+                // Failure retains numeric identity until fallback group signal precedes wait.
+                if !observation.accepts() {
+                    return Err(self.shutdown_refusal(
+                        ShutdownStage::ExitStatus,
+                        observation,
+                        deadline,
+                    ));
+                }
+                let status = match self.leader.child.wait() {
+                    Ok(status) => status,
+                    Err(_) => {
+                        return Err(self.shutdown_refusal(
+                            ShutdownStage::Wait,
+                            observation,
+                            deadline,
+                        ))
+                    }
+                };
+                self.leader.reaped = true;
+                if !status.success() {
+                    return Err(self.shutdown_refusal(ShutdownStage::Wait, observation, deadline));
+                }
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(self.shutdown_refusal(ShutdownStage::Deadline, pending, deadline));
+            }
+            if self.drain_pair().is_err() {
+                return Err(self.shutdown_refusal(ShutdownStage::Output, pending, deadline));
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+    fn pid(&self) -> Result<rustix::process::Pid> {
+        i32::try_from(self.leader.child.id())
+            .ok()
+            .and_then(rustix::process::Pid::from_raw)
+            .ok_or("child identity".into())
+    }
+    fn pump(&mut self) -> Result<()> {
+        self.drain_pair()?;
         use rustix::process::{waitid, WaitId, WaitIdOptions};
         if waitid(
             WaitId::Pid(self.pid()?),
@@ -427,8 +624,7 @@ impl Owned {
             // Fair bounded drain after exit: one read before NOWAIT may precede
             // the final diagnostic. Each stream still has its independent cap.
             for _ in 0..16 {
-                step(&mut self.stdout, &mut self.out, None)?;
-                step(&mut self.stderr, &mut self.err, Some(&mut self.diagnostic))?;
+                self.drain_pair()?;
             }
             retain_private_diagnostic(&self.diagnostic)?;
             return Err(diagnostic_summary(&self.diagnostic).into());
@@ -762,18 +958,32 @@ fn copy_dependencies() -> Result<()> {
     artifact(Path::new("/tmp/s1-diagnose-dependency-copy.json"), &proof)?;
     Ok(())
 }
+fn probe_error(stage: &'static str, error: rustix::io::Errno) -> std::io::Error {
+    let kind = std::io::Error::from(error).kind();
+    std::io::Error::new(
+        kind,
+        format!(
+            "numeric loopback probe stage={stage} errno={}",
+            error.raw_os_error()
+        ),
+    )
+}
 fn reusable_probe(port: u16) -> std::io::Result<TcpListener> {
     use rustix::net::{ipproto, socket, AddressFamily, SocketType};
-    let fd = socket(AddressFamily::INET, SocketType::STREAM, Some(ipproto::TCP))?;
-    rustix::net::sockopt::set_socket_reuseaddr(&fd, true)?;
+    let fd = socket(AddressFamily::INET, SocketType::STREAM, Some(ipproto::TCP))
+        .map_err(|e| probe_error("socket", e))?;
+    rustix::net::sockopt::set_socket_reuseaddr(&fd, true)
+        .map_err(|e| probe_error("reuseaddr", e))?;
     rustix::net::bind(
         &fd,
         &std::net::SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, port),
-    )?;
-    rustix::net::listen(&fd, 1)?;
+    )
+    .map_err(|e| probe_error("bind", e))?;
+    rustix::net::listen(&fd, 1).map_err(|e| probe_error("listen", e))?;
     Ok(TcpListener::from(fd))
 }
 fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<Value>> {
+    let fixed_mode = RunMode::parse(mode)?;
     let owned = tempfile::Builder::new()
         .prefix("s1-diagnose-public-")
         .tempdir_in("/tmp")?;
@@ -860,7 +1070,15 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
     }
     drop(guard_a);
     drop(guard_b);
-    let mut manager = Owned::spawn(manager)?;
+    let mut manager = Owned::spawn(
+        manager,
+        if mode.starts_with("rust") {
+            OwnedRole::RustManager
+        } else {
+            OwnedRole::PythonFixture
+        },
+        fixed_mode,
+    )?;
     let manager_base = Base {
         host: "127.0.0.1".into(),
         port: 8090,
@@ -959,7 +1177,7 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
         .env("PUBLIC_ORIGIN", base.origin())
         .env("NOEVIA_RUST_AUTH", "1")
         .env("NOEVIA_RUST_AUTH_CONFIRMED", "1");
-    let mut node = Owned::spawn(node)?;
+    let mut node = Owned::spawn(node, OwnedRole::NodeLauncher, fixed_mode)?;
     ready(
         &Base {
             host: "127.0.0.1".into(),
@@ -981,7 +1199,7 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
             "NOEVIA_LEGACY_UPSTREAM",
             format!("http://127.0.0.1:{core_port}"),
         );
-    let mut front = Owned::spawn(front)?;
+    let mut front = Owned::spawn(front, OwnedRole::RustFront, fixed_mode)?;
     ready(
         &base,
         &mut [&mut manager, &mut node, &mut front],
@@ -1337,10 +1555,16 @@ mod tests {
         assert!(reusable_probe(port).is_err());
         let mut client = TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port))?;
         client.set_read_timeout(Some(Duration::from_secs(1)))?;
-        let (server, _) = listener.accept()?;
+        let (mut server, _) = listener.accept()?;
+        server.set_read_timeout(Some(Duration::from_secs(1)))?;
+        // Explicit fixture policy avoids relying on platform-specific accept inheritance.
+        rustix::net::sockopt::set_socket_reuseaddr(&server, true)?;
+        assert!(rustix::net::sockopt::socket_reuseaddr(&server)?);
         server.shutdown(std::net::Shutdown::Write)?;
         let mut byte = [0];
         assert_eq!(client.read(&mut byte)?, 0);
+        client.shutdown(std::net::Shutdown::Write)?;
+        assert_eq!(server.read(&mut byte)?, 0);
         drop(client);
         drop(server);
         drop(listener);
@@ -1353,7 +1577,7 @@ mod tests {
     fn owned_foreground_cleanup_observes_child_wait() -> Result<()> {
         let mut command = Command::new("/bin/sleep");
         command.arg("60").env_clear();
-        let mut owned = Owned::spawn(command)?;
+        let mut owned = Owned::spawn(command, OwnedRole::ClosedControl, RunMode::ClosedControl)?;
         let pid = owned.leader.child.id();
         // This closed fixture is the directly owned child; its retained handle binds PID.
         let result = owned.finish();
@@ -1363,6 +1587,85 @@ mod tests {
         assert!(owned.leader.reaped);
         assert_eq!(owned.leader.child.id(), pid);
         assert!(owned.leader.child.try_wait()?.is_some());
+        Ok(())
+    }
+    #[test]
+    fn shutdown_metadata_is_fixed_and_never_reflects_credentials() -> Result<()> {
+        let secret = b"synthetic-qualification-secret password=not-public";
+        let digest = Sha256::digest(secret);
+        let observations = [
+            ExitObservation {
+                code: Some(0),
+                exited: true,
+                ..ExitObservation::default()
+            },
+            ExitObservation {
+                code: Some(1),
+                exited: true,
+                ..ExitObservation::default()
+            },
+            ExitObservation {
+                signal: Some(15),
+                killed: true,
+                ..ExitObservation::default()
+            },
+            ExitObservation {
+                signal: Some(9),
+                killed: true,
+                ..ExitObservation::default()
+            },
+            ExitObservation::default(),
+        ];
+        for (index, observation) in observations.into_iter().enumerate() {
+            assert_eq!(observation.accepts(), index == 0);
+            let result = shutdown_summary(
+                OwnedRole::RustManager,
+                RunMode::RustStartup,
+                ShutdownStage::ExitStatus,
+                observation,
+                0,
+                &Sha256::new(),
+                secret,
+            );
+            let code = match index {
+                0 => "0",
+                1 => "1",
+                _ => "none",
+            };
+            let signal = match index {
+                2 => "15",
+                3 => "9",
+                _ => "none",
+            };
+            let exited = index < 2;
+            let killed = matches!(index, 2 | 3);
+            assert_eq!(result,format!("owned shutdown refused: role=rust-manager mode=rust-startup stage=exit-status code={code} signal={signal} exited={exited} killed={killed} dumped=false stdout_bytes=0 stdout_sha256={:x} stderr_bytes={} stderr_sha256={digest:x}",Sha256::digest([]),secret.len()));
+            assert!(!result.contains("password="));
+            assert!(!result.contains("not-public"));
+        }
+        for name in [
+            "python",
+            "rust",
+            "rust-startup",
+            "rust-off",
+            "prompts-absent",
+            "prompts-wrong-token",
+            "prompts-port-omitted",
+            "public-invalid",
+        ] {
+            assert_eq!(RunMode::parse(name)?.name(), name);
+        }
+        for unknown in ["future-mode", "rust-future", "closed-control", ""] {
+            assert!(RunMode::parse(unknown).is_err());
+        }
+        for (role, name) in [
+            (OwnedRole::PythonFixture, "python-fixture"),
+            (OwnedRole::NodeLauncher, "node-launcher"),
+            (OwnedRole::RustFront, "rust-front"),
+            (OwnedRole::ClosedControl, "closed-control"),
+        ] {
+            assert_eq!(role.name(), name);
+        }
         Ok(())
     }
 }
