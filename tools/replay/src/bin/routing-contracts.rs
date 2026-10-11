@@ -4,6 +4,12 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, ExitCode},
 };
+#[allow(dead_code)]
+#[path = "../../../qualification/process.rs"]
+mod process;
+fn bounded(command: Command) -> Result<process::Output, String> {
+    process::bounded(command, Vec::new(), std::time::Duration::from_secs(600))
+}
 fn at<'a>(v: &'a Value, k: &str) -> &'a Value {
     v.get(k).unwrap_or(&Value::Null)
 }
@@ -73,8 +79,10 @@ fn replay(
     if front && !omission {
         c.arg("--expect-state").arg(out.join("node-state.json"));
     }
-    let status = c.status().map_err(|e| e.to_string())?;
-    Ok(status.success())
+    let output = bounded(c)?;
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    Ok(output.status.success())
 }
 fn omission(out: &Path) -> Result<(), String> {
     let report = read(&out.join("omission-report.json"))?;
@@ -133,34 +141,39 @@ fn run() -> Result<(), String> {
         .canonicalize()
         .map_err(|e| e.to_string())?;
     let out = PathBuf::from(a.next().ok_or("new evidence directory required")?);
-    if out.exists() {
+    let (resume, resume_node) = match a.next().as_deref() {
+        None => (false, false),
+        Some("--resume-routing") => (true, false),
+        Some("--resume-native") => (true, true),
+        _ => return Err("unknown routing contracts argument".into()),
+    };
+    if a.next().is_some() {
+        return Err("unexpected routing contracts argument".into());
+    }
+    if out.exists() && !resume {
         return Err("evidence directory must be new".into());
     }
     let expected = include_str!("../../../../contracts/http/core.ref").trim();
-    let head = Command::new("git")
-        .arg("-C")
-        .arg(&core)
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map_err(|e| e.to_string())?;
+    let mut command = Command::new("git");
+    command.arg("-C").arg(&core).args(["rev-parse", "HEAD"]);
+    let head = bounded(command)?;
     if !head.status.success() || String::from_utf8_lossy(&head.stdout).trim() != expected {
         return Err("routing contracts require actual pinned core".into());
     }
-    let clean = Command::new("git")
+    let mut command = Command::new("git");
+    command
         .arg("-C")
         .arg(&core)
-        .args(["status", "--porcelain", "--untracked-files=no"])
-        .output()
-        .map_err(|e| e.to_string())?;
+        .args(["status", "--porcelain", "--untracked-files=no"]);
+    let clean = bounded(command)?;
     if !clean.status.success() || !clean.stdout.is_empty() {
         return Err("routing contracts require clean core".into());
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let bin = exe.parent().ok_or("binary directory missing")?;
-    let features = Command::new(bin.join("noevia-server"))
-        .arg("--features")
-        .output()
-        .map_err(|e| e.to_string())?;
+    let mut command = Command::new(bin.join("noevia-server"));
+    command.arg("--features");
+    let features = bounded(command)?;
     if !features.status.success()
         || !String::from_utf8_lossy(&features.stdout)
             .lines()
@@ -168,35 +181,92 @@ fn run() -> Result<(), String> {
     {
         return Err("front lacks compiled routing capability".into());
     }
-    std::fs::create_dir_all(out.join("baseline/seed")).map_err(|e| e.to_string())?;
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let baseline = root.join("contracts/http/corpus");
-    if !replay(
-        &core,
-        &baseline,
-        &out.join("baseline"),
-        "node",
-        false,
-        false,
-    )? || !replay(
-        &core,
-        &baseline,
-        &out.join("baseline"),
-        "positive",
-        true,
-        false,
-    )? {
-        return Err("full existing193 Node/native/state replay failed".into());
-    }
-    let status = Command::new(bin.join("corpus-launcher"))
-        .env("NOEVIA_ROUTING_CORPUS", "1")
-        .arg("capture")
-        .arg(&core)
-        .arg(out.join("routing-corpus"))
-        .status()
-        .map_err(|e| e.to_string())?;
-    if !status.success() {
-        return Err("actual routing corpus capture failed".into());
+    if resume {
+        for name in ["node", "positive"] {
+            let report = read(&out.join(format!("baseline/{name}-report.json")))?;
+            let rows = report.as_array().ok_or("prior baseline report missing")?;
+            if rows.len() != 193
+                || rows.iter().any(|row| {
+                    at(row, "status") != at(row, "expectedStatus")
+                        || !at(row, "error").is_null()
+                        || at(row, "diffs")
+                            .as_array()
+                            .is_none_or(|diffs| !diffs.is_empty())
+                })
+            {
+                return Err("resume requires complete prior193 zero-diff baseline".into());
+            }
+        }
+        if read(&out.join("baseline/node-state.json"))?
+            != read(&out.join("baseline/positive-state.json"))?
+        {
+            return Err("resume baseline states differ".into());
+        }
+        let source = read(&out.join("routing-corpus/SOURCE_ORACLE.json"))?;
+        if at(&source, "core") != expected
+            || at(&source, "captureDomain") != "routing-mode"
+            || at(&source, "exchanges") != 220
+            || at(&source, "dropped") != 0
+        {
+            return Err("resume routing provenance differs".into());
+        }
+        println!("explicit routing resume: retained prior193 Node/native zero-diff and equal-state reports; baseline not rerun");
+        if resume_node {
+            let report = read(&out.join("routing/node-report.json"))?;
+            let rows = report
+                .as_array()
+                .ok_or("prior Node routing report missing")?;
+            if rows.len() != 220
+                || rows.iter().any(|row| {
+                    at(row, "status") != at(row, "expectedStatus")
+                        || !at(row, "error").is_null()
+                        || at(row, "diffs")
+                            .as_array()
+                            .is_none_or(|diffs| !diffs.is_empty())
+                })
+            {
+                return Err(
+                    "native resume requires complete prior220 Node zero-diff report".into(),
+                );
+            }
+            read(&out.join("routing/node-state.json"))?;
+            println!(
+                "explicit native resume: prior220 Node zero-diff report retained; Node not rerun"
+            );
+        }
+    } else {
+        std::fs::create_dir_all(out.join("baseline/seed")).map_err(|e| e.to_string())?;
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let baseline = root.join("contracts/http/corpus");
+        if !replay(
+            &core,
+            &baseline,
+            &out.join("baseline"),
+            "node",
+            false,
+            false,
+        )? || !replay(
+            &core,
+            &baseline,
+            &out.join("baseline"),
+            "positive",
+            true,
+            false,
+        )? {
+            return Err("full existing193 Node/native/state replay failed".into());
+        }
+        let mut command = Command::new(bin.join("corpus-launcher"));
+        command
+            .env("NOEVIA_ROUTING_CORPUS", "1")
+            .arg("capture")
+            .arg(&core)
+            .arg(out.join("routing-corpus"));
+        let capture = bounded(command)?;
+        print!("{}", String::from_utf8_lossy(&capture.stdout));
+        eprint!("{}", String::from_utf8_lossy(&capture.stderr));
+        if !capture.status.success() {
+            return Err("actual routing corpus capture failed".into());
+        }
     }
     let manifest = read(&out.join("routing-corpus/manifest.json"))?;
     println!(
@@ -204,21 +274,24 @@ fn run() -> Result<(), String> {
         at(&manifest, "exchanges")
     );
     std::fs::create_dir_all(out.join("routing/seed")).map_err(|e| e.to_string())?;
-    if !replay(
-        &core,
-        &out.join("routing-corpus"),
-        &out.join("routing"),
-        "node",
-        false,
-        false,
-    )? || !replay(
-        &core,
-        &out.join("routing-corpus"),
-        &out.join("routing"),
-        "positive",
-        true,
-        false,
-    )? {
+    if (!resume_node
+        && !replay(
+            &core,
+            &out.join("routing-corpus"),
+            &out.join("routing"),
+            "node",
+            false,
+            false,
+        )?)
+        || !replay(
+            &core,
+            &out.join("routing-corpus"),
+            &out.join("routing"),
+            "positive",
+            true,
+            false,
+        )?
+    {
         return Err("new routing Node/native/state replay failed".into());
     }
     if replay(

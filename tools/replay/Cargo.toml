@@ -18,4 +18,5 @@ path = "src/main.rs"
 httparse = "1"
 chrono = "0.4"
 serde_json = "1"
-rustix = { version = "1", features = ["fs"] }
+sha2 = "0.10"
+rustix = { version = "1", features = ["fs", "process"] }

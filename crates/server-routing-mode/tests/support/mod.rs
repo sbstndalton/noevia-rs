@@ -1,11 +1,9 @@
 #![allow(dead_code)]
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{
-    io::Write,
-    path::Path,
-    process::{Command, Stdio},
-};
+use std::{path::Path, process::Command, time::Duration};
+#[path = "../../../../tools/qualification/process.rs"]
+pub mod process;
 pub const NOW: i64 = 1800000000000;
 pub const ACTOR: &str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 pub fn hex(bytes: &[u8]) -> String {
@@ -99,7 +97,7 @@ pub fn cases() -> Result<Vec<Value>, String> {
     for role in ["fast", "smart", "code"] {
         for len in [199, 200, 201] {
             let mut cloud = json!({"providerId":"p"});
-            cloud[role] = json!("m".repeat(len));
+            put(&mut cloud, role, json!("m".repeat(len)))?;
             bodies.push(
                 json!({"mode":"cloud","cloud":cloud})
                     .to_string()
@@ -221,12 +219,9 @@ fn super_limit() -> usize {
 }
 pub fn source(core: &Path, expected: &str) -> Result<Value, String> {
     let git = |args: &[&str]| -> Result<String, String> {
-        let o = Command::new("git")
-            .arg("-C")
-            .arg(core)
-            .args(args)
-            .output()
-            .map_err(|e| e.to_string())?;
+        let mut command = Command::new("git");
+        command.arg("-C").arg(core).args(args);
+        let o = process::bounded(command, Vec::new(), Duration::from_secs(10))?;
         if !o.status.success() {
             return Err("source git check failed".into());
         }
@@ -253,32 +248,27 @@ pub fn source(core: &Path, expected: &str) -> Result<Value, String> {
             )),
         );
     }
-    Ok(json!({"core":expected,"sources":hashes}))
+    Ok(
+        json!({"core":expected,"archiveSha256":include_str!("../../../../contracts/http/core.sha256").trim(),"sources":hashes}),
+    )
 }
 pub fn oracle(core: &Path, cases: &[Value]) -> Result<Value, String> {
     let node = std::env::var("NOEVIA_ORACLE_NODE").unwrap_or_else(|_| "node".into());
-    let version = Command::new(&node)
-        .arg("--version")
-        .output()
-        .map_err(|e| e.to_string())?;
+    let mut command = Command::new(&node);
+    command.arg("--version");
+    let version = process::bounded(command, Vec::new(), Duration::from_secs(10))?;
     if !version.status.success() || String::from_utf8_lossy(&version.stdout).trim() != "v22.23.3" {
         return Err("oracle requires Node22.23.3".into());
     }
-    let mut child = Command::new(node)
+    let mut command = Command::new(node);
+    command
         .arg(core.join("tools/contract-corpus/serve.cjs"))
-        .arg("--routing-mode-oracle")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    child
-        .stdin
-        .take()
-        .ok_or("oracle stdin missing")?
-        .write_all(json!({"cases":cases}).to_string().as_bytes())
-        .map_err(|e| e.to_string())?;
-    let o = child.wait_with_output().map_err(|e| e.to_string())?;
+        .arg("--routing-mode-oracle");
+    let o = process::bounded(
+        command,
+        process::json_input(&json!({"cases":cases}))?,
+        Duration::from_secs(10),
+    )?;
     if !o.status.success() {
         return Err(format!(
             "actual Node oracle failed: {}",

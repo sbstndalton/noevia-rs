@@ -137,24 +137,44 @@ fn actual_node_configuration_file_sql_and_audit_matrix() {
             assert_eq!(
                 status,
                 node["response"]["status"].as_u64().unwrap() as u16,
-                "{}",
-                c["name"]
+                "ROUTING_ASSERT/status/{}",
+                c["name"].as_str().unwrap()
             );
-            assert_eq!(body, node["response"]["body"], "{}", c["name"]);
+            assert_eq!(
+                body,
+                node["response"]["body"],
+                "ROUTING_ASSERT/body/{}",
+                c["name"].as_str().unwrap()
+            );
         }
         let file = std::fs::read(tenant.join(rm::FILE))
             .ok()
             .map(|b| support::hex(&b));
-        assert_eq!(json!(file), node["file"], "file {}", c["name"]);
+        assert_eq!(
+            json!(file),
+            node["file"],
+            "ROUTING_ASSERT/file/{}",
+            c["name"].as_str().unwrap()
+        );
         let setting: Option<String> = db
             .query_row("SELECT value FROM settings WHERE key=?1", [rm::KEY], |r| {
                 r.get(0)
             })
             .optional()
             .unwrap();
-        assert_eq!(json!(setting), node["allowed"], "allowed {}", c["name"]);
+        assert_eq!(
+            json!(setting),
+            node["allowed"],
+            "ROUTING_ASSERT/allowed/{}",
+            c["name"].as_str().unwrap()
+        );
         let audit:Vec<Value>=db.prepare("SELECT actor_user_id,target_user_id,action,detail,created_at FROM audit_events ORDER BY id").unwrap().query_map([],|r|Ok(json!({"actor_user_id":r.get::<_,String>(0)?,"target_user_id":r.get::<_,Option<String>>(1)?,"action":r.get::<_,String>(2)?,"detail":serde_json::from_str::<Value>(&r.get::<_,String>(3)?).unwrap(),"created_at":r.get::<_,i64>(4)?}))).unwrap().map(Result::unwrap).collect();
-        assert_eq!(json!(audit), node["audit"], "audit {}", c["name"]);
+        assert_eq!(
+            json!(audit),
+            node["audit"],
+            "ROUTING_ASSERT/audit/{}",
+            c["name"].as_str().unwrap()
+        );
     }
 }
 #[test]
@@ -165,7 +185,9 @@ fn synthetic_random_cases_compare_to_actual_node_when_required() {
         return;
     };
     let sha = std::env::var("NOEVIA_ROUTING_CORE_SHA").unwrap_or_else(|_| {
-        include_str!("../../../contracts/http/core.ref").trim().into()
+        include_str!("../../../contracts/http/core.ref")
+            .trim()
+            .into()
     });
     support::source(std::path::Path::new(&core), &sha).unwrap();
     let mut cases = Vec::new();

@@ -172,7 +172,8 @@ async fn native_configuration_identity_device_csrf_tenants_dynamic_feature_and_f
         call(addr, "PUT", allowed, member, &csrf, r#"{"allowed":[]}"#)
             .await
             .0,
-        403
+        403,
+        "ROUTING_ASSERT/allowed-admin-required"
     );
     assert_eq!(
         call(

@@ -3,6 +3,11 @@ use std::{
     path::PathBuf,
     process::{Command, ExitCode},
 };
+#[path = "../../../tools/qualification/mutation.rs"]
+mod mutation;
+#[allow(dead_code)]
+#[path = "../../../tools/qualification/process.rs"]
+mod process;
 struct Restore {
     path: PathBuf,
     source: String,
@@ -109,25 +114,33 @@ fn run() -> Result<(), String> {
         std::fs::write(&path, source.replacen(old, new, 1)).map_err(|e| e.to_string())?;
         let mut c = Command::new("cargo");
         c.current_dir(&root)
+            .env("CARGO_TARGET_DIR", out.join("target"))
             .args(["test", "--locked", "-p", package, "--test", test, filter]);
         if package == "noevia-server" {
             c.args(["--features", "rust-routing-mode"]);
         }
-        let result = c.output().map_err(|e| e.to_string());
+        let result = process::bounded(c, Vec::new(), std::time::Duration::from_secs(600));
         drop(restore);
-        let result = result?;
+        let result = result.map_err(|e| format!("infrastructure: {name}: {e}"))?;
         let text = format!(
             "{}{}",
             String::from_utf8_lossy(&result.stdout),
             String::from_utf8_lossy(&result.stderr)
         );
         std::fs::write(out.join(format!("{name}.log")), &text).map_err(|e| e.to_string())?;
-        if result.status.success() || !text.contains("FAILED") || text.contains("could not compile")
-        {
-            return Err(format!(
-                "production mutant {name} lacked a semantic test refusal"
-            ));
-        }
+        let matrix = "actual_node_configuration_file_sql_and_audit_matrix";
+        let (expected_test, expected_id) = match name {
+            "last-duplicate" => (matrix, "ROUTING_ASSERT/body/account/23/None"),
+            "js-bom-trim" => (matrix, "ROUTING_ASSERT/status/account/47/None"),
+            "cloud-model-fallback" => (matrix, "ROUTING_ASSERT/status/account/27/None"),
+            "stored-disallowed" => (matrix, "ROUTING_ASSERT/body/get/Some(\"{\\\"mode\\\":\\\"hybrid\\\",\\\"whenSensitive\\\":\\\"bad\\\",\\\"cloud\\\":null}\")/Some(\"[]\")"),
+            "allowed-persistence" => (matrix, "ROUTING_ASSERT/allowed/allowed/[]/admin"),
+            "audit-actor" => (matrix, "ROUTING_ASSERT/audit/allowed/[]/admin"),
+            "file-no-follow" => ("tenant_boundaries_regular_files_atomic_bytes_and_cancellation", "ROUTING_ASSERT/file-symlink-refused"),
+            "allowed-member" => ("native_configuration_identity_device_csrf_tenants_dynamic_feature_and_failures", "ROUTING_ASSERT/allowed-admin-required"),
+            _ => return Err("missing mutant assertion identity".into()),
+        };
+        mutation::reject_mutant(expected_test, expected_id, mutation::classify(Ok(result)))?;
         println!("production mutant {name} detected");
     }
     Ok(())

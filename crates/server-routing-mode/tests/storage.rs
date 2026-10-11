@@ -56,7 +56,10 @@ fn tenant_boundaries_regular_files_atomic_bytes_and_cancellation() {
     let private = external.path().join("private");
     std::fs::write(&private, "unchanged").unwrap();
     symlink(&private, &file).unwrap();
-    assert!(root.read(A, &c).is_err());
+    assert!(
+        root.read(A, &c).is_err(),
+        "ROUTING_ASSERT/file-symlink-refused"
+    );
     assert!(root.write(A, &setting, cap(), &c).is_err());
     assert_eq!(std::fs::read_to_string(&private).unwrap(), "unchanged");
     std::fs::remove_file(&file).unwrap();

@@ -46,6 +46,11 @@ jobs:
           echo "$DAV_PARSE_WASM_SHA256  core/server/wasm/dav-parse.wasm" | sha256sum -c -
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked -p server-routing-mode -p noevia-server -p replay --all-targets --features rust-routing-mode -- -D warnings
+      - name: Bounded process and exact mutation classification controls
+        run: |
+          cargo run --locked -q -p server-routing-mode --example process_controls
+          cargo test --locked -p server-routing-mode --example process_controls
+          cargo test --locked -p replay --bin corpus-launcher capture_tests
       - name: Actual source oracle, property comparisons and wrong provenance refusal
         env:
           NODE_PATH: ${{ github.workspace }}/core/server/node_modules
