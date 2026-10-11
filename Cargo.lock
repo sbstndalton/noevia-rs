@@ -1557,6 +1557,7 @@ dependencies = [
  "serde",
  "serde_json",
  "server-auth",
+ "sha2",
  "tempfile",
  "tokio",
  "tower",

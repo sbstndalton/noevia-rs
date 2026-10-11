@@ -47,6 +47,7 @@ impl DockerRead for Fake {
 }
 fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
     Arc::new(StateData {
+        host: None,
         token: token.into(),
         configured: vec!["synthetic-engine".into()],
         docker: fake,
@@ -398,4 +399,74 @@ fn counter_exemptions_require_a_single_ascii_word() {
     for raw in ["n_tokens=512", "n_prompt_tokens=40", "n_ctx_slot=8192"] {
         assert_eq!(redactor.redact(raw).unwrap(), raw);
     }
+}
+
+#[cfg(feature = "native-host")]
+#[tokio::test]
+async fn native_host_auth_method_empty_and_history_use_only_rust_state() {
+    let fake = fake();
+    let mut state = fixture(fake.clone(), "synthetic-token");
+    let history = std::sync::Arc::new(tokio::sync::Mutex::new(
+        noevia_model_manager::host::HostHistory::default(),
+    ));
+    Arc::get_mut(&mut state).unwrap().host = Some(history.clone());
+    let app = noevia_model_manager::router(state);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/host")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 401);
+    for (method, status) in [("GET", 200), ("POST", 405)] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri("/api/v1/host")
+                    .header("x-model-loader-token", "synthetic-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status);
+        if method == "GET" {
+            assert_eq!(
+                serde_json::from_slice::<Value>(
+                    &response.into_body().collect().await.unwrap().to_bytes()
+                )
+                .unwrap(),
+                json!({"current":null,"history":[]})
+            );
+        }
+    }
+    for i in 0..460 {
+        history
+            .lock()
+            .await
+            .sample(Ok("cpu 0 0 0 0"), Ok(""), i as f64)
+            .unwrap();
+    }
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/host")
+                .header("x-model-loader-token", "synthetic-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let value: Value =
+        serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(value["history"].as_array().unwrap().len(), 180);
+    assert_eq!(value["current"]["ts"], json!(459.0));
+    assert_eq!(fake.reads.load(Ordering::SeqCst), 0);
 }

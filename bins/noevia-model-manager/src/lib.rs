@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 pub mod docker;
+pub mod host;
 
 use axum::{
     body::{to_bytes, Body},
@@ -42,6 +43,7 @@ pub trait DockerRead: Send + Sync {
 }
 
 pub struct StateData {
+    pub host: Option<Arc<tokio::sync::Mutex<host::HostHistory>>>,
     pub token: String,
     pub configured: Vec<String>,
     pub docker: Arc<dyn DockerRead>,
@@ -306,7 +308,11 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
         .strip_prefix("/api/v1/backends/")
         .and_then(|p| p.strip_suffix("/logs"))
         .is_some();
-    let budget = if native { TIMEOUT } else { LEGACY_TIMEOUT };
+    let budget = if native || (path == "/api/v1/host" && state.host.is_some()) {
+        TIMEOUT
+    } else {
+        LEGACY_TIMEOUT
+    };
     let result = tokio::time::timeout(budget, dispatch(state.clone(), req)).await;
     drop(permit);
     match result {
@@ -326,6 +332,15 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         } else {
             detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed")
         };
+    }
+    if path == "/api/v1/host" {
+        if let Some(host) = &state.host {
+            return if req.method() == Method::GET {
+                Json(host.lock().await.response()).into_response()
+            } else {
+                detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed")
+            };
+        }
     }
     let name = path
         .strip_prefix("/api/v1/backends/")

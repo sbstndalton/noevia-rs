@@ -22,6 +22,7 @@ fn command(path: &std::path::Path, marker: &std::path::Path) -> Command {
         .env("PATH", path)
         .env("S1_TEST_MARKER", marker)
         .env_remove("MODEL_MANAGER_IMPL")
+        .env_remove("MODEL_MANAGER_HOST_IMPL")
         .env_remove("MODEL_LOADER_TOKEN")
         .env_remove("LLAMA_CONTAINERS")
         .env_remove("DOCKER_HOST");
@@ -70,7 +71,14 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
     assert_eq!(output.status.success(), cfg!(feature = "native-logs"));
     assert!(!marker.exists());
     if cfg!(feature = "native-logs") {
-        assert_eq!(output.stdout, b"native-logs\n");
+        assert_eq!(
+            output.stdout,
+            if cfg!(feature = "native-host") {
+                b"native-logs\nnative-host\n".as_slice()
+            } else {
+                b"native-logs\n".as_slice()
+            }
+        );
     }
 }
 #[cfg(not(feature = "native-logs"))]
@@ -101,4 +109,28 @@ fn native_child_uses_loopback_confirmation_and_exit_is_fatal() {
         std::fs::read_to_string(marker).unwrap(),
         "1\napp.main:app\n--host\n127.0.0.1\n--port\n8091\n"
     );
+}
+
+#[test]
+fn host_selector_requires_compiled_capability_and_native_parent() {
+    let (dir, marker) = owned_uvicorn();
+    for (mode, host) in [("python", "rust"), ("rust", "invalid")] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", mode)
+            .env("MODEL_MANAGER_HOST_IMPL", host)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(!marker.exists());
+    }
+    if !cfg!(feature = "native-host") {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", "rust")
+            .env("MODEL_MANAGER_HOST_IMPL", "rust")
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(!marker.exists());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("native-host"));
+    }
 }
