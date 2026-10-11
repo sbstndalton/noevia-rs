@@ -1,0 +1,33 @@
+[package]
+name = "server-storage-reads"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+description = "Private bounded connected-storage read engine (noevia#1368)"
+
+# Private phase: no root workspace/lock or deployed server integration changes.
+[workspace]
+
+[dependencies]
+dav-parse = { path = "../dav-parse" }
+storage-path = { path = "../storage-path" }
+s3-list-parse = { path = "../s3-list-parse" }
+s3-sign = { path = "../s3-sign" }
+js-json = { path = "../js-json" }
+url = "=2.5.8"
+base64 = "=0.22.1"
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+serde_json = "=1.0.152"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"

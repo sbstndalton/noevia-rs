@@ -1,0 +1,590 @@
+//! Protocol orchestration without network/store access. All public requests are reads.
+use crate::{
+    json, preview, Decoded, Failure, Prefix, LIST_BYTES, MAX_ENTRIES, MAX_PAGES, TEXT_BYTES,
+};
+use base64::Engine;
+use std::time::Duration;
+use zeroize::Zeroizing;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    WebDav,
+    Nextcloud,
+    S3,
+    Local,
+}
+
+/// No Debug: even the endpoint and username are sensitive configuration.
+/// This is not an authentication capability: the eventual store adapter must
+/// construct it from a WHERE user_id snapshot using validated request identity.
+pub struct Connection {
+    pub kind: Kind,
+    pub base_url: String,
+    pub username: String,
+    pub secret: Zeroizing<Vec<u8>>,
+    pub corpus_root: String,
+    pub bucket: String,
+    pub region: String,
+}
+
+pub const ENDPOINT_REFUSAL: &str = "An http(s) server URL is required. This server is not approved for member connections. Ask an administrator to add its origin to MEMBER_OUTBOUND_ORIGINS.";
+
+pub fn endpoint_approved(base: &str, admin: bool, member_origins: &str) -> bool {
+    if base.len() > s3_sign::MAX_FIELD_BYTES {
+        return false;
+    }
+    let Ok(url) = url::Url::parse(base) else {
+        return false;
+    };
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return false;
+    }
+    admin
+        || member_origins
+            .split(',')
+            .map(dav_parse::js_trim)
+            .any(|origin| origin == url.origin().ascii_serialization())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Operation {
+    List,
+    Read,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Method {
+    Get,
+    Propfind,
+}
+
+/// Deliberately no Debug: headers and URL may contain credentials and private names.
+pub struct Request {
+    pub method: Method,
+    pub url: String,
+    pub headers: Vec<(String, Zeroizing<String>)>,
+    pub attempt_timeout: Duration,
+    pub body_cap: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransportFailure {
+    PreHeaderReset,
+    PreHeaderAborted,
+    PreHeaderBrokenPipe,
+    PreHeaderUnexpectedEof,
+    Timeout,
+    Redirect,
+    Tls,
+    Dns,
+    Header,
+    Body,
+    Other,
+}
+impl TransportFailure {
+    pub fn retryable(self) -> bool {
+        matches!(
+            self,
+            Self::PreHeaderReset
+                | Self::PreHeaderAborted
+                | Self::PreHeaderBrokenPipe
+                | Self::PreHeaderUnexpectedEof
+        )
+    }
+    pub fn public(self) -> Failure {
+        Failure::new(
+            502,
+            if self == Self::Timeout {
+                "The operation was aborted due to timeout"
+            } else {
+                "fetch failed"
+            },
+        )
+    }
+}
+
+pub struct Response {
+    pub status: u16,
+    pub body: Decoded,
+}
+
+/// An adapter MUST enforce attempt + body deadlines, decoded byte caps, drop on
+/// overflow, no redirects/proxies/cookies/implicit retry and finite allocation.
+/// No production implementation is supplied until TLS/allocation proof passes.
+pub trait Transport {
+    fn elapsed(&self) -> Duration;
+    fn amz_date(&self) -> String;
+    fn attempt(&mut self, request: Request) -> Result<Response, TransportFailure>;
+    fn delay(&mut self, delay: Duration) -> Result<(), TransportFailure>;
+}
+
+fn encode_component(value: &str) -> String {
+    let mut out = String::new();
+    const HEX: &[u8] = b"0123456789ABCDEF";
+    for b in value.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&b) {
+            out.push(char::from(b));
+        } else {
+            out.push('%');
+            out.push(char::from(
+                HEX.get(usize::from(b >> 4)).copied().unwrap_or(b'0'),
+            ));
+            out.push(char::from(
+                HEX.get(usize::from(b & 15)).copied().unwrap_or(b'0'),
+            ));
+        }
+    }
+    out
+}
+
+fn url_for(
+    connection: &Connection,
+    path: &str,
+    list: bool,
+    query: &[(&str, &str)],
+) -> Result<String, Failure> {
+    let base = connection.base_url.trim_end_matches('/');
+    let encoded = path
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .map(encode_component)
+        .collect::<Vec<_>>()
+        .join("/");
+    if connection.kind != Kind::S3 {
+        return Ok(format!("{base}/{encoded}{}", if list { "/" } else { "" }));
+    }
+    let bucket = encode_component(connection.bucket.trim_end_matches('/'));
+    let suffix = if encoded.is_empty() {
+        bucket
+    } else {
+        format!("{bucket}/{encoded}")
+    };
+    let mut url = url::Url::parse(&format!("{base}/{suffix}"))
+        .map_err(|_| Failure::new(502, "Invalid URL"))?;
+    if !query.is_empty() {
+        let mut values: Vec<(String, String)> = url
+            .query_pairs()
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect();
+        // URLSearchParams.set preserves first position, removing duplicates.
+        for (k, v) in query {
+            let first = values.iter().position(|(key, _)| key == k);
+            if let Some(at) = first {
+                let mut index = 0;
+                values.retain_mut(|(key, value)| {
+                    let keep = key != k || index == at;
+                    if index == at {
+                        *value = (*v).to_owned();
+                    }
+                    index += 1;
+                    keep
+                });
+            } else {
+                values.push(((*k).to_owned(), (*v).to_owned()));
+            }
+        }
+        let mut pairs = url.query_pairs_mut();
+        pairs.clear();
+        for (k, v) in values {
+            pairs.append_pair(&k, &v);
+        }
+    }
+    Ok(url.into())
+}
+
+fn path_for(raw: &[u16], operation: Operation) -> Result<String, Failure> {
+    // JS validation precedes URI encoding. A lone surrogate that survives the
+    // path rule cannot be replaced with U+FFFD and sent to another destination.
+    let mut trimmed = raw;
+    while trimmed
+        .first()
+        .is_some_and(|u| char::from_u32(u32::from(*u)).is_some_and(dav_parse::is_js_whitespace))
+    {
+        trimmed = trimmed.get(1..).unwrap_or_default();
+    }
+    while trimmed
+        .last()
+        .is_some_and(|u| char::from_u32(u32::from(*u)).is_some_and(dav_parse::is_js_whitespace))
+    {
+        trimmed = trimmed
+            .get(..trimmed.len().saturating_sub(1))
+            .unwrap_or_default();
+    }
+    let invalid_rule = trimmed.len() > 500
+        || trimmed.first().is_some_and(|u| *u == 47 || *u == 92)
+        || trimmed.contains(&0)
+        || trimmed
+            .split(|u| *u == 47 || *u == 92)
+            .any(|s| s == [46] || s == [46, 46]);
+    let bare_dot = trimmed == [46];
+    if invalid_rule && !(operation == Operation::List && bare_dot) {
+        return Err(path_error(operation));
+    }
+    if operation == Operation::Read {
+        let name = trimmed
+            .rsplit(|u| *u == 47 || *u == 92)
+            .find(|s| !s.is_empty())
+            .unwrap_or_default();
+        if name.is_empty() {
+            return Err(path_error(operation));
+        }
+        let ext = name
+            .iter()
+            .rposition(|u| *u == 46)
+            .and_then(|at| name.get(at..))
+            .unwrap_or_default();
+        let valid_ext = String::from_utf16(ext).is_ok_and(|s| supported(&s));
+        if !valid_ext {
+            let mut message = vec![34];
+            message.extend_from_slice(name);
+            message.extend("\" is not a supported text file".encode_utf16());
+            return Err(Failure::units(400, message));
+        }
+    }
+    let value = String::from_utf16(trimmed).map_err(|_| Failure::new(502, "URI malformed"))?;
+    let path = storage_path::safe_relative_path(&value).map_err(|_| path_error(operation))?;
+    if path.is_empty() && (operation == Operation::Read || (!trimmed.is_empty() && !bare_dot)) {
+        return Err(path_error(operation));
+    }
+    Ok(path)
+}
+fn path_error(op: Operation) -> Failure {
+    Failure::new(
+        400,
+        if op == Operation::List {
+            "Use a relative path inside the storage folder."
+        } else {
+            "invalid path"
+        },
+    )
+}
+pub fn extension(name: &str) -> String {
+    name.rfind('.')
+        .and_then(|at| name.get(at..))
+        .unwrap_or("")
+        .to_lowercase()
+}
+fn supported(name: &str) -> bool {
+    matches!(
+        extension(name).as_str(),
+        ".txt"
+            | ".md"
+            | ".markdown"
+            | ".json"
+            | ".csv"
+            | ".yml"
+            | ".yaml"
+            | ".ts"
+            | ".tsx"
+            | ".js"
+            | ".jsx"
+            | ".py"
+            | ".sh"
+            | ".html"
+            | ".css"
+    )
+}
+
+fn request(
+    c: &Connection,
+    path: &str,
+    op: Operation,
+    query: &[(&str, &str)],
+    date: &str,
+    remaining: Duration,
+) -> Result<Request, Failure> {
+    let url = url_for(c, path, op == Operation::List, query)?;
+    let mut headers = Vec::new();
+    let method = if op == Operation::List && c.kind != Kind::S3 {
+        Method::Propfind
+    } else {
+        Method::Get
+    };
+    if method == Method::Propfind {
+        headers.push(("Depth".into(), Zeroizing::new("1".into())));
+        headers.push((
+            "Content-Type".into(),
+            Zeroizing::new("application/xml".into()),
+        ));
+    }
+    if c.kind == Kind::S3 {
+        let target = url::Url::parse(&url).map_err(|_| Failure::new(502, "Invalid URL"))?;
+        let host = match target.port() {
+            Some(port) => format!("{}:{port}", target.host_str().unwrap_or("")),
+            None => target.host_str().unwrap_or("").to_owned(),
+        };
+        let owned: Vec<_> = target
+            .query_pairs()
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect();
+        let pairs: Vec<_> = owned
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let signed = s3_sign::sign(&s3_sign::Request {
+            method: "GET",
+            host: &host,
+            pathname: target.path(),
+            query: &pairs,
+            payload: b"",
+            access_key: &c.username,
+            secret_key: &c.secret,
+            region: &s3_sign::normalize_region(&c.region),
+            session_token: "",
+            amz_date: date,
+        })
+        .map_err(|_| Failure::new(502, "storage request could not be signed"))?;
+        for (k, v) in signed.headers {
+            headers.push((k.into(), Zeroizing::new(v)));
+        }
+    } else if !c.username.is_empty() {
+        let secret = String::from_utf8_lossy(&c.secret);
+        let pair = Zeroizing::new(format!("{}:{secret}", c.username));
+        headers.push((
+            "Authorization".into(),
+            Zeroizing::new(format!(
+                "Basic {}",
+                base64::engine::general_purpose::STANDARD.encode(pair.as_bytes())
+            )),
+        ));
+    }
+    Ok(Request {
+        method,
+        url,
+        headers,
+        attempt_timeout: remaining.min(Duration::from_secs(if op == Operation::Read {
+            20
+        } else {
+            15
+        })),
+        body_cap: if op == Operation::Read {
+            TEXT_BYTES
+        } else {
+            LIST_BYTES
+        },
+    })
+}
+
+fn fetch(
+    c: &Connection,
+    path: &str,
+    op: Operation,
+    query: &[(&str, &str)],
+    transport: &mut impl Transport,
+    deadline: Duration,
+) -> Result<Decoded, Failure> {
+    for attempt in 0..2 {
+        let remaining = deadline
+            .checked_sub(transport.elapsed())
+            .filter(|d| !d.is_zero())
+            .ok_or_else(|| TransportFailure::Timeout.public())?;
+        let req = request(c, path, op, query, &transport.amz_date(), remaining)?;
+        match transport.attempt(req) {
+            Ok(response) => {
+                if transport.elapsed() > deadline {
+                    return Err(TransportFailure::Timeout.public());
+                }
+                if (300..400).contains(&response.status) {
+                    return Err(TransportFailure::Redirect.public());
+                }
+                if !(200..300).contains(&response.status) {
+                    return Err(Failure::new(
+                        502,
+                        format!("storage returned {}", response.status),
+                    ));
+                }
+                // Defense at the seam; allocation enforcement belongs to adapter.
+                if response.body.text.len() > LIST_BYTES * 3 {
+                    return Err(TransportFailure::Body.public());
+                }
+                return Ok(response.body);
+            }
+            Err(error) if attempt == 0 && error.retryable() => {
+                if deadline.saturating_sub(transport.elapsed()) <= Duration::from_millis(250) {
+                    return Err(TransportFailure::Timeout.public());
+                }
+                transport
+                    .delay(Duration::from_millis(250))
+                    .map_err(TransportFailure::public)?;
+            }
+            Err(error) => return Err(error.public()),
+        }
+    }
+    Err(TransportFailure::Other.public())
+}
+
+struct Entry {
+    name: String,
+    is_dir: bool,
+    size: Option<String>,
+    ext: String,
+}
+fn entries_json(mut entries: Vec<Entry>, path: &str) -> String {
+    entries
+        .sort_by_cached_key(|entry| entry.name.to_lowercase().encode_utf16().collect::<Vec<_>>());
+    let mut out = String::from("[");
+    for (i, entry) in entries.into_iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"name\":");
+        json::quote_units(&mut out, &entry.name.encode_utf16().collect::<Vec<_>>());
+        out.push_str(",\"path\":");
+        let full = if path.is_empty() {
+            entry.name
+        } else {
+            format!("{path}/{}", entry.name)
+        };
+        json::quote_units(&mut out, &full.encode_utf16().collect::<Vec<_>>());
+        out.push_str(if entry.is_dir {
+            ",\"isDir\":true,\"size\":"
+        } else {
+            ",\"isDir\":false,\"size\":"
+        });
+        let size = entry
+            .size
+            .and_then(|s| s.parse::<f64>().ok())
+            .filter(|n| n.is_finite());
+        out.push_str(
+            &size
+                .map(js_json::number_to_string)
+                .unwrap_or_else(|| "null".into()),
+        );
+        out.push_str(",\"ext\":");
+        json::quote_units(&mut out, &entry.ext.encode_utf16().collect::<Vec<_>>());
+        out.push('}');
+    }
+    out.push(']');
+    out
+}
+
+/// One whole operation. Caller validates auth/CSRF, obtains admission and checks
+/// endpoint policy before calling. No real network implementation exists yet.
+pub fn execute(
+    c: &Connection,
+    raw: &[u16],
+    op: Operation,
+    transport: &mut impl Transport,
+) -> Result<String, Failure> {
+    // Snapshot contract bounds reuse the existing signer/path/envelope domains.
+    // Adapter must separately qualify oversized legacy configuration refusal.
+    if [&c.base_url, &c.username, &c.corpus_root, &c.bucket]
+        .iter()
+        .any(|value| value.len() > s3_sign::MAX_FIELD_BYTES)
+        || c.region.len() > s3_sign::MAX_REGION_BYTES
+        || c.secret.len() > 8 * 1024 * 1024
+    {
+        return Err(TransportFailure::Header.public());
+    }
+    if c.kind == Kind::Local {
+        return Err(Failure::new(
+            400,
+            if op == Operation::List {
+                "no browsable storage connected (local storage needs no browsing — upload files directly)"
+            } else {
+                "no browsable storage connected"
+            },
+        ));
+    }
+    let path = path_for(raw, op)?;
+    let budget = Duration::from_secs(if op == Operation::Read {
+        41
+    } else if c.kind == Kind::S3 {
+        610
+    } else {
+        31
+    });
+    let deadline = transport
+        .elapsed()
+        .checked_add(budget)
+        .ok_or_else(|| TransportFailure::Timeout.public())?;
+    if op == Operation::Read {
+        let name = path.rsplit('/').next().unwrap_or("");
+        if !supported(name) {
+            return Err(Failure::new(
+                400,
+                format!("\"{name}\" is not a supported text file"),
+            ));
+        }
+        let remote = if c.kind == Kind::S3 {
+            storage_path::join_root(&c.corpus_root, &path)
+                .map_err(|_| Failure::new(502, "storage path could not be checked"))?
+        } else {
+            path.clone()
+        };
+        return fetch(c, &remote, op, &[], transport, deadline).map(|body| preview(name, body));
+    }
+    if c.kind != Kind::S3 {
+        let target = url_for(c, &path, true, &[])?;
+        let body = fetch(c, &path, op, &[], transport, deadline)?;
+        let entries = dav_parse::list_entries(&body.text, &target)
+            .map_err(|_| Failure::new(502, "storage listing could not be read"))?;
+        return Ok(entries_json(
+            entries
+                .into_iter()
+                .map(|e| Entry {
+                    ext: extension(&e.name),
+                    name: e.name,
+                    is_dir: e.is_dir,
+                    size: e.size,
+                })
+                .collect(),
+            &path,
+        ));
+    }
+    let root = storage_path::join_root(&c.corpus_root, &path)
+        .map_err(|_| Failure::new(502, "storage path could not be checked"))?;
+    let prefix = if root.is_empty() {
+        root
+    } else {
+        format!("{root}/")
+    };
+    let mut token: Option<String> = None;
+    let mut entries = Vec::new();
+    for _ in 0..MAX_PAGES {
+        if entries.len() >= MAX_ENTRIES {
+            break;
+        }
+        let mut query = vec![
+            ("list-type", "2"),
+            ("prefix", prefix.as_str()),
+            ("delimiter", "/"),
+            ("max-keys", "1000"),
+        ];
+        if let Some(t) = &token {
+            query.push(("continuation-token", t));
+        }
+        let body = fetch(c, "", op, &query, transport, deadline)?;
+        let page = s3_list_parse::parse_page(&body.text, &prefix)
+            .map_err(|_| Failure::new(502, "storage listing could not be read"))?;
+        entries.extend(page.entries.into_iter().map(|e| Entry {
+            ext: if e.is_dir {
+                String::new()
+            } else {
+                extension(&e.name)
+            },
+            name: e.name,
+            is_dir: e.is_dir,
+            size: e.size,
+        }));
+        if !page.truncated {
+            break;
+        }
+        match page.next {
+            Some(next) if !next.is_empty() && token.as_ref() != Some(&next) => token = Some(next),
+            _ => break,
+        }
+    }
+    entries.truncate(MAX_ENTRIES);
+    Ok(entries_json(entries, &path))
+}
+
+/// Fixed fixture helper: transport implementors use this after streaming the
+/// decoded response. Never allocate an unbounded remote response to call it.
+pub fn decoded_fixture(bytes: &[u8], cap: usize) -> Result<Decoded, Failure> {
+    let mut prefix = Prefix::new(cap)?;
+    prefix.feed(bytes);
+    Ok(prefix.finish())
+}
