@@ -273,6 +273,15 @@ fn exact_target_accepts(
     }
     Ok(policy.accepts(status, stdout, view.as_bytes()))
 }
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("auth-row mutation refused: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
 #[cfg(test)]
 mod qualifier_tests {
     use super::*;
@@ -331,14 +340,5 @@ mod qualifier_tests {
             }
         }
         Ok(())
-    }
-}
-fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("auth-row mutation refused: {e}");
-            ExitCode::FAILURE
-        }
     }
 }
