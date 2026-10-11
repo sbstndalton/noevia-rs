@@ -95,6 +95,10 @@ impl crate::DockerRead for NeverDocker {
 }
 fn state(reader: Arc<dyn Read>) -> Arc<crate::StateData> {
     Arc::new(crate::StateData {
+        #[cfg(feature = "native-diagnose")]
+        diagnosis: None,
+        #[cfg(feature = "native-prompts")]
+        prompts: None,
         sections: Some(Arc::new(Sections::new(reader))),
         host: None,
         token: "fixture-token".into(),

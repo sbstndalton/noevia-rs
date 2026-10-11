@@ -5,6 +5,7 @@ const server=__SERVER__,guard=__GUARD__,preload=__PRELOAD__,entry=__ENTRY__;
 const spawn=cp.spawn;
 cp.spawn=function(command,args,options) {
   if(command===process.execPath && Array.isArray(args) && args.length===3 && args[0]==='--require' && args[1]===guard && args[2]===server) {
+    __PROMPTS_OVERRIDE__
     return spawn(command,[args[0],args[1],'--require',preload,args[2]],options);
   }
   if(Array.isArray(args) && args.includes(server)) throw Error('actual corpus server spawn changed; fixture seam refuses');

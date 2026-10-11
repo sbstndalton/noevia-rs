@@ -45,6 +45,31 @@ impl BigInt {
         Some(Self::from_parts(negative, digits))
     }
 
+    /// Fallible allocation for callers that enforce per-request memory limits.
+    pub fn try_from_ascii_decimal(
+        lit: &str,
+    ) -> Result<Option<Self>, std::collections::TryReserveError> {
+        let (negative, digits) = lit
+            .strip_prefix('-')
+            .map_or((false, lit), |digits| (true, digits));
+        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            return Ok(None);
+        }
+        let significant = digits.trim_start_matches('0');
+        let normalized = if significant.is_empty() {
+            "0"
+        } else {
+            significant
+        };
+        let mut digits = String::new();
+        digits.try_reserve_exact(normalized.len())?;
+        digits.push_str(normalized);
+        Ok(Some(Self {
+            negative: negative && !significant.is_empty(),
+            digits,
+        }))
+    }
+
     /// Sign plus digits as collected by the `int(str)` parser.
     pub(crate) fn from_sign_digits(negative: bool, digits: &str) -> Self {
         Self::from_parts(negative, digits)

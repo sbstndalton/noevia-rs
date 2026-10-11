@@ -17,6 +17,14 @@ pub struct UnixDocker {
     pub socket: PathBuf,
 }
 impl UnixDocker {
+    #[cfg(feature = "native-diagnose")]
+    pub(crate) async fn diagnosis_read(
+        &self,
+        operation: crate::diagnose_docker::Read<'_>,
+        context: &crate::diagnose_docker::Context,
+    ) -> Result<(StatusCode, Vec<u8>), crate::diagnose_docker::Error> {
+        crate::diagnose_docker::read(&self.socket, operation, context).await
+    }
     pub fn from_env() -> Result<Self, &'static str> {
         let host = match std::env::var("DOCKER_HOST") {
             Ok(h) => h,

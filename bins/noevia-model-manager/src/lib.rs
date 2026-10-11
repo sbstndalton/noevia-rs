@@ -1,6 +1,11 @@
 #![forbid(unsafe_code)]
+pub mod diagnose;
+#[cfg(feature = "native-diagnose")]
+pub mod diagnose_docker;
 pub mod docker;
 pub mod host;
+#[cfg(feature = "native-prompts")]
+pub mod prompts;
 pub mod sections;
 
 use axum::{
@@ -44,6 +49,10 @@ pub trait DockerRead: Send + Sync {
 }
 
 pub struct StateData {
+    #[cfg(feature = "native-diagnose")]
+    pub diagnosis: Option<Arc<diagnose_docker::Diagnosis>>,
+    #[cfg(feature = "native-prompts")]
+    pub prompts: Option<Arc<prompts::Prompts>>,
     pub sections: Option<Arc<sections::Sections>>,
     pub host: Option<Arc<tokio::sync::Mutex<host::HostHistory>>>,
     pub token: String,
@@ -281,6 +290,8 @@ fn detail(status: StatusCode, text: &'static str) -> Response {
 }
 
 async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response {
+    #[cfg(feature = "native-diagnose")]
+    let diagnosis_deadline = std::time::Instant::now() + TIMEOUT;
     let path = req.uri().path();
     if path != "/api/v1/health" && !state.token.is_empty() {
         let supplied = req
@@ -298,6 +309,20 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     }
     if req.uri().to_string().len() > 8192 {
         return detail(StatusCode::URI_TOO_LONG, "request URI exceeded limit");
+    }
+    #[cfg(feature = "native-diagnose")]
+    if let Some(diagnosis) = &state.diagnosis {
+        let route = diagnose_docker::classify(path);
+        if !matches!(route, diagnose_docker::Route::NotOwned) {
+            return native_diagnosis(
+                state.clone(),
+                diagnosis.clone(),
+                req,
+                route,
+                diagnosis_deadline,
+            )
+            .await;
+        }
     }
     if path == "/api/v1/health" {
         return dispatch(state, req).await;
@@ -319,6 +344,10 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
         .strip_prefix("/api/v1/backends/")
         .and_then(|p| p.strip_suffix("/logs"))
         .is_some();
+    #[cfg(feature = "native-prompts")]
+    let native = native
+        || (state.prompts.is_some()
+            && !matches!(prompts::classify(path), prompts::Route::NotOwned));
     let budget = if native || (path == "/api/v1/host" && state.host.is_some()) {
         TIMEOUT
     } else {
@@ -335,8 +364,178 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     }
 }
 
+#[cfg(feature = "native-diagnose")]
+async fn native_diagnosis(
+    state: Arc<StateData>,
+    diagnosis: Arc<diagnose_docker::Diagnosis>,
+    req: Request,
+    route: diagnose_docker::Route,
+    deadline: std::time::Instant,
+) -> Response {
+    fn head(mut response: Response, method: &Method) -> Response {
+        if *method == Method::HEAD {
+            *response.body_mut() = Body::empty();
+        }
+        response
+    }
+    match route {
+        diagnose_docker::Route::NotFound | diagnose_docker::Route::NotOwned => {
+            head(detail(StatusCode::NOT_FOUND, "Not Found"), req.method())
+        }
+        diagnose_docker::Route::Redirect(canonical) => {
+            let host = req
+                .headers()
+                .get("host")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("localhost");
+            let mut url = match reqwest::Url::parse(&format!("http://{host}")) {
+                Ok(url) => url,
+                Err(_) => return detail(StatusCode::BAD_REQUEST, "invalid request path"),
+            };
+            url.set_path(&canonical);
+            url.set_query(req.uri().query());
+            (
+                StatusCode::TEMPORARY_REDIRECT,
+                [(axum::http::header::LOCATION, url.as_str())],
+                Body::empty(),
+            )
+                .into_response()
+        }
+        diagnose_docker::Route::Item(name) => {
+            if req.method() != Method::GET {
+                let mut response = detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed");
+                response.headers_mut().insert(
+                    axum::http::header::ALLOW,
+                    axum::http::HeaderValue::from_static("GET"),
+                );
+                return head(response, req.method());
+            }
+            if diagnose_docker::identifier(&name).is_err() {
+                return detail(StatusCode::BAD_REQUEST, "invalid backend name");
+            }
+            match diagnosis.request(state, name, deadline).await {
+                diagnose_docker::Outcome::Json(bytes) => (
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    bytes,
+                )
+                    .into_response(),
+                diagnose_docker::Outcome::Unknown => {
+                    detail(StatusCode::NOT_FOUND, "unknown backend")
+                }
+                diagnose_docker::Outcome::Busy => {
+                    detail(StatusCode::SERVICE_UNAVAILABLE, "service is busy")
+                }
+                diagnose_docker::Outcome::Refused => detail(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Native backend diagnosis is unavailable",
+                ),
+            }
+        }
+    }
+}
+
 async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
     let path = req.uri().path();
+    #[cfg(feature = "native-prompts")]
+    if let Some(prompts) = &state.prompts {
+        let route = prompts::classify(path);
+        match &route {
+            prompts::Route::Invalid => {
+                return detail(StatusCode::BAD_REQUEST, "invalid request path")
+            }
+            prompts::Route::Redirect(canonical) => {
+                let host = req
+                    .headers()
+                    .get("host")
+                    .and_then(|h| h.to_str().ok())
+                    .unwrap_or("localhost");
+                let query = req
+                    .uri()
+                    .query()
+                    .map(|q| format!("?{q}"))
+                    .unwrap_or_default();
+                return (
+                    StatusCode::TEMPORARY_REDIRECT,
+                    [(
+                        axum::http::header::LOCATION,
+                        format!("http://{host}{canonical}{query}"),
+                    )],
+                )
+                    .into_response();
+            }
+            _ => {}
+        }
+        if matches!(route, prompts::Route::Collection | prompts::Route::Item(_)) {
+            let item = match &route {
+                prompts::Route::Item(id) => Some(id.as_str()),
+                _ => None,
+            };
+            let operation = match (req.method(), item) {
+                (&Method::GET, None) => prompts::Operation::List,
+                (&Method::POST, None) => {
+                    let json_content = match req.headers().get(axum::http::header::CONTENT_TYPE) {
+                        Some(value) => match value.to_str() {
+                            Ok(value) if value.len() <= 8192 => {
+                                prompts::json_content_type(Some(value))
+                            }
+                            _ => return prompt_error(prompts::Error::Body),
+                        },
+                        None => true,
+                    };
+                    let bytes = match to_bytes(req.into_body(), REQUEST_CAP).await {
+                        Ok(b) => b,
+                        Err(_) => {
+                            return detail(
+                                StatusCode::PAYLOAD_TOO_LARGE,
+                                "request body exceeded limit",
+                            )
+                        }
+                    };
+                    if !json_content && !bytes.is_empty() {
+                        return match prompts::non_json_validation(&bytes) {
+                            Ok(error) => {
+                                (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response()
+                            }
+                            Err(e) => prompt_error(e),
+                        };
+                    }
+                    let decoded = match prompts::decode_body(&bytes) {
+                        Ok(text) => text,
+                        Err(e) => return prompt_error(e),
+                    };
+                    if let Some(error) =
+                        prompts::validation_with_empty(decoded.as_bytes(), bytes.is_empty())
+                    {
+                        return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
+                    }
+                    let (name, body) = match prompts::parse_fields_json(&decoded) {
+                        Ok(v) => v,
+                        Err(e) => return prompt_error(e),
+                    };
+                    prompts::Operation::Add(name, body)
+                }
+                (&Method::DELETE, Some(id)) => {
+                    let id=match prompts::parse_id(id){Ok(id)=>id,Err(_)=>return (StatusCode::UNPROCESSABLE_ENTITY,Json(json!({"detail":[{"type":"int_parsing","loc":["path","pid"],"msg":"Input should be a valid integer, unable to parse string as an integer","input":id}]}))).into_response()};
+                    prompts::Operation::Delete(id)
+                }
+                _ => return detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed"),
+            };
+            return match prompts.response(operation).await {
+                Ok(bytes) => (
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    bytes,
+                )
+                    .into_response(),
+                Err(e) => prompt_error(e),
+            };
+        }
+        if crate::decode_segment(path)
+            .ok()
+            .is_some_and(|path| path.starts_with("/api/v1/prompts/"))
+        {
+            return detail(StatusCode::NOT_FOUND, "Not Found");
+        }
+    }
     if req.method() == Method::GET {
         if let Some(sections) = &state.sections {
             if let Some(trimmed) = path.strip_suffix('/') {
@@ -459,6 +658,20 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         Body::from(bytes),
     )
         .into_response()
+}
+
+#[cfg(feature = "native-prompts")]
+fn prompt_error(error: prompts::Error) -> Response {
+    let status = match error {
+        prompts::Error::Input
+        | prompts::Error::Body
+        | prompts::Error::Required
+        | prompts::Error::Text => StatusCode::BAD_REQUEST,
+        prompts::Error::Object => StatusCode::UNPROCESSABLE_ENTITY,
+        prompts::Error::NotFound => StatusCode::NOT_FOUND,
+        _ => StatusCode::SERVICE_UNAVAILABLE,
+    };
+    (status, Json(json!({"detail":error.to_string()}))).into_response()
 }
 
 async fn native_sections(sections: &sections::Sections, path: &str, query: &str) -> Response {
