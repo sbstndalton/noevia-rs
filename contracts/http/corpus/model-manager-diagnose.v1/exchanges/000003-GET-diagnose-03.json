@@ -1,0 +1,46 @@
+{
+  "request": {
+    "body": {
+      "kind": "empty"
+    },
+    "headers": {
+      "accept": "application/json",
+      "cookie": "<diagnose-admin-cookie>",
+      "origin": "<origin>"
+    },
+    "method": "GET",
+    "path": "/api/model-manager/backends/synthetic-cause-2/diagnose",
+    "query": []
+  },
+  "response": {
+    "body": {
+      "json": {
+        "failures": [
+          {
+            "advice": "Check the model = and mmproj = paths in this model's settings; the file may have been moved or deleted.",
+            "cause": "missing-file",
+            "evidence": [
+              "failed to open"
+            ],
+            "model": "synthetic-model",
+            "status": 1,
+            "title": "A model file is missing"
+          }
+        ]
+      },
+      "kind": "json"
+    },
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "status": 200
+  },
+  "seq": 3,
+  "v": 1
+}

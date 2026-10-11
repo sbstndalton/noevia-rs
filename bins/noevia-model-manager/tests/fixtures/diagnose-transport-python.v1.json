@@ -1,0 +1,1634 @@
+{
+  "cases": [
+    {
+      "body": "{\"failures\":[{\"model\":\"synthetic-model\",\"status\":1,\"cause\":\"kv-cache\",\"title\":\"The KV cache did not fit\",\"advice\":\"Lower the context size or parallel slots, or quantize the cache (cache-type-k/v = q8_0).\",\"evidence\":[\"failed to allocate kv\"]}]}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ],
+        [
+          "get",
+          "synthetic-backend"
+        ],
+        [
+          "logs",
+          {
+            "since": "2026-10-11T00:00:00",
+            "tail": 40000
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "canonical-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic-backend/diagnose",
+      "status": 200,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "canonical-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/synthetic-backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "canonical-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/synthetic-backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "canonical-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/synthetic-backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "canonical-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/synthetic-backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "canonical-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/synthetic-backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "location": "http://synthetic.invalid/api/v1/backends/synthetic-backend/diagnose"
+      },
+      "id": "slash-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic-backend/diagnose/",
+      "status": 307,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "location": "http://synthetic.invalid/api/v1/backends/synthetic-backend/diagnose"
+      },
+      "id": "slash-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/synthetic-backend/diagnose/",
+      "status": 307,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "location": "http://synthetic.invalid/api/v1/backends/synthetic-backend/diagnose"
+      },
+      "id": "slash-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/synthetic-backend/diagnose/",
+      "status": 307,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "location": "http://synthetic.invalid/api/v1/backends/synthetic-backend/diagnose"
+      },
+      "id": "slash-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/synthetic-backend/diagnose/",
+      "status": 307,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "location": "http://synthetic.invalid/api/v1/backends/synthetic-backend/diagnose"
+      },
+      "id": "slash-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/synthetic-backend/diagnose/",
+      "status": 307,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "location": "http://synthetic.invalid/api/v1/backends/synthetic-backend/diagnose"
+      },
+      "id": "slash-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/synthetic-backend/diagnose/",
+      "status": 307,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "double-slash-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends//synthetic-backend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "double-slash-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends//synthetic-backend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "double-slash-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends//synthetic-backend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "double-slash-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends//synthetic-backend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "double-slash-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends//synthetic-backend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "double-slash-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends//synthetic-backend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "empty-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends//diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "empty-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends//diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "empty-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends//diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "empty-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends//diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "empty-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends//diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "empty-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends//diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "extra-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic-backend/extra/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "extra-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/synthetic-backend/extra/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "extra-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/synthetic-backend/extra/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "extra-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/synthetic-backend/extra/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "extra-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/synthetic-backend/extra/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "extra-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/synthetic-backend/extra/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"failures\":[{\"model\":\"synthetic-model\",\"status\":1,\"cause\":\"kv-cache\",\"title\":\"The KV cache did not fit\",\"advice\":\"Lower the context size or parallel slots, or quantize the cache (cache-type-k/v = q8_0).\",\"evidence\":[\"failed to allocate kv\"]}]}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ],
+        [
+          "get",
+          "synthetic-backend"
+        ],
+        [
+          "logs",
+          {
+            "since": "2026-10-11T00:00:00",
+            "tail": 40000
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "encoded-letter-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/%73ynthetic-backend/diagnose",
+      "status": 200,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-letter-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/%73ynthetic-backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-letter-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/%73ynthetic-backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-letter-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/%73ynthetic-backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-letter-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/%73ynthetic-backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-letter-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/%73ynthetic-backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "encoded-slash-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic%2Fbackend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "encoded-slash-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/synthetic%2Fbackend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "encoded-slash-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/synthetic%2Fbackend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "encoded-slash-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/synthetic%2Fbackend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "encoded-slash-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/synthetic%2Fbackend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Not Found\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "encoded-slash-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/synthetic%2Fbackend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"unknown backend\"}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "encoded-backslash-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic%5Cbackend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-backslash-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/synthetic%5Cbackend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-backslash-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/synthetic%5Cbackend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-backslash-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/synthetic%5Cbackend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-backslash-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/synthetic%5Cbackend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-backslash-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/synthetic%5Cbackend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"unknown backend\"}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "encoded-percent-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic%25backend/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-percent-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/synthetic%25backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-percent-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/synthetic%25backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-percent-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/synthetic%25backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-percent-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/synthetic%25backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-percent-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/synthetic%25backend/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"unknown backend\"}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "unicode-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/%E6%A8%A1%E5%9E%8B/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "unicode-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/%E6%A8%A1%E5%9E%8B/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "unicode-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/%E6%A8%A1%E5%9E%8B/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "unicode-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/%E6%A8%A1%E5%9E%8B/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "unicode-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/%E6%A8%A1%E5%9E%8B/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "unicode-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/%E6%A8%A1%E5%9E%8B/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"unknown backend\"}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "invalid-utf8-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/%FF/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "invalid-utf8-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/%FF/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "invalid-utf8-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/%FF/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "invalid-utf8-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/%FF/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "invalid-utf8-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/%FF/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "invalid-utf8-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/%FF/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"unknown backend\"}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "malformed-percent-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/%Q0/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "malformed-percent-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/%Q0/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "malformed-percent-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/%Q0/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "malformed-percent-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/%Q0/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "malformed-percent-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/%Q0/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "malformed-percent-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/%Q0/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"unknown backend\"}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "unknown-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/unknown/diagnose",
+      "status": 404,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "unknown-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/unknown/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "unknown-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/unknown/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "unknown-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/unknown/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "unknown-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/unknown/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "unknown-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/unknown/diagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"failures\":[{\"model\":\"synthetic-model\",\"status\":1,\"cause\":\"kv-cache\",\"title\":\"The KV cache did not fit\",\"advice\":\"Lower the context size or parallel slots, or quantize the cache (cache-type-k/v = q8_0).\",\"evidence\":[\"failed to allocate kv\"]}]}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ],
+        [
+          "get",
+          "synthetic-backend"
+        ],
+        [
+          "logs",
+          {
+            "since": "2026-10-11T00:00:00",
+            "tail": 40000
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "queries-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic-backend/diagnose?tail=1&tail=9&since=0&unknown=x",
+      "status": 200,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "queries-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/synthetic-backend/diagnose?tail=1&tail=9&since=0&unknown=x",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "queries-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/synthetic-backend/diagnose?tail=1&tail=9&since=0&unknown=x",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "queries-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/synthetic-backend/diagnose?tail=1&tail=9&since=0&unknown=x",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "queries-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/synthetic-backend/diagnose?tail=1&tail=9&since=0&unknown=x",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "queries-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/synthetic-backend/diagnose?tail=1&tail=9&since=0&unknown=x",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"failures\":[{\"model\":\"synthetic-model\",\"status\":1,\"cause\":\"kv-cache\",\"title\":\"The KV cache did not fit\",\"advice\":\"Lower the context size or parallel slots, or quantize the cache (cache-type-k/v = q8_0).\",\"evidence\":[\"failed to allocate kv\"]}]}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ],
+        [
+          "get",
+          "synthetic-backend"
+        ],
+        [
+          "logs",
+          {
+            "since": "2026-10-11T00:00:00",
+            "tail": 40000
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "encoded-route-GET",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic-backend/%64iagnose",
+      "status": 200,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-route-HEAD",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "HEAD",
+      "path": "/api/v1/backends/synthetic-backend/%64iagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-route-POST",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "POST",
+      "path": "/api/v1/backends/synthetic-backend/%64iagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-route-PUT",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "PUT",
+      "path": "/api/v1/backends/synthetic-backend/%64iagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-route-DELETE",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "DELETE",
+      "path": "/api/v1/backends/synthetic-backend/%64iagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "allow": "GET",
+        "content-type": "application/json"
+      },
+      "id": "encoded-route-OPTIONS",
+      "log": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/synthetic-backend/%64iagnose",
+      "status": 405,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"error\":\"unauthorized\"}",
+      "calls": [],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "wrong-token-auth-first",
+      "log": "",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic-backend/diagnose",
+      "status": 401,
+      "token": "wrong"
+    }
+  ],
+  "generator_sha256": "6ec2eb3a901975f46a1ac6fbf4e852137de52ff2ef9f9799f546dca0c8bb0055",
+  "oracle_ref": "6c233f4a05730ed5dccd7997ae601e9999eaa6d7",
+  "python": "3.12.15 (main, Oct  3 2026, 00:54:33) [Clang 22.1.3 ]",
+  "schema": 1,
+  "versions": {
+    "fastapi": "0.115.6",
+    "httpx": "0.28.1",
+    "pydantic": "2.14.0",
+    "starlette": "0.41.3"
+  }
+}

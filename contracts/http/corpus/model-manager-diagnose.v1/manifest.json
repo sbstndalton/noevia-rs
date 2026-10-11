@@ -1,0 +1,17 @@
+{
+  "captureDomain": "model-manager-diagnose",
+  "covered": [
+    "GET /api/model-manager/backends/synthetic-cause-0/diagnose",
+    "GET /api/model-manager/backends/synthetic-cause-1/diagnose",
+    "GET /api/model-manager/backends/synthetic-cause-2/diagnose",
+    "GET /api/model-manager/backends/synthetic-cause-3/diagnose",
+    "GET /api/model-manager/backends/synthetic-cause-4/diagnose",
+    "GET /api/model-manager/backends/synthetic-cause-5/diagnose",
+    "GET /api/model-manager/backends/synthetic-cause-6/diagnose",
+    "GET /api/model-manager/backends/synthetic-cause-7/diagnose",
+    "GET /api/model-manager/backends/unknown/diagnose"
+  ],
+  "inputs": {},
+  "note": "Owned synthetic fixed-log fixture; supply --bind '<diagnose-admin-cookie>=cookie-header' from its fresh actual administrator session. SOURCE_ORACLE fixes backend logs. No stored session token. Nonvolatile response headers compare completely.",
+  "v": 1
+}

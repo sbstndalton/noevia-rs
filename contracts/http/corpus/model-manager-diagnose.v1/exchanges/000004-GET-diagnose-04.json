@@ -1,0 +1,46 @@
+{
+  "request": {
+    "body": {
+      "kind": "empty"
+    },
+    "headers": {
+      "accept": "application/json",
+      "cookie": "<diagnose-admin-cookie>",
+      "origin": "<origin>"
+    },
+    "method": "GET",
+    "path": "/api/model-manager/backends/synthetic-cause-3/diagnose",
+    "query": []
+  },
+  "response": {
+    "body": {
+      "json": {
+        "failures": [
+          {
+            "advice": "The download is probably incomplete. Delete the file and download it again.",
+            "cause": "corrupt-file",
+            "evidence": [
+              "invalid magic"
+            ],
+            "model": "synthetic-model",
+            "status": 1,
+            "title": "The model file is corrupt or incomplete"
+          }
+        ]
+      },
+      "kind": "json"
+    },
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "status": 200
+  },
+  "seq": 4,
+  "v": 1
+}
