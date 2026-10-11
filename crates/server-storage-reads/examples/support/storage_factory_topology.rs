@@ -35,7 +35,8 @@ pub const NOW: i64 = 1_700_000_000_000;
 // Empty means unapproved; neither the CLI nor the tool can approve itself.
 pub const APPROVED_MANIFEST_SHA: &str =
     "c0643f2c3d0fc58b115b08d14938f1e5e79e2da51ee56bf980950939064b8860";
-pub const APPROVED_PREFLIGHT_SHA: &str = "";
+pub const APPROVED_PREFLIGHT_SHA: &str =
+    "db1bb3b061c7e4b0e75abfa84e4efb3eca4eb3a9b2dc358a0bc478a7c1838173";
 pub const GIT_EVIDENCE: &str = "/tmp/m4-storage-factory-git-third-attempt";
 pub const CAPTURE_ROOT: &str = "/tmp/m4-storage-factory-capture-second-attempt";
 pub const PREFLIGHT_ROOT: &str = "/tmp/m4-storage-factory-preflight-second-attempt";
