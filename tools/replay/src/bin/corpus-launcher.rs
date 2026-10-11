@@ -6,6 +6,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 const MEMINFO: &str = "MemTotal:        8388608 kB\n";
+#[path = "support/prompts_dependencies.rs"]
+mod dependencies;
 #[allow(dead_code)]
 #[path = "../../../qualification/process.rs"]
 mod process;
@@ -153,6 +155,13 @@ fn run() -> Result<(), String> {
             Path::new(&output.ok_or("capture artifact directory required")?),
         );
     }
+    let prompts_port = if mode.starts_with("prompts-") {
+        Some(prompt_port(
+            output.as_deref().ok_or("synthetic prompt port required")?,
+        )?)
+    } else {
+        None
+    };
     let (entry, argv) = match mode.as_str() {
         "capture" => (
             "generate.cjs",
@@ -161,6 +170,11 @@ fn run() -> Result<(), String> {
                 output.ok_or("capture requires output directory")?,
             ],
         ),
+        "prompts-serve" | "prompts-absent" | "prompts-wrong-token" | "prompts-port-omitted"
+            if output.is_some() =>
+        {
+            ("serve.cjs", vec![])
+        }
         "serve" | "verify" | "verify-omission" | "wrong-host" if output.is_none() => {
             ("serve.cjs", vec![])
         }
@@ -172,6 +186,8 @@ fn run() -> Result<(), String> {
         &directory,
         entry,
         &argv,
+        prompts_port,
+        &mode,
         if mode == "wrong-host" {
             "MemTotal:        12582912 kB\n"
         } else {
@@ -240,13 +256,67 @@ fn run() -> Result<(), String> {
     let _ = std::fs::remove_dir_all(&directory);
     Err(error.to_string())
 }
+fn prompt_port(raw: &str) -> Result<u16, String> {
+    if raw.is_empty() || raw.len() > 5 || !raw.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("invalid synthetic prompt port".into());
+    }
+    raw.parse::<u16>()
+        .ok()
+        .filter(|p| *p != 0)
+        .ok_or_else(|| "invalid synthetic prompt port".into())
+}
+fn prompts_override(port: Option<u16>, control: &str) -> Result<String, String> {
+    let Some(port) = port else {
+        return Ok(String::new());
+    };
+    if control == "prompts-absent" {
+        return Ok(String::new());
+    }
+    let url = js(&format!("http://127.0.0.1:{port}"))?;
+    let token = js(if control == "prompts-wrong-token" {
+        "synthetic-prompts-wrong-token-0123456789abcdef"
+    } else {
+        "synthetic-prompts-publicfront-token-0123456789abcdef"
+    })?;
+    let ports = if control == "prompts-port-omitted" {
+        String::new()
+    } else {
+        format!(",NOEVIA_CORPUS_ALLOWED_PORTS:options.env.NOEVIA_CORPUS_ALLOWED_PORTS+',{port}'")
+    };
+    Ok(format!("options={{...options,env:{{...options.env,MODEL_LOADER_URL:{url},MODEL_LOADER_TOKEN:{token}{ports}}}}};"))
+}
 fn prepare(
     core: &Path,
     directory: &Path,
     entry: &str,
     argv: &[String],
+    prompts_port: Option<u16>,
+    prompts_control: &str,
     meminfo: &str,
 ) -> Result<PathBuf, String> {
+    let dependencies_override = if prompts_port.is_some() {
+        let revision = include_str!("../../../../contracts/http/core.ref").trim();
+        let mut expected = [Vec::new(), Vec::new()];
+        for (index, name) in ["package.json", "package-lock.json"].iter().enumerate() {
+            let mut command = Command::new("git");
+            command
+                .env_clear()
+                .env("PATH", std::env::var_os("PATH").ok_or("PATH required")?)
+                .arg("-C")
+                .arg(core)
+                .args(["show", &format!("{revision}:server/{name}")]);
+            let output = process::bounded(command, Vec::new(), std::time::Duration::from_secs(5))?;
+            if !output.status.success() {
+                return Err("dependency immutable manifest unavailable".into());
+            }
+            *expected.get_mut(index).ok_or("dependency manifest index")? = output.stdout;
+        }
+        let parameter = std::env::var_os("NOEVIA_PROMPTS_DEPENDENCIES").map(PathBuf::from);
+        let (modules, _) = dependencies::verify(core, core, parameter.as_deref(), &expected)?;
+        dependency_override(&modules)?
+    } else {
+        String::new()
+    };
     let preload = directory.join("host-input.cjs");
     let fixture = include_str!("../synthetic-host-input.cjs")
         .replace(
@@ -279,9 +349,22 @@ fn prepare(
             "__ARGS__",
             &serde_json::to_string(argv).map_err(|e| e.to_string())?,
         )
-        .replace("__TEMP__", &js(&directory.to_string_lossy())?);
+        .replace("__TEMP__", &js(&directory.to_string_lossy())?)
+        .replace(
+            "__PROMPTS_OVERRIDE__",
+            &format!(
+                "{}{dependencies_override}",
+                prompts_override(prompts_port, prompts_control)?
+            ),
+        );
     std::fs::write(&wrapper, source).map_err(|e| e.to_string())?;
     Ok(wrapper)
+}
+fn dependency_override(modules: &Path) -> Result<String, String> {
+    Ok(format!(
+        "options={{...options,env:{{...options.env,NODE_PATH:{}}}}};",
+        js(modules.to_str().ok_or("dependency path UTF8")?)?
+    ))
 }
 fn main() -> ExitCode {
     match run() {
@@ -295,6 +378,69 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod capture_tests {
     use super::*;
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn verified_dependency_override_preserves_literal_spawn_options() {
+        let directory = tempfile::tempdir().unwrap();
+        let fixture = directory.path().join("entry.cjs");
+        let wrapper = directory.path().join("launch.cjs");
+        std::fs::write(&fixture,"require('node:child_process').spawn(process.execPath,['--require','synthetic-guard','synthetic-server'],{cwd:'synthetic-cwd',stdio:['ignore','pipe','pipe'],env:{PATH:'synthetic-path',NODE_ENV:'production',NOEVIA_CORPUS_ALLOWED_PORTS:'333'}});").unwrap();
+        let modules = directory.path().join("external/node_modules");
+        let source = include_str!("../synthetic-host-launch.cjs")
+            .replace("__SERVER__", "'synthetic-server'")
+            .replace("__GUARD__", "'synthetic-guard'")
+            .replace("__PRELOAD__", "'synthetic-preload'")
+            .replace("__ENTRY__", &js(&fixture.to_string_lossy()).unwrap())
+            .replace("__ARGS__", "[]")
+            .replace(
+                "__TEMP__",
+                &js(&directory.path().to_string_lossy()).unwrap(),
+            )
+            .replace(
+                "__PROMPTS_OVERRIDE__",
+                &dependency_override(&modules).unwrap(),
+            );
+        std::fs::write(&wrapper, source).unwrap();
+        let script="const assert=require('node:assert/strict');assert.ok(process.version.startsWith('v22.'));const expected=process.argv[2];require('node:child_process').spawn=(command,args,options)=>{assert.equal(command,process.execPath);assert.deepEqual(args,['--require','synthetic-guard','--require','synthetic-preload','synthetic-server']);assert.equal(options.cwd,'synthetic-cwd');assert.deepEqual(options.stdio,['ignore','pipe','pipe']);assert.deepEqual(options.env,{PATH:'synthetic-path',NODE_ENV:'production',NOEVIA_CORPUS_ALLOWED_PORTS:'333',NODE_PATH:expected});console.log('literal spawn retains args/options/netguard and one explicit dependency path');return {};};require(process.argv[1]);";
+        let mut command = Command::new("node");
+        command
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap())
+            .args(["-e", script])
+            .arg(&wrapper)
+            .arg(&modules);
+        let output =
+            process::bounded(command, Vec::new(), std::time::Duration::from_secs(5)).unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            "literal spawn retains args/options/netguard and one explicit dependency path\n"
+        );
+    }
+    #[test]
+    fn prompt_override_is_explicit_bounded_and_default_absent() -> Result<(), String> {
+        assert_eq!(prompts_override(None, "serve")?, "");
+        assert_eq!(prompt_port("8090")?, 8090);
+        for port in ["0", "65536", "-1", " 8090", "8090/path", "localhost", "1\n"] {
+            assert!(prompt_port(port).is_err());
+        }
+        let override_ = prompts_override(Some(8090), "prompts-serve")?;
+        assert!(override_.contains("MODEL_LOADER_URL:\"http://127.0.0.1:8090\""));
+        assert!(override_.contains(
+            "NOEVIA_CORPUS_ALLOWED_PORTS:options.env.NOEVIA_CORPUS_ALLOWED_PORTS+',8090'"
+        ));
+        assert_eq!(prompts_override(Some(8090), "prompts-absent")?, "");
+        assert!(prompts_override(Some(8090), "prompts-wrong-token")?
+            .contains("synthetic-prompts-wrong-token"));
+        let omitted = prompts_override(Some(8090), "prompts-port-omitted")?;
+        assert!(omitted.contains("MODEL_LOADER_URL"));
+        assert!(!omitted.contains("NOEVIA_CORPUS_ALLOWED_PORTS"));
+        Ok(())
+    }
     #[test]
     fn exact_domains_counts_and_zero_drops() {
         let baseline = serde_json::json!({"exchanges":193,"dropped":0,"captureDomain":"baseline"});

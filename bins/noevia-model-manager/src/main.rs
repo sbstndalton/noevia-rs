@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
+mod child_lifecycle;
 use noevia_model_manager::{
     docker::UnixDocker, legacy_client, router, validate_token, Redactor, StateData,
 };
-use std::{io::Write, os::unix::process::CommandExt, sync::Arc, time::Duration};
+use std::{io::Write, os::unix::process::CommandExt, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,6 +18,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-sections") {
                 output.write_all(b"native-sections\n")?;
             }
+            if cfg!(feature = "native-prompts") {
+                output.write_all(b"native-prompts\n")?;
+            }
             output.flush()?;
             return Ok(());
         }
@@ -25,6 +29,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = environment("MODEL_MANAGER_IMPL", "python")?;
     let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
     let sections_mode = environment("MODEL_MANAGER_SECTIONS_IMPL", "python")?;
+    let prompts_mode = environment("MODEL_MANAGER_PROMPTS_IMPL", "python")?;
+    if !matches!(prompts_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_PROMPTS_IMPL must be python or rust".into());
+    }
+    if prompts_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-prompts")) {
+        return Err(
+            "native-prompts requires rust model manager and compiled native-prompts feature".into(),
+        );
+    }
+    #[cfg(feature = "native-prompts")]
+    let prompt_root = if prompts_mode == "rust" {
+        Some(prompt_data_dir()?)
+    } else {
+        None
+    };
     if !matches!(sections_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_SECTIONS_IMPL must be python or rust".into());
     }
@@ -47,6 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED")
             .args(["app.main:app", "--host", "0.0.0.0", "--port", "8090"])
             .exec();
         return Err(error.into());
@@ -100,14 +120,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // an unknown process. uvicorn receives only the fixed private loopback address.
     let legacy_probe = std::net::TcpListener::bind("127.0.0.1:8091")?;
     drop(legacy_probe);
+    #[cfg(feature = "native-prompts")]
+    let prompts = if prompts_mode == "rust" {
+        let data = prompt_root.as_deref().ok_or("native prompt root missing")?;
+        Some(Arc::new(
+            noevia_model_manager::prompts::Prompts::open(std::path::Path::new(&data)).await?,
+        ))
+    } else {
+        None
+    };
     let host = (host_mode == "rust").then(|| {
         Arc::new(tokio::sync::Mutex::new(
             noevia_model_manager::host::HostHistory::default(),
         ))
     });
-    let mut child = tokio::process::Command::new("uvicorn")
+    let mut child_command = tokio::process::Command::new("uvicorn");
+    child_command
         .args(["app.main:app", "--host", "127.0.0.1", "--port", "8091"])
         .env("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED", "1")
+        .env(
+            "NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED",
+            if prompts_mode == "rust" { "1" } else { "0" },
+        )
         .env(
             "NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED",
             if sections.is_some() { "1" } else { "0" },
@@ -116,12 +150,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED",
             if host.is_some() { "1" } else { "0" },
         )
-        .kill_on_drop(true)
-        .spawn()?;
+        .kill_on_drop(true);
+    #[cfg(feature = "native-prompts")]
+    if let Some(root) = &prompt_root {
+        child_command.env("DATA_DIR", root);
+    }
+    let mut child = child_command.spawn()?;
     let _host_sampler = host
         .as_ref()
         .map(|history| noevia_model_manager::host::HostSampler::start(history.clone()));
     let state = Arc::new(StateData {
+        #[cfg(feature = "native-prompts")]
+        prompts,
         sections,
         host,
         token,
@@ -131,18 +171,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         permits: tokio::sync::Semaphore::new(4),
         legacy,
     });
-    // Python retains its existing business startup for its unported routes; Rust does not
-    // duplicate DB initialisation, seed/reap, hardware sampling or INI migrations.
-    let serve = axum::serve(listener, router(state));
-    tokio::select! {
-        result=serve => {result?;},
-        result=child.wait() => { let _=result?; return Err("Python-owned endpoint process exited".into()); },
-        _=tokio::signal::ctrl_c()=>{},
-        _=terminate()=>{},
-    }
-    child.start_kill()?;
-    tokio::time::timeout(Duration::from_secs(5), child.wait()).await??;
-    Ok(())
+    // Retain native stores and their lifetime writer locks until the child is reaped.
+    let serve = axum::serve(listener, router(state.clone()));
+    let outcome: Result<(), Box<dyn std::error::Error>> = tokio::select! {
+        result=serve => result.map_err(Into::into),
+        result=child.wait() => match result {Ok(_)=>Err("Python-owned endpoint process exited".into()),Err(e)=>Err(e.into())},
+        _=tokio::signal::ctrl_c()=>Ok(()),
+        _=terminate()=>Ok(()),
+    };
+    child_lifecycle::reap(&mut child, state).await?;
+    outcome
 }
 async fn terminate() {
     match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
@@ -160,5 +198,59 @@ fn environment(key: &str, default: &str) -> Result<String, &'static str> {
         Ok(value) => Ok(value),
         Err(std::env::VarError::NotPresent) => Ok(default.to_owned()),
         Err(_) => Err("environment setting must be UTF-8"),
+    }
+}
+
+#[cfg(feature = "native-prompts")]
+fn prompt_data_dir() -> Result<String, &'static str> {
+    prompt_data_dir_from(std::env::vars_os())
+}
+#[cfg(feature = "native-prompts")]
+fn prompt_data_dir_from(
+    values: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<String, &'static str> {
+    // Python folds settings names; reject aliases so both writers/readers name one file.
+    let mut root = None;
+    for (key, value) in values {
+        if key
+            .to_str()
+            .is_some_and(|key| key != "DATA_DIR" && key.eq_ignore_ascii_case("DATA_DIR"))
+        {
+            return Err("native prompts require canonical DATA_DIR environment spelling");
+        }
+        if key == "DATA_DIR" {
+            root = Some(
+                value
+                    .into_string()
+                    .map_err(|_| "environment setting must be UTF-8")?,
+            );
+        }
+    }
+    let root = root.unwrap_or_else(|| "/data".to_owned());
+    if root.len().saturating_add("/model_loader.db".len()) > 4096 {
+        return Err("native prompt root exceeded limit");
+    }
+    Ok(root)
+}
+
+#[cfg(all(test, feature = "native-prompts"))]
+mod prompt_configuration_tests {
+    #[test]
+    fn canonical_root_default_and_alias_policy_is_pure() {
+        assert_eq!(super::prompt_data_dir_from([]), Ok("/data".into()));
+        assert_eq!(
+            super::prompt_data_dir_from([("DATA_DIR".into(), "/synthetic/private".into())]),
+            Ok("/synthetic/private".into())
+        );
+        for alias in ["data_dir", "Data_Dir", "dAtA_dIr"] {
+            assert!(
+                super::prompt_data_dir_from([(alias.into(), "/synthetic/alias".into())]).is_err()
+            );
+            assert!(super::prompt_data_dir_from([
+                ("DATA_DIR".into(), "/synthetic/canonical".into()),
+                (alias.into(), "/synthetic/alias".into())
+            ])
+            .is_err());
+        }
     }
 }

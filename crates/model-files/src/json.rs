@@ -12,6 +12,29 @@ pub const MAX_STRING_CHARS: usize = 4096;
 /// Longest number literal (in bytes) accepted.
 pub const MAX_NUMBER_LEN: usize = 4096;
 
+/// Additive per-call limits. The ordinary parser retains its established defaults.
+#[derive(Clone, Copy)]
+pub struct Limits {
+    pub bytes: usize,
+    pub depth: usize,
+    pub nodes: usize,
+    pub string_chars: usize,
+    pub string_bytes: usize,
+    pub number_bytes: usize,
+}
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            bytes: usize::MAX,
+            depth: MAX_DEPTH,
+            nodes: usize::MAX,
+            string_chars: MAX_STRING_CHARS,
+            string_bytes: usize::MAX,
+            number_bytes: MAX_NUMBER_LEN,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Null,
@@ -47,16 +70,49 @@ impl Value {
 }
 
 pub fn parse(text: &str) -> Result<Value, Error> {
+    parse_with_limits(text, Limits::default())
+}
+
+pub fn parse_with_limits(text: &str, limits: Limits) -> Result<Value, Error> {
+    parse_diagnostics(text, limits).map_err(|(error, _)| error)
+}
+
+/// Additive diagnostics: the character offset follows CPython JSON errors.
+pub fn parse_diagnostics(text: &str, limits: Limits) -> Result<Value, (Error, usize)> {
+    if text.len() > limits.bytes {
+        return Err((Error::TooLong, 0));
+    }
     let mut p = Parser {
         t: text,
         s: text.as_bytes(),
         i: 0,
+        limits,
+        nodes: 0,
+        string_start: 0,
     };
     p.ws();
-    let v = p.value(0)?;
+    let v = match p.value(0) {
+        Ok(v) => v,
+        Err(error) => {
+            let byte_offset = match error {
+                Error::Json("unterminated string") => p.string_start,
+                Error::Json("control character in string") => p.i.saturating_sub(1),
+                Error::Json("bad escape") => p.i.saturating_sub(2),
+                Error::Json("short \\u escape" | "bad \\u escape") => p.i.saturating_sub(1),
+                _ => p.i,
+            };
+            return Err((
+                error,
+                text.get(..byte_offset).unwrap_or(text).chars().count(),
+            ));
+        }
+    };
     p.ws();
     if p.i != p.s.len() {
-        return Err(Error::Json("extra data after the value"));
+        return Err((
+            Error::Json("extra data after the value"),
+            text.get(..p.i).unwrap_or(text).chars().count(),
+        ));
     }
     Ok(v)
 }
@@ -65,6 +121,9 @@ struct Parser<'a> {
     t: &'a str,
     s: &'a [u8],
     i: usize,
+    limits: Limits,
+    nodes: usize,
+    string_start: usize,
 }
 
 impl Parser<'_> {
@@ -88,6 +147,10 @@ impl Parser<'_> {
     }
 
     fn value(&mut self, depth: usize) -> Result<Value, Error> {
+        self.nodes = self.nodes.checked_add(1).ok_or(Error::TooLong)?;
+        if self.nodes > self.limits.nodes {
+            return Err(Error::TooLong);
+        }
         match self.peek() {
             Some(b'{') => self.object(depth + 1),
             Some(b'[') => self.array(depth + 1),
@@ -104,7 +167,7 @@ impl Parser<'_> {
     }
 
     fn array(&mut self, depth: usize) -> Result<Value, Error> {
-        if depth > MAX_DEPTH {
+        if depth > self.limits.depth {
             return Err(Error::TooDeep);
         }
         self.i += 1;
@@ -115,6 +178,7 @@ impl Parser<'_> {
         }
         loop {
             self.ws();
+            out.try_reserve(1).map_err(|_| Error::TooLong)?;
             out.push(self.value(depth)?);
             self.ws();
             if self.eat(b"]") {
@@ -127,7 +191,7 @@ impl Parser<'_> {
     }
 
     fn object(&mut self, depth: usize) -> Result<Value, Error> {
-        if depth > MAX_DEPTH {
+        if depth > self.limits.depth {
             return Err(Error::TooDeep);
         }
         self.i += 1;
@@ -142,12 +206,17 @@ impl Parser<'_> {
                 return Err(Error::Json("expected a string key"));
             }
             let key = self.string()?;
+            self.nodes = self.nodes.checked_add(1).ok_or(Error::TooLong)?;
+            if self.nodes > self.limits.nodes {
+                return Err(Error::TooLong);
+            }
             self.ws();
             if !self.eat(b":") {
                 return Err(Error::Json("expected ':'"));
             }
             self.ws();
             let v = self.value(depth)?;
+            out.try_reserve(1).map_err(|_| Error::TooLong)?;
             out.push((key, v));
             self.ws();
             if self.eat(b"}") {
@@ -174,6 +243,7 @@ impl Parser<'_> {
     }
 
     fn string(&mut self) -> Result<String, Error> {
+        self.string_start = self.i;
         self.i += 1; // opening quote
         let mut out = String::new();
         let mut chars = 0usize;
@@ -221,9 +291,12 @@ impl Parser<'_> {
                 c => c,
             };
             chars += 1;
-            if chars > MAX_STRING_CHARS {
+            if chars > self.limits.string_chars
+                || out.len().saturating_add(c.len_utf8()) > self.limits.string_bytes
+            {
                 return Err(Error::TooLong);
             }
+            out.try_reserve(c.len_utf8()).map_err(|_| Error::TooLong)?;
             out.push(c);
         }
     }
@@ -240,6 +313,7 @@ impl Parser<'_> {
         let start = self.i;
         self.eat(b"-");
         if !self.eat(b"0") && self.digits() == 0 {
+            self.i = start; // CPython reports an unmatched signed number at its start.
             return Err(Error::Json("expected a value"));
         }
         let mut is_float = false;
@@ -261,7 +335,7 @@ impl Parser<'_> {
             }
         }
         let lit = self.s.get(start..self.i).ok_or(Error::Json("bad number"))?;
-        if lit.len() > MAX_NUMBER_LEN {
+        if lit.len() > self.limits.number_bytes {
             return Err(Error::TooLong);
         }
         let lit = std::str::from_utf8(lit).map_err(|_| Error::Json("bad number"))?;
@@ -270,7 +344,8 @@ impl Parser<'_> {
                 .map(Value::Float)
                 .map_err(|_| Error::Json("bad number"))
         } else {
-            BigInt::from_ascii_decimal(lit)
+            BigInt::try_from_ascii_decimal(lit)
+                .map_err(|_| Error::TooLong)?
                 .map(Value::Int)
                 .ok_or(Error::Json("bad number"))
         }
