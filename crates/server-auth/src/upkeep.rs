@@ -46,20 +46,29 @@ fn gt(a: Option<f64>, b: f64) -> bool {
 impl Authenticator {
     /// Node's per-request writes for `creds` at `now_ms`, in one write transaction.
     pub fn upkeep(&self, w: &Writer, creds: &Creds, now_ms: i64) -> Result<Upkept, StoreError> {
-        w.write(|tx| {
-            let r = tx.reader();
-            let bearer = request::bearer_token(creds);
-            if !bearer.is_empty() && self.native_client_auth(&r)? {
-                if request::has_session_cookie(creds) {
-                    return Ok(Upkept::Nothing);
-                }
-                return device_upkeep(tx, bearer, now_ms);
-            }
-            let Some(raw) = creds.cookie("cowork_session").filter(|v| !v.is_empty()) else {
+        w.write(|tx| self.upkeep_in(tx, creds, now_ms))
+    }
+
+    /// Existing upkeep policy inside an already-owned transaction.
+    pub fn upkeep_in(
+        &self,
+        tx: &server_store::WriteTx<'_>,
+        creds: &Creds,
+        now_ms: i64,
+    ) -> Result<Upkept, StoreError> {
+        let r = tx.reader();
+        let bearer = request::bearer_token(creds);
+        if !bearer.is_empty() && self.native_client_auth(&r)? {
+            if request::has_session_cookie(creds) {
                 return Ok(Upkept::Nothing);
-            };
-            let id_hash = js::digest(&raw);
-            let row = r.row(
+            }
+            return device_upkeep(tx, bearer, now_ms);
+        }
+        let Some(raw) = creds.cookie("cowork_session").filter(|v| !v.is_empty()) else {
+            return Ok(Upkept::Nothing);
+        };
+        let id_hash = js::digest(&raw);
+        let row = r.row(
                 "SELECT u.disabled_at, s.expires_at, s.last_seen_at FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id_hash=?1",
                 [&id_hash],
                 |row| {
@@ -70,22 +79,21 @@ impl Authenticator {
                     ))
                 },
             )?;
-            let now = now_ms as f64;
-            if let Some((disabled_at, expires_at, last_seen_at)) = row {
-                let live = !js::truthy(&disabled_at)
-                    && gt(js::number(&expires_at), now)
-                    && gt(js::number(&last_seen_at).map(|l| l + IDLE_MS), now);
-                if live {
-                    tx.execute(
-                        "UPDATE sessions SET last_seen_at=?1 WHERE id_hash=?2",
-                        (now_ms, &id_hash),
-                    )?;
-                    return Ok(Upkept::Touched);
-                }
+        let now = now_ms as f64;
+        if let Some((disabled_at, expires_at, last_seen_at)) = row {
+            let live = !js::truthy(&disabled_at)
+                && gt(js::number(&expires_at), now)
+                && gt(js::number(&last_seen_at).map(|l| l + IDLE_MS), now);
+            if live {
+                tx.execute(
+                    "UPDATE sessions SET last_seen_at=?1 WHERE id_hash=?2",
+                    (now_ms, &id_hash),
+                )?;
+                return Ok(Upkept::Touched);
             }
-            tx.execute("DELETE FROM sessions WHERE id_hash=?1", [&id_hash])?;
-            Ok(Upkept::Deleted)
-        })
+        }
+        tx.execute("DELETE FROM sessions WHERE id_hash=?1", [&id_hash])?;
+        Ok(Upkept::Deleted)
     }
 }
 

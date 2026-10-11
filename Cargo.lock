@@ -2473,6 +2473,7 @@ name = "server-store"
 version = "0.1.0"
 dependencies = [
  "rusqlite",
+ "rustix",
  "serde_json",
  "tempfile",
 ]

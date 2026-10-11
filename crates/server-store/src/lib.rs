@@ -26,6 +26,7 @@
 //! [`json`] has Node's `atomicJson` (core `server/workspace.cjs`) write-then-rename, gated the
 //! same way by [`OWNED_JSON_FILES`] and the switch.
 
+pub mod bounded;
 pub mod json;
 
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
@@ -609,7 +610,10 @@ impl Store {
         let tx = inner
             .conn
             .transaction_with_behavior(TransactionBehavior::Deferred)?;
-        let out = f(&Reader { conn: &tx })?;
+        let out = f(&Reader {
+            conn: &tx,
+            budget: None,
+        })?;
         tx.finish()?;
         Ok(out)
     }
@@ -619,6 +623,7 @@ impl Store {
 /// authorizer refuses every statement that would write outside [`OWNED_TABLES`].
 pub struct Reader<'a> {
     conn: &'a Connection,
+    budget: Option<&'a bounded::Budget>,
 }
 
 impl Reader<'_> {
@@ -629,6 +634,20 @@ impl Reader<'_> {
         params: P,
         map: impl FnOnce(&Row<'_>) -> rusqlite::Result<T>,
     ) -> Result<Option<T>, StoreError> {
+        if let Some(budget) = self.budget {
+            budget.store_check()?;
+            let mut stmt = self.conn.prepare(sql)?;
+            let mut rows = stmt.query(params)?;
+            let out = match rows.next()? {
+                Some(row) => {
+                    budget.row_check(row)?;
+                    Some(map(row)?)
+                }
+                None => None,
+            };
+            budget.store_check()?;
+            return Ok(out);
+        }
         let mut stmt = self.conn.prepare_cached(sql)?;
         Ok(stmt.query_row(params, map).optional()?)
     }
@@ -638,8 +657,20 @@ impl Reader<'_> {
         &self,
         sql: &str,
         params: P,
-        map: impl FnMut(&Row<'_>) -> rusqlite::Result<T>,
+        mut map: impl FnMut(&Row<'_>) -> rusqlite::Result<T>,
     ) -> Result<Vec<T>, StoreError> {
+        if let Some(budget) = self.budget {
+            budget.store_check()?;
+            let mut stmt = self.conn.prepare(sql)?;
+            let mut rows = stmt.query(params)?;
+            let mut out = Vec::new();
+            while let Some(row) = rows.next()? {
+                budget.row_check(row)?;
+                out.push(map(row)?);
+            }
+            budget.store_check()?;
+            return Ok(out);
+        }
         let mut stmt = self.conn.prepare_cached(sql)?;
         let out = stmt
             .query_map(params, map)?
@@ -653,6 +684,7 @@ impl Reader<'_> {
 pub struct WriteTx<'a> {
     conn: &'a Connection,
     settings_open: &'a AtomicBool,
+    budget: Option<&'a bounded::Budget>,
 }
 
 /// Opens the `settings` grant for one statement (prepared uncached, so no authorized statement
@@ -667,7 +699,10 @@ impl Drop for SettingsWindow<'_> {
 
 impl WriteTx<'_> {
     pub fn reader(&self) -> Reader<'_> {
-        Reader { conn: self.conn }
+        Reader {
+            conn: self.conn,
+            budget: self.budget,
+        }
     }
 
     fn settings_statement<P: Params>(
@@ -759,6 +794,13 @@ impl WriteTx<'_> {
 
     /// Runs one statement; a write outside the owned tables fails with [`StoreError::NotOwned`].
     pub fn execute<P: Params>(&self, sql: &str, params: P) -> Result<usize, StoreError> {
+        if let Some(budget) = self.budget {
+            budget.store_check()?;
+            let mut stmt = self.conn.prepare(sql)?;
+            let out = stmt.execute(params)?;
+            budget.store_check()?;
+            return Ok(out);
+        }
         let mut stmt = self.conn.prepare_cached(sql).map_err(|e| match e {
             rusqlite::Error::SqliteFailure(f, _)
                 if f.code == rusqlite::ErrorCode::AuthorizationForStatementDenied =>
@@ -825,6 +867,7 @@ impl Writer {
         let out = f(&WriteTx {
             conn: &tx,
             settings_open: &self.settings_open,
+            budget: None,
         })?;
         tx.commit()?;
         Ok(out)
@@ -841,7 +884,10 @@ impl Writer {
         let tx = inner
             .conn
             .transaction_with_behavior(TransactionBehavior::Deferred)?;
-        let out = f(&Reader { conn: &tx })?;
+        let out = f(&Reader {
+            conn: &tx,
+            budget: None,
+        })?;
         tx.finish()?;
         Ok(out)
     }

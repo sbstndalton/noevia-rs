@@ -11,8 +11,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-rusqlite = { version = "0.40", features = ["bundled", "hooks"] }
+rusqlite = { version = "0.40", features = ["bundled", "hooks", "limits"] }
 serde_json = "1"
+rustix = { version = "1", features = ["fs"] }
 
 [dev-dependencies]
 tempfile = "3"
