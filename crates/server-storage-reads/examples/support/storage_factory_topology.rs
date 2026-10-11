@@ -14,7 +14,7 @@ pub type Result<T> = std::result::Result<T, String>;
 pub const CORE: &str = "010735c7d86d30269ab3f4a351b2135faea1c8e7";
 pub const TREE: &str = "345adfa12da083eb5888ec232dc2d86b9b0383a5";
 pub const CANDIDATE: &str = "b375290c638f9f033ece2335ec2be35dfca86e35";
-pub const ROOT: &str = "/tmp/m4-storage-factory-oracle-b375-stage-b";
+pub const ROOT: &str = "/tmp/m4-storage-factory-oracle-b375-stage-c";
 pub const GIT: &str = "/Users/sebastiandalton/noevia-work/m6-chatgpt-status-core";
 pub const DEPS: &str = "/tmp/s1-diagnose-node-dependencies";
 pub const PROOF: &str = "/tmp/s1-diagnose-dependency-copy.json";
@@ -33,13 +33,11 @@ pub const WASM_SHA: &str = "040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd
 pub const NOW: i64 = 1_700_000_000_000;
 // Root must replace these only after inspecting the exact retained stage bytes.
 // Empty means unapproved; neither the CLI nor the tool can approve itself.
-pub const APPROVED_MANIFEST_SHA: &str =
-    "c312dd4d1034f067ee8931e72fdbd1102c566de5b01df91b90ce39838ac1ce52";
-pub const APPROVED_PREFLIGHT_SHA: &str =
-    "bd6b878663b3dc9b62abf0bd4798669f48dbfb532fa81163d2a9d4f2761cc478";
-pub const GIT_EVIDENCE: &str = "/tmp/m4-storage-factory-git-second-attempt";
-pub const CAPTURE_ROOT: &str = "/tmp/m4-storage-factory-capture-first-attempt";
-pub const PREFLIGHT_ROOT: &str = "/tmp/m4-storage-factory-preflight-first-attempt";
+pub const APPROVED_MANIFEST_SHA: &str = "";
+pub const APPROVED_PREFLIGHT_SHA: &str = "";
+pub const GIT_EVIDENCE: &str = "/tmp/m4-storage-factory-git-third-attempt";
+pub const CAPTURE_ROOT: &str = "/tmp/m4-storage-factory-capture-second-attempt";
+pub const PREFLIGHT_ROOT: &str = "/tmp/m4-storage-factory-preflight-second-attempt";
 pub const SCHEMA: &str = include_str!("../../../server-store/tests/fixtures/node-schema.sql");
 pub fn require(ok: bool, message: &str) -> Result<()> {
     if ok {
@@ -753,7 +751,7 @@ pub fn materialize(adapter: &str) -> Result<Value> {
     directory(root)?;
     let canonical = fs::canonicalize(root).map_err(|_| "canonical output")?;
     require(
-        canonical == Path::new("/private/tmp/m4-storage-factory-oracle-b375-stage-b"),
+        canonical == Path::new("/private/tmp/m4-storage-factory-oracle-b375-stage-c"),
         "fixed canonical alias",
     )?;
     let mut inventory = Vec::new();

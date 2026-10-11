@@ -46,7 +46,7 @@ const rowEvidence=row=>({presence:row===undefined?'row-missing':Object.hasOwn(ro
   try{falseBefore=snapshot(falseAuth);falseStorage=falseAuth.getStorage(c.owner,false);
   const res={writeHead(status,headers){this.status=status;this.headers=headers;},end(body){metadata={status:this.status,headers:this.headers,body:JSON.parse(body)};}};
   const routes=createStorageRoutes({json:http.json,authService:falseAuth});
-  await routes.handle({method:'GET'},res,{path:'/api/integrations/storage',authn});
+  await routes({method:'GET'},res,{path:'/api/integrations/storage',authn});
   falseAfter=snapshot(falseAuth);const falseRow=falseAuth.db.prepare(c.evidenceSQL).get(c.owner);falseStoredEvidence=rowEvidence(falseRow);falseStored=falseRow?.secret;
   if(falseStored!==undefined){falseStoredPlain=falseSecrets.decrypt(falseStored,c.owner);const key=fs.readFileSync(falseSecrets.keyFile);try{falseCurrentOpen=envelope.open(key,null,falseStored,c.owner);}catch(e){falseCurrentOpen={error:errorRecord(e)};}try{falseForeignOpen=envelope.open(key,null,falseStored,'foreign');}catch(e){falseForeignOpen={error:errorRecord(e)};}}
   }finally{falseAuth.db.close();}
