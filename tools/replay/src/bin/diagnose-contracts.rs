@@ -10,7 +10,10 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     os::{
         fd::AsFd,
-        unix::{fs::PermissionsExt, process::CommandExt},
+        unix::{
+            fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
+            process::CommandExt,
+        },
     },
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -267,11 +270,49 @@ struct Owned {
     out: usize,
     err: usize,
     diagnostic: Vec<u8>,
-    program: String,
+}
+fn diagnostic_summary(raw: &[u8]) -> String {
+    let diagnostic = String::from_utf8_lossy(raw);
+    let kind = if diagnostic
+        .lines()
+        .any(|line| line.starts_with("ModuleNotFoundError:"))
+    {
+        "module-unavailable"
+    } else if diagnostic.lines().any(|line| line.starts_with("Error:")) {
+        "child-error"
+    } else if diagnostic
+        .lines()
+        .any(|line| line.starts_with("corpus-launcher:"))
+    {
+        "launcher-error"
+    } else {
+        "child-exited"
+    };
+    format!("owned synthetic server exited before qualification: kind={kind} stderr_bytes={} stderr_sha256={:x}", raw.len(), Sha256::digest(raw))
+}
+fn retain_private_diagnostic(raw: &[u8]) -> Result<()> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let ordinal = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "s1-diagnose-child-diagnostic-{}-{ordinal}",
+        std::process::id()
+    ));
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&root)
+        .map_err(|_| "private child diagnostic directory unavailable")?;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(root.join("stderr.raw"))
+        .map_err(|_| "private child diagnostic file unavailable")?;
+    file.write_all(raw)
+        .map_err(|_| "private child diagnostic retention failed")?;
+    Ok(())
 }
 impl Owned {
     fn spawn(mut command: Command) -> Result<Self> {
-        let program = command.get_program().to_string_lossy().into_owned();
         command
             .process_group(0)
             .stdin(Stdio::null())
@@ -287,7 +328,6 @@ impl Owned {
             out: 0,
             err: 0,
             diagnostic: Vec::new(),
-            program,
         };
         nonblocking(&owned.stdout)?;
         nonblocking(&owned.stderr)?;
@@ -342,19 +382,8 @@ impl Owned {
                 step(&mut self.stdout, &mut self.out, None)?;
                 step(&mut self.stderr, &mut self.err, Some(&mut self.diagnostic))?;
             }
-            let diagnostic = String::from_utf8_lossy(&self.diagnostic);
-            let reason = diagnostic.lines().find(|line| {
-                line.starts_with("ModuleNotFoundError:")
-                    || line.starts_with("Error:")
-                    || line.starts_with("corpus-launcher:")
-            });
-            let fallback: String = diagnostic.chars().take(512).collect();
-            return Err(format!(
-                "owned synthetic server {} exited before qualification: {}",
-                self.program,
-                reason.unwrap_or(&fallback)
-            )
-            .into());
+            retain_private_diagnostic(&self.diagnostic)?;
+            return Err(diagnostic_summary(&self.diagnostic).into());
         }
         Ok(())
     }
@@ -941,6 +970,22 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn exited_child_diagnostics_never_reflect_synthetic_credentials() {
+        let sentinel = "synthetic-qualification-credential-0123456789";
+        for (prefix, kind) in [
+            ("ModuleNotFoundError:", "module-unavailable"),
+            ("Error:", "child-error"),
+            ("corpus-launcher:", "launcher-error"),
+            ("arbitrary stderr", "child-exited"),
+        ] {
+            let raw = format!("{prefix} password={sentinel}\n");
+            let summary = diagnostic_summary(raw.as_bytes());
+            assert_eq!(summary, format!("owned synthetic server exited before qualification: kind={kind} stderr_bytes={} stderr_sha256={:x}", raw.len(), Sha256::digest(raw.as_bytes())));
+            assert!(!summary.contains(sentinel));
+            assert!(!summary.contains("password="));
+        }
+    }
     #[test]
     fn native_child_confirmation_semantics() -> Result<()> {
         let runtime = qualification_path(

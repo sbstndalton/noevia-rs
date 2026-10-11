@@ -32,7 +32,7 @@ fn cases() -> [Case; 5] {
         Case { id:"tail-400",source:DOCKER,before:"tail=40000&since={since}",after:"tail=400&since={since}",test_path:"bins/noevia-model-manager/tests/diagnose_transport.rs",target:"diagnose_transport",test:"exact_current_run_wire_and_split_utf8",assertion:"assert_eq!(requests[1].lines().next(),",filtered:7,replay:false },
         Case { id:"early-permit-release",source:DOCKER,before:"            task_context.cleanup().await;\n            drop(permit);",after:"            drop(permit);\n            task_context.cleanup().await;",test_path:"bins/noevia-model-manager/tests/diagnose_lifecycle.rs",target:"diagnose_lifecycle",test:"timed_out_response_retains_join_and_shutdown_until_driver_drop_completes",assertion:"assert_eq!(retained, 3);",filtered:4,replay:false },
         Case { id:"python-fallback",source:LIB,before:"diagnose_docker::Outcome::Refused => detail(\n                    StatusCode::SERVICE_UNAVAILABLE,\n                    \"Native backend diagnosis is unavailable\",\n                ),",after:"diagnose_docker::Outcome::Refused => dispatch(state, req).await,",test_path:"bins/noevia-model-manager/tests/diagnose_route.rs",target:"diagnose_route",test:"native_failure_never_uses_python_fallback",assertion:"assert_eq!(\n        (\n            status.as_u16(),",filtered:4,replay:false },
-        Case { id:"child-confirmation",source:MAIN,before:"\"NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED\",\n            if diagnose_mode == \"rust\" { \"1\" } else { \"0\" },",after:"\"NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED\",\n            \"0\",",test_path:"tools/replay/src/bin/diagnose-contracts.rs",target:"diagnose-contracts",test:"tests::native_child_confirmation_semantics",assertion:"assert_eq!(marker, &json!(\"1\"));",filtered:3,replay:true },
+        Case { id:"child-confirmation",source:MAIN,before:"\"NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED\",\n            if diagnose_mode == \"rust\" { \"1\" } else { \"0\" },",after:"\"NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED\",\n            \"0\",",test_path:"tools/replay/src/bin/diagnose-contracts.rs",target:"diagnose-contracts",test:"tests::native_child_confirmation_semantics",assertion:"assert_eq!(marker, &json!(\"1\"));",filtered:4,replay:true },
     ]
 }
 fn read(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
@@ -335,6 +335,32 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn current_child_confirmation_inventory_is_exact() {
+        let case = cases().into_iter().last().unwrap();
+        let out = format!("\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:100:9:\nassertion `left == right` failed\n  left: String(\"0\")\n right: String(\"1\")\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.01s\n\n", t=case.test,p=case.test_path);
+        let err = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running unittests src/bin/diagnose-contracts.rs (/target/debug/deps/diagnose_contracts-0123456789abcdef)\nerror: test failed, to rerun pass `-p replay --bin diagnose-contracts`\n";
+        let check = |out: &str| {
+            semantic(
+                Some(101),
+                out,
+                err,
+                &case,
+                (100, 9),
+                Path::new("/owned"),
+                Path::new("/target"),
+            )
+        };
+        assert!(check(&out));
+        for bad in [
+            out.replace("4 filtered out", "3 filtered out"),
+            out.replace("4 filtered out", "5 filtered out"),
+            out.replace("running 1 test", "running 2 tests"),
+            format!("{out}extra test ... FAILED\n"),
+        ] {
+            assert!(!check(&bad));
+        }
+    }
     #[test]
     fn production_plan_binds_unique_current_locations() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
