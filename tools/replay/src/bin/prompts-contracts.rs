@@ -20,6 +20,8 @@ use std::{
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const TOKEN: &str = "synthetic-prompts-publicfront-token-0123456789abcdef";
 const RUNTIME: &str = "6c233f4a05730ed5dccd7997ae601e9999eaa6d7";
+#[path = "support/prompts_dependencies.rs"]
+mod dependencies;
 #[allow(dead_code)]
 #[path = "../../../qualification/process.rs"]
 mod process;
@@ -487,7 +489,13 @@ fn session(base: &Base, data: &Path) -> Result<(Client, Client)> {
     )?;
     Ok((admin, member))
 }
-fn run_mode(core: &Path, app: &Path, bins: &Path, mode: &str) -> Result<Vec<Value>> {
+fn run_mode(
+    core: &Path,
+    app: &Path,
+    bins: &Path,
+    mode: &str,
+    dependencies: &Path,
+) -> Result<Vec<Value>> {
     let root = tempfile::tempdir()?;
     let root = root.path();
     fs::set_permissions(root, fs::Permissions::from_mode(0o700))?;
@@ -542,7 +550,11 @@ fn run_mode(core: &Path, app: &Path, bins: &Path, mode: &str) -> Result<Vec<Valu
     };
     let mut node = Command::new(bins.join("corpus-launcher"));
     node.env_clear()
-        .env("PATH", std::env::var_os("PATH").ok_or("PATH required")?);
+        .env("PATH", std::env::var_os("PATH").ok_or("PATH required")?)
+        .env(
+            "NOEVIA_PROMPTS_DEPENDENCIES",
+            dependencies.parent().ok_or("dependency parent")?,
+        );
     node.args([if mode.starts_with("prompts-") {
         mode
     } else {
@@ -723,6 +735,8 @@ fn main() -> Result<()> {
             "server/auth.cjs",
             "server/rust-auth.cjs",
             "server/dav-parse.lock",
+            "server/package.json",
+            "server/package-lock.json",
             "tools/contract-corpus/serve.cjs",
             "tools/contract-corpus/mocks.cjs",
             "tools/contract-corpus/net-guard.cjs",
@@ -743,7 +757,20 @@ fn main() -> Result<()> {
             "model-manager/requirements.txt",
         ],
     )?;
-    let provenance = json!({"core":core_revision,"core_sources":core_sources,"runtime":RUNTIME,"runtime_sources":runtime_sources,"generator_sha256":format!("{:x}",Sha256::digest(include_bytes!("prompts-contracts.rs"))),"launcher_sha256":format!("{:x}",Sha256::digest(include_bytes!("corpus-launcher.rs"))),"launcher_seam_sha256":format!("{:x}",Sha256::digest(include_bytes!("../synthetic-host-launch.cjs"))),"process_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../../qualification/process.rs")))});
+    let expected = [
+        git(
+            &core,
+            &["show", &format!("{core_revision}:server/package.json")],
+        )?,
+        git(
+            &core,
+            &["show", &format!("{core_revision}:server/package-lock.json")],
+        )?,
+    ];
+    let parameter = std::env::var_os("NOEVIA_PROMPTS_DEPENDENCIES").map(PathBuf::from);
+    let (dependencies, dependency_provenance) =
+        dependencies::verify(&core, runtime_root, parameter.as_deref(), &expected)?;
+    let provenance = json!({"core":core_revision,"core_sources":core_sources,"runtime":RUNTIME,"runtime_sources":runtime_sources,"dependencies":dependency_provenance,"dependency_seam_sha256":format!("{:x}",Sha256::digest(include_bytes!("support/prompts_dependencies.rs"))),"generator_sha256":format!("{:x}",Sha256::digest(include_bytes!("prompts-contracts.rs"))),"launcher_sha256":format!("{:x}",Sha256::digest(include_bytes!("corpus-launcher.rs"))),"launcher_seam_sha256":format!("{:x}",Sha256::digest(include_bytes!("../synthetic-host-launch.cjs"))),"process_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../../qualification/process.rs")))});
     let mode = args.next();
     require(args.next().is_none(), "unexpected arguments")?;
     let python_only = mode.as_deref() == Some(std::ffi::OsStr::new("--python-only"));
@@ -765,7 +792,7 @@ fn main() -> Result<()> {
             "prompts-wrong-token",
             "prompts-port-omitted",
         ] {
-            controls.extend(run_mode(&core, &app, bins, control)?);
+            controls.extend(run_mode(&core, &app, bins, control, &dependencies)?);
         }
     }
     if negative_only {
@@ -779,7 +806,7 @@ fn main() -> Result<()> {
         );
         return Ok(());
     }
-    let baseline = run_mode(&core, &app, bins, "python")?;
+    let baseline = run_mode(&core, &app, bins, "python", &dependencies)?;
     let candidate = if python_only {
         None
     } else {
@@ -787,7 +814,7 @@ fn main() -> Result<()> {
             cfg!(target_os = "linux"),
             "actual native binary qualification requires Linux",
         )?;
-        Some(run_mode(&core, &app, bins, "rust")?)
+        Some(run_mode(&core, &app, bins, "rust", &dependencies)?)
     };
     if let Some(candidate) = &candidate {
         require(

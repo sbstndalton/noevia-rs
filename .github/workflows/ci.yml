@@ -708,8 +708,18 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
-      - run: npm ci --no-fund --no-audit
-        working-directory: prompts-core/server
+      - name: Install immutable core dependencies outside the source checkout
+        run: |
+          set -euo pipefail
+          umask 077
+          dependency_root="$RUNNER_TEMP/prompts-node-dependencies"
+          mkdir -m 700 "$dependency_root"
+          ref="${{ steps.prompts-core.outputs.sha }}"
+          git -C prompts-core show "$ref:server/package.json" > "$dependency_root/package.json"
+          git -C prompts-core show "$ref:server/package-lock.json" > "$dependency_root/package-lock.json"
+          cmp prompts-core/server/package.json "$dependency_root/package.json"
+          cmp prompts-core/server/package-lock.json "$dependency_root/package-lock.json"
+          npm ci --prefix "$dependency_root" --no-fund --no-audit
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
@@ -759,12 +769,14 @@ jobs:
       - name: Actual public front, Node proxy and native prompt binary differential
         env:
           PYTHON: python3
+          NOEVIA_PROMPTS_DEPENDENCIES: ${{ runner.temp }}/prompts-node-dependencies
         run: |
           cargo build --locked -p noevia-model-manager --features native-prompts
           cargo build --locked -p noevia-server --bin noevia-server
           cargo build --locked -p replay --bin corpus-launcher --bin prompts-contracts
           cargo clippy --locked -p replay --bin corpus-launcher --bin prompts-contracts -- -D warnings
           cargo test --locked -p replay --bin prompts-contracts
+          cargo test --locked -p replay --bin corpus-launcher capture_tests::verified_dependency_override_preserves_literal_spawn_options -- --exact
           target/debug/corpus-launcher verify "$PWD/prompts-core"
           target/debug/prompts-contracts "$PWD/prompts-core" "$PWD/prompts-runtime/model-manager/app" "$RUNNER_TEMP/prompts-publicfront.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

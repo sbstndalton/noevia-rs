@@ -6,6 +6,8 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 const MEMINFO: &str = "MemTotal:        8388608 kB\n";
+#[path = "support/prompts_dependencies.rs"]
+mod dependencies;
 #[allow(dead_code)]
 #[path = "../../../qualification/process.rs"]
 mod process;
@@ -292,6 +294,29 @@ fn prepare(
     prompts_control: &str,
     meminfo: &str,
 ) -> Result<PathBuf, String> {
+    let dependencies_override = if prompts_port.is_some() {
+        let revision = include_str!("../../../../contracts/http/core.ref").trim();
+        let mut expected = [Vec::new(), Vec::new()];
+        for (index, name) in ["package.json", "package-lock.json"].iter().enumerate() {
+            let mut command = Command::new("git");
+            command
+                .env_clear()
+                .env("PATH", std::env::var_os("PATH").ok_or("PATH required")?)
+                .arg("-C")
+                .arg(core)
+                .args(["show", &format!("{revision}:server/{name}")]);
+            let output = process::bounded(command, Vec::new(), std::time::Duration::from_secs(5))?;
+            if !output.status.success() {
+                return Err("dependency immutable manifest unavailable".into());
+            }
+            *expected.get_mut(index).ok_or("dependency manifest index")? = output.stdout;
+        }
+        let parameter = std::env::var_os("NOEVIA_PROMPTS_DEPENDENCIES").map(PathBuf::from);
+        let (modules, _) = dependencies::verify(core, core, parameter.as_deref(), &expected)?;
+        dependency_override(&modules)?
+    } else {
+        String::new()
+    };
     let preload = directory.join("host-input.cjs");
     let fixture = include_str!("../synthetic-host-input.cjs")
         .replace(
@@ -327,10 +352,19 @@ fn prepare(
         .replace("__TEMP__", &js(&directory.to_string_lossy())?)
         .replace(
             "__PROMPTS_OVERRIDE__",
-            &prompts_override(prompts_port, prompts_control)?,
+            &format!(
+                "{}{dependencies_override}",
+                prompts_override(prompts_port, prompts_control)?
+            ),
         );
     std::fs::write(&wrapper, source).map_err(|e| e.to_string())?;
     Ok(wrapper)
+}
+fn dependency_override(modules: &Path) -> Result<String, String> {
+    Ok(format!(
+        "options={{...options,env:{{...options.env,NODE_PATH:{}}}}};",
+        js(modules.to_str().ok_or("dependency path UTF8")?)?
+    ))
 }
 fn main() -> ExitCode {
     match run() {
@@ -344,6 +378,49 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod capture_tests {
     use super::*;
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn verified_dependency_override_preserves_literal_spawn_options() {
+        let directory = tempfile::tempdir().unwrap();
+        let fixture = directory.path().join("entry.cjs");
+        let wrapper = directory.path().join("launch.cjs");
+        std::fs::write(&fixture,"require('node:child_process').spawn(process.execPath,['--require','synthetic-guard','synthetic-server'],{cwd:'synthetic-cwd',stdio:['ignore','pipe','pipe'],env:{PATH:'synthetic-path',NODE_ENV:'production',NOEVIA_CORPUS_ALLOWED_PORTS:'333'}});").unwrap();
+        let modules = directory.path().join("external/node_modules");
+        let source = include_str!("../synthetic-host-launch.cjs")
+            .replace("__SERVER__", "'synthetic-server'")
+            .replace("__GUARD__", "'synthetic-guard'")
+            .replace("__PRELOAD__", "'synthetic-preload'")
+            .replace("__ENTRY__", &js(&fixture.to_string_lossy()).unwrap())
+            .replace("__ARGS__", "[]")
+            .replace(
+                "__TEMP__",
+                &js(&directory.path().to_string_lossy()).unwrap(),
+            )
+            .replace(
+                "__PROMPTS_OVERRIDE__",
+                &dependency_override(&modules).unwrap(),
+            );
+        std::fs::write(&wrapper, source).unwrap();
+        let script="const assert=require('node:assert/strict');assert.ok(process.version.startsWith('v22.'));const expected=process.argv[2];require('node:child_process').spawn=(command,args,options)=>{assert.equal(command,process.execPath);assert.deepEqual(args,['--require','synthetic-guard','--require','synthetic-preload','synthetic-server']);assert.equal(options.cwd,'synthetic-cwd');assert.deepEqual(options.stdio,['ignore','pipe','pipe']);assert.deepEqual(options.env,{PATH:'synthetic-path',NODE_ENV:'production',NOEVIA_CORPUS_ALLOWED_PORTS:'333',NODE_PATH:expected});console.log('literal spawn retains args/options/netguard and one explicit dependency path');return {};};require(process.argv[1]);";
+        let mut command = Command::new("node");
+        command
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap())
+            .args(["-e", script])
+            .arg(&wrapper)
+            .arg(&modules);
+        let output =
+            process::bounded(command, Vec::new(), std::time::Duration::from_secs(5)).unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            "literal spawn retains args/options/netguard and one explicit dependency path\n"
+        );
+    }
     #[test]
     fn prompt_override_is_explicit_bounded_and_default_absent() -> Result<(), String> {
         assert_eq!(prompts_override(None, "serve")?, "");
