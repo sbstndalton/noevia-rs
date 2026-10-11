@@ -463,6 +463,14 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
 
 async fn native_sections(sections: &sections::Sections, path: &str, query: &str) -> Response {
     let name = path.strip_prefix("/api/v1/sections/");
+    let decoded = name.map(decode_segment);
+    // FastAPI matches the decoded route before validating its query parameters.
+    if decoded
+        .as_ref()
+        .is_some_and(|result| matches!(result, Ok(name) if name.contains('/')))
+    {
+        return detail(StatusCode::NOT_FOUND, "Not Found");
+    }
     let parsed = reqwest::Url::parse(&format!("http://localhost/?{query}"));
     let mut defaults = false;
     if let Ok(url) = parsed {
@@ -480,9 +488,8 @@ async fn native_sections(sections: &sections::Sections, path: &str, query: &str)
             };
         }
     }
-    let name = match name {
-        Some(name) => match decode_segment(name) {
-            Ok(name) if name.contains('/') => return detail(StatusCode::NOT_FOUND, "Not Found"),
+    let name = match decoded {
+        Some(result) => match result {
             Ok(name) => Some(name),
             Err(_) => return detail(StatusCode::BAD_REQUEST, "invalid section name"),
         },

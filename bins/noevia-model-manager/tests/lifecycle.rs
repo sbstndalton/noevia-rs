@@ -5,6 +5,21 @@
     clippy::indexing_slicing
 )]
 use std::{os::unix::fs::PermissionsExt, process::Command};
+#[cfg(feature = "native-logs")]
+static CHILD_PORTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+#[cfg(feature = "native-logs")]
+fn child_ports() -> std::sync::MutexGuard<'static, ()> {
+    CHILD_PORTS.lock().unwrap()
+}
+#[cfg(feature = "native-logs")]
+#[test]
+fn child_port_guard_excludes_second_fixed_port_owner() {
+    let _ports = child_ports();
+    assert!(matches!(
+        CHILD_PORTS.try_lock(),
+        Err(std::sync::TryLockError::WouldBlock)
+    ));
+}
 
 fn owned_uvicorn() -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempfile::tempdir().unwrap();
@@ -82,6 +97,23 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         assert_eq!(output.stdout, expected.as_bytes());
     }
 }
+#[cfg(feature = "native-logs")]
+#[test]
+fn capability_closed_stdout_returns_error_without_panic_or_child() {
+    let (dir, marker) = owned_uvicorn();
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+    let output = command(dir.path(), &marker)
+        .arg("--features")
+        .stdout(std::process::Stdio::from(writer))
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(!marker.exists());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("panicked"));
+    assert!(stderr.contains("BrokenPipe"));
+}
 
 #[test]
 fn sections_selector_and_stale_default_confirmation() {
@@ -118,6 +150,7 @@ fn sections_selector_and_stale_default_confirmation() {
 #[cfg(all(target_os = "linux", feature = "native-sections"))]
 #[test]
 fn selected_sections_confirm_child_without_python_startup() {
+    let _ports = child_ports();
     let (dir, marker) = owned_uvicorn();
     let models = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("uvicorn"), "#!/bin/sh\nprintf '%s' \"$NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
@@ -150,6 +183,7 @@ fn deliberately_omitted_feature_refuses_before_child_spawn() {
 #[cfg(feature = "native-logs")]
 #[test]
 fn native_child_uses_loopback_confirmation_and_exit_is_fatal() {
+    let _ports = child_ports();
     let (dir, marker) = owned_uvicorn();
     let output = command(dir.path(), &marker)
         .env("MODEL_MANAGER_IMPL", "rust")

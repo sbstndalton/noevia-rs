@@ -2,19 +2,22 @@
 use noevia_model_manager::{
     docker::UnixDocker, legacy_client, router, validate_token, Redactor, StateData,
 };
-use std::{os::unix::process::CommandExt, sync::Arc, time::Duration};
+use std::{io::Write, os::unix::process::CommandExt, sync::Arc, time::Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::args().any(|a| a == "--features") {
         if cfg!(feature = "native-logs") {
-            println!("native-logs");
+            let stdout = std::io::stdout();
+            let mut output = stdout.lock();
+            output.write_all(b"native-logs\n")?;
             if cfg!(feature = "native-host") {
-                println!("native-host");
+                output.write_all(b"native-host\n")?;
             }
             if cfg!(feature = "native-sections") {
-                println!("native-sections");
+                output.write_all(b"native-sections\n")?;
             }
+            output.flush()?;
             return Ok(());
         }
         return Err("native-logs feature is not enabled".into());

@@ -16,7 +16,18 @@ fn mutation(
     fs::write(path, original.replace(before, after))?;
     let mut command = Command::new("cargo");
     command.args(["test", "--locked", "-q", "-p", package]);
-    if limits {
+    if matches!(
+        filter,
+        "capability_closed_stdout_returns_error_without_panic_or_child"
+            | "child_port_guard_excludes_second_fixed_port_owner"
+    ) {
+        command.args([
+            "--features",
+            "native-host,native-sections",
+            "--test",
+            "lifecycle",
+        ]);
+    } else if limits {
         command.args(["--test", "limits"]);
     } else {
         command.args(["--features", "native-host,native-sections", "--lib"]);
@@ -36,16 +47,19 @@ fn mutation(
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let metadata_only = match args.next().as_deref() {
-        None => false,
-        Some("--metadata-only") => true,
-        _ => return Err("expected optional --metadata-only".into()),
+    let mode = args.next();
+    let metadata_only = mode.as_deref() == Some("--metadata-only");
+    let repair_tail = mode.as_deref() == Some("--http-lifecycle-only");
+    let repair_only = mode.as_deref() == Some("--repair-only") || repair_tail;
+    match mode.as_deref() {
+        None | Some("--metadata-only" | "--repair-only" | "--http-lifecycle-only") => (),
+        _ => return Err("unexpected mutation group".into()),
     };
     if args.next().is_some() {
         return Err("unexpected argument".into());
     }
     let root = Path::new("bins/noevia-model-manager/src/sections");
-    if !metadata_only {
+    if !metadata_only && !repair_only {
         for (file, before, after) in [
             (
                 "ini.rs",
@@ -89,22 +103,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             true,
         )?;
     }
-    for (before, after) in [
-        ("*nodes > 1024", "*nodes > usize::MAX"),
-        ("depth > 8", "depth > usize::MAX"),
-        ("text.is_ascii()", "true"),
-        ("size > limit", "size > usize::MAX"),
-    ] {
-        mutation(
-            Path::new("crates/gguf/src/lib.rs"),
-            before,
-            after,
-            "gguf",
-            "bounded_metadata_text_preflights_dialect_depth_nodes_and_output",
-            true,
-        )?;
+    if !repair_only {
+        for (before, after) in [
+            ("*nodes > 1024", "*nodes > usize::MAX"),
+            ("depth > 8", "depth > usize::MAX"),
+            ("text.is_ascii()", "true"),
+            ("size > limit", "size > usize::MAX"),
+        ] {
+            mutation(
+                Path::new("crates/gguf/src/lib.rs"),
+                before,
+                after,
+                "gguf",
+                "bounded_metadata_text_preflights_dialect_depth_nodes_and_output",
+                true,
+            )?;
+        }
     }
-    if let Some(services) = std::env::var_os("NOEVIA_SECTIONS_SERVICES").filter(|_| !metadata_only)
+    if !metadata_only {
+        if !repair_tail {
+            mutation(
+                &root.join("defaults.rs"),
+                "gguf_suffix(&e.name)",
+                "e.name.to_lowercase().ends_with(\".gguf\")",
+                "noevia-model-manager",
+                "complete_actual_python_responses",
+                false,
+            )?;
+            mutation(
+                &root.join("defaults.rs"),
+                "Some(integer.clone())",
+                "if matches!(integer, gguf::PyInt::Big(_)) { None } else { Some(integer.clone()) }",
+                "noevia-model-manager",
+                "complete_actual_python_responses",
+                false,
+            )?;
+        }
+        mutation(
+            Path::new("bins/noevia-model-manager/src/lib.rs"),
+            "Ok(name) if name.contains('/')",
+            "Ok(name) if name.contains('/') && !query.contains(\"defaults=bad\")",
+            "noevia-model-manager",
+            "actual_framework_query_redirect_method_and_auth_contract",
+            false,
+        )?;
+        mutation(
+            Path::new("bins/noevia-model-manager/src/main.rs"),
+            "output.write_all(b\"native-logs\\n\")?;",
+            "println!(\"native-logs\");",
+            "noevia-model-manager",
+            "capability_closed_stdout_returns_error_without_panic_or_child",
+            false,
+        )?;
+        mutation(Path::new("bins/noevia-model-manager/tests/lifecycle.rs"), "CHILD_PORTS.lock().unwrap()", "{ static OTHER: std::sync::Mutex<()> = std::sync::Mutex::new(()); OTHER.lock().unwrap() }", "noevia-model-manager", "child_port_guard_excludes_second_fixed_port_owner", false)?;
+    }
+    if let Some(services) =
+        std::env::var_os("NOEVIA_SECTIONS_SERVICES").filter(|_| !metadata_only && !repair_only)
     {
         let source = Path::new(&services).join("model-manager/app/main.py");
         let original = fs::read_to_string(&source)?;

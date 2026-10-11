@@ -90,7 +90,7 @@ Reads use a single bounded INI byte snapshot for both raw text and its SHA256
 revision. This intentionally strengthens consistency during replacement; there is
 no snapshot guarantee across INI, model headers and backups. Ordered sections,
 DEFAULT expansion, CLI flags, schema, companion discovery and metadata hints are
-qualified against the actual services source using 88 complete responses and 13
+qualified against the actual services source using 93 complete responses and 17
 FastAPI method/query/redirect responses. Rust generates cases and synthetic files;
 a fixed Python loader evaluates actual source functions without app startup.
 
@@ -130,6 +130,15 @@ Scalar strings retain exact Unicode text and Python control-character whitespace
 is respected. Complex text admits ASCII strings only: unsupported complex Unicode
 metadata returns the same sanitized 503 as other admitted-dialect refusals. This
 does not claim the existing partial formatter implements all Python Unicode repr.
+
+Reviewed compatibility repairs (#1342–#1346) keep sibling defaults and companions
+on pathlib suffix semantics (bare `.gguf` excluded, uppercase extensions accepted)
+while retaining discovery's separate endswith rule. Positive and negative bounded
+GGUF Big integers preserve existing decimal context/default/hint semantics, including
+finite f64-derived values beyond i128. Decoded route matching precedes query
+validation while token authentication remains first. Capability output uses fallible
+complete writes and flush; a closed stdout returns an ordinary error before startup.
+Both fixed-port child lifecycle tests share one test-only admission lock.
 
 Linux CI qualifies containment and atomic replacement races with owned synthetic
 files; macOS runs semantic fixtures through a test-only adapter and explicitly

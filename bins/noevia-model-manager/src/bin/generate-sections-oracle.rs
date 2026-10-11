@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -135,6 +135,7 @@ fn main() -> Result<(), Error> {
     let mut args = std::env::args_os().skip(1);
     let source = PathBuf::from(args.next().ok_or("actual app path")?);
     let output = PathBuf::from(args.next().ok_or("output path")?);
+    let previous = args.next().map(PathBuf::from);
     if args.next().is_some() {
         return Err("unexpected arguments".into());
     }
@@ -233,7 +234,7 @@ fn main() -> Result<(), Error> {
     cases.push((
         "explicit-alias".into(),
         Some("[alias]\nmodel=/models/sub/main.gguf\n".into()),
-        vec![("sub/main.gguf".into(), rich)],
+        vec![("sub/main.gguf".into(), rich.clone())],
         vec![
             (None, false),
             (Some("alias".into()), false),
@@ -266,6 +267,37 @@ fn main() -> Result<(), Error> {
         ],
         vec![(None, false)],
     ));
+    cases.push((
+        "path-suffix-sibling-defaults".into(),
+        Some("[tiny]\n".into()),
+        vec![
+            ("sub/.gguf".into(), rich.clone()),
+            ("sub/tiny.GGUF".into(), plain.clone()),
+            ("sub/mmproj.GGUF".into(), plain.clone()),
+        ],
+        vec![(Some("tiny".into()), true), (None, false)],
+    ));
+    for (index, number) in [1e39, -1e39, 1e308].into_iter().enumerate() {
+        cases.push((
+            format!("finite-big-integer-{index}"),
+            None,
+            vec![(
+                "tiny.gguf".into(),
+                gguf_pairs(vec![
+                    ("general.architecture".into(), json!("llama")),
+                    ("llama.context_length".into(), json!(number)),
+                    (
+                        "llama.rope.scaling.original_context_length".into(),
+                        json!(number),
+                    ),
+                    ("llama.expert_count".into(), json!(number)),
+                    ("llama.expert_used_count".into(), json!(2)),
+                    ("llama.rope.scaling.type".into(), json!("yarn")),
+                ]),
+            )],
+            vec![(Some("tiny".into()), true)],
+        ));
+    }
     for (i, pairs) in [
         vec![
             ("general.architecture", json!("llama")),
@@ -357,6 +389,10 @@ fn main() -> Result<(), Error> {
         ("GET", "/api/v1/sections/"),
         ("GET", "/api/v1/sections/tiny/"),
         ("GET", "/api/v1/sections/tiny%2Fother"),
+        ("GET", "/api/v1/sections/tiny%2Fother?defaults=bad"),
+        ("GET", "/api/v1/sections/bad!name?defaults=bad"),
+        ("GET", "/api/v1/sections/bad!name?defaults=true"),
+        ("GET", "/api/v1/sections/%FF?defaults=bad"),
         ("GET", "/api/v1/sections/%FF"),
         ("GET", "/api/v1/sections/tiny%00"),
         ("HEAD", "/api/v1/sections/tiny"),
@@ -397,9 +433,40 @@ fn main() -> Result<(), Error> {
             )),
         );
     }
-    let bytes = serde_json::to_vec_pretty(
-        &json!({"services":"4f3cf816225d4ed12db33fd8e4a7e2d7ae946a4b","sources":sources,"cases":fixtures,"http":http}),
-    )?;
+    let result = json!({"services":"4f3cf816225d4ed12db33fd8e4a7e2d7ae946a4b","sources":sources,"cases":fixtures,"http":http});
+    if let Some(previous) = previous {
+        let mut bytes = Vec::new();
+        std::fs::File::open(previous)?
+            .take(8 * 1024 * 1024 + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err("previous fixture exceeded cap".into());
+        }
+        let prior: Value = serde_json::from_slice(&bytes)?;
+        if prior.get("services") != result.get("services")
+            || prior.get("sources") != result.get("sources")
+        {
+            return Err("fixture provenance changed".into());
+        }
+        for group in ["cases", "http"] {
+            let old = prior
+                .get(group)
+                .and_then(Value::as_array)
+                .ok_or("previous group")?;
+            let current = result
+                .get(group)
+                .and_then(Value::as_array)
+                .ok_or("current group")?;
+            if old.len() > 512 || current.len() > 512 {
+                return Err("fixture group count exceeded cap".into());
+            }
+            if old.iter().any(|case| !current.contains(case)) {
+                return Err(format!("prior {group} coverage changed").into());
+            }
+            println!("preserved {} {group}", old.len());
+        }
+    }
+    let bytes = serde_json::to_vec_pretty(&result)?;
     std::fs::write(&output, &bytes)?;
     println!("{} {:x}", output.display(), Sha256::digest(&bytes));
     Ok(())

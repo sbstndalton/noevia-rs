@@ -43,12 +43,26 @@ fn truthy(value: Option<&gguf::Json>) -> bool {
         Some(gguf::Json::Object(v)) => !v.is_empty(),
     }
 }
-fn integer(value: Option<&gguf::Json>) -> Option<i128> {
+fn integer(value: Option<&gguf::Json>) -> Option<gguf::PyInt> {
     match value {
-        Some(gguf::Json::Int(gguf::PyInt::Small(i))) => Some(*i),
-        Some(gguf::Json::Bool(b)) => Some(i128::from(*b)),
+        Some(gguf::Json::Int(integer)) => Some(integer.clone()),
+        Some(gguf::Json::Bool(b)) => Some(gguf::PyInt::Small(i128::from(*b))),
         _ => None,
     }
+}
+fn greater_than(value: &gguf::PyInt, minimum: i128) -> bool {
+    match value {
+        gguf::PyInt::Small(number) => *number > minimum,
+        // Existing summary Big values are canonical decimals outside i128, produced
+        // from finite f64. They contain at most 309 digits; positive Big exceeds 0/1.
+        gguf::PyInt::Big(decimal) => !decimal.starts_with('-'),
+    }
+}
+fn gguf_suffix(name: &str) -> bool {
+    std::path::Path::new(name)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .is_some_and(|suffix| suffix.eq_ignore_ascii_case("gguf"))
 }
 fn pystr(value: Option<&gguf::Json>) -> String {
     match value {
@@ -59,7 +73,7 @@ fn pystr(value: Option<&gguf::Json>) -> String {
         Some(v) => v.to_string(),
     }
 }
-fn commas(number: i128) -> String {
+fn commas(number: &gguf::PyInt) -> String {
     let raw = number.to_string();
     let mut out = String::new();
     for (i, c) in raw.chars().enumerate() {
@@ -79,7 +93,8 @@ pub fn suggest(
     let field = |key: &str| model.and_then(|m| m.get(key));
     let mut fields = serde_json::Map::new();
     let mut hints = Vec::new();
-    if let Some(ctx) = integer(field("context_length")).filter(|i| *i > 0) {
+    budget.charge(2048)?;
+    if let Some(ctx) = integer(field("context_length")).filter(|i| greater_than(i, 0)) {
         fields.insert("ctx-size".into(), Value::String(ctx.to_string()));
     }
     for (k, v) in [
@@ -112,12 +127,14 @@ pub fn suggest(
         _ => false,
     };
     if arch.starts_with("gemma3") || !["", "none"].contains(&rope_type.as_str()) || factor {
-        if let Some(original) = integer(field("rope_scaling_original_context")).filter(|i| *i > 0) {
+        if let Some(original) =
+            integer(field("rope_scaling_original_context")).filter(|i| greater_than(i, 0))
+        {
             budget.charge(rope_text.len() + 256)?;
-            hints.push(format!("Model trained on {} ctx and scaled with {rope_text}; llama.cpp applies that scaling from the GGUF, so no rope keys are set.", commas(original)));
+            hints.push(format!("Model trained on {} ctx and scaled with {rope_text}; llama.cpp applies that scaling from the GGUF, so no rope keys are set.", commas(&original)));
         }
     }
-    if let Some(experts) = integer(field("expert_count")).filter(|i| *i > 1) {
+    if let Some(experts) = integer(field("expert_count")).filter(|i| greater_than(i, 1)) {
         let used = if truthy(field("expert_used_count")) {
             pystr(field("expert_used_count"))
         } else {
@@ -155,7 +172,7 @@ impl Files {
                 Some(relative)
             } else if let Some((folder, _)) = relative.rsplit_once('/') {
                 let mut files = self.models.entries(folder, budget)?;
-                files.retain(|e| !e.directory && e.name.to_lowercase().ends_with(".gguf"));
+                files.retain(|e| !e.directory && gguf_suffix(&e.name));
                 files.sort_by(|a, b| a.name.cmp(&b.name));
                 let main = files
                     .iter()
@@ -245,7 +262,7 @@ impl Files {
             // Preserve the existing unsorted first companion selection.
             for entry in self.models.entries(relative_folder, budget)? {
                 if !entry.directory
-                    && entry.name.to_lowercase().ends_with(".gguf")
+                    && gguf_suffix(&entry.name)
                     && entry.name.to_lowercase().contains("mmproj")
                 {
                     let relative = format!("{relative_folder}/{}", entry.name);
