@@ -12,12 +12,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-host") {
                 println!("native-host");
             }
+            if cfg!(feature = "native-sections") {
+                println!("native-sections");
+            }
             return Ok(());
         }
         return Err("native-logs feature is not enabled".into());
     }
     let mode = environment("MODEL_MANAGER_IMPL", "python")?;
     let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
+    let sections_mode = environment("MODEL_MANAGER_SECTIONS_IMPL", "python")?;
+    if !matches!(sections_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_SECTIONS_IMPL must be python or rust".into());
+    }
+    if sections_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-sections")) {
+        return Err(
+            "native-sections requires rust model manager and compiled native-sections feature"
+                .into(),
+        );
+    }
     if !matches!(host_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_HOST_IMPL must be python or rust".into());
     }
@@ -30,6 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let error = std::process::Command::new("uvicorn")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED")
             .args(["app.main:app", "--host", "0.0.0.0", "--port", "8090"])
             .exec();
         return Err(error.into());
@@ -63,6 +77,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let docker = UnixDocker::from_env()?;
     let redactor = Redactor::new()?;
     let legacy = legacy_client()?;
+    let sections = if sections_mode == "rust" {
+        let models = environment("MODELS_DIR", "/models")?;
+        let ini = environment("MODELS_INI_PATH", "/models/models.ini")?;
+        Some(Arc::new(noevia_model_manager::sections::Sections::new(
+            Arc::new(
+                noevia_model_manager::sections::Files::new(
+                    std::path::Path::new(&models),
+                    std::path::Path::new(&ini),
+                )
+                .map_err(|_| "native section configuration roots unavailable")?,
+            ),
+        )))
+    } else {
+        None
+    };
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;
     // Refuse an existing loopback listener before spawn: ownership is never borrowed from
     // an unknown process. uvicorn receives only the fixed private loopback address.
@@ -77,6 +106,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .args(["app.main:app", "--host", "127.0.0.1", "--port", "8091"])
         .env("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED", "1")
         .env(
+            "NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED",
+            if sections.is_some() { "1" } else { "0" },
+        )
+        .env(
             "NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED",
             if host.is_some() { "1" } else { "0" },
         )
@@ -86,6 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .as_ref()
         .map(|history| noevia_model_manager::host::HostSampler::start(history.clone()));
     let state = Arc::new(StateData {
+        sections,
         host,
         token,
         configured,

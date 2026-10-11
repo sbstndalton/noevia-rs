@@ -47,6 +47,7 @@ impl DockerRead for Fake {
 }
 fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
     Arc::new(StateData {
+        sections: None,
         host: None,
         token: token.into(),
         configured: vec!["synthetic-engine".into()],

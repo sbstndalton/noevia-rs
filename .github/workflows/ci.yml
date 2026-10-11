@@ -653,11 +653,23 @@ jobs:
         run: |
           cargo run --locked -q -p noevia-model-manager --bin generate-host-oracle -- legacy-services/model-manager/app > "$RUNNER_TEMP/host.json"
           cmp bins/noevia-model-manager/tests/fixtures/host.json "$RUNNER_TEMP/host.json"
-      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host -- -D warnings
+      - name: Install fixed section oracle framework
+        run: python3 -m pip install fastapi==0.115.6 httpx==0.28.1
+      - name: Regenerate actual section schema and complete response oracle
+        run: |
+          cargo run --locked -q -p noevia-model-manager --bin generate-sections-schema -- legacy-services/model-manager/app "$RUNNER_TEMP/sections-schema.json"
+          cmp bins/noevia-model-manager/src/sections/schema.json "$RUNNER_TEMP/sections-schema.json"
+          cargo run --locked -q -p noevia-model-manager --bin generate-sections-oracle -- legacy-services/model-manager/app "$RUNNER_TEMP/sections.json"
+          cmp bins/noevia-model-manager/tests/fixtures/sections.json "$RUNNER_TEMP/sections.json"
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections -- -D warnings
       - name: Native host differential and synthetic sampler lifecycle
         env:
           NOEVIA_HOST_FIXTURE: ${{ runner.temp }}/host.json
-        run: cargo test --locked -p noevia-model-manager --features native-host
+        run: cargo test --locked -p noevia-model-manager --features native-host,native-sections
+      - name: Tighter GGUF component limits and section policy mutations
+        run: |
+          cargo test --locked -p gguf --test limits
+          cargo run --locked -q -p noevia-model-manager --bin check-sections-mutations
       - name: Host behavior mutations must fail assertions
         run: cargo run --locked -q -p noevia-model-manager --bin check-host-mutations
       - name: Host capability omission (logs-only)

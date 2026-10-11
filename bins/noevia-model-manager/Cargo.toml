@@ -9,6 +9,7 @@ publish.workspace = true
 default = []
 native-logs = []
 native-host = ["native-logs"]
+native-sections = ["native-logs"]
 [lints]
 workspace = true
 [dependencies]
@@ -24,11 +25,14 @@ serde = "1"
 reqwest = { version = "0.12", default-features = false, features = ["stream"] }
 serde_json = "1"
 sha2 = "0.10"
+rustix = { version = "1", features = ["fs"] }
+gguf = { path = "../../crates/gguf" }
+model-autoconfig = { path = "../../crates/model-autoconfig" }
+tempfile = "3"
 server-auth = { path = "../../crates/server-auth" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "process", "signal", "io-util", "fs"] }
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }
-tempfile = "3"
 proptest = "1"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
