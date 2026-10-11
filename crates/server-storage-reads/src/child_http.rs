@@ -1,4 +1,6 @@
-//! Private one-attempt literal-IP HTTP/TLS; no resolver/codecs/activation.
+//! Private owned DNS/TCP/TLS/HTTP attempt with bounded response codecs; no activation.
+#[path = "response_codecs.rs"]
+mod response_codecs;
 use crate::{
     isolated::Error,
     protocol::{Method, Request, TransportFailure},
@@ -760,16 +762,30 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             cap,
         );
     }
-    // Plain identity slice only. Codec behavior must be approved independently.
-    if response
-        .headers()
-        .get_all("content-encoding")
-        .iter()
-        .any(|v| v.as_bytes() != b"identity")
-    {
-        return failure(Phase::Body, TransportFailure::Body, cap);
-    }
     let body_deadline = deadline.min(Instant::now() + Duration::from_secs(10));
+    if status == 204 || status == 205 {
+        return response_ipc::encode(
+            Reply::Http {
+                status,
+                capped: false,
+                payload: &[],
+            },
+            cap,
+        );
+    }
+    let codec_plan = match response_codecs::Plan::headers(response.headers()) {
+        Ok(plan) => plan,
+        Err(_) => return failure(Phase::Body, TransportFailure::Body, cap),
+    };
+    let mut codecs = match response_codecs::Pipeline::new(codec_plan, body_deadline.into_std()) {
+        Ok(pipeline) => pipeline,
+        Err(response_codecs::Fault::Timeout) => {
+            return failure(Phase::Body, TransportFailure::Timeout, cap)
+        }
+        Err(response_codecs::Fault::Body) => {
+            return failure(Phase::Body, TransportFailure::Body, cap)
+        }
+    };
     let mut body = response.into_body();
     let mut payload = Vec::new();
     payload
@@ -797,9 +813,23 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 if Instant::now() >= body_deadline {
                     return failure(Phase::Body, TransportFailure::Timeout, cap);
                 }
-                let take = part.len().min(cap + 1 - payload.len());
-                payload.extend_from_slice(part.get(..take).ok_or(Error::Output)?);
-                if payload.len() == cap + 1 {
+                let progress = match codecs.feed(part, &mut payload, cap) {
+                    Ok(progress) => progress,
+                    Err(response_codecs::Fault::Timeout) => {
+                        return failure(Phase::Body, TransportFailure::Timeout, cap)
+                    }
+                    Err(response_codecs::Fault::Body) => {
+                        return failure(Phase::Body, TransportFailure::Body, cap)
+                    }
+                };
+                if matches!(progress, response_codecs::Progress::Capped) {
+                    // Compressed cap+1 remains refused pending the actual malformed-overcap gate.
+                    if codecs.compressed() {
+                        return failure(Phase::Body, TransportFailure::Body, cap);
+                    }
+                    if Instant::now() >= body_deadline {
+                        return failure(Phase::Body, TransportFailure::Timeout, cap);
+                    }
                     return response_ipc::encode(
                         Reply::Http {
                             status,
@@ -811,6 +841,16 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             }
         }
+    }
+    match codecs.finish(&mut payload, cap) {
+        Ok(response_codecs::Progress::Complete) => {}
+        Err(response_codecs::Fault::Timeout) => {
+            return failure(Phase::Body, TransportFailure::Timeout, cap)
+        }
+        _ => return failure(Phase::Body, TransportFailure::Body, cap),
+    }
+    if Instant::now() >= body_deadline {
+        return failure(Phase::Body, TransportFailure::Timeout, cap);
     }
     response_ipc::encode(
         Reply::Http {
