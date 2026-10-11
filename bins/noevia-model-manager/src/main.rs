@@ -21,6 +21,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-prompts") {
                 output.write_all(b"native-prompts\n")?;
             }
+            if cfg!(feature = "native-diagnose") {
+                output.write_all(b"native-diagnose\n")?;
+            }
             output.flush()?;
             return Ok(());
         }
@@ -30,6 +33,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
     let sections_mode = environment("MODEL_MANAGER_SECTIONS_IMPL", "python")?;
     let prompts_mode = environment("MODEL_MANAGER_PROMPTS_IMPL", "python")?;
+    let diagnose_mode = environment("MODEL_MANAGER_DIAGNOSE_IMPL", "python")?;
+    if !matches!(diagnose_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_DIAGNOSE_IMPL must be python or rust".into());
+    }
+    if diagnose_mode == "rust" {
+        if mode != "rust" || !cfg!(feature = "native-diagnose") {
+            return Err(
+                "native-diagnose requires rust model manager and compiled native-diagnose feature"
+                    .into(),
+            );
+        }
+        if environment("TZ", "")? != "UTC" {
+            return Err("native-diagnose requires exact TZ=UTC".into());
+        }
+    }
     if !matches!(prompts_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_PROMPTS_IMPL must be python or rust".into());
     }
@@ -67,6 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED")
             .args(["app.main:app", "--host", "0.0.0.0", "--port", "8090"])
             .exec();
         return Err(error.into());
@@ -97,7 +116,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         configured.push(name.to_owned());
     }
-    let docker = UnixDocker::from_env()?;
+    let docker = Arc::new(UnixDocker::from_env()?);
+    #[cfg(feature = "native-diagnose")]
+    let diagnosis = if diagnose_mode == "rust" {
+        Some(Arc::new(
+            noevia_model_manager::diagnose_docker::Diagnosis::new(docker.clone())?,
+        ))
+    } else {
+        None
+    };
     let redactor = Redactor::new()?;
     let legacy = legacy_client()?;
     let sections = if sections_mode == "rust" {
@@ -118,7 +145,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;
     // Refuse an existing loopback listener before spawn: ownership is never borrowed from
     // an unknown process. uvicorn receives only the fixed private loopback address.
-    let legacy_probe = std::net::TcpListener::bind("127.0.0.1:8091")?;
+    let legacy_probe = reusable_probe(std::net::SocketAddrV4::new(
+        std::net::Ipv4Addr::LOCALHOST,
+        8091,
+    ))?;
     drop(legacy_probe);
     #[cfg(feature = "native-prompts")]
     let prompts = if prompts_mode == "rust" {
@@ -134,39 +164,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             noevia_model_manager::host::HostHistory::default(),
         ))
     });
-    let mut child_command = tokio::process::Command::new("uvicorn");
-    child_command
-        .args(["app.main:app", "--host", "127.0.0.1", "--port", "8091"])
-        .env("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED", "1")
-        .env(
-            "NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED",
-            if prompts_mode == "rust" { "1" } else { "0" },
-        )
-        .env(
-            "NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED",
-            if sections.is_some() { "1" } else { "0" },
-        )
-        .env(
-            "NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED",
-            if host.is_some() { "1" } else { "0" },
-        )
-        .kill_on_drop(true);
-    #[cfg(feature = "native-prompts")]
-    if let Some(root) = &prompt_root {
-        child_command.env("DATA_DIR", root);
-    }
+    let mut child_command = legacy_command(
+        tokio::process::Command::new("uvicorn"),
+        &prompts_mode,
+        sections.is_some(),
+        host.is_some(),
+        &diagnose_mode,
+        #[cfg(feature = "native-prompts")]
+        prompt_root.as_deref(),
+    );
     let mut child = child_command.spawn()?;
     let _host_sampler = host
         .as_ref()
         .map(|history| noevia_model_manager::host::HostSampler::start(history.clone()));
     let state = Arc::new(StateData {
+        #[cfg(feature = "native-diagnose")]
+        diagnosis,
         #[cfg(feature = "native-prompts")]
         prompts,
         sections,
         host,
         token,
         configured,
-        docker: Arc::new(docker),
+        docker,
         redactor,
         permits: tokio::sync::Semaphore::new(4),
         legacy,
@@ -179,6 +199,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _=tokio::signal::ctrl_c()=>Ok(()),
         _=terminate()=>Ok(()),
     };
+    #[cfg(feature = "native-diagnose")]
+    if let Some(diagnosis) = &state.diagnosis {
+        diagnosis.shutdown().await;
+    }
     child_lifecycle::reap(&mut child, state).await?;
     outcome
 }
@@ -233,6 +257,53 @@ fn prompt_data_dir_from(
     Ok(root)
 }
 
+fn legacy_command(
+    mut child_command: tokio::process::Command,
+    prompts_mode: &str,
+    sections: bool,
+    host: bool,
+    diagnose_mode: &str,
+    #[cfg(feature = "native-prompts")] prompt_root: Option<&str>,
+) -> tokio::process::Command {
+    child_command
+        .args(["app.main:app", "--host", "127.0.0.1", "--port", "8091"])
+        .env("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED", "1")
+        .env(
+            "NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED",
+            if prompts_mode == "rust" { "1" } else { "0" },
+        )
+        .env(
+            "NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED",
+            if sections { "1" } else { "0" },
+        )
+        .env(
+            "NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED",
+            if host { "1" } else { "0" },
+        )
+        .env(
+            "NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED",
+            if diagnose_mode == "rust" { "1" } else { "0" },
+        )
+        .kill_on_drop(true);
+    if diagnose_mode == "rust" {
+        child_command.env("TZ", "UTC");
+    }
+    #[cfg(feature = "native-prompts")]
+    if let Some(root) = prompt_root {
+        child_command.env("DATA_DIR", root);
+    }
+    child_command
+}
+
+fn reusable_probe(address: std::net::SocketAddrV4) -> std::io::Result<std::net::TcpListener> {
+    use rustix::net::{ipproto, socket, AddressFamily, SocketType};
+    let fd = socket(AddressFamily::INET, SocketType::STREAM, Some(ipproto::TCP))?;
+    rustix::net::sockopt::set_socket_reuseaddr(&fd, true)?;
+    rustix::net::bind(&fd, &address)?;
+    rustix::net::listen(&fd, 1)?;
+    Ok(std::net::TcpListener::from(fd))
+}
+
 #[cfg(all(test, feature = "native-prompts"))]
 mod prompt_configuration_tests {
     #[test]
@@ -252,5 +323,63 @@ mod prompt_configuration_tests {
             ])
             .is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod diagnosis_command_tests {
+    #[test]
+    fn native_child_confirmation_semantics() -> Result<(), Box<dyn std::error::Error>> {
+        for selected in [true, false] {
+            let mode = if selected { "rust" } else { "python" };
+            let mut seed = tokio::process::Command::new("uvicorn");
+            seed.env("NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED", "hostile");
+            let command = super::legacy_command(
+                seed,
+                "python",
+                false,
+                false,
+                mode,
+                #[cfg(feature = "native-prompts")]
+                None,
+            );
+            // Override a hostile inherited input without mutating process-global environment.
+            let actual = command
+                .as_std()
+                .get_envs()
+                .find(|(k, _)| *k == "NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED")
+                .and_then(|(_, v)| v)
+                .ok_or("confirmation missing")?;
+            let marker = actual.to_str().ok_or("confirmation encoding")?.to_owned();
+            assert_eq!(marker, if selected { "1" } else { "0" });
+            assert_eq!(command.as_std().get_program(), "uvicorn");
+            assert_eq!(
+                command.as_std().get_args().collect::<Vec<_>>(),
+                ["app.main:app", "--host", "127.0.0.1", "--port", "8091"]
+            );
+            let rebuilt = super::legacy_command(
+                tokio::process::Command::new("uvicorn"),
+                "rust",
+                true,
+                true,
+                mode,
+                #[cfg(feature = "native-prompts")]
+                Some("/synthetic/root"),
+            );
+            let keys: std::collections::BTreeMap<_, _> = rebuilt.as_std().get_envs().collect();
+            assert_eq!(
+                keys.get(std::ffi::OsStr::new(
+                    "NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED"
+                ))
+                .copied()
+                .flatten(),
+                Some(std::ffi::OsStr::new(if selected { "1" } else { "0" }))
+            );
+            assert_eq!(
+                keys.get(std::ffi::OsStr::new("TZ")).copied().flatten(),
+                selected.then_some(std::ffi::OsStr::new("UTC"))
+            );
+        }
+        Ok(())
     }
 }

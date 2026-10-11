@@ -8,6 +8,7 @@ publish.workspace = true
 [features]
 default = []
 native-logs = []
+native-diagnose = ["native-logs", "dep:chrono"]
 native-host = ["native-logs"]
 native-sections = ["native-logs"]
 native-prompts = ["native-logs", "dep:rusqlite", "dep:model-files"]
@@ -15,6 +16,7 @@ native-prompts = ["native-logs", "dep:rusqlite", "dep:model-files"]
 workspace = true
 [dependencies]
 bytes = "1"
+chrono = { version = "=0.4.45", default-features = false, features = ["std"], optional = true }
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "client"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
@@ -26,7 +28,7 @@ serde = "1"
 reqwest = { version = "0.12", default-features = false, features = ["stream"] }
 serde_json = "1"
 sha2 = "0.10"
-rustix = { version = "1", features = ["fs", "process"] }
+rustix = { version = "1", features = ["fs", "process", "net"] }
 gguf = { path = "../../crates/gguf" }
 model-autoconfig = { path = "../../crates/model-autoconfig" }
 model-files = { path = "../../crates/model-files", optional = true }

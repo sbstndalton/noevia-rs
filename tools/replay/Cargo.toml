@@ -23,5 +23,5 @@ httparse = "1"
 chrono = "0.4"
 serde_json = "1"
 sha2 = "0.10"
-rustix = { version = "1", features = ["fs", "process"] }
+rustix = { version = "1", features = ["fs", "process", "net"] }
 tempfile = "3"

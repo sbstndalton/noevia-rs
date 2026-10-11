@@ -1,0 +1,105 @@
+{
+  "fixed_logs": {
+    "synthetic-cause-0": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1",
+    "synthetic-cause-1": "spawning server instance with name=synthetic-model on port 18001\n[18001] out of device memory\ninstance name=synthetic-model exited with status 1",
+    "synthetic-cause-2": "spawning server instance with name=synthetic-model on port 18001\n[18001] failed to open\ninstance name=synthetic-model exited with status 1",
+    "synthetic-cause-3": "spawning server instance with name=synthetic-model on port 18001\n[18001] invalid magic\ninstance name=synthetic-model exited with status 1",
+    "synthetic-cause-4": "spawning server instance with name=synthetic-model on port 18001\n[18001] unknown model architecture\ninstance name=synthetic-model exited with status 1",
+    "synthetic-cause-5": "spawning server instance with name=synthetic-model on port 18001\n[18001] unknown argument\ninstance name=synthetic-model exited with status 1",
+    "synthetic-cause-6": "spawning server instance with name=synthetic-model on port 18001\n[18001] address already in use\ninstance name=synthetic-model exited with status 1",
+    "synthetic-cause-7": "spawning server instance with name=synthetic-model on port 18001\n[18001] n_ctx_train\ninstance name=synthetic-model exited with status 1"
+  },
+  "provenance": {
+    "core": "010735c7d86d30269ab3f4a351b2135faea1c8e7",
+    "core_sources": {
+      "files": {
+        "server/auth.cjs": {
+          "blob": "21283e3a09d3fe06d81844d93948df57f34d01e2",
+          "sha256": "44412c7dcb8bae2bbd3d7b53aa32131f1046d9aa0b776ebcb37c76d190434899"
+        },
+        "server/dav-parse.lock": {
+          "blob": "8ccfdb382e6d026de8215f957a438fcbb86c92ab",
+          "sha256": "31f3a5c5c8da2cf0926db19f9ef742b49301b26c1d9c395a98980bb3050c4337"
+        },
+        "server/http.cjs": {
+          "blob": "696e5cadc4fc0415a4da850d9deec933f3ec07eb",
+          "sha256": "6adf9e15d12d353ce64e685970edcd3cf7568b8a89b90671e5a7e1266c5e445f"
+        },
+        "server/index.cjs": {
+          "blob": "7bc07a03ddf56ad268d076f48b5bbd0cc2e3b63a",
+          "sha256": "64ae4071b2eea2bcf685c55450815f7f960da5352dc6938fb3a5a051a0eb85b6"
+        },
+        "server/package-lock.json": {
+          "blob": "5563518212af4f20bd3844f92ef6c3b106a61776",
+          "sha256": "ad078a36d1f9b72ba7ffeb2fa945deca872ea81742c8fe1ed5c9323ddcf497e9"
+        },
+        "server/package.json": {
+          "blob": "38b115f0da44c34b2ad6aeec82f6330bbeede5b2",
+          "sha256": "f3f9375884302c7dcdd7fb510b7804f5dadcdced8ccabdc827638378353db19c"
+        },
+        "server/routes/models.cjs": {
+          "blob": "663b65c9ebf15dc87490e33a6d292e63f540fbd2",
+          "sha256": "c2db43edc50599ead3a1364b0fec803e09870eff37f8e1da866ac18550127695"
+        },
+        "server/rust-auth.cjs": {
+          "blob": "ef5718f03f70b454d5c321cd5831384ddbb8a620",
+          "sha256": "9f0a8862e522d2a57dfd0d9ded480963cdbfe120d6ecb5bf805c4ab4ea8d9a98"
+        },
+        "tools/contract-corpus/mocks.cjs": {
+          "blob": "4cc92991c9be7b6e8c3ed525de2c47c6894b4d7c",
+          "sha256": "a30fc606d7b895eb810e6930c213f9ccc98d59d4139704af1767da9ac5cc00de"
+        },
+        "tools/contract-corpus/net-guard.cjs": {
+          "blob": "41f7778afa95cf8d05e0f9e4fe2b2a12c9af063f",
+          "sha256": "25e51a61a8315a88fae99ffa141750235f731af58a11be39f9ac97703dfb7a85"
+        },
+        "tools/contract-corpus/serve.cjs": {
+          "blob": "8b8605bf830d7bd4f54982233ce0339e781c569f",
+          "sha256": "ac31113d18921ba75cb846357909bdb8d3fde4b2393da2dbdb5eca0b9b541679"
+        }
+      },
+      "tracked_source_clean": true,
+      "tree": "345adfa12da083eb5888ec232dc2d86b9b0383a5"
+    },
+    "dependencies": {
+      "external_root": "/private/tmp/s1-diagnose-node-dependencies",
+      "installation": "Rust-owned copy of cached locked package closure; see separately retained copy proof and source-boundary caveats",
+      "installed_files_integrity_independently_verified": false,
+      "manifests": {
+        "package-lock.json": {
+          "bytes": 38682,
+          "sha256": "ad078a36d1f9b72ba7ffeb2fa945deca872ea81742c8fe1ed5c9323ddcf497e9"
+        },
+        "package.json": {
+          "bytes": 446,
+          "sha256": "f3f9375884302c7dcdd7fb510b7804f5dadcdced8ccabdc827638378353db19c"
+        }
+      },
+      "node_modules": "/private/tmp/s1-diagnose-node-dependencies/node_modules",
+      "source_checkout_dependencies_installed": false
+    },
+    "generator_sha256": "314ebf21f4bb06f7940547c842428892d42e3efde8ba1c673c8edc62cb6ce107",
+    "owned_dependency_seam_sha256": "5a93df0b27e6b985c2e2f39315b0303cf8a04a0a50fc441ea5e60b78165a6200",
+    "runtime": "6c233f4a05730ed5dccd7997ae601e9999eaa6d7",
+    "runtime_selected_sources": {
+      "model-manager/app/api.py": {
+        "blob": "c624647e3e23870f9abfad41d78797056ac21417",
+        "sha256": "cbd633a8f9e150ff8f93fa3191bd7b4dd9278c43d093b19b8d1686ce1f979a19"
+      },
+      "model-manager/app/diagnose.py": {
+        "blob": "17a4670f6189d215189b5a6f321cd82547dfe06e",
+        "sha256": "87257c86816978b3c4f82eff2765cd5247d13a5340462eb2995180e9a5790520"
+      },
+      "model-manager/app/main.py": {
+        "blob": "19feed34351f7c8b4f81a76588f696fb7bc4ea69",
+        "sha256": "28f0acd83bffa88c781373a7f568ef5e73def8333da1221f0dbac49055242cbb"
+      },
+      "model-manager/app/services.py": {
+        "blob": "c042b34bed868c37ced94414ab216e5c7c08ed16",
+        "sha256": "eb11d5357f4e309d2dadf2c01346d404df6d568d5eb579d01eb89c45a7d92a18"
+      }
+    }
+  },
+  "scope": "actual Node auth/admin proxy and existing Rust public front; immutable selected AST functions and fixed fakes; test-only native child refusal guard",
+  "sdk_timezone_finding": "Actual SDK naive datetime conversion differs in UTC and America/New_York; native selector requires exact UTC. Historical actual wire gate source c4e92ed40ffd3aac17a491237d46030c7bee9212d40fba320e393b152584898e; production Python remains unchanged."
+}
