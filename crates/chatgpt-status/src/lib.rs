@@ -4,7 +4,10 @@ mod json;
 mod keys;
 mod sqlite;
 pub use keys::{Root, StatusKeys};
-pub use sqlite::{SqliteService, StatusCancellation, StatusJob};
+pub use sqlite::{
+    ExternalContext, ExternalFailure, ExternalJob, ExternalStatus, SqliteService,
+    StatusCancellation, StatusJob,
+};
 use zeroize::Zeroizing;
 
 pub const ROW_BYTES: usize = 256 * 1024;

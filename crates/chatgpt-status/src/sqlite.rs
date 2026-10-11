@@ -398,6 +398,9 @@ fn authorization(ctx: AuthContext<'_>, phase: Phase) -> Authorization {
     }
 }
 fn configure(c: &Connection, control: &Control) -> Result<(), Error> {
+    configure_ticks(c, control, 2000)
+}
+fn configure_ticks(c: &Connection, control: &Control, tick_limit: usize) -> Result<(), Error> {
     sql(c.busy_timeout(Duration::ZERO))?;
     for (limit, n) in [
         (Limit::SQLITE_LIMIT_LENGTH, 1048576),
@@ -429,7 +432,7 @@ fn configure(c: &Connection, control: &Control) -> Result<(), Error> {
         1000,
         Some(move || {
             ticks += 1;
-            ticks >= 2000 || control.check().is_err()
+            ticks >= tick_limit || control.check().is_err()
         }),
     ))?;
     sql(c.execute_batch("PRAGMA query_only=ON; PRAGMA cache_size=-1024; PRAGMA mmap_size=0; PRAGMA temp_store=MEMORY;"))?;
@@ -461,25 +464,7 @@ fn read(inner: &Inner, task: &Task, owner: &str) -> Answer {
     inner.db.check()?;
     sql(c.execute_batch("BEGIN DEFERRED"))?;
     schema(&c, &task.control, false)?;
-    let product = match inner.product_override {
-        Some(b) => b,
-        None => {
-            let mut s = sql(c.prepare("SELECT CASE WHEN typeof(value)='text' AND value IN ('true','false') THEN value ELSE NULL END FROM settings WHERE key=?1 COLLATE BINARY"))?;
-            let mut rows = sql(s.query(["feature:chatgptOAuth"]))?;
-            let value = match sql(rows.next())? {
-                None => false,
-                Some(r) => match sql(r.get_ref(0))? {
-                    ValueRef::Null => false,
-                    ValueRef::Text(b) => b == b"true",
-                    _ => return Err(Error::Unavailable),
-                },
-            };
-            if sql(rows.next())?.is_some() {
-                return Err(Error::Unavailable);
-            }
-            value
-        }
-    };
+    let product = product(&c, inner.product_override)?;
     let answer = if !product {
         inner
             .policy
@@ -822,5 +807,328 @@ mod focused {
         assert_eq!(joiner.join().unwrap().unwrap().0, 200);
         assert!(GlobalLease::acquire(Some("retained-unit")).is_ok());
         assert_eq!(task.join().unwrap().0, 200);
+    }
+}
+
+/// Third immutable interrupt publication, solely for an externally-owned status job.
+#[derive(Clone)]
+pub struct ExternalContext {
+    control: Control,
+    handle: Arc<std::sync::OnceLock<rusqlite::InterruptHandle>>,
+    active: Arc<AtomicBool>,
+}
+impl ExternalContext {
+    pub fn new(deadline: Instant) -> Self {
+        Self {
+            control: Control::with_deadline(deadline),
+            handle: Arc::new(std::sync::OnceLock::new()),
+            active: Arc::new(AtomicBool::new(false)),
+        }
+    }
+    pub fn cancel(&self) {
+        self.control.cancel();
+        if self.active.load(Ordering::Acquire) {
+            if let Some(h) = self.handle.get() {
+                h.interrupt();
+            }
+        }
+    }
+    pub fn check(&self) -> Result<(), Error> {
+        self.control.check()
+    }
+}
+/// Explicit failed close ownership; retry never repeats a query or transaction.
+#[must_use]
+pub struct ExternalFailure {
+    pub error: Error,
+    pending: Option<Box<Connection>>,
+}
+impl std::fmt::Debug for ExternalFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExternalFailure")
+            .field("error", &self.error)
+            .field("pending_close", &self.pending.is_some())
+            .finish()
+    }
+}
+impl ExternalFailure {
+    pub fn has_pending_close(&self) -> bool {
+        self.pending.is_some()
+    }
+    pub fn retry_close(mut self) -> Result<(), Self> {
+        if let Some(c) = self.pending.take() {
+            match (*c).close() {
+                Ok(()) => Ok(()),
+                Err((c, _)) => {
+                    self.pending = Some(Box::new(c));
+                    Err(self)
+                }
+            }
+        } else {
+            Ok(())
+        }
+    }
+}
+fn external_close(c: Connection, error: Error) -> Result<(), ExternalFailure> {
+    c.close().map_err(|(c, _)| ExternalFailure {
+        error,
+        pending: Some(Box::new(c)),
+    })
+}
+fn stat_regular(root: &Root, name: &str) -> Result<Identity, Error> {
+    let s = rustix::fs::statat(&root.fd, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
+        .map_err(|_| Error::Unavailable)?;
+    if rustix::fs::FileType::from_raw_mode(s.st_mode) != rustix::fs::FileType::RegularFile {
+        return Err(Error::Unavailable);
+    }
+    Ok(Identity {
+        dev: s.st_dev as u64,
+        ino: s.st_ino as u64,
+    })
+}
+/// Startup keys snapshot; no admission, worker or raw SQLite verification descriptor.
+pub struct ExternalStatus {
+    root: Root,
+    path: PathBuf,
+    root_id: Identity,
+    db_id: Identity,
+    policy: Service,
+    product_override: Option<bool>,
+}
+impl ExternalStatus {
+    pub fn open(path: &Path, previous: Option<&str>, env: Option<&str>) -> Result<Self, Error> {
+        let root = Root::open(path)?;
+        let root_id = identity(&root.fd)?;
+        let db_id = stat_regular(&root, "cowork.db")?;
+        let policy = Service::new(&root, previous)?;
+        let product_override = feature_env(env)?;
+        let this = Self {
+            root,
+            path: path.to_owned(),
+            root_id,
+            db_id,
+            policy,
+            product_override,
+        };
+        this.check()?;
+        Ok(this)
+    }
+    fn check(&self) -> Result<(), Error> {
+        let current = Root::open(&self.path)?;
+        if identity(&current.fd)? != self.root_id
+            || identity(&self.root.fd)? != self.root_id
+            || stat_regular(&current, "cowork.db")? != self.db_id
+        {
+            return Err(Error::Unavailable);
+        }
+        for n in ["cowork.db-wal", "cowork.db-shm"] {
+            stat_regular(&current, n)?;
+        }
+        if !matches!(
+            rustix::fs::statat(
+                &current.fd,
+                "cowork.db-journal",
+                rustix::fs::AtFlags::SYMLINK_NOFOLLOW
+            ),
+            Err(rustix::io::Errno::NOENT)
+        ) {
+            return Err(Error::Unavailable);
+        }
+        Ok(())
+    }
+    pub fn job(&self, context: ExternalContext) -> Result<ExternalJob<'_>, ExternalFailure> {
+        let pre = (|| {
+            context.check()?;
+            self.check()?;
+            if context.handle.get().is_some() {
+                return Err(Error::Unavailable);
+            }
+            sql(Connection::open_with_flags(
+                self.path.join("cowork.db"),
+                OpenFlags::SQLITE_OPEN_READ_ONLY
+                    | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                    | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+            ))
+        })();
+        let c = pre.map_err(|error| ExternalFailure {
+            error,
+            pending: None,
+        })?;
+        let initialized = (|| {
+            context
+                .handle
+                .set(c.get_interrupt_handle())
+                .map_err(|_| Error::Unavailable)?;
+            context.active.store(true, Ordering::Release);
+            context.check()?;
+            configure_ticks(&c, &context.control, 1000)?;
+            self.check()?;
+            context.check()
+        })();
+        if let Err(error) = initialized {
+            context.active.store(false, Ordering::Release);
+            return match external_close(c, error) {
+                Ok(()) => Err(ExternalFailure {
+                    error,
+                    pending: None,
+                }),
+                Err(e) => Err(e),
+            };
+        }
+        Ok(ExternalJob {
+            service: self,
+            context,
+            conn: Some(c),
+            read: false,
+        })
+    }
+}
+/// One synchronous connection and read, held/closed by the owning worker.
+#[must_use]
+pub struct ExternalJob<'a> {
+    service: &'a ExternalStatus,
+    context: ExternalContext,
+    conn: Option<Connection>,
+    read: bool,
+}
+impl ExternalJob<'_> {
+    pub fn read(&mut self, owner: &str) -> Answer {
+        self.context.check()?;
+        if self.read || owner.is_empty() || owner.len() > OWNER_BYTES {
+            return Err(Error::Unavailable);
+        }
+        self.read = true;
+        let c = self.conn.as_ref().ok_or(Error::Unavailable)?;
+        sql(c.execute_batch("BEGIN DEFERRED"))?;
+        let answer = (|| {
+            schema(c, &self.context.control, false)?;
+            let product = product(c, self.service.product_override)?;
+            if !product {
+                return self
+                    .service
+                    .policy
+                    .read_with(&self.context.control, false, owner, || {
+                        Err(Error::Unavailable)
+                    });
+            }
+            sql(c.authorizer(Some(|ctx: AuthContext<'_>| {
+                authorization(ctx, Phase::OAuth)
+            })))?;
+            schema(c, &self.context.control, true)?;
+            sql(c.authorizer(Some(|ctx: AuthContext<'_>| {
+                authorization(ctx, Phase::Status)
+            })))?;
+            self.service
+                .policy
+                .read_with(&self.context.control, true, owner, || row(c, owner))
+        })();
+        let rollback = sql(c.execute_batch("ROLLBACK"));
+        self.context.check()?;
+        rollback?;
+        self.service.check()?;
+        answer
+    }
+    pub fn close(mut self) -> Result<(), ExternalFailure> {
+        self.context.active.store(false, Ordering::Release);
+        let c = self.conn.take().ok_or(ExternalFailure {
+            error: Error::Unavailable,
+            pending: None,
+        })?;
+        let _ = c.progress_handler(0, None::<fn() -> bool>);
+        external_close(c, Error::Unavailable)
+    }
+}
+fn product(c: &Connection, override_value: Option<bool>) -> Result<bool, Error> {
+    if let Some(value) = override_value {
+        return Ok(value);
+    }
+    let mut s=sql(c.prepare("SELECT CASE WHEN typeof(value)='text' AND value IN ('true','false') THEN value ELSE NULL END FROM settings WHERE key=?1 COLLATE BINARY"))?;
+    let mut rows = sql(s.query(["feature:chatgptOAuth"]))?;
+    let value = match sql(rows.next())? {
+        None => false,
+        Some(r) => match sql(r.get_ref(0))? {
+            ValueRef::Null => false,
+            ValueRef::Text(b) => b == b"true",
+            _ => return Err(Error::Unavailable),
+        },
+    };
+    if sql(rows.next())?.is_some() {
+        return Err(Error::Unavailable);
+    }
+    Ok(value)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod external_controls {
+    use super::*;
+    fn setup() -> (tempfile::TempDir, Connection, ExternalStatus) {
+        let d = tempfile::tempdir().unwrap();
+        let path = std::fs::canonicalize(d.path()).unwrap();
+        std::fs::write(path.join("secrets.key"), [7; 32]).unwrap();
+        let c = Connection::open(path.join("cowork.db")).unwrap();
+        c.execute_batch("PRAGMA journal_mode=WAL;CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,applied_at INTEGER NOT NULL);INSERT INTO schema_migrations VALUES(5,0);CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);INSERT INTO settings VALUES('feature:chatgptOAuth','true');CREATE TABLE chatgpt_oauth_tokens(user_id TEXT PRIMARY KEY,data_enc TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'connected',updated_at INTEGER NOT NULL);").unwrap();
+        let s = ExternalStatus::open(&path, None, None).unwrap();
+        (d, c, s)
+    }
+    #[test]
+    fn external_status_cancel_snapshot_slot_and_ordinary_wal() {
+        let (_d, c, s) = setup();
+        c.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let control = ExternalContext::new(Instant::now() + Duration::from_secs(2));
+        let mut job = s.job(control.clone()).unwrap();
+        let answer = job.read("u").unwrap();
+        assert_eq!(answer.0, 200);
+        assert!(answer.1.contains("disconnected"));
+        job.close().unwrap();
+        assert!(s.job(control.clone()).is_err());
+        let probe = Connection::open(s.path.join("cowork.db")).unwrap();
+        probe.busy_timeout(Duration::ZERO).unwrap();
+        assert!(
+            probe.execute_batch("BEGIN IMMEDIATE").is_err(),
+            "ROUTING_ASSERT/external/wal_lock"
+        );
+        c.execute_batch("ROLLBACK").unwrap();
+        let cancelled = ExternalContext::new(Instant::now() + Duration::from_secs(2));
+        cancelled.cancel();
+        assert!(s.job(cancelled).is_err());
+        let expired = ExternalContext::new(Instant::now() - Duration::from_millis(1));
+        assert!(s.job(expired).is_err());
+        let fresh = ExternalContext::new(Instant::now() + Duration::from_secs(2));
+        control.cancel();
+        let mut job = s.job(fresh).unwrap();
+        assert_eq!(job.read("u").unwrap().0, 200);
+        job.close().unwrap();
+        c.execute_batch("UPDATE settings SET value='false';DROP TABLE chatgpt_oauth_tokens;")
+            .unwrap();
+        let mut job = s
+            .job(ExternalContext::new(
+                Instant::now() + Duration::from_secs(2),
+            ))
+            .unwrap();
+        assert_eq!(job.read("u").unwrap().0, 404);
+        job.close().unwrap();
+    }
+    #[test]
+    fn external_vm_static_allotment_does_not_reset() {
+        let (_d, c, _s) = setup();
+        c.execute_batch("CREATE TABLE t(x INTEGER);WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<50) INSERT INTO t SELECT x FROM n;").unwrap();
+        configure_ticks(&c, &Control::default(), 1000).unwrap();
+        c.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)
+            .unwrap();
+        for _ in 0..3 {
+            assert_eq!(
+                c.query_row("SELECT count(*) FROM t a,t b,t c", [], |r| r
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                125000
+            );
+        }
+        assert!(
+            c.query_row("SELECT count(*) FROM t a,t b,t c", [], |r| r
+                .get::<_, i64>(0))
+                .is_err(),
+            "ROUTING_ASSERT/external/vm_no_reset"
+        );
     }
 }

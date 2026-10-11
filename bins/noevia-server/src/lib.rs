@@ -3,6 +3,7 @@
 //! gives to Rust and proxies every other request to Node ([`legacy_proxy`], deleted with Node).
 
 pub mod account_routes;
+pub mod chatgpt_worker;
 pub mod code_net;
 pub mod config;
 pub mod health;

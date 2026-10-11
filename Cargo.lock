@@ -337,6 +337,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "chatgpt-status"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "policy-leaves",
+ "proptest",
+ "rusqlite",
+ "rustix",
+ "secret-envelope",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "zeroize",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1591,6 +1608,7 @@ dependencies = [
  "base64 0.22.1",
  "brotli",
  "bytes",
+ "chatgpt-status",
  "code-net-guard",
  "flate2",
  "http-body",
