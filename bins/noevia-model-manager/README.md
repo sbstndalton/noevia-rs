@@ -145,3 +145,7 @@ files; macOS runs semantic fixtures through a test-only adapter and explicitly
 refuses production access. Properties, cancellation/admission controls, no-mutation
 checks and assertion-reaching policy mutations qualify the source. No real models,
 Docker services or production data are used.
+
+## Optional native prompt library
+
+`native-prompts` and `MODEL_MANAGER_PROMPTS_IMPL=rust` move whole prompt CRUD and once-only seed ownership together, default off. See [native prompt contract and qualification boundaries](docs/native-prompts.md) for caps, actual Python oracle provenance, trusted DATA_DIR requirements and the services handoff. Public Node proxy policy remains Node-owned.

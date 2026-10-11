@@ -39,6 +39,7 @@ fn command(path: &std::path::Path, marker: &std::path::Path) -> Command {
         .env_remove("MODEL_MANAGER_IMPL")
         .env_remove("MODEL_MANAGER_HOST_IMPL")
         .env_remove("MODEL_MANAGER_SECTIONS_IMPL")
+        .env_remove("MODEL_MANAGER_PROMPTS_IMPL")
         .env_remove("MODEL_LOADER_TOKEN")
         .env_remove("LLAMA_CONTAINERS")
         .env_remove("DOCKER_HOST");
@@ -78,6 +79,144 @@ fn invalid_selector_and_invalid_token_never_spawn_child() {
 }
 
 #[test]
+fn prompts_selector_omission_and_python_confirmation_are_closed_before_db_or_child() {
+    let (dir, marker) = owned_uvicorn();
+    let database = dir.path().join("data");
+    for (parent, prompts) in [("python", "rust"), ("rust", "invalid"), ("invalid", "rust")] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", parent)
+            .env("MODEL_MANAGER_PROMPTS_IMPL", prompts)
+            .env("DATA_DIR", &database)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(!database.exists());
+        assert!(!marker.exists());
+    }
+    if !cfg!(feature = "native-prompts") {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", "rust")
+            .env("MODEL_MANAGER_PROMPTS_IMPL", "rust")
+            .env("DATA_DIR", &database)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("compiled native-prompts"));
+        assert!(!database.exists());
+        assert!(!marker.exists());
+    }
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script,"#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let output = command(dir.path(), &marker)
+        .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "1")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(42));
+    assert_eq!(std::fs::read_to_string(marker).unwrap(), "unset");
+    assert!(!database.exists());
+}
+
+#[cfg(feature = "native-prompts")]
+#[test]
+fn native_prompts_reject_case_folded_data_dir_aliases_before_side_effects() {
+    let (dir, marker) = owned_uvicorn();
+    let database = dir.path().join("data");
+    for alias in ["data_dir", "Data_Dir", "dAtA_dIr"] {
+        for canonical in [false, true] {
+            let mut cmd = command(dir.path(), &marker);
+            cmd.env("MODEL_MANAGER_IMPL", "rust")
+                .env("MODEL_MANAGER_PROMPTS_IMPL", "rust")
+                .env_remove("DATA_DIR")
+                .env(alias, &database);
+            if canonical {
+                cmd.env("DATA_DIR", dir.path().join("canonical"));
+            }
+            let output = cmd.output().unwrap();
+            assert!(!output.status.success());
+            assert!(String::from_utf8_lossy(&output.stderr).contains("canonical DATA_DIR"));
+            assert!(!database.exists());
+            assert!(!dir.path().join("canonical").exists());
+            assert!(!marker.exists());
+        }
+    }
+    // Python keeps its existing case-insensitive configuration policy.
+    let output = command(dir.path(), &marker)
+        .env("data_dir", &database)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(42));
+    assert!(!database.exists());
+}
+
+#[cfg(all(target_os = "linux", feature = "native-prompts"))]
+#[test]
+fn native_prompt_readiness_precedes_exact_private_child_confirmation() {
+    let _ports = child_ports();
+    let (dir, marker) = owned_uvicorn();
+    let database = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("uvicorn"),"#!/bin/sh\n[ -f \"$DATA_DIR/model_loader.db\" ] || exit 43\nprintf '%s\\n%s\\n%s\\n' \"$NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED\" \"$DATA_DIR\" \"$*\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let output = command(dir.path(), &marker)
+        .env("MODEL_MANAGER_IMPL", "rust")
+        .env("MODEL_MANAGER_PROMPTS_IMPL", "rust")
+        .env("DATA_DIR", database.path())
+        .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "untrusted")
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited")
+    );
+    assert_eq!(
+        std::fs::read_to_string(marker).unwrap(),
+        format!(
+            "1\n{}\napp.main:app --host 127.0.0.1 --port 8091\n",
+            database.path().display()
+        )
+    );
+    let db = rusqlite::Connection::open(database.path().join("model_loader.db")).unwrap();
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM prompts", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        4
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT value FROM kv WHERE key='bench_prompts_seeded'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "1"
+    );
+    // The reaped parent released its writer lock; a second owner can now acquire it.
+    let lock = std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open(database.path().join("model_loader.db.prompts.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+}
+
+#[cfg(feature = "native-logs")]
+#[test]
+fn native_parent_with_prompts_off_replaces_inherited_confirmation_without_database() {
+    let _ports = child_ports();
+    let (dir, marker) = owned_uvicorn();
+    let database = dir.path().join("absent");
+    std::fs::write(dir.path().join("uvicorn"),"#!/bin/sh\nprintf '%s' \"$NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let output = command(dir.path(), &marker)
+        .env("MODEL_MANAGER_IMPL", "rust")
+        .env("DATA_DIR", &database)
+        .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "1")
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited")
+    );
+    assert_eq!(std::fs::read(marker).unwrap(), b"0");
+    assert!(!database.exists());
+}
+
+#[test]
 fn advertised_feature_matches_build_and_never_spawns_child() {
     let (dir, marker) = owned_uvicorn();
     let output = command(dir.path(), &marker)
@@ -93,6 +232,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         }
         if cfg!(feature = "native-sections") {
             expected.push_str("native-sections\n");
+        }
+        if cfg!(feature = "native-prompts") {
+            expected.push_str("native-prompts\n");
         }
         assert_eq!(output.stdout, expected.as_bytes());
     }
