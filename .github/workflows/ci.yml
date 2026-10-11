@@ -544,6 +544,29 @@ jobs:
           cmp crates/server-auth/tests/fixtures/node-auth.v1.json "$RUNNER_TEMP/node-auth.v1.json" \
             || { echo "::error::regenerate crates/server-auth/tests/fixtures/node-auth.v1.json with tools/gen-auth-fixtures.cjs"; exit 1; }
 
+  native-model-manager:
+    name: Native model-manager policy, bounded Docker transport and omission
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: a5161c1d404aefce0928a8c00c64093fd19bc48d
+          path: legacy-services
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Regenerate actual Python policy fixture without starting the app
+        run: |
+          cargo run --locked -q -p noevia-model-manager --bin generate-oracle -- legacy-services/model-manager/app/api.py > "$RUNNER_TEMP/logs.json"
+          cmp bins/noevia-model-manager/tests/fixtures/logs.json "$RUNNER_TEMP/logs.json"
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-logs -- -D warnings
+      - run: cargo test --locked -p noevia-model-manager --features native-logs
+      - name: Feature omission refuses before legacy child spawn
+        run: cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+
   native-ocr:
     name: Native OCR matches the pinned Python sidecar (real engines)
     runs-on: ubuntu-latest

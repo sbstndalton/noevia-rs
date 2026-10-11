@@ -1,0 +1,1355 @@
+{
+  "source_sha256": "cbd633a8f9e150ff8f93fa3191bd7b4dd9278c43d093b19b8d1686ce1f979a19",
+  "services_sha256": "eb11d5357f4e309d2dadf2c01346d404df6d568d5eb579d01eb89c45a7d92a18",
+  "cases": [
+    {
+      "raw": "plain engine log",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "plain engine log"
+        ]
+      }
+    },
+    {
+      "raw": "plain engine log",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "plain engine log",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "plain engine log",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "Authorization: Bearer abcdefghijklmnop123456",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "Authorization: [redacted]"
+        ]
+      }
+    },
+    {
+      "raw": "Authorization: Bearer abcdefghijklmnop123456",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "Authorization: Bearer abcdefghijklmnop123456",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "Authorization: Bearer abcdefghijklmnop123456",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "HF_TOKEN=hf_abcdefghijklmnopqrstuvwxyz0123",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "HF_TOKEN=[redacted]"
+        ]
+      }
+    },
+    {
+      "raw": "HF_TOKEN=hf_abcdefghijklmnopqrstuvwxyz0123",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "HF_TOKEN=hf_abcdefghijklmnopqrstuvwxyz0123",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "HF_TOKEN=hf_abcdefghijklmnopqrstuvwxyz0123",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "config {\"api_key\": \"sk-live-abcdefghijklmnopqrstuv\", \"ctx\": 8192}",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "config {\"api_key\": \"[redacted]\", \"ctx\": 8192}"
+        ]
+      }
+    },
+    {
+      "raw": "config {\"api_key\": \"sk-live-abcdefghijklmnopqrstuv\", \"ctx\": 8192}",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "config {\"api_key\": \"sk-live-abcdefghijklmnopqrstuv\", \"ctx\": 8192}",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "config {\"api_key\": \"sk-live-abcdefghijklmnopqrstuv\", \"ctx\": 8192}",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "remote https://admin:hunter2secret@nextcloud.example/remote.php",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "remote https://[redacted]@nextcloud.example/remote.php"
+        ]
+      }
+    },
+    {
+      "raw": "remote https://admin:hunter2secret@nextcloud.example/remote.php",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "remote https://admin:hunter2secret@nextcloud.example/remote.php",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "remote https://admin:hunter2secret@nextcloud.example/remote.php",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "cookie cowork_session=deadbeefcafebabe1234 ok",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "cookie cowork_session=[redacted] ok"
+        ]
+      }
+    },
+    {
+      "raw": "cookie cowork_session=deadbeefcafebabe1234 ok",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "cookie cowork_session=deadbeefcafebabe1234 ok",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "cookie cowork_session=deadbeefcafebabe1234 ok",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "token: abc123xyz",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "token: [redacted]"
+        ]
+      }
+    },
+    {
+      "raw": "token: abc123xyz",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "token: abc123xyz",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "token: abc123xyz",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "n_tokens = 512",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_tokens = 512"
+        ]
+      }
+    },
+    {
+      "raw": "n_tokens = 512",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "n_tokens = 512",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "n_tokens = 512",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "prompt tokens: 40",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "prompt tokens: 40"
+        ]
+      }
+    },
+    {
+      "raw": "prompt tokens: 40",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "prompt tokens: 40",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "prompt tokens: 40",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "slot session: 3",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "slot session: 3"
+        ]
+      }
+    },
+    {
+      "raw": "slot session: 3",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "slot session: 3",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "slot session: 3",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "n_ctx_slot = 8192",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_ctx_slot = 8192"
+        ]
+      }
+    },
+    {
+      "raw": "n_ctx_slot = 8192",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "n_ctx_slot = 8192",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "n_ctx_slot = 8192",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "fatal failure",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "fatal failure"
+        ]
+      }
+    },
+    {
+      "raw": "fatal failure",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "fatal failure",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "fatal failure",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "fatal failure"
+        ]
+      }
+    },
+    {
+      "raw": "warn: pending",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "warn: pending"
+        ]
+      }
+    },
+    {
+      "raw": "warn: pending",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "warn: pending",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "warn: pending"
+        ]
+      }
+    },
+    {
+      "raw": "warn: pending",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "wrn pending",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "wrn pending"
+        ]
+      }
+    },
+    {
+      "raw": "wrn pending",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "wrn pending",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "wrn pending",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "err pending",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "err pending"
+        ]
+      }
+    },
+    {
+      "raw": "err pending",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "err pending",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "err pending",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "err pending"
+        ]
+      }
+    },
+    {
+      "raw": "bearer ABCDEFGH",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "bearer [redacted]"
+        ]
+      }
+    },
+    {
+      "raw": "bearer ABCDEFGH",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "bearer ABCDEFGH",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "bearer ABCDEFGH",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "aws AKIA1234567890123456",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "aws [redacted]"
+        ]
+      }
+    },
+    {
+      "raw": "aws AKIA1234567890123456",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "aws AKIA1234567890123456",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "aws AKIA1234567890123456",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "github ghp_abcdefghijklmnopqrstuvwxyz",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "github [redacted]"
+        ]
+      }
+    },
+    {
+      "raw": "github ghp_abcdefghijklmnopqrstuvwxyz",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "github ghp_abcdefghijklmnopqrstuvwxyz",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "github ghp_abcdefghijklmnopqrstuvwxyz",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "jwt eyJabcdefgh.abcdefgh.abcdefgh",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "jwt [redacted]"
+        ]
+      }
+    },
+    {
+      "raw": "jwt eyJabcdefgh.abcdefgh.abcdefgh",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "jwt eyJabcdefgh.abcdefgh.abcdefgh",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "jwt eyJabcdefgh.abcdefgh.abcdefgh",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "APİ_KEY=syntheticSECRETxyz",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "APİ_KEY=[redacted]"
+        ]
+      }
+    },
+    {
+      "raw": "APİ_KEY=syntheticSECRETxyz",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "APİ_KEY=syntheticSECRETxyz",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "APİ_KEY=syntheticSECRETxyz",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "apı_key=syntheticSECRETxyz",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "apı_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "raw": "apı_key=syntheticSECRETxyz",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "apı_key=syntheticSECRETxyz",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "apı_key=syntheticSECRETxyz",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "ſecret=syntheticSECRETxyz",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "ſecret=[redacted]"
+        ]
+      }
+    },
+    {
+      "raw": "ſecret=syntheticSECRETxyz",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "ſecret=syntheticSECRETxyz",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "ſecret=syntheticSECRETxyz",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "a\r\nb\r\n",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    {
+      "raw": "a\r\nb\r\n",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "a\r\nb\r\n",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "a\r\nb\r\n",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "a\u000bb\u001ccd e ",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e"
+        ]
+      }
+    },
+    {
+      "raw": "a\u000bb\u001ccd e ",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "a\u000bb\u001ccd e ",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "a\u000bb\u001ccd e ",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "\n\n",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "",
+          ""
+        ]
+      }
+    },
+    {
+      "raw": "\n\n",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "\n\n",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "\n\n",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "",
+      "q": "hunter2",
+      "level": "",
+      "tail": 0,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "",
+      "q": "WARN",
+      "level": "warn",
+      "tail": -9,
+      "clamped": 20,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "raw": "",
+      "q": "",
+      "level": "error",
+      "tail": 99999,
+      "clamped": 2000,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    }
+  ],
+  "inventories": [
+    {
+      "configured": [],
+      "inventory": [
+        {
+          "name": "stopped",
+          "first_image_tag": "GHCR.IO/GGML-ORG/LLAMA.CPP:server"
+        },
+        {
+          "name": "model-loader",
+          "first_image_tag": "llama.cpp:server"
+        },
+        {
+          "name": "other",
+          "first_image_tag": "postgres"
+        },
+        {
+          "name": "stopped",
+          "first_image_tag": "llama.cpp"
+        },
+        {
+          "name": "cpu",
+          "first_image_tag": "vendor/llama.cpp:server"
+        }
+      ],
+      "expected": [
+        "stopped",
+        "cpu"
+      ]
+    },
+    {
+      "configured": [
+        "configured",
+        "configured"
+      ],
+      "inventory": [
+        {
+          "name": "stopped",
+          "first_image_tag": "GHCR.IO/GGML-ORG/LLAMA.CPP:server"
+        },
+        {
+          "name": "model-loader",
+          "first_image_tag": "llama.cpp:server"
+        },
+        {
+          "name": "other",
+          "first_image_tag": "postgres"
+        },
+        {
+          "name": "stopped",
+          "first_image_tag": "llama.cpp"
+        },
+        {
+          "name": "cpu",
+          "first_image_tag": "vendor/llama.cpp:server"
+        }
+      ],
+      "expected": [
+        "configured",
+        "stopped",
+        "cpu"
+      ]
+    },
+    {
+      "configured": [
+        "model-loader",
+        "stopped",
+        "configured"
+      ],
+      "inventory": [
+        {
+          "name": "stopped",
+          "first_image_tag": "GHCR.IO/GGML-ORG/LLAMA.CPP:server"
+        },
+        {
+          "name": "model-loader",
+          "first_image_tag": "llama.cpp:server"
+        },
+        {
+          "name": "other",
+          "first_image_tag": "postgres"
+        },
+        {
+          "name": "stopped",
+          "first_image_tag": "llama.cpp"
+        },
+        {
+          "name": "cpu",
+          "first_image_tag": "vendor/llama.cpp:server"
+        }
+      ],
+      "expected": [
+        "model-loader",
+        "stopped",
+        "configured",
+        "cpu"
+      ]
+    }
+  ]
+}
