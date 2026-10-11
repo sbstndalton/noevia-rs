@@ -580,7 +580,7 @@ dependencies = [
 name = "docling-service"
 version = "0.1.0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "nix",
  "proptest",
  "serde_json",
