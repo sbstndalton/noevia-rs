@@ -1,11 +1,27 @@
 //! noevia-server binary: reads the environment (see config.rs), listens on UI_HOST:UI_PORT.
 
 use noevia_server::{config::Config, serve, App};
+use std::io::{self, Write};
 use std::process::ExitCode;
 use std::time::Duration;
 
 /// How long in-flight requests (a streaming chat) get after SIGTERM before the process exits.
 const DRAIN: Duration = Duration::from_secs(5);
+
+/// A capability probe succeeds only after every line reaches its writer.
+fn write_features(writer: &mut impl Write) -> io::Result<()> {
+    for feature in noevia_server::FEATURES {
+        writeln!(writer, "{feature}")?;
+    }
+    writer.flush()
+}
+
+fn feature_probe(writer: &mut impl Write) -> ExitCode {
+    match write_features(writer) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(_) => ExitCode::FAILURE,
+    }
+}
 
 async fn terminated() {
     #[cfg(unix)]
@@ -33,10 +49,7 @@ async fn terminated() {
 async fn main() -> ExitCode {
     // build/web-supervisor.sh asks before choosing this front (sbstndalton/noevia#1246).
     if std::env::args().nth(1).as_deref() == Some("--features") {
-        for f in noevia_server::FEATURES {
-            println!("{f}");
-        }
-        return ExitCode::SUCCESS;
+        return feature_probe(&mut io::stdout().lock());
     }
     let config = match Config::from_lookup(|k| std::env::var(k).ok()) {
         Ok(c) => c,
@@ -131,5 +144,96 @@ async fn main() -> ExitCode {
     tokio::select! {
         () = server => ExitCode::SUCCESS,
         _ = drained => ExitCode::SUCCESS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct ProbeWriter {
+        output: Vec<u8>,
+        max_write: usize,
+        fail_after: Option<usize>,
+        flush_error: bool,
+        flushed: bool,
+    }
+
+    impl Write for ProbeWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self
+                .fail_after
+                .is_some_and(|limit| self.output.len() >= limit)
+            {
+                return Err(io::ErrorKind::BrokenPipe.into());
+            }
+            let remaining = self
+                .fail_after
+                .map_or(bytes.len(), |limit| limit.saturating_sub(self.output.len()));
+            let count = bytes.len().min(self.max_write).min(remaining);
+            self.output.extend(bytes.iter().take(count));
+            Ok(count)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.flushed = true;
+            if self.flush_error {
+                Err(io::ErrorKind::BrokenPipe.into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn expected() -> Vec<u8> {
+        noevia_server::FEATURES
+            .iter()
+            .flat_map(|f| f.bytes().chain(std::iter::once(b'\n')))
+            .collect()
+    }
+
+    #[test]
+    fn complete_output_handles_partial_writes_and_flushes() {
+        let mut writer = ProbeWriter {
+            max_write: 1,
+            ..ProbeWriter::default()
+        };
+        assert_eq!(feature_probe(&mut writer), ExitCode::SUCCESS);
+        assert_eq!(writer.output, expected());
+        assert!(writer.flushed);
+    }
+
+    #[test]
+    fn broken_pipe_before_or_during_output_fails_without_flush() {
+        for limit in [0, 3] {
+            let mut writer = ProbeWriter {
+                max_write: 2,
+                fail_after: Some(limit),
+                ..ProbeWriter::default()
+            };
+            assert_eq!(feature_probe(&mut writer), ExitCode::FAILURE);
+            assert_eq!(writer.output.len(), limit);
+            assert!(!writer.flushed);
+        }
+    }
+
+    #[test]
+    fn flush_failure_is_a_failed_probe_even_after_complete_output() {
+        let mut writer = ProbeWriter {
+            max_write: usize::MAX,
+            flush_error: true,
+            ..ProbeWriter::default()
+        };
+        assert_eq!(feature_probe(&mut writer), ExitCode::FAILURE);
+        assert_eq!(writer.output, expected());
+        assert!(writer.flushed);
+    }
+
+    #[test]
+    fn zero_progress_writer_fails() {
+        let mut writer = ProbeWriter::default();
+        assert_eq!(feature_probe(&mut writer), ExitCode::FAILURE);
+        assert!(!writer.flushed);
     }
 }

@@ -24,28 +24,40 @@ projects_confirmed=""
 usage_confirmed=""
 sampling_confirmed=""
 reasoning_confirmed=""
+# Capture once on the first needed check, before confirming ownership.
+features=""
+features_loaded=""
+has_feature() {
+  if [ -z "$features_loaded" ]; then
+    features=$("$front" --features) || { echo "replay-front: $front capability probe failed" >&2; exit 2; }
+    features_loaded=1
+  fi
+  grep -qx "$1" <<EOF
+$features
+EOF
+}
 if [ "${NOEVIA_RUST_AUTH:-}" = 1 ]; then
-  "$front" --features | grep -qx rust-auth || { echo "replay-front: $front has no rust-auth" >&2; exit 2; }
+  has_feature rust-auth || { echo "replay-front: $front has no rust-auth" >&2; exit 2; }
   confirmed=1
 fi
 if [ "${NOEVIA_RUST_PROJECTS:-}" = 1 ]; then
   [ -n "$confirmed" ] || { echo "replay-front: NOEVIA_RUST_PROJECTS=1 needs NOEVIA_RUST_AUTH=1" >&2; exit 2; }
-  "$front" --features | grep -qx rust-projects || { echo "replay-front: $front has no rust-projects" >&2; exit 2; }
+  has_feature rust-projects || { echo "replay-front: $front has no rust-projects" >&2; exit 2; }
   projects_confirmed=1
 fi
 if [ "${NOEVIA_RUST_USAGE:-}" = 1 ]; then
   [ -n "$confirmed" ] || { echo "replay-front: usage needs native auth" >&2; exit 2; }
-  "$front" --features | grep -qx rust-usage || { echo "replay-front: no rust-usage" >&2; exit 2; }
+  has_feature rust-usage || { echo "replay-front: no rust-usage" >&2; exit 2; }
   usage_confirmed=1
 fi
 if [ "${NOEVIA_RUST_SAMPLING_SETTINGS:-}" = 1 ]; then
   [ -n "$confirmed" ] || { echo "replay-front: sampling settings need native auth" >&2; exit 2; }
-  "$front" --features | grep -qx rust-sampling-settings || { echo "replay-front: no rust-sampling-settings" >&2; exit 2; }
+  has_feature rust-sampling-settings || { echo "replay-front: no rust-sampling-settings" >&2; exit 2; }
   sampling_confirmed=1
 fi
 if [ "${NOEVIA_RUST_REASONING_SETTINGS:-}" = 1 ]; then
   [ -n "$confirmed" ] || { echo "replay-front: reasoning default needs native auth" >&2; exit 2; }
-  "$front" --features | grep -qx rust-reasoning-settings || { echo "replay-front: no rust-reasoning-settings" >&2; exit 2; }
+  has_feature rust-reasoning-settings || { echo "replay-front: no rust-reasoning-settings" >&2; exit 2; }
   reasoning_confirmed=1
 fi
 UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" \
