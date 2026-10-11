@@ -316,6 +316,13 @@ pub fn certify(
     {
         return Err("extra/missing assertion payload".into());
     }
+    let cargo_at = err_lines
+        .iter()
+        .position(|l| l.starts_with("error:"))
+        .ok_or("missing terminal cargo footer")?;
+    if cargo_at <= panic_at + 1 || err_lines.iter().skip(cargo_at + 1).any(|l| !l.is_empty()) {
+        return Err("cargo footer order/terminal mismatch".into());
+    }
     // Rust assertion bodies may carry only comparison values followed by the standard note.
     let body = err_lines
         .iter()

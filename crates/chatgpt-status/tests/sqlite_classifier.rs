@@ -204,3 +204,37 @@ fn rust_nocapture_empty_section_requires_single_final_failure_inventory() -> Res
     }
     Ok(())
 }
+
+#[test]
+fn cargo_footer_follows_assertion_and_terminates_stderr() -> Result<(), String> {
+    let b = binding()?;
+    let (out, err) = captures();
+    let footer = "error: test failed, to rerun pass --test sqlite\n";
+    let body = err.strip_suffix(footer).ok_or("control footer")?;
+    assert!(assertions::certify(
+        Some(101),
+        out.as_bytes(),
+        format!("{err}\n\n").as_bytes(),
+        &b,
+        SOURCE
+    )
+    .is_ok());
+    for forged in [
+        format!("{err}unexpected trailing record\n"),
+        format!("{err}   Compiling trailing setup\n"),
+        format!("{err}  left: trailing comparison\n"),
+        format!("{err}note: run with `RUST_BACKTRACE=1` trailing note\n"),
+        format!("{footer}{body}"),
+        body.replacen("  left: 1\n", &format!("{footer}  left: 1\n"), 1),
+        body.replacen(
+            "assertion `left == right` failed:",
+            &format!("{footer}assertion `left == right` failed:"),
+            1,
+        ),
+    ] {
+        assert!(
+            assertions::certify(Some(101), out.as_bytes(), forged.as_bytes(), &b, SOURCE).is_err()
+        );
+    }
+    Ok(())
+}
