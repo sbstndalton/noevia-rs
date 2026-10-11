@@ -413,7 +413,10 @@ pub fn materialize(args: &[String]) -> Result<Value> {
         require(Instant::now() < deadline, "source scan deadline")?;
         let record = std::str::from_utf8(record)?;
         let (identity, name) = record.split_once('\t').ok_or("git record")?;
-        if name != "package.json" && name != "package-lock.json" && !name.ends_with(".cjs") {
+        if name != "server/package.json"
+            && name != "server/package-lock.json"
+            && !name.ends_with(".cjs")
+        {
             continue;
         }
         let path = relative(name)?;
@@ -439,7 +442,7 @@ pub fn materialize(args: &[String]) -> Result<Value> {
             "source total before append",
         )?;
         for (manifest, sha) in MANIFESTS {
-            if name == manifest {
+            if name == format!("server/{manifest}") {
                 require(digest(&bytes) == sha, "fixed core manifest")?;
             }
         }
@@ -452,14 +455,18 @@ pub fn materialize(args: &[String]) -> Result<Value> {
     require(
         source
             .iter()
-            .filter(|(p, _, _, _)| MANIFESTS.iter().any(|(m, _)| p == Path::new(m)))
+            .filter(|(p, _, _, _)| {
+                MANIFESTS
+                    .iter()
+                    .any(|(m, _)| p == Path::new(&format!("server/{m}")))
+            })
             .count()
             == 2,
         "both fixed manifests present",
     )?;
     let lock_bytes = &source
         .iter()
-        .find(|(p, _, _, _)| p == Path::new("package-lock.json"))
+        .find(|(p, _, _, _)| p == Path::new("server/package-lock.json"))
         .ok_or("lock source")?
         .1;
     let lock: Value = serde_json::from_slice(lock_bytes)?;
