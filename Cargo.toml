@@ -28,9 +28,9 @@ panic = "abort"
 strip = true
 debug = false
 
-# noevia#1212: code-actions' timed tests (deep `find -exec` chains, reading-work refusals) bound
-# wall-clock time; build that crate and the JSON reader it uses optimised under `cargo test` so the
-# bounds mean what the wasm module does.
+# noevia#1212/#1328: keep code-actions and its JSON reader optimized for semantic/adversarial
+# debug coverage. Wall-clock budgets are qualified separately in the mandatory single-worker
+# release-profile CI phase; this mixed debug profile is not a deployed-build timing guarantee.
 [profile.dev.package.code-actions]
 opt-level = 3
 

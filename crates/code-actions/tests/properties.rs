@@ -16,6 +16,8 @@ use code_actions::{
 use prompt_framing::js::units;
 use proptest::prelude::*;
 use std::time::{Duration, Instant};
+#[path = "support/performance.rs"]
+mod performance;
 
 const WORDS: &[&str] = &[
     "ls",
@@ -218,10 +220,10 @@ fn find_chains_are_linear() {
         let cmd = format!("find {}", "-exec find ".repeat(n));
         let t = Instant::now();
         let r = analyze_command(&units(&cmd));
-        assert!(
-            t.elapsed() < Duration::from_millis(10),
-            "{n}: {:?}",
-            t.elapsed()
+        performance::under(
+            t.elapsed(),
+            Duration::from_millis(10),
+            &format!("{n} levels"),
         );
         match n {
             64 => assert_eq!(r.unwrap().actions, vec![Action::Execute]),
@@ -258,10 +260,10 @@ fn large_and_deep_inputs_stay_bounded() {
             })
             .min()
             .unwrap();
-        assert!(
-            took < Duration::from_millis(10),
-            "{} chars: {took:?}",
-            cmd.len()
+        performance::under(
+            took,
+            Duration::from_millis(10),
+            &format!("{} chars", cmd.len()),
         );
     }
     // Over the request cap: refused.

@@ -1,11 +1,14 @@
 //! noevia#1212: nested `find -exec find -exec …` chains answer in linear time, the same answer as
 //! code-actions.cjs after noevia#1201 (more than 64 `-exec`s: every class but none/read, never
-//! standing), and a reading-work refusal comes back in well under 10 ms.
+//! standing). Unchanged wall-clock budgets are qualified in the required release phase;
+//! debug runs retain every semantic/refusal/linear-work case.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::time::{Duration, Instant};
 
 use code_actions::call;
+#[path = "support/performance.rs"]
+mod performance;
 
 /// `find .`, then `n` times `-exec find .`, then `-print`, then `n` terminators (the #1212 probe).
 fn chain(n: usize) -> String {
@@ -79,10 +82,10 @@ fn a_1000_level_chain_answers_in_under_10_ms() {
     let (status, reply, took) = fastest(&chain(1000));
     assert_eq!(status, 0, "{reply}");
     eprintln!("1000 levels: {took:?}");
-    assert!(took < Duration::from_millis(10), "{took:?}");
+    performance::under(took, Duration::from_millis(10), "deep chain/refusal");
     let (_, _, took) = fastest(&chain(64));
     eprintln!("64 levels: {took:?}");
-    assert!(took < Duration::from_millis(10), "64 levels: {took:?}");
+    performance::under(took, Duration::from_millis(10), "64 levels");
 }
 
 #[test]
@@ -108,7 +111,7 @@ fn reading_work_refusals_come_back_in_under_10_ms() {
         assert_eq!(status, 1, "{}", &reply[..reply.len().min(200)]);
         assert_eq!(reply, r#"{"error":"too_large"}"#);
         eprintln!("refusal ({} chars): {took:?}", shape.len());
-        assert!(took < Duration::from_millis(10), "{took:?}");
+        performance::under(took, Duration::from_millis(10), "deep chain/refusal");
     }
 }
 
@@ -123,5 +126,5 @@ fn many_distinct_write_targets_answer_in_linear_time() {
     assert_eq!(status, 0, "{}", &reply[..reply.len().min(200)]);
     assert!(reply.contains(&format!("\"f{}\"]", n - 1)));
     eprintln!("{n} distinct writes: {took:?}");
-    assert!(took < Duration::from_millis(100), "{took:?}");
+    performance::under(took, Duration::from_millis(100), "distinct writes");
 }
