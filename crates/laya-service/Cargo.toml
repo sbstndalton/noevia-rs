@@ -1,0 +1,19 @@
+[package]
+name = "laya-service"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+[lints]
+workspace = true
+[dependencies]
+serde_json = "1"
+prompt-framing = { path = "../prompt-framing" }
+nix = { version = "0.30", features = ["signal", "process"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "process", "io-util"] }
+[dev-dependencies]
+tempfile = "3"
+proptest = "1"
+sha2 = "0.10"
+base64 = "0.22"

@@ -1,0 +1,43 @@
+# Native Laya front (S4, issue1326)
+
+Build `cargo build --locked -p noevia-laya --features native-laya`. The selector
+`NOEVIA_LAYA_IMPL=python|rust` defaults to Python and preserves the exact legacy
+`python /service/server.py` exec. Rust selection without the compiled feature
+fails before a listener or child starts. Native failures never invoke Python HTTP.
+
+Rust owns private port8040, GET `/health`, POST `/v1/decisions`, validation,
+admission, deadlines, process supervision and bounded I/O. Fixed Python worker
+`/service/server.py --engine-worker` remains the Laya/PyTorch engine exception.
+One to four workers load independent copies; the existing private internal network,
+offline environment and read-only `/model` mount remain the deployment boundary.
+This source PR does not change Docker wiring, pins, network, models or owner flags.
+
+Production defaults:90-second startup;1.3-second decision deadline with valid
+`LAYA_DECISION_TIMEOUT_S`0.5–2; queue2 seconds with `LAYA_QUEUE_TIMEOUT_MS`0–10000;
+`LAYA_MAX_CONCURRENCY`1–4; abandoned work grace15 seconds; replacement attempts
+after0/2/8 seconds. Exhausted recovery makes the front exit nonzero. The engine
+retains context-budget checks and `LAYA_KEEP_WARM_S` behavior. Deadlines or client
+cancellation retain unfinished work only within grace, discard its reply, and
+send no new work behind it. Health does not acquire inference slots.
+
+Limits:16KiB request/frame/JSON response,16KiB headers,99 fields,64 connections,
+3-second header/body/write deadlines. Chunked transfer, pipelining, incomplete
+bodies, malformed HTTP and excessive connections are refused. These bounds harden
+the existing private HTTP implementation; they are not arbitrary-protocol parity
+claims. HTTP cancellation treats full close or write-half shutdown as abandonment.
+Linux uses non-reaping waitid to detect an exited engine even when a descendant
+retains its pipe. On macOS idle exit detection relies on pipe EOF; Linux CI is
+the deployment qualification. Owned groups are killed before leaders are reaped.
+
+Qualification uses actual merged services worker commit
+`4f3cf816225d4ed12db33fd8e4a7e2d7ae946a4b`, independently matching codeload SHA256
+`13ba33192b044c91034ba9e9dff3c371e5cf85d197b8467bcae5c151c2294c17`.
+Set `NOEVIA_LAYA_REFERENCE` to that checkout's `laya` directory. Run
+`cargo run --locked -p laya-service --example gen-fixtures -- "$NOEVIA_LAYA_REFERENCE" /tmp/laya-http.json`
+and compare the committed fixture, then `cargo test --locked -p laya-service`.
+The oracle hashes actual server.py and runs its HTTP/Pool/Runtime/worker code with
+fixed synthetic torch/laya collaborators. Cases, HTTP clients, fixture preparation
+and serialization are Rust. Mandatory CI uses production Python3.12 and includes
+the full unsupported-method HTML comparison; local3.14 has a different template
+and cannot qualify that surface. No real ML import, inference, model loading,
+download, model quality or speed qualification is included.
