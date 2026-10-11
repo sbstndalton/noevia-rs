@@ -764,13 +764,14 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     }
     let body_deadline = deadline.min(Instant::now() + Duration::from_secs(10));
     if status == 204 || status == 205 {
-        return response_ipc::encode(
+        return body_reply(
             Reply::Http {
                 status,
                 capped: false,
                 payload: &[],
             },
             cap,
+            body_deadline,
         );
     }
     let codec_plan = match response_codecs::Plan::headers(response.headers()) {
@@ -830,13 +831,14 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     if Instant::now() >= body_deadline {
                         return failure(Phase::Body, TransportFailure::Timeout, cap);
                     }
-                    return response_ipc::encode(
+                    return body_reply(
                         Reply::Http {
                             status,
                             capped: true,
                             payload: &payload,
                         },
                         cap,
+                        body_deadline,
                     );
                 }
             }
@@ -852,14 +854,25 @@ async fn exchange<IO: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     if Instant::now() >= body_deadline {
         return failure(Phase::Body, TransportFailure::Timeout, cap);
     }
-    response_ipc::encode(
+    body_reply(
         Reply::Http {
             status,
             capped: false,
             payload: &payload,
         },
         cap,
+        body_deadline,
     )
+}
+fn body_reply(reply: Reply<'_>, cap: usize, deadline: Instant) -> Result<Vec<u8>, Error> {
+    if Instant::now() >= deadline {
+        return failure(Phase::Body, TransportFailure::Timeout, cap);
+    }
+    let frame = response_ipc::encode(reply, cap)?;
+    if Instant::now() >= deadline {
+        return failure(Phase::Body, TransportFailure::Timeout, cap);
+    }
+    Ok(frame)
 }
 /// Runtime startup precedes READY. No DNS worker is created in this phase.
 pub fn runtime() -> Result<tokio::runtime::Runtime, Error> {
