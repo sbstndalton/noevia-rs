@@ -33,7 +33,8 @@ pub const WASM_SHA: &str = "040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd
 pub const NOW: i64 = 1_700_000_000_000;
 // Root must replace these only after inspecting the exact retained stage bytes.
 // Empty means unapproved; neither the CLI nor the tool can approve itself.
-pub const APPROVED_MANIFEST_SHA: &str = "";
+pub const APPROVED_MANIFEST_SHA: &str =
+    "c0643f2c3d0fc58b115b08d14938f1e5e79e2da51ee56bf980950939064b8860";
 pub const APPROVED_PREFLIGHT_SHA: &str = "";
 pub const GIT_EVIDENCE: &str = "/tmp/m4-storage-factory-git-third-attempt";
 pub const CAPTURE_ROOT: &str = "/tmp/m4-storage-factory-capture-second-attempt";
