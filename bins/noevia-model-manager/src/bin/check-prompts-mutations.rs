@@ -32,6 +32,7 @@ fn assertions(
         "auth_precedes_method_path_body_and_no_fallback" => ("prompts/tests.rs", &["assert_eq!(\n            request(state.clone(), method, path, body, false).await,"]),
         "independent_seed_commits_restart_and_deleted_seed_retention" => ("prompts/store_tests.rs", &["assert_eq!(s.list().unwrap().len(), 3);"]),
         "literal_bytes_and_python_coercion_from_real_oracle" if file == "prompts/literals.rs" => ("prompts/tests.rs", &["assert_eq!(*name, literal[0].as_str().unwrap());"]),
+        "literal_bytes_and_python_coercion_from_real_oracle" if file == "prompts/text.rs" && before == "Value::Bool(true) => out.add(\"True\")" => ("prompts/tests.rs", &["assert_eq!(\n                serde_json::json!([fields.0, fields.1]),", "assert_eq!(\n                result.unwrap(),\n                (\n                    prompt[\"name\"].as_str().unwrap().to_owned(),"]),
         "literal_bytes_and_python_coercion_from_real_oracle" => ("prompts/tests.rs", &["assert_eq!(\n                serde_json::json!([fields.0, fields.1]),"]),
         "actual_python_seed_flags_case_variants_and_nocase_ties" => ("prompts/store_tests.rs", &["assert_eq!(run(&mut s, Operation::List).unwrap(), case[\"expected\"]);"]),
         "resource_caps_apply_before_native_text_and_store" => ("prompts/tests.rs", &["assert_eq!(\n        (NAME_CAP, BODY_CAP, ROW_CAP, RESPONSE_CAP),"]),
@@ -229,13 +230,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if mode.as_deref().is_some_and(|m| {
         !matches!(
             m,
-            "--schema-only" | "--shutdown-only" | "--raw-only" | "--ownership-only"
+            "--schema-only"
+                | "--shutdown-only"
+                | "--raw-only"
+                | "--ownership-only"
+                | "--coercion-only"
         )
     }) || args.next().is_some()
     {
         return Err("unexpected arguments".into());
     }
-    if mode.is_none() {
+    if mode.is_none() || mode.as_deref() == Some("--coercion-only") {
         for (file,before,after,test,kind) in [
         ("lib.rs","if path != \"/api/v1/health\" && !state.token.is_empty()","if path != \"/api/v1/health\" && !path.starts_with(\"/api/v1/prompts\") && !state.token.is_empty()","auth_precedes_method_path_body_and_no_fallback","lib"),
         ("prompts/store.rs","if length > 0 {","if false && length > 0 {","independent_seed_commits_restart_and_deleted_seed_retention","lib"),
@@ -247,7 +252,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("prompts/store.rs","self.db.progress_handler(\n            1,","self.db.progress_handler(\n            1000,","cancelled_busy_delete_cannot_commit_after_unlock","lib"),
         ("prompts/store.rs","let id = match op {","sql(self.db.execute_batch(\"BEGIN\"))?;\n        let id = match op {","failed_readback_does_not_undo_committed_post_or_delete","lib"),
         ("main.rs","key != \"DATA_DIR\" && key.eq_ignore_ascii_case(\"DATA_DIR\")","false && key != \"DATA_DIR\" && key.eq_ignore_ascii_case(\"DATA_DIR\")","canonical_root_default_and_alias_policy_is_pure","main"),
-    ] {mutation(file,before,after,test,kind)?;}
+    ] {
+        if mode.as_deref() == Some("--coercion-only") && before != "Value::Bool(true) => out.add(\"True\")" { continue; }
+        mutation(file,before,after,test,kind)?;
+    }
     }
     if mode.is_none() || mode.as_deref() == Some("--schema-only") {
         mutation(
@@ -325,6 +333,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
+    #[test]
+    fn boolean_coercion_binds_post_tuple_and_explicit_coercion_only() {
+        let test = "literal_bytes_and_python_coercion_from_real_oracle";
+        let expected = assertions(
+            "prompts/text.rs",
+            "Value::Bool(true) => out.add(\"True\")",
+            test,
+        )
+        .unwrap();
+        assert_eq!(expected.len(), 2);
+        let literal = assertions("prompts/literals.rs", "Bench: coding", test).unwrap();
+        assert_eq!(literal.len(), 1);
+        let stderr = "error: test failed, to rerun pass -p noevia-model-manager --lib\n";
+        for assertion in &expected {
+            let out = format!("\nrunning 1 test\nprompts::tests::{test} --- FAILED\n\n---- prompts::tests::{test} stdout ----\nthread 'prompts::tests::{test}' (9012) panicked at {}:{}:13:\nassertion `left == right` failed\n left: true\n right: True\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 44 filtered out;\n", assertion.path, assertion.line);
+            assert!(semantic_failure(Some(101), &out, stderr, test, &expected));
+            assert!(!semantic_failure(Some(101), &out, stderr, test, &literal));
+            for (code, invalid, error) in [
+                (Some(0), out.clone(), stderr),
+                (
+                    Some(101),
+                    out.replace(
+                        &format!("{}:{}:", assertion.path, assertion.line),
+                        &format!("{}:1:", assertion.path),
+                    ),
+                    stderr,
+                ),
+                (
+                    Some(101),
+                    out.replace(
+                        "assertion `left == right` failed",
+                        "called `Result::unwrap()` on an `Err` value: setup",
+                    ),
+                    stderr,
+                ),
+                (
+                    Some(101),
+                    out.replace("assertion `left == right` failed", "fixture setup failed"),
+                    stderr,
+                ),
+                (Some(101), out.replace(test, "other_test"), stderr),
+                (Some(101), out.clone(), "error: could not compile fixture\n"),
+            ] {
+                assert!(!semantic_failure(code, &invalid, error, test, &expected));
+            }
+        }
+    }
     #[test]
     fn semantic_classifier_rejects_infrastructure_and_wrong_assertion() {
         let expected = [Assertion {
