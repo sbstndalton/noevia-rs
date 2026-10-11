@@ -23,6 +23,7 @@ regex = "1"
 serde = "1"
 reqwest = { version = "0.12", default-features = false, features = ["stream"] }
 serde_json = "1"
+sha2 = "0.10"
 server-auth = { path = "../../crates/server-auth" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "process", "signal", "io-util", "fs"] }
 [dev-dependencies]
