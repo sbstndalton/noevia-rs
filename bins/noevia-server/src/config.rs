@@ -36,6 +36,8 @@ pub struct Config {
     /// M6 requires native identity/upkeep.
     pub rust_usage: bool,
     pub rust_reasoning_settings: Option<server_store::RustReasoningSettings>,
+    pub rust_routing_mode: Option<server_store::RustRoutingMode>,
+    pub routing_feature_env: Option<bool>,
     pub rust_sampling_settings: Option<server_store::RustSamplingSettings>,
     pub usage_clock: Result<server_usage::summary::Clock, server_usage::Fault>,
     /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
@@ -106,6 +108,7 @@ impl Config {
             rust_usage: self.rust_usage,
             rust_sampling_settings: self.rust_sampling_settings.is_some(),
             rust_reasoning_settings: self.rust_reasoning_settings.is_some(),
+            rust_routing_mode: self.rust_routing_mode.is_some(),
         }
     }
 
@@ -154,6 +157,21 @@ impl Config {
             } else {
                 None
             };
+        let rust_routing_mode = if get(server_store::RustRoutingMode::ENV).as_deref() == Some("1") {
+            let auth = rust_auth.ok_or("NOEVIA_RUST_ROUTING_MODE=1 needs NOEVIA_RUST_AUTH=1")?;
+            if !cfg!(feature = "rust-routing-mode") {
+                return Err("NOEVIA_RUST_ROUTING_MODE=1 needs compiled rust-routing-mode".into());
+            }
+            server_store::RustRoutingMode::from_env_value(Some("1"), auth)
+        } else {
+            None
+        };
+        let routing_feature_env = if rust_routing_mode.is_some() {
+            server_routing_mode::feature_env(get("NOEVIA_FEATURE_ROUTING_MODES").as_deref())
+                .map_err(|e| e.message)?
+        } else {
+            None
+        };
         Ok(Config {
             host,
             port,
@@ -179,6 +197,8 @@ impl Config {
             rust_usage,
             rust_sampling_settings,
             rust_reasoning_settings,
+            rust_routing_mode,
+            routing_feature_env,
             usage_clock: server_usage::summary::Clock::system(&get),
         })
     }
@@ -359,5 +379,50 @@ mod tests {
             crate::FEATURES.contains(&"rust-reasoning-settings"),
             cfg!(feature = "rust-reasoning-settings")
         );
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod routing_tests {
+    use super::*;
+    #[test]
+    fn routing_switch_is_exact_auth_required_compiled_and_product_independent() {
+        for selector in [None, Some("0"), Some("true"), Some(" 1"), Some("1 ")] {
+            let c = Config::from_lookup(|k| match k {
+                "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+                "NOEVIA_RUST_ROUTING_MODE" => selector.map(str::to_owned),
+                _ => None,
+            })
+            .unwrap();
+            assert!(c.rust_routing_mode.is_none());
+        }
+        assert!(Config::from_lookup(|k| match k {
+            "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+            "NOEVIA_RUST_ROUTING_MODE" => Some("1".into()),
+            _ => None,
+        })
+        .is_err());
+        let enabled = Config::from_lookup(|k| match k {
+            "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+            "NOEVIA_RUST_ROUTING_MODE" | "NOEVIA_RUST_AUTH" => Some("1".into()),
+            _ => None,
+        });
+        if cfg!(feature = "rust-routing-mode") {
+            assert!(enabled.unwrap().rust_routing_mode.is_some());
+        } else {
+            assert!(enabled.unwrap_err().contains("compiled rust-routing-mode"));
+        }
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-routing-mode"),
+            cfg!(feature = "rust-routing-mode")
+        );
+        let invalid = Config::from_lookup(|k| match k {
+            "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+            "NOEVIA_RUST_ROUTING_MODE" | "NOEVIA_RUST_AUTH" => Some("1".into()),
+            "NOEVIA_FEATURE_ROUTING_MODES" => Some("not-a-boolean".into()),
+            _ => None,
+        });
+        assert!(invalid.is_err());
     }
 }

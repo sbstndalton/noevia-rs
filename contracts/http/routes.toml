@@ -677,11 +677,13 @@ owner = "node"
 
 [[route]]
 path = "/api/routing-mode"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_ROUTING_MODE"
 
 [[route]]
 path = "/api/routing-mode/allowed"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_ROUTING_MODE"
 
 [[route]]
 path = "/api/sampling-settings"

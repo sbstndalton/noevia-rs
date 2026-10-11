@@ -12,6 +12,7 @@ pub mod project_routes;
 pub mod reasoning_settings_routes;
 pub mod reply;
 pub mod routes;
+pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
 pub mod static_files;
@@ -39,6 +40,8 @@ pub const FEATURES: &[&str] = &[
     "rust-sampling-settings",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
+    #[cfg(feature = "rust-routing-mode")]
+    "rust-routing-mode",
 ];
 
 pub struct App {
@@ -56,6 +59,9 @@ pub struct App {
     pub usage: Arc<usage_routes::UsageLayer>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
+    pub routing_mode: Arc<tokio::sync::Semaphore>,
+    pub routing_files:
+        Option<Result<server_routing_mode::storage::Root, server_routing_mode::storage::Fault>>,
 }
 
 impl App {
@@ -70,6 +76,13 @@ impl App {
         let identity = Arc::new(identity::IdentityLayer::new(&config));
         let writes = Arc::new(upkeep::WriterLayer::new(&config));
         let accounts = Arc::new(account_routes::AccountLayer::new(&config));
+        let routing_files = config.rust_routing_mode.map(|_| {
+            config
+                .data_dir
+                .as_deref()
+                .ok_or(server_routing_mode::storage::Fault::Unavailable)
+                .and_then(server_routing_mode::storage::Root::open)
+        });
         Arc::new(App {
             identity,
             writes,
@@ -77,6 +90,8 @@ impl App {
             usage: Arc::new(usage_routes::UsageLayer::default()),
             reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
+            routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
+            routing_files,
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -119,6 +134,7 @@ async fn handle(
                         | routes::Native::Usage
                         | routes::Native::SamplingSettings
                         | routes::Native::ReasoningSettings
+                        | routes::Native::RoutingMode
                 )
             ) {
                 native = on_whatwg;
@@ -133,7 +149,8 @@ async fn handle(
             | routes::Native::ProjectAssets
             | routes::Native::Usage
             | routes::Native::SamplingSettings
-            | routes::Native::ReasoningSettings,
+            | routes::Native::ReasoningSettings
+            | routes::Native::RoutingMode,
         )
         | None => false,
     };
@@ -153,6 +170,12 @@ async fn handle(
         .await;
     }
     match native {
+        Some(routes::Native::RoutingMode) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            routing_mode_routes::serve(&app, conn, req, p).await
+        }
         Some(routes::Native::Account) => {
             let Some(p) = whatwg else {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
