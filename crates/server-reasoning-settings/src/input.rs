@@ -1,5 +1,5 @@
 //! Linear bounded JSON validation. Only the last decoded default field is retained.
-use crate::BODY_LIMIT;
+use crate::{Effort, BODY_LIMIT};
 use serde_json::value::RawValue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -67,7 +67,7 @@ fn lossy(mut bytes: &[u8]) -> Result<String, Error> {
     }
     Ok(out)
 }
-pub fn parse(bytes: &[u8]) -> Result<&'static str, Error> {
+pub fn parse(bytes: &[u8]) -> Result<Effort, Error> {
     if bytes.len() > BODY_LIMIT {
         return Err(Error::Json);
     }
@@ -118,7 +118,8 @@ pub fn parse(bytes: &[u8]) -> Result<&'static str, Error> {
         if matches_string(key, "default") {
             effort = ["default", "low", "high"]
                 .into_iter()
-                .find(|s| matches_string(value, s));
+                .find(|s| matches_string(value, s))
+                .and_then(Effort::from_value);
         }
         rest = ws(rest.get(used..).ok_or(Error::Json)?);
         if rest.is_empty() {

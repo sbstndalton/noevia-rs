@@ -295,3 +295,174 @@ async fn native_put_identity_csrf_admin_audit_caps_and_selector_omission() {
     tx.send(()).unwrap();
     task.await.unwrap();
 }
+
+#[tokio::test]
+async fn actual_node_matrix_through_native_http_with_dead_legacy() {
+    use server_store::rusqlite::{params, types::Value as SqlValue, OptionalExtension};
+    let f: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../crates/server-reasoning-settings/tests/fixtures/node-reasoning.v1.json"
+    ))
+    .unwrap();
+    let d = tempfile::tempdir().unwrap();
+    let db = Connection::open(d.path().join("cowork.db")).unwrap();
+    db.execute_batch(
+        &include_str!("../../../crates/server-store/tests/fixtures/node-schema.sql")
+            .replace("value TEXT NOT NULL", "value"),
+    )
+    .unwrap();
+    let now = noevia_server::identity::now_ms();
+    for (uid, role, token) in [(A, "admin", "admin-token"), (B, "member", "member-token")] {
+        db.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,?1,?1,'Synthetic',?2,'x',?1,1,1)",(uid,role)).unwrap();
+        db.execute(
+            "INSERT INTO sessions VALUES(?1,?2,?3,?4,?4,?5,'ua','127.0.0.1')",
+            (hex(token), uid, hex("csrf"), now, now + 86400000),
+        )
+        .unwrap();
+    }
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let origin = format!("http://{addr}");
+    let env = HashMap::from([
+        ("UI_DATA_DIR", d.path().display().to_string()),
+        ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
+        ("NOEVIA_RUST_AUTH", "1".into()),
+        ("NOEVIA_RUST_REASONING_SETTINGS", "1".into()),
+        ("PUBLIC_ORIGIN", origin.clone()),
+    ]);
+    let (tx, rx) = oneshot::channel();
+    let task = tokio::spawn(serve(
+        listener,
+        App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap()),
+        Limits::default(),
+        async {
+            let _ = rx.await;
+        },
+    ));
+    let trusted = format!("Origin: {origin}\r\nX-CSRF-Token: csrf\r\n");
+    let mut checked = 0;
+    for c in f["cases"].as_array().unwrap() {
+        // Transport read failure is covered by the actual Node module oracle and bounded-body
+        // tests; an HTTP half-close is a different transport contract from Readable throwing.
+        if c["input"]["readError"] == true {
+            continue;
+        }
+        db.execute_batch("DROP TRIGGER IF EXISTS reasoning_audit_abort; DELETE FROM settings; DELETE FROM audit_events").unwrap();
+        let initial = &c["initial"];
+        let value = match initial["kind"].as_str().unwrap() {
+            "missing" => None,
+            "null" => Some(SqlValue::Null),
+            "text" => Some(SqlValue::Text(initial["value"].as_str().unwrap().into())),
+            "number" => Some(SqlValue::Real(initial["value"].as_f64().unwrap())),
+            "blob" => Some(SqlValue::Blob(
+                initial["value"]
+                    .as_str()
+                    .unwrap()
+                    .as_bytes()
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|v| u8::from_str_radix(std::str::from_utf8(v).unwrap(), 16).unwrap())
+                    .collect(),
+            )),
+            _ => panic!("fixture kind"),
+        };
+        if let Some(value) = value {
+            db.execute(
+                "INSERT INTO settings(key,value) VALUES(?1,?2)",
+                params![server_reasoning_settings::KEY, value],
+            )
+            .unwrap();
+        }
+        if c["input"]["auditAbort"] == true {
+            db.execute_batch("CREATE TRIGGER reasoning_audit_abort BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'synthetic audit refusal'); END;").unwrap();
+        }
+        let input = &c["input"];
+        let bytes = if let Some(n) = input["repeatExtra"].as_u64() {
+            format!(
+                "{{\"default\":\"high\",\"extra\":\"{}\"}}",
+                "a".repeat(n as usize)
+            )
+            .into_bytes()
+        } else if input["invalidUtf8"] == true {
+            let mut b = b"{\"default\":\"high\",\"extra\":\"".to_vec();
+            b.push(255);
+            b.extend_from_slice(b"\"}");
+            b
+        } else {
+            input["raw"].as_str().unwrap_or("").as_bytes().to_vec()
+        };
+        let cookie = if c["role"] == "admin" {
+            "cowork_session=admin-token; cowork_csrf=csrf"
+        } else {
+            "cowork_session=member-token; cowork_csrf=csrf"
+        };
+        let method = c["method"].as_str().unwrap();
+        let (status, body) = call_bytes(
+            addr,
+            method,
+            "/api/reasoning-settings",
+            cookie,
+            &trusted,
+            &bytes,
+        )
+        .await;
+        assert_eq!(
+            status,
+            c["expected"]["status"].as_u64().unwrap() as u16,
+            "{}",
+            c["name"]
+        );
+        if method != "HEAD" {
+            assert_eq!(body, c["expected"]["body"], "{}", c["name"]);
+        }
+        let setting: Option<(String, SqlValue)> = db
+            .query_row(
+                "SELECT typeof(value),value FROM settings WHERE key=?1",
+                [server_reasoning_settings::KEY],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .unwrap();
+        let setting = setting.map(|(kind, value)| {
+            let value = match value {
+                SqlValue::Null => serde_json::Value::Null,
+                SqlValue::Text(v) => serde_json::json!(v),
+                SqlValue::Integer(v) => serde_json::json!(v),
+                SqlValue::Real(v) => {
+                    if v.fract() == 0.0 {
+                        serde_json::json!(v as i64)
+                    } else {
+                        serde_json::json!(v)
+                    }
+                }
+                SqlValue::Blob(v) => {
+                    serde_json::json!(v.iter().map(|b| format!("{b:02x}")).collect::<String>())
+                }
+            };
+            serde_json::json!({"type":kind,"value":value})
+        });
+        assert_eq!(
+            serde_json::json!(setting),
+            c["expected"]["setting"],
+            "{}",
+            c["name"]
+        );
+        let rows:Vec<(String,Option<String>,String,String,i64)>=db.prepare("SELECT actor_user_id,target_user_id,action,detail,created_at FROM audit_events ORDER BY id").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).unwrap().collect::<Result<_,_>>().unwrap();
+        let expected = c["expected"]["audit"].as_array().unwrap();
+        assert_eq!(rows.len(), expected.len(), "{}", c["name"]);
+        for (row, want) in rows.iter().zip(expected) {
+            assert_eq!(row.0, A);
+            assert_eq!(row.1, None);
+            assert_eq!(row.2, want["action"].as_str().unwrap());
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&row.3).unwrap(),
+                want["detail"]
+            );
+            assert!(row.4 >= now && row.4 <= noevia_server::identity::now_ms());
+        }
+        checked += 1;
+    }
+    assert_eq!(checked, 50);
+    tx.send(()).unwrap();
+    task.await.unwrap();
+}

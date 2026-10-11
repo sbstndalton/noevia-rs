@@ -656,9 +656,9 @@ jobs:
       - name: Compiled capability and default-off startup omission
         run: |
           set -euo pipefail
-          cargo build --locked -p noevia-server --no-default-features
-          if target/debug/noevia-server --features | grep -qx rust-reasoning-settings; then exit 1; fi
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 NOEVIA_RUST_AUTH=1 NOEVIA_RUST_REASONING_SETTINGS=1 target/debug/noevia-server > omission.log 2>&1; then exit 1; fi
+          cargo build --locked --target-dir target/reasoning-featureless -p noevia-server --no-default-features
+          if target/reasoning-featureless/debug/noevia-server --features | grep -qx rust-reasoning-settings; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 NOEVIA_RUST_AUTH=1 NOEVIA_RUST_REASONING_SETTINGS=1 target/reasoning-featureless/debug/noevia-server > omission.log 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-reasoning-settings' omission.log
           cargo build --locked -p noevia-server --features rust-reasoning-settings
           target/debug/noevia-server --features | grep -qx rust-reasoning-settings

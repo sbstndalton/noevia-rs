@@ -2,7 +2,7 @@
 use proptest::prelude::*;
 use server_reasoning_settings::{
     input::{parse, Error},
-    put, BODY_LIMIT,
+    put, Effort, BODY_LIMIT,
 };
 use server_store::{
     rusqlite::Connection, RustAuth, RustReasoningSettings, RustSamplingSettings, Writer,
@@ -32,7 +32,7 @@ fn shapes_strings_duplicates_utf8_and_bounds() {
         r#"{"default":"high","extra":1e999}"#,
         r#"{"default":"high","\uD800":"\uDFFF"}"#,
     ] {
-        assert_eq!(parse(s.as_bytes()), Ok("high"), "{s}");
+        assert_eq!(parse(s.as_bytes()), Ok(Effort::High), "{s}");
     }
     assert_eq!(
         parse(br#"{"default":"high","default":false}"#),
@@ -40,7 +40,7 @@ fn shapes_strings_duplicates_utf8_and_bounds() {
     );
     assert_eq!(
         parse(b"{\"default\":\"high\",\"extra\":\"\xff\"}"),
-        Ok("high")
+        Ok(Effort::High)
     );
     assert_eq!(parse(&vec![b' '; BODY_LIMIT + 1]), Err(Error::Json));
 }
@@ -48,7 +48,7 @@ proptest! {
     #[test]
     fn last_default_wins(a in prop::sample::select(vec!["default","low","high"]),b in prop::sample::select(vec!["default","low","high"]),extra in "[A-Za-z0-9]{0,1000}") {
         let raw=format!(r#"{{"default":"{a}","extra":"{extra}","\u0064efault":"{b}"}}"#);
-        prop_assert_eq!(parse(raw.as_bytes()),Ok(b));
+        prop_assert_eq!(parse(raw.as_bytes()),Ok(Effort::from_value(b).unwrap()));
     }
 }
 #[test]
@@ -82,7 +82,7 @@ fn key_grant_is_exact_and_setting_plus_audit_roll_back() {
         .write(|tx| tx.set_sampling_enabled(sampling, false))
         .unwrap();
     assert_eq!(
-        put(&writer, capability, "synthetic-admin", "high", 42).unwrap(),
+        put(&writer, capability, "synthetic-admin", Effort::High, 42).unwrap(),
         serde_json::json!({"default":"high"})
     );
     let row: (String, Option<String>, String, String, i64) = db
@@ -103,7 +103,7 @@ fn key_grant_is_exact_and_setting_plus_audit_roll_back() {
         )
     );
     db.execute_batch("CREATE TRIGGER reject_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'synthetic audit abort'); END;").unwrap();
-    assert!(put(&writer, capability, "synthetic-admin", "low", 43).is_err());
+    assert!(put(&writer, capability, "synthetic-admin", Effort::Low, 43).is_err());
     assert_eq!(
         db.query_row(
             "SELECT value FROM settings WHERE key='reasoning_effort_default'",
@@ -155,7 +155,7 @@ fn persisted_settings_triggers_cannot_widen_any_fixed_key_grant() {
         let writer = Writer::open(d.path(), auth).unwrap();
         let write = || match key {
             "reasoning_effort_default" => {
-                put(&writer, capability, "synthetic-admin", "high", 42).map(|_| ())
+                put(&writer, capability, "synthetic-admin", Effort::High, 42).map(|_| ())
             }
             "auto_sampling_presets_enabled" => writer
                 .write(|tx| tx.set_sampling_enabled(sampling, true))
