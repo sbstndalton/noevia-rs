@@ -45,8 +45,29 @@ async fn terminated() {
     }
 }
 
-#[tokio::main]
-async fn main() -> ExitCode {
+fn main() -> ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("--features") {
+        return feature_probe(&mut io::stdout().lock());
+    }
+    if std::env::args().nth(1).as_deref() == Some(noevia_server::code_net_resolver::HELPER_ARG) {
+        if std::env::args().count() != 2 {
+            return ExitCode::from(2);
+        }
+        return match noevia_server::code_net_resolver::helper_main() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_) => ExitCode::from(2),
+        };
+    }
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime.block_on(normal_main()),
+        Err(_) => ExitCode::FAILURE,
+    }
+}
+
+async fn normal_main() -> ExitCode {
     // build/web-supervisor.sh asks before choosing this front (sbstndalton/noevia#1246).
     if std::env::args().nth(1).as_deref() == Some("--features") {
         return feature_probe(&mut io::stdout().lock());

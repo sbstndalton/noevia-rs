@@ -5,6 +5,7 @@
 pub mod account_routes;
 pub mod chatgpt_worker;
 pub mod code_net;
+pub mod code_net_resolver;
 pub mod config;
 pub mod health;
 pub mod identity;
