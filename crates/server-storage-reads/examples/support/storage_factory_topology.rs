@@ -21,6 +21,13 @@ pub const PROOF: &str = "/tmp/s1-diagnose-dependency-copy.json";
 pub const PROOF_SHA: &str = "98e91b95e8812e863a70dce0fe66bf39c4507b7e50b660936d244d509ad819cc";
 pub const NODE: &str = "/opt/homebrew/opt/node@22/bin/node";
 pub const NODE_SHA: &str = "b6a0496318476702af424b12fe5f245a74c3cb93159e0c7411e6a95ad8c8d4db";
+// Fixed installed native error dialect grounding, not complete dylib ancestry.
+pub const NODE_CRYPTO_LIBRARY: &str =
+    "/opt/homebrew/Cellar/node@22/22.23.3_1/lib/libnode.127.dylib";
+pub const NODE_CRYPTO_LIBRARY_SHA: &str =
+    "cdceec4c9d2a50079954ade5a89f4e7887a620c0c4329296b1af660926a66f65";
+pub const JS_GCM_AUTH_FAILURE: &str = "Unsupported state or unable to authenticate data";
+pub const STORAGE_EVIDENCE_SQL: &str = "SELECT * FROM storage_connections WHERE user_id=?";
 pub const WASM_SOURCE: &str = "/tmp/m4-storage-factory-approved-wasm";
 pub const WASM_SHA: &str = "040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd87cb2e978575";
 pub const NOW: i64 = 1_700_000_000_000;
@@ -809,6 +816,10 @@ pub fn verify_materialized(manifest: &Value) -> Result<()> {
         hash(&read(Path::new(NODE), 128 * 1024 * 1024)?) == NODE_SHA,
         "fresh executable binding",
     )?;
+    require(
+        hash(&read(Path::new(NODE_CRYPTO_LIBRARY), 128 * 1024 * 1024)?) == NODE_CRYPTO_LIBRARY_SHA,
+        "fixed native crypto error dialect bytes",
+    )?;
     Ok(())
 }
 
@@ -884,6 +895,84 @@ pub fn assert_missing_factory_shape(raw: &Value) -> Result<()> {
         require(object.contains_key(field), "raw missing-row metadata field")?;
     }
     Ok(())
+}
+
+/// Finite schema declarations owned by Rust, independent of adapter outcomes.
+pub fn storage_schema_evidence_contract(case: &Value) -> Result<Value> {
+    let declaration = match string(case, "shape")? {
+        "view" => "selected user_id-only row; secret property absent",
+        "missing" => "factory missing-table exception; no successful row evidence",
+        "" | "loose" | "missing-region" | "no-pk" | "composite-pk" => {
+            "declared secret column; retain selected full row or row absence"
+        }
+        _ => return Err("unknown schema evidence contract".into()),
+    };
+    Ok(json!({"sql":STORAGE_EVIDENCE_SQL,"declaration":declaration}))
+}
+
+/// The fixed S-view factory succeeds; its absent column is evidence, not an error.
+pub fn assert_view_factory_evidence(case: &Value, node: &Value) -> Result<()> {
+    require(
+        string(case, "id")? == "S-view"
+            && string(case, "shape")? == "view"
+            && string(case, "owner")? == "a",
+        "fixed view evidence case",
+    )?;
+    storage_schema_evidence_contract(case)?;
+    require(
+        node.get("id") == case.get("id")
+            && node.get("owner") == case.get("owner")
+            && node.get("exceptionPhase").is_none(),
+        "view actual factory success binding",
+    )?;
+    require(
+        node.get("storedEvidence")
+            == Some(&json!({"presence":"property-missing","row":{"user_id":{"t":"text","v":"a"}}})),
+        "view full-row missing secret property",
+    )?;
+    require(
+        node.get("stored").is_none(),
+        "view raw stored secret must be absent",
+    )?;
+    for field in ["storedPlain", "currentOpen", "foreignOpen"] {
+        require(
+            node.get(field).is_some_and(Value::is_null),
+            "view absent-property opening evidence",
+        )?;
+    }
+    require(
+        node.get("storage")
+            == Some(
+                &json!({"bucket":"","region":"us-east-1","secret":"","secretConfigured":false,"secretNeedsReauth":false}),
+            ),
+        "view raw factory property contract",
+    )?;
+    let before = node
+        .get("before")
+        .and_then(Value::as_array)
+        .ok_or("view before state")?;
+    let after = node
+        .get("after")
+        .and_then(Value::as_array)
+        .ok_or("view after state")?;
+    require(
+        before.len() == STATE_SQL.len() && before == after,
+        "view exact measured SQL unchanged",
+    )?;
+    require(
+        before.last() == Some(&json!({"columns":["user_id"],"rows":[[{"t":"text","v":"a"}]]})),
+        "view exact SQL row/column contract",
+    )
+}
+
+/// CORE openJs propagates native decipher.final() without a WASM wrapper.
+/// The installed fixed libnode carries this exact CipherBase::Final error text.
+/// This strict observation contract rejects all success, null and unknown faults.
+pub fn assert_js_gcm_auth_failure(open: &Value) -> Result<()> {
+    require(
+        open == &json!({"error":{"name":"Error","code":null,"reason":null,"message":JS_GCM_AUTH_FAILURE}}),
+        "foreign owner lacks exact native JS GCM authentication failure",
+    )
 }
 
 pub const POLICY_DIFFERENCES: &[&str] = &[

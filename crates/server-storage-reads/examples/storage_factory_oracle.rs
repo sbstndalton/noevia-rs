@@ -19,6 +19,7 @@ const http = require('./server/http.cjs');
 const envelope = require('./server/secret-envelope.cjs');
 const snapshot=(auth)=>input.stateSQL.map(sql=>{try{const q=auth.db.prepare(sql);return {columns:q.columns().map(v=>v.name),rows:q.all().map(row=>q.columns().map(({name})=>{const v=row[name];return v===null?{t:'null',v:null}:Buffer.isBuffer(v)?{t:'blob',v:v.toString('hex')}:typeof v==='string'?{t:'text',v}:Number.isInteger(v)?{t:'integer',v}:{t:'real',v};}))};}catch(e){return {unavailable:true,code:e.code??null};}});
 const errorRecord=e=>({name:String(e?.name??'unknown').slice(0,80),code:e?.code===undefined?null:String(e.code).slice(0,80),reason:e?.reason===undefined?null:String(e.reason).slice(0,80),message:String(e?.message??'unknown').slice(0,512)});
+const rowEvidence=row=>({presence:row===undefined?'row-missing':Object.hasOwn(row,'secret')?'present':'property-missing',row:row===undefined?null:Object.fromEntries(Object.entries(row).map(([k,v])=>[k,v===null?{t:'null',v:null}:Buffer.isBuffer(v)?{t:'blob',v:v.toString('hex')}:typeof v==='string'?{t:'text',v}:Number.isInteger(v)?{t:'integer',v}:{t:'real',v}]))});
 (async()=>{const outputs=[];for(const c of input.cases){let auth;let phase='keys';let before=null;let bootAfter=null;try {
  const secrets = createSecretStore(c.dataDir,{env:c.env});
  phase='boot';auth = createAuth({dataDir:c.dataDir,publicOrigin:'https://owner.invalid',rpId:'owner.invalid',secrets,trustProxy:true});
@@ -36,7 +37,7 @@ const errorRecord=e=>({name:String(e?.name??'unknown').slice(0,80),code:e?.code=
  const factoryOwner=c.gate?null:c.owner;
  phase='projection';
  const storage=factoryOwner===null?null:auth.getStorage(factoryOwner,true);
- let metadata=null;let falseStorage=null;let falseBefore=null;let falseAfter=null;let falseStored=null;let falseStoredPlain=null;let falseCurrentOpen=null;let falseForeignOpen=null;
+ let metadata=null;let falseStorage=null;let falseBefore=null;let falseAfter=null;let falseStored=null;let falseStoredEvidence=null;let falseStoredPlain=null;let falseCurrentOpen=null;let falseForeignOpen=null;
  if(c.public){
   phase='metadata';
   if(!authn)throw new Error('synthetic authenticated metadata fixture refused');
@@ -46,16 +47,16 @@ const errorRecord=e=>({name:String(e?.name??'unknown').slice(0,80),code:e?.code=
   const res={writeHead(status,headers){this.status=status;this.headers=headers;},end(body){metadata={status:this.status,headers:this.headers,body:JSON.parse(body)};}};
   const routes=createStorageRoutes({json:http.json,authService:falseAuth});
   await routes.handle({method:'GET'},res,{path:'/api/integrations/storage',authn});
-  falseAfter=snapshot(falseAuth);falseStored=falseAuth.db.prepare('SELECT secret FROM storage_connections WHERE user_id=?').get(c.owner)?.secret;
+  falseAfter=snapshot(falseAuth);const falseRow=falseAuth.db.prepare(c.evidenceSQL).get(c.owner);falseStoredEvidence=rowEvidence(falseRow);falseStored=falseRow?.secret;
   if(falseStored!==undefined){falseStoredPlain=falseSecrets.decrypt(falseStored,c.owner);const key=fs.readFileSync(falseSecrets.keyFile);try{falseCurrentOpen=envelope.open(key,null,falseStored,c.owner);}catch(e){falseCurrentOpen={error:errorRecord(e)};}try{falseForeignOpen=envelope.open(key,null,falseStored,'foreign');}catch(e){falseForeignOpen={error:errorRecord(e)};}}
   }finally{falseAuth.db.close();}
  }
  phase='evidence';const after=snapshot(auth);
- const stored=auth.db.prepare('SELECT secret FROM storage_connections WHERE user_id=?').get(factoryOwner)?.secret;
+ const storedRow=auth.db.prepare(c.evidenceSQL).get(factoryOwner);const storedEvidence=rowEvidence(storedRow);const stored=storedRow?.secret;
  let storedPlain=null;try{if(stored!==undefined)storedPlain=secrets.decrypt(stored,factoryOwner);}catch{storedPlain=null;}
  let currentOpen=null;let foreignOpen=null;
  if(stored!==undefined){const current=fs.readFileSync(secrets.keyFile);try{currentOpen=envelope.open(current,null,stored,factoryOwner);}catch(e){currentOpen={error:errorRecord(e)};}try{foreignOpen=envelope.open(current,null,stored,'foreign');}catch(e){foreignOpen={error:errorRecord(e)};}}
- outputs.push({id:c.id,owner:factoryOwner,components,rawCsrf:{type:typeof rawCsrf,value:rawCsrf},storage,metadata,falseStorage,falseBefore,falseAfter,falseStored,falseStoredPlain,falseCurrentOpen,falseForeignOpen,bootAfter,before,after,stored,storedPlain,currentOpen,foreignOpen});
+ outputs.push({id:c.id,owner:factoryOwner,components,rawCsrf:{type:typeof rawCsrf,value:rawCsrf},storage,metadata,falseStorage,falseBefore,falseAfter,falseStored,falseStoredEvidence,falseStoredPlain,falseCurrentOpen,falseForeignOpen,bootAfter,before,after,stored,storedEvidence,storedPlain,currentOpen,foreignOpen});
 }catch(e){outputs.push({id:c.id,exceptionPhase:phase,error:errorRecord(e),bootAfter,before,after:auth?snapshot(auth):null});}finally{if(auth)auth.db.close();}}
  const modules=Object.keys(require.cache).map(p=>fs.realpathSync(p)).sort();
  process.stdout.write(JSON.stringify({runtime:{version:process.version,abi:process.versions.modules,platform:process.platform,arch:process.arch},outputs,modules}));
@@ -68,7 +69,9 @@ const fs=require('node:fs');const moduleAPI=require('node:module');
 const Database=require('better-sqlite3');const db=new Database(':memory:');db.close();
 require('@node-rs/argon2');
 const modules=Object.keys(require.cache).map(p=>fs.realpathSync(p)).sort();
-process.stdout.write(JSON.stringify({runtime:{version:process.version,abi:process.versions.modules,platform:process.platform,arch:process.arch},modules,native:modules.filter(p=>p.endsWith('.node')),builtins:moduleAPI.builtinModules.slice().sort(),loadedBuiltins:process.moduleLoadList.filter(p=>p.startsWith('NativeModule ')).sort(),sharedObjects:process.report.getReport().sharedObjects,ancestry:'OS/dylib ancestry not certified'}));
+const sharedObjects=process.report.getReport().sharedObjects;
+const cryptoLibraries=sharedObjects.filter(p=>p.endsWith('/libnode.127.dylib')).map(p=>fs.realpathSync(p));
+process.stdout.write(JSON.stringify({runtime:{version:process.version,abi:process.versions.modules,platform:process.platform,arch:process.arch},modules,native:modules.filter(p=>p.endsWith('.node')),builtins:moduleAPI.builtinModules.slice().sort(),loadedBuiltins:process.moduleLoadList.filter(p=>p.startsWith('NativeModule ')).sort(),sharedObjects,cryptoLibraries,ancestry:'OS/dylib ancestry not certified'}));
 "#;
 
 fn preflight() -> topology::Result<()> {
@@ -141,6 +144,10 @@ fn preflight() -> topology::Result<()> {
             .and_then(Value::as_array)
             .is_some_and(|v| v.len() == 2),
         "actual SQLite and Argon2 native loads",
+    )?;
+    topology::require(
+        value.get("cryptoLibraries") == Some(&json!([topology::NODE_CRYPTO_LIBRARY])),
+        "observed fixed native crypto error library",
     )?;
     topology::verify_materialized(&manifest)?;
     topology::put(
@@ -259,7 +266,7 @@ fn run() -> topology::Result<()> {
             } else {
                 vec![]
             };
-            inputs.push(json!({"id":case.get("id"),"dataDir":node_dir,"falseDir":false_dir,"owner":case.get("owner"),"gate":topology::string(case,"lane")?=="gate","env":{"SECRETS_KEY_PREVIOUS":case.get("previous_env").and_then(Value::as_str).unwrap_or("")},"deviceEnabled":case.get("device_enabled"),"headers":case.get("headers"),"method":case.get("method"),"path":case.get("path"),"public":case.get("public"),"shapeSQL":topology::shape_sql(topology::string(case,"shape")?)?,"insertSQL":topology::insert_sql(case)?,"cells":cells,"foreignSQL":foreign_sql,"foreignCells":foreign_cells}));
+            inputs.push(json!({"id":case.get("id"),"dataDir":node_dir,"falseDir":false_dir,"owner":case.get("owner"),"gate":topology::string(case,"lane")?=="gate","env":{"SECRETS_KEY_PREVIOUS":case.get("previous_env").and_then(Value::as_str).unwrap_or("")},"deviceEnabled":case.get("device_enabled"),"headers":case.get("headers"),"method":case.get("method"),"path":case.get("path"),"public":case.get("public"),"shapeSQL":topology::shape_sql(topology::string(case,"shape")?)?,"insertSQL":topology::insert_sql(case)?,"cells":cells,"foreignSQL":foreign_sql,"foreignCells":foreign_cells,"evidenceSQL":topology::STORAGE_EVIDENCE_SQL,"schemaEvidenceContract":topology::storage_schema_evidence_contract(case)?}));
             candidates
                 .push(json!({"id":case.get("id"),"candidate":candidate,"node_dir":node_dir,"boot_before":boot_before}));
         }
@@ -614,6 +621,9 @@ fn qualify_matrix(
                     "semantic exception SQL delta",
                 )?;
             } else {
+                if topology::string(case, "shape")? == "view" {
+                    topology::assert_view_factory_evidence(case, node)?;
+                }
                 qualify_sql_delta(case, node)?;
             }
         }
@@ -785,6 +795,7 @@ fn qualify_functional(
             ("storedPlain", "falseStoredPlain"),
             ("currentOpen", "falseCurrentOpen"),
             ("foreignOpen", "falseForeignOpen"),
+            ("storedEvidence", "falseStoredEvidence"),
         ] {
             false_node.as_object_mut().ok_or("false object")?.insert(
                 target.into(),
@@ -928,11 +939,8 @@ fn qualify_sql_delta(case: &serde_json::Value, node: &serde_json::Value) -> topo
                 "explicit empty-owner unbound Node difference",
             )?;
         } else {
-            topology::require(
-                node.get("foreignOpen")
-                    .and_then(|v| v.get("error"))
-                    .is_some(),
-                "changed v2 foreign AAD accepted",
+            topology::assert_js_gcm_auth_failure(
+                node.get("foreignOpen").ok_or("foreign open evidence")?,
             )?;
             topology::require(
                 node.get("stored")
