@@ -19,6 +19,13 @@ const INVENTORY_CAP: usize = 1024;
 const REQUEST_CAP: usize = 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(5);
 pub const LEGACY_TIMEOUT: Duration = Duration::from_secs(600);
+pub fn legacy_client() -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(LEGACY_TIMEOUT)
+        .build()
+}
 type Job<'a, T> = Pin<Box<dyn Future<Output = Result<T, &'static str>> + Send + 'a>>;
 
 #[derive(Clone, Debug)]

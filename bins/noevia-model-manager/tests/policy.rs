@@ -52,11 +52,7 @@ fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
         docker: fake,
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(2),
-        legacy: reqwest::Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .unwrap(),
+        legacy: noevia_model_manager::legacy_client().unwrap(),
     })
 }
 fn fake() -> Arc<Fake> {

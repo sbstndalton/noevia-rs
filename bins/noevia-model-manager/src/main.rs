@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 use noevia_model_manager::{
-    docker::UnixDocker, router, validate_token, Redactor, StateData, LEGACY_TIMEOUT,
+    docker::UnixDocker, legacy_client, router, validate_token, Redactor, StateData,
 };
 use std::{os::unix::process::CommandExt, sync::Arc, time::Duration};
 
@@ -49,11 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let docker = UnixDocker::from_env()?;
     let redactor = Redactor::new()?;
-    let legacy = reqwest::Client::builder()
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(LEGACY_TIMEOUT)
-        .build()?;
+    let legacy = legacy_client()?;
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;
     // Refuse an existing loopback listener before spawn: ownership is never borrowed from
     // an unknown process. uvicorn receives only the fixed private loopback address.
