@@ -5,6 +5,14 @@ use std::{
     os::unix::fs::symlink,
     time::{Duration, Instant},
 };
+// Entry scopes share production's process-wide admission namespace. Declare the
+// guard first so fixtures, services and jobs drop/join before its last release.
+static TEST_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+fn test_scope() -> std::sync::MutexGuard<'static, ()> {
+    TEST_SERIAL
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 struct Fixture {
     dir: tempfile::TempDir,
     db: Connection,
@@ -34,6 +42,7 @@ impl Fixture {
 }
 #[test]
 fn actual_schema_and_product_false_before_oauth() {
+    let _test_scope = test_scope();
     let f = Fixture::new();
     f.db.execute_batch("DROP TABLE chatgpt_oauth_tokens")
         .unwrap();
@@ -46,6 +55,7 @@ fn actual_schema_and_product_false_before_oauth() {
 }
 #[test]
 fn persisted_typed_and_env_override() {
+    let _test_scope = test_scope();
     let f = Fixture::new();
     for v in ["false", "TRUE", "true\0", "", "junk"] {
         f.db.execute(
@@ -73,6 +83,7 @@ fn persisted_typed_and_env_override() {
 }
 #[test]
 fn tenant_and_runtime_caps() {
+    let _test_scope = test_scope();
     let f = Fixture::new();
     f.row(
         "u1",
@@ -115,10 +126,12 @@ fn tenant_and_runtime_caps() {
 }
 #[test]
 fn missing_and_incompatible_schema_and_null_pk() {
+    let _test_scope = test_scope();
     for ddl in ["DROP TABLE settings", "ALTER TABLE settings ADD COLUMN extra TEXT", "DROP TABLE chatgpt_oauth_tokens; CREATE TABLE chatgpt_oauth_tokens(user_id TEXT PRIMARY KEY COLLATE NOCASE,data_enc TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'connected',updated_at INTEGER NOT NULL)","DROP TABLE chatgpt_oauth_tokens; CREATE VIEW chatgpt_oauth_tokens AS SELECT 'u' user_id,'{}' data_enc,'connected' state,0 updated_at", "UPDATE schema_migrations SET version=6", "INSERT INTO chatgpt_oauth_tokens VALUES(NULL,'{}','connected',0)"] { let f=Fixture::new(); f.db.execute_batch(ddl).unwrap(); assert_eq!(f.read(Some("true"),"u"),Err(Error::Unavailable),"ROUTING_ASSERT/sqlite/schema"); }
 }
 #[test]
 fn snapshots_refresh_without_mutating() {
+    let _test_scope = test_scope();
     let f = Fixture::new();
     let s = f.service(None).unwrap();
     assert_eq!(
@@ -151,6 +164,7 @@ fn snapshots_refresh_without_mutating() {
 }
 #[test]
 fn admission_cancel_shutdown_and_reap() {
+    let _test_scope = test_scope();
     let f = Fixture::new();
     let s = f.service(Some("true")).unwrap();
     assert!(s
@@ -172,6 +186,7 @@ fn admission_cancel_shutdown_and_reap() {
 }
 #[test]
 fn root_database_companion_negatives() {
+    let _test_scope = test_scope();
     let f = Fixture::new();
     let s = f.service(Some("true")).unwrap();
     std::fs::rename(f.dir.path().join("cowork.db"), f.dir.path().join("old.db")).unwrap();
@@ -181,6 +196,7 @@ fn root_database_companion_negatives() {
 }
 #[test]
 fn actual_real_node_sqlite_cases() {
+    let _test_scope = test_scope();
     let packet: serde_json::Value =
         serde_json::from_str(include_str!("node-sqlite.v1.json")).unwrap();
     assert_eq!(packet["core"], "010735c7d86d30269ab3f4a351b2135faea1c8e7");
@@ -219,6 +235,7 @@ fn actual_real_node_sqlite_cases() {
 }
 #[test]
 fn exact_caps_nul_utf8_and_key_snapshot() {
+    let _test_scope = test_scope();
     let f = Fixture::new();
     f.row("u", "{}", "connected\0");
     assert!(f.read(Some("true"), "u").unwrap().1.contains("reconnect"));
@@ -243,6 +260,7 @@ fn exact_caps_nul_utf8_and_key_snapshot() {
 }
 #[test]
 fn metadata_object_bounds_and_companion_negatives() {
+    let _test_scope = test_scope();
     let f = Fixture::new();
     for i in 0..257 {
         f.db.execute_batch(&format!("CREATE TABLE extra{i}(x)"))
@@ -265,9 +283,10 @@ fn metadata_object_bounds_and_companion_negatives() {
         .unwrap();
     assert_eq!(f.read(None, "u"), Err(Error::Unavailable));
 }
-proptest::proptest! { #![proptest_config(proptest::test_runner::Config::with_cases(24))] #[test] fn tenant_property(owner in "[a-z]{1,8}", other in "[a-z]{1,8}") {proptest::prop_assume!(owner != other);let f=Fixture::new();f.row(&owner,r#"{"plan":"tenant-only"}"#,"connected");let answer=f.read(Some("true"),&other).unwrap();proptest::prop_assert!(answer.1.contains("disconnected"));proptest::prop_assert!(!answer.1.contains("tenant-only"));} }
+proptest::proptest! { #![proptest_config(proptest::test_runner::Config::with_cases(24))] #[test] fn tenant_property(owner in "[a-z]{1,8}", other in "[a-z]{1,8}") {let _test_scope = test_scope();proptest::prop_assume!(owner != other);let f=Fixture::new();f.row(&owner,r#"{"plan":"tenant-only"}"#,"connected");let answer=f.read(Some("true"),&other).unwrap();proptest::prop_assert!(answer.1.contains("disconnected"));proptest::prop_assert!(!answer.1.contains("tenant-only"));} }
 #[test]
 fn busy_refuses_immediately_without_application_writes() {
+    let _test_scope = test_scope();
     let f = Fixture::new();
     let s = f.service(Some("true")).unwrap();
     let before: Vec<(String, String)> =
@@ -293,6 +312,7 @@ fn busy_refuses_immediately_without_application_writes() {
 }
 #[test]
 fn independent_cancellation_and_late_signal_do_not_reuse_connections() {
+    let _test_scope = test_scope();
     let f = Fixture::new();
     let s = f.service(Some("true")).unwrap();
     let j = s.submit("cancel-owner", Instant::now()).unwrap();

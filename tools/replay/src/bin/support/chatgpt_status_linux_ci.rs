@@ -7,7 +7,10 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     io::{Read, Write},
-    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+    },
     path::{Component, Path, PathBuf},
     process::Command,
     time::{Duration, Instant},
@@ -230,6 +233,52 @@ fn resolve(installed: &Path, from: &Path, name: &str) -> Result<Option<PathBuf>>
     }
     Ok(None)
 }
+// One bounded create_new rejection record before refused file reads/copy.
+struct InventoryObservation<'a> {
+    output: &'a Path,
+    installed: &'a Path,
+    file: &'a Path,
+    metadata: &'a fs::Metadata,
+    visited: usize,
+    files: usize,
+    total: usize,
+    pending: usize,
+}
+impl InventoryObservation<'_> {
+    fn gate(&self, ok: bool, reason: &str) -> Result<()> {
+        if ok {
+            return Ok(());
+        }
+        let relative = self.file.strip_prefix(self.installed)?;
+        let path_bytes = relative.as_os_str().as_bytes();
+        let prefix = path_bytes
+            .get(..path_bytes.len().min(4096))
+            .ok_or("rejection path cap")?;
+        let path_hex: String = prefix.iter().map(|b| format!("{b:02x}")).collect();
+        let mode = self.metadata.mode();
+        let permissions = mode & 0o777;
+        let allowed = matches!(permissions, 0o600 | 0o644 | 0o700 | 0o755);
+        let planned_total = u64::try_from(self.total)?.checked_add(self.metadata.len());
+        let class = if self.metadata.is_file() {
+            "regular"
+        } else if self.metadata.is_dir() {
+            "directory"
+        } else if self.metadata.file_type().is_symlink() {
+            "symlink"
+        } else {
+            "special"
+        };
+        let detail: String = reason.chars().take(512).collect();
+        let value = json!({"version":1,"phase":"dependency-inventory-before-read-copy","reason":detail,"reason_truncated":reason.chars().count()>512,"relative_path_utf8":std::str::from_utf8(path_bytes).ok().filter(|_|path_bytes.len()<=256),"relative_path_hex":path_hex,"path_bytes":path_bytes.len(),"path_truncated":path_bytes.len()>4096,"installed_root":self.installed,"bytes":self.metadata.len(),"mode_full_octal":format!("{mode:o}"),"mode_permissions_octal":format!("{permissions:04o}"),"class":class,"nlink":self.metadata.nlink(),"counts_before_insert":{"visited":self.visited,"files":self.files,"total_bytes":self.total,"pending":self.pending,"planned_total_bytes":planned_total},"caps":{"per_file_bytes":16777216,"total_bytes":67108864,"files":4096,"visits":8192,"pending":4096,"path_bytes":4096,"rejection_json_bytes":65536},"failed":{"size":self.metadata.is_file() && self.metadata.len()>16*1024*1024,"source_mode":self.metadata.is_file() && !allowed,"special_bits":mode&0o7000!=0,"class":!self.metadata.is_file() && !self.metadata.is_dir(),"nlink":self.metadata.is_file() && self.metadata.nlink()!=1,"file_count":self.files>=4096,"visit_count":self.visited>8192,"pending_count":self.pending>=4096,"aggregate":self.metadata.is_file() && planned_total.is_none_or(|n|n>64*1024*1024),"nested":reason.starts_with("nested:")},"content_read_for_copy_stage":false,"content_sha256":null,"content_read_scope":"payload copy stage has not read this visit; nested validation may have parsed a root manifest at the same path","core_commit":crate::CORE_SHA,"core_tree":TREE,"fixed_manifest_sha256":{"package.json":"f3f9375884302c7dcdd7fb510b7804f5dadcdced8ccabdc827638378353db19c","package-lock.json":"ad078a36d1f9b72ba7ffeb2fa945deca872ea81742c8fe1ed5c9323ddcf497e9"},"policy":"explicit source0700 umask077 compatibility; original offender unknown; destination0600; unchanged caps"});
+        let bytes = serde_json::to_vec_pretty(&value)?;
+        require(bytes.len() <= 65536, "rejection metadata cap")?;
+        save(&self.output.join("inventory-rejection.json"), &bytes)?;
+        Err(
+            format!("dependency inventory rejected: {detail}; retained inventory-rejection.json")
+                .into(),
+        )
+    }
+}
 fn inventory(args: &[String]) -> Result<Value> {
     require(
         cfg!(target_os = "linux"),
@@ -337,74 +386,102 @@ fn inventory(args: &[String]) -> Result<Value> {
     let mut visited = 0usize;
     while let Some(file) = queue.pop() {
         visited += 1;
-        require(
+        let meta = fs::symlink_metadata(&file)?;
+        let observation = InventoryObservation {
+            output: &out,
+            installed: &installed,
+            file: &file,
+            metadata: &meta,
+            visited,
+            files: files.len(),
+            total,
+            pending: queue.len(),
+        };
+        observation.gate(
             Instant::now() < deadline && visited <= 8192,
             "inventory visit/deadline cap",
         )?;
-        let meta = fs::symlink_metadata(&file)?;
-        require(!meta.file_type().is_symlink(), "dependency links refused")?;
+        observation.gate(!meta.file_type().is_symlink(), "dependency links refused")?;
+        observation.gate(
+            meta.mode() & 0o7000 == 0,
+            "source setuid/setgid/sticky bits refused",
+        )?;
         if meta.is_dir() {
             for entry in fs::read_dir(&file)? {
-                require(queue.len() < 4096, "inventory pending cap")?;
+                let pending_observation = InventoryObservation {
+                    pending: queue.len(),
+                    ..observation
+                };
+                pending_observation.gate(queue.len() < 4096, "inventory pending cap")?;
                 queue.push(entry?.path());
             }
         } else {
-            require(
-                meta.is_file() && meta.nlink() == 1 && files.len() < 4096,
-                "inventory class/count cap",
-            )?;
+            observation.gate(meta.is_file(), "inventory regular file class")?;
+            observation.gate(meta.nlink() == 1, "inventory singleton link count")?;
+            observation.gate(files.len() < 4096, "inventory file count cap")?;
             let relative = file.strip_prefix(&installed)?.to_path_buf();
             if files.contains_key(&relative) {
                 continue;
             }
-            require(
-                meta.len() <= 16 * 1024 * 1024
-                    && (meta.mode() & 0o777 == 0o600
-                        || meta.mode() & 0o777 == 0o644
-                        || meta.mode() & 0o777 == 0o755),
-                "inventory file cap/source mode",
+            observation.gate(
+                meta.len() <= 16 * 1024 * 1024,
+                "inventory per-file size cap",
             )?;
-            total = total
-                .checked_add(usize::try_from(meta.len())?)
-                .ok_or("inventory bytes overflow")?;
-            require(total <= 64 * 1024 * 1024, "inventory total cap before read")?;
+            // Requested0755 under fixed umask077 can produce0700. This policy
+            // does not identify the original first failure's unretained mode.
+            observation.gate(
+                matches!(meta.mode() & 0o777, 0o600 | 0o644 | 0o700 | 0o755),
+                "inventory source permission mode",
+            )?;
+            let next_total = total.checked_add(usize::try_from(meta.len())?);
+            observation.gate(
+                next_total.is_some_and(|n| n <= 64 * 1024 * 1024),
+                "inventory total cap before read",
+            )?;
             // Every nested installation encountered during whole-package copying is locked,
             // even when it was not independently selected by graph resolution.
-            let components: Vec<_> = relative.components().collect();
-            for (index, c) in components.iter().enumerate() {
-                if *c == Component::Normal("node_modules".as_ref()) {
-                    let next = components.get(index + 1).ok_or("installation name")?;
-                    let scoped = next
-                        .as_os_str()
-                        .to_str()
-                        .ok_or("installation utf8")?
-                        .starts_with('@');
-                    let end = index + if scoped { 3 } else { 2 };
-                    require(end <= components.len(), "installation boundary")?;
-                    let root: PathBuf = components.iter().take(end).collect();
-                    let key = root.to_str().ok_or("installation path utf8")?;
-                    let locked = packages
-                        .get(key)
-                        .ok_or("unlisted nested installation root")?;
-                    let actual: Value = serde_json::from_slice(&read(
-                        &installed.join(&root).join("package.json"),
-                        1024 * 1024,
-                    )?)?;
-                    let rootname = components
-                        .iter()
-                        .skip(index + 1)
-                        .take(if scoped { 2 } else { 1 })
-                        .map(|c| c.as_os_str().to_str().ok_or("installation name utf8"))
-                        .collect::<std::result::Result<Vec<_>, _>>()?
-                        .join("/");
-                    require(
-                        (*field(&actual, "name")) == rootname
-                            && (*field(&actual, "version")) == (*field(locked, "version"))
-                            && (*field(locked, "version")).is_string(),
-                        "nested installation identity",
-                    )?;
+            let nested = (|| -> Result<()> {
+                let components: Vec<_> = relative.components().collect();
+                for (index, c) in components.iter().enumerate() {
+                    if *c == Component::Normal("node_modules".as_ref()) {
+                        let next = components.get(index + 1).ok_or("installation name")?;
+                        let scoped = next
+                            .as_os_str()
+                            .to_str()
+                            .ok_or("installation utf8")?
+                            .starts_with('@');
+                        let end = index + if scoped { 3 } else { 2 };
+                        require(end <= components.len(), "installation boundary")?;
+                        let root: PathBuf = components.iter().take(end).collect();
+                        let key = root.to_str().ok_or("installation path utf8")?;
+                        let locked = packages
+                            .get(key)
+                            .ok_or("unlisted nested installation root")?;
+                        let actual: Value = serde_json::from_slice(&read(
+                            &installed.join(&root).join("package.json"),
+                            1024 * 1024,
+                        )?)?;
+                        let rootname = components
+                            .iter()
+                            .skip(index + 1)
+                            .take(if scoped { 2 } else { 1 })
+                            .map(|c| c.as_os_str().to_str().ok_or("installation name utf8"))
+                            .collect::<std::result::Result<Vec<_>, _>>()?
+                            .join("/");
+                        require(
+                            (*field(&actual, "name")) == rootname
+                                && (*field(&actual, "version")) == (*field(locked, "version"))
+                                && (*field(locked, "version")).is_string(),
+                            "nested installation identity",
+                        )?;
+                    }
                 }
+                Ok(())
+            })();
+            if let Err(error) = nested {
+                observation.gate(false, &format!("nested:{error}"))?;
             }
+            total = next_total.ok_or("inventory total overflow after gate")?;
             let bytes = read(&file, 16 * 1024 * 1024)?;
             require(
                 bytes.len() == usize::try_from(meta.len())?,
