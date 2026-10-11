@@ -36,6 +36,7 @@ pub enum Input {
 
 #[derive(Debug, Clone, Default)]
 pub struct Corpus {
+    pub utc_calendar: bool,
     pub exchanges: Vec<Exchange>,
     pub inputs: Vec<(String, Input)>,
     pub dropped: usize,
@@ -79,6 +80,13 @@ pub fn load(dir: &Path) -> Result<Corpus, String> {
         let text = std::fs::read_to_string(&manifest)
             .map_err(|e| format!("read {}: {e}", manifest.display()))?;
         let m: Value = serde_json::from_str(&text).map_err(|e| format!("manifest.json: {e}"))?;
+        if let Some(calendar) = m.get("calendarContract") {
+            if calendar != &serde_json::json!({"version":1,"timeZone":"UTC","usageWindowDays":365})
+            {
+                return Err("unsupported manifest calendar contract".into());
+            }
+            corpus.utc_calendar = true;
+        }
         if let Some(inputs) = at(&m, "inputs").as_object() {
             for (k, v) in inputs {
                 let input = if let Some(s) = at(v, "value").as_str() {
@@ -102,4 +110,47 @@ pub fn load(dir: &Path) -> Result<Corpus, String> {
         }
     }
     Ok(corpus)
+}
+
+#[cfg(test)]
+mod calendar_manifest_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    #[test]
+    fn calendar_contract_is_explicit_and_exact() {
+        let dir =
+            std::env::temp_dir().join(format!("replay-calendar-manifest-{}", std::process::id()));
+        std::fs::create_dir(&dir).unwrap();
+        for (manifest, accepted, enabled) in [
+            (serde_json::json!({}), true, false),
+            (
+                serde_json::json!({"calendarContract":{"version":1,"timeZone":"UTC","usageWindowDays":365}}),
+                true,
+                true,
+            ),
+            (
+                serde_json::json!({"calendarContract":{"version":1,"timeZone":"Europe/Berlin","usageWindowDays":365}}),
+                false,
+                false,
+            ),
+            (
+                serde_json::json!({"calendarContract":{"version":1,"timeZone":"UTC","usageWindowDays":364}}),
+                false,
+                false,
+            ),
+            (
+                serde_json::json!({"calendarContract":{"version":1,"timeZone":"UTC","usageWindowDays":365,"ignoreCounters":true}}),
+                false,
+                false,
+            ),
+        ] {
+            std::fs::write(dir.join("manifest.json"), manifest.to_string()).unwrap();
+            let result = load(&dir);
+            assert_eq!(result.is_ok(), accepted);
+            if let Ok(corpus) = result {
+                assert_eq!(corpus.utc_calendar, enabled);
+            }
+        }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

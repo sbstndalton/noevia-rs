@@ -16,4 +16,5 @@ path = "src/main.rs"
 
 [dependencies]
 httparse = "1"
+chrono = "0.4"
 serde_json = "1"

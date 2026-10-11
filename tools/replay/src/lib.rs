@@ -6,6 +6,7 @@
 //! "rust" in contracts/http/routes.toml when its exchanges replay clean against the Rust server.
 
 pub mod bind;
+pub mod calendar;
 pub mod corpus;
 pub mod diff;
 pub mod http;
@@ -316,17 +317,42 @@ pub fn replay_one(ex: &Exchange, corpus: &Corpus, opts: &Options, b: &mut Bindin
             return outcome;
         }
     };
-    match http::send(
-        &opts.base,
-        ex.method(),
-        &built.target,
-        &built.headers,
-        &built.body,
-        opts.timeout,
-    ) {
+    let (sent, before, after) = calendar::send_anchored(
+        || {
+            http::send(
+                &opts.base,
+                ex.method(),
+                &built.target,
+                &built.headers,
+                &built.body,
+                opts.timeout,
+            )
+        },
+        calendar::today,
+    );
+    match sent {
         Ok(res) => {
             outcome.actual_status = Some(res.status);
-            compare(ex, &res, opts, b, &mut outcome.diffs);
+            let adjusted;
+            let comparison = if corpus.utc_calendar {
+                match calendar::expected(ex, &res, before, after) {
+                    Ok(value) => {
+                        adjusted = value;
+                        &adjusted
+                    }
+                    Err(error) => {
+                        outcome.diffs.push(Diff {
+                            at: "calendar-contract".into(),
+                            expected: "validated UTC calendar contract".into(),
+                            actual: error,
+                        });
+                        ex
+                    }
+                }
+            } else {
+                ex
+            };
+            compare(comparison, &res, opts, b, &mut outcome.diffs);
             outcome
                 .diffs
                 .retain(|d| !body_ignored(&d.at, &opts.ignore_body));
