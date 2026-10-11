@@ -173,6 +173,16 @@ impl RustSamplingSettings {
     }
 }
 
+/// Capability for the single reasoning default key; native auth alone cannot write it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RustReasoningSettings(());
+impl RustReasoningSettings {
+    pub const ENV: &'static str = "NOEVIA_RUST_REASONING_SETTINGS";
+    pub fn from_env_value(value: Option<&str>, _auth: RustAuth) -> Option<Self> {
+        (value == Some("1")).then_some(Self(()))
+    }
+}
+
 /// The per-user file M4 shares with Node (core `server/rust-projects.cjs`): written by both, each
 /// only under the shared lock (crates/server-projects `lock`) and never from a stale copy.
 pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json"];
@@ -415,6 +425,10 @@ fn owned_authorizer(
                 return Authorization::Deny;
             }
             if table_name == "settings" {
+                // Fixed-key grants authorize the caller statement, never persisted trigger/view SQL.
+                if ctx.accessor.is_some() {
+                    return Authorization::Deny;
+                }
                 let open = settings_open.load(Ordering::SeqCst)
                     && matches!(
                         ctx.action,
@@ -684,6 +698,20 @@ impl WriteTx<'_> {
             "INSERT OR REPLACE INTO settings(key,value) VALUES('auto_sampling_presets_enabled',?1)",
         )?;
         Ok(stmt.execute([if enabled { "true" } else { "false" }])?)
+    }
+
+    /// Sets only the reasoning default key under its dedicated native capability.
+    pub fn set_reasoning_default(
+        &self,
+        _reasoning: RustReasoningSettings,
+        value: &str,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('reasoning_effort_default',?1)",
+            [value],
+        )?)
     }
 
     /// `INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)` for an owned key.

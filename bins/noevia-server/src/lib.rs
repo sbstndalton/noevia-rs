@@ -9,6 +9,7 @@ pub mod health;
 pub mod identity;
 pub mod legacy_proxy;
 pub mod project_routes;
+pub mod reasoning_settings_routes;
 pub mod reply;
 pub mod routes;
 pub mod sampling_settings_routes;
@@ -36,6 +37,8 @@ pub const FEATURES: &[&str] = &[
     "rust-projects",
     "rust-usage",
     "rust-sampling-settings",
+    #[cfg(feature = "rust-reasoning-settings")]
+    "rust-reasoning-settings",
 ];
 
 pub struct App {
@@ -51,6 +54,7 @@ pub struct App {
     /// The account routes while NOEVIA_RUST_AUTH is on (M3).
     pub accounts: Arc<account_routes::AccountLayer>,
     pub usage: Arc<usage_routes::UsageLayer>,
+    pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
 }
 
@@ -71,6 +75,7 @@ impl App {
             writes,
             accounts,
             usage: Arc::new(usage_routes::UsageLayer::default()),
+            reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
@@ -113,6 +118,7 @@ async fn handle(
                         | routes::Native::ProjectAssets
                         | routes::Native::Usage
                         | routes::Native::SamplingSettings
+                        | routes::Native::ReasoningSettings
                 )
             ) {
                 native = on_whatwg;
@@ -126,7 +132,8 @@ async fn handle(
             routes::Native::Account
             | routes::Native::ProjectAssets
             | routes::Native::Usage
-            | routes::Native::SamplingSettings,
+            | routes::Native::SamplingSettings
+            | routes::Native::ReasoningSettings,
         )
         | None => false,
     };
@@ -151,6 +158,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             account_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::ReasoningSettings) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            reasoning_settings_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::SamplingSettings) => {
             let Some(p) = whatwg else {

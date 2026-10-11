@@ -14,7 +14,12 @@ workspace = true
 name = "noevia-server"
 path = "src/main.rs"
 
+[features]
+default = []
+rust-reasoning-settings = []
+
 [dependencies]
+server-reasoning-settings = { path = "../../crates/server-reasoning-settings" }
 server-sampling-settings = { path = "../../crates/server-sampling-settings" }
 server-usage = { path = "../../crates/server-usage" }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }

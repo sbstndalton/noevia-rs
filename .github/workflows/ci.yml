@@ -641,3 +641,24 @@ jobs:
           if target/debug/noevia-ocr; then echo '::error::featureless binary started'; exit 1; fi
           cargo build --locked -p noevia-ocr --features native-ocr
           test "$(target/debug/noevia-ocr --features)" = native-ocr
+
+  reasoning-native:
+    name: Required native reasoning default contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - run: cargo clippy --locked -p server-reasoning-settings -p noevia-server --all-targets --features rust-reasoning-settings -- -D warnings
+      - run: cargo test --locked -p server-reasoning-settings -p noevia-server --features rust-reasoning-settings
+      - name: Compiled capability and default-off startup omission
+        run: |
+          set -euo pipefail
+          cargo build --locked -p noevia-server --no-default-features
+          if target/debug/noevia-server --features | grep -qx rust-reasoning-settings; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 NOEVIA_RUST_AUTH=1 NOEVIA_RUST_REASONING_SETTINGS=1 target/debug/noevia-server > omission.log 2>&1; then exit 1; fi
+          grep -q 'needs compiled rust-reasoning-settings' omission.log
+          cargo build --locked -p noevia-server --features rust-reasoning-settings
+          target/debug/noevia-server --features | grep -qx rust-reasoning-settings

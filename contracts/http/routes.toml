@@ -666,7 +666,9 @@ methods = ["GET"]
 
 [[route]]
 path = "/api/reasoning-settings"
-owner = "node"
+owner = "rust"
+methods = ["PUT"]
+switch = "NOEVIA_RUST_REASONING_SETTINGS"
 
 [[route]]
 path = "/api/routing-default"

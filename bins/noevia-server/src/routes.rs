@@ -33,6 +33,7 @@ pub struct Switches {
     pub rust_projects: bool,
     pub rust_usage: bool,
     pub rust_sampling_settings: bool,
+    pub rust_reasoning_settings: bool,
 }
 
 impl Switches {
@@ -42,6 +43,7 @@ impl Switches {
             "NOEVIA_RUST_PROJECTS" => self.rust_projects,
             "NOEVIA_RUST_USAGE" => self.rust_usage,
             "NOEVIA_RUST_SAMPLING_SETTINGS" => self.rust_sampling_settings,
+            "NOEVIA_RUST_REASONING_SETTINGS" => self.rust_reasoning_settings,
             _ => false,
         }
     }
@@ -73,6 +75,7 @@ pub enum Native {
     ProjectAssets,
     Usage,
     SamplingSettings,
+    ReasoningSettings,
 }
 
 /// The routes [`Native::ProjectAssets`] implements.
@@ -91,6 +94,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         }
         (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ASSET_ROUTES.contains(&p) => {
             Some(Native::ProjectAssets)
+        }
+        ("/api/reasoning-settings", false, Some("NOEVIA_RUST_REASONING_SETTINGS")) => {
+            Some(Native::ReasoningSettings)
         }
         ("/api/sampling-settings", false, Some("NOEVIA_RUST_SAMPLING_SETTINGS")) => {
             Some(Native::SamplingSettings)
@@ -214,6 +220,7 @@ mod tests {
             rust_projects: false,
             rust_usage: false,
             rust_sampling_settings: false,
+            rust_reasoning_settings: false,
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -224,6 +231,7 @@ mod tests {
             rust_projects: true,
             rust_usage: false,
             rust_sampling_settings: false,
+            rust_reasoning_settings: false,
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -235,12 +243,14 @@ mod tests {
             rust_projects: false,
             rust_usage: false,
             rust_sampling_settings: false,
+            rust_reasoning_settings: false,
         };
         let both = Switches {
             rust_auth: true,
             rust_projects: true,
             rust_usage: false,
             rust_sampling_settings: false,
+            rust_reasoning_settings: false,
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
@@ -301,6 +311,7 @@ mod tests {
             rust_auth: true,
             rust_usage: true,
             rust_sampling_settings: false,
+            rust_reasoning_settings: false,
             ..Default::default()
         };
         for p in ["/api/usage", "/api/usage/aggregate"] {
@@ -324,5 +335,32 @@ mod tests {
                 Some(Native::SamplingSettings)
             );
         }
+    }
+    #[test]
+    fn reasoning_owns_only_put_with_dedicated_selector() {
+        let on = Switches {
+            rust_auth: true,
+            rust_reasoning_settings: true,
+            ..Default::default()
+        };
+        for m in ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"] {
+            assert_eq!(dispatch_under(m, "/api/reasoning-settings", on), None);
+        }
+        assert_eq!(dispatch("PUT", "/api/reasoning-settings"), None);
+        assert_eq!(
+            dispatch_under(
+                "PUT",
+                "/api/reasoning-settings",
+                Switches {
+                    rust_auth: true,
+                    ..Default::default()
+                }
+            ),
+            None
+        );
+        assert_eq!(
+            dispatch_under("PUT", "/api/reasoning-settings", on),
+            Some(Native::ReasoningSettings)
+        );
     }
 }
