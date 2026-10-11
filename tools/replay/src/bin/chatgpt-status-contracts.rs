@@ -16,6 +16,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             Ok(())
         }
+        Some("verify-linux-worker-auth") => {
+            let args: Vec<String> = std::env::args().skip(2).take(3).collect();
+            let [option, binding] = args.as_slice() else {
+                return Err("exact worker verification option pair".into());
+            };
+            require(
+                option == "--reference-binding",
+                "fixed worker verification option",
+            )?;
+            let rows = support::chatgpt_worker_auth_oracle::reference_at(binding)?;
+            println!(
+                "{}",
+                serde_json::to_string(
+                    &serde_json::json!({"version":2,"validated_rows":rows.len(),"terminal_success":true})
+                )?
+            );
+            Ok(())
+        }
         Some("copy-dependencies") => {
             let value = support::chatgpt_status_dependencies::copy()?;
             println!("{}", serde_json::to_string_pretty(&value)?);

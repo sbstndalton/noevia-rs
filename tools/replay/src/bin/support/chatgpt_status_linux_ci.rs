@@ -1005,6 +1005,8 @@ fn capture_worker(args: &[String]) -> Result<Value> {
         let deadline = Instant::now() + Duration::from_secs(120);
         core(&out, &checkout)?;
         let identity = source_identity(&out, &source)?;
+        worker::source_binding(&identity)?;
+        let job = worker::expected_identity(&out, &identity)?;
         let executable = fs::canonicalize(std::env::current_exe()?)?;
         let tool_sha = binary_copy(&executable, &out.join("executed-coordinator.bin"))?;
         let node_sha = crate::hash(&read(&node, 128 * 1024 * 1024)?);
@@ -1015,7 +1017,7 @@ fn capture_worker(args: &[String]) -> Result<Value> {
         let inventory_sha = crate::hash(&read(&inventory, 2 * 1024 * 1024)?);
         json_save(
             &out.join("execution-inputs.json"),
-            &json!({"coordinator":executable,"coordinator_sha256":tool_sha,"node":node,"node_sha256":node_sha,"inventory_sha256":inventory_sha,"source":identity,"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"schema_sha256":worker::hash(worker::SCHEMA.as_bytes()),"setup_sha256":worker::hash(worker::SETUP.as_bytes())}),
+            &json!({"job":job,"root":out,"compiled_map":worker::compiled_map(),"coordinator":executable,"coordinator_sha256":tool_sha,"node":node,"node_sha256":node_sha,"inventory_sha256":inventory_sha,"source":identity,"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"schema_sha256":worker::hash(worker::SCHEMA.as_bytes()),"setup_sha256":worker::hash(worker::SETUP.as_bytes())}),
         )?;
         let attest = || -> Result<()> {
             require(
@@ -1246,23 +1248,77 @@ fn capture_worker(args: &[String]) -> Result<Value> {
         json_save(&out.join("worker-reference.json"), &json!(result))?;
         let certificate = json!({"core_commit":worker::CORE,"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"rows":result,"captures":captures,"native_loaded":native_loaded,"native_stdout_sha256":crate::hash(&read(&out.join("native-preflight.stdout"),1024*1024)?),"native_stderr_sha256":crate::hash(b""),"native_status_sha256":crate::hash(&read(&out.join("native-preflight.status.json"),8192)?),"scope":"five independent predecessor auth/device factory methods; no Node public headers/index/current core/defaultoff/supervisor/fullM6/native dylib ancestry proof"});
         json_save(&out.join("worker-certificate.json"), &certificate)?;
-        let binding = json!({"version":1,"root":out,"core_commit":worker::CORE,"core_tree":worker::TREE,"now":worker::NOW,"ids":worker::IDS,"runtime":runtime,"node_sha256":node_sha,"schema_sha256":worker::hash(worker::SCHEMA.as_bytes()),"setup_sha256":worker::hash(worker::SETUP.as_bytes()),"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"test_sha256":worker::hash(include_bytes!("../../../../../bins/noevia-server/tests/chatgpt_worker.rs")),"certificate_sha256":crate::hash(&read(&out.join("worker-certificate.json"),2*1024*1024)?),"manifest_sha256":crate::hash(&read(&oracle.join("qualification-manifest.json"),2*1024*1024)?),"reference_sha256":crate::hash(&read(&out.join("worker-reference.json"),1024*1024)?),"source_head":field(&identity,"head"),"source_tree":field(&identity,"tree"),"tool_sha256":tool_sha});
-        json_save(&out.join("worker-binding.json"), &binding)?;
-        worker::reference_at(text(&out.join("worker-binding.json"))?)?;
+        let mut binding = json!({"version":2,"root":out,"core_commit":worker::CORE,"core_tree":worker::TREE,"now":worker::NOW,"ids":worker::IDS,"runtime":runtime,"node_sha256":node_sha,"schema_sha256":worker::hash(worker::SCHEMA.as_bytes()),"setup_sha256":worker::hash(worker::SETUP.as_bytes()),"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"test_sha256":worker::hash(include_bytes!("../../../../../bins/noevia-server/tests/chatgpt_worker.rs")),"certificate_sha256":crate::hash(&read(&out.join("worker-certificate.json"),2*1024*1024)?),"manifest_sha256":crate::hash(&read(&oracle.join("qualification-manifest.json"),2*1024*1024)?),"reference_sha256":crate::hash(&read(&out.join("worker-reference.json"),1024*1024)?),"source_head":field(&identity,"head"),"source_tree":field(&identity,"tree"),"tool_sha256":tool_sha});
+        let object = binding.as_object_mut().ok_or("worker binding object")?;
+        object.insert("job".into(), json!(job));
+        object.insert(
+            "compiled_map_sha256".into(),
+            json!(crate::hash(&serde_json::to_vec(&worker::compiled_map())?)),
+        );
+        object.insert(
+            "source_identity_sha256".into(),
+            json!(crate::hash(&read(
+                &out.join("source-identity.json"),
+                2 * 1024 * 1024
+            )?)),
+        );
+        object.insert(
+            "execution_inputs_sha256".into(),
+            json!(crate::hash(&read(
+                &out.join("execution-inputs.json"),
+                2 * 1024 * 1024
+            )?)),
+        );
+        worker::reference_provisional(&out, &binding)?;
         attest()?;
         topology()?;
+        require(
+            Instant::now() < deadline,
+            "worker final cooperative deadline",
+        )?;
+        // No consumable terminal or binding has been published before all checks.
         Ok(binding)
     })();
-    json_save(
-        &out.join("worker-outcome.json"),
-        &match &operation {
-            Ok(_) => json!({"outer_code":0,"completed":true}),
-            Err(e) => {
-                json!({"outer_code":1,"completed":false,"typed_failure":"worker-setup-or-child-failure","message":e.to_string()})
+    match operation {
+        Ok(mut binding) => {
+            // A directed binding -> terminal -> evidence graph avoids circular hashes.
+            let mut terminal = json!({"outer_code":0,"completed":true});
+            let object = terminal.as_object_mut().ok_or("worker terminal object")?;
+            for key in [
+                "job",
+                "root",
+                "source_head",
+                "source_tree",
+                "reference_sha256",
+                "certificate_sha256",
+                "manifest_sha256",
+                "source_identity_sha256",
+                "execution_inputs_sha256",
+                "tool_sha256",
+                "compiled_map_sha256",
+            ] {
+                object.insert(key.into(), field(&binding, key).clone());
             }
-        },
-    )?;
-    operation
+            json_save(&out.join("worker-outcome.json"), &terminal)?;
+            binding
+                .as_object_mut()
+                .ok_or("worker binding object")?
+                .insert(
+                    "outcome_sha256".into(),
+                    json!(crate::hash(&read(&out.join("worker-outcome.json"), 16384)?)),
+                );
+            // Publication is the final operation. Failed runs retain raw partial files.
+            json_save(&out.join("worker-binding.json"), &binding)?;
+            Ok(binding)
+        }
+        Err(error) => {
+            json_save(
+                &out.join("worker-outcome.json"),
+                &json!({"outer_code":1,"completed":false,"typed_failure":"worker-setup-or-child-failure","message":error.to_string()}),
+            )?;
+            Err(error)
+        }
+    }
 }
 
 pub fn dispatch(args: &[String]) -> Result<Value> {
