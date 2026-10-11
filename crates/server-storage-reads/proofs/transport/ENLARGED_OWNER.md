@@ -1,0 +1,15 @@
+# Private enlarged response owner
+
+This checkpoint adds M4NET001 separately from unchanged M4BODY01. It contains no network implementation. Closed Envelope validates the request cap before encoding/spawn/allocation; only 800000 and 4194304-byte HTTP caps are accepted. HTTP maximum inner response is 18 + cap + 1, outer retained stdout is 8 READY + 8 tag + 4 length + inner: 800039 or 4194343 bytes. Old BODY retains cap + 20. Vec reserve_exact requests this logical capacity; allocator physical overhead is not claimed bounded by that number.
+
+One fair nonblocking pump handles both versions. It validates outer tag/length, then typed inner fields once 18 metadata bytes exist; it does not decode a partial whole frame. Input follows validated READY; input is derived from the Request cap and existing unchanged Request codec. Completed output requires EOF on stdout/stderr, child exit, cleanup with confirmed reap and exit zero. OwnedReply stores the existing Vec once without Debug or body clone and borrows through view(). No credential/URL logging is introduced. Existing Owned cleanup, Linux setup and admission lease semantics remain.
+
+Separate portable private-network-fixture is fixed synthetic behavior, no network or Linux bypass in the production child. Production private-request-child now emits NET but remains Linux-required and a fixed typed failure stub.
+
+Focused network_envelope controls passed once (three tests): both full caps/nonempty/lookahead/fragment boundary, tag/early metadata/extra/exit/stall, legacy BODY compatibility, in-payload cancel and admission. Six new policy controls had five passes and one unrelated CONTROL failure in a parallel baseline; the selected metadata diagnostic passed alone. This baseline failure remains an explicit qualification, not six-control baseline certification.
+
+Six maintained-source mutants are TAG, METADATA, EOF, EXIT, CANCEL_IGNORED, ADMISSION_EARLY_RELEASE. Each ran one selected test, status 101, one exact named panic at current source location, exact unique policy ID, sole failure inventory and five filtered tests. The finite process seam retained stdout, stderr and status. Actual-format forged setup/deadline/cap/other policy/wrong test/location, compiler, missing/wrong status and additional panic controls were rejected. No broad mutation completeness claim.
+
+The EOF control tests complete maximum payload followed by a still-live fixture; early pre-reap observation under one second is policy failure, not general timing certification. Deadline/cleanup retain prior ordinary OS scheduling/reap caveats. Prior three lifecycle-mutant evidence is lineage only; its passing group was not repeated against this checkpoint.
+
+Linux execution, actual network/TLS/DNS/codecs, async supervisor, parent listing/parser/sort memory, authentication/AAD/store/routes/workspace integration/default-on remain held. Address-space limits do not prove RSS or parent heap; normal allocator failure/OS kill and cleanup scheduling are not recoverable-OOM/hard real-time guarantees.

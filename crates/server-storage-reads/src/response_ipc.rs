@@ -144,11 +144,8 @@ fn metadata(bytes: &[u8], cap: usize) -> Result<usize, Error> {
     }
     Ok(size)
 }
-pub fn decode(bytes: &[u8], cap: usize) -> Result<Reply<'_>, Error> {
+pub(crate) fn validate_metadata(bytes: &[u8], cap: usize) -> Result<usize, Error> {
     let size = metadata(bytes, cap)?;
-    if bytes.len() != METADATA + size {
-        return Err(Error::Protocol);
-    }
     let kind = *bytes.get(8).ok_or(Error::Protocol)?;
     let phase = phase(*bytes.get(9).ok_or(Error::Protocol)?)?;
     let status = u16::from_be_bytes(
@@ -160,7 +157,6 @@ pub fn decode(bytes: &[u8], cap: usize) -> Result<Reply<'_>, Error> {
     );
     let code = *bytes.get(12).ok_or(Error::Protocol)?;
     let flags = *bytes.get(13).ok_or(Error::Protocol)?;
-    let payload = bytes.get(METADATA..).ok_or(Error::Protocol)?;
     match kind {
         0 if phase == Phase::Finished
             && code == 0
@@ -169,19 +165,39 @@ pub fn decode(bytes: &[u8], cap: usize) -> Result<Reply<'_>, Error> {
             && ((flags == 1) == (size == cap + 1))
             && (status < 300 || size == 0) =>
         {
-            Ok(Reply::Http {
-                status,
-                capped: flags == 1,
-                payload,
-            })
+            Ok(size)
         }
         1 if status == 0 && flags == 0 && size == 0 => {
             let failure = failure(code)?;
             if !combination(phase, failure) {
                 return Err(Error::Protocol);
             }
-            Ok(Reply::Failure { phase, failure })
+            Ok(size)
         }
+        _ => Err(Error::Protocol),
+    }
+}
+pub fn decode(bytes: &[u8], cap: usize) -> Result<Reply<'_>, Error> {
+    let size = validate_metadata(bytes, cap)?;
+    if bytes.len() != METADATA + size {
+        return Err(Error::Protocol);
+    }
+    match bytes.get(8) {
+        Some(0) => Ok(Reply::Http {
+            status: u16::from_be_bytes(
+                bytes
+                    .get(10..12)
+                    .ok_or(Error::Protocol)?
+                    .try_into()
+                    .map_err(|_| Error::Protocol)?,
+            ),
+            capped: bytes.get(13) == Some(&1),
+            payload: bytes.get(METADATA..).ok_or(Error::Protocol)?,
+        }),
+        Some(1) => Ok(Reply::Failure {
+            phase: phase(*bytes.get(9).ok_or(Error::Protocol)?)?,
+            failure: failure(*bytes.get(12).ok_or(Error::Protocol)?)?,
+        }),
         _ => Err(Error::Protocol),
     }
 }
@@ -212,7 +228,7 @@ impl Frame {
         }
         self.bytes.extend_from_slice(part);
         if self.bytes.len() >= METADATA {
-            let size = metadata(&self.bytes, self.cap)?;
+            let size = validate_metadata(&self.bytes, self.cap)?;
             if self.bytes.len() > METADATA + size {
                 return Err(Error::Protocol);
             }

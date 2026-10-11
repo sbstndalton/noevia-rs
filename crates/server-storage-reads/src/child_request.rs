@@ -46,3 +46,21 @@ pub fn nested(output: &mut impl Write, frame: &[u8]) -> Result<(), Error> {
         .and_then(|_| output.flush())
         .map_err(|_| Error::Protocol)
 }
+pub fn network_reply(output: &mut impl Write, frame: &[u8], cap: usize) -> Result<(), Error> {
+    if !matches!(cap, crate::LIST_BYTES | crate::TEXT_BYTES) {
+        return Err(Error::Input);
+    }
+    crate::response_ipc::decode(frame, cap)?;
+    output
+        .write_all(crate::isolated::NET)
+        .and_then(|_| {
+            output.write_all(
+                &u32::try_from(frame.len())
+                    .map_err(|_| std::io::Error::other("fixed framing refusal"))?
+                    .to_be_bytes(),
+            )
+        })
+        .and_then(|_| output.write_all(frame))
+        .and_then(|_| output.flush())
+        .map_err(|_| Error::Protocol)
+}

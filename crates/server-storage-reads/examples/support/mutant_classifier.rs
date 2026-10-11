@@ -3,9 +3,25 @@ pub struct Policy<'a> {
     pub test: &'a str,
     pub id: &'a str,
     pub location: String,
+    filtered: usize,
 }
 impl<'a> Policy<'a> {
     pub fn bind(source: &str, test: &'a str, id: &'a str) -> Result<Self, String> {
+        Self::bind_at(source, test, id, "tests/owned_controls.rs", 3)
+    }
+    pub fn bind_at(
+        source: &str,
+        test: &'a str,
+        id: &'a str,
+        file: &str,
+        filtered: usize,
+    ) -> Result<Self, String> {
+        if !matches!(
+            file,
+            "tests/owned_controls.rs" | "tests/network_policies.rs"
+        ) {
+            return Err("policy file binding refused".into());
+        }
         let candidates: Vec<_> = source
             .lines()
             .enumerate()
@@ -19,7 +35,8 @@ impl<'a> Policy<'a> {
         Ok(Self {
             test,
             id,
-            location: format!("tests/owned_controls.rs:{}:{column}", line + 1),
+            location: format!("{file}:{}:{column}", line + 1),
+            filtered,
         })
     }
     pub fn accepts(&self, code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> bool {
@@ -77,7 +94,7 @@ impl<'a> Policy<'a> {
         let Some(summary) = test_lines.get(1) else {
             return false;
         };
-        if !summary.starts_with("test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out; finished in ") || !summary.ends_with('s') {return false;}
+        if !summary.starts_with(&format!("test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; {} filtered out; finished in ",self.filtered)) || !summary.ends_with('s') {return false;}
         if lines.iter().filter(|l| **l == "running 1 test").count() != 1 {
             return false;
         }

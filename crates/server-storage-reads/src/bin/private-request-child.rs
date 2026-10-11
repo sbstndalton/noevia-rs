@@ -35,7 +35,8 @@ fn run() -> Result<(), ()> {
         request.body_cap,
     )
     .map_err(|_| ())?;
-    child_request::nested(&mut std::io::stdout().lock(), &frame).map_err(|_| ())
+    child_request::network_reply(&mut std::io::stdout().lock(), &frame, request.body_cap)
+        .map_err(|_| ())
 }
 fn main() -> ExitCode {
     if run().is_ok() {

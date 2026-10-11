@@ -13,6 +13,134 @@ use zeroize::Zeroizing;
 pub const INPUT: usize = 16 * 1024 * 1024;
 pub const READY: &[u8; 8] = b"M4READY1";
 pub const BODY: &[u8; 8] = b"M4BODY01";
+pub const NET: &[u8; 8] = b"M4NET001";
+enum Envelope {
+    Body { cap: usize },
+    Http { cap: usize },
+}
+impl Envelope {
+    fn body(cap: usize) -> Result<Self, Error> {
+        if cap > crate::LIST_BYTES {
+            return Err(Error::Input);
+        }
+        Ok(Self::Body { cap })
+    }
+    fn http(cap: usize) -> Result<Self, Error> {
+        if !matches!(cap, crate::LIST_BYTES | crate::TEXT_BYTES) {
+            return Err(Error::Input);
+        }
+        Ok(Self::Http { cap })
+    }
+    fn tag(&self) -> &[u8; 8] {
+        match self {
+            Self::Body { .. } => BODY,
+            Self::Http { .. } => NET,
+        }
+    }
+    fn maximum(&self) -> usize {
+        match self {
+            Self::Body { cap } => *cap,
+            Self::Http { cap } => crate::response_ipc::METADATA + cap + 1,
+        }
+    }
+    fn validate(&self, out: &[u8]) -> Result<(), Error> {
+        let offset = READY.len();
+        let head = offset + 8 + 4;
+        if out.len() < head {
+            return Ok(());
+        }
+        if out.get(offset..offset + 8) != Some(self.tag().as_slice()) {
+            return Err(Error::Protocol);
+        }
+        let size = usize::try_from(u32::from_be_bytes(
+            out.get(offset + 8..head)
+                .ok_or(Error::Protocol)?
+                .try_into()
+                .map_err(|_| Error::Protocol)?,
+        ))
+        .map_err(|_| Error::Protocol)?;
+        if size > self.maximum() {
+            return Err(Error::Output);
+        }
+        if out.len() > head + size {
+            return Err(Error::Protocol);
+        }
+        if let Self::Http { cap } = self {
+            if size < crate::response_ipc::METADATA {
+                return Err(Error::Protocol);
+            }
+            if out.len() >= head + crate::response_ipc::METADATA {
+                let payload = crate::response_ipc::validate_metadata(
+                    out.get(head..).ok_or(Error::Protocol)?,
+                    *cap,
+                )?;
+                if size != crate::response_ipc::METADATA + payload {
+                    return Err(Error::Protocol);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+/// Constructed only after complete framing, normal exit, EOF and confirmed reap.
+pub struct OwnedReply {
+    bytes: Vec<u8>,
+    cap: usize,
+}
+impl OwnedReply {
+    pub fn view(&self) -> Result<crate::response_ipc::Reply<'_>, Error> {
+        crate::response_ipc::decode(&self.bytes, self.cap)
+    }
+}
+pub fn attempt_http(
+    command: Command,
+    request: crate::protocol::Request,
+    deadline: Duration,
+    cancelled: &AtomicBool,
+    permit: Permit,
+) -> Result<OwnedReply, Error> {
+    attempt_http_observed(command, request, deadline, cancelled, permit, |_, _| {})
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum NetworkObservation {
+    OutputProgress(usize),
+    BeforeReap,
+}
+enum PumpObservation {
+    Existing(Observation),
+    OutputProgress(usize),
+}
+pub fn attempt_http_observed(
+    command: Command,
+    request: crate::protocol::Request,
+    deadline: Duration,
+    cancelled: &AtomicBool,
+    permit: Permit,
+    mut observe: impl FnMut(NetworkObservation, u32),
+) -> Result<OwnedReply, Error> {
+    let cap = request.body_cap;
+    let envelope = Envelope::http(cap)?;
+    let input = crate::request_ipc::encode(&request)?;
+    let bytes = pump(
+        command,
+        input,
+        envelope,
+        deadline,
+        cancelled,
+        permit,
+        |stage, pid| match stage {
+            PumpObservation::OutputProgress(bytes) => {
+                observe(NetworkObservation::OutputProgress(bytes), pid)
+            }
+            PumpObservation::Existing(Observation::BeforeReap) => {
+                observe(NetworkObservation::BeforeReap, pid)
+            }
+            _ => {}
+        },
+    )?;
+    crate::response_ipc::decode(&bytes, cap)?;
+    Ok(OwnedReply { bytes, cap })
+}
 const STDERR: usize = 4096;
 const STEP: usize = 4096;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -136,7 +264,7 @@ pub enum Observation {
     BeforeReap,
 }
 pub fn attempt_observed(
-    mut command: Command,
+    command: Command,
     input: Zeroizing<Vec<u8>>,
     body_cap: usize,
     deadline: Duration,
@@ -144,7 +272,30 @@ pub fn attempt_observed(
     permit: Permit,
     mut observe: impl FnMut(Observation, u32),
 ) -> Result<Vec<u8>, Error> {
-    if input.len() > INPUT || body_cap > crate::LIST_BYTES {
+    pump(
+        command,
+        input,
+        Envelope::body(body_cap)?,
+        deadline,
+        cancelled,
+        permit,
+        |stage, pid| {
+            if let PumpObservation::Existing(stage) = stage {
+                observe(stage, pid)
+            }
+        },
+    )
+}
+fn pump(
+    mut command: Command,
+    input: Zeroizing<Vec<u8>>,
+    envelope: Envelope,
+    deadline: Duration,
+    cancelled: &AtomicBool,
+    permit: Permit,
+    mut observe: impl FnMut(PumpObservation, u32),
+) -> Result<Vec<u8>, Error> {
+    if input.len() > INPUT {
         return Err(Error::Input);
     }
     let start = Instant::now();
@@ -168,8 +319,9 @@ pub fn attempt_observed(
         nonblocking(&stdout)?;
         nonblocking(&stderr)?;
         // Explicit capacities: no length-triggered geometric growth in IPC buffers.
-        let cap = body_cap
-            .checked_add(READY.len() + BODY.len() + 4)
+        let cap = envelope
+            .maximum()
+            .checked_add(READY.len() + envelope.tag().len() + 4)
             .ok_or(Error::Output)?;
         let mut out = Vec::new();
         out.try_reserve_exact(cap).map_err(|_| Error::Output)?;
@@ -192,11 +344,16 @@ pub fn attempt_observed(
                 return Err(Error::Deadline);
             }
             if !out_done {
+                let previous = out.len();
                 out_done = read_step(&mut stdout, &mut out, cap)?;
+                if out.len() != previous {
+                    observe(PumpObservation::OutputProgress(out.len()), owned.child.id());
+                }
             }
             if !err_done {
                 err_done = read_step(&mut stderr, &mut err, STDERR)?;
             }
+            envelope.validate(&out)?;
             if !ready && out.len() >= READY.len() {
                 if out.get(..READY.len()) != Some(READY.as_slice()) {
                     return Err(Error::Protocol);
@@ -222,7 +379,10 @@ pub fn attempt_observed(
                             Ok(0) => return Err(Error::Protocol),
                             Ok(n) => {
                                 sent += n;
-                                observe(Observation::InputProgress(sent), owned.child.id());
+                                observe(
+                                    PumpObservation::Existing(Observation::InputProgress(sent)),
+                                    owned.child.id(),
+                                );
                             }
                             Err(e) if transient(&e) => {}
                             Err(_) => return Err(Error::Protocol),
@@ -241,24 +401,27 @@ pub fn attempt_observed(
             return Err(Error::Protocol);
         }
         let offset = READY.len();
-        if out.get(offset..offset + BODY.len()) != Some(BODY.as_slice()) {
+        if out.get(offset..offset + envelope.tag().len()) != Some(envelope.tag().as_slice()) {
             return Err(Error::Protocol);
         }
-        let offset = offset + BODY.len();
+        let offset = offset + envelope.tag().len();
         let size: [u8; 4] = out
             .get(offset..offset + 4)
             .ok_or(Error::Protocol)?
             .try_into()
             .map_err(|_| Error::Protocol)?;
         let size = usize::try_from(u32::from_be_bytes(size)).map_err(|_| Error::Protocol)?;
-        if size > body_cap || out.len() != offset + 4 + size {
+        if size > envelope.maximum() || out.len() != offset + 4 + size {
             return Err(Error::Protocol);
         }
         // Shift in place, no duplicate body allocation. Raw bytes decoded by caller.
         out.drain(..offset + 4);
         Ok(out)
     })();
-    observe(Observation::BeforeReap, owned.child.id());
+    observe(
+        PumpObservation::Existing(Observation::BeforeReap),
+        owned.child.id(),
+    );
     let success = owned.cleanup()?;
     match result {
         Err(error) => Err(error),
