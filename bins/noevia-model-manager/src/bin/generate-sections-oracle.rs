@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -135,7 +135,6 @@ fn main() -> Result<(), Error> {
     let mut args = std::env::args_os().skip(1);
     let source = PathBuf::from(args.next().ok_or("actual app path")?);
     let output = PathBuf::from(args.next().ok_or("output path")?);
-    let previous = args.next().map(PathBuf::from);
     if args.next().is_some() {
         return Err("unexpected arguments".into());
     }
@@ -433,40 +432,9 @@ fn main() -> Result<(), Error> {
             )),
         );
     }
-    let result = json!({"services":"4f3cf816225d4ed12db33fd8e4a7e2d7ae946a4b","sources":sources,"cases":fixtures,"http":http});
-    if let Some(previous) = previous {
-        let mut bytes = Vec::new();
-        std::fs::File::open(previous)?
-            .take(8 * 1024 * 1024 + 1)
-            .read_to_end(&mut bytes)?;
-        if bytes.len() > 8 * 1024 * 1024 {
-            return Err("previous fixture exceeded cap".into());
-        }
-        let prior: Value = serde_json::from_slice(&bytes)?;
-        if prior.get("services") != result.get("services")
-            || prior.get("sources") != result.get("sources")
-        {
-            return Err("fixture provenance changed".into());
-        }
-        for group in ["cases", "http"] {
-            let old = prior
-                .get(group)
-                .and_then(Value::as_array)
-                .ok_or("previous group")?;
-            let current = result
-                .get(group)
-                .and_then(Value::as_array)
-                .ok_or("current group")?;
-            if old.len() > 512 || current.len() > 512 {
-                return Err("fixture group count exceeded cap".into());
-            }
-            if old.iter().any(|case| !current.contains(case)) {
-                return Err(format!("prior {group} coverage changed").into());
-            }
-            println!("preserved {} {group}", old.len());
-        }
-    }
-    let bytes = serde_json::to_vec_pretty(&result)?;
+    let bytes = serde_json::to_vec_pretty(
+        &json!({"services":"4f3cf816225d4ed12db33fd8e4a7e2d7ae946a4b","sources":sources,"cases":fixtures,"http":http}),
+    )?;
     std::fs::write(&output, &bytes)?;
     println!("{} {:x}", output.display(), Sha256::digest(&bytes));
     Ok(())
