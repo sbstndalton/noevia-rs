@@ -88,3 +88,24 @@ told the front owns the image routes but the front does not: the uploads must be
 `core.sha256` records the twice-fetched, byte-identical codeload archive SHA-256 for
 `core.ref` (metadata; existing replay CI consumes the single SHA in `core.ref`).
 The core#61 landing provides the required native OCR front acceptance gate (#1271).
+
+### UTC calendar replay contract (#1308)
+
+The committed manifest explicitly opts into version 1 of `calendarContract` (UTC,
+365 usage days). Only successful exact GET `/api/usage`, `/api/usage/aggregate`,
+and `/api/export/conversations` exchanges qualify. Replay independently captures
+UTC dates immediately before and after the actual HTTP request; an endpoint's
+last day / export filename date must equal one of those dates (at most a single
+midnight crossing). Both recorded and actual usage windows must contain exactly
+365 valid, ordered consecutive dates, `retentionDays: 365`, and `timeZone: UTC`.
+Only validated expected day labels / the exact ZIP filename date are adapted.
+Counters, streaks, models, sorting, all other body values and headers remain
+subject to the existing strict comparison. Missing opt-in retains strict dates;
+unsupported manifest contracts and invalid windows fail closed. No server clock
+controls or date ignore paths are introduced.
+
+Focused controls live in `tools/replay/src/calendar.rs`: leap/year boundaries,
+midnight capture ordering, malformed/gapped/reordered windows, retention/timezone,
+wrong anchors, nondate drift, full export filename format, and real TCP replay
+with opt-in/off and wrong-date refusal. Qualification mutations removing window
+ordering, request-anchor checks, or calendar wiring must fail these tests.
