@@ -246,12 +246,21 @@ fn exact_target_accepts(
         source.display()
     );
     let canonical = format!("{}/target/debug/deps/network_policies-", source.display());
+    let running_prefix = format!("     Running tests/network_policies.rs ({actual}");
     let mut count = 0;
     let mut view = String::new();
     for line in raw.split_inclusive('\n') {
-        if line.trim_start().starts_with("Running ") && line.contains(&actual) {
-            if line.matches(&actual).count() != 1 {
-                return Err("target ambiguity".into());
+        if line.trim_start().starts_with("Running ") {
+            let suffix = line
+                .strip_prefix(&running_prefix)
+                .and_then(|s| s.strip_suffix(")\n"))
+                .ok_or("whole running target")?;
+            if suffix.len() != 16
+                || !suffix
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            {
+                return Err("binary suffix".into());
             }
             count += 1;
             view.push_str(&line.replacen(&actual, &canonical, 1));
@@ -263,6 +272,66 @@ fn exact_target_accepts(
         return Err("exact target binding".into());
     }
     Ok(policy.accepts(status, stdout, view.as_bytes()))
+}
+#[cfg(test)]
+mod qualifier_tests {
+    use super::*;
+
+    #[test]
+    fn whole_running_target_control() -> Result<(), String> {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let policy = classifier::Policy::bind_at(
+            "assert!(false, \"M4_QUALIFIER\");\n",
+            "qualifier",
+            "M4_QUALIFIER",
+            "tests/network_policies.rs",
+            7,
+        )?;
+        let stdout = b"\nrunning 1 test\ntest qualifier ... FAILED\n\nfailures:\n\n---- qualifier stdout ----\n\nthread 'qualifier' (1) panicked at tests/network_policies.rs:1:1:\nM4_QUALIFIER\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    qualifier\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.01s\n\n";
+        let path = format!(
+            "{}/target/auth-row-mutants/debug/deps/network_policies-bc4646d2c62baaad",
+            source.display()
+        );
+        let running = format!("     Running tests/network_policies.rs ({path})\n");
+        let stderr = |line: &str| {
+            format!("    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n{line}error: test failed, to rerun pass `--test network_policies`\n")
+        };
+        if !exact_target_accepts(
+            &policy,
+            Some(101),
+            stdout,
+            stderr(&running).as_bytes(),
+            source,
+        )? {
+            return Err("accepted dialect refused".into());
+        }
+        let rejected = [
+            running.replace(&path, &format!("/wrong{path}")),
+            running.replace("bc4646d2c62baaad", "not-a-binary"),
+            running.replace("bc4646d2c62baaad", "Bc4646d2c62baaad"),
+            running.replace("bc4646d2c62baaad", "bc4646d2c62baaag"),
+            running.replace("bc4646d2c62baaad", "bc4646d2c62baaa"),
+            running.replace("bc4646d2c62baaad", "bc4646d2c62baaad0"),
+            running.replace(&path, &format!("{path}/extra")),
+            running.replace("auth-row-mutants", "wrong-root"),
+            running.replace("network_policies-", "wrong_name-"),
+            running.replace("tests/network_policies.rs", "tests/wrong.rs"),
+            running.replace("     Running", " Running"),
+            running.replace(")\n", ") suffix\n"),
+            running.replace('\n', "\r\n"),
+            format!("{running}{running}"),
+            String::new(),
+        ];
+        for (index, line) in rejected.iter().enumerate() {
+            if matches!(
+                exact_target_accepts(&policy, Some(101), stdout, stderr(line).as_bytes(), source),
+                Ok(true)
+            ) {
+                return Err(format!("forged target accepted: {index}"));
+            }
+        }
+        Ok(())
+    }
 }
 fn main() -> ExitCode {
     match run() {
