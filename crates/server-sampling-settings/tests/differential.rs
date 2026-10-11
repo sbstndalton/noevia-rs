@@ -19,7 +19,7 @@ fn actual_node_catalogue_defaults_and_put_matrix() {
     assert_eq!(
         fixture["core"],
         std::env::var("NOEVIA_SAMPLING_CORE_SHA")
-            .unwrap_or_else(|_| "9b104330d1122ae96617816de574b4c6039beff8".into())
+            .unwrap_or_else(|_| "641917e2447a0b6c91d7e54cc665085b32555b92".into())
     );
     for case in fixture["cases"].as_array().unwrap() {
         let dir = tempfile::tempdir().unwrap();

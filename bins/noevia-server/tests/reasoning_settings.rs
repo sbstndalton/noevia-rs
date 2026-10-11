@@ -303,6 +303,11 @@ async fn actual_node_matrix_through_native_http_with_dead_legacy() {
         "../../../crates/server-reasoning-settings/tests/fixtures/node-reasoning.v1.json"
     ))
     .unwrap();
+    assert_eq!(
+        f["core"],
+        include_str!("../../../contracts/http/core.ref").trim()
+    );
+    assert_eq!(f["cases"].as_array().unwrap().len(), 52);
     let d = tempfile::tempdir().unwrap();
     let db = Connection::open(d.path().join("cowork.db")).unwrap();
     db.execute_batch(

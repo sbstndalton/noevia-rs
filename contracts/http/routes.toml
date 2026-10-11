@@ -665,6 +665,7 @@ owner = "rust"
 methods = ["GET"]
 
 [[route]]
+# GET/provider capability and every non-PUT method remain explicitly Node-owned.
 path = "/api/reasoning-settings"
 owner = "rust"
 methods = ["PUT"]

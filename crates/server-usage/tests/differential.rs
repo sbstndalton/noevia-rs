@@ -34,7 +34,7 @@ fn pinned_node_reporting() {
     assert_eq!(
         f["core"],
         std::env::var("NOEVIA_USAGE_CORE_SHA")
-            .unwrap_or_else(|_| "9b104330d1122ae96617816de574b4c6039beff8".into())
+            .unwrap_or_else(|_| "641917e2447a0b6c91d7e54cc665085b32555b92".into())
     );
     let ordered: server_usage::input::Input = serde_json::from_str(&text).unwrap();
     let server_usage::input::Input::Array(cases) = ordered.get("cases").unwrap() else {
