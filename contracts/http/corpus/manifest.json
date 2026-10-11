@@ -147,5 +147,10 @@
     "DELETE /api/projects/<id:3>/chats/<id:8>",
     "DELETE /api/projects/<id:3>",
     "DELETE /api/admin/users/<id:10>"
-  ]
+  ],
+  "calendarContract": {
+    "version": 1,
+    "timeZone": "UTC",
+    "usageWindowDays": 365
+  }
 }

@@ -681,6 +681,8 @@ jobs:
           tar -xzf "$RUNNER_TEMP/reasoning-wasm.tgz" --strip-components=1 -C "$RUNNER_TEMP/reasoning-wasm"
           "$RUNNER_TEMP/reasoning-wasm/tools/build-dav-parse-wasm.sh" "$GITHUB_WORKSPACE/core/server/wasm/dav-parse.wasm"
           echo "$DAV_PARSE_WASM_SHA256  core/server/wasm/dav-parse.wasm" | sha256sum -c -
+      - name: Checked-in corpus retains strict request-anchored calendar checks
+        run: cargo test --locked -p replay calendar
       - name: Regenerate actual Node SQLite oracle and require its full contract
         run: |
           set -euo pipefail

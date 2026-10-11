@@ -117,6 +117,16 @@ mod calendar_manifest_tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
     #[test]
+    fn checked_in_native_http_corpus_requires_calendar_contract() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/http/corpus");
+        let corpus = load(&dir).unwrap();
+        assert!(
+            corpus.utc_calendar,
+            "native HTTP corpus must retain its strict UTC calendar contract"
+        );
+        assert_eq!(corpus.exchanges.len(), 193);
+    }
+    #[test]
     fn calendar_contract_is_explicit_and_exact() {
         let dir =
             std::env::temp_dir().join(format!("replay-calendar-manifest-{}", std::process::id()));

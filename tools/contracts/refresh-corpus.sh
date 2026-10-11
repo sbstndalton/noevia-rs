@@ -26,6 +26,17 @@ PY
 if ls "$tmp/c/exchanges"/*.dropped >/dev/null 2>&1; then
   echo "refusing: the recorder dropped exchanges (a secret survived normalisation)" >&2; exit 1
 fi
+# Preserve the Rust-owned calendar qualification metadata when replacing Node capture bytes.
+python3 - "$dest/manifest.json" "$tmp/c/manifest.json" <<'PYCALENDAR'
+import json, pathlib, sys
+old=json.loads(pathlib.Path(sys.argv[1]).read_text())
+new=json.loads(pathlib.Path(sys.argv[2]).read_text())
+contract=old.get('calendarContract')
+assert contract=={'version':1,'timeZone':'UTC','usageWindowDays':365}, 'current corpus calendar contract is missing or unsupported'
+assert 'calendarContract' not in new or new['calendarContract']==contract, 'downloaded calendar contract changed'
+new['calendarContract']=contract
+pathlib.Path(sys.argv[2]).write_text(json.dumps(new,indent=2)+'\n')
+PYCALENDAR
 rm -rf "$dest"
 mkdir -p "$dest"
 cp -R "$tmp/c/." "$dest/"
