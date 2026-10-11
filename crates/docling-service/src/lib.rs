@@ -9,6 +9,7 @@ use tokio::{
 };
 
 pub const BODY_CAP: usize = 25 * 1024 * 1024;
+pub const CONNECTION_CAP: usize = 8;
 // Two million Unicode characters can require 24 MB as escaped surrogate pairs.
 // 32 MiB also admits the bounded 300-page envelope; larger engine output is refused.
 pub const FRAME_CAP: usize = 32 * 1024 * 1024;
@@ -24,6 +25,8 @@ pub struct Config {
     pub long_timeout: Duration,
     pub short_timeout: Duration,
     pub ready_timeout: Duration,
+    pub body_timeout: Duration,
+    pub header_timeout: Duration,
 }
 impl Config {
     pub fn production(directory: PathBuf) -> Self {
@@ -33,6 +36,8 @@ impl Config {
             long_timeout: Duration::from_secs(3600),
             short_timeout: Duration::from_secs(600),
             ready_timeout: Duration::from_secs(30),
+            body_timeout: Duration::from_secs(30),
+            header_timeout: Duration::from_secs(30),
         }
     }
 }
@@ -62,7 +67,7 @@ impl Process {
     }
     async fn stop(mut self) {
         self.signal();
-        let _ = self.child.wait().await;
+        let _ = tokio::time::timeout(Duration::from_secs(10), self.child.wait()).await;
     }
 }
 impl Drop for Process {
@@ -114,19 +119,19 @@ impl Worker {
         };
         self.process = Some(process);
         let process = self.process.as_mut().ok_or(Failure::Unavailable)?;
-        let ready = frame(
-            &mut process.output,
-            deadline.min(
-                Instant::now()
-                    .checked_add(self.config.ready_timeout)
-                    .unwrap_or(deadline),
-            ),
-            64,
-        )
-        .await;
+        let ready_deadline = Instant::now()
+            .checked_add(self.config.ready_timeout)
+            .unwrap_or(deadline);
+        let ready = frame(&mut process.output, deadline.min(ready_deadline), 64).await;
         if ready != Ok(json!({"ready":true})) {
             self.stop().await;
-            return Err(Failure::Unavailable);
+            return Err(
+                if ready == Err(Failure::Timeout) && deadline <= ready_deadline {
+                    Failure::Timeout
+                } else {
+                    Failure::Unavailable
+                },
+            );
         }
         Ok(())
     }
@@ -269,21 +274,40 @@ fn bounded_json(bytes: &[u8]) -> Result<Value, Failure> {
 }
 
 pub async fn serve(listener: tokio::net::TcpListener, config: Config) -> std::io::Result<()> {
+    serve_with_shutdown(listener, config, std::future::pending()).await
+}
+pub async fn serve_with_shutdown(
+    listener: tokio::net::TcpListener,
+    config: Config,
+    shutdown: impl std::future::Future<Output = ()>,
+) -> std::io::Result<()> {
     use std::sync::Arc;
-    let connections = Arc::new(tokio::sync::Semaphore::new(32));
+    let connections = Arc::new(tokio::sync::Semaphore::new(CONNECTION_CAP));
+    let header_timeout = config.header_timeout;
     let worker = Arc::new(tokio::sync::Mutex::new(Worker::new(config)));
+    let mut tasks = tokio::task::JoinSet::new();
+    tokio::pin!(shutdown);
     loop {
-        let (socket, _) = listener.accept().await?;
+        let accepted = tokio::select! {
+            _=&mut shutdown => break,
+            done=tasks.join_next(), if !tasks.is_empty() => {let _=done;continue;},
+            accepted=listener.accept()=>accepted,
+        };
+        let (socket, _) = accepted?;
         let Ok(permit) = connections.clone().try_acquire_owned() else {
             drop(socket);
             continue;
         };
         let worker = worker.clone();
-        tokio::spawn(async move {
+        tasks.spawn(async move {
             let _permit = permit;
-            let _ = connection(socket, worker).await;
+            let _ = connection(socket, worker, header_timeout).await;
         });
     }
+    tasks.abort_all();
+    while tasks.join_next().await.is_some() {}
+    worker.lock().await.stop().await;
+    Ok(())
 }
 
 const INVALID: &str = "Invalid document size or name.";
@@ -311,11 +335,21 @@ async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
         }
         bytes.push(socket.read_u8().await.map_err(|_| ())?);
     }
-    let text: String = bytes.into_iter().map(char::from).collect();
+    let mut text = String::new();
+    text.try_reserve_exact(bytes.len().checked_mul(2).ok_or(())?)
+        .map_err(|_| ())?;
+    for byte in bytes {
+        text.push(char::from(byte));
+    }
     let mut lines = text.split("\r\n");
     let mut request = lines.next().ok_or(())?.split_whitespace();
     let method = request.next().ok_or(())?.to_owned();
     let path = request.next().ok_or(())?.to_owned();
+    let path = if path.starts_with("//") {
+        format!("/{}", path.trim_start_matches('/'))
+    } else {
+        path
+    };
     if !matches!(request.next(), Some("HTTP/1.0" | "HTTP/1.1")) || request.next().is_some() {
         return Err(());
     }
@@ -325,7 +359,10 @@ async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
         length: None,
         name: None,
     };
-    for line in lines.filter(|line| !line.is_empty()) {
+    for (count, line) in lines.filter(|line| !line.is_empty()).enumerate() {
+        if count >= 99 {
+            return Err(());
+        }
         let (key, value) = line.split_once(':').ok_or(())?;
         if key.eq_ignore_ascii_case("content-length") && result.length.is_none() {
             result.length = Some(value.trim_start_matches([' ', '\t']).to_owned());
@@ -340,13 +377,29 @@ async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
     Ok(result)
 }
 fn selection(headers: &Headers) -> Option<(usize, &str, String)> {
-    let size = headers
-        .length
-        .as_deref()
-        .unwrap_or("0")
-        .trim()
-        .parse::<usize>()
-        .ok()?;
+    let length = headers.length.as_deref().unwrap_or("0").trim();
+    let length = length.strip_prefix('+').unwrap_or(length);
+    let mut size = 0usize;
+    let mut previous_digit = false;
+    for byte in length.bytes() {
+        if byte == b'_' && previous_digit {
+            previous_digit = false;
+            continue;
+        }
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+        size = size
+            .checked_mul(10)?
+            .checked_add(usize::from(byte - b'0'))?;
+        if size > BODY_CAP {
+            return None;
+        }
+        previous_digit = true;
+    }
+    if !previous_digit {
+        return None;
+    }
     let name = headers.name.as_deref()?;
     if size == 0
         || size > BODY_CAP
@@ -368,6 +421,15 @@ async fn reply(
     body: Value,
 ) -> std::io::Result<()> {
     let bytes = serde_json::to_vec(&body)?;
+    reply_bytes(socket, status, "application/json", &bytes, false).await
+}
+async fn reply_bytes(
+    socket: &mut tokio::net::TcpStream,
+    status: u16,
+    content_type: &str,
+    bytes: &[u8],
+    omit: bool,
+) -> std::io::Result<()> {
     let reason = match status {
         200 => "OK",
         400 => "Bad Request",
@@ -375,9 +437,10 @@ async fn reply(
         415 => "Unsupported Media Type",
         422 => "Unprocessable Entity",
         503 => "Service Unavailable",
+        501 => "Not Implemented",
         _ => "Error",
     };
-    let header = format!("HTTP/1.0 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", bytes.len());
+    let header = format!("HTTP/1.0 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", bytes.len());
     let mut response = Vec::new();
     response
         .try_reserve_exact(
@@ -388,7 +451,9 @@ async fn reply(
         )
         .map_err(|_| std::io::Error::other("response allocation"))?;
     response.extend_from_slice(header.as_bytes());
-    response.extend_from_slice(&bytes);
+    if !omit {
+        response.extend_from_slice(bytes);
+    }
     tokio::time::timeout(Duration::from_secs(30), socket.write_all(&response))
         .await
         .map_err(|_| std::io::Error::other("response deadline"))?
@@ -396,8 +461,9 @@ async fn reply(
 async fn connection(
     mut socket: tokio::net::TcpStream,
     worker: std::sync::Arc<tokio::sync::Mutex<Worker>>,
+    header_timeout: Duration,
 ) -> std::io::Result<()> {
-    let parsed = tokio::time::timeout(Duration::from_secs(30), headers(&mut socket)).await;
+    let parsed = tokio::time::timeout(header_timeout, headers(&mut socket)).await;
     let Ok(Ok(headers)) = parsed else {
         return reply(&mut socket, 400, json!({"error":INVALID})).await;
     };
@@ -414,7 +480,20 @@ async fn connection(
         .await;
     }
     if headers.method != "POST" {
-        return reply(&mut socket, 501, json!({"error":"Unsupported method"})).await;
+        let method = headers
+            .method
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+        let body=format!("<!DOCTYPE HTML>\n<html lang=\"en\">\n    <head>\n        <meta charset=\"utf-8\">\n        <title>Error response</title>\n    </head>\n    <body>\n        <h1>Error response</h1>\n        <p>Error code: 501</p>\n        <p>Message: Unsupported method ('{method}').</p>\n        <p>Error code explanation: 501 - Server does not support this operation.</p>\n    </body>\n</html>\n");
+        return reply_bytes(
+            &mut socket,
+            501,
+            "text/html;charset=utf-8",
+            body.as_bytes(),
+            headers.method == "HEAD",
+        )
+        .await;
     }
     if headers.path != "/extract" {
         return reply(&mut socket, 404, json!({"error":"not found"})).await;
@@ -425,6 +504,10 @@ async fn connection(
     let Ok(mut worker) = worker.try_lock() else {
         return reply(&mut socket, 503, json!({"error":BUSY})).await;
     };
+    let Some(body_deadline) = Instant::now().checked_add(worker.config.body_timeout) else {
+        drop(worker);
+        return reply(&mut socket, 503, json!({"error":UNAVAILABLE})).await;
+    };
     let mut data = Vec::new();
     if data.try_reserve_exact(size).is_err() {
         drop(worker);
@@ -432,7 +515,7 @@ async fn connection(
     }
     data.resize(size, 0);
     if !matches!(
-        tokio::time::timeout(Duration::from_secs(30), socket.read_exact(&mut data)).await,
+        timeout_at(body_deadline, socket.read_exact(&mut data)).await,
         Ok(Ok(_))
     ) {
         drop(worker);
@@ -451,7 +534,13 @@ async fn connection(
         .prefix("noevia-docling-")
         .tempdir()?;
     let path = directory.path().join(format!("input{suffix}"));
-    tokio::fs::write(&path, &data).await?;
+    if !matches!(
+        timeout_at(body_deadline, tokio::fs::write(&path, &data)).await,
+        Ok(Ok(()))
+    ) {
+        drop(worker);
+        return reply(&mut socket, 503, json!({"error":UNAVAILABLE})).await;
+    }
     drop(data);
     let duration = if matches!(suffix.as_str(), ".pdf" | ".tif" | ".tiff") {
         worker.config.long_timeout
@@ -466,8 +555,9 @@ async fn connection(
     // conversion has no HTTP body left to read. Extra pipelined bytes are refused.
     let mut probe = [0_u8; 1];
     let outcome = tokio::select! {
-        result = worker.convert(&path, name, deadline) => result,
+        biased;
         _ = socket.read(&mut probe) => Err(Failure::Cancelled),
+        result = worker.convert(&path, name, deadline) => result,
     };
     if outcome == Err(Failure::Cancelled) {
         worker.stop().await;

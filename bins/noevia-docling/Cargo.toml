@@ -12,4 +12,8 @@ native-docling = []
 workspace = true
 [dependencies]
 docling-service = { path = "../../crates/docling-service" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "signal"] }
+[dev-dependencies]
+tempfile = "3"
+serde_json = "1"
+nix = { version = "0.30", features = ["signal", "process"] }

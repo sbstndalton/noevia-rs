@@ -1,0 +1,727 @@
+{
+  "services": "b25a677182097c5ed72221e01fee5d5587aa7043",
+  "sources": {
+    "server.py": "97bda681d83b3137fd4261c37d30df7cd261f55555ca8b62982c02f892d9d082",
+    "isolation.py": "49bef971629aebaf68a63b358a021d702e3660dbe4876d6d05dc45e57b142983",
+    "isolated_worker.py": "543fc179d5a58b1dfe919016a163d3786b93be8a44c232b2977e3004ba38b281",
+    "extract.py": "76baed430a897ccd9e7cc5f3d5d927d368eda9b5e01dee8509874014cbb0e317"
+  },
+  "cases": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "length": null,
+      "name": null,
+      "data": "",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "service": "docling",
+          "formats": [
+            ".bmp",
+            ".csv",
+            ".docx",
+            ".epub",
+            ".htm",
+            ".html",
+            ".jpeg",
+            ".jpg",
+            ".md",
+            ".odp",
+            ".ods",
+            ".odt",
+            ".pdf",
+            ".png",
+            ".pptx",
+            ".tif",
+            ".tiff",
+            ".xlsx"
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "//health",
+      "length": null,
+      "name": null,
+      "data": "",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "service": "docling",
+          "formats": [
+            ".bmp",
+            ".csv",
+            ".docx",
+            ".epub",
+            ".htm",
+            ".html",
+            ".jpeg",
+            ".jpg",
+            ".md",
+            ".odp",
+            ".ods",
+            ".odt",
+            ".pdf",
+            ".png",
+            ".pptx",
+            ".tif",
+            ".tiff",
+            ".xlsx"
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/health?x=1",
+      "length": null,
+      "name": null,
+      "data": "",
+      "expected": {
+        "status": 404,
+        "type": "application/json",
+        "body": {
+          "service": "docling"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/unknown",
+      "length": null,
+      "name": null,
+      "data": "",
+      "expected": {
+        "status": 404,
+        "type": "application/json",
+        "body": {
+          "error": "not found"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": null,
+      "name": "x.md",
+      "data": "",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "26214401",
+      "name": "x.md",
+      "data": "",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": null,
+      "data": "",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x/y.md",
+      "data": "",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x\\y.md",
+      "data": "",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "data": "",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "data": "eA==",
+      "expected": {
+        "status": 415,
+        "type": "application/json",
+        "body": {
+          "error": "This worker cannot read files without an extension."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.zip",
+      "data": "eA==",
+      "expected": {
+        "status": 415,
+        "type": "application/json",
+        "body": {
+          "error": "This worker cannot read .zip."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.md ",
+      "data": "eA==",
+      "expected": {
+        "status": 415,
+        "type": "application/json",
+        "body": {
+          "error": "This worker cannot read .md ."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "+1",
+      "name": "x.MD",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1_0",
+      "name": "x.md",
+      "data": "YWJjZGVmZ2hpag==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "4",
+      "name": "x.md",
+      "data": "Qk9PTQ==",
+      "expected": {
+        "status": 422,
+        "type": "application/json",
+        "body": {
+          "error": "This document could not be read within its processing limits; the original is retained."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.bmp",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.csv",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.docx",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.epub",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.htm",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.html",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.jpeg",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.jpg",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.md",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.odp",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.ods",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.odt",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.png",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pptx",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.tif",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.tiff",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.xlsx",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    }
+  ]
+}

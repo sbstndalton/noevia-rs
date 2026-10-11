@@ -580,6 +580,7 @@ dependencies = [
 name = "docling-service"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "nix",
  "proptest",
  "serde_json",
@@ -1504,6 +1505,9 @@ name = "noevia-docling"
 version = "0.1.0"
 dependencies = [
  "docling-service",
+ "nix",
+ "serde_json",
+ "tempfile",
  "tokio",
 ]
 

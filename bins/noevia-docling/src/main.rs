@@ -4,13 +4,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let implementation = std::env::var("NOEVIA_DOCLING_IMPL").unwrap_or_else(|_| "python".into());
     match implementation.as_str() {
         "python" => {
-            let status = tokio::process::Command::new("python")
+            use std::os::unix::process::CommandExt;
+            // Preserve the existing default owner's PID/signal behavior, rather
+            // than leaving Python behind a second HTTP proxy or waiting parent.
+            return Err(std::process::Command::new("python")
                 .arg("server.py")
-                .status()
-                .await?;
-            if !status.success() {
-                return Err("Python Docling owner exited unsuccessfully".into());
-            }
+                .exec()
+                .into());
         }
         "rust" => {
             if !cfg!(feature = "native-docling") {
@@ -35,7 +35,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            docling_service::serve(listener, config).await?;
+            let mut terminate =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+            eprintln!("Docling Rust front ready");
+            docling_service::serve_with_shutdown(listener, config, async move {
+                tokio::select! {_=terminate.recv()=>(), _=tokio::signal::ctrl_c()=>()}
+            })
+            .await?;
         }
         _ => return Err("NOEVIA_DOCLING_IMPL must be python or rust".into()),
     }
