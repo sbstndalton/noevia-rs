@@ -31,7 +31,54 @@ pub trait DiagnosisRead: Send + Sync {
 }
 /// All spawned drivers enter this owner synchronously, before the next await.
 /// The retained controller calls cleanup and observes every join before releasing leases.
+#[cfg(all(test, target_os = "linux"))]
+#[derive(Default)]
+struct WireWitness {
+    read_kind: std::sync::atomic::AtomicU8,
+    read_errno: std::sync::atomic::AtomicI32,
+    write_kind: std::sync::atomic::AtomicU8,
+    write_errno: std::sync::atomic::AtomicI32,
+    response_bytes: AtomicBool,
+    hyper_flags: std::sync::atomic::AtomicU8,
+}
+#[cfg(all(test, target_os = "linux"))]
+impl WireWitness {
+    fn io(&self, error: &std::io::Error, write: bool) {
+        let (kind, errno) = if write {
+            (&self.write_kind, &self.write_errno)
+        } else {
+            (&self.read_kind, &self.read_errno)
+        };
+        let value = match error.kind() {
+            std::io::ErrorKind::ConnectionReset => 1,
+            std::io::ErrorKind::BrokenPipe => 2,
+            _ => 3,
+        };
+        if kind
+            .compare_exchange(0, value, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            errno.store(error.raw_os_error().unwrap_or(0), Ordering::Release);
+        }
+    }
+    fn known_reset(&self) -> bool {
+        [
+            (
+                self.read_kind.load(Ordering::Acquire),
+                self.read_errno.load(Ordering::Acquire),
+            ),
+            (
+                self.write_kind.load(Ordering::Acquire),
+                self.write_errno.load(Ordering::Acquire),
+            ),
+        ]
+        .iter()
+        .any(|pair| matches!(pair, (1, 104) | (2, 32)))
+    }
+}
 pub struct Context {
+    #[cfg(all(test, target_os = "linux"))]
+    witness: Arc<WireWitness>,
     pub deadline: Instant,
     pub cancelled: AtomicBool,
     wake: Notify,
@@ -44,6 +91,8 @@ struct DriverSlot {
 impl Context {
     pub fn new(deadline: Instant) -> Self {
         Self {
+            #[cfg(all(test, target_os = "linux"))]
+            witness: Arc::new(WireWitness::default()),
             deadline,
             cancelled: AtomicBool::new(false),
             wake: Notify::new(),
@@ -149,6 +198,8 @@ pub fn identifier(value: &str) -> Result<&str, Error> {
 }
 /// Observes bytes read from the owned peer without interpreting or reflecting them.
 struct ObservedUnix {
+    #[cfg(all(test, target_os = "linux"))]
+    witness: Arc<WireWitness>,
     socket: UnixStream,
     response_bytes: Arc<AtomicBool>,
 }
@@ -167,6 +218,15 @@ impl tokio::io::AsyncRead for ObservedUnix {
         let before = buffer.filled().len();
         let result = std::pin::Pin::new(&mut this.socket).poll_read(cx, buffer);
         observe_response_bytes(&this.response_bytes, before, buffer.filled().len());
+        #[cfg(all(test, target_os = "linux"))]
+        {
+            if buffer.filled().len() > before {
+                this.witness.response_bytes.store(true, Ordering::Release);
+            }
+            if let std::task::Poll::Ready(Err(error)) = &result {
+                this.witness.io(error, false);
+            }
+        }
         result
     }
 }
@@ -176,7 +236,19 @@ impl tokio::io::AsyncWrite for ObservedUnix {
         cx: &mut std::task::Context<'_>,
         bytes: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        std::pin::Pin::new(&mut self.get_mut().socket).poll_write(cx, bytes)
+        #[cfg(not(all(test, target_os = "linux")))]
+        {
+            std::pin::Pin::new(&mut self.get_mut().socket).poll_write(cx, bytes)
+        }
+        #[cfg(all(test, target_os = "linux"))]
+        {
+            let this = self.get_mut();
+            let result = std::pin::Pin::new(&mut this.socket).poll_write(cx, bytes);
+            if let std::task::Poll::Ready(Err(error)) = &result {
+                this.witness.io(error, true);
+            }
+            result
+        }
     }
     fn poll_flush(
         self: std::pin::Pin<&mut Self>,
@@ -243,6 +315,8 @@ pub(crate) async fn read(
         .map_err(|_| Error::Ordinary)?;
     let response_bytes = Arc::new(AtomicBool::new(false));
     let socket = ObservedUnix {
+        #[cfg(all(test, target_os = "linux"))]
+        witness: Arc::clone(&context.witness),
         socket,
         response_bytes: Arc::clone(&response_bytes),
     };
@@ -262,6 +336,11 @@ pub(crate) async fn read(
         .body(Empty::<Bytes>::new())
         .map_err(|_| Error::Refused)?;
     let response = sender.send_request(request).await.map_err(|error| {
+        #[cfg(all(test, target_os = "linux"))]
+        context.witness.hyper_flags.store(
+            4 | u8::from(error.is_parse()) | (u8::from(error.is_incomplete_message()) << 1),
+            Ordering::Release,
+        );
         pre_response_error(
             &error,
             response_bytes.load(Ordering::Acquire),
@@ -878,5 +957,89 @@ mod transport_error_tests {
         assert!(observed.load(Ordering::Acquire));
         observe_response_bytes(&observed, 1, 1);
         assert!(observed.load(Ordering::Acquire));
+    }
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn connected_unix_unread_request_reset_is_ordinary_after_actual_driver_join(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::Duration;
+        let root = tempfile::Builder::new()
+            .prefix("s1-unix-reset-")
+            .tempdir_in("/tmp")?;
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))?;
+        let socket = root.path().join("docker.sock");
+        let listener = tokio::net::UnixListener::bind(&socket)?;
+        let context = Context::new(Instant::now() + Duration::from_secs(2));
+        let deadline = tokio::time::Instant::from_std(context.deadline);
+        let (queued_send, queued_receive) = tokio::sync::oneshot::channel();
+        let (close_send, close_receive) = tokio::sync::oneshot::channel();
+        let mut daemon = tokio::spawn(async move {
+            let operation = async {
+                let (peer, _) = listener.accept().await.map_err(|_| "peer accept")?;
+                peer.readable().await.map_err(|_| "peer readable")?;
+                let mut bytes = [0u8; 64];
+                let (_, count) = rustix::net::recv(
+                    &peer,
+                    &mut bytes[..],
+                    rustix::net::RecvFlags::PEEK | rustix::net::RecvFlags::DONTWAIT,
+                )
+                .map_err(|_| "peer peek")?;
+                let prefix = bytes.get(..count).ok_or("peer peek count")?;
+                if !prefix.starts_with(b"GET /containers/synthetic-backend/json ") {
+                    return Err("peer queued GET prerequisite");
+                }
+                queued_send
+                    .send(count)
+                    .map_err(|_| "peer queue publication")?;
+                close_receive.await.map_err(|_| "peer close permission")?;
+                // No response write/request consumption; actual kernel error is mandatory.
+                drop(peer);
+                Ok::<usize, &'static str>(count)
+            };
+            tokio::time::timeout_at(deadline, operation)
+                .await
+                .map_err(|_| "peer deadline")?
+        });
+        let docker = UnixDocker { socket };
+        let operation =
+            tokio::time::timeout_at(deadline, docker.current_logs("synthetic-backend", &context));
+        let release = async {
+            let queued = tokio::time::timeout_at(deadline, queued_receive).await;
+            let _ = close_send.send(());
+            queued
+        };
+        let (result, queued) = tokio::join!(operation, release);
+        let joined = match tokio::time::timeout_at(deadline, &mut daemon).await {
+            Ok(joined) => joined,
+            Err(_) => {
+                daemon.abort();
+                daemon.await
+            }
+        };
+        context.cleanup().await;
+        // Every assertion follows actual same-handle joins, also on error/timeout.
+        let count = queued
+            .map_err(|_| "queue deadline")?
+            .map_err(|_| "queue absent")?;
+        let peer_count = joined.map_err(|_| "peer join failed")??;
+        assert_eq!(count, peer_count);
+        assert!(count > 0);
+        assert!(context
+            .drivers
+            .lock()
+            .map_err(|_| "driver registry poisoned")?
+            .is_empty());
+        assert!(
+            context.witness.known_reset(),
+            "actual Linux typed reset/broken-pipe prerequisite"
+        );
+        assert!(!context.witness.response_bytes.load(Ordering::Acquire));
+        assert_eq!(context.witness.hyper_flags.load(Ordering::Acquire), 4);
+        assert_eq!(
+            result.map_err(|_| "subject deadline")?,
+            Err(Error::Ordinary)
+        );
+        Ok(())
     }
 }
