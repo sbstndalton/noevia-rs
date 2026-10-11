@@ -83,7 +83,20 @@ jobs:
           }
           head="$(git rev-parse HEAD)"
           tree="$(git rev-parse 'HEAD^{tree}')"
+          # Preserve private raw records while Git creates its tracked 0644/0755 files.
+          for suffix in argv stdout stderr status; do
+            : > "$evidence/source-checkout.$suffix"
+          done
+          set +e
+          umask 022
           run_capture source-checkout git worktree add --detach "$source" "$head"
+          checkout_code=$?
+          umask 077
+          set -e
+          if [[ -d "$source" && ! -L "$source" ]]; then
+            chmod 700 "$source"
+          fi
+          test "$checkout_code" = 0
           [[ "$(git -C "$source" rev-parse HEAD)" == "$head" ]]
           [[ "$(git -C "$source" rev-parse 'HEAD^{tree}')" == "$tree" ]]
           [[ -z "$(git -C "$source" status --porcelain --untracked-files=all)" ]]
@@ -392,7 +405,20 @@ jobs:
           }
           head="$(git rev-parse HEAD)"
           tree="$(git rev-parse 'HEAD^{tree}')"
+          # Preserve private raw records while Git creates its tracked 0644/0755 files.
+          for suffix in argv stdout stderr status; do
+            : > "$evidence/source-checkout.$suffix"
+          done
+          set +e
+          umask 022
           run_capture source-checkout git worktree add --detach "$source" "$head"
+          checkout_code=$?
+          umask 077
+          set -e
+          if [[ -d "$source" && ! -L "$source" ]]; then
+            chmod 700 "$source"
+          fi
+          test "$checkout_code" = 0
           [[ "$(git -C "$source" rev-parse HEAD)" == "$head" ]]
           [[ "$(git -C "$source" rev-parse 'HEAD^{tree}')" == "$tree" ]]
           [[ -z "$(git -C "$source" status --porcelain --untracked-files=all)" ]]
@@ -1251,7 +1277,20 @@ jobs:
           }
           head="$(git rev-parse HEAD)"
           tree="$(git rev-parse 'HEAD^{tree}')"
+          # Preserve private raw records while Git creates its tracked 0644/0755 files.
+          for suffix in argv stdout stderr status; do
+            : > "$evidence/source-checkout.$suffix"
+          done
+          set +e
+          umask 022
           run_capture source-checkout git worktree add --detach "$source" "$head"
+          checkout_code=$?
+          umask 077
+          set -e
+          if [[ -d "$source" && ! -L "$source" ]]; then
+            chmod 700 "$source"
+          fi
+          test "$checkout_code" = 0
           [[ "$(git -C "$source" rev-parse HEAD)" == "$head" ]]
           [[ "$(git -C "$source" rev-parse 'HEAD^{tree}')" == "$tree" ]]
           [[ -z "$(git -C "$source" status --porcelain --untracked-files=all)" ]]

@@ -40,6 +40,15 @@ fn require(ok: bool, why: &'static str) -> Result<()> {
     crate::require(ok, why)
 }
 fn read(path: &Path, cap: usize) -> Result<Vec<u8>> {
+    read_with_refusal(path, cap, None)
+}
+// Only fixed qualification executable inputs opt into metadata. The observation
+// comes from the same no-follow/nonblocking descriptor, before any payload read.
+fn read_with_refusal(
+    path: &Path,
+    cap: usize,
+    diagnostic: Option<(&Path, &'static str)>,
+) -> Result<Vec<u8>> {
     let file = fs::OpenOptions::new()
         .read(true)
         .custom_flags(
@@ -50,6 +59,21 @@ fn read(path: &Path, cap: usize) -> Result<Vec<u8>> {
         )
         .open(path)?;
     let meta = file.metadata()?;
+    if !(meta.is_file() && meta.nlink() == 1 && meta.len() <= cap as u64) {
+        if let Some((root, label)) = diagnostic {
+            let value = read_refusal_metadata(
+                label,
+                meta.mode(),
+                meta.is_file(),
+                meta.len(),
+                meta.nlink(),
+                cap,
+            );
+            let bytes = serde_json::to_vec_pretty(&value)?;
+            require(bytes.len() <= 4096, "bounded executable refusal metadata")?;
+            save(&root.join("executable-read-refusal.json"), &bytes)?;
+        }
+    }
     require(
         meta.is_file() && meta.nlink() == 1 && meta.len() <= cap as u64,
         "Linux regular singleton read cap",
@@ -58,6 +82,33 @@ fn read(path: &Path, cap: usize) -> Result<Vec<u8>> {
     file.take((cap + 1) as u64).read_to_end(&mut bytes)?;
     require(bytes.len() <= cap, "Linux complete read cap")?;
     Ok(bytes)
+}
+fn read_refusal_metadata(
+    label: &'static str,
+    mode: u32,
+    regular: bool,
+    bytes: u64,
+    nlink: u64,
+    cap: usize,
+) -> Value {
+    let kind = match mode & 0o170000 {
+        0o100000 => "regular",
+        0o040000 => "directory",
+        0o120000 => "symlink",
+        _ => "special",
+    };
+    json!({
+        "version":1,
+        "phase":"executable-read-before-payload",
+        "label":label,
+        "kind":kind,
+        "bytes":bytes,
+        "nlink":nlink,
+        "mode_full_octal":format!("{mode:o}"),
+        "cap_bytes":cap,
+        "failed":{"regular":!regular,"singleton":nlink!=1,"size":bytes>cap as u64},
+        "content_read":false
+    })
 }
 fn path(value: &str, existing: bool) -> Result<PathBuf> {
     require(
@@ -532,7 +583,13 @@ fn text(path: &Path) -> Result<&str> {
         .ok_or_else(|| "qualification path utf8".into())
 }
 fn binary_copy(source: &Path, target: &Path) -> Result<String> {
-    let bytes = read(source, 128 * 1024 * 1024)?;
+    let label = match target.file_name().and_then(|name| name.to_str()) {
+        Some("executed-coordinator.bin") => "coordinator-executable",
+        Some("lib-test") => "library-test-executable",
+        _ => return Err("fixed executable refusal label".into()),
+    };
+    let root = target.parent().ok_or("executable evidence root")?;
+    let bytes = read_with_refusal(source, 128 * 1024 * 1024, Some((root, label)))?;
     require(!bytes.is_empty(), "nonempty executable")?;
     save(target, &bytes)?;
     fs::set_permissions(target, fs::Permissions::from_mode(0o700))?;
@@ -1327,6 +1384,64 @@ pub fn dispatch(args: &[String]) -> Result<Value> {
         Some((name, args)) if name == "qualify-linux-factory" => qualify(args),
         Some((name, args)) if name == "capture-linux-worker-auth" => capture_worker(args),
         _ => Err("fixed Linux qualification subcommand".into()),
+    }
+}
+
+#[cfg(test)]
+mod read_refusal_controls {
+    use super::{read_refusal_metadata, Result};
+    use serde_json::json;
+
+    #[test]
+    fn refusal_metadata_preserves_all_guard_members_without_payload_or_path() -> Result<()> {
+        const CAP: usize = 128 * 1024 * 1024;
+        let valid = read_refusal_metadata("coordinator-executable", 0o100700, true, 1, 1, CAP);
+        assert_eq!(
+            valid.get("failed"),
+            Some(&json!({"regular":false,"singleton":false,"size":false}))
+        );
+        for (mode, regular, bytes, nlink, failed) in [
+            (
+                0o040700,
+                false,
+                1,
+                1,
+                json!({"regular":true,"singleton":false,"size":false}),
+            ),
+            (
+                0o100700,
+                true,
+                1,
+                2,
+                json!({"regular":false,"singleton":true,"size":false}),
+            ),
+            (
+                0o100700,
+                true,
+                CAP as u64 + 1,
+                1,
+                json!({"regular":false,"singleton":false,"size":true}),
+            ),
+            (
+                0o040700,
+                false,
+                CAP as u64 + 1,
+                2,
+                json!({"regular":true,"singleton":true,"size":true}),
+            ),
+        ] {
+            let row =
+                read_refusal_metadata("coordinator-executable", mode, regular, bytes, nlink, CAP);
+            assert_eq!(row.get("failed"), Some(&failed));
+            assert_eq!(row.get("content_read"), Some(&json!(false)));
+            assert_eq!(row.get("cap_bytes"), Some(&json!(CAP)));
+            assert!(row.get("path").is_none());
+            assert!(row.get("payload").is_none());
+            assert!(serde_json::to_vec(&row)?.len() <= 4096);
+        }
+        assert_eq!(valid.get("kind"), Some(&json!("regular")));
+        assert_eq!(valid.get("mode_full_octal"), Some(&json!("100700")));
+        Ok(())
     }
 }
 
