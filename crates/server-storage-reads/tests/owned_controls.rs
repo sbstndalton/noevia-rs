@@ -19,16 +19,27 @@ fn no_input_before_ready() {
     let permit = admission
         .try_acquire("owner")
         .unwrap_or_else(|_| unreachable!());
+    let mut violation = false;
+    let result = attempt_observed(
+        command("fixture-gated"),
+        Zeroizing::new(b"synthetic sentinel".to_vec()),
+        128,
+        Duration::from_secs(2),
+        &AtomicBool::new(false),
+        permit,
+        |stage, pid| {
+            if stage == Observation::BeforeReap {
+                let pid = rustix::process::Pid::from_raw(i32::try_from(pid).unwrap_or_default())
+                    .unwrap_or_else(|| unreachable!());
+                violation = matches!(rustix::process::waitid(rustix::process::WaitId::Pid(pid),rustix::process::WaitIdOptions::EXITED|rustix::process::WaitIdOptions::NOHANG|rustix::process::WaitIdOptions::NOWAIT),Ok(Some(status)) if status.exit_status()==Some(42));
+            }
+        },
+    );
+    assert!(!violation, "M4_POLICY_READY_GATE");
     assert_eq!(
-        attempt(
-            command("fixture-gated"),
-            Zeroizing::new(b"synthetic sentinel".to_vec()),
-            128,
-            Duration::from_secs(2),
-            &AtomicBool::new(false),
-            permit
-        ),
-        Ok(b"synthetic sentinel".to_vec())
+        result,
+        Ok(b"synthetic sentinel".to_vec()),
+        "M4_CONTROL_READY_RESULT"
     );
 }
 #[test]
@@ -48,7 +59,8 @@ fn inflight_cancel_holds_admission_until_cleanup() {
         &flag,
         permit,
         |stage, _| {
-            assert!(admission.try_acquire("owner").is_err());
+            let held = admission.try_acquire("owner").is_err();
+            assert!(held, "M4_POLICY_ADMISSION");
             match stage {
                 Observation::InputProgress(_) => {
                     progress = true;
@@ -58,8 +70,9 @@ fn inflight_cancel_holds_admission_until_cleanup() {
             }
         },
     );
-    assert_eq!(result, Err(Error::Cancelled));
     assert!(progress && cleanup);
+    assert!(result != Err(Error::Deadline), "M4_POLICY_CANCEL");
+    assert_eq!(result, Err(Error::Cancelled), "M4_CONTROL_CANCEL_RESULT");
     assert!(admission.try_acquire("owner").is_ok());
 }
 #[test]

@@ -81,6 +81,21 @@ their designated test (compile failures do not count). Fixture sources are
 retained under the reported owned temporary directory. These target this finite
 owner only; no full mutation campaign or network guarantee follows.
 
+The original ae6ee mutant claims above are provisional: the generic FAILED footer
+did not identify the semantic cause (#1374). The subsequent narrow repair binds
+status101, exactly one selected failure/sole panic, unique policy payload and
+current assertion line/column. READY requires child exit42 observed before reap,
+which means actual bytes before READY; unrelated setup/protocol errors fail a
+different control assertion. CANCEL requires actual progress and cleanup before
+the policy deadline assertion. ADMISSION asserts an intermediate missing hold.
+All three affected actual source mutations reran once with the maintained Request
+copy inventory and passed exact classification; captured outputs/fixtures remain
+at `/var/folders/_4/jbtxcfjd7hj2x9kvw4z5k7gm0000gp/T/m4-owned-mutants-11040`.
+Forged process/setup/compile/deadline/cap/protocol/wrongtest/location/policy/extra
+panic controls were rejected, including actual compiled output variants. The two
+affected unmodified policy tests passed once. This supersedes only the earlier
+generic semantic-kill claim; broader transport/production qualification is held.
+
 request_ipc implements a bounded binary owned Request contract: GET/PROPFIND,
 HTTP(S) URL≤64KiB without userinfo,100 headers/name128/value12MiB, aggregate16MiB,
 body cap4MiB/800000, timeout>0≤20s encoded with exact nanoseconds, no Debug/secret

@@ -1,4 +1,6 @@
 //! Private source mutants, bounded Rust tooling; no network/real input.
+#[path = "support/mutant_classifier.rs"]
+mod mutant_classifier;
 #[allow(dead_code)]
 #[path = "../../../tools/qualification/process.rs"]
 mod process;
@@ -15,6 +17,8 @@ fn run() -> Result<(), String> {
     fs::create_dir(&root).map_err(|_| "owned fixture directory unavailable")?;
     let original =
         fs::read_to_string(source.join("src/isolated.rs")).map_err(|_| "source read failed")?;
+    let controls = fs::read_to_string(source.join("tests/owned_controls.rs"))
+        .map_err(|_| "controls read failed")?;
     let mut manifest =
         fs::read_to_string(source.join("Cargo.toml")).map_err(|_| "manifest read failed")?;
     for name in [
@@ -36,21 +40,25 @@ fn run() -> Result<(), String> {
             "if ready {",
             "if true {",
             "no_input_before_ready",
+            "M4_POLICY_READY_GATE",
         ),
         (
             "CANCEL_IGNORED",
             "if cancelled.load(Ordering::Acquire) {",
             "if false && cancelled.load(Ordering::Acquire) {",
             "inflight_cancel_holds_admission_until_cleanup",
+            "M4_POLICY_CANCEL",
         ),
         (
             "ADMISSION_EARLY_RELEASE",
             "permit: Some(permit),",
             "permit: { drop(permit); None },",
             "inflight_cancel_holds_admission_until_cleanup",
+            "M4_POLICY_ADMISSION",
         ),
     ];
-    for (name, needle, replacement, test) in mutants {
+    for (name, needle, replacement, test, id) in mutants {
+        let policy = mutant_classifier::Policy::bind(&controls, test, id)?;
         if original.matches(needle).count() != 1 {
             return Err("mutant source anchor changed".into());
         }
@@ -91,17 +99,52 @@ fn run() -> Result<(), String> {
         .map_err(|_| "fixture controls failed")?;
         let mut command = Command::new(&cargo);
         command
+            .env("RUST_BACKTRACE", "0")
+            .env("RUST_LIB_BACKTRACE", "0");
+        command
             .args(["test", "--offline", "--locked", "--manifest-path"])
             .arg(directory.join("Cargo.toml"))
             .args(["--test", "owned_controls", test, "--", "--exact"]);
         let result = process::bounded(command, Vec::new(), Duration::from_secs(60))?;
-        if result.status.success()
-            || !result
-                .stdout
-                .windows(b"test result: FAILED".len())
-                .any(|w| w == b"test result: FAILED")
-        {
+        fs::write(directory.join("actual.stdout"), &result.stdout)
+            .map_err(|_| "evidence write failed")?;
+        fs::write(directory.join("actual.stderr"), &result.stderr)
+            .map_err(|_| "evidence write failed")?;
+        if !policy.accepts(result.status.code(), &result.stdout, &result.stderr) {
             return Err(format!("{name} did not produce a controlled test failure"));
+        }
+        let actual =
+            std::str::from_utf8(&result.stdout).map_err(|_| "failure output encoding changed")?;
+        for (old, new) in [
+            (id, "M4_FORGED_SETUP"),
+            (id, "M4_FORGED_DEADLINE"),
+            (id, "M4_FORGED_CAP"),
+            (id, "M4_OTHER_POLICY"),
+            (policy.location.as_str(), "tests/owned_controls.rs:0:0"),
+            (test, "wrong_selected_test"),
+        ] {
+            if policy.accepts(
+                Some(101),
+                actual.replace(old, new).as_bytes(),
+                &result.stderr,
+            ) {
+                return Err("actual-format negative classifier control accepted".into());
+            }
+        }
+        if policy.accepts(Some(1), &result.stdout, &result.stderr)
+            || policy.accepts(None, &result.stdout, &result.stderr)
+            || policy.accepts(
+                Some(101),
+                &result.stdout,
+                b"error[E0000]: could not compile",
+            )
+            || policy.accepts(
+                Some(101),
+                format!("{actual}thread 'extra' (1) panicked at extra:1:1:\nextra\n").as_bytes(),
+                &result.stderr,
+            )
+        {
+            return Err("actual-format process/compiler/extra panic control accepted".into());
         }
         println!("{name}: killed by {test}");
     }

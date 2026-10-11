@@ -37,6 +37,7 @@ fn run(mode: &str) -> Result<(), ()> {
         let mut byte = [0];
         match stdin.lock().read(&mut byte) {
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Ok(n) if n > 0 => std::process::exit(42), // Unique synthetic READY violation.
             _ => return Err(()),
         }
         rustix::fs::fcntl_setfl(&stdin, old).map_err(|_| ())?;
