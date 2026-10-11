@@ -24,6 +24,13 @@ pub const NODE_SHA: &str = "b6a0496318476702af424b12fe5f245a74c3cb93159e0c7411e6
 pub const WASM_SOURCE: &str = "/tmp/m4-storage-factory-approved-wasm";
 pub const WASM_SHA: &str = "040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd87cb2e978575";
 pub const NOW: i64 = 1_700_000_000_000;
+// Root must replace these only after inspecting the exact retained stage bytes.
+// Empty means unapproved; neither the CLI nor the tool can approve itself.
+pub const APPROVED_MANIFEST_SHA: &str = "";
+pub const APPROVED_PREFLIGHT_SHA: &str = "";
+pub const GIT_EVIDENCE: &str = "/tmp/m4-storage-factory-git-first-attempt";
+pub const CAPTURE_ROOT: &str = "/tmp/m4-storage-factory-capture-first-attempt";
+pub const PREFLIGHT_ROOT: &str = "/tmp/m4-storage-factory-preflight-first-attempt";
 pub const SCHEMA: &str = include_str!("../../../server-store/tests/fixtures/node-schema.sql");
 pub fn require(ok: bool, message: &str) -> Result<()> {
     if ok {
@@ -464,9 +471,21 @@ fn command(args: &[&str]) -> Result<Vec<u8>> {
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .args(args);
-    let o = crate::process::bounded(cmd, vec![], Duration::from_secs(15))?;
+    let o = crate::process::bounded(cmd, vec![], Duration::from_secs(15));
+    static SEQUENCE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let number = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    require(number < 1026, "Git command count")?;
+    let stem = format!("git-{number:04}");
+    put(
+        &Path::new(GIT_EVIDENCE).join(format!("{stem}.command.json")),
+        &json_bytes(
+            &json!({"program":"/usr/bin/git","args":args,"cwd":GIT,"env":{"PATH":"/usr/bin:/bin"}}),
+            65536,
+        )?,
+    )?;
+    retain_capture(Path::new(GIT_EVIDENCE), &stem, &o)?;
     require(
-        o.status.success() && o.stderr.is_empty(),
+        o.failure.is_none() && o.status.is_some_and(|s| s.success()) && o.stderr.is_empty(),
         "immutable Git read",
     )?;
     Ok(o.stdout)
@@ -491,6 +510,7 @@ pub fn materialize(adapter: &str) -> Result<Value> {
     require(hash(&wasm) == WASM_SHA, "pinned accepted WASM required")?;
     let node = read(Path::new(NODE), 128 * 1024 * 1024)?;
     require(hash(&node) == NODE_SHA, "fixed Node binary")?;
+    directory(Path::new(GIT_EVIDENCE))?;
     require(
         command(&["rev-parse", &format!("{CORE}^{{tree}}")])? == format!("{TREE}\n").as_bytes(),
         "fixed CORE tree",
@@ -703,15 +723,6 @@ pub fn materialize(adapter: &str) -> Result<Value> {
         )?;
     }
     let input = cases()?;
-    for (i, shard) in input.chunks(14).enumerate() {
-        put(
-            &root.join(format!("input-{i:02}.json")),
-            &json_bytes(
-                &json!({"core":canonical,"now":NOW,"schema":SCHEMA,"cases":shard}),
-                4 * 1024 * 1024,
-            )?,
-        )?;
-    }
     let manifest = json!({"core":CORE,"tree":TREE,"candidate":CANDIDATE,"canonical_root":canonical,"node_sha256":NODE_SHA,"wasm_sha256":WASM_SHA,"dependency_proof_sha256":PROOF_SHA,"files":inventory,"cases_sha256":hash(&json_bytes(&json!(input),8*1024*1024)?),"adapter_sha256":hash(adapter.as_bytes()),"oracle_executed":false,"runtime_metadata":"not captured yet","qualification":"logical caps, trusted stable ancestry; no registry/dylib/RSS/OOM/kernel certificate"});
     put(
         &root.join("manifest.json"),
@@ -728,8 +739,17 @@ pub fn verify_materialized(manifest: &Value) -> Result<()> {
         .and_then(Value::as_array)
         .ok_or("manifest files")?;
     require(rows.len() <= 5120, "inventory cap")?;
+    require(
+        manifest.get("core") == Some(&json!(CORE))
+            && manifest.get("tree") == Some(&json!(TREE))
+            && manifest.get("candidate") == Some(&json!(CANDIDATE)),
+        "manifest immutable identity",
+    )?;
+    let mut expected = BTreeSet::new();
     for row in rows {
-        let path = root.join(relative(string(row, "path")?)?);
+        let relative = relative(string(row, "path")?)?;
+        require(expected.insert(relative.clone()), "manifest duplicate")?;
+        let path = root.join(relative);
         let m = fs::symlink_metadata(&path).map_err(|_| "inventory stat")?;
         require(
             m.is_file() && m.nlink() == 1 && (m.permissions().mode() & 0o777) == 0o600,
@@ -742,11 +762,81 @@ pub fn verify_materialized(manifest: &Value) -> Result<()> {
             "fresh file bytes",
         )?;
     }
+    let mut queue = vec![(root.to_path_buf(), 0usize)];
+    let mut found = BTreeSet::new();
+    let mut visited = 0usize;
+    while let Some((path, depth)) = queue.pop() {
+        visited += 1;
+        require(visited <= 8192 && depth <= 32, "materialized traversal cap")?;
+        let m = fs::symlink_metadata(&path).map_err(|_| "materialized stat")?;
+        require(!m.file_type().is_symlink(), "materialized symlink")?;
+        if m.is_dir() {
+            require(
+                m.permissions().mode() & 0o777 == 0o700,
+                "materialized directory mode",
+            )?;
+            let name = path.strip_prefix(root).map_err(|_| "materialized root")?;
+            if !name.as_os_str().is_empty() {
+                require(
+                    expected.iter().any(|p| p.starts_with(name)),
+                    "extra materialized directory",
+                )?;
+            }
+            for entry in fs::read_dir(&path).map_err(|_| "materialized directory")? {
+                push(
+                    &mut queue,
+                    (entry.map_err(|_| "materialized entry")?.path(), depth + 1),
+                    4096,
+                )?;
+            }
+        } else {
+            let name = path.strip_prefix(root).map_err(|_| "materialized root")?;
+            require(
+                m.is_file() && m.nlink() == 1 && m.permissions().mode() & 0o777 == 0o600,
+                "materialized complete file class/mode",
+            )?;
+            require(
+                expected.contains(name) || name == Path::new("manifest.json"),
+                "extra materialized file",
+            )?;
+            if expected.contains(name) {
+                found.insert(name.to_path_buf());
+            }
+        }
+    }
+    require(found == expected, "complete materialized inventory")?;
     require(
         hash(&read(Path::new(NODE), 128 * 1024 * 1024)?) == NODE_SHA,
         "fresh executable binding",
     )?;
     Ok(())
+}
+
+pub fn retain_capture(dir: &Path, stem: &str, o: &crate::process::Output) -> Result<()> {
+    put(&dir.join(format!("{stem}.stdout")), &o.stdout)?;
+    put(&dir.join(format!("{stem}.stderr")), &o.stderr)?;
+    put(
+        &dir.join(format!("{stem}.status.json")),
+        &json_bytes(
+            &json!({"code":o.status.and_then(|s|s.code()),"status_debug":o.status.map(|s|format!("{s:?}")),"success":o.status.map(|s|s.success()),"failure":o.failure.as_ref().map(|e|format!("{e:?}")),"diagnostic":o.diagnostic,"reap_error":o.reap_error}),
+            4096,
+        )?,
+    )
+}
+
+pub fn approved_manifest() -> Result<Value> {
+    require(
+        APPROVED_MANIFEST_SHA.len() == 64,
+        "root manifest approval held",
+    )?;
+    let bytes = read(&Path::new(ROOT).join("manifest.json"), 2 * 1024 * 1024)?;
+    require(
+        hash(&bytes) == APPROVED_MANIFEST_SHA,
+        "root approved manifest bytes",
+    )?;
+    let manifest = serde_json::from_slice(&bytes).map_err(|_| "manifest JSON")?;
+    verify_materialized(&manifest)?;
+    Ok(manifest)
 }
 
 /// The comparison deliberately requires an owner and the complete synthetic plaintext.
@@ -774,6 +864,28 @@ pub fn compare_private_projection(expected: &Value, actual: &Value) -> Result<()
     Ok(())
 }
 
+pub fn assert_missing_factory_shape(raw: &Value) -> Result<()> {
+    let object = raw.as_object().ok_or("raw missing-row object")?;
+    require(object.len() == 6, "raw missing-row exact shape")?;
+    for field in ["secret", "secretConfigured", "secretNeedsReauth"] {
+        require(
+            !object.contains_key(field),
+            "raw missing-row property must be absent",
+        )?;
+    }
+    for field in [
+        "kind",
+        "baseUrl",
+        "bucket",
+        "region",
+        "username",
+        "corpusRoot",
+    ] {
+        require(object.contains_key(field), "raw missing-row metadata field")?;
+    }
+    Ok(())
+}
+
 pub const POLICY_DIFFERENCES: &[&str] = &[
     "readonly_no_lazy_reseal",
     "readonly_no_key_generation_or_chmod",
@@ -784,6 +896,7 @@ pub const POLICY_DIFFERENCES: &[&str] = &[
     "factory_only_headers_and_gate_composition",
     "private_no_auth_upkeep",
     "nontext_owner_rows_are_not_selected",
+    "empty_owner_node_v1_unbound_candidate_refused",
 ];
 
 pub const STATE_SQL: &[&str] = &[
@@ -821,7 +934,7 @@ pub fn fixture(dir: &Path, case: &Value, with_row: bool) -> Result<()> {
     directory(dir)?;
     let db = Connection::open(dir.join("cowork.db")).map_err(|_| "synthetic database")?;
     db.execute_batch(SCHEMA).map_err(|_| "synthetic schema")?;
-    for owner in BTreeSet::from(["a", "b", string(case, "owner")?]) {
+    for owner in BTreeSet::from(["a", "b", "foreign", string(case, "owner")?]) {
         db.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,?1,?1,?1,'admin','synthetic',?1,1,1)",[owner]).map_err(|_|"synthetic user")?;
     }
     db.execute(
@@ -930,21 +1043,50 @@ pub fn apply_row(db: &server_store::rusqlite::Connection, case: &Value) -> Resul
     db.execute_batch(&shape_sql(string(case, "shape")?)?)
         .map_err(|_| "synthetic shape")?;
     let sql = insert_sql(case)?;
-    if sql.is_empty() {
-        return Ok(());
+    if !sql.is_empty() {
+        let values = row_columns(case)?
+            .into_iter()
+            .map(|c| {
+                case.get("row")
+                    .and_then(|r| r.get(c))
+                    .ok_or("row cell".into())
+                    .and_then(cell_value)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        db.execute(&sql, server_store::rusqlite::params_from_iter(values))
+            .map_err(|_| "synthetic row")?;
     }
-    let values = row_columns(case)?
-        .into_iter()
-        .map(|c| {
-            case.get("row")
-                .and_then(|r| r.get(c))
-                .ok_or("row cell".into())
-                .and_then(cell_value)
-        })
-        .collect::<Result<Vec<_>>>()?;
-    db.execute(&sql, server_store::rusqlite::params_from_iter(values))
-        .map_err(|_| "synthetic row")?;
+    if let Some(foreign) = foreign_case(case)? {
+        let values = row_columns(&foreign)?
+            .into_iter()
+            .map(|c| {
+                foreign
+                    .get("row")
+                    .and_then(|r| r.get(c))
+                    .ok_or("foreign cell".into())
+                    .and_then(cell_value)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        db.execute(
+            &insert_sql(&foreign)?,
+            server_store::rusqlite::params_from_iter(values),
+        )
+        .map_err(|_| "foreign row")?;
+    }
     Ok(())
+}
+
+pub fn foreign_case(case: &Value) -> Result<Option<Value>> {
+    if string(case, "lane")? == "gate" || matches!(string(case, "shape")?, "missing" | "view") {
+        return Ok(None);
+    }
+    let mut foreign = case.clone();
+    *foreign.get_mut("owner").ok_or("foreign owner slot")? = json!("foreign");
+    let mut row = row();
+    *row.get_mut("user_id").ok_or("foreign row owner slot")? = json!({"t":"text","v":"foreign"});
+    *row.get_mut("secret").ok_or("foreign secret slot")? = json!({"t":"text","v":"foreign-secret"});
+    *foreign.get_mut("row").ok_or("foreign row slot")? = row;
+    Ok(Some(foreign))
 }
 pub fn state(dir: &Path) -> Result<Value> {
     use server_store::rusqlite::{types::ValueRef, Connection, OpenFlags};

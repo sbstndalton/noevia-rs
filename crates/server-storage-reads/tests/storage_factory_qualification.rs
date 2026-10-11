@@ -1,5 +1,5 @@
 //! New pure controls: compile only in Stage A. No oracle, key IO or transport.
-#[path = "../../../tools/qualification/process.rs"]
+#[path = "../examples/support/storage_factory_capture.rs"]
 pub mod process;
 #[path = "../examples/support/storage_factory_topology.rs"]
 pub mod topology;
@@ -41,5 +41,15 @@ fn owner_plaintext_and_module_containment_controls() -> Result<(), String> {
     let cases = topology::cases()?;
     assert_eq!(cases.len(), 126);
     assert_eq!(cases.chunks(14).count(), 9);
+    let raw_missing = json!({"kind":"local","baseUrl":"","bucket":"","region":"us-east-1","username":"","corpusRoot":""});
+    topology::assert_missing_factory_shape(&raw_missing)?;
+    for field in ["secret", "secretConfigured", "secretNeedsReauth"] {
+        let mut unexpected = raw_missing.clone();
+        unexpected
+            .as_object_mut()
+            .ok_or("raw object")?
+            .insert(field.into(), json!(false));
+        assert!(topology::assert_missing_factory_shape(&unexpected).is_err());
+    }
     Ok(())
 }
