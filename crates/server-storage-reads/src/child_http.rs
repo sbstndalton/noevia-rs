@@ -285,6 +285,253 @@ impl ProductionTls {
 pub async fn execute_tls(request: Request, policy: &ProductionTls) -> Result<Vec<u8>, Error> {
     execute_inner(request, Some(Arc::clone(&policy.0)), None).await
 }
+/// Opaque preparation; execution cannot replace the request, identity or deadline.
+pub struct OwnedDnsAttempt(OwnedDnsState);
+#[allow(clippy::large_enum_variant)] // Fixed 32 address slots stay inline, without a new heap box.
+enum OwnedDnsState {
+    Refused(Vec<u8>),
+    Ready {
+        transport: PreparedTransport,
+        addresses: Addresses,
+        deadline: std::time::Instant,
+    },
+}
+struct Addresses {
+    slots: [Option<SocketAddr>; 32],
+    count: usize,
+}
+fn collect_addresses(
+    mut results: impl Iterator<Item = SocketAddr>,
+    deadline: std::time::Instant,
+) -> Result<Addresses, TransportFailure> {
+    let mut addresses = Addresses {
+        slots: [None; 32],
+        count: 0,
+    };
+    // At most 33 iterator results. Result 33 refuses before a retained copy.
+    for _ in 0..33 {
+        if std::time::Instant::now() >= deadline {
+            return Err(TransportFailure::Timeout);
+        }
+        let Some(address) = results.next() else {
+            return if addresses.count == 0 {
+                Err(TransportFailure::Dns)
+            } else {
+                Ok(addresses)
+            };
+        };
+        if std::time::Instant::now() >= deadline {
+            return Err(TransportFailure::Timeout);
+        }
+        let Some(slot) = addresses.slots.get_mut(addresses.count) else {
+            return Err(TransportFailure::Dns);
+        };
+        *slot = Some(address);
+        addresses.count += 1;
+    }
+    Err(TransportFailure::Dns)
+}
+struct PreparedTransport {
+    outgoing: HttpRequest<Empty>,
+    invalid_headers: Arc<AtomicBool>,
+    tls: Option<Arc<rustls::ClientConfig>>,
+    identity: Option<rustls::pki_types::ServerName<'static>>,
+    cap: usize,
+}
+/// Resolve synchronously on the calling owned main thread, outside the runtime.
+/// Std/libc internal allocation is not bounded by our fixed retained slots.
+pub fn prepare_owned_dns(
+    request: Request,
+    policy: &ProductionTls,
+) -> Result<OwnedDnsAttempt, Error> {
+    use std::net::ToSocketAddrs;
+    prepare_dns_inner(request, Arc::clone(&policy.0), |host, port| {
+        (host, port).to_socket_addrs()
+    })
+}
+// Source-inclusion fixture seam only; no production resolver/config constructor.
+pub(crate) fn prepare_dns_inner<I: Iterator<Item = SocketAddr>>(
+    request: Request,
+    tls: Arc<rustls::ClientConfig>,
+    resolver: impl FnOnce(&str, u16) -> io::Result<I>,
+) -> Result<OwnedDnsAttempt, Error> {
+    if !matches!(request.body_cap, crate::LIST_BYTES | crate::TEXT_BYTES)
+        || request.url.len() > 65536
+        || request.headers.len() > 100
+        || request.attempt_timeout.is_zero()
+        || request.attempt_timeout > Duration::from_secs(20)
+    {
+        return Err(Error::Input);
+    }
+    let cap = request.body_cap;
+    let deadline = std::time::Instant::now()
+        .checked_add(request.attempt_timeout)
+        .ok_or(Error::Input)?;
+    let refuse = |phase, error| {
+        failure(phase, error, cap).map(|bytes| OwnedDnsAttempt(OwnedDnsState::Refused(bytes)))
+    };
+    let uri: Uri = match request.url.parse() {
+        Ok(uri) => uri,
+        Err(_) => return refuse(Phase::Headers, TransportFailure::Header),
+    };
+    let encrypted = uri.scheme_str() == Some("https");
+    if uri.scheme_str() != Some("http") && !encrypted {
+        return refuse(Phase::Tls, TransportFailure::Tls);
+    }
+    let Some(authority) = uri.authority() else {
+        return refuse(Phase::Headers, TransportFailure::Header);
+    };
+    let host = authority
+        .host()
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    let port = authority
+        .port_u16()
+        .unwrap_or(if encrypted { 443 } else { 80 });
+    let literal = host.parse::<IpAddr>().ok();
+    let canonical;
+    let identity_host = if literal.is_some() {
+        host
+    } else {
+        canonical = match url::Url::parse(&request.url) {
+            Ok(url) => url,
+            Err(_) => return refuse(Phase::Dns, TransportFailure::Dns),
+        };
+        let Some(url::Host::Domain(name)) = canonical.host() else {
+            return refuse(Phase::Dns, TransportFailure::Dns);
+        };
+        if name.is_empty()
+            || !name.is_ascii()
+            || name.len() > 253
+            || name.as_bytes().contains(&0)
+            || !name.eq_ignore_ascii_case(host)
+            || canonical.scheme() != uri.scheme_str().unwrap_or("")
+            || canonical.port_or_known_default() != Some(port)
+            || !canonical.username().is_empty()
+            || canonical.password().is_some()
+        {
+            return refuse(Phase::Dns, TransportFailure::Dns);
+        }
+        name
+    };
+    let identity = if encrypted {
+        match rustls::pki_types::ServerName::try_from(identity_host.to_owned()) {
+            Ok(name) => Some(name),
+            Err(_) => return refuse(Phase::Tls, TransportFailure::Tls),
+        }
+    } else {
+        None
+    };
+    let path = uri.path_and_query().map(|s| s.as_str()).unwrap_or("/");
+    let mut outgoing = match HttpRequest::builder()
+        .method(match request.method {
+            Method::Get => "GET",
+            Method::Propfind => "PROPFIND",
+        })
+        .uri(path)
+        .body(Empty)
+    {
+        Ok(request) => request,
+        Err(_) => return refuse(Phase::Headers, TransportFailure::Header),
+    };
+    let mut aggregate = 0usize;
+    for (name, value) in request.headers {
+        if name.len() > 128 || value.len() > 12 * 1024 * 1024 {
+            return refuse(Phase::Headers, TransportFailure::Header);
+        }
+        aggregate = match aggregate
+            .checked_add(name.len())
+            .and_then(|n| n.checked_add(value.len()))
+        {
+            Some(n) if n <= crate::isolated::INPUT => n,
+            _ => return refuse(Phase::Headers, TransportFailure::Header),
+        };
+        let name = match HeaderName::from_bytes(name.as_bytes()) {
+            Ok(name) => name,
+            Err(_) => return refuse(Phase::Headers, TransportFailure::Header),
+        };
+        let mut value = match HeaderValue::from_bytes(value.as_bytes()) {
+            Ok(value) => value,
+            Err(_) => return refuse(Phase::Headers, TransportFailure::Header),
+        };
+        value.set_sensitive(true);
+        outgoing.headers_mut().append(name, value);
+    }
+    if !outgoing.headers().contains_key("host") {
+        let value = match HeaderValue::from_str(authority.as_str()) {
+            Ok(value) => value,
+            Err(_) => return refuse(Phase::Headers, TransportFailure::Header),
+        };
+        outgoing.headers_mut().insert("host", value);
+    }
+    let invalid_headers = Arc::new(AtomicBool::new(false));
+    let observed = Arc::clone(&invalid_headers);
+    hyper::ext::on_informational(&mut outgoing, move |response| {
+        if !header_budget(response.headers()) {
+            observed.store(true, Ordering::Release);
+        }
+    });
+    if std::time::Instant::now() >= deadline {
+        return refuse(Phase::Dns, TransportFailure::Timeout);
+    }
+    let addresses = if let Some(ip) = literal {
+        collect_addresses(std::iter::once(SocketAddr::new(ip, port)), deadline)
+    } else {
+        let results = resolver(identity_host, port);
+        if std::time::Instant::now() >= deadline {
+            return refuse(Phase::Dns, TransportFailure::Timeout);
+        }
+        match results {
+            Ok(results) => collect_addresses(results, deadline),
+            Err(_) => Err(TransportFailure::Dns),
+        }
+    };
+    let addresses = match addresses {
+        Ok(addresses) => addresses,
+        Err(error) => return refuse(Phase::Dns, error),
+    };
+    if std::time::Instant::now() >= deadline {
+        return refuse(Phase::Dns, TransportFailure::Timeout);
+    }
+    Ok(OwnedDnsAttempt(OwnedDnsState::Ready {
+        transport: PreparedTransport {
+            outgoing,
+            invalid_headers,
+            tls: encrypted.then_some(tls),
+            identity,
+            cap,
+        },
+        addresses,
+        deadline,
+    }))
+}
+/// Serial OS iterator order; first TCP success wins, with no fallback after TLS.
+pub async fn execute_owned_dns(attempt: OwnedDnsAttempt) -> Result<Vec<u8>, Error> {
+    let (transport, addresses, deadline) = match attempt.0 {
+        OwnedDnsState::Refused(bytes) => return Ok(bytes),
+        OwnedDnsState::Ready {
+            transport,
+            addresses,
+            deadline,
+        } => (transport, addresses, deadline),
+    };
+    if std::time::Instant::now() >= deadline {
+        return failure(Phase::Dns, TransportFailure::Timeout, transport.cap);
+    }
+    let deadline = Instant::from_std(deadline);
+    let mut last = TransportFailure::Other;
+    for endpoint in addresses.slots.into_iter().take(addresses.count).flatten() {
+        if Instant::now() >= deadline {
+            return failure(Phase::Tcp, TransportFailure::Timeout, transport.cap);
+        }
+        match timeout_at(deadline, TcpStream::connect(endpoint)).await {
+            Ok(Ok(socket)) => return connected(socket, transport, deadline).await,
+            Ok(Err(error)) => last = typed_io(&error).unwrap_or(TransportFailure::Other),
+            Err(_) => return failure(Phase::Tcp, TransportFailure::Timeout, transport.cap),
+        }
+    }
+    failure(Phase::Tcp, last, transport.cap)
+}
 // Crate-private only. A separate synthetic artifact includes this actual module
 // as local source to supply fixed fixture trust/address; production exports neither.
 pub(crate) async fn execute_inner(
@@ -401,7 +648,32 @@ pub(crate) async fn execute_inner(
         }
         Err(_) => return failure(Phase::Tcp, TransportFailure::Timeout, cap),
     };
-    if encrypted {
+    connected(
+        socket,
+        PreparedTransport {
+            outgoing,
+            invalid_headers,
+            tls: if encrypted { tls } else { None },
+            identity,
+            cap,
+        },
+        deadline,
+    )
+    .await
+}
+async fn connected(
+    socket: TcpStream,
+    transport: PreparedTransport,
+    deadline: Instant,
+) -> Result<Vec<u8>, Error> {
+    let PreparedTransport {
+        outgoing,
+        invalid_headers,
+        tls,
+        identity,
+        cap,
+    } = transport;
+    if tls.is_some() {
         let policy = tls.ok_or(Error::Input)?;
         let name = identity.ok_or(Error::Input)?;
         let wire = LimitedIo {
@@ -557,4 +829,42 @@ pub fn runtime() -> Result<tokio::runtime::Runtime, Error> {
         .thread_stack_size(2 * 1024 * 1024)
         .build()
         .map_err(|_| Error::Setup)
+}
+
+#[cfg(test)]
+mod owned_dns_tests {
+    use super::*;
+    #[test]
+    fn dns_fixed_collector_preserves_duplicates_and_ipv6_representation() {
+        let v6 = SocketAddr::V6(std::net::SocketAddrV6::new(
+            std::net::Ipv6Addr::LOCALHOST,
+            81,
+            7,
+            9,
+        ));
+        let v4 = SocketAddr::from(([127, 0, 0, 1], 80));
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        let addresses = collect_addresses([v6, v4, v6].into_iter(), deadline)
+            .unwrap_or_else(|_| unreachable!());
+        assert_eq!(addresses.count, 3);
+        assert_eq!(
+            addresses.slots.get(..3),
+            Some([Some(v6), Some(v4), Some(v6)].as_slice())
+        );
+        let addresses = collect_addresses(std::iter::repeat_n(v4, 32), deadline)
+            .unwrap_or_else(|_| unreachable!());
+        assert_eq!(addresses.count, 32);
+        assert!(addresses.slots.iter().all(|slot| *slot == Some(v4)));
+        let mut consumed = 0;
+        let refused = collect_addresses(
+            std::iter::repeat_n(v4, 34).inspect(|_| consumed += 1),
+            deadline,
+        );
+        assert!(matches!(refused, Err(TransportFailure::Dns)));
+        assert_eq!(consumed, 33);
+        assert!(matches!(
+            collect_addresses(std::iter::empty(), deadline),
+            Err(TransportFailure::Dns)
+        ));
+    }
 }

@@ -101,6 +101,38 @@ pub fn attempt_http(
 ) -> Result<OwnedReply, Error> {
     attempt_http_observed(command, request, deadline, cancelled, permit, |_, _| {})
 }
+/// Owned main-thread DNS: setup, IPC and transport share the enclosing budget.
+/// The command must bind the fixed DNS child; serialization precedes pump timing.
+pub fn attempt_dns(
+    command: Command,
+    request: crate::protocol::Request,
+    outer_remaining: Duration,
+    cancelled: &AtomicBool,
+    permit: Permit,
+) -> Result<OwnedReply, Error> {
+    attempt_dns_observed(
+        command,
+        request,
+        outer_remaining,
+        cancelled,
+        permit,
+        |_, _| {},
+    )
+}
+pub fn attempt_dns_observed(
+    command: Command,
+    request: crate::protocol::Request,
+    outer_remaining: Duration,
+    cancelled: &AtomicBool,
+    permit: Permit,
+    observe: impl FnMut(NetworkObservation, u32),
+) -> Result<OwnedReply, Error> {
+    let budget = outer_remaining.min(request.attempt_timeout);
+    if budget.is_zero() {
+        return Err(Error::Deadline);
+    }
+    attempt_http_observed(command, request, budget, cancelled, permit, observe)
+}
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum NetworkObservation {
     OutputProgress(usize),
