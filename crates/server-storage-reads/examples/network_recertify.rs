@@ -1,20 +1,20 @@
 //! Reclassify retained finite captures without executing mutants.
+#[path = "support/capped_capture.rs"]
+mod capped_capture;
 #[allow(dead_code)]
 #[path = "support/mutant_classifier.rs"]
 mod classifier;
-use std::{fs, path::Path, process::ExitCode};
+use std::{path::Path, process::ExitCode};
 fn read(path: &Path) -> Result<Vec<u8>, String> {
-    if fs::metadata(path).map_err(|_| "metadata")?.len() > 4 * 1024 * 1024 {
-        return Err("capture cap".into());
-    }
-    fs::read(path).map_err(|_| "capture read".into())
+    capped_capture::read(path).map_err(|_| "capture read refused".into())
 }
 fn run() -> Result<(), String> {
     let root =
         Path::new("/var/folders/_4/jbtxcfjd7hj2x9kvw4z5k7gm0000gp/T/m4-network-mutants-21014");
-    let source =
-        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/network_policies.rs"))
-            .map_err(|_| "source")?;
+    let source = String::from_utf8(read(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/network_policies.rs"),
+    )?)
+    .map_err(|_| "source encoding")?;
     for (name, test, id) in [
         ("TAG", "tag_policy", "M4_NET_TAG"),
         ("METADATA", "metadata_policy", "M4_NET_METADATA"),
