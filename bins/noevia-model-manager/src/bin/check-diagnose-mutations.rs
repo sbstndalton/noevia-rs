@@ -88,6 +88,10 @@ fn assertion_line(source: &str, test: &str) -> Result<usize, String> {
         return Err("assertion not unique".into());
     }
     let offset = start + region.find("assert_eq!").ok_or("assertion absent")?;
+    let prefix = source.get(..offset).ok_or("assertion prefix")?;
+    if prefix.rsplit('\n').next() != Some("    ") {
+        return Err("unsupported assertion column; expected 5".into());
+    }
     Ok(source
         .get(..offset)
         .ok_or("line region")?
@@ -96,50 +100,127 @@ fn assertion_line(source: &str, test: &str) -> Result<usize, String> {
         .count()
         + 1)
 }
+// Intentionally narrow libtest/Cargo dialect: every byte must belong to this
+// single assertion transcript. Unknown diagnostics are qualification failures.
+fn decimal(s: &str) -> bool {
+    let Some((whole, fraction)) = s.split_once('.') else {
+        return false;
+    };
+    !whole.is_empty()
+        && !fraction.is_empty()
+        && whole
+            .bytes()
+            .chain(fraction.bytes())
+            .all(|b| b.is_ascii_digit())
+}
 fn semantic(code: Option<i32>, out: &str, err: &str, test: &str, line: usize) -> bool {
-    if code != Some(101)
-        || !out.lines().any(|s| s == "running 1 test")
-        || !out.contains("test result: FAILED. 0 passed; 1 failed;")
-        || out.matches(" panicked at ").count() != 1
-        || err.lines().any(|s| {
-            s.starts_with("error[")
-                || (s.starts_with("error:") && !s.starts_with("error: test failed, to rerun pass"))
-        })
-    {
+    if code != Some(101) || out.len() > 4 * 1024 * 1024 || err.len() > 4 * 1024 * 1024 {
         return false;
     }
-    let mut failed = out.lines().filter_map(|s| {
-        s.strip_prefix("test ")
-            .and_then(|s| s.strip_suffix(" ... FAILED"))
-            .or_else(|| s.strip_suffix(" --- FAILED"))
-    });
-    if failed.next() != Some(test)
-        || failed.next().is_some()
-        || !out.contains(&format!("---- {test} stdout ----"))
-    {
+    let pattern = format!(
+        "\\A\\nrunning 1 test\\ntest {t} \\.\\.\\. FAILED\\n\\nfailures:\\n\\n---- {t} stdout ----\\n\\nthread '{t}' \\([0-9]{{1,20}}\\) panicked at {p}:{line}:5:\\nassertion `left == right` failed\\n  left: [^\\r\\n]+\\n right: [^\\r\\n]+\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\\n\\nfailures:\\n    {t}\\n\\ntest result: FAILED\\. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in ([0-9]+\\.[0-9]+)s\\n\\n\\z",
+        t = regex::escape(test), p = regex::escape(TEST),
+    );
+    let Ok(grammar) = regex::Regex::new(&pattern) else {
+        return false;
+    };
+    if !grammar.is_match(out) {
         return false;
     }
-    let mut lines = out.lines();
-    while let Some(s) = lines.next() {
-        if let Some(tail) = s.strip_prefix(&format!("thread '{test}'")) {
-            let location = tail.strip_prefix(" panicked at ").or_else(|| {
-                let (id, loc) = tail.strip_prefix(" (")?.split_once(") panicked at ")?;
-                (!id.is_empty() && id.len() <= 20 && id.bytes().all(|b| b.is_ascii_digit()))
-                    .then_some(loc)
-            });
-            let exact = location
-                .and_then(|s| s.strip_prefix(&format!("{TEST}:{line}:")))
-                .and_then(|s| s.strip_suffix(':'))
-                .is_some_and(|c| {
-                    !c.is_empty() && c.len() <= 6 && c.bytes().all(|b| b.is_ascii_digit())
-                });
-            return exact
-                && lines
-                    .next()
-                    .is_some_and(|s| s.starts_with("assertion `left == right` failed"));
+    let lines = err.split('\n').collect::<Vec<_>>();
+    let [compiling, finished, running, footer, ""] = lines.as_slice() else {
+        return false;
+    };
+    if *compiling != "   Compiling noevia-model-manager v0.1.0 (/Users/sebastiandalton/noevia-work/s1-backend-diagnose-rs/bins/noevia-model-manager)"
+        || *footer != "error: test failed, to rerun pass `-p noevia-model-manager --test diagnose`" {
+        return false;
+    }
+    let duration = finished
+        .strip_prefix("    Finished `test` profile [unoptimized + debuginfo] target(s) in ")
+        .and_then(|s| s.strip_suffix('s'));
+    let binary = running
+        .strip_prefix(
+            "     Running tests/diagnose.rs (/tmp/s1-backend-diagnose-target/debug/deps/diagnose-",
+        )
+        .and_then(|s| s.strip_suffix(')'));
+    duration.is_some_and(decimal)
+        && binary.is_some_and(|s| s.len() == 16 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+fn replay() -> Result<(), String> {
+    if std::env::current_dir().map_err(|e| e.to_string())?
+        != Path::new("/Users/sebastiandalton/noevia-work/s1-backend-diagnose-rs")
+    {
+        return Err("replay checkout identity mismatch".into());
+    }
+    let raw_certificate = read(&Path::new(EVIDENCE).join("certificate.json"))?;
+    if hash(&raw_certificate) != "3a01ed1efae8f40ce8490f25319dea63bcc179fa2e4ea24c77175b424babe189"
+    {
+        return Err("historical certificate identity mismatch".into());
+    }
+    let rows: Vec<serde_json::Value> =
+        serde_json::from_slice(&raw_certificate).map_err(|e| e.to_string())?;
+    let selected = [
+        ("priority", "priority_semantics"),
+        ("forced", "forced_semantics"),
+        ("slot", "slot_semantics"),
+        ("distinct-port", "distinct_port_semantics"),
+        ("case", "case_sensitive_success_semantics"),
+        ("redaction", "redaction_semantics"),
+        ("crossline", "crossline_semantics"),
+    ];
+    if rows.len() != selected.len() {
+        return Err("historical row count".into());
+    }
+    let source = read(Path::new(SOURCE))?;
+    let tests = read(Path::new(TEST))?;
+    let fixtures = read(Path::new(
+        "bins/noevia-model-manager/tests/fixtures/diagnose-python.v1.json",
+    ))?;
+    let test_text = std::str::from_utf8(&tests).map_err(|e| e.to_string())?;
+    let mut result = Vec::new();
+    for (row, (id, test)) in rows.iter().zip(selected) {
+        let line = assertion_line(test_text, test)?;
+        let out = read(&Path::new(EVIDENCE).join(format!("{id}.stdout")))?;
+        let err = read(&Path::new(EVIDENCE).join(format!("{id}.stderr")))?;
+        for (key, expected) in [
+            ("id", id.to_owned()),
+            ("test", test.to_owned()),
+            ("assertion_path", TEST.to_owned()),
+            ("production_sha256", hash(&source)),
+            ("tests_sha256", hash(&tests)),
+            ("fixture_sha256", hash(&fixtures)),
+            ("stdout_sha256", hash(&out)),
+            ("stderr_sha256", hash(&err)),
+        ] {
+            if row.get(key).and_then(|v| v.as_str()) != Some(expected.as_str()) {
+                return Err(format!("historical binding mismatch {id}:{key}"));
+            }
         }
+        if row.get("assertion_line").and_then(|v| v.as_u64()) != Some(line as u64)
+            || row.get("status").and_then(|v| v.as_i64()) != Some(101)
+        {
+            return Err(format!("historical location/status mismatch {id}"));
+        }
+        let killed = semantic(
+            Some(101),
+            std::str::from_utf8(&out).map_err(|e| e.to_string())?,
+            std::str::from_utf8(&err).map_err(|e| e.to_string())?,
+            test,
+            line,
+        );
+        if !killed {
+            return Err(format!("historical transcript rejected {id}"));
+        }
+        result.push(
+            json!({"historical_snapshot":row,"current_classification":killed,"assertion_column":5}),
+        );
     }
-    false
+    println!("{}", serde_json::to_string_pretty(&json!({
+        "qualification":"Replay of preserved historical captures; no mutants executed, historical binary hashes not revalidated",
+        "historical_certificate_sha256":hash(&raw_certificate),
+        "current_checker_sha256":hash(include_bytes!("check-diagnose-mutations.rs")),"rows":result
+    })).map_err(|e| e.to_string())?);
+    Ok(())
 }
 fn run() -> Result<(), String> {
     if std::env::args().nth(1).as_deref() != Some("--run-once") || std::env::args().count() != 2 {
@@ -256,42 +337,57 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 fn main() -> Result<(), String> {
-    run()
+    if std::env::args().count() == 2
+        && std::env::args().nth(1).as_deref() == Some("--reclassify-preserved")
+    {
+        replay()
+    } else {
+        run()
+    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn capture() -> (String, String) {
+        ("\nrunning 1 test\ntest priority_semantics ... FAILED\n\nfailures:\n\n---- priority_semantics stdout ----\n\nthread 'priority_semantics' (8027594) panicked at bins/noevia-model-manager/tests/diagnose.rs:105:5:\nassertion `left == right` failed\n  left: String(\"gpu-memory\")\n right: String(\"kv-cache\")\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    priority_semantics\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.04s\n\n".to_owned(),
+         "   Compiling noevia-model-manager v0.1.0 (/Users/sebastiandalton/noevia-work/s1-backend-diagnose-rs/bins/noevia-model-manager)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.17s\n     Running tests/diagnose.rs (/tmp/s1-backend-diagnose-target/debug/deps/diagnose-8012b0f2c159e38d)\nerror: test failed, to rerun pass `-p noevia-model-manager --test diagnose`\n".to_owned())
+    }
     #[test]
-    fn classifier_requires_exact_assertion_terminal_footer_and_status() {
-        let out=format!("running 1 test\ntest target ... FAILED\n---- target stdout ----\nthread 'target' (123) panicked at {TEST}:12:3:\nassertion `left == right` failed\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out;\n");
-        assert!(semantic(Some(101), &out, "", "target", 12));
-        for (code, text, err, name, line) in [
-            (Some(0), out.clone(), "", "target", 12),
-            (
-                Some(101),
-                out.replace("test result: FAILED.", "test result: ok."),
-                "",
-                "target",
-                12,
-            ),
-            (
-                Some(101),
-                out.replace("assertion `left == right` failed", "called unwrap on Err"),
-                "",
-                "target",
-                12,
-            ),
-            (
-                Some(101),
-                out.clone(),
-                "error: could not compile",
-                "target",
-                12,
-            ),
-            (Some(101), out.clone(), "", "other", 12),
-            (Some(101), out.clone(), "", "target", 13),
+    fn classifier_complete_transcript() {
+        let (out, err) = capture();
+        assert!(semantic(Some(101), &out, &err, "priority_semantics", 105));
+        for text in [
+            format!("{out}SETUP\n"),
+            format!("SETUP\n{out}"),
+            format!("{out}{out}"),
+            out.replace(":105:5:", ":105:3:"),
+            out.replace("assertion `left == right` failed", "called unwrap on Err"),
+            out.replace("13 filtered out", "12 filtered out"),
+            out.replace("  left:", "SETUP\n  left:"),
+            out.replace("test result: FAILED.", "test result: ok."),
+            out.trim_end().to_owned(),
         ] {
-            assert!(!semantic(code, &text, err, name, line));
+            assert!(!semantic(Some(101), &text, &err, "priority_semantics", 105));
         }
+        for text in [
+            String::new(),
+            format!("{err}SETUP\n"),
+            format!("SETUP\n{err}"),
+            format!("{err}{err}"),
+            err.replace("error: test failed", "error: could not compile"),
+            err.replace("    Finished", "deadline cap\n    Finished"),
+            err.replace(
+                "error: test failed, to rerun pass `-p noevia-model-manager --test diagnose`\n",
+                "",
+            ),
+            err.trim_end().to_owned(),
+        ] {
+            assert!(!semantic(Some(101), &out, &text, "priority_semantics", 105));
+        }
+        for code in [None, Some(0), Some(1)] {
+            assert!(!semantic(code, &out, &err, "priority_semantics", 105));
+        }
+        assert!(!semantic(Some(101), &out, &err, "other", 105));
+        assert!(!semantic(Some(101), &out, &err, "priority_semantics", 106));
     }
 }
