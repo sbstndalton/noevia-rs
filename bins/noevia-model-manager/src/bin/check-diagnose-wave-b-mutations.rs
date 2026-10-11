@@ -220,12 +220,93 @@ fn semantic(
         "\\A(?:   Compiling {package} v0\\.1\\.0 \\({}\\)\\n)?    Finished `test` profile \\[unoptimized \\+ debuginfo\\] target\\(s\\) in [0-9]+\\.[0-9]+s\\n     Running {} \\({}/debug/deps/{}-[0-9a-f]{{16}}\\)\\n{}\\n\\z",
         regex::escape(&root.join(crate_path).display().to_string()),
         regex::escape(&running),
-        regex::escape(&target.display().to_string()),
+        match target.strip_prefix(root) {
+            Ok(relative) if !relative.as_os_str().is_empty() => format!("(?:{}|{})", regex::escape(&target.display().to_string()), regex::escape(&relative.display().to_string())),
+            _ => regex::escape(&target.display().to_string()),
+        },
         regex::escape(binary),
         regex::escape(&footer)
     );
     regex::Regex::new(&stdout).is_ok_and(|r| r.is_match(out))
         && regex::Regex::new(&stderr).is_ok_and(|r| r.is_match(err))
+}
+fn case_binary(case: &Case) -> &str {
+    if case.id == "child-confirmation" {
+        "noevia_model_manager"
+    } else if case.replay {
+        "diagnose_contracts"
+    } else {
+        case.target
+    }
+}
+fn resolve_test_binary(
+    rendered: &str,
+    root: &Path,
+    target: &Path,
+    prefix: &str,
+) -> Result<PathBuf, String> {
+    use std::path::Component;
+    if rendered.ends_with('/')
+        || rendered.len() > 8192
+        || !root.is_absolute()
+        || !target.is_absolute()
+        || [root, target].iter().any(|p| {
+            p.components()
+                .any(|c| !matches!(c, Component::RootDir | Component::Normal(_)))
+        })
+        || rendered
+            .split('/')
+            .any(|part| part.is_empty() && !rendered.starts_with('/'))
+        || rendered.contains("//")
+    {
+        return Err("test binary path malformed".into());
+    }
+    let path = Path::new(rendered);
+    if path
+        .components()
+        .any(|c| !matches!(c, Component::RootDir | Component::Normal(_)))
+        || rendered.split('/').any(|c| c == "." || c == "..")
+    {
+        return Err("test binary path traversal".into());
+    }
+    let resolved = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    if resolved.parent() != Some(target.join("debug/deps").as_path()) {
+        return Err("test binary escaped owned target".into());
+    }
+    let name = resolved
+        .file_name()
+        .and_then(|v| v.to_str())
+        .ok_or("test binary name")?;
+    let suffix = name
+        .strip_prefix(prefix)
+        .and_then(|v| v.strip_prefix('-'))
+        .ok_or("wrong test binary")?;
+    if suffix.len() != 16
+        || !suffix
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err("test binary hash suffix malformed".into());
+    }
+    Ok(resolved)
+}
+fn reject_binary_symlinks(binary: &Path, target: &Path) -> Result<(), String> {
+    for path in [
+        target.to_path_buf(),
+        target.join("debug"),
+        target.join("debug/deps"),
+        binary.to_path_buf(),
+    ] {
+        let metadata = fs::symlink_metadata(path).map_err(|_| "owned binary metadata absent")?;
+        if metadata.file_type().is_symlink() {
+            return Err("owned binary symlink refused".into());
+        }
+    }
+    Ok(())
 }
 fn git(args: &[&str]) -> Result<Vec<u8>, String> {
     let mut command = Command::new("git");
@@ -388,11 +469,9 @@ fn execute() -> Result<(), String> {
             .and_then(|s| s.rsplit_once(" ("))
             .and_then(|(_, p)| p.strip_suffix(')'))
             .ok_or("test binary identity absent")?;
-        let binary = Path::new(running);
-        if binary.parent() != Some(target.join("debug/deps").as_path()) {
-            return Err("test binary escaped owned target".into());
-        }
-        certificate.push(json!({"id":case.id,"snapshot":snapshot,"checker_sha256":hash(include_bytes!("check-diagnose-wave-b-mutations.rs")),"production_path":case.source,"original_sha256":hash(&original),"mutant_sha256":hash(mutant.as_bytes()),"test_path":case.test_path,"tests_sha256":hash(&tests),"assertion_line":line,"assertion_column":column,"status":output.status.code(),"stdout_sha256":hash(&output.stdout),"stderr_sha256":hash(&output.stderr),"test_binary_sha256":binary_hash(binary)?,"manager_binary_sha256":build_hash,"semantic_kill":killed}));
+        let binary = resolve_test_binary(running, &root, &target, case_binary(&case))?;
+        reject_binary_symlinks(&binary, &target)?;
+        certificate.push(json!({"id":case.id,"snapshot":snapshot,"checker_sha256":hash(include_bytes!("check-diagnose-wave-b-mutations.rs")),"production_path":case.source,"original_sha256":hash(&original),"mutant_sha256":hash(mutant.as_bytes()),"test_path":case.test_path,"tests_sha256":hash(&tests),"assertion_line":line,"assertion_column":column,"status":output.status.code(),"stdout_sha256":hash(&output.stdout),"stderr_sha256":hash(&output.stderr),"test_binary_sha256":binary_hash(&binary)?,"manager_binary_sha256":build_hash,"semantic_kill":killed}));
         fs::write(
             evidence.join("certificate.json"),
             serde_json::to_vec_pretty(&certificate).map_err(|e| e.to_string())?,
@@ -579,6 +658,46 @@ mod tests {
                 .any(|(key, value)| key == "CARGO_TERM_COLOR"
                     && value == Some(std::ffi::OsStr::new("never"))));
         }
+        Ok(())
+    }
+    #[test]
+    fn exact_owned_binary_renderings_refuse_escape_and_malformed() -> Result<(), String> {
+        let root = Path::new("/owned");
+        let target = root.join("target");
+        let expected = target.join("debug/deps/diagnose_transport-0123456789abcdef");
+        for path in [
+            "/owned/target/debug/deps/diagnose_transport-0123456789abcdef",
+            "target/debug/deps/diagnose_transport-0123456789abcdef",
+        ] {
+            assert_eq!(
+                resolve_test_binary(path, root, &target, "diagnose_transport")?,
+                expected
+            );
+        }
+        for path in [
+            "../target/debug/deps/diagnose_transport-0123456789abcdef",
+            "target/../target/debug/deps/diagnose_transport-0123456789abcdef",
+            "./target/debug/deps/diagnose_transport-0123456789abcdef",
+            "/other/target/debug/deps/diagnose_transport-0123456789abcdef",
+            "target2/debug/deps/diagnose_transport-0123456789abcdef",
+            "target/debug/deps/wrong-0123456789abcdef",
+            "target/debug/deps/diagnose_transport-0123456789abcdeF",
+            "target/debug/deps/diagnose_transport-0123456789abcdef.extra",
+            "target//debug/deps/diagnose_transport-0123456789abcdef",
+            "target/debug/deps/diagnose_transport-0123456789abcdef/",
+            "",
+        ] {
+            assert!(resolve_test_binary(path, root, &target, "diagnose_transport").is_err());
+        }
+        let owned = tempfile::tempdir().map_err(|_| "fixture tempdir")?;
+        let target = owned.path().join("target");
+        fs::create_dir_all(target.join("debug/deps")).map_err(|_| "fixture directory")?;
+        let binary = target.join("debug/deps/diagnose_transport-0123456789abcdef");
+        fs::write(&binary, b"fixed").map_err(|_| "fixture binary")?;
+        reject_binary_symlinks(&binary, &target)?;
+        let link = target.join("debug/deps/diagnose_transport-fedcba9876543210");
+        std::os::unix::fs::symlink(&binary, &link).map_err(|_| "fixture symlink")?;
+        assert!(reject_binary_symlinks(&link, &target).is_err());
         Ok(())
     }
 }

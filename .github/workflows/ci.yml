@@ -887,7 +887,8 @@ jobs:
           cargo test --locked -p noevia-model-manager --bin check-diagnose-wave-b-mutations
           cargo build --locked -p noevia-model-manager --bin check-diagnose-wave-b-mutations
           target/debug/check-diagnose-wave-b-mutations --execute
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: native-diagnose-closed-qualification
           path: |
