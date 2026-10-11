@@ -1018,6 +1018,33 @@ mod transport_error_tests {
             }
         };
         context.cleanup().await;
+        // Fixed numeric schema only, emitted after every retained join/cleanup.
+        let queue_stage = match &queued {
+            Ok(Ok(_)) => 0,
+            Ok(Err(_)) => 1,
+            Err(_) => 2,
+        };
+        let peer_stage = match &joined {
+            Ok(Ok(_)) => 0,
+            Ok(Err(_)) => 1,
+            Err(_) => 2,
+        };
+        let subject_stage = match &result {
+            Ok(Err(Error::Ordinary)) => 0,
+            Ok(Err(Error::Refused)) => 1,
+            Err(_) => 2,
+            Ok(Ok(_)) => 3,
+            Ok(Err(Error::Unknown)) => 4,
+        };
+        let queued_bytes = match &queued {
+            Ok(Ok(count)) => *count,
+            _ => 0,
+        };
+        let read_kind = context.witness.read_kind.load(Ordering::Acquire);
+        let read_errno = context.witness.read_errno.load(Ordering::Acquire);
+        let write_kind = context.witness.write_kind.load(Ordering::Acquire);
+        let write_errno = context.witness.write_errno.load(Ordering::Acquire);
+        eprintln!("unix-reset-witness-v1 read_kind={read_kind} read_errno={read_errno} write_kind={write_kind} write_errno={write_errno} response_bytes={} hyper_flags={} queue_stage={queue_stage} peer_stage={peer_stage} subject_stage={subject_stage} queued_bytes={queued_bytes}", u8::from(context.witness.response_bytes.load(Ordering::Acquire)), context.witness.hyper_flags.load(Ordering::Acquire));
         // Every assertion follows actual same-handle joins, also on error/timeout.
         let count = queued
             .map_err(|_| "queue deadline")?
@@ -1032,7 +1059,7 @@ mod transport_error_tests {
             .is_empty());
         assert!(
             context.witness.known_reset(),
-            "actual Linux typed reset/broken-pipe prerequisite"
+            "actual Linux typed reset/broken-pipe prerequisite: read_kind={read_kind} read_errno={read_errno} write_kind={write_kind} write_errno={write_errno}"
         );
         assert!(!context.witness.response_bytes.load(Ordering::Acquire));
         assert_eq!(context.witness.hyper_flags.load(Ordering::Acquire), 4);
