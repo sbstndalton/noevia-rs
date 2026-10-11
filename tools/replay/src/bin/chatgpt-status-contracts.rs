@@ -188,46 +188,6 @@ fn certify_native_mutant(name: &str) -> Result<serde_json::Value, Box<dyn std::e
         serde_json::json!({"mutant":name,"status":101,"stdout_sha256":hash(&stdout),"stderr_sha256":hash(&stderr),"production_sha256":hash(&source),"test_sha256":hash(&tests),"binary_sha256":hash(&binary),"qualification":"single selected test/line/column/assertion/failure inventory/terminal summary/exact Cargo footer; compile/setup/cap/deadline/duplicates/suffix rejected; local source-at-execution snapshots"}),
     )
 }
-#[cfg(test)]
-#[allow(clippy::unwrap_used)]
-mod classifier_controls {
-    #[test]
-    fn strict_native_output_grammar() {
-        let out = "\nrunning 1 test\ntest native_status_closed_http_pipeline ... FAILED\n\nfailures:\n\nfailures:\n    native_status_closed_http_pipeline\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.04s\n\n";
-        let err = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running tests/chatgpt_status_http.rs (/tmp/m6-status-wave-b-target/debug/deps/chatgpt_status_http-4e07298b4b27b3ce)\n\nthread 'native_status_closed_http_pipeline' (123) panicked at bins/noevia-server/tests/chatgpt_status_http.rs:124:5:\nassertion `left == right` failed: M6_HTTP_ASSERT/intercept\n  left: 418\n right: 200\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p noevia-server --test chatgpt_status_http`\n";
-        assert!(super::classify_native(out, err, 101, "intercept"));
-        for bad in [
-            err.replace(":124:5:", ":124:1:"),
-            err.replace(":124:5:", ":125:5:"),
-            err.replace("M6_HTTP_ASSERT/intercept", "M6_HTTP_ASSERT/upkeep"),
-            format!("{err}suffix\n"),
-            format!("error: compiler failed\n{err}"),
-            format!("{err}{err}"),
-            err.replace("  left: 418", "  left: 503"),
-            err.replace(
-                "error: test failed, to rerun pass `-p noevia-server --test chatgpt_status_http`\n",
-                "",
-            ),
-        ] {
-            assert!(!super::classify_native(out, &bad, 101, "intercept"));
-        }
-        for bad in [
-            format!("{out}suffix\n"),
-            format!("{out}{out}"),
-            out.replace("1 failed", "2 failed"),
-            out.replace("0.04s", "NaNs"),
-            out.replace(
-                "    native_status_closed_http_pipeline",
-                "    unrelated_test",
-            ),
-        ] {
-            assert!(!super::classify_native(&bad, err, 101, "intercept"));
-        }
-        for code in [0, 1, 102] {
-            assert!(!super::classify_native(out, err, code, "intercept"));
-        }
-    }
-}
 fn require(ok: bool, why: &'static str) -> Result<(), Box<dyn std::error::Error>> {
     if ok {
         Ok(())
@@ -612,4 +572,44 @@ fn certify_oracle() -> Result<serde_json::Value, Box<dyn std::error::Error>> {
         stdout,
         "SOURCE-INFERRED Node success; original Rust tool post-binding status1; replay-only",
     )
+}
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod classifier_controls {
+    #[test]
+    fn strict_native_output_grammar() {
+        let out = "\nrunning 1 test\ntest native_status_closed_http_pipeline ... FAILED\n\nfailures:\n\nfailures:\n    native_status_closed_http_pipeline\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.04s\n\n";
+        let err = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running tests/chatgpt_status_http.rs (/tmp/m6-status-wave-b-target/debug/deps/chatgpt_status_http-4e07298b4b27b3ce)\n\nthread 'native_status_closed_http_pipeline' (123) panicked at bins/noevia-server/tests/chatgpt_status_http.rs:124:5:\nassertion `left == right` failed: M6_HTTP_ASSERT/intercept\n  left: 418\n right: 200\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p noevia-server --test chatgpt_status_http`\n";
+        assert!(super::classify_native(out, err, 101, "intercept"));
+        for bad in [
+            err.replace(":124:5:", ":124:1:"),
+            err.replace(":124:5:", ":125:5:"),
+            err.replace("M6_HTTP_ASSERT/intercept", "M6_HTTP_ASSERT/upkeep"),
+            format!("{err}suffix\n"),
+            format!("error: compiler failed\n{err}"),
+            format!("{err}{err}"),
+            err.replace("  left: 418", "  left: 503"),
+            err.replace(
+                "error: test failed, to rerun pass `-p noevia-server --test chatgpt_status_http`\n",
+                "",
+            ),
+        ] {
+            assert!(!super::classify_native(out, &bad, 101, "intercept"));
+        }
+        for bad in [
+            format!("{out}suffix\n"),
+            format!("{out}{out}"),
+            out.replace("1 failed", "2 failed"),
+            out.replace("0.04s", "NaNs"),
+            out.replace(
+                "    native_status_closed_http_pipeline",
+                "    unrelated_test",
+            ),
+        ] {
+            assert!(!super::classify_native(&bad, err, 101, "intercept"));
+        }
+        for code in [0, 1, 102] {
+            assert!(!super::classify_native(out, err, code, "intercept"));
+        }
+    }
 }

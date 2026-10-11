@@ -200,49 +200,6 @@ pub fn copy() -> Result<Value> {
         json!({"source":SOURCE,"destination":DESTINATION,"proof_sha256":PROOF_HASH,"files":inventory,"dependency_files":1831,"dependency_bytes":dependency_bytes,"all_bytes":all_bytes,"root_mode":"0700","installed_or_downloaded":false,"limits":"logical caps; stable trusted ancestors assumed; no registry integrity or ancestry-race proof"}),
     )
 }
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn preappend_queue_cap() {
-        let mut values = Vec::new();
-        for i in 0..4096 {
-            super::push(&mut values, i, 4096).unwrap();
-        }
-        assert!(super::push(&mut values, 4096, 4096).is_err());
-        assert_eq!(values.len(), 4096);
-    }
-    #[test]
-    fn materialization_rejects_nonfixed_path_grammar_before_io() {
-        assert!(super::materialize(&[]).is_err());
-        for invalid in ["relative", "/tmp/../other", "/tmp/./other"] {
-            let mut args: Vec<String> = [
-                "--core-checkout",
-                invalid,
-                "--dependency-root",
-                "/not-used",
-                "--dependency-inventory",
-                "/not-used",
-                "--node",
-                "/not-used",
-                "--owned-output",
-                "/not-used",
-            ]
-            .into_iter()
-            .map(str::to_owned)
-            .collect();
-            assert!(
-                super::materialize(&args).is_err(),
-                "M6_MATERIALIZE_ASSERT/path-grammar"
-            );
-            args[0] = "--script".into();
-            assert!(
-                super::materialize(&args).is_err(),
-                "M6_MATERIALIZE_ASSERT/fixed-options"
-            );
-        }
-    }
-}
-
 /// Read-only complete content/mode check of this one owned private destination.
 #[allow(clippy::indexing_slicing)] // Only serde_json string-key indexing.
 pub fn verify(proof: &Value) -> Result<Value> {
@@ -654,4 +611,50 @@ pub fn materialize(args: &[String]) -> Result<Value> {
     )?;
     save(&out.join("qualification-manifest.json"), &encoded)?;
     Ok(manifest)
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn preappend_queue_cap() -> super::Result<()> {
+        let mut values = Vec::new();
+        for i in 0..4096 {
+            super::push(&mut values, i, 4096)?;
+        }
+        assert!(super::push(&mut values, 4096, 4096).is_err());
+        assert_eq!(values.len(), 4096);
+        Ok(())
+    }
+    #[test]
+    fn materialization_rejects_nonfixed_path_grammar_before_io() -> super::Result<()> {
+        assert!(super::materialize(&[]).is_err());
+        for invalid in ["relative", "/tmp/../other", "/tmp/./other"] {
+            let mut args: Vec<String> = [
+                "--core-checkout",
+                invalid,
+                "--dependency-root",
+                "/not-used",
+                "--dependency-inventory",
+                "/not-used",
+                "--node",
+                "/not-used",
+                "--owned-output",
+                "/not-used",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+            assert!(
+                super::materialize(&args).is_err(),
+                "M6_MATERIALIZE_ASSERT/path-grammar"
+            );
+            *args
+                .first_mut()
+                .ok_or("fixed argument fixture must have first item")? = "--script".into();
+            assert!(
+                super::materialize(&args).is_err(),
+                "M6_MATERIALIZE_ASSERT/fixed-options"
+            );
+        }
+        Ok(())
+    }
 }

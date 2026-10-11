@@ -1,21 +1,27 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[cfg(feature = "rust-chatgpt-status")]
 #[path = "support/chatgpt_status_http_controls.rs"]
 mod controls;
-use axum::{
-    body::Body,
-    extract::ConnectInfo,
-    http::{Request, StatusCode},
-};
+#[cfg(feature = "rust-chatgpt-status")]
+use axum::http::StatusCode;
+use axum::{body::Body, extract::ConnectInfo, http::Request};
+#[cfg(feature = "rust-chatgpt-status")]
+use noevia_server::App;
 use noevia_server::{
     chatgpt_status_routes,
     config::Config,
     serve::{Arrival, Conn},
-    App,
 };
+#[cfg(feature = "rust-chatgpt-status")]
 use server_store::rusqlite::Connection;
-use std::time::{Duration, Instant};
+#[cfg(feature = "rust-chatgpt-status")]
+use std::time::Duration;
+use std::time::Instant;
+#[cfg(feature = "rust-chatgpt-status")]
 use tower::ServiceExt;
+#[cfg(feature = "rust-chatgpt-status")]
 const SCHEMA: &str = include_str!("../../../crates/server-store/tests/fixtures/node-schema.sql");
+#[cfg(feature = "rust-chatgpt-status")]
 fn config(directory: &std::path::Path, upstream: std::net::SocketAddr) -> Config {
     Config::from_lookup(|key| match key {
         "NOEVIA_RUST_AUTH" | "NOEVIA_RUST_CHATGPT_STATUS" => Some("1".into()),
