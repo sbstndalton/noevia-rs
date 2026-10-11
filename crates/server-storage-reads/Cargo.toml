@@ -23,6 +23,10 @@ rustix = { version = "=1.1.5", features = ["fs", "process", "param"] }
 tokio = { version = "=1.53.2", default-features = false, features = ["io-util", "net", "time", "rt"] }
 rustls = { version = "=0.23.45", default-features = false, features = ["std", "ring", "tls12"] }
 webpki-roots = "=1.0.9"
+hyper = { version = "=1.11.1", default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "=0.1.21", default-features = false, features = ["http1", "tokio"] }
+http-body = "=1.1.0"
+bytes = "=1.12.1"
 
 [dev-dependencies]
 serde_json = "=1.0.152"

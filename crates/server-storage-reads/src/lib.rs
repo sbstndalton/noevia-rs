@@ -1,12 +1,15 @@
 //! Private, unintegrated read engine for noevia#1368.
 //!
-//! No sockets, credentials store, routes or authentication are implemented here.
+//! Private owned child plain HTTP is synthetic-qualified and unintegrated.
+//! No credentials store, routes or authentication are implemented here.
 //! A future authenticated adapter must supply an owner-bound immutable connection
 //! snapshot and a deadline-enforcing transport. Neither trait grants write access.
 #![forbid(unsafe_code)]
 
 pub mod admission;
+pub mod child_http;
 pub mod child_request;
+
 pub mod isolated;
 pub mod json;
 pub mod protocol;
