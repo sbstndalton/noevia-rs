@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 pub mod docker;
 pub mod host;
+pub mod sections;
 
 use axum::{
     body::{to_bytes, Body},
@@ -43,6 +44,7 @@ pub trait DockerRead: Send + Sync {
 }
 
 pub struct StateData {
+    pub sections: Option<Arc<sections::Sections>>,
     pub host: Option<Arc<tokio::sync::Mutex<host::HostHistory>>>,
     pub token: String,
     pub configured: Vec<String>,
@@ -300,6 +302,15 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     if path == "/api/v1/health" {
         return dispatch(state, req).await;
     }
+    if req.method() == Method::GET
+        && state.sections.is_some()
+        && (path == "/api/v1/sections"
+            || path
+                .strip_prefix("/api/v1/sections/")
+                .is_some_and(|n| !n.is_empty() && !n.contains('/')))
+    {
+        return dispatch(state, req).await;
+    }
     let permit = match state.permits.try_acquire() {
         Ok(p) => p,
         Err(_) => return detail(StatusCode::SERVICE_UNAVAILABLE, "service is busy"),
@@ -326,6 +337,44 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
 
 async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
     let path = req.uri().path();
+    if req.method() == Method::GET {
+        if let Some(sections) = &state.sections {
+            if let Some(trimmed) = path.strip_suffix('/') {
+                if trimmed == "/api/v1/sections"
+                    || trimmed
+                        .strip_prefix("/api/v1/sections/")
+                        .is_some_and(|n| !n.is_empty() && !n.contains('/'))
+                {
+                    let host = req
+                        .headers()
+                        .get("host")
+                        .and_then(|h| h.to_str().ok())
+                        .unwrap_or("localhost");
+                    let query = req
+                        .uri()
+                        .query()
+                        .map(|q| format!("?{q}"))
+                        .unwrap_or_default();
+                    return (
+                        StatusCode::TEMPORARY_REDIRECT,
+                        [(
+                            axum::http::header::LOCATION,
+                            format!("http://{host}{trimmed}{query}"),
+                        )],
+                    )
+                        .into_response();
+                }
+            }
+            if path == "/api/v1/sections"
+                || path
+                    .strip_prefix("/api/v1/sections/")
+                    .is_some_and(|name| !name.is_empty() && !name.contains('/'))
+            {
+                return native_sections(sections, path, req.uri().query().unwrap_or_default())
+                    .await;
+            }
+        }
+    }
     if path == "/api/v1/health" {
         return if req.method() == Method::GET {
             Json(json!({"ok":true})).into_response()
@@ -410,6 +459,68 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         Body::from(bytes),
     )
         .into_response()
+}
+
+async fn native_sections(sections: &sections::Sections, path: &str, query: &str) -> Response {
+    let name = path.strip_prefix("/api/v1/sections/");
+    let decoded = name.map(decode_segment);
+    // FastAPI matches the decoded route before validating its query parameters.
+    if decoded
+        .as_ref()
+        .is_some_and(|result| matches!(result, Ok(name) if name.contains('/')))
+    {
+        return detail(StatusCode::NOT_FOUND, "Not Found");
+    }
+    let parsed = reqwest::Url::parse(&format!("http://localhost/?{query}"));
+    let mut defaults = false;
+    if let Ok(url) = parsed {
+        if let Some((_, value)) = url
+            .query_pairs()
+            .filter(|(key, _)| key == "defaults")
+            .last()
+        {
+            let low = value.to_lowercase();
+            defaults = match low.as_str() {
+                "1"|"true"|"on"|"yes"|"y"|"t" => true,
+                "0"|"false"|"off"|"no"|"n"|"f" => false,
+                _ if name.is_some() => return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"detail":[{"type":"bool_parsing","loc":["query","defaults"],"msg":"Input should be a valid boolean, unable to interpret input","input":value}]}))).into_response(),
+                _ => false,
+            };
+        }
+    }
+    let name = match decoded {
+        Some(result) => match result {
+            Ok(name) => Some(name),
+            Err(_) => return detail(StatusCode::BAD_REQUEST, "invalid section name"),
+        },
+        None => None,
+    };
+    match sections.response(name, defaults).await {
+        Ok(bytes) => (
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response(),
+        Err(sections::Error::InvalidName) => {
+            detail(StatusCode::BAD_REQUEST, "invalid section name")
+        }
+        Err(_) => detail(StatusCode::SERVICE_UNAVAILABLE, sections::REFUSAL),
+    }
+}
+fn decode_segment(raw: &str) -> Result<String, ()> {
+    let mut bytes = Vec::new();
+    bytes.try_reserve(raw.len()).map_err(|_| ())?;
+    let mut chars = raw.bytes();
+    while let Some(byte) = chars.next() {
+        if byte == b'%' {
+            let a = char::from(chars.next().ok_or(())?).to_digit(16).ok_or(())?;
+            let b = char::from(chars.next().ok_or(())?).to_digit(16).ok_or(())?;
+            bytes.push((a * 16 + b) as u8);
+        } else {
+            bytes.push(byte);
+        }
+    }
+    String::from_utf8(bytes).map_err(|_| ())
 }
 
 async fn native_logs(state: &StateData, name: &str, query: &str) -> Response {

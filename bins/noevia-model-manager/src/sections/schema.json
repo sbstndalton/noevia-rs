@@ -1,0 +1,1107 @@
+[
+  {
+    "fields": [
+      {
+        "choices": [],
+        "help": "Explicit model path relative to /models. Leave blank for flat files (llama-server resolves section-name.gguf automatically). Required for sharded models: point at the first shard, e.g. MyModel-Q4_K_M/MyModel-Q4_K_M-00001-of-00003.gguf.",
+        "id": "model",
+        "key": "model",
+        "kind": "text",
+        "label": "Model file (relative to /models)",
+        "placeholder": "auto (section-name.gguf); set for sharded"
+      },
+      {
+        "choices": [],
+        "help": "Prompt context length in tokens. 0 = load from model metadata. Larger uses more VRAM for KV cache.",
+        "id": "ctx-size",
+        "key": "ctx-size",
+        "kind": "int",
+        "label": "Context size",
+        "placeholder": "e.g. 8192, 131072, 196608"
+      },
+      {
+        "choices": [],
+        "help": "Number of layers offloaded to VRAM. 999 or 'all' forces every layer; lower values push work to CPU.",
+        "id": "ngl",
+        "key": "ngl",
+        "kind": "text",
+        "label": "GPU layers",
+        "placeholder": "999 (all) or an integer or 'auto'"
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off",
+          "auto"
+        ],
+        "help": "Fused attention kernel that reduces KV cache memory and speeds prompt processing. 'auto' probes support at load.",
+        "id": "flash-attn",
+        "key": "flash-attn",
+        "kind": "select",
+        "label": "Flash attention",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "f32",
+          "f16",
+          "bf16",
+          "q8_0",
+          "q4_0",
+          "q4_1",
+          "iq4_nl",
+          "q5_0",
+          "q5_1"
+        ],
+        "help": "Data type for the K side of the KV cache. q8_0 is a strong VRAM saver with minimal quality loss. f16 = default.",
+        "id": "cache-type-k",
+        "key": "cache-type-k",
+        "kind": "select",
+        "label": "KV cache — K quant",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "f32",
+          "f16",
+          "bf16",
+          "q8_0",
+          "q4_0",
+          "q4_1",
+          "iq4_nl",
+          "q5_0",
+          "q5_1"
+        ],
+        "help": "Data type for the V side of the KV cache. Keep this equal to K. Going below q8_0 saves VRAM but can silently fall off the CUDA flash-attention fast path and run attention on the CPU — measured 15x slower prompt eval (1737 -> 115 tok/s) on a 27B with a 256-wide head dim. The fallback is invisible on short prompts, so if you change this, benchmark a LONG one and watch GPU utilization.",
+        "id": "cache-type-v",
+        "key": "cache-type-v",
+        "kind": "select",
+        "label": "KV cache — V quant",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Number of concurrent generation slots the server hosts. -1 = auto. Each slot needs its own KV allocation.",
+        "id": "parallel",
+        "key": "parallel",
+        "kind": "int",
+        "label": "Parallel slots (--np)",
+        "placeholder": "1"
+      },
+      {
+        "choices": [],
+        "help": "Use the model's built-in Jinja chat template (from tokenizer.chat_template). Needed for many modern chat models.",
+        "id": "jinja",
+        "key": "jinja",
+        "kind": "bool",
+        "label": "Enable --jinja templating",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Override the chat template. Accepts a built-in name (llama3, chatml, gemma, etc.) or an inline Jinja string.",
+        "id": "chat-template",
+        "key": "chat-template",
+        "kind": "text",
+        "label": "Chat template",
+        "placeholder": "name or inline template"
+      }
+    ],
+    "open": true,
+    "tier": "Common",
+    "tierId": "common"
+  },
+  {
+    "fields": [
+      {
+        "choices": [],
+        "help": "Logical maximum batch size for prompt processing. Higher = faster prompt eval but more scratch memory.",
+        "id": "batch-size",
+        "key": "batch-size",
+        "kind": "int",
+        "label": "Batch size (logical)",
+        "placeholder": "2048"
+      },
+      {
+        "choices": [],
+        "help": "Physical batch size the backend actually dispatches. Lower it if OOM during prompt processing.",
+        "id": "ubatch-size",
+        "key": "ubatch-size",
+        "kind": "int",
+        "label": "Ubatch size (physical)",
+        "placeholder": "512"
+      },
+      {
+        "choices": [],
+        "help": "On context-shift, how many tokens from the very start of the prompt to preserve. -1 = keep all (no shifting).",
+        "id": "keep",
+        "key": "keep",
+        "kind": "int",
+        "label": "Tokens to keep from prompt",
+        "placeholder": "0"
+      },
+      {
+        "choices": [],
+        "help": "Use full-size cache for sliding-window attention models (Gemma, Mistral SWA variants). Higher VRAM, avoids some artifacts.",
+        "id": "swa-full",
+        "key": "swa-full",
+        "kind": "bool",
+        "label": "Full-size SWA cache",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "none",
+          "layer",
+          "row",
+          "tensor"
+        ],
+        "help": "How to split a model across multiple GPUs. none = single GPU, layer = pipeline-split (default), row = per-row parallel, tensor = experimental.",
+        "id": "split-mode",
+        "key": "split-mode",
+        "kind": "select",
+        "label": "Multi-GPU split mode",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Which GPU holds the model when split-mode=none, or which GPU holds intermediates/KV when split-mode=row.",
+        "id": "main-gpu",
+        "key": "main-gpu",
+        "kind": "int",
+        "label": "Main GPU index",
+        "placeholder": "0"
+      },
+      {
+        "choices": [],
+        "help": "Comma-separated proportions of the model to place on each GPU. '3,1' = 75% on GPU0, 25% on GPU1.",
+        "id": "tensor-split",
+        "key": "tensor-split",
+        "kind": "text",
+        "label": "Tensor split ratio",
+        "placeholder": "e.g. 3,1"
+      },
+      {
+        "choices": [
+          "",
+          "none",
+          "mmap",
+          "mlock",
+          "mmap+mlock",
+          "dio"
+        ],
+        "help": "mmap = default memory-map, mlock = lock in RAM (no swap), mmap+mlock = both, dio = direct I/O when supported.",
+        "id": "load-mode",
+        "key": "load-mode",
+        "kind": "select",
+        "label": "Model load mode",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "distribute",
+          "isolate",
+          "numactl"
+        ],
+        "help": "Enable NUMA hints for multi-socket boxes. distribute = spread threads, isolate = stay on one node, numactl = use provided map.",
+        "id": "numa",
+        "key": "numa",
+        "kind": "select",
+        "label": "NUMA optimizations",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Comma-separated devices to use for offloading. 'none' disables offload. Use --list-devices at CLI to enumerate.",
+        "id": "device",
+        "key": "device",
+        "kind": "text",
+        "label": "Device list",
+        "placeholder": "e.g. CUDA0,CUDA1"
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "When on (default), llama-server auto-tunes any unset args to fit the model in device memory.",
+        "id": "fit",
+        "key": "fit",
+        "kind": "select",
+        "label": "Auto-fit VRAM",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Reserved headroom per device for --fit. Single value broadcasts to all devices; comma list assigns per-device. Default 1024.",
+        "id": "fit-target",
+        "key": "fit-target",
+        "kind": "text",
+        "label": "Fit target margin (MiB per device)",
+        "placeholder": "1024 or 512,1024"
+      },
+      {
+        "choices": [],
+        "help": "The smallest ctx-size --fit is allowed to fall back to. Prevents fit from shrinking your context below this.",
+        "id": "fit-ctx",
+        "key": "fit-ctx",
+        "kind": "int",
+        "label": "Fit minimum ctx",
+        "placeholder": "4096"
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "Whether KV cache lives on the GPU. Default on. Disable to save VRAM at the cost of a lot of PCIe traffic.",
+        "id": "kv-offload",
+        "key": "kv-offload",
+        "kind": "select",
+        "label": "KV cache offload to GPU",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "Repack weights for faster on-device access. Default on. Rarely worth disabling.",
+        "id": "repack",
+        "key": "repack",
+        "kind": "select",
+        "label": "Weight repacking",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "Offload host-side tensor operations to the device. Default on.",
+        "id": "op-offload",
+        "key": "op-offload",
+        "kind": "select",
+        "label": "Host operation offload",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Skip the host staging buffer, allowing extra device buffers to be used. Advanced.",
+        "id": "no-host",
+        "key": "no-host",
+        "kind": "bool",
+        "label": "Bypass host buffer (--no-host)",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Scan tensor data for invalid values at load. Diagnostic use; slows load significantly.",
+        "id": "check-tensors",
+        "key": "check-tensors",
+        "kind": "bool",
+        "label": "Check tensor data at load",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "Interleave prompt+generation across slots. Default on. Off = one request at a time.",
+        "id": "cont-batching",
+        "key": "cont-batching",
+        "kind": "select",
+        "label": "Continuous batching",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "On overflow, shift out oldest tokens (keeping --keep from the start) to make room. Default on for endless-chat use.",
+        "id": "context-shift",
+        "key": "context-shift",
+        "kind": "select",
+        "label": "Context shift",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Reuse KV cache from a previous request when the new prompt shares a prefix. Set to 1 to enable — huge TTFT win for chat continuations (only new tokens are prompt-evaluated). 0 disables. Free, safe, should almost always be on.",
+        "id": "cache-reuse",
+        "key": "cache-reuse",
+        "kind": "int",
+        "label": "Prefix cache reuse (min tokens)",
+        "placeholder": "1"
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "Share one KV cache across all slots (saves memory) vs. per-slot caches (better cache locality).",
+        "id": "kv-unified",
+        "key": "kv-unified",
+        "kind": "select",
+        "label": "Unified KV cache",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Server-side RAM budget for prefix / prompt caches. 0 = disable. Saved values are capped at the hard maximum (LLAMACPP_CACHE_RAM_HARD_MAX_MIB, default 2048); -1 (unlimited) is stored as that maximum.",
+        "id": "cache-ram",
+        "key": "cache-ram",
+        "kind": "int",
+        "label": "Cache RAM budget (MiB)",
+        "placeholder": "1024"
+      },
+      {
+        "choices": [],
+        "help": "How many rolling context checkpoints to retain. More = faster context restoration on branching, more memory.",
+        "id": "ctx-checkpoints",
+        "key": "ctx-checkpoints",
+        "kind": "int",
+        "label": "SWA / ctx checkpoints",
+        "placeholder": "e.g. 8"
+      },
+      {
+        "choices": [],
+        "help": "Minimum token spacing between checkpoints. Default 8192.",
+        "id": "checkpoint-min-step",
+        "key": "checkpoint-min-step",
+        "kind": "int",
+        "label": "Checkpoint min step",
+        "placeholder": "8192"
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "Run a tiny inference at startup to force lazy init. Default on. Off saves ~1s at boot.",
+        "id": "warmup",
+        "key": "warmup",
+        "kind": "select",
+        "label": "Warmup run at startup",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Force certain tensors onto a specific buffer/device. Advanced: e.g. 'blk\\.\\d+\\.ffn_.*=CPU'.",
+        "id": "override-tensor",
+        "key": "override-tensor",
+        "kind": "text",
+        "label": "Override tensor buffer",
+        "placeholder": "pattern=buffer,..."
+      },
+      {
+        "choices": [],
+        "help": "Force a metadata key at load time. Types: int/float/bool/str. Example: 'tokenizer.ggml.add_bos_token=bool:false'.",
+        "id": "override-kv",
+        "key": "override-kv",
+        "kind": "text",
+        "label": "Override GGUF metadata",
+        "placeholder": "KEY=TYPE:VALUE,..."
+      }
+    ],
+    "open": false,
+    "tier": "Runtime tuning",
+    "tierId": "runtime"
+  },
+  {
+    "fields": [
+      {
+        "choices": [
+          "",
+          "none",
+          "linear",
+          "yarn"
+        ],
+        "help": "How to extend context beyond the trained length. yarn = the modern choice for most long-context models.",
+        "id": "rope-scaling",
+        "key": "rope-scaling",
+        "kind": "select",
+        "label": "RoPE scaling method",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Multiplier that expands context by factor N. Example: 4.0 with a 32K-native model gives 128K context.",
+        "id": "rope-scale",
+        "key": "rope-scale",
+        "kind": "text",
+        "label": "RoPE context scale",
+        "placeholder": "float"
+      },
+      {
+        "choices": [],
+        "help": "RoPE base frequency (theta). Loaded from model unless overridden. Higher values push effective context out.",
+        "id": "rope-freq-base",
+        "key": "rope-freq-base",
+        "kind": "text",
+        "label": "RoPE base frequency",
+        "placeholder": "float"
+      },
+      {
+        "choices": [],
+        "help": "Alternate way to expand context: multiplies by 1/N. rope-scale = 4 is equivalent to rope-freq-scale = 0.25.",
+        "id": "rope-freq-scale",
+        "key": "rope-freq-scale",
+        "kind": "text",
+        "label": "RoPE freq scale",
+        "placeholder": "float"
+      },
+      {
+        "choices": [],
+        "help": "Model's native training context length. YaRN uses this to compute the extrapolation ratio.",
+        "id": "yarn-orig-ctx",
+        "key": "yarn-orig-ctx",
+        "kind": "int",
+        "label": "YaRN original ctx",
+        "placeholder": "0 = model default"
+      },
+      {
+        "choices": [],
+        "help": "Mix between interpolation and extrapolation. 0 = pure interpolation (safest quality), 1 = pure extrapolation.",
+        "id": "yarn-ext-factor",
+        "key": "yarn-ext-factor",
+        "kind": "text",
+        "label": "YaRN extrapolation factor",
+        "placeholder": "float; 0 = full interpolation"
+      },
+      {
+        "choices": [],
+        "help": "Scale factor for √(t) attention magnitude. Default -1 = library default.",
+        "id": "yarn-attn-factor",
+        "key": "yarn-attn-factor",
+        "kind": "text",
+        "label": "YaRN attention factor",
+        "placeholder": "float"
+      },
+      {
+        "choices": [],
+        "help": "High-frequency correction dim. Default -1 = library default.",
+        "id": "yarn-beta-slow",
+        "key": "yarn-beta-slow",
+        "kind": "text",
+        "label": "YaRN β slow (alpha)",
+        "placeholder": "float"
+      },
+      {
+        "choices": [],
+        "help": "Low-frequency correction dim. Default -1 = library default.",
+        "id": "yarn-beta-fast",
+        "key": "yarn-beta-fast",
+        "kind": "text",
+        "label": "YaRN β fast (beta)",
+        "placeholder": "float"
+      }
+    ],
+    "open": false,
+    "tier": "RoPE / YaRN",
+    "tierId": "rope"
+  },
+  {
+    "fields": [
+      {
+        "choices": [],
+        "help": "For Mixture-of-Experts models: keep every expert on CPU. Big VRAM saver at the cost of PCIe/RAM bandwidth per token.",
+        "id": "cpu-moe",
+        "key": "cpu-moe",
+        "kind": "bool",
+        "label": "Keep ALL MoE weights on CPU",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Partial variant: only push the first N layers' experts to CPU. Tune to fit exactly in VRAM.",
+        "id": "n-cpu-moe",
+        "key": "n-cpu-moe",
+        "kind": "int",
+        "label": "Keep first N layers' MoE on CPU",
+        "placeholder": "e.g. 20"
+      }
+    ],
+    "open": false,
+    "tier": "Mixture-of-Experts offload",
+    "tierId": "moe"
+  },
+  {
+    "fields": [
+      {
+        "choices": [],
+        "help": "Path to the vision/audio projector GGUF that pairs with a multimodal model. Required for image/audio input.",
+        "id": "mmproj",
+        "key": "mmproj",
+        "kind": "text",
+        "label": "Multimodal projector file",
+        "placeholder": "/models/name-mmproj.gguf"
+      },
+      {
+        "choices": [],
+        "help": "Alternative to mmproj: download the projector at startup from a URL.",
+        "id": "mmproj-url",
+        "key": "mmproj-url",
+        "kind": "text",
+        "label": "Multimodal projector URL",
+        "placeholder": "https://…"
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "Automatically fetch a matching mmproj when the model repo publishes one.",
+        "id": "mmproj-auto",
+        "key": "mmproj-auto",
+        "kind": "select",
+        "label": "Auto-download mmproj",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "Run the projector on GPU. Default on when a GPU is present.",
+        "id": "mmproj-offload",
+        "key": "mmproj-offload",
+        "kind": "select",
+        "label": "GPU-offload mmproj",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Minimum tokens each image is allowed to consume in the prompt context (vision models only).",
+        "id": "image-min-tokens",
+        "key": "image-min-tokens",
+        "kind": "int",
+        "label": "Image min tokens",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Maximum tokens each image is allowed to consume. Tuning knob for latency vs quality on vision.",
+        "id": "image-max-tokens",
+        "key": "image-max-tokens",
+        "kind": "int",
+        "label": "Image max tokens",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Max image tokens per image-encoding batch. Lower if the projector OOMs; higher for throughput.",
+        "id": "mtmd-batch-max-tokens",
+        "key": "mtmd-batch-max-tokens",
+        "kind": "int",
+        "label": "Multimodal batch max tokens",
+        "placeholder": ""
+      }
+    ],
+    "open": false,
+    "tier": "Multimodal / vision",
+    "tierId": "multimodal"
+  },
+  {
+    "fields": [
+      {
+        "choices": [
+          "",
+          "none",
+          "draft-simple",
+          "draft-eagle3",
+          "draft-mtp",
+          "draft-dflash",
+          "draft-dspark",
+          "ngram-simple",
+          "ngram-map-k",
+          "ngram-map-k4v",
+          "ngram-mod",
+          "ngram-cache"
+        ],
+        "help": "Strategy. draft-* runs a small model to propose tokens (draft-mtp for a head shipped with the weights, draft-simple for a separate GGUF sharing the tokenizer). ngram-* needs no model at all and replays literal repeats from the prompt. llama.cpp accepts a comma-separated list, so 'draft-mtp,ngram-simple' runs both. Autoconfig sets this from the workload profile.",
+        "id": "spec-type",
+        "key": "spec-type",
+        "kind": "select",
+        "label": "Speculative decoding type",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Local path to a small 'draft' GGUF used to propose tokens the main model verifies. For Qwen3 with MTP, use the model's official MTP draft head.",
+        "id": "spec-draft-model",
+        "key": "spec-draft-model",
+        "kind": "text",
+        "label": "Draft model path",
+        "placeholder": "/models/<stem>/draft.gguf"
+      },
+      {
+        "choices": [],
+        "help": "Hugging Face repo to pull the draft model from (llama-server auto-downloads at startup).",
+        "id": "spec-draft-hf",
+        "key": "spec-draft-hf",
+        "kind": "text",
+        "label": "Draft HF repo",
+        "placeholder": "user/repo[:quant]"
+      },
+      {
+        "choices": [],
+        "help": "How many draft-model layers to place on GPU; 999 offloads everything. Leave this high: a draft evaluated on the CPU is slower than the GPU model it is supposed to be racing ahead of, which defeats the entire mechanism.",
+        "id": "spec-draft-ngl",
+        "key": "spec-draft-ngl",
+        "kind": "int",
+        "label": "Draft GPU layers",
+        "placeholder": "999"
+      },
+      {
+        "choices": [],
+        "help": "Comma-separated devices for the draft model. Often the same as main; sometimes a spare GPU.",
+        "id": "spec-draft-device",
+        "key": "spec-draft-device",
+        "kind": "text",
+        "label": "Draft device list",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "How deep to guess: max draft tokens per attempt (llama.cpp default 3). Multiplies the win on predictable text and the waste on unpredictable text — 8 for code, 2 for prose. Draft models only; ngram-* strategies take their length from spec-ngram-*-size-m instead.",
+        "id": "spec-draft-n-max",
+        "key": "spec-draft-n-max",
+        "kind": "int",
+        "label": "Draft n_max",
+        "placeholder": "3"
+      },
+      {
+        "choices": [],
+        "help": "Floor on draft length — always attempt at least this many (default 0).",
+        "id": "spec-draft-n-min",
+        "key": "spec-draft-n-min",
+        "kind": "int",
+        "label": "Draft n_min",
+        "placeholder": "0"
+      },
+      {
+        "choices": [],
+        "help": "How sure the drafter must be before it bothers (default 0.00 = always try). Raise it to decline the marginal bets when acceptance is poor; lower it when the text is predictable enough that even mediocre guesses land.",
+        "id": "spec-draft-p-min",
+        "key": "spec-draft-p-min",
+        "kind": "text",
+        "label": "Draft p_min",
+        "placeholder": "0.00"
+      },
+      {
+        "choices": [],
+        "help": "Probability at which speculation branches into a draft tree rather than a single line (default 0.10).",
+        "id": "spec-draft-p-split",
+        "key": "spec-draft-p-split",
+        "kind": "text",
+        "label": "Draft p_split",
+        "placeholder": "0.10"
+      },
+      {
+        "choices": [],
+        "help": "For MoE draft models: keep experts on CPU.",
+        "id": "spec-draft-cpu-moe",
+        "key": "spec-draft-cpu-moe",
+        "kind": "bool",
+        "label": "Draft: all MoE on CPU",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Partial CPU offload for the draft's MoE layers.",
+        "id": "spec-draft-n-cpu-moe",
+        "key": "spec-draft-n-cpu-moe",
+        "kind": "int",
+        "label": "Draft: N MoE layers on CPU",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "f32",
+          "f16",
+          "bf16",
+          "q8_0",
+          "q4_0",
+          "q4_1",
+          "iq4_nl",
+          "q5_0",
+          "q5_1"
+        ],
+        "help": "KV K quant for the draft model. Can differ from the main model's.",
+        "id": "cache-type-k-draft",
+        "key": "cache-type-k-draft",
+        "kind": "select",
+        "label": "Draft KV cache K",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "f32",
+          "f16",
+          "bf16",
+          "q8_0",
+          "q4_0",
+          "q4_1",
+          "iq4_nl",
+          "q5_0",
+          "q5_1"
+        ],
+        "help": "KV V quant for the draft model.",
+        "id": "cache-type-v-draft",
+        "key": "cache-type-v-draft",
+        "kind": "select",
+        "label": "Draft KV cache V",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "For ngram lookup decoding: path to a read-only n-gram store built from a corpus.",
+        "id": "lookup-cache-static",
+        "key": "lookup-cache-static",
+        "kind": "text",
+        "label": "Static lookup cache (path)",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Writable n-gram cache the server updates as it serves. Persists to disk between restarts.",
+        "id": "lookup-cache-dynamic",
+        "key": "lookup-cache-dynamic",
+        "kind": "text",
+        "label": "Dynamic lookup cache (path)",
+        "placeholder": ""
+      }
+    ],
+    "open": false,
+    "tier": "Speculative decoding",
+    "tierId": "speculative"
+  },
+  {
+    "fields": [
+      {
+        "choices": [],
+        "help": "Path(s) to LoRA adapter GGUF files applied at load. Comma-separated for multiple.",
+        "id": "lora",
+        "key": "lora",
+        "kind": "text",
+        "label": "LoRA adapter(s)",
+        "placeholder": "/path/a.gguf,/path/b.gguf"
+      },
+      {
+        "choices": [],
+        "help": "LoRA adapters with per-adapter scale factors. Useful for blending styles.",
+        "id": "lora-scaled",
+        "key": "lora-scaled",
+        "kind": "text",
+        "label": "LoRA scaled adapters",
+        "placeholder": "a.gguf:0.5,b.gguf:1.0"
+      },
+      {
+        "choices": [],
+        "help": "Path(s) to control-vector files that steer generation. Comma-separated for multiple.",
+        "id": "control-vector",
+        "key": "control-vector",
+        "kind": "text",
+        "label": "Control vector(s)",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Control vectors with per-vector scale factors.",
+        "id": "control-vector-scaled",
+        "key": "control-vector-scaled",
+        "kind": "text",
+        "label": "Control vector scaled",
+        "placeholder": "a.gguf:0.7,..."
+      },
+      {
+        "choices": [],
+        "help": "Restrict where control vectors apply. Two integers, e.g. '10 30' for layers 10 through 30 inclusive.",
+        "id": "control-vector-layer-range",
+        "key": "control-vector-layer-range",
+        "kind": "text",
+        "label": "Control vector layer range",
+        "placeholder": "START END"
+      }
+    ],
+    "open": false,
+    "tier": "LoRA / control vectors",
+    "tierId": "lora"
+  },
+  {
+    "fields": [
+      {
+        "choices": [],
+        "help": "CPU threads used during single-token generation. Usually = physical cores. -1 auto-picks.",
+        "id": "threads",
+        "key": "threads",
+        "kind": "int",
+        "label": "Threads (generation)",
+        "placeholder": "-1 = auto"
+      },
+      {
+        "choices": [],
+        "help": "Threads used during batched prompt processing. Higher can help prompt eval on many-core CPUs.",
+        "id": "threads-batch",
+        "key": "threads-batch",
+        "kind": "int",
+        "label": "Threads (batch/prompt)",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Bitmask of CPU cores to pin threads to, arbitrarily long hex. Complements cpu-range.",
+        "id": "cpu-mask",
+        "key": "cpu-mask",
+        "kind": "text",
+        "label": "CPU affinity mask (hex)",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Range of CPU indices for affinity, e.g. '0-15'.",
+        "id": "cpu-range",
+        "key": "cpu-range",
+        "kind": "text",
+        "label": "CPU range lo-hi",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Force threads to stay on the mask/range. Off = kernel may migrate.",
+        "id": "cpu-strict",
+        "key": "cpu-strict",
+        "kind": "bool",
+        "label": "Strict CPU placement",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "-1",
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "help": "Scheduling priority: -1 low, 0 normal (default), 1 medium, 2 high, 3 realtime.",
+        "id": "prio",
+        "key": "prio",
+        "kind": "select",
+        "label": "Process priority",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "How aggressively worker threads busy-wait for work. Higher = lower latency, more idle CPU.",
+        "id": "poll",
+        "key": "poll",
+        "kind": "int",
+        "label": "Polling level (0-100)",
+        "placeholder": "50"
+      }
+    ],
+    "open": false,
+    "tier": "CPU threading",
+    "tierId": "cpu"
+  },
+  {
+    "fields": [
+      {
+        "choices": [
+          "",
+          "on",
+          "off",
+          "auto"
+        ],
+        "help": "Whether the model uses its reasoning (thinking) mode. 'auto' = detected from the chat template (the right default for most reasoning models). Force 'on' to always think, 'off' to skip thinking for lower latency.",
+        "id": "reasoning",
+        "key": "reasoning",
+        "kind": "select",
+        "label": "Enable reasoning / thinking",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "none",
+          "deepseek",
+          "deepseek-legacy"
+        ],
+        "help": "How thoughts appear in responses. 'deepseek' = thoughts in message.reasoning_content (OpenAI-compatible clients like OpenWebUI hide them). 'deepseek-legacy' = keeps <think> tags in content too. 'none' = raw, unparsed. Default: auto.",
+        "id": "reasoning-format",
+        "key": "reasoning-format",
+        "kind": "select",
+        "label": "Reasoning output format",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Max tokens the model can spend on reasoning per response. -1 = unlimited (default), 0 = skip thinking entirely, N>0 = hard cap. Rough map to OpenAI 'reasoning_effort': low ≈ 512, medium ≈ 2048, high ≈ 8192 or -1.",
+        "id": "reasoning-budget",
+        "key": "reasoning-budget",
+        "kind": "int",
+        "label": "Reasoning token budget",
+        "placeholder": "-1 unrestricted · 0 = skip thinking · N = hard cap"
+      },
+      {
+        "choices": [],
+        "help": "Message injected right before the end-of-thinking tag when the budget runs out. Nudges the model to wrap up.",
+        "id": "reasoning-budget-message",
+        "key": "reasoning-budget-message",
+        "kind": "text",
+        "label": "Reasoning-budget cutoff message",
+        "placeholder": "e.g. \"Final answer:\""
+      },
+      {
+        "choices": [
+          "",
+          "on",
+          "off"
+        ],
+        "help": "Keep the full thinking trace in the conversation history, not just the last turn. Needed for templates with 'supports_preserve_reasoning'. Uses more context per turn.",
+        "id": "reasoning-preserve",
+        "key": "reasoning-preserve",
+        "kind": "select",
+        "label": "Preserve reasoning across turns",
+        "placeholder": ""
+      }
+    ],
+    "open": false,
+    "tier": "Reasoning / thinking",
+    "tierId": "reasoning"
+  },
+  {
+    "fields": [
+      {
+        "choices": [],
+        "help": "Server-facing model name. Defaults to the section name; only override if you need a different API-visible id.",
+        "id": "alias",
+        "key": "alias",
+        "kind": "text",
+        "label": "Alias override",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Informational tags surfaced in /v1/models. Not used for routing — cosmetic.",
+        "id": "tags",
+        "key": "tags",
+        "kind": "text",
+        "label": "Tags (comma-separated)",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Restrict this slot to embedding requests. Use with dedicated embedding models.",
+        "id": "embedding",
+        "key": "embedding",
+        "kind": "bool",
+        "label": "Embedding-only mode",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Enable the /rerank endpoint. Use with dedicated cross-encoder / rerank models.",
+        "id": "rerank",
+        "key": "rerank",
+        "kind": "bool",
+        "label": "Rerank-only mode",
+        "placeholder": ""
+      },
+      {
+        "choices": [
+          "",
+          "none",
+          "mean",
+          "cls",
+          "last",
+          "rank"
+        ],
+        "help": "Pooling strategy over token embeddings. Model default if unspecified.",
+        "id": "pooling",
+        "key": "pooling",
+        "kind": "select",
+        "label": "Embedding pooling",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "L-norm for output embeddings. -1 = none, 0 = max-abs, 1 = taxicab, 2 = Euclidean (default).",
+        "id": "embd-normalize",
+        "key": "embd-normalize",
+        "kind": "int",
+        "label": "Embedding normalize",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Read a Jinja chat template from a file. Useful for external template management.",
+        "id": "chat-template-file",
+        "key": "chat-template-file",
+        "kind": "text",
+        "label": "Chat template file (path)",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Extra variables passed to the Jinja template. JSON object, e.g. '{\"enable_thinking\": true}'.",
+        "id": "chat-template-kwargs",
+        "key": "chat-template-kwargs",
+        "kind": "text",
+        "label": "Chat template kwargs (JSON)",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Include model-defined special tokens in output. Off by default; on for debugging tokenization.",
+        "id": "special",
+        "key": "special",
+        "kind": "bool",
+        "label": "Emit special tokens",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "Move sampling into the backend for speed. Experimental — may interact oddly with some sampler combos.",
+        "id": "backend-sampling",
+        "key": "backend-sampling",
+        "kind": "bool",
+        "label": "Backend sampling (experimental)",
+        "placeholder": ""
+      },
+      {
+        "choices": [],
+        "help": "0 generic, 1 error, 2 warn, 3 info (default), 4 trace, 5 debug. Higher = noisier logs.",
+        "id": "verbosity",
+        "key": "verbosity",
+        "kind": "int",
+        "label": "Log verbosity (0-5)",
+        "placeholder": ""
+      }
+    ],
+    "open": false,
+    "tier": "Embeddings & misc",
+    "tierId": "misc"
+  }
+]

@@ -88,6 +88,64 @@ pub type Raw = HashMap<String, Value>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GgufError(pub String);
 
+/// Per-call component budgets. Each field may only tighten the existing reader.
+/// String budget counts a conservative UTF-8 decode reservation (up to3 bytes/source byte),
+/// including keys; it is not a measurement of heap/hash-table/summary overhead.
+#[derive(Clone, Copy, Debug)]
+pub struct ReadLimits {
+    pub header_bytes: u64,
+    pub retained_string_bytes: u64,
+    pub retained_values: u64,
+    pub kv_count: u64,
+    pub string_bytes: u64,
+    pub key_bytes: u64,
+}
+#[derive(Debug)]
+pub enum LimitedError {
+    Budget,
+    Metadata(GgufError),
+}
+struct LimitedControl {
+    limits: ReadLimits,
+    hit: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+impl LimitedControl {
+    fn refuse(&self) -> Fault {
+        self.hit.store(true, std::sync::atomic::Ordering::Relaxed);
+        Fault::ReadLimit
+    }
+}
+
+/// Read with tighter component budgets, distinguishing budget refusal from ordinary
+/// malformed metadata. The default public reader and its partial-header behavior are unchanged.
+pub fn read_raw_stream_with_limits<R: Read + Seek>(
+    inner: R,
+    limits: ReadLimits,
+) -> Result<Raw, LimitedError> {
+    if limits.header_bytes > MAX_BYTES_READ
+        || limits.retained_string_bytes > MAX_RETAINED_CHARS
+        || limits.retained_values > MAX_RETAINED_VALUES
+        || limits.kv_count > MAX_KV_COUNT
+        || limits.string_bytes > MAX_STRING_LEN
+        || limits.key_bytes > MAX_KEY_LEN
+    {
+        return Err(LimitedError::Budget);
+    }
+    let hit = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let result = read_raw_inner(
+        inner,
+        Some(LimitedControl {
+            limits,
+            hit: hit.clone(),
+        }),
+    );
+    if hit.load(std::sync::atomic::Ordering::Relaxed) {
+        Err(LimitedError::Budget)
+    } else {
+        result.map_err(LimitedError::Metadata)
+    }
+}
+
 impl std::fmt::Display for GgufError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
@@ -120,6 +178,8 @@ fn truncated() -> Fault {
 }
 
 struct Source<R: Read + Seek> {
+    limits: Option<LimitedControl>,
+    retained_bytes: u64,
     r: BufReader<R>,
     pos: u64,
     size: u64,
@@ -135,11 +195,13 @@ struct Source<R: Read + Seek> {
 }
 
 impl<R: Read + Seek> Source<R> {
-    fn new(mut inner: R) -> std::io::Result<Self> {
+    fn new(mut inner: R, limits: Option<LimitedControl>) -> std::io::Result<Self> {
         let start = inner.stream_position()?;
         let size = inner.seek(SeekFrom::End(0))?;
         inner.seek(SeekFrom::Start(start))?;
         Ok(Source {
+            limits,
+            retained_bytes: 0,
             r: BufReader::with_capacity(BUF_CAPACITY, inner),
             pos: start,
             size,
@@ -160,6 +222,15 @@ impl<R: Read + Seek> Source<R> {
         if n > self.remaining() {
             return Err(truncated());
         }
+        if let Some(control) = &self.limits {
+            if self
+                .bytes_read
+                .checked_add(n)
+                .is_none_or(|total| total > control.limits.header_bytes)
+            {
+                return Err(control.refuse());
+            }
+        }
         match self.bytes_read.checked_add(n) {
             Some(total) if total <= MAX_BYTES_READ => {
                 self.bytes_read = total;
@@ -171,9 +242,18 @@ impl<R: Read + Seek> Source<R> {
 
     /// Up to four bytes, unchecked, like `f.read(4)` for the magic.
     fn read_magic(&mut self) -> std::io::Result<Vec<u8>> {
+        if let Some(control) = &self.limits {
+            if control.limits.header_bytes < 4 {
+                let _ = control.refuse();
+                return Err(std::io::Error::other("metadata budget"));
+            }
+        }
         let mut buf = Vec::with_capacity(4);
         (&mut self.r).take(4).read_to_end(&mut buf)?;
         self.pos = self.pos.saturating_add(buf.len() as u64);
+        if self.limits.is_some() {
+            self.bytes_read = buf.len() as u64;
+        }
         Ok(buf)
     }
 
@@ -229,6 +309,22 @@ impl<R: Read + Seek> Source<R> {
 
     fn read_string(&mut self, max_len: u64) -> Result<String, Fault> {
         let n = self.u64()?;
+        if let Some(control) = &self.limits {
+            let individual = if max_len == MAX_KEY_LEN {
+                control.limits.key_bytes
+            } else {
+                control.limits.string_bytes
+            };
+            let reservation = n
+                .checked_mul(3)
+                .and_then(|n| self.retained_bytes.checked_add(n));
+            if n > individual
+                || reservation.is_none_or(|n| n > control.limits.retained_string_bytes)
+            {
+                return Err(control.refuse());
+            }
+            self.retained_bytes = reservation.ok_or_else(|| control.refuse())?;
+        }
         if n > self.remaining() {
             return Err(Fault::Meta(format!(
                 "string length {n} runs past the end of the data"
@@ -260,6 +356,11 @@ impl<R: Read + Seek> Source<R> {
     fn read_value(&mut self, vtype: u32, depth: u32) -> Result<Value, Fault> {
         // Counted before the value is read, so the cap bounds what gets allocated.
         self.values += 1;
+        if let Some(control) = &self.limits {
+            if self.values > control.limits.retained_values {
+                return Err(control.refuse());
+            }
+        }
         if self.values > MAX_RETAINED_VALUES {
             return Err(Fault::Meta(
                 "header holds implausibly many values".to_string(),
@@ -389,7 +490,13 @@ fn scalar_size(t: u32) -> Option<u64> {
 /// Errors only when the magic or the fixed header is wrong. Past that, a bad length, count or
 /// nesting depth is recorded as `_error` and parsing stops with whatever was read.
 pub fn read_raw_stream<R: Read + Seek>(inner: R) -> Result<Raw, GgufError> {
-    let mut src = Source::new(inner).map_err(|e| GgufError(e.to_string()))?;
+    read_raw_inner(inner, None)
+}
+fn read_raw_inner<R: Read + Seek>(
+    inner: R,
+    limits: Option<LimitedControl>,
+) -> Result<Raw, GgufError> {
+    let mut src = Source::new(inner, limits).map_err(|e| GgufError(e.to_string()))?;
     let magic = src.read_magic().map_err(|e| GgufError(e.to_string()))?;
     if magic != b"GGUF" {
         return Err(GgufError(format!(
@@ -401,6 +508,11 @@ pub fn read_raw_stream<R: Read + Seek>(inner: R) -> Result<Raw, GgufError> {
         Ok((src.u32()?, src.u64()?, src.u64()?))
     };
     let (version, tensor_count, kv_count) = fixed(&mut src).map_err(|f| GgufError(f.message()))?;
+    if let Some(control) = &src.limits {
+        if kv_count > control.limits.kv_count {
+            return Err(GgufError(control.refuse().message()));
+        }
+    }
     let mut out = Raw::new();
     out.insert("_gguf_version".into(), Value::Int(i128::from(version)));
     out.insert("_tensor_count".into(), Value::Int(i128::from(tensor_count)));
