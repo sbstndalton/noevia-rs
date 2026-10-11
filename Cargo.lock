@@ -2141,6 +2141,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "server-export"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "chrono",
+ "crc32fast",
+ "proptest",
+ "serde_json",
+]
+
+[[package]]
 name = "server-projects"
 version = "0.1.0"
 dependencies = [
