@@ -34,6 +34,12 @@ the admission permit, check endpoint policy, select the owner row, bind SecretKe
 AAD, release the read transaction before outbound work and wrap list JSON in the
 actual route response. It must never obtain credentials from request JSON.
 
+The separate [synchronous child lifecycle proof](proofs/transport/LIFECYCLE.md)
+implements finite parent IPC and owned cleanup with Linux limit/NotDumpable setup.
+It has no HTTP adapter. Portable synthetic fixture modes are explicitly private;
+the actual Linux limit branch remains unexecuted on this Mac. Async supervisor,
+parent parser/sort bounds and network semantics remain held.
+
 Snapshot inputs are bounded before request construction at existing library
 domains: endpoint/username/root/bucket64KiB, region1MiB, secret8MiB. The fixed502
 refusal of oversized legacy configuration is **pending qualification/acceptance

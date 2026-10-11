@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod admission;
+pub mod isolated;
 pub mod json;
 pub mod protocol;
 
