@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+pub mod diagnose;
 pub mod docker;
 pub mod host;
 #[cfg(feature = "native-prompts")]
