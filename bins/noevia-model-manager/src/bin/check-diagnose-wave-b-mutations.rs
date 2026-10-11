@@ -432,30 +432,53 @@ mod tests {
             .last()
             .ok_or("fixed final case absent")?;
         let out = format!(
-            "\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:100:9:\nassertion `left == right` failed\n  left: String(\"0\")\n right: String(\"1\")\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.01s\n\n",
+            "\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:100:13:\nassertion `left == right` failed\n  left: \"0\"\n right: \"1\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.01s\n\n",
             t = case.test,
             p = case.test_path
         );
-        let err = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running unittests src/bin/diagnose-contracts.rs (/target/debug/deps/diagnose_contracts-0123456789abcdef)\nerror: test failed, to rerun pass `-p replay --bin diagnose-contracts`\n";
-        let check = |out: &str| {
+        let err = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running unittests src/main.rs (/target/debug/deps/noevia_model_manager-0123456789abcdef)\nerror: test failed, to rerun pass `-p noevia-model-manager --bin noevia-model-manager`\n";
+        let check = |out: &str, err: &str| {
             semantic(
                 Some(101),
                 out,
                 err,
                 &case,
-                (100, 9),
+                (100, 13),
                 Path::new("/owned"),
                 Path::new("/target"),
             )
         };
-        assert!(check(&out));
+        assert!(check(&out, err));
         for bad in [
-            out.replace("4 filtered out", "3 filtered out"),
-            out.replace("4 filtered out", "5 filtered out"),
+            out.replace("2 filtered out", "3 filtered out"),
+            out.replace("2 filtered out", "4 filtered out"),
+            out.replace("2 filtered out", "5 filtered out"),
             out.replace("running 1 test", "running 2 tests"),
             format!("{out}extra test ... FAILED\n"),
         ] {
-            assert!(!check(&bad));
+            assert!(!check(&bad, err));
+        }
+        for bad in [
+            err.replace(
+                "unittests src/main.rs",
+                "unittests src/bin/diagnose-contracts.rs",
+            ),
+            err.replace("noevia_model_manager-", "diagnose_contracts-"),
+            err.replace(
+                "-p noevia-model-manager --bin noevia-model-manager",
+                "-p replay --bin diagnose-contracts",
+            ),
+            err.replace("--bin noevia-model-manager", "--test noevia-model-manager"),
+            format!("{err}{err}"),
+            format!("{err}setup\n"),
+        ] {
+            assert!(!check(&out, &bad));
+        }
+        for bad in [
+            out.replace(":100:13:", ":100:9:"),
+            out.replace(case.test_path, "tools/replay/src/bin/diagnose-contracts.rs"),
+        ] {
+            assert!(!check(&bad, err));
         }
         Ok(())
     }
@@ -474,7 +497,13 @@ mod tests {
                 std::str::from_utf8(&tests).map_err(|e| e.to_string())?,
                 &case,
             )?;
-            assert!(line > 0 && matches!(column, 5 | 9));
+            assert!(line > 0);
+            if case.id == "child-confirmation" {
+                assert_eq!(case.test_path, MAIN);
+                assert_eq!(column, 13);
+            } else {
+                assert!(matches!(column, 5 | 9));
+            }
         }
         Ok(())
     }

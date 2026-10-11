@@ -257,28 +257,6 @@ fn prompt_data_dir_from(
     Ok(root)
 }
 
-#[cfg(all(test, feature = "native-prompts"))]
-mod prompt_configuration_tests {
-    #[test]
-    fn canonical_root_default_and_alias_policy_is_pure() {
-        assert_eq!(super::prompt_data_dir_from([]), Ok("/data".into()));
-        assert_eq!(
-            super::prompt_data_dir_from([("DATA_DIR".into(), "/synthetic/private".into())]),
-            Ok("/synthetic/private".into())
-        );
-        for alias in ["data_dir", "Data_Dir", "dAtA_dIr"] {
-            assert!(
-                super::prompt_data_dir_from([(alias.into(), "/synthetic/alias".into())]).is_err()
-            );
-            assert!(super::prompt_data_dir_from([
-                ("DATA_DIR".into(), "/synthetic/canonical".into()),
-                (alias.into(), "/synthetic/alias".into())
-            ])
-            .is_err());
-        }
-    }
-}
-
 fn legacy_command(
     mut child_command: tokio::process::Command,
     prompts_mode: &str,
@@ -324,6 +302,28 @@ fn reusable_probe(address: std::net::SocketAddrV4) -> std::io::Result<std::net::
     rustix::net::bind(&fd, &address)?;
     rustix::net::listen(&fd, 1)?;
     Ok(std::net::TcpListener::from(fd))
+}
+
+#[cfg(all(test, feature = "native-prompts"))]
+mod prompt_configuration_tests {
+    #[test]
+    fn canonical_root_default_and_alias_policy_is_pure() {
+        assert_eq!(super::prompt_data_dir_from([]), Ok("/data".into()));
+        assert_eq!(
+            super::prompt_data_dir_from([("DATA_DIR".into(), "/synthetic/private".into())]),
+            Ok("/synthetic/private".into())
+        );
+        for alias in ["data_dir", "Data_Dir", "dAtA_dIr"] {
+            assert!(
+                super::prompt_data_dir_from([(alias.into(), "/synthetic/alias".into())]).is_err()
+            );
+            assert!(super::prompt_data_dir_from([
+                ("DATA_DIR".into(), "/synthetic/canonical".into()),
+                (alias.into(), "/synthetic/alias".into())
+            ])
+            .is_err());
+        }
+    }
 }
 
 #[cfg(test)]
