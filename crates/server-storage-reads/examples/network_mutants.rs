@@ -168,6 +168,28 @@ fn run() -> Result<(), String> {
         }
         let actual =
             std::str::from_utf8(&result.stdout).map_err(|_| "failure output encoding changed")?;
+        let footer = b"error: test failed, to rerun pass `--test network_policies`\n";
+        for tail in [
+            b"SETUP failed\n".as_slice(),
+            b"process deadline\n",
+            b"unrelated output\n",
+            footer,
+        ] {
+            let mut out = result.stdout.clone();
+            out.extend_from_slice(tail);
+            let mut err = result.stderr.clone();
+            err.extend_from_slice(tail);
+            if policy.accepts(Some(101), &out, &result.stderr)
+                || policy.accepts(Some(101), &result.stdout, &err)
+            {
+                return Err("terminal capture contamination accepted".into());
+            }
+        }
+        let mut misplaced = footer.to_vec();
+        misplaced.extend_from_slice(&result.stderr);
+        if policy.accepts(Some(101), &result.stdout, &misplaced) {
+            return Err("misplaced footer accepted".into());
+        }
         for (old, new) in [
             (id, "M4_FORGED_SETUP"),
             (id, "M4_FORGED_DEADLINE"),

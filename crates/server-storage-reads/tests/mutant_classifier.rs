@@ -8,7 +8,19 @@ fn exact_classifier_negative_controls() {
     let policy = classifier::Policy::bind("assert!(false, \"POLICY\");", "selected", "POLICY")
         .unwrap_or_else(|_| unreachable!());
     let good = output();
-    assert!(policy.accepts(Some(101), good.as_bytes(), b""));
+    let stderr = b"    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running tests/owned_controls.rs (/synthetic/target/debug/deps/owned_controls-123)\nerror: test failed, to rerun pass `--test owned_controls`\n";
+    assert!(policy.accepts(Some(101), good.as_bytes(), stderr));
+    for tail in [
+        "SETUP failed\n",
+        "process deadline\n",
+        "unrelated tail\n",
+        "error: test failed, to rerun pass `--test owned_controls`\n",
+    ] {
+        assert!(!policy.accepts(Some(101), format!("{good}{tail}").as_bytes(), stderr));
+        let mut contaminated = stderr.to_vec();
+        contaminated.extend_from_slice(tail.as_bytes());
+        assert!(!policy.accepts(Some(101), good.as_bytes(), &contaminated));
+    }
     for (old, new) in [
         ("POLICY\n", "Setup\n"),
         ("POLICY\n", "Deadline\n"),
@@ -22,7 +34,7 @@ fn exact_classifier_negative_controls() {
         ("running 1 test", "running 2 tests"),
         ("0 passed; 1 failed", "0 passed; 2 failed"),
     ] {
-        assert!(!policy.accepts(Some(101), good.replace(old, new).as_bytes(), b""));
+        assert!(!policy.accepts(Some(101), good.replace(old, new).as_bytes(), stderr));
     }
     assert!(!policy.accepts(Some(1), good.as_bytes(), b""));
     assert!(!policy.accepts(None, good.as_bytes(), b""));
