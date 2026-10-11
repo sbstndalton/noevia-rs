@@ -9,14 +9,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::args().any(|a| a == "--features") {
         if cfg!(feature = "native-logs") {
             println!("native-logs");
+            if cfg!(feature = "native-host") {
+                println!("native-host");
+            }
             return Ok(());
         }
         return Err("native-logs feature is not enabled".into());
     }
     let mode = environment("MODEL_MANAGER_IMPL", "python")?;
+    let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
+    if !matches!(host_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_HOST_IMPL must be python or rust".into());
+    }
+    if host_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-host")) {
+        return Err(
+            "native-host requires rust model manager and compiled native-host feature".into(),
+        );
+    }
     if mode == "python" {
         let error = std::process::Command::new("uvicorn")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED")
             .args(["app.main:app", "--host", "0.0.0.0", "--port", "8090"])
             .exec();
         return Err(error.into());
@@ -55,12 +68,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // an unknown process. uvicorn receives only the fixed private loopback address.
     let legacy_probe = std::net::TcpListener::bind("127.0.0.1:8091")?;
     drop(legacy_probe);
+    let host = (host_mode == "rust").then(|| {
+        Arc::new(tokio::sync::Mutex::new(
+            noevia_model_manager::host::HostHistory::default(),
+        ))
+    });
     let mut child = tokio::process::Command::new("uvicorn")
         .args(["app.main:app", "--host", "127.0.0.1", "--port", "8091"])
         .env("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED", "1")
+        .env(
+            "NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED",
+            if host.is_some() { "1" } else { "0" },
+        )
         .kill_on_drop(true)
         .spawn()?;
+    let _host_sampler = host
+        .as_ref()
+        .map(|history| noevia_model_manager::host::HostSampler::start(history.clone()));
     let state = Arc::new(StateData {
+        host,
         token,
         configured,
         docker: Arc::new(docker),
