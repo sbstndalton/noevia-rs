@@ -281,6 +281,88 @@ pub fn verify(proof: &Value) -> Result<Value> {
     )
 }
 
+/// Classify every attested file by complete npm installation boundaries. A
+/// descendant descriptor is metadata only after all containing roots are known.
+fn installed_owner<T>(
+    name: &Path,
+    lock: &Value,
+    inventory: &BTreeMap<PathBuf, T>,
+) -> Result<PathBuf> {
+    let text = name.to_str().ok_or("dependency path utf8")?;
+    let mut parts = text.split('/').peekable();
+    require(parts.next() == Some("node_modules"), "installed namespace")?;
+    let mut root = PathBuf::from("node_modules");
+    loop {
+        let first = parts.next().ok_or("installed package component")?;
+        require(
+            !first.is_empty() && first != "." && first != ".." && first != "node_modules",
+            "installed package grammar",
+        )?;
+        root.push(first);
+        if first.starts_with('@') {
+            require(first.len() > 1, "installed scope grammar")?;
+            let second = parts.next().ok_or("scoped package component")?;
+            require(
+                !second.is_empty()
+                    && !second.starts_with('@')
+                    && !matches!(second, "." | ".." | "node_modules"),
+                "scoped package grammar",
+            )?;
+            root.push(second);
+        }
+        let key = root.to_str().ok_or("installed root utf8")?.to_owned();
+        require(
+            lock.get("packages")
+                .and_then(|p| p.get(&key))
+                .is_some_and(Value::is_object)
+                && inventory.contains_key(&root.join("package.json")),
+            "known installed containing root",
+        )?;
+        let mut nested = false;
+        for part in parts.by_ref() {
+            require(
+                !part.is_empty() && part != "." && part != "..",
+                "dependency descendant grammar",
+            )?;
+            if part == "node_modules" {
+                root.push(part);
+                nested = true;
+                break;
+            }
+            // Retain the complete path to any later nested installation.
+            root.push(part);
+        }
+        if !nested {
+            // Remove ordinary descendants to recover this installation owner.
+            return Ok(PathBuf::from(key));
+        }
+    }
+}
+fn validate_installed_manifest(directory: &Path, data: &[u8], lock: &Value) -> Result<()> {
+    let package: Value = serde_json::from_slice(data)?;
+    let key = directory.to_str().ok_or("package path utf8")?;
+    let locked = lock
+        .get("packages")
+        .and_then(|p| p.get(key))
+        .ok_or("installed lock entry")?;
+    require(
+        locked.is_object()
+            && package.get("version").is_some_and(Value::is_string)
+            && package.get("version") == locked.get("version"),
+        "installed package version in immutable lock",
+    )?;
+    let installed_name = package
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or("installed package name")?;
+    require(
+        key.rsplit_once("node_modules/")
+            .is_some_and(|(_, suffix)| suffix == installed_name),
+        "installed package path identity",
+    )?;
+    Ok(())
+}
+
 /// Qualification input paths only; never production configuration. Inventories
 /// establish current byte identity, not registry integrity or installation ancestry.
 #[allow(clippy::indexing_slicing)] // Only serde_json string-key indexing after path destructuring.
@@ -486,25 +568,9 @@ pub fn materialize(args: &[String]) -> Result<Value> {
                 data.len() as u64 == *size && digest(&data) == *sha,
                 "complete dependency byte identity",
             )?;
-            if name.file_name() == Some(std::ffi::OsStr::new("package.json")) {
-                let package: Value = serde_json::from_slice(&data)?;
-                let directory = name
-                    .parent()
-                    .ok_or("package directory")?
-                    .to_str()
-                    .ok_or("package path utf8")?;
-                let locked = &lock["packages"][directory];
-                require(
-                    locked.is_object()
-                        && package["version"].is_string()
-                        && package["version"] == locked["version"],
-                    "installed package version in immutable lock",
-                )?;
-                let installed_name = package["name"].as_str().ok_or("installed package name")?;
-                require(
-                    directory.ends_with(&format!("node_modules/{installed_name}")),
-                    "installed package path identity",
-                )?;
+            let owner = installed_owner(&name, &lock, &expected)?;
+            if name == owner.join("package.json") {
+                validate_installed_manifest(&owner, &data, &lock)?;
             }
             total = total.checked_add(data.len()).ok_or("dependency overflow")?;
             require(total <= 64 * 1024 * 1024, "dependency total before append")?;
@@ -653,6 +719,94 @@ mod tests {
             assert!(
                 super::materialize(&args).is_err(),
                 "M6_MATERIALIZE_ASSERT/fixed-options"
+            );
+        }
+        Ok(())
+    }
+    #[test]
+    fn installed_roots_and_descendant_metadata_fail_closed() -> super::Result<()> {
+        use std::{
+            collections::BTreeMap,
+            path::{Path, PathBuf},
+        };
+        let lock = serde_json::json!({"packages": {
+            "node_modules/plain": {"version":"1"},
+            "node_modules/@scope/pkg": {"version":"2"},
+            "node_modules/plain/node_modules/nested": {"version":"3"}
+        }});
+        let inventory: BTreeMap<PathBuf, ()> = [
+            "node_modules/plain/package.json",
+            "node_modules/@scope/pkg/package.json",
+            "node_modules/plain/node_modules/nested/package.json",
+        ]
+        .into_iter()
+        .map(|p| (PathBuf::from(p), ()))
+        .collect();
+        for (path, owner, manifest) in [
+            (
+                "node_modules/plain/package.json",
+                "node_modules/plain",
+                r#"{"name":"plain","version":"1"}"#,
+            ),
+            (
+                "node_modules/@scope/pkg/package.json",
+                "node_modules/@scope/pkg",
+                r#"{"name":"@scope/pkg","version":"2"}"#,
+            ),
+            (
+                "node_modules/plain/node_modules/nested/package.json",
+                "node_modules/plain/node_modules/nested",
+                r#"{"name":"nested","version":"3"}"#,
+            ),
+        ] {
+            assert_eq!(
+                super::installed_owner(Path::new(path), &lock, &inventory)?,
+                Path::new(owner)
+            );
+            super::validate_installed_manifest(Path::new(owner), manifest.as_bytes(), &lock)?;
+        }
+        for path in [
+            "node_modules/@scope/pkg/esm/package.json",
+            "node_modules/plain/modules/package.json",
+            "node_modules/plain/examples/package.json",
+        ] {
+            let owner = super::installed_owner(Path::new(path), &lock, &inventory)?;
+            assert_ne!(Path::new(path), owner.join("package.json"));
+        }
+        for path in [
+            "node_modules/unknown/package.json",
+            "node_modules/plain/node_modules/unknown/package.json",
+            "node_modules/plain/examples/node_modules/unknown/package.json",
+            "node_modules/@scope/package.json",
+            "node_modules/plain/node_modules",
+            "node_modules/plain/../package.json",
+        ] {
+            assert!(
+                super::installed_owner(Path::new(path), &lock, &inventory).is_err(),
+                "M6_PACKAGE_SCOPE_ASSERT/unknown-root-or-grammar"
+            );
+        }
+        let mut missing = inventory.clone();
+        missing.remove(Path::new("node_modules/plain/package.json"));
+        assert!(super::installed_owner(
+            Path::new("node_modules/plain/modules/package.json"),
+            &lock,
+            &missing
+        )
+        .is_err());
+        for manifest in [
+            r#"{"name":"plain","version":"9"}"#,
+            r#"{"name":"wrong","version":"1"}"#,
+            r#"{"name":"plain"}"#,
+        ] {
+            assert!(
+                super::validate_installed_manifest(
+                    Path::new("node_modules/plain"),
+                    manifest.as_bytes(),
+                    &lock
+                )
+                .is_err(),
+                "M6_PACKAGE_SCOPE_ASSERT/name-or-version"
             );
         }
         Ok(())
