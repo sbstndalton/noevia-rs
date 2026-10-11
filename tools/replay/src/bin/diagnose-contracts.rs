@@ -1589,25 +1589,73 @@ mod tests {
     }
     #[test]
     fn reusable_listener_retains_live_conflict_and_accepts_closed_connection() -> Result<()> {
-        let listener = reusable_probe(0)?;
-        let port = listener.local_addr()?.port();
+        fn phase(phase: &'static str, error: std::io::Error) -> std::io::Error {
+            let raw = error.raw_os_error().or_else(|| {
+                // Only reusable_probe's fixed schema may supply its wrapped errno.
+                let fixed = error.to_string();
+                if fixed.len() > 128 {
+                    return None;
+                }
+                let fields = fixed.strip_prefix("numeric loopback probe stage=")?;
+                let (stage, number) = fields.split_once(" errno=")?;
+                if !matches!(stage, "socket" | "reuseaddr" | "bind" | "listen") {
+                    return None;
+                }
+                let digits = number.strip_prefix('-').unwrap_or(number);
+                if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+                    return None;
+                }
+                number.parse::<i32>().ok()
+            });
+            let errno = raw.map(|n| n.to_string()).unwrap_or_else(|| "none".into());
+            std::io::Error::new(
+                error.kind(),
+                format!("closed listener phase={phase} errno={errno}"),
+            )
+        }
+        let listener = reusable_probe(0).map_err(|e| phase("initial-bind", e))?;
+        let port = listener
+            .local_addr()
+            .map_err(|e| phase("initial-address", e))?
+            .port();
         assert!(reusable_probe(port).is_err());
-        let mut client = TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port))?;
-        client.set_read_timeout(Some(Duration::from_secs(1)))?;
-        let (mut server, _) = listener.accept()?;
-        server.set_read_timeout(Some(Duration::from_secs(1)))?;
-        // Explicit fixture policy avoids relying on platform-specific accept inheritance.
-        rustix::net::sockopt::set_socket_reuseaddr(&server, true)?;
-        assert!(rustix::net::sockopt::socket_reuseaddr(&server)?);
-        server.shutdown(std::net::Shutdown::Write)?;
+        let mut client = TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port))
+            .map_err(|e| phase("client-connect", e))?;
+        client
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .map_err(|e| phase("client-timeout", e))?;
+        let (mut server, _) = listener.accept().map_err(|e| phase("server-accept", e))?;
+        server
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .map_err(|e| phase("server-timeout", e))?;
+        rustix::net::sockopt::set_socket_reuseaddr(&server, true)
+            .map_err(|e| phase("server-reuse", e.into()))?;
+        assert!(rustix::net::sockopt::socket_reuseaddr(&server)
+            .map_err(|e| phase("server-reuse-check", e.into()))?);
+        // The client initiates this closed fixture's graceful shutdown.
+        client
+            .shutdown(std::net::Shutdown::Write)
+            .map_err(|e| phase("client-half-close", e))?;
         let mut byte = [0];
-        assert_eq!(client.read(&mut byte)?, 0);
-        client.shutdown(std::net::Shutdown::Write)?;
-        assert_eq!(server.read(&mut byte)?, 0);
+        assert_eq!(
+            server
+                .read(&mut byte)
+                .map_err(|e| phase("server-read-eof", e))?,
+            0
+        );
+        server
+            .shutdown(std::net::Shutdown::Write)
+            .map_err(|e| phase("server-half-close", e))?;
+        assert_eq!(
+            client
+                .read(&mut byte)
+                .map_err(|e| phase("client-read-eof", e))?,
+            0
+        );
         drop(client);
         drop(server);
         drop(listener);
-        let replacement = reusable_probe(port)?;
+        let replacement = reusable_probe(port).map_err(|e| phase("replacement-bind", e))?;
         assert!(reusable_probe(port).is_err());
         drop(replacement);
         Ok(())
