@@ -50,7 +50,7 @@ if [ "${NOEVIA_RUST_REASONING_SETTINGS:-}" = 1 ]; then
 fi
 UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" \
   NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$reasoning_confirmed" \
-  node "$core/tools/contract-corpus/serve.cjs" &
+  "$(dirname "$front")/corpus-launcher" serve "$core" &
 node_pid=$!
 # CI's M4 negative control only: Node is told the front owns the project image routes, the front is
 # started without the switch, so those writes must reach Node and be refused.

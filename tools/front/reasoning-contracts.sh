@@ -9,7 +9,7 @@ root="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
 mkdir -p "$out/seed"
 "$replay" run --corpus "$root/contracts/http/corpus" --base http://127.0.0.1:18021 \
   --ignore-body hours --ignore-body peakHour/hour --seed "$out/seed" --work "$out/node" \
-  --server-cmd "exec node '$core/tools/contract-corpus/serve.cjs'" \
+  --server-cmd "exec '$(dirname "$replay")/corpus-launcher' serve '$core'" \
   --report "$out/node-report.json" --state-out "$out/node-state.json"
 "$replay" run --corpus "$root/contracts/http/corpus" --base http://127.0.0.1:18021 \
   --ignore-body hours --ignore-body peakHour/hour --seed "$out/seed" --work "$out/front" \

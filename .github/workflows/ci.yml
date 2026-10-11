@@ -165,7 +165,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work" \
-            --server-cmd "exec node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+            --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --report "$RUNNER_TEMP/replay-report.json" --state-out "$RUNNER_TEMP/node-state.json"
           target/debug/replay coverage --corpus contracts/http/corpus --routes contracts/http/routes.toml | tail -1
       - if: always()
@@ -230,7 +230,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
-            --server-cmd "exec node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+            --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --state-out "$RUNNER_TEMP/node-state.json"
       - name: Replay through the Rust front
         run: |
@@ -301,7 +301,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
-            --server-cmd "exec node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+            --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --state-out "$RUNNER_TEMP/node-state.json"
       - name: Replay through the Rust front with NOEVIA_RUST_AUTH=1
         run: |
@@ -321,7 +321,7 @@ jobs:
           if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
               --ignore-body hours --ignore-body peakHour/hour \
               --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \
-              --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CONFIRMED=1 node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+              --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CONFIRMED=1 '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
               --report "$RUNNER_TEMP/control-report.json"; then
             echo "::error::Node with NOEVIA_RUST_AUTH=1 replayed clean: the single-writer guard did not engage"; exit 1
           fi
@@ -394,7 +394,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
-            --server-cmd "exec node '$GITHUB_WORKSPACE/core/tools/contract-corpus/serve.cjs'" \
+            --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --state-out "$RUNNER_TEMP/node-state.json"
       - name: Replay through the Rust front with NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1
         run: |
@@ -706,6 +706,8 @@ jobs:
           grep -q 'needs compiled rust-reasoning-settings' omission.log
           cargo build --locked -p replay -p noevia-server --features rust-reasoning-settings
           target/debug/noevia-server --features | grep -qx rust-reasoning-settings
+      - name: Actual spawn and actual budget factory synthetic input seam
+        run: target/debug/corpus-launcher verify "$PWD/core"
       - name: Full actual merged-core replay, equal state, valid identity omission and zero fallback writes
         run: sh tools/front/reasoning-contracts.sh "$PWD/core" "$PWD/target/debug/noevia-server" "$PWD/target/debug/replay" "$RUNNER_TEMP/reasoning-front"
       - if: always()
