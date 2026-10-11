@@ -345,24 +345,24 @@ fn main() -> ExitCode {
 mod capture_tests {
     use super::*;
     #[test]
-    fn prompt_override_is_explicit_bounded_and_default_absent() {
-        assert_eq!(prompts_override(None, "serve").unwrap(), "");
-        assert_eq!(prompt_port("8090").unwrap(), 8090);
+    fn prompt_override_is_explicit_bounded_and_default_absent() -> Result<(), String> {
+        assert_eq!(prompts_override(None, "serve")?, "");
+        assert_eq!(prompt_port("8090")?, 8090);
         for port in ["0", "65536", "-1", " 8090", "8090/path", "localhost", "1\n"] {
             assert!(prompt_port(port).is_err());
         }
-        let override_ = prompts_override(Some(8090), "prompts-serve").unwrap();
+        let override_ = prompts_override(Some(8090), "prompts-serve")?;
         assert!(override_.contains("MODEL_LOADER_URL:\"http://127.0.0.1:8090\""));
         assert!(override_.contains(
             "NOEVIA_CORPUS_ALLOWED_PORTS:options.env.NOEVIA_CORPUS_ALLOWED_PORTS+',8090'"
         ));
-        assert_eq!(prompts_override(Some(8090), "prompts-absent").unwrap(), "");
-        assert!(prompts_override(Some(8090), "prompts-wrong-token")
-            .unwrap()
+        assert_eq!(prompts_override(Some(8090), "prompts-absent")?, "");
+        assert!(prompts_override(Some(8090), "prompts-wrong-token")?
             .contains("synthetic-prompts-wrong-token"));
-        let omitted = prompts_override(Some(8090), "prompts-port-omitted").unwrap();
+        let omitted = prompts_override(Some(8090), "prompts-port-omitted")?;
         assert!(omitted.contains("MODEL_LOADER_URL"));
         assert!(!omitted.contains("NOEVIA_CORPUS_ALLOWED_PORTS"));
+        Ok(())
     }
     #[test]
     fn exact_domains_counts_and_zero_drops() {

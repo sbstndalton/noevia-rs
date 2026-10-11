@@ -743,7 +743,7 @@ jobs:
       - name: Full native differential, synthetic stores and lifecycle
         env:
           NOEVIA_PROMPTS_ORACLE: ${{ runner.temp }}/prompts.json
-          NOEVIA_PROMPTS_APP: prompts-services/model-manager/app
+          NOEVIA_PROMPTS_APP: ${{ github.workspace }}/prompts-services/model-manager/app
           PYTHON: python3
         run: cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts
       - name: Shared compatibility defaults

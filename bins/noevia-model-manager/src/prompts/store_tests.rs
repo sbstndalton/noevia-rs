@@ -490,6 +490,13 @@ async fn actual_python_indirect_readers_observe_native_commits_on_same_file() {
         return;
     };
     let source = std::path::PathBuf::from(source);
+    assert!(
+        source.is_absolute(),
+        "actual Python source must be absolute"
+    );
+    let source = source
+        .canonicalize()
+        .expect("actual Python source must exist");
     let oracle = crate::prompts::tests::oracle();
     let bytes = std::fs::read(source.join("db.py")).unwrap();
     assert_eq!(
