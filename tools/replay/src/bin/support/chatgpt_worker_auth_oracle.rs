@@ -1,4 +1,6 @@
 //! Private synthetic auth/device oracle contract; never imported by production.
+#[path = "chatgpt_status_artifact_staging.rs"]
+pub mod artifact_staging;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
@@ -258,6 +260,7 @@ fn compiled_inputs() -> &'static [(&'static str, &'static [u8])] {
         "tools/replay/src/bin/prompts-contracts.rs",
         "tools/replay/src/bin/routing-contracts.rs",
         "tools/replay/src/bin/support/chatgpt_status_dependencies.rs",
+        "tools/replay/src/bin/support/chatgpt_status_artifact_staging.rs",
         "tools/replay/src/bin/support/chatgpt_status_linux_ci.rs",
         "tools/replay/src/bin/support/chatgpt_worker_auth_oracle.rs",
         "tools/replay/src/bin/support/diagnose_dependencies.rs",
@@ -316,7 +319,7 @@ pub fn source_binding(identity: &Value) -> Result<()> {
 }
 // These synthetic qualification variables are supplied to both processes by the
 // owning job. A root-created fresh nonce or CI run/attempt/job identifies the run.
-pub fn expected_identity(root: &Path, identity: &Value) -> Result<String> {
+pub fn source_job(identity: &Value) -> Result<String> {
     let env = |name| std::env::var(name).map_err(|_| "missing qualification identity");
     let job = env("NOEVIA_WORKER_AUTH_JOB")?;
     require(
@@ -339,6 +342,11 @@ pub fn expected_identity(root: &Path, identity: &Value) -> Result<String> {
             "expected current source identity",
         )?;
     }
+    Ok(job)
+}
+pub fn expected_identity(root: &Path, identity: &Value) -> Result<String> {
+    let job = source_job(identity)?;
+    let env = |name| std::env::var(name).map_err(|_| "missing qualification identity");
     require(
         env("NOEVIA_WORKER_AUTH_REFERENCE_ROOT")? == root.to_str().ok_or("reference root utf8")?,
         "expected same-job reference root",
@@ -494,6 +502,7 @@ fn terminal_binding(binding: &Value, terminal: &Value) -> Result<()> {
         "execution_inputs_sha256",
         "tool_sha256",
         "compiled_map_sha256",
+        "artifact_staging_sha256",
     ] {
         require(
             !field(binding, key).is_null() && field(terminal, key) == field(binding, key),
@@ -540,7 +549,7 @@ pub fn reference_at(value: &str) -> Result<Vec<Value>> {
 // before final attestation and before either the terminal outcome or binding exists.
 pub(super) fn reference_provisional(root: &Path, binding: &Value) -> Result<Vec<Value>> {
     require(
-        field(binding, "version") == 2
+        field(binding, "version") == 3
             && field(binding, "root").as_str() == root.to_str()
             && field(binding, "core_commit") == CORE
             && field(binding, "core_tree") == TREE
@@ -590,6 +599,26 @@ pub(super) fn reference_provisional(root: &Path, binding: &Value) -> Result<Vec<
             && field(&inputs, "coordinator_sha256") == field(binding, "tool_sha256")
             && field(&inputs, "node_sha256") == field(binding, "node_sha256"),
         "actual execution inputs binding",
+    )?;
+    let staging_bytes = bound(
+        root,
+        "coordinator-staging.json",
+        field(binding, "artifact_staging_sha256"),
+        64 * 1024,
+    )?;
+    let staging = artifact_staging::validate(
+        &staging_bytes,
+        &identity,
+        field(binding, "job").as_str().ok_or("staging job")?,
+        &compiled_map(),
+    )?;
+    require(
+        field(&inputs, "artifact_staging_sha256") == field(binding, "artifact_staging_sha256")
+            && field(&inputs, "original_cargo_sha256")
+                == field(field(&staging, "original"), "sha256")
+            && field(&inputs, "coordinator_sha256") == field(field(&staging, "staged"), "sha256")
+            && field(&inputs, "coordinator") == field(field(&staging, "staged"), "path"),
+        "original staged reader binding",
     )?;
     let binary = read_mode(
         &root.join("executed-coordinator.bin"),
@@ -813,6 +842,7 @@ mod provenance_controls {
             "bins/noevia-server/src/chatgpt_worker.rs",
             "crates/server-auth/src/lib.rs",
             "tools/replay/src/bin/chatgpt-status-contracts.rs",
+            "tools/replay/src/bin/support/chatgpt_status_artifact_staging.rs",
             "tools/replay/src/bin/support/chatgpt_status_linux_ci.rs",
             "tools/replay/src/bin/support/chatgpt_status_dependencies.rs",
         ] {
@@ -860,6 +890,7 @@ mod provenance_controls {
             "execution_inputs_sha256",
             "tool_sha256",
             "compiled_map_sha256",
+            "artifact_staging_sha256",
         ] {
             binding
                 .as_object_mut()
@@ -882,6 +913,7 @@ mod provenance_controls {
             ("completed", json!(false)),
             ("job", json!("old-job")),
             ("tool_sha256", json!("old-executable")),
+            ("artifact_staging_sha256", json!("old-staging")),
             ("source_identity_sha256", Value::Null),
         ] {
             let mut changed = terminal.clone();

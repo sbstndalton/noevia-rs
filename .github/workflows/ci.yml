@@ -115,17 +115,26 @@ jobs:
           export NOEVIA_WORKER_AUTH_JOB="${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${GITHUB_JOB}"
           export NOEVIA_WORKER_AUTH_SOURCE_HEAD="$head"
           export NOEVIA_WORKER_AUTH_SOURCE_TREE="$tree"
+          export NOEVIA_WORKER_AUTH_SOURCE_ROOT="$source"
           export NOEVIA_WORKER_AUTH_REFERENCE_ROOT="$RUNNER_TEMP/m6-worker-auth"
           export NOEVIA_WORKER_AUTH_REFERENCE="$NOEVIA_WORKER_AUTH_REFERENCE_ROOT/worker-binding.json"
-          printf '%s\n' "NOEVIA_WORKER_AUTH_JOB=$NOEVIA_WORKER_AUTH_JOB" "NOEVIA_WORKER_AUTH_SOURCE_HEAD=$head" "NOEVIA_WORKER_AUTH_SOURCE_TREE=$tree" "NOEVIA_WORKER_AUTH_REFERENCE_ROOT=$NOEVIA_WORKER_AUTH_REFERENCE_ROOT" "NOEVIA_WORKER_AUTH_REFERENCE=$NOEVIA_WORKER_AUTH_REFERENCE" >> "$GITHUB_ENV"
+          printf '%s\n' "NOEVIA_WORKER_AUTH_JOB=$NOEVIA_WORKER_AUTH_JOB" "NOEVIA_WORKER_AUTH_SOURCE_HEAD=$head" "NOEVIA_WORKER_AUTH_SOURCE_TREE=$tree" "NOEVIA_WORKER_AUTH_SOURCE_ROOT=$source" "NOEVIA_WORKER_AUTH_REFERENCE_ROOT=$NOEVIA_WORKER_AUTH_REFERENCE_ROOT" "NOEVIA_WORKER_AUTH_REFERENCE=$NOEVIA_WORKER_AUTH_REFERENCE" >> "$GITHUB_ENV"
+          test ! -e "$CARGO_TARGET_DIR" && test ! -L "$CARGO_TARGET_DIR"
+          mkdir -m 700 "$CARGO_TARGET_DIR"
           run_capture tool-build cargo build --locked -p replay --bin chatgpt-status-contracts --message-format=json
           tool="$CARGO_TARGET_DIR/debug/chatgpt-status-contracts"
           run_capture tool-selection "$tool" select-cargo-artifact tool "$evidence/tool-build.stdout"
           [[ "$(cat "$evidence/tool-selection.stdout")" == "$tool" ]]
+          original_tool="$tool"
+          staging_root="$RUNNER_TEMP/m6-worker-coordinator"
+          run_capture staging "$original_tool" stage-cargo-coordinator --cargo-json "$evidence/tool-build.stdout" --cargo-output "$CARGO_TARGET_DIR" --source-checkout "$source" --owned-output "$staging_root"
+          staging_manifest="$staging_root/coordinator-staging.json"
+          [[ "$(cat "$evidence/staging.stdout")" == "$staging_manifest" ]]
+          tool="$staging_root/coordinator"
           node_path="$(realpath "$(command -v node)")"
-          sha256sum "$tool" "$node_path" > "$evidence/executables.sha256"
+          sha256sum "$original_tool" "$tool" "$node_path" > "$evidence/executables.sha256"
           run_capture inventory "$tool" inventory-linux-dependencies --installed-root "$npm_root" --core-checkout "$core" --owned-output "$RUNNER_TEMP/m6-worker-dependencies"
-          run_capture capture "$tool" capture-linux-worker-auth --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-worker-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-worker-dependencies/dependency-inventory.json" --node "$node_path" --source-checkout "$source" --owned-output "$NOEVIA_WORKER_AUTH_REFERENCE_ROOT"
+          run_capture capture "$tool" capture-linux-worker-auth --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-worker-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-worker-dependencies/dependency-inventory.json" --node "$node_path" --artifact-staging "$staging_manifest" --source-checkout "$source" --owned-output "$NOEVIA_WORKER_AUTH_REFERENCE_ROOT"
           run_capture verification "$tool" verify-linux-worker-auth --reference-binding "$NOEVIA_WORKER_AUTH_REFERENCE"
           sha256sum -c "$evidence/executables.sha256"
           [[ -z "$(git status --porcelain --untracked-files=all)" ]]
@@ -166,6 +175,7 @@ jobs:
           name: rust-auth-device-prerequisites
           path: |
             ${{ runner.temp }}/m6-worker-build
+            ${{ runner.temp }}/m6-worker-coordinator
             ${{ runner.temp }}/m6-worker-dependencies
             ${{ runner.temp }}/m6-worker-auth
             ${{ runner.temp }}/m6-resolver-fixture
@@ -437,17 +447,26 @@ jobs:
           export NOEVIA_WORKER_AUTH_JOB="${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${GITHUB_JOB}"
           export NOEVIA_WORKER_AUTH_SOURCE_HEAD="$head"
           export NOEVIA_WORKER_AUTH_SOURCE_TREE="$tree"
+          export NOEVIA_WORKER_AUTH_SOURCE_ROOT="$source"
           export NOEVIA_WORKER_AUTH_REFERENCE_ROOT="$RUNNER_TEMP/m6-worker-auth"
           export NOEVIA_WORKER_AUTH_REFERENCE="$NOEVIA_WORKER_AUTH_REFERENCE_ROOT/worker-binding.json"
-          printf '%s\n' "NOEVIA_WORKER_AUTH_JOB=$NOEVIA_WORKER_AUTH_JOB" "NOEVIA_WORKER_AUTH_SOURCE_HEAD=$head" "NOEVIA_WORKER_AUTH_SOURCE_TREE=$tree" "NOEVIA_WORKER_AUTH_REFERENCE_ROOT=$NOEVIA_WORKER_AUTH_REFERENCE_ROOT" "NOEVIA_WORKER_AUTH_REFERENCE=$NOEVIA_WORKER_AUTH_REFERENCE" >> "$GITHUB_ENV"
+          printf '%s\n' "NOEVIA_WORKER_AUTH_JOB=$NOEVIA_WORKER_AUTH_JOB" "NOEVIA_WORKER_AUTH_SOURCE_HEAD=$head" "NOEVIA_WORKER_AUTH_SOURCE_TREE=$tree" "NOEVIA_WORKER_AUTH_SOURCE_ROOT=$source" "NOEVIA_WORKER_AUTH_REFERENCE_ROOT=$NOEVIA_WORKER_AUTH_REFERENCE_ROOT" "NOEVIA_WORKER_AUTH_REFERENCE=$NOEVIA_WORKER_AUTH_REFERENCE" >> "$GITHUB_ENV"
+          test ! -e "$CARGO_TARGET_DIR" && test ! -L "$CARGO_TARGET_DIR"
+          mkdir -m 700 "$CARGO_TARGET_DIR"
           run_capture tool-build cargo build --locked -p replay --bin chatgpt-status-contracts --message-format=json
           tool="$CARGO_TARGET_DIR/debug/chatgpt-status-contracts"
           run_capture tool-selection "$tool" select-cargo-artifact tool "$evidence/tool-build.stdout"
           [[ "$(cat "$evidence/tool-selection.stdout")" == "$tool" ]]
+          original_tool="$tool"
+          staging_root="$RUNNER_TEMP/m6-worker-coordinator"
+          run_capture staging "$original_tool" stage-cargo-coordinator --cargo-json "$evidence/tool-build.stdout" --cargo-output "$CARGO_TARGET_DIR" --source-checkout "$source" --owned-output "$staging_root"
+          staging_manifest="$staging_root/coordinator-staging.json"
+          [[ "$(cat "$evidence/staging.stdout")" == "$staging_manifest" ]]
+          tool="$staging_root/coordinator"
           node_path="$(realpath "$(command -v node)")"
-          sha256sum "$tool" "$node_path" > "$evidence/executables.sha256"
+          sha256sum "$original_tool" "$tool" "$node_path" > "$evidence/executables.sha256"
           run_capture inventory "$tool" inventory-linux-dependencies --installed-root "$npm_root" --core-checkout "$core" --owned-output "$RUNNER_TEMP/m6-worker-dependencies"
-          run_capture capture "$tool" capture-linux-worker-auth --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-worker-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-worker-dependencies/dependency-inventory.json" --node "$node_path" --source-checkout "$source" --owned-output "$NOEVIA_WORKER_AUTH_REFERENCE_ROOT"
+          run_capture capture "$tool" capture-linux-worker-auth --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-worker-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-worker-dependencies/dependency-inventory.json" --node "$node_path" --artifact-staging "$staging_manifest" --source-checkout "$source" --owned-output "$NOEVIA_WORKER_AUTH_REFERENCE_ROOT"
           run_capture verification "$tool" verify-linux-worker-auth --reference-binding "$NOEVIA_WORKER_AUTH_REFERENCE"
           sha256sum -c "$evidence/executables.sha256"
           [[ -z "$(git status --porcelain --untracked-files=all)" ]]
@@ -503,6 +522,7 @@ jobs:
           name: replay-front
           path: |
             ${{ runner.temp }}/m6-worker-build
+            ${{ runner.temp }}/m6-worker-coordinator
             ${{ runner.temp }}/m6-worker-dependencies
             ${{ runner.temp }}/m6-worker-auth
             ${{ runner.temp }}/m6-resolver-fixture
@@ -1309,17 +1329,26 @@ jobs:
           export NOEVIA_WORKER_AUTH_JOB="${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${GITHUB_JOB}"
           export NOEVIA_WORKER_AUTH_SOURCE_HEAD="$head"
           export NOEVIA_WORKER_AUTH_SOURCE_TREE="$tree"
+          export NOEVIA_WORKER_AUTH_SOURCE_ROOT="$source"
           export NOEVIA_WORKER_AUTH_REFERENCE_ROOT="$RUNNER_TEMP/m6-worker-auth"
           export NOEVIA_WORKER_AUTH_REFERENCE="$NOEVIA_WORKER_AUTH_REFERENCE_ROOT/worker-binding.json"
-          printf '%s\n' "NOEVIA_WORKER_AUTH_JOB=$NOEVIA_WORKER_AUTH_JOB" "NOEVIA_WORKER_AUTH_SOURCE_HEAD=$head" "NOEVIA_WORKER_AUTH_SOURCE_TREE=$tree" "NOEVIA_WORKER_AUTH_REFERENCE_ROOT=$NOEVIA_WORKER_AUTH_REFERENCE_ROOT" "NOEVIA_WORKER_AUTH_REFERENCE=$NOEVIA_WORKER_AUTH_REFERENCE" >> "$GITHUB_ENV"
+          printf '%s\n' "NOEVIA_WORKER_AUTH_JOB=$NOEVIA_WORKER_AUTH_JOB" "NOEVIA_WORKER_AUTH_SOURCE_HEAD=$head" "NOEVIA_WORKER_AUTH_SOURCE_TREE=$tree" "NOEVIA_WORKER_AUTH_SOURCE_ROOT=$source" "NOEVIA_WORKER_AUTH_REFERENCE_ROOT=$NOEVIA_WORKER_AUTH_REFERENCE_ROOT" "NOEVIA_WORKER_AUTH_REFERENCE=$NOEVIA_WORKER_AUTH_REFERENCE" >> "$GITHUB_ENV"
+          test ! -e "$CARGO_TARGET_DIR" && test ! -L "$CARGO_TARGET_DIR"
+          mkdir -m 700 "$CARGO_TARGET_DIR"
           run_capture tool-build cargo build --locked -p replay --bin chatgpt-status-contracts --message-format=json
           tool="$CARGO_TARGET_DIR/debug/chatgpt-status-contracts"
           run_capture tool-selection "$tool" select-cargo-artifact tool "$evidence/tool-build.stdout"
           [[ "$(cat "$evidence/tool-selection.stdout")" == "$tool" ]]
+          original_tool="$tool"
+          staging_root="$RUNNER_TEMP/m6-worker-coordinator"
+          run_capture staging "$original_tool" stage-cargo-coordinator --cargo-json "$evidence/tool-build.stdout" --cargo-output "$CARGO_TARGET_DIR" --source-checkout "$source" --owned-output "$staging_root"
+          staging_manifest="$staging_root/coordinator-staging.json"
+          [[ "$(cat "$evidence/staging.stdout")" == "$staging_manifest" ]]
+          tool="$staging_root/coordinator"
           node_path="$(realpath "$(command -v node)")"
-          sha256sum "$tool" "$node_path" > "$evidence/executables.sha256"
+          sha256sum "$original_tool" "$tool" "$node_path" > "$evidence/executables.sha256"
           run_capture inventory "$tool" inventory-linux-dependencies --installed-root "$npm_root" --core-checkout "$core" --owned-output "$RUNNER_TEMP/m6-worker-dependencies"
-          run_capture capture "$tool" capture-linux-worker-auth --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-worker-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-worker-dependencies/dependency-inventory.json" --node "$node_path" --source-checkout "$source" --owned-output "$NOEVIA_WORKER_AUTH_REFERENCE_ROOT"
+          run_capture capture "$tool" capture-linux-worker-auth --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-worker-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-worker-dependencies/dependency-inventory.json" --node "$node_path" --artifact-staging "$staging_manifest" --source-checkout "$source" --owned-output "$NOEVIA_WORKER_AUTH_REFERENCE_ROOT"
           run_capture verification "$tool" verify-linux-worker-auth --reference-binding "$NOEVIA_WORKER_AUTH_REFERENCE"
           sha256sum -c "$evidence/executables.sha256"
           [[ -z "$(git status --porcelain --untracked-files=all)" ]]
@@ -1372,6 +1401,7 @@ jobs:
           name: native-reasoning-contracts
           path: |
             ${{ runner.temp }}/m6-worker-build
+            ${{ runner.temp }}/m6-worker-coordinator
             ${{ runner.temp }}/m6-worker-dependencies
             ${{ runner.temp }}/m6-worker-auth
             ${{ runner.temp }}/m6-resolver-fixture

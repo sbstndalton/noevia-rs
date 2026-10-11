@@ -710,6 +710,69 @@ fn source_check(source: &Path, identity: &Value) -> Result<()> {
     }
     Ok(())
 }
+pub fn stage_coordinator(args: &[String]) -> Result<PathBuf> {
+    use super::chatgpt_worker_auth_oracle as worker;
+    require(cfg!(target_os = "linux"), "Linux coordinator staging")?;
+    let paths = options(
+        args,
+        &[
+            "--cargo-json",
+            "--cargo-output",
+            "--source-checkout",
+            "--owned-output",
+        ],
+    )?;
+    let [cargo_json, cargo_root, source, out]: [PathBuf; 4] =
+        paths.try_into().map_err(|_| "staging paths")?;
+    disjoint(
+        &out,
+        &[cargo_root.clone(), source.clone(), cargo_json.clone()],
+    )?;
+    private_dir(&out)?;
+    let identity = source_identity(&out, &source)?;
+    worker::source_binding(&identity)?;
+    let job = worker::source_job(&identity)?;
+    let manifest = worker::artifact_staging::stage(
+        &cargo_json,
+        &cargo_root,
+        &source,
+        &out,
+        &identity,
+        &job,
+        &worker::compiled_map(),
+    )?;
+    source_check(&source, &identity)?;
+    Ok(manifest)
+}
+fn worker_staging_check(path: &Path, identity: &Value, expected: &Value) -> Result<()> {
+    use super::chatgpt_worker_auth_oracle as worker;
+    require(
+        worker::artifact_staging::validate(
+            &read(path, 64 * 1024)?,
+            identity,
+            &worker::source_job(identity)?,
+            &worker::compiled_map(),
+        )? == *expected,
+        "staging input unchanged",
+    )
+}
+fn staged_input(manifest: &Path, out: &Path, identity: &Value) -> Result<(Value, String)> {
+    use super::chatgpt_worker_auth_oracle as worker;
+    let job = worker::source_job(identity)?;
+    let bytes = read(manifest, 64 * 1024)?;
+    require(
+        fs::symlink_metadata(manifest)?.mode() == 0o100600
+            && manifest
+                .file_name()
+                .is_some_and(|v| v == "coordinator-staging.json"),
+        "fixed private staging manifest",
+    )?;
+    let value =
+        worker::artifact_staging::validate(&bytes, identity, &job, &worker::compiled_map())?;
+    worker::artifact_staging::executing(&value)?;
+    save(&out.join("coordinator-staging.json"), &bytes)?;
+    Ok((value, crate::hash(&bytes)))
+}
 fn qualify(args: &[String]) -> Result<Value> {
     let paths = options(
         args,
@@ -719,11 +782,12 @@ fn qualify(args: &[String]) -> Result<Value> {
             "--dependency-inventory",
             "--node",
             "--lib-test",
+            "--artifact-staging",
             "--source-checkout",
             "--owned-output",
         ],
     )?;
-    let [checkout, deps, inventory, node, lib, source, out]: [PathBuf; 7] =
+    let [checkout, deps, inventory, node, lib, staging_path, source, out]: [PathBuf; 8] =
         paths.try_into().map_err(|_| "coordinator paths")?;
     disjoint(
         &out,
@@ -734,6 +798,7 @@ fn qualify(args: &[String]) -> Result<Value> {
             node.clone(),
             lib.clone(),
             source.clone(),
+            staging_path.clone(),
         ],
     )?;
     private_dir(&out)?;
@@ -744,6 +809,7 @@ fn qualify(args: &[String]) -> Result<Value> {
         )?;
         core(&out, &checkout)?;
         let identity = source_identity(&out, &source)?;
+        let (staging, staging_sha) = staged_input(&staging_path, &out, &identity)?;
         let executable = fs::canonicalize(std::env::current_exe()?)?;
         let tool_sha = binary_copy(&executable, &out.join("executed-coordinator.bin"))?;
         let lib_owned = out.join("lib-test");
@@ -756,9 +822,10 @@ fn qualify(args: &[String]) -> Result<Value> {
         let inventory_sha = crate::hash(&read(&inventory, 2 * 1024 * 1024)?);
         json_save(
             &out.join("execution-inputs.json"),
-            &json!({"coordinator":executable,"coordinator_sha256":tool_sha,"lib_source":lib,"lib_sha256":lib_sha,"node":node,"node_sha256":node_sha,"dependency_inventory":inventory,"inventory_sha256":inventory_sha,"source_head":(*field(&identity, "head")),"source_tree":(*field(&identity, "tree"))}),
+            &json!({"coordinator":executable,"coordinator_sha256":tool_sha,"original_cargo_sha256":field(field(&staging, "original"), "sha256"),"artifact_staging_sha256":staging_sha,"lib_source":lib,"lib_sha256":lib_sha,"node":node,"node_sha256":node_sha,"dependency_inventory":inventory,"inventory_sha256":inventory_sha,"source_head":(*field(&identity, "head")),"source_tree":(*field(&identity, "tree"))}),
         )?;
         source_check(&source, &identity)?;
+        worker_staging_check(&staging_path, &identity, &staging)?;
         check_hash(&executable, &tool_sha, 128 * 1024 * 1024)?;
         check_hash(&node, &node_sha, 128 * 1024 * 1024)?;
         let metadata = run(
@@ -946,6 +1013,7 @@ fn qualify(args: &[String]) -> Result<Value> {
         let binding_sha = crate::hash(&read(&out.join("m6-ci-reference-binding.json"), 8192)?);
         let attest = || -> Result<()> {
             source_check(&source, &identity)?;
+            worker_staging_check(&staging_path, &identity, &staging)?;
             check_hash(&executable, &tool_sha, 128 * 1024 * 1024)?;
             check_hash(&lib_owned, &lib_sha, 128 * 1024 * 1024)?;
             check_hash(
@@ -1012,7 +1080,7 @@ fn qualify(args: &[String]) -> Result<Value> {
             "seven row positive and exact filtered inventory",
         )?;
         attest()?;
-        let cert = json!({"source":identity,"coordinator_sha256":tool_sha,"lib_sha256":lib_sha,"node_sha256":node_sha,"binding_sha256":binding_sha,"full_test_count":tests.len(),"negative":NEGATIVE,"positive":POSITIVE,"passed":true,"scope":"seven synthetic Rust router rows versus CORE010735 factory; independent Rust headers401/403; public Node headers/index/current0a204/defaultoff/supervisor/fullM6 remain held"});
+        let cert = json!({"source":identity,"coordinator_sha256":tool_sha,"original_cargo_sha256":field(field(&staging, "original"), "sha256"),"artifact_staging_sha256":staging_sha,"lib_sha256":lib_sha,"node_sha256":node_sha,"binding_sha256":binding_sha,"full_test_count":tests.len(),"negative":NEGATIVE,"positive":POSITIVE,"passed":true,"scope":"seven synthetic Rust router rows versus CORE010735 factory; independent Rust headers401/403; public Node headers/index/current0a204/defaultoff/supervisor/fullM6 remain held"});
         json_save(&out.join("linux-qualification-certificate.json"), &cert)?;
         Ok(cert)
     })();
@@ -1037,11 +1105,12 @@ fn capture_worker(args: &[String]) -> Result<Value> {
             "--dependency-root",
             "--dependency-inventory",
             "--node",
+            "--artifact-staging",
             "--source-checkout",
             "--owned-output",
         ],
     )?;
-    let [checkout, deps, inventory, node, source, out]: [PathBuf; 6] =
+    let [checkout, deps, inventory, node, staging_path, source, out]: [PathBuf; 7] =
         paths.try_into().map_err(|_| "worker paths")?;
     disjoint(
         &out,
@@ -1051,6 +1120,7 @@ fn capture_worker(args: &[String]) -> Result<Value> {
             inventory.clone(),
             node.clone(),
             source.clone(),
+            staging_path.clone(),
         ],
     )?;
     private_dir(&out)?;
@@ -1064,6 +1134,7 @@ fn capture_worker(args: &[String]) -> Result<Value> {
         let identity = source_identity(&out, &source)?;
         worker::source_binding(&identity)?;
         let job = worker::expected_identity(&out, &identity)?;
+        let (staging, staging_sha) = staged_input(&staging_path, &out, &identity)?;
         let executable = fs::canonicalize(std::env::current_exe()?)?;
         let tool_sha = binary_copy(&executable, &out.join("executed-coordinator.bin"))?;
         let node_sha = crate::hash(&read(&node, 128 * 1024 * 1024)?);
@@ -1074,7 +1145,7 @@ fn capture_worker(args: &[String]) -> Result<Value> {
         let inventory_sha = crate::hash(&read(&inventory, 2 * 1024 * 1024)?);
         json_save(
             &out.join("execution-inputs.json"),
-            &json!({"job":job,"root":out,"compiled_map":worker::compiled_map(),"coordinator":executable,"coordinator_sha256":tool_sha,"node":node,"node_sha256":node_sha,"inventory_sha256":inventory_sha,"source":identity,"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"schema_sha256":worker::hash(worker::SCHEMA.as_bytes()),"setup_sha256":worker::hash(worker::SETUP.as_bytes())}),
+            &json!({"job":job,"root":out,"compiled_map":worker::compiled_map(),"coordinator":executable,"coordinator_sha256":tool_sha,"original_cargo_sha256":field(field(&staging, "original"), "sha256"),"artifact_staging_sha256":staging_sha,"node":node,"node_sha256":node_sha,"inventory_sha256":inventory_sha,"source":identity,"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"schema_sha256":worker::hash(worker::SCHEMA.as_bytes()),"setup_sha256":worker::hash(worker::SETUP.as_bytes())}),
         )?;
         let attest = || -> Result<()> {
             require(
@@ -1082,6 +1153,7 @@ fn capture_worker(args: &[String]) -> Result<Value> {
                 "worker overall cooperative deadline",
             )?;
             source_check(&source, &identity)?;
+            worker_staging_check(&staging_path, &identity, &staging)?;
             check_hash(&executable, &tool_sha, 128 * 1024 * 1024)?;
             check_hash(&node, &node_sha, 128 * 1024 * 1024)?;
             check_hash(&inventory, &inventory_sha, 2 * 1024 * 1024)
@@ -1305,7 +1377,7 @@ fn capture_worker(args: &[String]) -> Result<Value> {
         json_save(&out.join("worker-reference.json"), &json!(result))?;
         let certificate = json!({"core_commit":worker::CORE,"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"rows":result,"captures":captures,"native_loaded":native_loaded,"native_stdout_sha256":crate::hash(&read(&out.join("native-preflight.stdout"),1024*1024)?),"native_stderr_sha256":crate::hash(b""),"native_status_sha256":crate::hash(&read(&out.join("native-preflight.status.json"),8192)?),"scope":"five independent predecessor auth/device factory methods; no Node public headers/index/current core/defaultoff/supervisor/fullM6/native dylib ancestry proof"});
         json_save(&out.join("worker-certificate.json"), &certificate)?;
-        let mut binding = json!({"version":2,"root":out,"core_commit":worker::CORE,"core_tree":worker::TREE,"now":worker::NOW,"ids":worker::IDS,"runtime":runtime,"node_sha256":node_sha,"schema_sha256":worker::hash(worker::SCHEMA.as_bytes()),"setup_sha256":worker::hash(worker::SETUP.as_bytes()),"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"test_sha256":worker::hash(include_bytes!("../../../../../bins/noevia-server/tests/chatgpt_worker.rs")),"certificate_sha256":crate::hash(&read(&out.join("worker-certificate.json"),2*1024*1024)?),"manifest_sha256":crate::hash(&read(&oracle.join("qualification-manifest.json"),2*1024*1024)?),"reference_sha256":crate::hash(&read(&out.join("worker-reference.json"),1024*1024)?),"source_head":field(&identity,"head"),"source_tree":field(&identity,"tree"),"tool_sha256":tool_sha});
+        let mut binding = json!({"version":3,"root":out,"core_commit":worker::CORE,"core_tree":worker::TREE,"now":worker::NOW,"ids":worker::IDS,"runtime":runtime,"node_sha256":node_sha,"schema_sha256":worker::hash(worker::SCHEMA.as_bytes()),"setup_sha256":worker::hash(worker::SETUP.as_bytes()),"adapter_sha256":worker::hash(worker::ADAPTER.as_bytes()),"test_sha256":worker::hash(include_bytes!("../../../../../bins/noevia-server/tests/chatgpt_worker.rs")),"certificate_sha256":crate::hash(&read(&out.join("worker-certificate.json"),2*1024*1024)?),"manifest_sha256":crate::hash(&read(&oracle.join("qualification-manifest.json"),2*1024*1024)?),"reference_sha256":crate::hash(&read(&out.join("worker-reference.json"),1024*1024)?),"source_head":field(&identity,"head"),"source_tree":field(&identity,"tree"),"tool_sha256":tool_sha,"artifact_staging_sha256":staging_sha});
         let object = binding.as_object_mut().ok_or("worker binding object")?;
         object.insert("job".into(), json!(job));
         object.insert(
@@ -1353,6 +1425,7 @@ fn capture_worker(args: &[String]) -> Result<Value> {
                 "execution_inputs_sha256",
                 "tool_sha256",
                 "compiled_map_sha256",
+                "artifact_staging_sha256",
             ] {
                 object.insert(key.into(), field(&binding, key).clone());
             }

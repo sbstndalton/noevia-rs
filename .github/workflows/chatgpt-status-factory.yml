@@ -43,6 +43,10 @@ jobs:
           run_capture() {
             local label="$1" rc=0
             shift
+            printf '%s\n' "$@" > "$evidence/$label.argv"
+            : > "$evidence/$label.stdout"
+            : > "$evidence/$label.stderr"
+            : > "$evidence/$label.status"
             "$@" > "$evidence/$label.stdout" 2> "$evidence/$label.stderr" || rc=$?
             printf '%s\n' "$rc" > "$evidence/$label.status"
             return "$rc"
@@ -72,15 +76,21 @@ jobs:
           run_capture() {
             local label="$1" rc=0
             shift
+            printf '%s\n' "$@" > "$evidence/$label.argv"
+            : > "$evidence/$label.stdout"
+            : > "$evidence/$label.stderr"
+            : > "$evidence/$label.status"
             "$@" > "$evidence/$label.stdout" 2> "$evidence/$label.stderr" || rc=$?
             printf '%s\n' "$rc" > "$evidence/$label.status"
             return "$rc"
           }
+          test ! -e "$CARGO_TARGET_DIR" && test ! -L "$CARGO_TARGET_DIR"
+          mkdir -m 700 "$CARGO_TARGET_DIR"
           run_capture tool-build cargo build --offline --locked -p replay --bin chatgpt-status-contracts --message-format=json
           run_capture lib-build cargo test --offline --locked -p noevia-server --no-default-features --features rust-chatgpt-status --lib --no-run --message-format=json
           run_capture lib-clippy cargo clippy --offline --locked -p noevia-server --no-default-features --features rust-chatgpt-status --lib --profile test --message-format=json -- -D warnings
           run_capture tool-clippy cargo clippy --offline --locked -p replay --bin chatgpt-status-contracts --profile test --message-format=json -- -D warnings
-          run_capture fmt rustfmt --edition 2021 --config skip_children=true --check tools/replay/src/bin/chatgpt-status-contracts.rs tools/replay/src/bin/support/chatgpt_status_linux_ci.rs tools/replay/src/bin/support/chatgpt_status_dependencies.rs bins/noevia-server/src/support/chatgpt_status_differential.rs
+          run_capture fmt rustfmt --edition 2021 --config skip_children=true --check tools/replay/src/bin/chatgpt-status-contracts.rs tools/replay/src/bin/support/chatgpt_status_linux_ci.rs tools/replay/src/bin/support/chatgpt_status_artifact_staging.rs tools/replay/src/bin/support/chatgpt_worker_auth_oracle.rs tools/replay/src/bin/support/chatgpt_status_dependencies.rs bins/noevia-server/src/support/chatgpt_status_differential.rs
       - name: One fresh Linux factory capture, negative control, then seven Rust rows
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/m6-target
@@ -91,6 +101,10 @@ jobs:
           run_capture() {
             local label="$1" rc=0
             shift
+            printf '%s\n' "$@" > "$evidence/$label.argv"
+            : > "$evidence/$label.stdout"
+            : > "$evidence/$label.stderr"
+            : > "$evidence/$label.status"
             "$@" > "$evidence/$label.stdout" 2> "$evidence/$label.stderr" || rc=$?
             printf '%s\n' "$rc" > "$evidence/$label.status"
             return "$rc"
@@ -100,16 +114,26 @@ jobs:
           run_capture lib-selection "$tool" select-cargo-artifact library-test "$evidence/lib-build.stdout"
           [[ "$(cat "$evidence/tool-selection.stdout")" == "$tool" ]]
           core="$GITHUB_WORKSPACE/oracle-core"
-          tool="$(cat "$evidence/tool-selection.stdout")"
+          original_tool="$(cat "$evidence/tool-selection.stdout")"
+          export NOEVIA_WORKER_AUTH_JOB="${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${GITHUB_JOB}"
+          export NOEVIA_WORKER_AUTH_SOURCE_HEAD="$(git rev-parse HEAD)"
+          export NOEVIA_WORKER_AUTH_SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')"
+          export NOEVIA_WORKER_AUTH_SOURCE_ROOT="$PWD"
+          staging_root="$RUNNER_TEMP/m6-factory-coordinator"
+          run_capture staging "$original_tool" stage-cargo-coordinator --cargo-json "$evidence/tool-build.stdout" --cargo-output "$CARGO_TARGET_DIR" --source-checkout "$PWD" --owned-output "$staging_root"
+          staging_manifest="$staging_root/coordinator-staging.json"
+          [[ "$(cat "$evidence/staging.stdout")" == "$staging_manifest" ]]
+          tool="$staging_root/coordinator"
           node_path="$(realpath "$(command -v node)")"
           run_capture inventory "$tool" inventory-linux-dependencies --installed-root "$RUNNER_TEMP/m6-npm" --core-checkout "$core" --owned-output "$RUNNER_TEMP/m6-linux-dependencies"
-          run_capture qualification "$tool" qualify-linux-factory --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-linux-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-linux-dependencies/dependency-inventory.json" --node "$node_path" --lib-test "$(cat "$evidence/lib-selection.stdout")" --source-checkout "$PWD" --owned-output "$RUNNER_TEMP/m6-linux-factory"
+          run_capture qualification "$tool" qualify-linux-factory --core-checkout "$core" --dependency-root "$RUNNER_TEMP/m6-linux-dependencies/dependencies" --dependency-inventory "$RUNNER_TEMP/m6-linux-dependencies/dependency-inventory.json" --node "$node_path" --lib-test "$(cat "$evidence/lib-selection.stdout")" --artifact-staging "$staging_manifest" --source-checkout "$PWD" --owned-output "$RUNNER_TEMP/m6-linux-factory"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: native-chatgpt-status-finite-factory
           path: |
             ${{ runner.temp }}/m6-build-evidence
+            ${{ runner.temp }}/m6-factory-coordinator
             ${{ runner.temp }}/m6-linux-dependencies
             ${{ runner.temp }}/m6-linux-factory
           if-no-files-found: error
