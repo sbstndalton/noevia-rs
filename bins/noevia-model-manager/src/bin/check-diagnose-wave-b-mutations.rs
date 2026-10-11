@@ -28,11 +28,66 @@ struct Case {
 }
 fn cases() -> [Case; 5] {
     [
-        Case { id:"omit-since",source:DOCKER,before:"Self::Logs { id, since } => format!(\"/containers/{}/logs?stdout=true&stderr=true&timestamps=false&follow=false&tail=40000&since={since}\",identifier(id)?),",after:"Self::Logs { id, since } => { let _ = since; format!(\"/containers/{}/logs?stdout=true&stderr=true&timestamps=false&follow=false&tail=40000\",identifier(id)?) },",test_path:"bins/noevia-model-manager/tests/diagnose_transport.rs",target:"diagnose_transport",test:"exact_current_run_wire_and_split_utf8",assertion:"assert_eq!(requests[1].lines().next(),",filtered:7,replay:false },
-        Case { id:"tail-400",source:DOCKER,before:"tail=40000&since={since}",after:"tail=400&since={since}",test_path:"bins/noevia-model-manager/tests/diagnose_transport.rs",target:"diagnose_transport",test:"exact_current_run_wire_and_split_utf8",assertion:"assert_eq!(requests[1].lines().next(),",filtered:7,replay:false },
-        Case { id:"early-permit-release",source:DOCKER,before:"            task_context.cleanup().await;\n            drop(permit);",after:"            drop(permit);\n            task_context.cleanup().await;",test_path:"bins/noevia-model-manager/tests/diagnose_lifecycle.rs",target:"diagnose_lifecycle",test:"timed_out_response_retains_join_and_shutdown_until_driver_drop_completes",assertion:"assert_eq!(retained, 3);",filtered:4,replay:false },
-        Case { id:"python-fallback",source:LIB,before:"diagnose_docker::Outcome::Refused => detail(\n                    StatusCode::SERVICE_UNAVAILABLE,\n                    \"Native backend diagnosis is unavailable\",\n                ),",after:"diagnose_docker::Outcome::Refused => dispatch(state, req).await,",test_path:"bins/noevia-model-manager/tests/diagnose_route.rs",target:"diagnose_route",test:"native_failure_never_uses_python_fallback",assertion:"assert_eq!(\n        (\n            status.as_u16(),",filtered:4,replay:false },
-        Case { id:"child-confirmation",source:MAIN,before:"\"NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED\",\n            if diagnose_mode == \"rust\" { \"1\" } else { \"0\" },",after:"\"NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED\",\n            \"0\",",test_path:"tools/replay/src/bin/diagnose-contracts.rs",target:"diagnose-contracts",test:"tests::native_child_confirmation_semantics",assertion:"assert_eq!(marker, &json!(\"1\"));",filtered:4,replay:true },
+        Case {
+            id: "omit-since",
+            source: DOCKER,
+            before: "Self::Logs { id, since } => format!(\"/containers/{}/logs?stdout=true&stderr=true&timestamps=false&follow=false&tail=40000&since={since}\",identifier(id)?),",
+            after: "Self::Logs { id, since } => { let _ = since; format!(\"/containers/{}/logs?stdout=true&stderr=true&timestamps=false&follow=false&tail=40000\",identifier(id)?) },",
+            test_path: "bins/noevia-model-manager/tests/diagnose_transport.rs",
+            target: "diagnose_transport",
+            test: "exact_current_run_wire_and_split_utf8",
+            assertion: "assert_eq!(requests[1].lines().next(),",
+            filtered: 7,
+            replay: false,
+        },
+        Case {
+            id: "tail-400",
+            source: DOCKER,
+            before: "tail=40000&since={since}",
+            after: "tail=400&since={since}",
+            test_path: "bins/noevia-model-manager/tests/diagnose_transport.rs",
+            target: "diagnose_transport",
+            test: "exact_current_run_wire_and_split_utf8",
+            assertion: "assert_eq!(requests[1].lines().next(),",
+            filtered: 7,
+            replay: false,
+        },
+        Case {
+            id: "early-permit-release",
+            source: DOCKER,
+            before: "            task_context.cleanup().await;\n            drop(permit);",
+            after: "            drop(permit);\n            task_context.cleanup().await;",
+            test_path: "bins/noevia-model-manager/tests/diagnose_lifecycle.rs",
+            target: "diagnose_lifecycle",
+            test: "timed_out_response_retains_join_and_shutdown_until_driver_drop_completes",
+            assertion: "assert_eq!(retained, 3);",
+            filtered: 4,
+            replay: false,
+        },
+        Case {
+            id: "python-fallback",
+            source: LIB,
+            before: "diagnose_docker::Outcome::Refused => detail(\n                    StatusCode::SERVICE_UNAVAILABLE,\n                    \"Native backend diagnosis is unavailable\",\n                ),",
+            after: "diagnose_docker::Outcome::Refused => dispatch(state, req).await,",
+            test_path: "bins/noevia-model-manager/tests/diagnose_route.rs",
+            target: "diagnose_route",
+            test: "native_failure_never_uses_python_fallback",
+            assertion: "assert_eq!(\n        (\n            status.as_u16(),",
+            filtered: 4,
+            replay: false,
+        },
+        Case {
+            id: "child-confirmation",
+            source: MAIN,
+            before: "\"NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED\",\n            if diagnose_mode == \"rust\" { \"1\" } else { \"0\" },",
+            after: "\"NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED\",\n            \"0\",",
+            test_path: MAIN,
+            target: "noevia-model-manager",
+            test: "diagnosis_command_tests::native_child_confirmation_semantics",
+            assertion: "assert_eq!(marker, if selected { \"1\" } else { \"0\" });",
+            filtered: 2,
+            replay: false,
+        },
     ]
 }
 fn read(path: &Path, cap: u64) -> Result<Vec<u8>, String> {
@@ -124,8 +179,19 @@ fn semantic(
     }
     let t = regex::escape(case.test);
     let p = regex::escape(case.test_path);
-    let stdout=format!("\\A\\nrunning 1 test\\ntest {t} \\.\\.\\. FAILED\\n\\nfailures:\\n\\n---- {t} stdout ----\\n\\nthread '{t}' \\([0-9]{{1,20}}\\) panicked at {p}:{line}:{column}:\\nassertion `left == right` failed\\n  left: [^\\r\\n]+\\n right: [^\\r\\n]+\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\\n\\nfailures:\\n    {t}\\n\\ntest result: FAILED\\. 0 passed; 1 failed; 0 ignored; 0 measured; {} filtered out; finished in [0-9]+\\.[0-9]+s\\n\\n\\z",case.filtered);
-    let (package, crate_path, running, footer, binary) = if case.replay {
+    let stdout = format!(
+        "\\A\\nrunning 1 test\\ntest {t} \\.\\.\\. FAILED\\n\\nfailures:\\n\\n---- {t} stdout ----\\n\\nthread '{t}' \\([0-9]{{1,20}}\\) panicked at {p}:{line}:{column}:\\nassertion `left == right` failed\\n  left: [^\\r\\n]+\\n right: [^\\r\\n]+\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\\n\\nfailures:\\n    {t}\\n\\ntest result: FAILED\\. 0 passed; 1 failed; 0 ignored; 0 measured; {} filtered out; finished in [0-9]+\\.[0-9]+s\\n\\n\\z",
+        case.filtered
+    );
+    let (package, crate_path, running, footer, binary) = if case.id == "child-confirmation" {
+        (
+            "noevia-model-manager",
+            "bins/noevia-model-manager",
+            "unittests src/main.rs".into(),
+            "--bin noevia-model-manager",
+            "noevia_model_manager",
+        )
+    } else if case.replay {
         (
             "replay",
             "tools/replay",
@@ -142,7 +208,7 @@ fn semantic(
             case.target,
         )
     };
-    let footer = if case.replay {
+    let footer = if case.replay || case.id == "child-confirmation" {
         format!("error: test failed, to rerun pass `-p {package} {footer}`")
     } else {
         format!(
@@ -150,7 +216,14 @@ fn semantic(
             case.target
         )
     };
-    let stderr=format!("\\A(?:   Compiling {package} v0\\.1\\.0 \\({}\\)\\n)?    Finished `test` profile \\[unoptimized \\+ debuginfo\\] target\\(s\\) in [0-9]+\\.[0-9]+s\\n     Running {} \\({}/debug/deps/{}-[0-9a-f]{{16}}\\)\\n{}\\n\\z",regex::escape(&root.join(crate_path).display().to_string()),regex::escape(&running),regex::escape(&target.display().to_string()),regex::escape(binary),regex::escape(&footer));
+    let stderr = format!(
+        "\\A(?:   Compiling {package} v0\\.1\\.0 \\({}\\)\\n)?    Finished `test` profile \\[unoptimized \\+ debuginfo\\] target\\(s\\) in [0-9]+\\.[0-9]+s\\n     Running {} \\({}/debug/deps/{}-[0-9a-f]{{16}}\\)\\n{}\\n\\z",
+        regex::escape(&root.join(crate_path).display().to_string()),
+        regex::escape(&running),
+        regex::escape(&target.display().to_string()),
+        regex::escape(binary),
+        regex::escape(&footer)
+    );
     regex::Regex::new(&stdout).is_ok_and(|r| r.is_match(out))
         && regex::Regex::new(&stderr).is_ok_and(|r| r.is_match(err))
 }
@@ -185,6 +258,16 @@ fn cargo(case: &Case, build: bool) -> Command {
             "native-diagnose",
             "--bin",
             "noevia-model-manager",
+        ]);
+    } else if case.id == "child-confirmation" {
+        command.args([
+            "--features",
+            "native-diagnose",
+            "--bin",
+            case.target,
+            case.test,
+            "--",
+            "--exact",
         ]);
     } else if case.replay {
         command.args(["--bin", case.target, case.test, "--", "--exact"]);
@@ -316,7 +399,10 @@ fn execute() -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
         if !killed {
-            return Err(format!("unqualified mutation outcome: {} (never count setup/compiler/cap/deadline failures)",case.id));
+            return Err(format!(
+                "unqualified mutation outcome: {} (never count setup/compiler/cap/deadline failures)",
+                case.id
+            ));
         }
     }
     if !git(&["status", "--porcelain", "--untracked-files=no"])?.is_empty() {
@@ -345,7 +431,11 @@ mod tests {
             .into_iter()
             .last()
             .ok_or("fixed final case absent")?;
-        let out = format!("\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:100:9:\nassertion `left == right` failed\n  left: String(\"0\")\n right: String(\"1\")\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.01s\n\n", t=case.test,p=case.test_path);
+        let out = format!(
+            "\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:100:9:\nassertion `left == right` failed\n  left: String(\"0\")\n right: String(\"1\")\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.01s\n\n",
+            t = case.test,
+            p = case.test_path
+        );
         let err = "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running unittests src/bin/diagnose-contracts.rs (/target/debug/deps/diagnose_contracts-0123456789abcdef)\nerror: test failed, to rerun pass `-p replay --bin diagnose-contracts`\n";
         let check = |out: &str| {
             semantic(
@@ -394,8 +484,12 @@ mod tests {
             .into_iter()
             .next()
             .ok_or("fixed first case absent")?;
-        let out=format!("\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:104:5:\nassertion `left == right` failed\n  left: Some(\"wrong\")\n right: Some(\"expected\")\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.01s\n\n",t=case.test,p=case.test_path);
-        let err="   Compiling noevia-model-manager v0.1.0 (/owned/bins/noevia-model-manager)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running tests/diagnose_transport.rs (/target/debug/deps/diagnose_transport-0123456789abcdef)\nerror: test failed, to rerun pass `-p noevia-model-manager --test diagnose_transport`\n";
+        let out = format!(
+            "\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:104:5:\nassertion `left == right` failed\n  left: Some(\"wrong\")\n right: Some(\"expected\")\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.01s\n\n",
+            t = case.test,
+            p = case.test_path
+        );
+        let err = "   Compiling noevia-model-manager v0.1.0 (/owned/bins/noevia-model-manager)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s\n     Running tests/diagnose_transport.rs (/target/debug/deps/diagnose_transport-0123456789abcdef)\nerror: test failed, to rerun pass `-p noevia-model-manager --test diagnose_transport`\n";
         let check = |code, out: &str, err: &str| {
             semantic(
                 code,

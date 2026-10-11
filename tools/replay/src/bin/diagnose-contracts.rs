@@ -318,9 +318,12 @@ impl Owned {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut leader = Leader(command.spawn()?);
-        let stdout = leader.0.stdout.take().ok_or("child stdout absent")?;
-        let stderr = leader.0.stderr.take().ok_or("child stderr absent")?;
+        let mut leader = Leader {
+            child: command.spawn()?,
+            reaped: false,
+        };
+        let stdout = leader.child.stdout.take().ok_or("child stdout absent")?;
+        let stderr = leader.child.stderr.take().ok_or("child stderr absent")?;
         let owned = Self {
             leader,
             stdout,
@@ -333,8 +336,53 @@ impl Owned {
         nonblocking(&owned.stderr)?;
         Ok(owned)
     }
+    fn finish(&mut self) -> Result<()> {
+        rustix::process::kill_process(self.pid()?, rustix::process::Signal::TERM)?;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            use rustix::process::{waitid, WaitId, WaitIdOptions};
+            if let Some(status) = waitid(
+                WaitId::Pid(self.pid()?),
+                WaitIdOptions::EXITED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT,
+            )? {
+                // Failure retains numeric identity until fallback group signal precedes wait.
+                require(
+                    status.exit_status() == Some(0),
+                    "owned server graceful exit failed",
+                )?;
+                let status = self.leader.child.wait()?;
+                self.leader.reaped = true;
+                require(status.success(), "owned server wait status changed")?;
+                return Ok(());
+            }
+            require(
+                Instant::now() < deadline,
+                "owned server graceful reap deadline",
+            )?;
+            // Bounded drain prevents a full pipe from blocking foreground shutdown.
+            for pipe in [
+                &mut self.stdout as &mut dyn Read,
+                &mut self.stderr as &mut dyn Read,
+            ] {
+                let mut chunk = [0; 4096];
+                match pipe.read(&mut chunk) {
+                    Ok(n) => {
+                        self.out += n;
+                        require(self.out <= 131072, "shutdown output cap")?;
+                    }
+                    Err(e)
+                        if matches!(
+                            e.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                        ) => {}
+                    Err(e) => return Err(e.into()),
+                }
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
     fn pid(&self) -> Result<rustix::process::Pid> {
-        i32::try_from(self.leader.0.id())
+        i32::try_from(self.leader.child.id())
             .ok()
             .and_then(rustix::process::Pid::from_raw)
             .ok_or("child identity".into())
@@ -388,19 +436,33 @@ impl Owned {
         Ok(())
     }
 }
-struct Leader(Child);
-impl Drop for Leader {
-    fn drop(&mut self) {
-        if let Some(pid) = i32::try_from(self.0.id())
+struct Leader {
+    child: Child,
+    reaped: bool,
+}
+impl Leader {
+    fn stop(&mut self) -> std::io::Result<()> {
+        if self.reaped {
+            return Ok(());
+        }
+        if let Some(pid) = i32::try_from(self.child.id())
             .ok()
             .and_then(rustix::process::Pid::from_raw)
         {
             let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
         }
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+        let _ = self.child.kill();
+        self.child.wait()?;
+        self.reaped = true;
+        Ok(())
     }
 }
+impl Drop for Leader {
+    fn drop(&mut self) {
+        let _ = self.stop();
+    }
+}
+
 fn request(
     base: &Base,
     method: &str,
@@ -700,6 +762,17 @@ fn copy_dependencies() -> Result<()> {
     artifact(Path::new("/tmp/s1-diagnose-dependency-copy.json"), &proof)?;
     Ok(())
 }
+fn reusable_probe(port: u16) -> std::io::Result<TcpListener> {
+    use rustix::net::{ipproto, socket, AddressFamily, SocketType};
+    let fd = socket(AddressFamily::INET, SocketType::STREAM, Some(ipproto::TCP))?;
+    rustix::net::sockopt::set_socket_reuseaddr(&fd, true)?;
+    rustix::net::bind(
+        &fd,
+        &std::net::SocketAddrV4::new(std::net::Ipv4Addr::LOCALHOST, port),
+    )?;
+    rustix::net::listen(&fd, 1)?;
+    Ok(TcpListener::from(fd))
+}
 fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<Value>> {
     let owned = tempfile::Builder::new()
         .prefix("s1-diagnose-public-")
@@ -741,8 +814,8 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
         fixed.insert(name.clone(), text.as_bytes().to_vec());
     }
     let mut fake = FakeDocker::new(&root.join("docker.sock"), fixed)?;
-    let guard_a = TcpListener::bind("127.0.0.1:8090")?;
-    let guard_b = TcpListener::bind("127.0.0.1:8091")?;
+    let guard_a = reusable_probe(8090).map_err(|_| "fixed native port 8090 unavailable")?;
+    let guard_b = reusable_probe(8091).map_err(|_| "fixed legacy port 8091 unavailable")?;
     let mut manager = if mode.starts_with("rust") {
         Command::new(bins.join("noevia-model-manager"))
     } else {
@@ -805,7 +878,7 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
             == 401,
         "direct wrong-token readiness gate",
     )?;
-    if mode == "rust-startup" || mode == "rust-off" || mode == "rust-confirmation-check" {
+    if mode == "rust-startup" || mode == "rust-off" {
         let child = Base {
             host: "127.0.0.1".into(),
             port: 8091,
@@ -843,10 +916,7 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
             &Path::new("/tmp").join(format!("s1-diagnose-startup-{mode}.json")),
             &json!({"rows":rows,"test_only_guard":true}),
         )?;
-        if mode == "rust-confirmation-check" {
-            fake.finish()?;
-            return Ok(rows);
-        }
+
         require(
             marker == if selected { b"1" } else { b"0" },
             "explicit child diagnosis confirmation",
@@ -855,6 +925,7 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
             response.status == if selected { 503 } else { 200 },
             "owned child diagnosis selection/refusal",
         )?;
+        manager.finish()?;
         fake.finish()?;
         return Ok(rows);
     }
@@ -949,6 +1020,9 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
             response.status == expected,
             "new public negative control status",
         )?;
+        front.finish()?;
+        node.finish()?;
+        manager.finish()?;
         fake.finish()?;
         return Ok(rows);
     }
@@ -964,6 +1038,9 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
         path,
         &[],
     )?);
+    front.finish()?;
+    node.finish()?;
+    manager.finish()?;
     fake.finish()?;
     Ok(rows)
 }
@@ -1071,13 +1148,13 @@ fn main() -> Result<()> {
             },
         "unexpected qualification arguments",
     )?;
-    let core = qualification_path(
-        "NOEVIA_DIAGNOSE_CORE_SOURCE",
-        "/private/tmp/sol-routing-core010735-oracle",
+    let core = PathBuf::from(
+        std::env::var_os("NOEVIA_DIAGNOSE_CORE_SOURCE")
+            .ok_or("explicit immutable core source required")?,
     );
-    let runtime = qualification_path(
-        "NOEVIA_DIAGNOSE_SERVICES_SOURCE",
-        "/Users/sebastiandalton/noevia-work/s1-prompts-services",
+    let runtime = PathBuf::from(
+        std::env::var_os("NOEVIA_DIAGNOSE_SERVICES_SOURCE")
+            .ok_or("explicit immutable services source required")?,
     );
     let core = core.as_path();
     let runtime = runtime.as_path();
@@ -1254,43 +1331,38 @@ mod tests {
         }
     }
     #[test]
-    fn native_child_confirmation_semantics() -> Result<()> {
-        let runtime = qualification_path(
-            "NOEVIA_DIAGNOSE_SERVICES_SOURCE",
-            "/Users/sebastiandalton/noevia-work/s1-prompts-services",
-        );
-        let mut oracle = serde_json::Map::new();
-        for (key, path) in [
-            ("api", "model-manager/app/api.py"),
-            ("main", "model-manager/app/main.py"),
-            ("services", "model-manager/app/services.py"),
-            ("diagnose", "model-manager/app/diagnose.py"),
-        ] {
-            oracle.insert(
-                key.into(),
-                Value::String(String::from_utf8(git(
-                    &runtime,
-                    &["show", &format!("{RUNTIME}:{path}")],
-                )?)?),
-            );
-        }
-        oracle.insert("logs".into(), json!({"synthetic-only":""}));
-        let exe = std::env::current_exe()?;
-        let bins = exe
-            .parent()
-            .and_then(Path::parent)
-            .ok_or("owned test binary parent")?;
-        let rows = run_mode(
-            Path::new("/private/tmp/sol-routing-core010735-oracle"),
-            bins,
-            "rust-confirmation-check",
-            &Value::Object(oracle),
-        )?;
-        let marker = rows
-            .first()
-            .and_then(|row| row.get("child_confirmation"))
-            .ok_or("observed child confirmation")?;
-        assert_eq!(marker, &json!("1"));
+    fn reusable_listener_retains_live_conflict_and_accepts_closed_connection() -> Result<()> {
+        let listener = reusable_probe(0)?;
+        let port = listener.local_addr()?.port();
+        assert!(reusable_probe(port).is_err());
+        let mut client = TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port))?;
+        client.set_read_timeout(Some(Duration::from_secs(1)))?;
+        let (server, _) = listener.accept()?;
+        server.shutdown(std::net::Shutdown::Write)?;
+        let mut byte = [0];
+        assert_eq!(client.read(&mut byte)?, 0);
+        drop(client);
+        drop(server);
+        drop(listener);
+        let replacement = reusable_probe(port)?;
+        assert!(reusable_probe(port).is_err());
+        drop(replacement);
+        Ok(())
+    }
+    #[test]
+    fn owned_foreground_cleanup_observes_child_wait() -> Result<()> {
+        let mut command = Command::new("/bin/sleep");
+        command.arg("60").env_clear();
+        let mut owned = Owned::spawn(command)?;
+        let pid = owned.leader.child.id();
+        // This closed fixture is the directly owned child; its retained handle binds PID.
+        let result = owned.finish();
+        assert!(result.is_err()); // sleep is terminated by TERM, not successful graceful exit.
+        assert!(!owned.leader.reaped);
+        owned.leader.stop()?;
+        assert!(owned.leader.reaped);
+        assert_eq!(owned.leader.child.id(), pid);
+        assert!(owned.leader.child.try_wait()?.is_some());
         Ok(())
     }
 }

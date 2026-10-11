@@ -869,7 +869,7 @@ jobs:
           cargo build --locked -p noevia-model-manager --bin noevia-model-manager --features native-diagnose
           cargo build --locked -p noevia-server --bin noevia-server
           cargo clippy --locked -p replay --bin diagnose-contracts -- -D warnings
-          cargo test --locked -p replay --bin diagnose-contracts tests::native_child_confirmation_semantics -- --exact
+          cargo test --locked -p noevia-model-manager --features native-diagnose --bin noevia-model-manager diagnosis_command_tests::native_child_confirmation_semantics -- --exact
           target/debug/corpus-launcher verify "$PWD/diagnose-core"
           target/debug/diagnose-contracts --startup
           target/debug/diagnose-contracts --controls
