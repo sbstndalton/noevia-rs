@@ -48,7 +48,8 @@ fn status_failure() -> Reply {
 fn refused(r: Refusal) -> Reply {
     match r{Refusal::Unauthorized=>Reply{status:401,body:"{\"error\":\"unauthorized\"}".into(),www_authenticate:true},Refusal::Csrf=>Reply{status:403,body:"{\"error\":\"invalid CSRF token\"}".into(),www_authenticate:false},Refusal::BrowserOnly=>Reply{status:403,body:"{\"error\":\"This needs a signed-in browser session.\",\"code\":\"browser_session_required\"}".into(),www_authenticate:false}}
 }
-/// Raw header validation happens before Latin1 conversion/join. No body is consumed.
+/// Raw and resulting credential byte caps are checked before Latin1 conversion/join.
+/// No body is consumed.
 pub struct JobInput {
     arrival: Instant,
     now_ms: i64,
@@ -78,6 +79,8 @@ impl JobInput {
         let mut relevant = Vec::new();
         let mut count = 0usize;
         let mut bytes = 0usize;
+        let mut projected = 0usize;
+        let (mut cookie, mut authorization, mut origin, mut csrf) = (false, false, false, false);
         for (name, value) in headers {
             count += 1;
             if count > 64 || name.len() > 128 {
@@ -91,6 +94,27 @@ impl JobInput {
                     .checked_add(value.len())
                     .filter(|n| *n <= 8192)
                     .ok_or_else(bad_input)?;
+                let (seen, joins) = if name.eq_ignore_ascii_case("cookie") {
+                    (&mut cookie, true)
+                } else if name.eq_ignore_ascii_case("authorization") {
+                    (&mut authorization, false)
+                } else if name.eq_ignore_ascii_case("origin") {
+                    (&mut origin, true)
+                } else {
+                    (&mut csrf, true)
+                };
+                // Node retains only the first Authorization, including an empty value.
+                // Count all raw values above, but do not convert ignored duplicates.
+                if *seen && !joins {
+                    continue;
+                }
+                projected = projected
+                    .checked_add(value.len())
+                    .and_then(|n| n.checked_add(value.iter().filter(|b| **b >= 128).count()))
+                    .and_then(|n| n.checked_add(if *seen { 2 } else { 0 }))
+                    .filter(|n| *n <= 16384)
+                    .ok_or_else(bad_input)?;
+                *seen = true;
                 relevant.push((name, value));
             }
         }
@@ -580,6 +604,159 @@ fn pipeline(inner: &Inner, entry: &Entry, input: JobInput) -> (Reply, Done) {
         cleanup.push(Cleanup::Test(done.clone()));
     }
     (result.unwrap_or_else(|e| e), Done { cleanup })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod ingress_tests {
+    use super::*;
+
+    fn request<'a>(
+        headers: impl IntoIterator<Item = (&'a str, &'a [u8])>,
+    ) -> Result<JobInput, Reply> {
+        JobInput::from_headers(
+            Instant::now(),
+            1_800_000_000_000,
+            "GET",
+            "/api/providers/chatgpt",
+            None,
+            headers,
+        )
+        .map(|input| input.unwrap())
+    }
+
+    fn cookies(ascii: usize) -> Vec<Vec<u8>> {
+        let mut values = vec![vec![0xff; 128]; 64];
+        for byte in values.iter_mut().flatten().take(ascii) {
+            *byte = b'a';
+        }
+        values
+    }
+
+    #[test]
+    fn credential_projection_exact_16384_is_accepted() {
+        // 8192 raw bytes expand to 16384; 63 separators add 126; ASCII removes 126.
+        let values = cookies(126);
+        let input = request(values.iter().map(|value| ("Cookie", value.as_slice()))).unwrap();
+        assert_eq!(input.creds.cookie.as_ref().unwrap().len(), 16384);
+        assert_eq!(
+            input.creds.cookie.as_ref().unwrap().matches("; ").count(),
+            63
+        );
+    }
+
+    #[test]
+    fn credential_projection_16385_is_refused() {
+        let values = cookies(125);
+        assert_eq!(
+            request(values.iter().map(|value| ("cookie", value.as_slice())))
+                .err()
+                .unwrap()
+                .status,
+            400
+        );
+    }
+
+    #[test]
+    fn credential_projection_64_cookie_counterexample_is_refused() {
+        // The review counterexample projects to 16510 bytes with the same 8192 raw bytes.
+        let values = cookies(0);
+        assert_eq!(
+            request(values.iter().map(|value| ("cOoKiE", value.as_slice())))
+                .err()
+                .unwrap()
+                .status,
+            400
+        );
+    }
+
+    #[test]
+    fn credential_projection_first_authorization_origin_and_csrf() {
+        let headers: [(&str, &[u8]); 8] = [
+            ("Authorization", b"Bearer first"),
+            ("authorization", &[0xff; 16]),
+            ("Cookie", b"a=b"),
+            ("cookie", b"c=d"),
+            ("Origin", b"https://first"),
+            ("origin", &[0xff]),
+            ("X-CSRF-Token", b"first"),
+            ("x-csrf-token", &[0x80]),
+        ];
+        let input = request(headers).unwrap();
+        assert_eq!(input.creds, Creds::from_headers("GET", headers));
+        assert_eq!(input.creds.authorization.as_deref(), Some("Bearer first"));
+        assert_eq!(input.creds.cookie.as_deref(), Some("a=b; c=d"));
+        assert_eq!(input.creds.origin.as_deref(), Some("https://first, ÿ"));
+        assert_eq!(input.creds.csrf.as_deref(), Some("first, \u{80}"));
+        let first_only = request(
+            headers
+                .into_iter()
+                .filter(|(name, _)| *name != "authorization"),
+        )
+        .unwrap();
+        assert_eq!(input.digest, first_only.digest);
+
+        // Empty first values remain present; an ignored duplicate consumes the raw cap only.
+        let ignored = vec![0xff; 8192];
+        let empty_first = request([
+            ("Authorization", b"".as_slice()),
+            ("authorization", ignored.as_slice()),
+        ])
+        .unwrap();
+        assert_eq!(empty_first.creds.authorization.as_deref(), Some(""));
+        let too_large = vec![0xff; 8193];
+        assert_eq!(
+            request([
+                ("Authorization", b"".as_slice()),
+                ("authorization", too_large.as_slice()),
+            ])
+            .err()
+            .unwrap()
+            .status,
+            400
+        );
+
+        // Both comma-joined fields count their separators even after an empty first value.
+        for name in ["Origin", "x-csrf-token"] {
+            for (ascii, accepted) in [(2, true), (1, false)] {
+                let mut value = vec![0xff; 8192];
+                for byte in value.iter_mut().take(ascii) {
+                    *byte = b'a';
+                }
+                let result = request([(name, b"".as_slice()), (name, value.as_slice())]);
+                if accepted {
+                    let creds = result.unwrap().creds;
+                    let joined = if name == "Origin" {
+                        creds.origin
+                    } else {
+                        creds.csrf
+                    };
+                    assert_eq!(joined.unwrap().len(), 16384);
+                } else {
+                    assert_eq!(result.err().unwrap().status, 400);
+                }
+            }
+        }
+
+        // The bound is aggregate across fields, not an independent bound per field.
+        let expanded = vec![0xff; 4096];
+        assert!(request([
+            ("Origin", expanded.as_slice()),
+            ("x-csrf-token", expanded.as_slice()),
+        ])
+        .is_ok());
+        assert_eq!(
+            request([
+                ("Origin", expanded.as_slice()),
+                ("Origin", b"".as_slice()),
+                ("x-csrf-token", expanded.as_slice()),
+            ])
+            .err()
+            .unwrap()
+            .status,
+            400
+        );
+    }
 }
 
 #[cfg(test)]
