@@ -1378,6 +1378,3198 @@
       }
     },
     {
+      "adversarial": true,
+      "raw": "n_stats.password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats..password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats..token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats..api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats..secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats..cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats..session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats..credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats..credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats--password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats--token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats--api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats--secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats--cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats--session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats--credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats--credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.-password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.-token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.-api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.-secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.-cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.-session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats.-credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats.-credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-.password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-.token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-.api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-.secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-.cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-.session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats-.credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats-.credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats·password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats·token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats·api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats·secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats·cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats·session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats·credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats·credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats/password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats/token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats/api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats/secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats/cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats/session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats/credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats/credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats@password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats@token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats@api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats@secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats@cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats@session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats@credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats@credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats:password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats:token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats:api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats:secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats:cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats:session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats:credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats:credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats password=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats password=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats password=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats password=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats token=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats token=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats token=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats token=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats api_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats api_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats api_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats api_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats secret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats secret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats secret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats secret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats cookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats cookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats cookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats cookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats session=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats session=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats session=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats session=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats credential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats credential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats credential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats credential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tpassword=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats\tpassword=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tpassword=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tpassword=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\ttoken=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats\ttoken=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\ttoken=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\ttoken=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tapi_key=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats\tapi_key=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tapi_key=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tapi_key=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tsecret=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats\tsecret=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tsecret=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tsecret=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tcookie=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats\tcookie=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tcookie=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tcookie=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tsession=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats\tsession=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tsession=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tsession=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tcredential=syntheticSECRET",
+      "q": "",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": [
+          "n_stats\tcredential=[redacted]"
+        ]
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tcredential=syntheticSECRET",
+      "q": "syntheticSECRET",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
+      "adversarial": true,
+      "raw": "n_stats\tcredential=syntheticSECRET",
+      "q": "AKIA1234567890123456",
+      "level": "",
+      "tail": 400,
+      "clamped": 400,
+      "answer": {
+        "ok": true,
+        "lines": []
+      }
+    },
+    {
       "raw": "plain engine log",
       "q": "",
       "level": "",

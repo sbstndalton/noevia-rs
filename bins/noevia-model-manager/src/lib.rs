@@ -159,7 +159,8 @@ impl Redactor {
                         let value = caps.get(3).map(|m| m.as_str()).unwrap_or_default();
                         // Broader redaction is intentional: numeric-looking credentials and token
                         // suffixes are also scrubbed. Preserve established numeric counter fields.
-                        let counter = (key.starts_with("n_") && key.is_ascii())
+                        let counter = (key.starts_with("n_")
+                            && key.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_'))
                             || key == "tokens"
                             || key == "token_count"
                             || (key == "session"

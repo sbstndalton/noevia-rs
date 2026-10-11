@@ -25,6 +25,9 @@ for c in ['\x1c','\x1d','\x1e','\x1f','\u0085','\u00a0','\u2028']:
     adversarial += ['password'+c+'=syntheticSECRET','Authorization'+c+':syntheticSECRET','bearer'+c+'syntheticSECRET']
 for c in ['\u0301','\u203f','\u200c','\u200d','\u2054','\u20dd']:
     adversarial += ['n_'+c+'password=syntheticSECRET','n_'+c+'token=syntheticSECRET']
+for c in ['.','-','..','--','.-','-.','\u00b7','/','@',':',' ','\t']:
+    for key in ['password','token','api_key','secret','cookie','session','credential']:
+        adversarial += ['n_stats'+c+key+'=syntheticSECRET']
 for raw in adversarial:
     for q in ['', 'syntheticSECRET', 'AKIA1234567890123456']:
         space['services']=types.SimpleNamespace(_effective_container_names=lambda:['synthetic-engine'],container_logs=lambda name,tail:(True,raw))

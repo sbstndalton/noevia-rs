@@ -365,3 +365,37 @@ fn unicode_credentials_never_survive_output_or_secret_queries() {
             .is_empty());
     }
 }
+
+#[test]
+fn counter_exemptions_require_a_single_ascii_word() {
+    let redactor = Redactor::new().unwrap();
+    for separator in [
+        ".", "-", "..", "--", ".-", "-.", "·", "/", "@", ":", " ", "\t",
+    ] {
+        for key in [
+            "password",
+            "token",
+            "api_key",
+            "secret",
+            "cookie",
+            "session",
+            "credential",
+        ] {
+            let raw = format!("n_stats{separator}{key}=syntheticSECRET");
+            assert!(
+                !redactor.redact(&raw).unwrap().contains("syntheticSECRET"),
+                "{raw}"
+            );
+            assert!(
+                redactor
+                    .filter(raw.as_bytes(), "syntheticSECRET", "")
+                    .unwrap()
+                    .is_empty(),
+                "{raw}"
+            );
+        }
+    }
+    for raw in ["n_tokens=512", "n_prompt_tokens=40", "n_ctx_slot=8192"] {
+        assert_eq!(redactor.redact(raw).unwrap(), raw);
+    }
+}
