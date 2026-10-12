@@ -386,6 +386,10 @@ path = "/api/integrations/storage/folder"
 owner = "node"
 
 [[route]]
+path = "/api/integrations/storage/nextcloud/cancel"
+owner = "node"
+
+[[route]]
 path = "/api/integrations/storage/nextcloud/poll"
 owner = "node"
 
