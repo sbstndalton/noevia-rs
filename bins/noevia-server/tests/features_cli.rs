@@ -18,6 +18,10 @@ fn features_cli_outputs_only_the_compiled_capabilities() {
     assert_eq!(output.stdout, expected.as_bytes());
     assert!(output.stderr.is_empty());
     assert_eq!(
+        expected.lines().any(|line| line == "rust-storage-reads"),
+        cfg!(feature = "rust-storage-reads")
+    );
+    assert_eq!(
         expected
             .lines()
             .any(|line| line == "rust-reasoning-settings"),
