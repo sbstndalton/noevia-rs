@@ -66,7 +66,8 @@ pub fn read(dir: &Path) -> Result<Vec<JValue>, StoreError> {
         Err(e) => return Err(StoreError::Io(e)),
     };
     let text = String::from_utf8_lossy(&text);
-    let parsed = js_json::parse(&text).map_err(|_| StoreError::Corrupt)?;
+    // Lossless: Node keeps lone surrogates (a chat preview cut mid-emoji) and writes them back.
+    let parsed = js_json::wtf16::parse(&text).map_err(|_| StoreError::Corrupt)?;
     match parsed.get("projects") {
         JValue::Undefined | JValue::Null => Ok(Vec::new()),
         JValue::Arr(items) => Ok(items.clone()),
@@ -98,8 +99,23 @@ pub fn set(project: &mut JValue, key: &str, value: JValue) {
 
 /// The bytes `atomicJson(file, { projects })` writes.
 pub fn serialise(projects: Vec<JValue>) -> String {
-    js_json::stringify_pretty(&JValue::obj([("projects", JValue::Arr(projects))]))
+    js_json::wtf16::stringify_pretty(&JValue::obj([("projects", JValue::Arr(projects))]))
         .unwrap_or_default()
+}
+
+/// workspace.cjs `readJson(file, fallback)` for a file Node keeps beside projects.json (the free
+/// chats, the chat tombstones): `None` where Node takes the fallback (missing, unreadable, not
+/// JSON); [`StoreError::Corrupt`] where Node would read a value this port cannot hold, so a caller
+/// never acts on less than Node would have seen.
+pub fn read_json(file: &Path) -> Result<Option<JValue>, StoreError> {
+    let Ok(bytes) = std::fs::read(file) else {
+        return Ok(None);
+    };
+    match js_json::wtf16::parse(&String::from_utf8_lossy(&bytes)) {
+        Ok(v) => Ok(Some(v)),
+        Err(js_json::wtf16::Refusal::Invalid) => Ok(None),
+        Err(js_json::wtf16::Refusal::Unsupported) => Err(StoreError::Corrupt),
+    }
 }
 
 /// One read-modify-write of `dir/projects.json` under the shared lock: `change` gets the projects as

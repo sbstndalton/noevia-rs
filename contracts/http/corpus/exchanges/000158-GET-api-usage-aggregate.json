@@ -31,12 +31,6 @@
       "json": {
         "days": [
           {
-            "day": "2025-10-12",
-            "input": 0,
-            "output": 0,
-            "replies": 0
-          },
-          {
             "day": "2025-10-13",
             "input": 0,
             "output": 0,
@@ -2216,6 +2210,12 @@
           },
           {
             "day": "2026-10-11",
+            "input": 0,
+            "output": 0,
+            "replies": 0
+          },
+          {
+            "day": "2026-10-12",
             "input": 0,
             "output": 0,
             "replies": 0

@@ -29,13 +29,18 @@ use std::sync::Arc;
 /// `rust-auth`: this build answers sign-in and the account under NOEVIA_RUST_AUTH (M3); the web
 /// supervisor should let Node refuse the account tables only when the front reports it.
 /// `rust-projects`: this build answers a project's image routes under NOEVIA_RUST_PROJECTS (M4)
-/// and writes projects.json under the lock Node shares; the supervisor confirms it to Node the
-/// same way.
+/// and writes projects.json under the lock Node shares; the supervisor confirms it to Node the same
+/// way. `rust-project-chats` (cargo feature of that name): it answers a project's chat list under
+/// the same switch too; the supervisor confirms that slice to Node separately
+/// (NOEVIA_RUST_PROJECT_CHATS_CONFIRMED), so Node refuses the chat-list save only behind a front
+/// that answers it (sbstndalton/noevia#1409).
 pub const FEATURES: &[&str] = &[
     "code-net-guard",
     "header-read-timeout",
     "rust-auth",
     "rust-projects",
+    #[cfg(feature = "rust-project-chats")]
+    "rust-project-chats",
     "rust-usage",
     "rust-sampling-settings",
     #[cfg(feature = "rust-reasoning-settings")]
@@ -130,7 +135,7 @@ async fn handle(
                 on_whatwg,
                 Some(
                     routes::Native::Account
-                        | routes::Native::ProjectAssets
+                        | routes::Native::Projects
                         | routes::Native::Usage
                         | routes::Native::SamplingSettings
                         | routes::Native::ReasoningSettings
@@ -146,7 +151,7 @@ async fn handle(
         Some(routes::Native::Static) => static_files::canonical(&path),
         Some(
             routes::Native::Account
-            | routes::Native::ProjectAssets
+            | routes::Native::Projects
             | routes::Native::Usage
             | routes::Native::SamplingSettings
             | routes::Native::ReasoningSettings
@@ -200,7 +205,7 @@ async fn handle(
             };
             usage_routes::serve(&app, conn, req, p).await
         }
-        Some(routes::Native::ProjectAssets) => {
+        Some(routes::Native::Projects) => {
             let Some(p) = whatwg else {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };

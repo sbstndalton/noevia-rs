@@ -22,7 +22,7 @@ pub const MAX_PROJECT_IMAGES: usize = 12;
 /// `Math.ceil(IMAGE_UPLOAD_CAP / 3) * 4 + 512 * 1024`: the body limit of the upload.
 pub const BODY_LIMIT: usize = IMAGE_UPLOAD_CAP.div_ceil(3) * 4 + 512 * 1024;
 
-fn store_failure(e: &StoreError) -> Reply {
+pub(crate) fn store_failure(e: &StoreError) -> Reply {
     match e {
         StoreError::Busy => Reply::error(503, "The project store is busy. Try again shortly."),
         _ => Reply::internal(),

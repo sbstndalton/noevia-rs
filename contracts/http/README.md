@@ -69,21 +69,36 @@ is proven live.
 `NOEVIA_RUST_PROJECTS=1`, and the front refuses to start with it unless `NOEVIA_RUST_AUTH=1` too
 (the front gates the routes it owns itself, and writes the session upkeep Node's gate wrote). The
 first slice is a project's images: `POST /api/projects/{id}/assets`, `GET` and `DELETE
-/api/projects/{id}/assets/{assetId}` (crates/server-projects `assets`).
+/api/projects/{id}/assets/{assetId}` (crates/server-projects `assets`). The second is a project's
+chat list: `GET` and `POST /api/projects/{id}/chats` (crates/server-projects `chats`: core's
+getProject heal and instruction-skill reconcile, chat-lists.cjs mergeChats with tombstones and the
+other lists' ids, chat-framing.cjs normalizeFrame, the reconcile every save runs). JavaScript
+strings keep their lone surrogates (js-json `wtf16`), as Node stores them.
 
-`projects.json` cannot have one writer yet (Node's chat routes keep chat metas in it), so while
-the switch is on both processes write it only under one lock (flock(2) LOCK_EX on a long-lived
+`projects.json` cannot have one writer yet (Node's other project routes, the chat turn and a chat's
+move or delete still change it), so while the switch is on both processes write it only under one lock (flock(2) LOCK_EX on a long-lived
 `projects.json.lock`, crates/server-projects `lock` = core `server/rust-projects.cjs`): Rust re-reads it for every change
 and writes Node's exact `atomicJson` bytes; Node re-reads it when it changed and saves by a
-per-project, per-field three-way merge, so neither drops the other's change. With
-`NOEVIA_FRONT=rust`, `NOEVIA_RUST_AUTH_CONFIRMED=1` and `NOEVIA_RUST_PROJECTS_CONFIRMED=1` (the
-supervisor sets the last once `--features` lists `rust-projects`), Node's copies of the image
-writes answer 503 `RUST_PROJECTS_OWNED`.
+per-project, per-field three-way merge (`assets`, `retiredAssets` and `chats` per item), so neither
+drops the other's change. With `NOEVIA_FRONT=rust`, `NOEVIA_RUST_AUTH_CONFIRMED=1` and
+`NOEVIA_RUST_PROJECTS_CONFIRMED=1` (the supervisor sets the last once `--features` lists
+`rust-projects`), Node's copies of the image writes answer 503 `RUST_PROJECTS_OWNED`; its
+chat-list save does so only with `NOEVIA_RUST_PROJECT_CHATS_CONFIRMED=1` as well, which the
+supervisor sets only once `--features` lists `rust-project-chats`. The front answers the chat list
+only when built with the cargo feature of that name; without it, the route stays Node's under the
+switch, and Node, unconfirmed, answers it (sbstndalton/noevia#1409). A request start that takes in
+the front's change nudges Node's chat vault mirror, as Node's own project writes did. A front with
+the chat slice needs a core that merges `chats` per item (core#75 or later): noevia's
+`deploy/tools/assemble-release.sh` refuses a release whose front owns a project route its core's
+`OWNED_ROUTES` does not list.
 
-CI job `corpus-replay-front-rust-projects` replays the corpus through the front with both switches
-(zero differences, Node-only data dir), runs the Node-vs-Rust lock race (`server-projects --test
-node_lock`, with a blind-save control that must lose data), and a negative control where Node is
-told the front owns the image routes but the front does not: the uploads must be refused with 503.
+CI job `corpus-replay-front-rust-projects` regenerates the chat-list fixture at core.ref and
+compares the bytes, replays the corpus through the front with both switches, with and without the
+chat slice (zero differences, Node-only data dir), runs the Node-vs-Rust lock races (`server-projects --test
+node_lock`: images and chat lists, each with a blind-save control that must lose data) and the
+generated chat-list saves against core's own route (`--test chats_property`), and a negative
+control where Node is told the front owns the project routes but the front does not: the uploads
+and chat-list saves must be refused with 503.
 
 `core.sha256` records the twice-fetched, byte-identical codeload archive SHA-256 for
 `core.ref` (metadata; existing replay CI consumes the single SHA in `core.ref`).
@@ -131,4 +146,4 @@ The mandatory reasoning job verifies the actual spawn and factory seam, rejects
 a removed preload, and runs `host-control` with a 12 GiB input. That full replay
 must reject exactly the strict `budgetGib`, `hostRamGib` and `maxGib` fields;
 all other fields and statuses remain checked. The regular 8 GiB Node baseline
-and native front must match all 193 exchanges and final state.
+and native front must match all 207 exchanges and final state.

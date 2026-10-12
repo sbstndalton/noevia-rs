@@ -53,7 +53,7 @@ fn run() -> Result<(), String> {
         serde_json::from_slice(&std::fs::read(report).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
     let rows = rows.as_array().ok_or("report must be an array")?;
-    if rows.len() != 193 {
+    if rows.len() != 207 {
         return Err("wrong-host replay lost exchanges".into());
     }
     let mut fields = BTreeSet::new();
@@ -92,7 +92,7 @@ fn run() -> Result<(), String> {
             "wrong host must change all strict budget fields: {fields:?}"
         ));
     }
-    println!("193 actual exchanges: wrong host rejected at budgetGib, hostRamGib, maxGib; all other fields/statuses preserved");
+    println!("207 actual exchanges: wrong host rejected at budgetGib, hostRamGib, maxGib; all other fields/statuses preserved");
     Ok(())
 }
 fn main() -> ExitCode {

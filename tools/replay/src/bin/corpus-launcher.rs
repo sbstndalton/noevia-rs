@@ -16,9 +16,9 @@ fn bounded(command: Command) -> Result<process::Output, String> {
 }
 fn capture_domain() -> (&'static str, u64) {
     if std::env::var("NOEVIA_ROUTING_CORPUS").as_deref() == Ok("1") {
-        ("routing-mode", 220)
+        ("routing-mode", 234)
     } else {
-        ("baseline", 193)
+        ("baseline", 207)
     }
 }
 fn validate_capture(
@@ -443,20 +443,20 @@ mod capture_tests {
     }
     #[test]
     fn exact_domains_counts_and_zero_drops() {
-        let baseline = serde_json::json!({"exchanges":193,"dropped":0,"captureDomain":"baseline"});
+        let baseline = serde_json::json!({"exchanges":207,"dropped":0,"captureDomain":"baseline"});
         let routing =
-            serde_json::json!({"exchanges":220,"dropped":0,"captureDomain":"routing-mode"});
-        assert!(validate_capture(&baseline, "baseline", 193, 193).is_ok());
-        assert!(validate_capture(&routing, "routing-mode", 220, 220).is_ok());
-        assert!(validate_capture(&baseline, "routing-mode", 220, 193).is_err());
-        assert!(validate_capture(&routing, "baseline", 193, 220).is_err());
-        assert!(validate_capture(&routing, "other", 220, 220).is_err());
-        assert!(validate_capture(&routing, "routing-mode", 220, 219).is_err());
+            serde_json::json!({"exchanges":234,"dropped":0,"captureDomain":"routing-mode"});
+        assert!(validate_capture(&baseline, "baseline", 207, 207).is_ok());
+        assert!(validate_capture(&routing, "routing-mode", 234, 234).is_ok());
+        assert!(validate_capture(&baseline, "routing-mode", 234, 207).is_err());
+        assert!(validate_capture(&routing, "baseline", 207, 234).is_err());
+        assert!(validate_capture(&routing, "other", 234, 234).is_err());
+        assert!(validate_capture(&routing, "routing-mode", 234, 233).is_err());
         assert!(validate_capture(
-            &serde_json::json!({"exchanges":220,"dropped":1}),
+            &serde_json::json!({"exchanges":234,"dropped":1}),
             "routing-mode",
-            220,
-            220
+            234,
+            234
         )
         .is_err());
     }

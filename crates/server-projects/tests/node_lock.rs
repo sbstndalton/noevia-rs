@@ -327,3 +327,218 @@ fn a_killed_node_holder_releases_the_lock() {
     drop(lock::acquire(&file).unwrap());
     assert!(t0.elapsed() < std::time::Duration::from_secs(1));
 }
+
+/// The chat-list slice: Rust saves chat metas through the route (chats::post) while Node, through
+/// its merge, adds metas and removes some of its own (a delete or a move here). `blind`: Node saves
+/// its cached view whole, the control. Returns p1's chat ids afterwards.
+fn chat_race(core: &str, blind: bool) -> Vec<String> {
+    const USER: &str = "11111111-2222-4333-8444-555555555555";
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("users").join(USER);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join(store::PROJECTS_FILE);
+    std::fs::write(
+        &file,
+        "{\n  \"projects\": [\n    {\n      \"id\": \"p1\",\n      \"name\": \"Synthetic\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {}\n    }\n  ]\n}",
+    )
+    .unwrap();
+    let script = r#"
+      const [core, file, rounds, mode] = process.argv.slice(1);
+      const fs = require('fs');
+      const { createProjectsFile } = require(core + '/server/rust-projects.cjs');
+      const { atomicJson } = require(core + '/server/workspace.cjs');
+      const pf = createProjectsFile(file, { atomicJson, warn: (m) => { throw new Error(m); } });
+      const projects = pf.load();
+      fs.writeFileSync(file + '.loaded', '');
+      // From Rust's first save on, this view is stale until refreshed.
+      const until = Date.now() + 20000;
+      while (!fs.readFileSync(file, 'utf8').includes('"rust-0"')) {
+        if (Date.now() > until) throw new Error('Rust never wrote');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
+      }
+      for (let i = 0; i < Number(rounds); i++) {
+        if (i % 2 && mode !== 'blind') pf.refresh(projects);
+        const p = projects.find((x) => x.id === 'p1');
+        // Every fifth round this request also removes its previous meta (a delete or move here).
+        const kept = (p.chats || []).filter((c) => !(i % 5 === 4 && c.id === 'node-' + (i - 1)));
+        p.chats = [...kept, { id: 'node-' + i, title: 'n', updatedAt: 100000 + i, preview: '', pinned: false, archived: false }];
+        if (mode === 'blind') atomicJson(file, { projects });
+        else pf.save(projects);
+      }
+    "#;
+    let rounds = 120usize;
+    let mut node = Command::new("node")
+        .args([
+            "-e",
+            script,
+            core,
+            file.to_str().unwrap(),
+            &rounds.to_string(),
+            if blind { "blind" } else { "merge" },
+        ])
+        .spawn()
+        .expect("node on PATH");
+    let loaded = dir.join("projects.json.loaded");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !loaded.exists() {
+        assert!(std::time::Instant::now() < until, "node never loaded");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    for i in 0..rounds {
+        let ctx = server_projects::Ctx {
+            data_dir: root.path(),
+            user_id: USER,
+            switch: RustProjects::from_env_value(Some("1")).unwrap(),
+            now_ms: 1,
+        };
+        let body =
+            format!("{{\"chats\":[{{\"id\":\"rust-{i}\",\"title\":\"r\",\"updatedAt\":{i}}}]}}");
+        let r = server_projects::chats::post(ctx, "p1", body.as_bytes(), false, true);
+        assert_eq!(r.status, 200, "{r:?}");
+    }
+    assert!(node.wait().unwrap().success(), "node side failed");
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    v["projects"][0]["chats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn node_and_rust_saving_chat_lists_at_once_lose_nothing() {
+    let Some(core) = core() else { return };
+    let ids: std::collections::HashSet<String> = chat_race(&core, false).into_iter().collect();
+    for i in 0..120 {
+        assert!(ids.contains(&format!("rust-{i}")), "Rust's rust-{i} lost");
+        let node_kept = !(i + 1 < 120 && (i + 1) % 5 == 4);
+        assert_eq!(ids.contains(&format!("node-{i}")), node_kept, "node-{i}");
+    }
+    assert_eq!(
+        ids.len(),
+        120 + 120 - (0..119).filter(|i| (i + 1) % 5 == 4).count()
+    );
+}
+
+/// The control: Node's pre-M4 whole-view save drops chat metas Rust saved meanwhile.
+#[test]
+fn without_the_merge_nodes_saves_drop_rusts_chat_metas() {
+    let Some(core) = core() else { return };
+    let ids = chat_race(&core, true);
+    // Its view never had rust-0, and it saved after rust-0 was written: rust-0 is gone for good.
+    assert!(!ids.contains(&"rust-0".to_string()), "{ids:?}");
+}
+
+/// sbstndalton/noevia#1410: Node moves chat `c1` out of project p1 into the free list (core
+/// projects.cjs moveChat: two files) and stops after its first write, while a stale client's
+/// chat-list save of p1, still listing c1, goes through Rust ([`server_projects::chats::post`]).
+/// `old_order`: the control, the pre-fix sequence done by hand (projects.json first). Returns
+/// whether c1 ends in p1 and whether it ends in the free list.
+fn move_out_race(core: &str, old_order: bool) -> (bool, bool) {
+    const USER: &str = "11111111-2222-4333-8444-555555555555";
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("users").join(USER);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(store::PROJECTS_FILE),
+        "{\n  \"projects\": [\n    {\n      \"id\": \"p1\",\n      \"name\": \"Synthetic\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [\n        {\n          \"id\": \"c1\",\n          \"title\": \"Moving\",\n          \"updatedAt\": 5\n        }\n      ],\n      \"instructionSkills\": {}\n    }\n  ]\n}",
+    )
+    .unwrap();
+    let script = r#"
+      const [core, root, user, mode] = process.argv.slice(1);
+      const fs = require('fs'), path = require('path');
+      const { createWorkspaceStore } = require(core + '/server/workspace.cjs');
+      const { createProjectStore } = require(core + '/server/projects.cjs');
+      const ws = createWorkspaceStore(root, { id: 'synthetic', label: 'Synthetic' }, null, { rustProjects: true }).get(user);
+      // Stop after the first file the move writes until Rust has saved (deterministic interleaving).
+      let first = true;
+      const pause = () => {
+        if (!first) return; first = false;
+        fs.writeFileSync(path.join(ws.dir, 'move.paused'), '');
+        const until = Date.now() + 20000;
+        while (!fs.existsSync(path.join(ws.dir, 'move.go'))) {
+          if (Date.now() > until) throw new Error('Rust never saved');
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
+        }
+      };
+      const saveProjects = ws.saveProjects, saveFreeChats = ws.saveFreeChats;
+      ws.saveProjects = function () { saveProjects.call(this); pause(); };
+      ws.saveFreeChats = function () { saveFreeChats.call(this); pause(); };
+      if (mode === 'old') {
+        // The pre-#1410 order: the project without c1 first, then the free list with it.
+        const p = ws.projects.find((x) => x.id === 'p1');
+        const meta = p.chats.find((c) => c.id === 'c1');
+        p.chats = p.chats.filter((c) => c.id !== 'c1');
+        ws.saveProjects();
+        ws.freeChats.push(meta);
+        ws.saveFreeChats();
+      } else {
+        const store = createProjectStore({ fs, path, currentWorkspace: () => ws, PROJECTS: ws.projects, FREE_CHATS: ws.freeChats });
+        const r = store.moveChat('c1', null);
+        if (r.status !== 200) throw new Error('move: ' + JSON.stringify(r));
+      }
+    "#;
+    let mut node = Command::new("node")
+        .args([
+            "-e",
+            script,
+            core,
+            root.path().to_str().unwrap(),
+            USER,
+            if old_order { "old" } else { "move" },
+        ])
+        .spawn()
+        .expect("node on PATH");
+    let paused = dir.join("move.paused");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !paused.exists() {
+        assert!(std::time::Instant::now() < until, "node never paused");
+        assert!(
+            node.try_wait().unwrap().is_none(),
+            "node exited before its first write"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let ctx = server_projects::Ctx {
+        data_dir: root.path(),
+        user_id: USER,
+        switch: RustProjects::from_env_value(Some("1")).unwrap(),
+        now_ms: 1,
+    };
+    // The stale client still lists c1 in p1 (with a newer title), next to a new chat.
+    let body = br#"{"chats":[{"id":"c1","title":"Stale","updatedAt":9},{"id":"c2","title":"New","updatedAt":8}]}"#;
+    let r = server_projects::chats::post(ctx, "p1", body, false, true);
+    assert_eq!(r.status, 200, "{r:?}");
+    std::fs::write(dir.join("move.go"), "").unwrap();
+    assert!(node.wait().unwrap().success(), "node side failed");
+    let projects: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join(store::PROJECTS_FILE)).unwrap())
+            .unwrap();
+    let free: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("free-chats.json")).unwrap())
+            .unwrap();
+    let has = |list: &serde_json::Value, id: &str| {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["id"].as_str() == Some(id))
+    };
+    let p1 = &projects["projects"][0]["chats"];
+    assert!(has(p1, "c2"), "Rust's new chat kept: {p1}");
+    (has(p1, "c1"), has(&free, "c1"))
+}
+
+#[test]
+fn a_chat_moved_out_of_a_project_during_a_rust_save_ends_in_one_list() {
+    let Some(core) = core() else { return };
+    assert_eq!(move_out_race(&core, false), (false, true));
+}
+
+/// The control: in the pre-#1410 order the same interleaving leaves c1 in both lists.
+#[test]
+fn moving_out_project_first_duplicates_the_chat() {
+    let Some(core) = core() else { return };
+    assert_eq!(move_out_race(&core, true), (true, true));
+}
