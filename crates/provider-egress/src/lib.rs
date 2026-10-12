@@ -558,6 +558,19 @@ fn path_key(k: &[u16]) -> bool {
         || k.len().checked_sub(2).is_some_and(|at| ci_at(k, at, "to"))
 }
 
+/// `ID_ARG`: `/id(s)?$|^(item|node|uid|ref)s?$/i` (#1213): a key that names a file, folder or
+/// comment by its id, which the path check cannot see.
+fn id_arg(k: &[u16]) -> bool {
+    let ends_with = |w: &str| k.len() >= w.len() && ci_at(k, k.len() - w.len(), w);
+    ends_with("id")
+        || ends_with("ids")
+        || [
+            "item", "items", "node", "nodes", "uid", "uids", "ref", "refs",
+        ]
+        .iter()
+        .any(|w| k.len() == w.len() && ci_at(k, 0, w))
+}
+
 /// `recursiveArgs(args)`.
 fn recursive(args: &Value) -> bool {
     let Value::Obj(m) = args else {
@@ -678,6 +691,27 @@ pub fn tool_refusal(
     };
     let mut paths = Vec::new();
     path_arguments(args, 0, &mut paths);
+    // #1213 (mirrors provider-egress.cjs toolRefusalJs): a call that addresses its file by id, or
+    // names no path (other than the bare root listing), cannot be checked against the Diary folder.
+    // Object.keys of a non-object is empty; an array's keys are its indices, which are never ids.
+    let object_keys: Vec<&[u16]> = match args {
+        Value::Obj(m) => m.iter().map(|(k, _)| k.as_slice()).collect(),
+        _ => Vec::new(),
+    };
+    let arg_count = match args {
+        Value::Obj(m) => m.len(),
+        Value::Arr(items) => items.len(),
+        _ => 0,
+    };
+    if object_keys.iter().any(|k| id_arg(k)) {
+        return msg(&[
+            &units("ERROR: "),
+            name,
+            &units(" was not run: it addresses a file by id, which cannot be checked against the Diary folder, and Diary content is never sent to "),
+            &label,
+            &units(". Use a path outside the Diary, or a local model."),
+        ]);
+    }
     let tree = is_tree_tool(name) || recursive(args);
     if tree && paths.is_empty() {
         return msg(&[
@@ -686,6 +720,15 @@ pub fn tool_refusal(
             &units(" needs a folder to search in when used with "),
             &label,
             &units(", so it was not run. Search a specific folder outside the Diary."),
+        ]);
+    }
+    if paths.is_empty() && !(eq_str(name, "nc_webdav_list_directory") && arg_count == 0) {
+        return msg(&[
+            &units("ERROR: "),
+            name,
+            &units(" was not run: it names no path, so the Diary folder cannot be ruled out, and Diary content is never sent to "),
+            &label,
+            &units(". Name a folder outside the Diary, or use a local model."),
         ]);
     }
     let inside = || {
@@ -966,6 +1009,36 @@ mod tests {
         assert_eq!(diary_folder(Some(&nc(""))), Folder::Unidentified);
         assert_eq!(diary_folder(None), Folder::Unidentified);
         assert_eq!(diary_folder(Some(&nc("Ημερολόγιο"))), Folder::Unknown);
+    }
+
+    // #1213: a call the path check cannot see (no path, or a file named by id) is refused for an
+    // external provider; the bare root listing and an ordinary path are not.
+    #[test]
+    fn id_and_pathless_storage_calls_are_refused() {
+        let st = nc("Diary");
+        // Attack inputs: {"fileId":5} names a Diary file by numeric id (not a string, so the path
+        // check never saw it); the bare favourites listing spans every folder.
+        for (tool, args) in [
+            ("nc_webdav_read_file", r#"{"fileId":5}"#),
+            ("nc_webdav_read_file", r#"{"path":"Work/a","item":5}"#),
+            ("nc_webdav_list_directory", r#"{"node":5}"#),
+            ("nc_webdav_list_comments", r#"{"fileId":12}"#),
+        ] {
+            assert!(
+                refusal(tool, args, &st)
+                    .unwrap()
+                    .contains("addresses a file by id"),
+                "{tool} {args}"
+            );
+        }
+        assert!(refusal("nc_webdav_list_favorites", "{}", &st)
+            .unwrap()
+            .contains("names no path"));
+        assert_eq!(refusal("nc_webdav_list_directory", "{}", &st), None);
+        assert_eq!(
+            refusal("nc_webdav_read_file", r#"{"path":"Work/a.md"}"#, &st),
+            None
+        );
     }
 
     #[test]
