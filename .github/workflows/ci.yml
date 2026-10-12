@@ -383,10 +383,11 @@ jobs:
 
   corpus-replay-front-rust-projects:
     # Full-Rust migration M4: the corpus through the front with NOEVIA_RUST_PROJECTS on top of M3.
-    # The front answers a project's image routes and its chat list itself (crates/server-projects)
-    # and writes projects.json under the lock Node shares (core server/rust-projects.cjs); Node
-    # keeps writing the same file for its own project routes, merged under that lock. Zero
-    # differences and the data dir a Node-only run leaves.
+    # The front answers a project's image routes and (built with the cargo feature
+    # rust-project-chats) its chat list itself (crates/server-projects) and writes projects.json
+    # under the lock Node shares (core server/rust-projects.cjs); Node keeps writing the same file
+    # for its own project routes, merged under that lock. Zero differences and the data dir a
+    # Node-only run leaves, with and without the chat-list slice (sbstndalton/noevia#1409).
     name: Contract corpus replays clean with Rust owning project images (NOEVIA_RUST_PROJECTS=1)
     runs-on: ubuntu-latest
     steps:
@@ -422,8 +423,31 @@ jobs:
           mkdir -p "$RUNNER_TEMP/rs-pin" && tar -xzf "$RUNNER_TEMP/rs.tgz" --strip-components=1 -C "$RUNNER_TEMP/rs-pin"
           "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
           echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
+      - name: The committed chat-list fixture is core.ref's route output (sbstndalton/noevia#1411)
+        run: |
+          set -euo pipefail
+          node tools/gen-project-chats-fixtures.cjs "$GITHUB_WORKSPACE/core" "$RUNNER_TEMP/node-chats.v1.json"
+          cmp crates/server-projects/tests/fixtures/node-chats.v1.json "$RUNNER_TEMP/node-chats.v1.json" \
+            || { echo "::error::regenerate crates/server-projects/tests/fixtures/node-chats.v1.json with tools/gen-project-chats-fixtures.cjs at contracts/http/core.ref"; exit 1; }
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo build --locked -p replay -p noevia-server
+      - name: Build a front with the images only (no rust-project-chats), kept aside
+        run: |
+          set -euo pipefail
+          cargo build --locked -p replay -p noevia-server
+          if target/debug/noevia-server --features | grep -qx rust-project-chats; then
+            echo "::error::a build without the cargo feature lists rust-project-chats"; exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/images-only"
+          cp target/debug/noevia-server target/debug/corpus-launcher "$RUNNER_TEMP/images-only/"
+      - name: Build the front with the chat-list slice
+        run: |
+          set -euo pipefail
+          cargo build --locked -p replay -p noevia-server --features rust-project-chats
+          target/debug/noevia-server --features | grep -qx rust-project-chats
+      - name: The chat-list slice's routing and capability tests
+        run: |
+          cargo clippy --locked -p noevia-server --all-targets --features rust-project-chats -- -D warnings
+          cargo test --locked -p noevia-server --features rust-project-chats
       - name: Node and Rust share the projects.json lock and lose no write (and the blind-save control does); generated chat-list saves answer as core's route
         run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock --test chats_property
       - name: Replay against Node directly (reference data dir)
@@ -443,6 +467,18 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-front" \
             --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/replay-front-report.json" --state-out "$RUNNER_TEMP/rust-projects-state.json" \
+            --state-ignore '*projects.json.lock' \
+            --expect-state "$RUNNER_TEMP/node-state.json"
+      - name: "An images-only front (rust-projects without rust-project-chats): Node keeps the chat list, still 0 differences"
+        # sbstndalton/noevia#1409: the supervisor confirms the chat-list slice to Node only for a
+        # front that lists rust-project-chats, so Node answers the saves this front forwards.
+        run: |
+          set -euo pipefail
+          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+            --ignore-body hours --ignore-body peakHour/hour \
+            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-images-only" \
+            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$RUNNER_TEMP/images-only/noevia-server'" \
+            --report "$RUNNER_TEMP/images-only-report.json" \
             --state-ignore '*projects.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"
       - name: "Negative control: Node told the front owns the image and chat-list routes refuses their writes"
@@ -475,6 +511,8 @@ jobs:
             ${{ runner.temp }}/node-state.json
             ${{ runner.temp }}/rust-projects-state.json
             ${{ runner.temp }}/control-report.json
+            ${{ runner.temp }}/images-only-report.json
+            ${{ runner.temp }}/node-chats.v1.json
           if-no-files-found: ignore
 
   dav-parse-wasm:

@@ -28,14 +28,19 @@ use std::sync::Arc;
 /// What `noevia-server --features` lists, one per line.
 /// `rust-auth`: this build answers sign-in and the account under NOEVIA_RUST_AUTH (M3); the web
 /// supervisor should let Node refuse the account tables only when the front reports it.
-/// `rust-projects`: this build answers the ported project routes (a project's images and its chat
-/// list) under NOEVIA_RUST_PROJECTS (M4) and writes projects.json under the lock Node shares; the
-/// supervisor confirms it to Node the same way.
+/// `rust-projects`: this build answers a project's image routes under NOEVIA_RUST_PROJECTS (M4)
+/// and writes projects.json under the lock Node shares; the supervisor confirms it to Node the same
+/// way. `rust-project-chats` (cargo feature of that name): it answers a project's chat list under
+/// the same switch too; the supervisor confirms that slice to Node separately
+/// (NOEVIA_RUST_PROJECT_CHATS_CONFIRMED), so Node refuses the chat-list save only behind a front
+/// that answers it (sbstndalton/noevia#1409).
 pub const FEATURES: &[&str] = &[
     "code-net-guard",
     "header-read-timeout",
     "rust-auth",
     "rust-projects",
+    #[cfg(feature = "rust-project-chats")]
+    "rust-project-chats",
     "rust-usage",
     "rust-sampling-settings",
     #[cfg(feature = "rust-reasoning-settings")]

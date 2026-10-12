@@ -17,10 +17,12 @@ legacy=$((port + 1000))
 # behind that front: read-only for the account tables).
 origin="${PUBLIC_ORIGIN:-http://127.0.0.1:$port}"
 # Like build/web-supervisor.sh: Node's write guard is confirmed only by a front that lists rust-auth
-# (M3), and its projects.json coordination only by one that lists rust-projects (M4, which needs M3).
-unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED
+# (M3), and its projects.json coordination only by one that lists rust-projects (M4, which needs M3);
+# its chat-list refusal only by one that also lists rust-project-chats (sbstndalton/noevia#1409).
+unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_PROJECT_CHATS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED
 confirmed=""
 projects_confirmed=""
+project_chats_confirmed=""
 usage_confirmed=""
 sampling_confirmed=""
 reasoning_confirmed=""
@@ -45,6 +47,8 @@ if [ "${NOEVIA_RUST_PROJECTS:-}" = 1 ]; then
   [ -n "$confirmed" ] || { echo "replay-front: NOEVIA_RUST_PROJECTS=1 needs NOEVIA_RUST_AUTH=1" >&2; exit 2; }
   has_feature rust-projects || { echo "replay-front: $front has no rust-projects" >&2; exit 2; }
   projects_confirmed=1
+  # A front without the chat-list slice is a supported pairing: Node keeps that route.
+  if has_feature rust-project-chats; then project_chats_confirmed=1; fi
 fi
 if [ "${NOEVIA_RUST_USAGE:-}" = 1 ]; then
   [ -n "$confirmed" ] || { echo "replay-front: usage needs native auth" >&2; exit 2; }
@@ -67,7 +71,7 @@ if [ "${NOEVIA_RUST_ROUTING_MODE:-}" = 1 ]; then
   routing_confirmed=1
 fi
 UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" \
-  NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$reasoning_confirmed" \
+  NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_PROJECT_CHATS_CONFIRMED="$project_chats_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$reasoning_confirmed" \
   NOEVIA_RUST_ROUTING_MODE_CONFIRMED="$routing_confirmed" \
   "$(dirname "$front")/corpus-launcher" serve "$core" &
 node_pid=$!

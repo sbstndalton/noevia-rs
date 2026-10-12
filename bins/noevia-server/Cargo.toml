@@ -18,6 +18,8 @@ path = "src/main.rs"
 default = []
 rust-reasoning-settings = []
 rust-routing-mode = []
+# M4's second slice: a project's chat list under NOEVIA_RUST_PROJECTS (src/routes.rs PROJECT_CHATS).
+rust-project-chats = []
 
 [dependencies]
 server-routing-mode = { path = "../../crates/server-routing-mode" }

@@ -103,11 +103,19 @@ fn every_case_answers_and_writes_as_node() {
     assert_eq!(stricter_seen, STRICTER.len());
 }
 
-/// The fixture is Node's: the generator ran at a noevia-core commit, with Node 22.
+/// The fixture is Node's: the generator ran at the pinned noevia-core commit
+/// (contracts/http/core.ref), with Node 22. CI regenerates it there and compares the bytes.
 #[test]
 fn fixture_provenance() {
     let f = fixture();
-    let sha = f["core"].as_str().unwrap();
-    assert_eq!(sha.len(), 40);
-    assert!(f["node"].as_str().unwrap().starts_with("v22."));
+    let pinned = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/http/core.ref"),
+    )
+    .unwrap();
+    assert_eq!(
+        f["core"].as_str().unwrap(),
+        pinned.trim(),
+        "regenerate with tools/gen-project-chats-fixtures.cjs at core.ref"
+    );
+    assert_eq!(f["node"].as_str().unwrap(), "v22");
 }

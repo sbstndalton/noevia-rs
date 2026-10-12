@@ -86,8 +86,20 @@ pub enum Native {
 const PROJECT_ROUTES: &[&str] = &[
     "/api/projects/{id}/assets",
     "/api/projects/{id}/assets/{assetId}",
-    "/api/projects/{projectId}/chats",
+    PROJECT_CHATS,
 ];
+
+/// A project's chat list: the second M4 slice. It is answered here only in a build with the cargo
+/// feature `rust-project-chats`, which `--features` then lists, so the supervisor can confirm the
+/// slice to Node on its own (core rust-projects.cjs chatsEnabledFrom, sbstndalton/noevia#1409).
+/// Without it the route stays Node's under NOEVIA_RUST_PROJECTS too, as in a front that answers
+/// only the images.
+const PROJECT_CHATS: &str = "/api/projects/{projectId}/chats";
+
+/// Whether this build answers `route` itself when its switch is on.
+fn compiled(route: &Route) -> bool {
+    route.path != PROJECT_CHATS || cfg!(feature = "rust-project-chats")
+}
 
 /// The native handler a rust-owned route is implemented by.
 pub fn native_for(route: &Route) -> Option<Native> {
@@ -183,6 +195,9 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
         return None;
     }
     if !route.methods.is_empty() && !route.methods.contains(&method) {
+        return None;
+    }
+    if !compiled(route) {
         return None;
     }
     native_for(route)
@@ -302,12 +317,23 @@ mod tests {
             rust_projects: true,
             ..Default::default()
         };
+        // Only a build with the chat-list slice answers it (#1409); without, it stays Node's.
+        let answered = cfg!(feature = "rust-project-chats").then_some(Native::Projects);
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-project-chats"),
+            answered.is_some()
+        );
         for m in ["GET", "POST"] {
             let p = "/api/projects/p1/chats";
             assert_eq!(dispatch(m, p), None, "{m}");
             assert_eq!(dispatch_under(m, p, auth), None, "{m}");
-            assert_eq!(dispatch_under(m, p, both), Some(Native::Projects), "{m}");
+            assert_eq!(dispatch_under(m, p, both), answered, "{m}");
         }
+        // The images do not depend on it.
+        assert_eq!(
+            dispatch_under("POST", "/api/projects/p1/assets", both),
+            Some(Native::Projects)
+        );
         // Node keeps every other method, the chat routes below the list, and the project itself.
         for (m, p) in [
             ("PUT", "/api/projects/p1/chats"),

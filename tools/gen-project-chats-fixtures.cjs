@@ -201,6 +201,8 @@ async function run(c) {
     Date.now = () => c.now;
     try { results.push({ ...c, expected: await run(c) }); } finally { Date.now = realNow; }
   }
-  fs.writeFileSync(out, `${JSON.stringify({ core: sha, node: process.version, user: USER, cases: results }, null, 1)}\n`);
+  // The major only, so CI's regenerate-and-compare does not depend on the runner's Node patch level.
+  const node = `v${process.versions.node.split('.')[0]}`;
+  fs.writeFileSync(out, `${JSON.stringify({ core: sha, node, user: USER, cases: results }, null, 1)}\n`);
   console.log(`project chats fixtures=${results.length} core=${sha} node=${process.version}`);
 })().catch((e) => { console.error(e); process.exit(1); });
