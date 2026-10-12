@@ -242,6 +242,10 @@ fn param_count(raw: &Raw) -> Option<Value> {
     if usable {
         return declared.cloned();
     }
+    // #1591: shard 1 of a split model lists only its own tensors, so their sum is a fraction of the model.
+    if matches!(raw.get("split.count"), Some(Value::Int(n)) if *n > 1) {
+        return declared.cloned();
+    }
     match raw.get("_tensor_params") {
         Some(Value::Int(n)) if *n > 0 => Some(Value::Int(*n)),
         _ => declared.cloned(),

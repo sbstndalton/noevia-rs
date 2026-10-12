@@ -526,6 +526,7 @@ pub fn summary(size: u64, segs: &[Segment<'_>]) -> Result<String, Fault> {
     let (kv, counted) = read_kept(size, segs, |k| {
         k == "general.name"
             || k == "general.parameter_count"
+            || k == "split.count"
             || k == "tokenizer.chat_template"
             || names.iter().any(|n| n == k)
     })?;
@@ -534,6 +535,10 @@ pub fn summary(size: u64, segs: &[Segment<'_>]) -> Result<String, Fault> {
         Some(Val::Num(n)) if n.is_finite() && *n > 0.0 => Some(*n),
         _ => None,
     };
+    // #1591: shard 1 of a split model lists only its own tensors, so their sum is a fraction of the model:
+    // with split.count > 1 only a declared count is a count.
+    let split = matches!(kv.get("split.count"), Some(Val::Num(n)) if *n > 1.0);
+    let counted = if split { None } else { counted };
     let mut out = String::from("{");
     if let Some(params) = declared.or(counted.map(|c| c as f64)) {
         out.push_str("\"parameterCount\":");

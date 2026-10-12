@@ -198,3 +198,47 @@ fn the_node_reader_gives_no_count_for_a_cut_short_block() {
     assert!(text.starts_with("{\"arch\":\"llama\""), "{text}");
     assert!(!text.contains("parameterCount"), "{text}");
 }
+
+fn kv_u16(key: &str, value: u16) -> Vec<u8> {
+    let mut out = s(key);
+    out.extend(2u32.to_le_bytes());
+    out.extend(value.to_le_bytes());
+    out
+}
+
+/// #1591: shard 1 of a split model lists only its own tensors, so the sum would be a fraction of the model.
+#[test]
+fn a_split_model_without_a_declared_count_has_no_count() {
+    let mut kvs = base();
+    kvs.push(kv_u16("split.no", 0));
+    kvs.push(kv_u16("split.count", 3));
+    let buf = header(&kvs, 3, &tensors());
+    let (params, raw) = general_params(&buf);
+    assert_eq!((params, raw), (Json::Null, Json::Null));
+    use gguf::node::{summary, Segment};
+    let text = summary(
+        buf.len() as u64,
+        &[Segment {
+            off: 0,
+            bytes: &buf,
+        }],
+    )
+    .unwrap();
+    assert!(!text.contains("parameterCount"), "{text}");
+}
+
+#[test]
+fn a_split_model_keeps_a_declared_count_and_a_single_file_split_count_still_sums() {
+    let mut kvs = base();
+    kvs.push(kv_u16("split.count", 3));
+    kvs.push(kv_u64("general.parameter_count", 7_000_000_000));
+    let (params, _) = general_params(&header(&kvs, 3, &tensors()));
+    assert_eq!(params, Json::Str("7.0 B".into()));
+    // split.count of 1 (or 0) is a whole file.
+    for count in [0u16, 1] {
+        let mut kvs = base();
+        kvs.push(kv_u16("split.count", count));
+        let (params, _) = general_params(&header(&kvs, 3, &tensors()));
+        assert_eq!(params, Json::Str("147.9 M".into()), "split.count {count}");
+    }
+}
