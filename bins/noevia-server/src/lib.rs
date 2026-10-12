@@ -38,7 +38,13 @@ use std::sync::Arc;
 /// answers the free-chat list (`GET`/`POST /api/freechats`) under the same switch and shares
 /// free-chats.json with Node under its lock; confirmed to Node separately as well
 /// (NOEVIA_RUST_FREE_CHATS_CONFIRMED).
+///
+/// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
+/// own value on what it forwards (#1245). The web supervisor confirms it to Node
+/// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
+/// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "client-address-header",
     "code-net-guard",
     "header-read-timeout",
     "rust-auth",
