@@ -54,6 +54,9 @@ pub fn canonical(bytes: &[u8]) -> Result<Value, String> {
 pub struct Artifact { pub path: String, pub bytes: u64, pub digest: String, pub mode: u32 }
 pub struct Inputs { pub default: Artifact, pub storage: Artifact }
 pub fn ordinary_profile(cargo: &Value, storage: bool) -> Result<(), String> {
+    let profile = cargo.get("profile").ok_or("artifact profile")?;
+    keys(profile, &["opt_level", "debuginfo", "debug_assertions", "overflow_checks", "test"])?;
+    require(profile == &json!({"opt_level":"0","debuginfo":2,"debug_assertions":true,"overflow_checks":true,"test":false}), "exact ordinary debug profile")?;
     require(cargo.get("reason") == Some(&json!("compiler-artifact"))
         && cargo.pointer("/target/name") == Some(&json!("noevia-server"))
         && cargo.pointer("/target/kind") == Some(&json!(["bin"]))
@@ -62,6 +65,18 @@ pub fn ordinary_profile(cargo: &Value, storage: bool) -> Result<(), String> {
     let features = cargo.get("features").and_then(Value::as_array).ok_or("artifact features")?;
     let names: BTreeSet<_> = features.iter().map(|v| v.as_str().ok_or("feature text")).collect::<Result<_, _>>()?;
     require(names.len() == features.len() && names == if storage { BTreeSet::from(["default", "rust-storage-reads"]) } else { BTreeSet::from(["default"]) }, "exact artifact features")
+}
+pub fn workspace_binding(cargo: &Value, source_paths: &BTreeSet<String>) -> Result<(), String> {
+    let src = cargo.pointer("/target/src_path").and_then(Value::as_str).ok_or("cargo source")?;
+    let manifest = text(cargo, "manifest_path")?;
+    absolute(src)?; absolute(manifest)?;
+    let directory = src.strip_suffix("/src/main.rs").ok_or("front main source")?;
+    require(directory.ends_with("/bins/noevia-server")
+        && manifest == format!("{directory}/Cargo.toml")
+        && source_paths.contains(src) && source_paths.contains(manifest), "approved workspace source/manifest")?;
+    let url = url::Url::from_directory_path(directory).map_err(|_| "workspace file URL")?;
+    let package = format!("path+{}#0.1.0", url.as_str().trim_end_matches('/'));
+    require(text(cargo, "package_id")? == package, "exact approved workspace package")
 }
 fn artifact(value: &Value, source_paths: &BTreeSet<String>, storage: bool) -> Result<Artifact, String> {
     keys(value, &["path", "sha256", "bytes", "mode", "cargo"])?;
@@ -72,15 +87,12 @@ fn artifact(value: &Value, source_paths: &BTreeSet<String>, storage: bool) -> Re
     require(bytes > 0 && bytes <= FILE as u64 && matches!(mode, 0o700 | 0o755), "artifact executable bounds")?;
     let cargo = value.get("cargo").ok_or("cargo artifact")?;
     ordinary_profile(cargo, storage)?;
+    workspace_binding(cargo, source_paths)?;
     require(cargo.get("reason") == Some(&json!("compiler-artifact")) && cargo.get("executable") == Some(&json!(path))
         && cargo.pointer("/target/name") == Some(&json!("noevia-server"))
         && cargo.pointer("/target/kind") == Some(&json!(["bin"]))
         && cargo.pointer("/profile/test") == Some(&json!(false))
         && cargo.get("fresh").and_then(Value::as_bool).is_some(), "actual ordinary artifact profile")?;
-    let src = cargo.pointer("/target/src_path").and_then(Value::as_str).ok_or("cargo source")?;
-    require(source_paths.contains(src) && src.ends_with("/bins/noevia-server/src/main.rs"), "mapped artifact source")?;
-    let package = cargo.get("package_id").and_then(Value::as_str).ok_or("cargo package")?;
-    require(package.ends_with("#noevia-server@0.1.0") && package.starts_with("path+file://"), "artifact package")?;
     let raw = read(absolute(path)?, FILE)?;
     let stat = open(absolute(path)?)?.metadata().map_err(|e| e.to_string())?;
     require(raw.len() as u64 == bytes && hash(&raw) == digest && u64::from(stat.mode() & 0o7777) == mode, "artifact bytes/mode")?;

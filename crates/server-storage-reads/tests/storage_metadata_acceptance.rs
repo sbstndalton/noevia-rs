@@ -58,7 +58,7 @@ fn wrong_job_and_source_refuse_before_any_file_or_child() {
 }
 #[test]
 fn selected_profile_and_features_are_exact() {
-    let baseline = json!({"reason":"compiler-artifact","target":{"name":"noevia-server","kind":["bin"]},"profile":{"test":false},"fresh":false,"features":["default","rust-storage-reads"]});
+    let baseline = json!({"reason":"compiler-artifact","target":{"name":"noevia-server","kind":["bin"]},"profile":{"opt_level":"0","debuginfo":2,"debug_assertions":true,"overflow_checks":true,"test":false},"fresh":false,"features":["default","rust-storage-reads"]});
     assert!(acceptance::ordinary_profile(&baseline,true).is_ok());
     assert!(acceptance::ordinary_profile(&baseline,false).is_err());
     let mut wrong=baseline.clone(); wrong["profile"]["test"]=json!(true);
@@ -67,6 +67,30 @@ fn selected_profile_and_features_are_exact() {
     assert!(acceptance::ordinary_profile(&wrong,true).is_err());
     wrong=baseline.clone(); wrong["fresh"]=json!(null);
     assert!(acceptance::ordinary_profile(&wrong,true).is_err());
-    wrong=baseline; wrong["target"]["name"]=json!("fixture");
+    wrong=baseline.clone(); wrong["target"]["name"]=json!("fixture");
     assert!(acceptance::ordinary_profile(&wrong,true).is_err());
+    for (key,value) in [("opt_level",json!("3")),("debuginfo",json!(0)),("debug_assertions",json!(false)),("overflow_checks",json!(false))] {
+        wrong=baseline.clone(); wrong["profile"][key]=value;
+        assert!(acceptance::ordinary_profile(&wrong,true).is_err());
+    }
+    wrong=baseline; wrong["profile"]["extra"]=json!(true);
+    assert!(acceptance::ordinary_profile(&wrong,true).is_err());
+}
+#[test]
+fn cargo_identity_is_bound_to_the_approved_workspace() {
+    let paths=std::collections::BTreeSet::from([
+        "/approved/rs/bins/noevia-server/src/main.rs".to_owned(),
+        "/approved/rs/bins/noevia-server/Cargo.toml".to_owned(),
+    ]);
+    let baseline=json!({"target":{"src_path":"/approved/rs/bins/noevia-server/src/main.rs"},"manifest_path":"/approved/rs/bins/noevia-server/Cargo.toml","package_id":"path+file:///approved/rs/bins/noevia-server#0.1.0"});
+    assert!(acceptance::workspace_binding(&baseline,&paths).is_ok());
+    for package in ["path+file:///other/rs/bins/noevia-server#0.1.0","path+file:///approved/rs/bins/noevia-server#noevia-server@0.1.0","registry+https://example.invalid#noevia-server@0.1.0"] {
+        let mut wrong=baseline.clone(); wrong["package_id"]=json!(package);
+        assert!(acceptance::workspace_binding(&wrong,&paths).is_err());
+    }
+    let mut wrong=baseline.clone(); wrong["manifest_path"]=json!("/other/rs/bins/noevia-server/Cargo.toml");
+    assert!(acceptance::workspace_binding(&wrong,&paths).is_err());
+    wrong=baseline.clone(); wrong["target"]["src_path"]=json!("/other/rs/bins/noevia-server/src/main.rs");
+    assert!(acceptance::workspace_binding(&wrong,&paths).is_err());
+    assert!(acceptance::workspace_binding(&baseline,&std::collections::BTreeSet::new()).is_err());
 }
