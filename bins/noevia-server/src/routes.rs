@@ -74,7 +74,7 @@ pub enum Native {
     /// Sign-in and the account (M3, NOEVIA_RUST_AUTH): crates/server-account.
     Account,
     /// The project routes ported so far (M4, NOEVIA_RUST_PROJECTS): crates/server-projects
-    /// `assets` (a project's images) and `chats` (its chat list).
+    /// `assets` (a project's images), `chats` (its chat list) and `free_chats` (the free-chat list).
     Projects,
     Usage,
     SamplingSettings,
@@ -87,6 +87,7 @@ const PROJECT_ROUTES: &[&str] = &[
     "/api/projects/{id}/assets",
     "/api/projects/{id}/assets/{assetId}",
     PROJECT_CHATS,
+    FREE_CHATS,
 ];
 
 /// A project's chat list: the second M4 slice. It is answered here only in a build with the cargo
@@ -96,9 +97,16 @@ const PROJECT_ROUTES: &[&str] = &[
 /// only the images.
 const PROJECT_CHATS: &str = "/api/projects/{projectId}/chats";
 
+/// The free-chat list: the third M4 slice, answered here only in a build with the cargo feature
+/// `rust-free-chats` (listed by `--features`; the supervisor confirms it to Node on its own, core
+/// rust-projects.cjs freeChatsEnabledFrom). Without it the route stays Node's under the switch.
+/// `DELETE /api/freechats/{chatId}` is Node's in every build (routes.toml).
+const FREE_CHATS: &str = "/api/freechats";
+
 /// Whether this build answers `route` itself when its switch is on.
 fn compiled(route: &Route) -> bool {
-    route.path != PROJECT_CHATS || cfg!(feature = "rust-project-chats")
+    (route.path != PROJECT_CHATS || cfg!(feature = "rust-project-chats"))
+        && (route.path != FREE_CHATS || cfg!(feature = "rust-free-chats"))
 }
 
 /// The native handler a rust-owned route is implemented by.
@@ -434,5 +442,48 @@ mod tests {
             dispatch_under("PUT", "/api/reasoning-settings", on),
             Some(Native::ReasoningSettings)
         );
+    }
+
+    #[test]
+    fn the_free_chat_list_is_rusts_only_under_the_switch_for_get_and_post() {
+        let auth = Switches {
+            rust_auth: true,
+            ..Default::default()
+        };
+        let both = Switches {
+            rust_auth: true,
+            rust_projects: true,
+            ..Default::default()
+        };
+        // Only a build with the free-chat slice answers it; without, it stays Node's.
+        let answered = cfg!(feature = "rust-free-chats").then_some(Native::Projects);
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-free-chats"),
+            answered.is_some()
+        );
+        for m in ["GET", "POST"] {
+            assert_eq!(dispatch(m, "/api/freechats"), None, "{m}");
+            assert_eq!(dispatch_under(m, "/api/freechats", auth), None, "{m}");
+            assert_eq!(dispatch_under(m, "/api/freechats", both), answered, "{m}");
+        }
+        // Independent of the project chat-list slice.
+        assert_eq!(
+            dispatch_under("GET", "/api/projects/p1/chats", both),
+            cfg!(feature = "rust-project-chats").then_some(Native::Projects)
+        );
+        // Node keeps a free chat's delete (transcript, attachments project), every other method,
+        // and the paths around it.
+        for (m, p) in [
+            ("DELETE", "/api/freechats/c1"),
+            ("GET", "/api/freechats/c1"),
+            ("POST", "/api/freechats/c1"),
+            ("PUT", "/api/freechats"),
+            ("DELETE", "/api/freechats"),
+            ("HEAD", "/api/freechats"),
+            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/workspace"),
+        ] {
+            assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
+        }
     }
 }

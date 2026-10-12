@@ -20,6 +20,8 @@ rust-reasoning-settings = []
 rust-routing-mode = []
 # M4's second slice: a project's chat list under NOEVIA_RUST_PROJECTS (src/routes.rs PROJECT_CHATS).
 rust-project-chats = []
+# M4's third slice: the free-chat list under NOEVIA_RUST_PROJECTS (src/routes.rs FREE_CHATS).
+rust-free-chats = []
 
 [dependencies]
 server-routing-mode = { path = "../../crates/server-routing-mode" }

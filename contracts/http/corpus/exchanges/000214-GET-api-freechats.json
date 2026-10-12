@@ -1,0 +1,64 @@
+{
+  "v": 1,
+  "seq": 214,
+  "request": {
+    "method": "GET",
+    "path": "/api/freechats",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "chats": [
+          {
+            "id": "free-beta",
+            "title": "Beta renamed",
+            "updatedAt": 650,
+            "preview": "",
+            "pinned": false,
+            "archived": false,
+            "frame": null,
+            "forceLocal": false,
+            "createdAt": 50
+          },
+          {
+            "id": "freegammax",
+            "title": "[object Object]",
+            "updatedAt": 550,
+            "preview": "p,,3",
+            "pinned": false,
+            "archived": false
+          },
+          {
+            "id": "free-delta",
+            "title": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd😀",
+            "updatedAt": 500,
+            "preview": "",
+            "pinned": false,
+            "archived": false
+          }
+        ]
+      }
+    }
+  }
+}

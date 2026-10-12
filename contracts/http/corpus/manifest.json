@@ -137,10 +137,12 @@
     "GET /api/projects/<id:24>/chats",
     "POST /api/projects/<id:24>/chats",
     "POST /api/projects/no-such-project/chats",
-    "GET /api/projects/no-such-project/chats"
+    "GET /api/projects/no-such-project/chats",
+    "POST /api/chats/free-alpha/move",
+    "DELETE /api/freechats/free-delta"
   ],
   "dropped": 0,
-  "exchanges": 207,
+  "exchanges": 228,
   "generator": "noevia-core tools/contract-corpus/generate.cjs",
   "inputs": {
     "<secret:10>": {

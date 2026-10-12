@@ -33,7 +33,10 @@ use std::sync::Arc;
 /// way. `rust-project-chats` (cargo feature of that name): it answers a project's chat list under
 /// the same switch too; the supervisor confirms that slice to Node separately
 /// (NOEVIA_RUST_PROJECT_CHATS_CONFIRMED), so Node refuses the chat-list save only behind a front
-/// that answers it (sbstndalton/noevia#1409).
+/// that answers it (sbstndalton/noevia#1409). `rust-free-chats` (cargo feature of that name): it
+/// answers the free-chat list (`GET`/`POST /api/freechats`) under the same switch and shares
+/// free-chats.json with Node under its lock; confirmed to Node separately as well
+/// (NOEVIA_RUST_FREE_CHATS_CONFIRMED).
 pub const FEATURES: &[&str] = &[
     "code-net-guard",
     "header-read-timeout",
@@ -41,6 +44,8 @@ pub const FEATURES: &[&str] = &[
     "rust-projects",
     #[cfg(feature = "rust-project-chats")]
     "rust-project-chats",
+    #[cfg(feature = "rust-free-chats")]
+    "rust-free-chats",
     "rust-usage",
     "rust-sampling-settings",
     #[cfg(feature = "rust-reasoning-settings")]

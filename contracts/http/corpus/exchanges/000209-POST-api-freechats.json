@@ -1,0 +1,107 @@
+{
+  "v": 1,
+  "seq": 209,
+  "request": {
+    "method": "POST",
+    "path": "/api/freechats",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node",
+      "x-csrf-token": "<secret:4>"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "chats": [
+          {
+            "id": "free-beta",
+            "title": "Beta",
+            "updatedAt": 600,
+            "preview": "Second",
+            "pinned": true,
+            "archived": false,
+            "forceLocal": false,
+            "createdAt": 50,
+            "mode": "cowork",
+            "frame": {
+              "kind": "idea",
+              "tags": [
+                "#beta  one",
+                "beta-one",
+                3
+              ],
+              "links": [
+                "free-alpha",
+                "free-alpha"
+              ],
+              "confirmed": true,
+              "source": "user"
+            }
+          },
+          {
+            "id": "free gamma/../x",
+            "title": {
+              "a": 1
+            },
+            "preview": [
+              "p",
+              null,
+              3
+            ],
+            "updatedAt": 550
+          },
+          {
+            "id": "chat-alpha",
+            "title": "Moved elsewhere",
+            "updatedAt": 700
+          },
+          {
+            "id": "<id:8>",
+            "title": "Deleted chat",
+            "updatedAt": 800
+          },
+          {
+            "id": "free-delta",
+            "title": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd😀tail",
+            "preview": "",
+            "updatedAt": 500,
+            "frame": {
+              "kind": "bogus"
+            },
+            "mode": "code"
+          },
+          "stray",
+          null,
+          {
+            "title": "no id"
+          }
+        ]
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "ok": true,
+        "skipped": [
+          "chat-alpha"
+        ]
+      }
+    }
+  }
+}

@@ -182,12 +182,25 @@ fn quote(s: &str) -> String {
 /// The write itself; callers outside this crate go through [`write_owned`].
 pub(crate) fn write_atomic(file: &Path, value: &Value, format: Format) -> Result<(), JsonError> {
     let text = stringify(value, format)?;
-    write_text_atomic(file, &text)
+    write_text_atomic(file, &text, Parent::Create)
 }
 
-fn write_text_atomic(file: &Path, text: &str) -> Result<(), JsonError> {
+/// Whether a write may create the directory it writes into.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Parent {
+    /// `fs.mkdirSync(dir, { recursive: true, mode: 0o700 })` first, as Node's writers do.
+    Create,
+    /// The directory must exist already: a missing one fails the write (NotFound) and is never
+    /// made, so a write racing an account's removal cannot bring the removed directory back.
+    MustExist,
+}
+
+fn write_text_atomic(file: &Path, text: &str, parent: Parent) -> Result<(), JsonError> {
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    if let Some(dir) = file.parent().filter(|d| !d.as_os_str().is_empty()) {
+    if let Some(dir) = file
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty() && parent == Parent::Create)
+    {
         let mut builder = std::fs::DirBuilder::new();
         builder.recursive(true);
         #[cfg(unix)]
@@ -240,13 +253,15 @@ pub fn write_owned_text(
     _switch: crate::RustAuth,
 ) -> Result<(), JsonError> {
     owned_name(crate::OWNED_JSON_FILES, name)?;
-    write_text_atomic(&dir.join(name), text)
+    write_text_atomic(&dir.join(name), text, Parent::Create)
 }
 
 /// Writes `dir/name` (a [`crate::SHARED_PROJECT_FILES`] name) atomically with text the caller
 /// serialised (`JSON.stringify(value, null, 2)`, js-json `stringify_pretty`). Only with the M4
 /// switch; the caller holds the file's shared lock (crates/server-projects), which this does not
-/// take.
+/// take. `dir` (the user's directory) must exist: it is never created here, so a save racing the
+/// account's removal (core workspace.cjs `remove`) fails instead of recreating it
+/// (sbstndalton/noevia#1425).
 pub fn write_shared_projects(
     dir: &Path,
     name: &str,
@@ -254,7 +269,7 @@ pub fn write_shared_projects(
     _switch: crate::RustProjects,
 ) -> Result<(), JsonError> {
     owned_name(crate::SHARED_PROJECT_FILES, name)?;
-    write_text_atomic(&dir.join(name), text)
+    write_text_atomic(&dir.join(name), text, Parent::MustExist)
 }
 
 /// `fs.rmSync(dir/name, { force: true })` for an owned file: a missing file is not an error.
@@ -368,6 +383,24 @@ mod tests {
             .filter(|n| n.ends_with(".tmp"))
             .collect();
         assert!(left.is_empty(), "{left:?}");
+    }
+
+    #[test]
+    fn a_shared_project_file_is_never_written_into_a_missing_directory() {
+        // sbstndalton/noevia#1425: the user's directory was removed (the account was deleted)
+        // while a save was in flight; the save fails and the directory stays gone.
+        let root = tempfile::tempdir().unwrap();
+        let user = root
+            .path()
+            .join("users/11111111-2222-4333-8444-555555555555");
+        let projects = crate::RustProjects::for_tests();
+        for name in crate::SHARED_PROJECT_FILES {
+            assert!(matches!(
+                write_shared_projects(&user, name, "[]", projects),
+                Err(JsonError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound
+            ));
+        }
+        assert!(!root.path().join("users").exists());
     }
 
     #[test]

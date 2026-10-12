@@ -1,10 +1,15 @@
 //! M4 (NOEVIA_RUST_PROJECTS=1, with NOEVIA_RUST_AUTH=1): the front answers a project's image
-//! routes (crates/server-projects `assets`) and its chat list (`chats`) itself instead of
-//! proxying them. The request passes
+//! routes (crates/server-projects `assets`), its chat list (`chats`) and the free-chat list
+//! (`free_chats`) itself instead of proxying them. The request passes
 //! Node's gate first (server-auth: session, origin + CSRF for writes, device-token limits), here
 //! on the WHATWG pathname Node routes on; the user it returns is the only one whose files are
 //! touched. A path the routes.toml pattern matches but Node's own route regex would not (a
 //! trailing slash, an empty segment) still goes to Node, as before.
+//!
+//! A write passes the gate again right before it touches a file (sbstndalton/noevia#1425): the
+//! body is read between the two, for as long as the client takes, and an account removed (or a
+//! session revoked) meanwhile must not write. The gate only reads the store, so running it twice
+//! changes nothing. The store underneath never recreates a removed user's directory either.
 
 use crate::identity::{self, Rejection};
 use crate::reply;
@@ -12,7 +17,7 @@ use crate::App;
 use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
-use server_projects::{assets, chats, Ctx, Reply};
+use server_projects::{assets, chats, free_chats, Ctx, Reply};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,12 +30,23 @@ pub enum Route {
     Chats { project: String },
     /// POST /api/projects/{id}/chats
     SaveChats { project: String },
+    /// GET /api/freechats
+    FreeChats,
+    /// POST /api/freechats
+    SaveFreeChats,
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
-/// `^\/api\/projects\/([^/]+)\/chats$`, with the methods its handlers answer; `None` sends the
-/// request on to Node.
+/// `^\/api\/projects\/([^/]+)\/chats$`, and routes/chat-lists.cjs's `p === '/api/freechats'`,
+/// with the methods its handlers answer; `None` sends the request on to Node.
 pub fn route(method: &str, path: &str) -> Option<Route> {
+    if path == "/api/freechats" {
+        return match method {
+            "GET" => Some(Route::FreeChats),
+            "POST" => Some(Route::SaveFreeChats),
+            _ => None,
+        };
+    }
     let rest = path.strip_prefix("/api/projects/")?;
     let parts: Vec<&str> = rest.split('/').collect();
     match (method, parts.as_slice()) {
@@ -101,6 +117,7 @@ pub async fn serve(
     let layer = Arc::clone(&app.identity);
     let now = identity::now_ms();
     let gate_path = path.clone();
+    let (regate_layer, regate_creds) = (Arc::clone(&layer), creds.clone());
     let authn =
         match tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, &gate_path, now))
             .await
@@ -111,8 +128,8 @@ pub async fn serve(
         };
     let limit = match &route {
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
-        Route::SaveChats { .. } => Some(chats::BODY_LIMIT),
-        Route::One { .. } | Route::Chats { .. } => None,
+        Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
+        Route::One { .. } | Route::Chats { .. } | Route::FreeChats => None,
     };
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
@@ -125,14 +142,21 @@ pub async fn serve(
     // routes/projects.cjs: `authn?.user?.role === 'admin'` (a device token acts as a member).
     let admin = authn.user.role == server_auth::Role::Admin;
     let user = authn.user.id;
+    let writes = matches!(
+        route,
+        Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats
+    ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
+        if writes {
+            regate(&regate_layer, &regate_creds, &path, now, &data_dir, &user)?;
+        }
         let ctx = Ctx {
             data_dir: &data_dir,
             user_id: &user,
             switch,
             now_ms: now,
         };
-        match (route, upload) {
+        Ok(match (route, upload) {
             (Route::Upload { project }, Some(b)) => assets::post(ctx, &project, &b.bytes, b.over),
             (Route::One { project, asset }, _) if method == "DELETE" => {
                 assets::delete(ctx, &project, &asset)
@@ -142,19 +166,81 @@ pub async fn serve(
             (Route::SaveChats { project }, Some(b)) => {
                 chats::post(ctx, &project, &b.bytes, b.over, admin)
             }
-            (Route::Upload { .. } | Route::SaveChats { .. }, None) => Reply::internal(),
-        }
+            (Route::FreeChats, _) => free_chats::get(ctx),
+            (Route::SaveFreeChats, Some(b)) => free_chats::post(ctx, &b.bytes, b.over, admin),
+            (Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats, None) => {
+                Reply::internal()
+            }
+        })
     })
     .await;
     match done {
-        Ok(r) => respond(r),
+        Ok(Ok(r)) => respond(r),
+        Ok(Err(Refused::Removed)) => reply::json(
+            StatusCode::GONE,
+            &serde_json::json!({"error": "account no longer exists"}),
+            true,
+        ),
+        Ok(Err(Refused::Gate(rejection))) => rejection.into_response(),
         Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+    }
+}
+
+/// Why a write was refused on its second pass through the gate.
+#[derive(Debug, Clone, Copy)]
+enum Refused {
+    /// The gate refuses the session and the user's directory is gone: the account was removed
+    /// meanwhile. Node's `assertActive` answer, 410 (core http.cjs errorResponse).
+    Removed,
+    /// Any other refusal: the gate's own answer.
+    Gate(Rejection),
+}
+
+/// The gate once more, for the user it let through before the body was read.
+fn regate(
+    layer: &crate::identity::IdentityLayer,
+    creds: &server_auth::Creds,
+    path: &str,
+    now: i64,
+    data_dir: &std::path::Path,
+    user: &str,
+) -> Result<(), Refused> {
+    let refused = match layer.gate_blocking(creds, path, now) {
+        Ok(id) if id.user.id == user => return Ok(()),
+        Ok(_) => Rejection::Refused(server_auth::Refusal::Unauthorized),
+        Err(rejection) => rejection,
+    };
+    let dir_gone = server_projects::store::user_dir(data_dir, user).is_ok_and(|d| !d.exists());
+    if dir_gone
+        && matches!(
+            refused,
+            Rejection::Refused(server_auth::Refusal::Unauthorized)
+        )
+    {
+        Err(Refused::Removed)
+    } else {
+        Err(Refused::Gate(refused))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn free_chat_list_matchers() {
+        assert_eq!(route("GET", "/api/freechats"), Some(Route::FreeChats));
+        assert_eq!(route("POST", "/api/freechats"), Some(Route::SaveFreeChats));
+        for (m, p) in [
+            ("DELETE", "/api/freechats"),
+            ("PUT", "/api/freechats"),
+            ("GET", "/api/freechats/"),
+            ("DELETE", "/api/freechats/c1"),
+            ("GET", "/api/freechatsx"),
+        ] {
+            assert_eq!(route(m, p), None, "{m} {p}");
+        }
+    }
 
     #[test]
     fn chat_list_matchers() {

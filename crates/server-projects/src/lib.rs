@@ -16,6 +16,10 @@
 //!   /api/projects/{id}/chats`), with [`skills`] (instruction-skills.cjs `reconcile`, which every
 //!   save runs) and [`frame`] (chat-framing.cjs `normalizeFrame`). Untrusted input it hardens: the
 //!   project id from the URL and the JSON body (1 MiB, 1,000 metas), see the module.
+//! - [`free_chats`]: the third slice, the free-chat list (core routes/chat-lists.cjs `GET` and
+//!   `POST /api/freechats`), over `free-chats.json`, which Node's own writers (a chat's move, a free
+//!   chat's delete, the routing flags) still write: changed only under `free-chats.json.lock`
+//!   ([`store::update_free`]), which Node shares while the slice is on.
 //! - [`js`]: the JavaScript built-ins those handlers rely on.
 //!
 //! The caller (bins/noevia-server) has already run Node's request gate (session, origin, CSRF);
@@ -25,6 +29,7 @@
 pub mod assets;
 pub mod chats;
 pub mod frame;
+pub mod free_chats;
 pub mod js;
 pub mod lock;
 pub mod skills;

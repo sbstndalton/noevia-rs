@@ -1,5 +1,5 @@
-//! M4: Node (core server/rust-projects.cjs, the merge it saves with) and Rust ([`store::update`])
-//! write the same projects.json at the same time, as the chat routes (Node) and the image routes
+//! M4: Node (core server/rust-projects.cjs, the merges it saves with) and Rust ([`store::update`],
+//! [`store::update_free`]) write the same projects.json and free-chats.json at the same time, as the chat routes (Node) and the image routes
 //! (Rust) do once NOEVIA_RUST_PROJECTS is on. Neither may lose the other's changes, the lock
 //! constants must be equal, and the file must stay Node's bytes. Runs when NOEVIA_CORE_CHECKOUT
 //! points at a core checkout and `node` is on PATH (CI); skipped otherwise.
@@ -541,4 +541,402 @@ fn a_chat_moved_out_of_a_project_during_a_rust_save_ends_in_one_list() {
 fn moving_out_project_first_duplicates_the_chat() {
     let Some(core) = core() else { return };
     assert_eq!(move_out_race(&core, true), (true, true));
+}
+
+// ── free-chats.json (the free-chat slice) ──────────────────────────────────
+
+const FREE_USER: &str = "11111111-2222-4333-8444-555555555555";
+
+fn free_ctx(root: &std::path::Path) -> server_projects::Ctx<'_> {
+    server_projects::Ctx {
+        data_dir: root,
+        user_id: FREE_USER,
+        switch: RustProjects::from_env_value(Some("1")).unwrap(),
+        now_ms: 1,
+    }
+}
+
+fn free_ids(dir: &std::path::Path) -> Vec<String> {
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("free-chats.json")).unwrap())
+            .unwrap();
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// Rust saves free-chat metas through the route (free_chats::post) while Node, through its
+/// coordinated free list (core rust-projects.cjs createFreeChatsFile), adds metas and removes some
+/// of its own (a delete or a move here). `blind`: Node saves its cached list whole, as before the
+/// slice (the control). Returns the free list's ids afterwards.
+fn free_race(core: &str, blind: bool) -> Vec<String> {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("users").join(FREE_USER);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("free-chats.json");
+    std::fs::write(&file, "[]").unwrap();
+    let script = r#"
+      const [core, file, rounds, mode] = process.argv.slice(1);
+      const fs = require('fs');
+      const { createFreeChatsFile } = require(core + '/server/rust-projects.cjs');
+      const { atomicJson } = require(core + '/server/workspace.cjs');
+      const ff = createFreeChatsFile(file, { atomicJson, warn: (m) => { throw new Error(m); } });
+      const ws = { freeChats: ff.load() };
+      fs.writeFileSync(file + '.loaded', '');
+      // From Rust's first save on, this view is stale until refreshed.
+      const until = Date.now() + 20000;
+      while (!fs.readFileSync(file, 'utf8').includes('"rust-0"')) {
+        if (Date.now() > until) throw new Error('Rust never wrote');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
+      }
+      for (let i = 0; i < Number(rounds); i++) {
+        if (i % 2 && mode !== 'blind') ff.refresh(ws);
+        // Every fifth round this request also removes its previous meta (a delete or move here).
+        const kept = ws.freeChats.filter((c) => !(i % 5 === 4 && c.id === 'node-' + (i - 1)));
+        ws.freeChats = [{ id: 'node-' + i, title: 'n', updatedAt: 100000 + i, preview: '', pinned: false, archived: false }, ...kept];
+        if (mode === 'blind') atomicJson(file, ws.freeChats);
+        else ff.save(ws);
+      }
+    "#;
+    let rounds = 120usize;
+    let mut node = Command::new("node")
+        .args([
+            "-e",
+            script,
+            core,
+            file.to_str().unwrap(),
+            &rounds.to_string(),
+            if blind { "blind" } else { "merge" },
+        ])
+        .spawn()
+        .expect("node on PATH");
+    let loaded = dir.join("free-chats.json.loaded");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !loaded.exists() {
+        assert!(std::time::Instant::now() < until, "node never loaded");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    for i in 0..rounds {
+        let body =
+            format!("{{\"chats\":[{{\"id\":\"rust-{i}\",\"title\":\"r\",\"updatedAt\":{i}}}]}}");
+        let r =
+            server_projects::free_chats::post(free_ctx(root.path()), body.as_bytes(), false, true);
+        assert_eq!(r.status, 200, "{r:?}");
+    }
+    assert!(node.wait().unwrap().success(), "node side failed");
+    assert!(dir.join("free-chats.json.lock").exists(), "long-lived");
+    free_ids(&dir)
+}
+
+#[test]
+fn node_and_rust_saving_the_free_list_at_once_lose_nothing() {
+    let Some(core) = core() else { return };
+    let ids: std::collections::HashSet<String> = free_race(&core, false).into_iter().collect();
+    for i in 0..120 {
+        assert!(ids.contains(&format!("rust-{i}")), "Rust's rust-{i} lost");
+        let node_kept = !(i + 1 < 120 && (i + 1) % 5 == 4);
+        assert_eq!(ids.contains(&format!("node-{i}")), node_kept, "node-{i}");
+    }
+    assert_eq!(
+        ids.len(),
+        120 + 120 - (0..119).filter(|i| (i + 1) % 5 == 4).count()
+    );
+}
+
+/// The control: Node's whole-list save (before the slice) drops metas Rust saved meanwhile.
+#[test]
+fn without_the_merge_nodes_free_saves_drop_rusts_metas() {
+    let Some(core) = core() else { return };
+    let ids = free_race(&core, true);
+    assert!(!ids.contains(&"rust-0".to_string()), "{ids:?}");
+}
+
+/// Node (core projects.cjs `moveChat` into project p1, or `deleteFreeChat`, through the workspace
+/// store with the slice on) stops at the first file it writes until a stale client's free-list
+/// save, still listing the chat `f1` and adding `n1`, has gone through Rust. `variant`:
+///   "move"            moveChat as core does it (projects.json first, then free-chats.json)
+///   "move-free-first" the control: the free list written first by hand
+///   "delete"          deleteFreeChat (tombstone, then the free list)
+///   "delete-blind"    the control: the same delete with Node's whole-list save
+/// Returns (f1 in the free list, f1 in p1, n1 in the free list).
+fn free_interleaving(core: &str, variant: &str) -> (bool, bool, bool) {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("users").join(FREE_USER);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(store::PROJECTS_FILE),
+        "{\n  \"projects\": [\n    {\n      \"id\": \"p1\",\n      \"name\": \"Synthetic\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {}\n    }\n  ]\n}",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("free-chats.json"),
+        "[\n  {\n    \"id\": \"f1\",\n    \"title\": \"Moving\",\n    \"updatedAt\": 5\n  }\n]",
+    )
+    .unwrap();
+    let script = r#"
+      const [core, root, user, variant] = process.argv.slice(1);
+      const fs = require('fs'), path = require('path');
+      const { createWorkspaceStore, atomicJson } = require(core + '/server/workspace.cjs');
+      const { createProjectStore } = require(core + '/server/projects.cjs');
+      const ws = createWorkspaceStore(root, { id: 'synthetic', label: 'Synthetic' }, null, { rustProjects: true, rustFreeChats: true }).get(user);
+      if (!ws.freeChatsFile) throw new Error('the free-chat slice is not on');
+      // Stop at the first file this request writes until Rust has saved (deterministic interleaving):
+      // a move right after its first write; a delete after its tombstone, before its list write.
+      let first = true;
+      const pause = () => {
+        if (!first) return; first = false;
+        fs.writeFileSync(path.join(ws.dir, 'node.paused'), '');
+        const until = Date.now() + 20000;
+        while (!fs.existsSync(path.join(ws.dir, 'node.go'))) {
+          if (Date.now() > until) throw new Error('Rust never saved');
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
+        }
+      };
+      const saveProjects = ws.saveProjects, saveFreeChats = ws.saveFreeChats;
+      ws.saveProjects = function () { saveProjects.call(this); pause(); };
+      const deleting = variant.startsWith('delete');
+      ws.saveFreeChats = function () {
+        if (deleting) pause();
+        if (variant === 'delete-blind') atomicJson(path.join(ws.dir, 'free-chats.json'), this.freeChats);
+        else saveFreeChats.call(this);
+        pause();
+      };
+      const proxy = (field) => new Proxy([], {
+        get(_t, prop) { const v = ws[field][prop]; return typeof v === 'function' ? v.bind(ws[field]) : v; },
+        set(_t, prop, v) { ws[field][prop] = v; return true; },
+        ownKeys() { return Reflect.ownKeys(ws[field]); },
+        getOwnPropertyDescriptor(_t, prop) { return Reflect.getOwnPropertyDescriptor(ws[field], prop); },
+      });
+      const store = createProjectStore({ fs, path, currentWorkspace: () => ws, PROJECTS: proxy('projects'), FREE_CHATS: proxy('freeChats') });
+      if (variant === 'move') {
+        const r = store.moveChat('f1', 'p1');
+        if (r.status !== 200) throw new Error('move: ' + JSON.stringify(r));
+      } else if (variant === 'move-free-first') {
+        const meta = ws.freeChats.find((c) => c.id === 'f1');
+        ws.freeChats = ws.freeChats.filter((c) => c.id !== 'f1');
+        ws.saveFreeChats();
+        ws.projects[0].chats = [meta];
+        ws.saveProjects();
+      } else {
+        if (!store.deleteFreeChat('f1')) throw new Error('delete refused');
+      }
+    "#;
+    let mut node = Command::new("node")
+        .args([
+            "-e",
+            script,
+            core,
+            root.path().to_str().unwrap(),
+            FREE_USER,
+            variant,
+        ])
+        .spawn()
+        .expect("node on PATH");
+    let paused = dir.join("node.paused");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !paused.exists() {
+        assert!(std::time::Instant::now() < until, "node never paused");
+        assert!(
+            node.try_wait().unwrap().is_none(),
+            "node exited before its first write"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    // The stale client still lists f1 (with a newer title), next to a new chat.
+    let body = br#"{"chats":[{"id":"f1","title":"Stale","updatedAt":9},{"id":"n1","title":"New","updatedAt":8}]}"#;
+    let r = server_projects::free_chats::post(free_ctx(root.path()), body, false, true);
+    assert_eq!(r.status, 200, "{r:?}");
+    std::fs::write(dir.join("node.go"), "").unwrap();
+    assert!(node.wait().unwrap().success(), "node side failed");
+    let projects: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join(store::PROJECTS_FILE)).unwrap())
+            .unwrap();
+    let in_p1 = projects["projects"][0]["chats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["id"].as_str() == Some("f1"));
+    let free = free_ids(&dir);
+    (
+        free.contains(&"f1".to_string()),
+        in_p1,
+        free.contains(&"n1".to_string()),
+    )
+}
+
+#[test]
+fn a_chat_moved_into_a_project_during_a_rust_free_save_ends_in_one_list() {
+    let Some(core) = core() else { return };
+    assert_eq!(free_interleaving(&core, "move"), (false, true, true));
+}
+
+/// The control: written free list first, the same interleaving leaves f1 in both lists, which is
+/// why moveChat writes the project first when a chat goes into one.
+#[test]
+fn moving_in_free_list_first_duplicates_the_chat() {
+    let Some(core) = core() else { return };
+    assert_eq!(
+        free_interleaving(&core, "move-free-first"),
+        (true, true, true)
+    );
+}
+
+#[test]
+fn a_free_chat_deleted_during_a_rust_free_save_stays_deleted_and_the_save_stands() {
+    let Some(core) = core() else { return };
+    assert_eq!(free_interleaving(&core, "delete"), (false, false, true));
+}
+
+/// The control: the same delete saved whole (before the slice) drops the meta Rust saved.
+#[test]
+fn deleting_with_a_whole_list_save_drops_rusts_meta() {
+    let Some(core) = core() else { return };
+    assert_eq!(
+        free_interleaving(&core, "delete-blind"),
+        (false, false, false)
+    );
+}
+
+/// sbstndalton/noevia#1426: a chat turn sets the chat's routing flags (core projects.cjs
+/// `setChatFlags`) after its route choice, which can wait long; the workspace was read when the
+/// turn began. Rust saves the chat retitled in between (`list`: "free" for the free list, "project"
+/// for p1's chat list). `stale`: the control, the flags set on the turn's own view as index.cjs did
+/// before. Returns the chat's title and forceLocal flag on disk afterwards.
+fn flags_interleaving(core: &str, list: &str, stale: bool) -> (String, Option<bool>) {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("users").join(FREE_USER);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(store::PROJECTS_FILE),
+        "{\n  \"projects\": [\n    {\n      \"id\": \"p1\",\n      \"name\": \"Synthetic\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [\n        {\n          \"id\": \"c1\",\n          \"title\": \"Old\",\n          \"updatedAt\": 5\n        }\n      ],\n      \"instructionSkills\": {}\n    }\n  ]\n}",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("free-chats.json"),
+        "[\n  {\n    \"id\": \"c1\",\n    \"title\": \"Old\",\n    \"updatedAt\": 5\n  }\n]",
+    )
+    .unwrap();
+    // The same id in both lists keeps the two variants alike; each touches only its own list.
+    if list == "project" {
+        std::fs::write(dir.join("free-chats.json"), "[]").unwrap();
+    } else {
+        std::fs::write(
+            dir.join(store::PROJECTS_FILE),
+            "{\n  \"projects\": [\n    {\n      \"id\": \"p1\",\n      \"name\": \"Synthetic\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {}\n    }\n  ]\n}",
+        )
+        .unwrap();
+    }
+    let script = r#"
+      const [core, root, user, list, stale] = process.argv.slice(1);
+      const fs = require('fs'), path = require('path');
+      const { createWorkspaceStore } = require(core + '/server/workspace.cjs');
+      const { createProjectStore } = require(core + '/server/projects.cjs');
+      const ws = createWorkspaceStore(root, { id: 'synthetic', label: 'Synthetic' }, null, { rustProjects: true, rustFreeChats: true }).get(user);
+      if (!ws.freeChatsFile || !ws.projectsFile) throw new Error('the slices are not on');
+      const proxy = (field) => new Proxy([], {
+        get(_t, prop) { const v = ws[field][prop]; return typeof v === 'function' ? v.bind(ws[field]) : v; },
+        set(_t, prop, v) { ws[field][prop] = v; return true; },
+        ownKeys() { return Reflect.ownKeys(ws[field]); },
+        getOwnPropertyDescriptor(_t, prop) { return Reflect.getOwnPropertyDescriptor(ws[field], prop); },
+      });
+      const PROJECTS = proxy('projects'), FREE_CHATS = proxy('freeChats');
+      const store = createProjectStore({ fs, path, currentWorkspace: () => ws, PROJECTS, FREE_CHATS });
+      const projectId = list === 'project' ? 'p1' : null;
+      // The turn waits for its route choice; Rust saves meanwhile.
+      fs.writeFileSync(path.join(ws.dir, 'node.paused'), '');
+      const until = Date.now() + 20000;
+      while (!fs.existsSync(path.join(ws.dir, 'node.go'))) {
+        if (Date.now() > until) throw new Error('Rust never saved');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
+      }
+      const patch = { forceLocal: true };
+      if (stale === '1') {
+        // index.cjs before #1426: the flags set on the turn's own view, saved.
+        const chats = projectId ? store.getProject(projectId)?.chats : FREE_CHATS;
+        const meta = chats.find((c) => c && c.id === 'c1');
+        if (!meta) throw new Error('no meta');
+        Object.assign(meta, patch);
+        if (projectId) store.saveProjects(PROJECTS); else store.saveFreeChats(FREE_CHATS);
+      } else if (!store.setChatFlags(projectId, 'c1', patch)) {
+        throw new Error('setChatFlags found no meta');
+      }
+    "#;
+    let mut node = Command::new("node")
+        .args([
+            "-e",
+            script,
+            core,
+            root.path().to_str().unwrap(),
+            FREE_USER,
+            list,
+            if stale { "1" } else { "0" },
+        ])
+        .spawn()
+        .expect("node on PATH");
+    let paused = dir.join("node.paused");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !paused.exists() {
+        assert!(std::time::Instant::now() < until, "node never paused");
+        assert!(node.try_wait().unwrap().is_none(), "node exited early");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let body = br#"{"chats":[{"id":"c1","title":"Retitled","updatedAt":9}]}"#;
+    let r = if list == "project" {
+        server_projects::chats::post(free_ctx(root.path()), "p1", body, false, true)
+    } else {
+        server_projects::free_chats::post(free_ctx(root.path()), body, false, true)
+    };
+    assert_eq!(r.status, 200, "{r:?}");
+    std::fs::write(dir.join("node.go"), "").unwrap();
+    assert!(node.wait().unwrap().success(), "node side failed");
+    let meta = if list == "project" {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join(store::PROJECTS_FILE)).unwrap())
+                .unwrap();
+        v["projects"][0]["chats"][0].clone()
+    } else {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("free-chats.json")).unwrap())
+                .unwrap();
+        v[0].clone()
+    };
+    assert_eq!(meta["id"], "c1", "{meta}");
+    (
+        meta["title"].as_str().unwrap().to_string(),
+        meta["forceLocal"].as_bool(),
+    )
+}
+
+#[test]
+fn routing_flags_set_after_a_rust_free_save_keep_its_title() {
+    let Some(core) = core() else { return };
+    assert_eq!(
+        flags_interleaving(&core, "free", false),
+        ("Retitled".to_string(), Some(true))
+    );
+}
+
+#[test]
+fn routing_flags_set_after_a_rust_chat_list_save_keep_its_title() {
+    let Some(core) = core() else { return };
+    assert_eq!(
+        flags_interleaving(&core, "project", false),
+        ("Retitled".to_string(), Some(true))
+    );
+}
+
+/// The control: flags set on the turn's stale view put the old title back.
+#[test]
+fn routing_flags_on_a_stale_view_revert_rusts_title() {
+    let Some(core) = core() else { return };
+    assert_eq!(
+        flags_interleaving(&core, "free", true),
+        ("Old".to_string(), Some(true))
+    );
+    assert_eq!(
+        flags_interleaving(&core, "project", true),
+        ("Old".to_string(), Some(true))
+    );
 }
