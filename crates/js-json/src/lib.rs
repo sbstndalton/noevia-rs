@@ -2,8 +2,9 @@
 //! M3): what `JSON.parse` gives a handler, what `JSON.stringify` sends back, and the coercions
 //! handlers apply to body fields (`String(v)`, `!!v`, `typeof`).
 //!
-//! - [`parse`] keeps object keys in insertion order (a later duplicate replaces the value in the
-//!   first one's place, as `JSON.parse` does) and every number as an `f64`. Stricter than
+//! - [`parse`] orders object keys as JS does: array-index keys first, ascending (#1404), the rest in
+//!   insertion order (a later duplicate replaces the value in the first one's place, as
+//!   `JSON.parse` does), and every number as an `f64`. Stricter than
 //!   `JSON.parse`, as refusals: strings with lone surrogate escapes, numbers outside the `f64`
 //!   range (JS: `Infinity`), and nesting deeper than serde_json's 128 levels.
 //! - [`stringify`] is `JSON.stringify(value)` byte for byte, `undefined` included (dropped in
@@ -222,6 +223,8 @@ impl<'de> Visitor<'de> for Seed {
                 out.push((k, v));
             }
         }
+        // JS property order: array-index keys first, ascending, then the rest as they came (#1404).
+        wtf16::order_keys(&mut out);
         Ok(JValue::Obj(out))
     }
 }
@@ -523,6 +526,22 @@ mod tests {
         assert_eq!(s("true"), "true");
         assert!(to_js_string(&parse(r#"{"toString":1}"#).unwrap()).is_err());
         assert_eq!(to_js_string(&JValue::Undefined).unwrap(), "undefined");
+    }
+
+    #[test]
+    fn parse_orders_index_keys_first_like_js() {
+        // Node: JSON.stringify(JSON.parse(text)) for the same text (#1404).
+        let v = parse(r#"{"b":1,"2":1,"10":1,"1":1,"01":1,"4294967295":1,"4294967294":1}"#).unwrap();
+        assert_eq!(
+            stringify(&v).unwrap(),
+            r#"{"1":1,"2":1,"10":1,"4294967294":1,"b":1,"01":1,"4294967295":1}"#
+        );
+        // A duplicate keeps the first position (after the index sort) and takes the last value.
+        let v = parse(r#"{"x":1,"5":"a","3":"b","x":2,"5":"c"}"#).unwrap();
+        assert_eq!(stringify(&v).unwrap(), r#"{"3":"b","5":"c","x":2}"#);
+        // Nested objects are ordered at every level; arrays keep their order.
+        let v = parse(r#"[{"z":0,"1":{"y":0,"0":0}}]"#).unwrap();
+        assert_eq!(stringify(&v).unwrap(), r#"[{"1":{"0":0,"y":0},"z":0}]"#);
     }
 
     #[test]
