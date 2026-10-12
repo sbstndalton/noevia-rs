@@ -1852,8 +1852,19 @@ fn hosts_of(command: &[u16], work: &mut Work) -> R<Option<Vec<Word>>> {
                 i += 1;
                 continue;
             };
-            let end = at.iter().position(|&c| is_js_space(c)).unwrap_or(at.len());
-            match url_host(at.get(..end).unwrap_or(&[])) {
+            // noevia#1215: the host is decided by the authority alone. Its span ends at the first
+            // whitespace or `/ \ ? #` after the scheme's slashes (url_host reads no further), so
+            // only that span is handed over: scanning every match to the end of the word was quadratic.
+            let mut end = i + len;
+            while word.get(end).is_some_and(|&c| c == u('/') || c == u('\\')) {
+                end += 1;
+            }
+            while word.get(end).is_some_and(|&c| {
+                !(is_js_space(c) || [u('/'), u('\\'), u('?'), u('#')].contains(&c))
+            }) {
+                end += 1;
+            }
+            match url_host(word.get(i..end).unwrap_or(&[])) {
                 Host::Name(h) => hosts.push(h),
                 Host::Fails => hosts.push(Vec::new()),
                 Host::Unsure => return Ok(None),
@@ -2332,6 +2343,38 @@ mod tests {
         assert_eq!(h("curl http://0x7f.1/"), None);
         assert_eq!(h("curl http://xn--a.com/"), None);
         assert_eq!(h("curl http://1.2.3.4/"), Some(vec![units("1.2.3.4")]));
+    }
+
+    #[test]
+    fn hosts_stay_linear_on_a_long_http_run() {
+        // noevia#1215: one long word of `http://` used to be re-scanned to its end for every match.
+        for n in [60_000usize, 120_000] {
+            let run = "http://".repeat(n / 7 + 1);
+            let run = run.get(..n).unwrap_or(&run).to_string();
+            let t = std::time::Instant::now();
+            let got = hosts(&units(&format!("curl {run}")));
+            let ms = t.elapsed().as_millis();
+            assert!(ms < 1_000, "{n} units took {ms} ms");
+            assert!(matches!(got, Ok(Some(_)) | Err(_)), "{n}");
+        }
+        // Authority rules are unchanged: extra slashes are skipped, credentials and ports dropped.
+        let h = |s: &str| hosts(&units(s)).unwrap();
+        assert_eq!(
+            h("curl http:///evil.test/x"),
+            Some(vec![units("evil.test")])
+        );
+        assert_eq!(
+            h("curl http://a:b@evil.test#http://ok.test"),
+            Some(vec![units("evil.test"), units("ok.test")])
+        );
+        assert_eq!(
+            h("curl http://ok.test/a?n=http://evil.test"),
+            Some(vec![units("ok.test"), units("evil.test")])
+        );
+        assert_eq!(
+            h("curl http://http://x"),
+            Some(vec![units("http"), units("x")])
+        );
     }
 
     #[test]
