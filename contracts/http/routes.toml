@@ -573,7 +573,9 @@ owner = "node"
 
 [[route]]
 path = "/api/projects/{projectId}/chats"
-owner = "node"
+owner = "rust"
+switch = "NOEVIA_RUST_PROJECTS"
+methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/projects/{projectId}/chats/{chatId}"

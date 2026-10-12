@@ -28,9 +28,9 @@ use std::sync::Arc;
 /// What `noevia-server --features` lists, one per line.
 /// `rust-auth`: this build answers sign-in and the account under NOEVIA_RUST_AUTH (M3); the web
 /// supervisor should let Node refuse the account tables only when the front reports it.
-/// `rust-projects`: this build answers a project's image routes under NOEVIA_RUST_PROJECTS (M4)
-/// and writes projects.json under the lock Node shares; the supervisor confirms it to Node the
-/// same way.
+/// `rust-projects`: this build answers the ported project routes (a project's images and its chat
+/// list) under NOEVIA_RUST_PROJECTS (M4) and writes projects.json under the lock Node shares; the
+/// supervisor confirms it to Node the same way.
 pub const FEATURES: &[&str] = &[
     "code-net-guard",
     "header-read-timeout",
@@ -130,7 +130,7 @@ async fn handle(
                 on_whatwg,
                 Some(
                     routes::Native::Account
-                        | routes::Native::ProjectAssets
+                        | routes::Native::Projects
                         | routes::Native::Usage
                         | routes::Native::SamplingSettings
                         | routes::Native::ReasoningSettings
@@ -146,7 +146,7 @@ async fn handle(
         Some(routes::Native::Static) => static_files::canonical(&path),
         Some(
             routes::Native::Account
-            | routes::Native::ProjectAssets
+            | routes::Native::Projects
             | routes::Native::Usage
             | routes::Native::SamplingSettings
             | routes::Native::ReasoningSettings
@@ -200,7 +200,7 @@ async fn handle(
             };
             usage_routes::serve(&app, conn, req, p).await
         }
-        Some(routes::Native::ProjectAssets) => {
+        Some(routes::Native::Projects) => {
             let Some(p) = whatwg else {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };

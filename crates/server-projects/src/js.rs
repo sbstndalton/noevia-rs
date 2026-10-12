@@ -109,6 +109,27 @@ pub fn id_chars(s: &str) -> String {
         .collect()
 }
 
+/// JS `\s` (WhiteSpace and LineTerminator): what `String.prototype.trim` strips and `/\s/`
+/// matches. Not Rust's `char::is_whitespace` (that has U+0085 and lacks U+FEFF).
+pub fn is_space(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
+}
+
+/// `s.trim()`.
+pub fn trim(s: &str) -> &str {
+    s.trim_matches(is_space)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -209,5 +230,12 @@ mod tests {
         assert_ne!(random36(12), random36(12));
         assert_eq!(id_chars("img-ab_C9/../é x"), "img-ab_C9x");
         assert_eq!(id_chars("../.."), "");
+    }
+
+    #[test]
+    fn whitespace_is_javascripts() {
+        assert_eq!(trim("\u{feff}\u{3000} a b\u{2029}\n"), "a b");
+        assert_eq!(trim("\u{85}a\u{85}"), "\u{85}a\u{85}");
+        assert!(!is_space('\u{200b}') && is_space('\u{200a}'));
     }
 }

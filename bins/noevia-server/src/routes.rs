@@ -73,18 +73,20 @@ pub enum Native {
     Static,
     /// Sign-in and the account (M3, NOEVIA_RUST_AUTH): crates/server-account.
     Account,
-    /// A project's images (M4, NOEVIA_RUST_PROJECTS): crates/server-projects `assets`.
-    ProjectAssets,
+    /// The project routes ported so far (M4, NOEVIA_RUST_PROJECTS): crates/server-projects
+    /// `assets` (a project's images) and `chats` (its chat list).
+    Projects,
     Usage,
     SamplingSettings,
     ReasoningSettings,
     RoutingMode,
 }
 
-/// The routes [`Native::ProjectAssets`] implements.
-const PROJECT_ASSET_ROUTES: &[&str] = &[
+/// The routes [`Native::Projects`] implements.
+const PROJECT_ROUTES: &[&str] = &[
     "/api/projects/{id}/assets",
     "/api/projects/{id}/assets/{assetId}",
+    "/api/projects/{projectId}/chats",
 ];
 
 /// The native handler a rust-owned route is implemented by.
@@ -100,8 +102,8 @@ pub fn native_for(route: &Route) -> Option<Native> {
         (_, false, Some("NOEVIA_RUST_AUTH")) if route.path.starts_with("/api/") => {
             Some(Native::Account)
         }
-        (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ASSET_ROUTES.contains(&p) => {
-            Some(Native::ProjectAssets)
+        (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ROUTES.contains(&p) => {
+            Some(Native::Projects)
         }
         ("/api/reasoning-settings", false, Some("NOEVIA_RUST_REASONING_SETTINGS")) => {
             Some(Native::ReasoningSettings)
@@ -273,7 +275,7 @@ mod tests {
             assert_eq!(dispatch_under(m, p, auth), None, "{m} {p}");
             assert_eq!(
                 dispatch_under(m, p, both),
-                Some(Native::ProjectAssets),
+                Some(Native::Projects),
                 "{m} {p}"
             );
         }
@@ -284,7 +286,38 @@ mod tests {
             ("POST", "/api/projects/p1/assets/img-1"),
             ("POST", "/api/projects/p1/upload"),
             ("DELETE", "/api/projects/p1"),
-            ("GET", "/api/projects/p1/chats"),
+        ] {
+            assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn a_projects_chat_list_is_rusts_only_under_the_switch_for_get_and_post() {
+        let auth = Switches {
+            rust_auth: true,
+            ..Default::default()
+        };
+        let both = Switches {
+            rust_auth: true,
+            rust_projects: true,
+            ..Default::default()
+        };
+        for m in ["GET", "POST"] {
+            let p = "/api/projects/p1/chats";
+            assert_eq!(dispatch(m, p), None, "{m}");
+            assert_eq!(dispatch_under(m, p, auth), None, "{m}");
+            assert_eq!(dispatch_under(m, p, both), Some(Native::Projects), "{m}");
+        }
+        // Node keeps every other method, the chat routes below the list, and the project itself.
+        for (m, p) in [
+            ("PUT", "/api/projects/p1/chats"),
+            ("DELETE", "/api/projects/p1/chats"),
+            ("HEAD", "/api/projects/p1/chats"),
+            ("GET", "/api/projects/p1/chats/c1"),
+            ("DELETE", "/api/projects/p1/chats/c1"),
+            ("POST", "/api/projects"),
+            ("POST", "/api/projects/p1/config"),
+            ("DELETE", "/api/projects/p1"),
         ] {
             assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
         }

@@ -327,3 +327,106 @@ fn a_killed_node_holder_releases_the_lock() {
     drop(lock::acquire(&file).unwrap());
     assert!(t0.elapsed() < std::time::Duration::from_secs(1));
 }
+
+/// The chat-list slice: Rust saves chat metas through the route (chats::post) while Node, through
+/// its merge, adds metas and removes some of its own (a delete or a move here). `blind`: Node saves
+/// its cached view whole, the control. Returns p1's chat ids afterwards.
+fn chat_race(core: &str, blind: bool) -> Vec<String> {
+    const USER: &str = "11111111-2222-4333-8444-555555555555";
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("users").join(USER);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join(store::PROJECTS_FILE);
+    std::fs::write(
+        &file,
+        "{\n  \"projects\": [\n    {\n      \"id\": \"p1\",\n      \"name\": \"Synthetic\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {}\n    }\n  ]\n}",
+    )
+    .unwrap();
+    let script = r#"
+      const [core, file, rounds, mode] = process.argv.slice(1);
+      const fs = require('fs');
+      const { createProjectsFile } = require(core + '/server/rust-projects.cjs');
+      const { atomicJson } = require(core + '/server/workspace.cjs');
+      const pf = createProjectsFile(file, { atomicJson, warn: (m) => { throw new Error(m); } });
+      const projects = pf.load();
+      fs.writeFileSync(file + '.loaded', '');
+      // From Rust's first save on, this view is stale until refreshed.
+      const until = Date.now() + 20000;
+      while (!fs.readFileSync(file, 'utf8').includes('"rust-0"')) {
+        if (Date.now() > until) throw new Error('Rust never wrote');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
+      }
+      for (let i = 0; i < Number(rounds); i++) {
+        if (i % 2 && mode !== 'blind') pf.refresh(projects);
+        const p = projects.find((x) => x.id === 'p1');
+        // Every fifth round this request also removes its previous meta (a delete or move here).
+        const kept = (p.chats || []).filter((c) => !(i % 5 === 4 && c.id === 'node-' + (i - 1)));
+        p.chats = [...kept, { id: 'node-' + i, title: 'n', updatedAt: 100000 + i, preview: '', pinned: false, archived: false }];
+        if (mode === 'blind') atomicJson(file, { projects });
+        else pf.save(projects);
+      }
+    "#;
+    let rounds = 120usize;
+    let mut node = Command::new("node")
+        .args([
+            "-e",
+            script,
+            core,
+            file.to_str().unwrap(),
+            &rounds.to_string(),
+            if blind { "blind" } else { "merge" },
+        ])
+        .spawn()
+        .expect("node on PATH");
+    let loaded = dir.join("projects.json.loaded");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !loaded.exists() {
+        assert!(std::time::Instant::now() < until, "node never loaded");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    for i in 0..rounds {
+        let ctx = server_projects::Ctx {
+            data_dir: root.path(),
+            user_id: USER,
+            switch: RustProjects::from_env_value(Some("1")).unwrap(),
+            now_ms: 1,
+        };
+        let body =
+            format!("{{\"chats\":[{{\"id\":\"rust-{i}\",\"title\":\"r\",\"updatedAt\":{i}}}]}}");
+        let r = server_projects::chats::post(ctx, "p1", body.as_bytes(), false, true);
+        assert_eq!(r.status, 200, "{r:?}");
+    }
+    assert!(node.wait().unwrap().success(), "node side failed");
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    v["projects"][0]["chats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn node_and_rust_saving_chat_lists_at_once_lose_nothing() {
+    let Some(core) = core() else { return };
+    let ids: std::collections::HashSet<String> = chat_race(&core, false).into_iter().collect();
+    for i in 0..120 {
+        assert!(ids.contains(&format!("rust-{i}")), "Rust's rust-{i} lost");
+        let node_kept = !(i + 1 < 120 && (i + 1) % 5 == 4);
+        assert_eq!(ids.contains(&format!("node-{i}")), node_kept, "node-{i}");
+    }
+    assert_eq!(
+        ids.len(),
+        120 + 120 - (0..119).filter(|i| (i + 1) % 5 == 4).count()
+    );
+}
+
+/// The control: Node's pre-M4 whole-view save drops chat metas Rust saved meanwhile.
+#[test]
+fn without_the_merge_nodes_saves_drop_rusts_chat_metas() {
+    let Some(core) = core() else { return };
+    let ids = chat_race(&core, true);
+    // Its view never had rust-0, and it saved after rust-0 was written: rust-0 is gone for good.
+    assert!(!ids.contains(&"rust-0".to_string()), "{ids:?}");
+}

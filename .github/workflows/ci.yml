@@ -383,10 +383,10 @@ jobs:
 
   corpus-replay-front-rust-projects:
     # Full-Rust migration M4: the corpus through the front with NOEVIA_RUST_PROJECTS on top of M3.
-    # The front answers a project's image routes itself (crates/server-projects) and writes
-    # projects.json under the lock Node shares (core server/rust-projects.cjs); Node keeps writing
-    # the same file for the chat routes, merged under that lock. Zero differences and the data
-    # dir a Node-only run leaves.
+    # The front answers a project's image routes and its chat list itself (crates/server-projects)
+    # and writes projects.json under the lock Node shares (core server/rust-projects.cjs); Node
+    # keeps writing the same file for its own project routes, merged under that lock. Zero
+    # differences and the data dir a Node-only run leaves.
     name: Contract corpus replays clean with Rust owning project images (NOEVIA_RUST_PROJECTS=1)
     runs-on: ubuntu-latest
     steps:
@@ -424,8 +424,8 @@ jobs:
           echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo build --locked -p replay -p noevia-server
-      - name: Node and Rust share the projects.json lock and lose no write (and the blind-save control does)
-        run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock
+      - name: Node and Rust share the projects.json lock and lose no write (and the blind-save control does); generated chat-list saves answer as core's route
+        run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock --test chats_property
       - name: Replay against Node directly (reference data dir)
         run: |
           set -euo pipefail
@@ -445,9 +445,10 @@ jobs:
             --report "$RUNNER_TEMP/replay-front-report.json" --state-out "$RUNNER_TEMP/rust-projects-state.json" \
             --state-ignore '*projects.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"
-      - name: "Negative control: Node told the front owns the image routes refuses their writes"
-        # The same run with the front started without the switch: the image writes reach Node,
-        # which must answer 503 RUST_PROJECTS_OWNED, so the clean replay above was the front's work.
+      - name: "Negative control: Node told the front owns the image and chat-list routes refuses their writes"
+        # The same run with the front started without the switch: the image writes and chat-list
+        # saves reach Node, which must answer 503 RUST_PROJECTS_OWNED, so the clean replay above was
+        # the front's work.
         run: |
           set -uo pipefail
           if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
@@ -455,14 +456,15 @@ jobs:
               --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \
               --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 REPLAY_FRONT_CONTROL_NODE_ONLY_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
               --report "$RUNNER_TEMP/control-report.json"; then
-            echo "::error::the image routes replayed clean through Node: its NOEVIA_RUST_PROJECTS guard did not engage"; exit 1
+            echo "::error::the project routes replayed clean through Node: its NOEVIA_RUST_PROJECTS guard did not engage"; exit 1
           fi
           python3 - "$RUNNER_TEMP/control-report.json" <<'PY'
           import json, re, sys
           rows = json.load(open(sys.argv[1]))
-          up = [r for r in rows if r["method"] == "POST" and re.fullmatch(r"/api/projects/[^/]+/assets", r["path"]) and r["expectedStatus"] == 200]
-          assert up and all(r["status"] == 503 for r in up), up
-          print("negative control: Node refused", len(up), "image uploads with 503")
+          for what, pattern in (("image uploads", r"/api/projects/[^/]+/assets"), ("chat-list saves", r"/api/projects/[^/]+/chats")):
+              up = [r for r in rows if r["method"] == "POST" and re.fullmatch(pattern, r["path"]) and r["expectedStatus"] == 200]
+              assert up and all(r["status"] == 503 for r in up), up
+              print("negative control: Node refused", len(up), what, "with 503")
           PY
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

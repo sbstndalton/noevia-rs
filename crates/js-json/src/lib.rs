@@ -9,8 +9,11 @@
 //! - [`stringify`] is `JSON.stringify(value)` byte for byte, `undefined` included (dropped in
 //!   objects, `null` in arrays, nothing at the top).
 //! - [`to_js_string`] is `String(value)`.
+//! - [`wtf16`]: the lossless variants for data Node wrote: lone surrogates kept, JS key order.
 
 use serde::de::{DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
+
+pub mod wtf16;
 use std::fmt::{self, Write as _};
 
 /// A JavaScript value that came out of `JSON.parse`, or one a handler builds to send.
@@ -207,12 +210,15 @@ impl<'de> Visitor<'de> for Seed {
     }
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<JValue, A::Error> {
         let mut out: Vec<(String, JValue)> = Vec::new();
+        // Key -> index in `out`, so a body with many keys parses in linear time.
+        let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         while let Some(k) = map.next_key::<String>()? {
             let v = map.next_value_seed(Seed)?;
             // JSON.parse: a repeated key keeps its first position and takes the last value.
-            if let Some(slot) = out.iter_mut().find(|(key, _)| *key == k) {
+            if let Some(slot) = index.get(&k).and_then(|&i| out.get_mut(i)) {
                 slot.1 = v;
             } else {
+                index.insert(k.clone(), out.len());
                 out.push((k, v));
             }
         }
@@ -235,8 +241,19 @@ pub fn number_to_string(x: f64) -> String {
 
 /// JSON.stringify's string quoting.
 pub fn quote(s: &str, out: &mut String) {
+    quote_in(s, out, false);
+}
+
+/// [`quote`]; `lossless`: a [`wtf16`] lone surrogate is written as JSON.stringify writes one.
+fn quote_in(s: &str, out: &mut String, lossless: bool) {
     out.push('"');
     for ch in s.chars() {
+        if lossless {
+            if let Some(unit) = wtf16::lone_unit(ch) {
+                let _ = write!(out, "\\u{unit:04x}");
+                continue;
+            }
+        }
         match ch {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
@@ -254,20 +271,20 @@ pub fn quote(s: &str, out: &mut String) {
     out.push('"');
 }
 
-fn emit(v: &JValue, out: &mut String) {
+fn emit(v: &JValue, out: &mut String, lossless: bool) {
     match v {
         JValue::Undefined | JValue::Null => out.push_str("null"),
         JValue::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
         JValue::Num(n) if n.is_finite() => out.push_str(&number_to_string(*n)),
         JValue::Num(_) => out.push_str("null"),
-        JValue::Str(s) => quote(s, out),
+        JValue::Str(s) => quote_in(s, out, lossless),
         JValue::Arr(items) => {
             out.push('[');
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
                     out.push(',');
                 }
-                emit(item, out);
+                emit(item, out, lossless);
             }
             out.push(']');
         }
@@ -282,9 +299,9 @@ fn emit(v: &JValue, out: &mut String) {
                     out.push(',');
                 }
                 first = false;
-                quote(k, out);
+                quote_in(k, out, lossless);
                 out.push(':');
-                emit(item, out);
+                emit(item, out, lossless);
             }
             out.push('}');
         }
@@ -297,7 +314,7 @@ pub fn stringify(v: &JValue) -> Option<String> {
         return None;
     }
     let mut out = String::new();
-    emit(v, &mut out);
+    emit(v, &mut out, false);
     Some(out)
 }
 
@@ -309,7 +326,7 @@ pub fn stringify_pretty(v: &JValue) -> Option<String> {
         return None;
     }
     let mut out = String::new();
-    emit_pretty(v, &mut out, 0);
+    emit_pretty(v, &mut out, 0, false);
     Some(out)
 }
 
@@ -320,7 +337,7 @@ fn newline(out: &mut String, depth: usize) {
     }
 }
 
-fn emit_pretty(v: &JValue, out: &mut String, depth: usize) {
+fn emit_pretty(v: &JValue, out: &mut String, depth: usize, lossless: bool) {
     match v {
         JValue::Arr(items) if !items.is_empty() => {
             out.push('[');
@@ -329,7 +346,7 @@ fn emit_pretty(v: &JValue, out: &mut String, depth: usize) {
                     out.push(',');
                 }
                 newline(out, depth + 1);
-                emit_pretty(item, out, depth + 1);
+                emit_pretty(item, out, depth + 1, lossless);
             }
             newline(out, depth);
             out.push(']');
@@ -346,15 +363,15 @@ fn emit_pretty(v: &JValue, out: &mut String, depth: usize) {
                 }
                 first = false;
                 newline(out, depth + 1);
-                quote(k, out);
+                quote_in(k, out, lossless);
                 out.push_str(": ");
-                emit_pretty(item, out, depth + 1);
+                emit_pretty(item, out, depth + 1, lossless);
             }
             newline(out, depth);
             out.push('}');
         }
         JValue::Obj(_) => out.push_str("{}"),
-        other => emit(other, out),
+        other => emit(other, out, lossless),
     }
 }
 
