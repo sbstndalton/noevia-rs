@@ -140,11 +140,12 @@ fn split_feasible(
     let n = layers;
     let mut idx: i128 = 0;
     for card in 0..gpu_count {
+        // A card the sampler reported no capacity for holds nothing (#1140: never an error).
         let cap = usize::try_from(card)
             .ok()
             .and_then(|c| caps.get(c))
             .copied()
-            .ok_or(Error::Python("IndexError"))?;
+            .unwrap_or(0.0);
         let mut budget = cap - if card == 0 { pinned_gb } else { 0.0 };
         let mut took = 0;
         while idx < n && cost(idx) <= budget {
@@ -609,11 +610,13 @@ pub fn size_plan(req: &Request, work: &mut Work) -> Result<Plan, Error> {
         let gpu_count = b.gpu_count;
         let vram = b.vram_gb;
         let budget = vram - RESERVE_PER_GPU * f(gpu_count) - req.mmproj_vram_gb;
+        // A list that names fewer cards than GPUs (#1140) is unusable per card: same even division.
+        // A longer list keeps its first gpu_count entries, as it always has.
         let caps = card_caps(
             &b.cards,
             vram,
             gpu_count,
-            gpu_count > 1 && b.cards.is_empty(),
+            gpu_count > 1 && (b.cards.len() as i128) < gpu_count,
         );
         let pinned_gb = req.mmproj_vram_gb;
         let overhead_mul = if gpu_count > 1 {
