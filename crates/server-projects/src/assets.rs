@@ -25,6 +25,8 @@ pub const BODY_LIMIT: usize = IMAGE_UPLOAD_CAP.div_ceil(3) * 4 + 512 * 1024;
 pub(crate) fn store_failure(e: &StoreError) -> Reply {
     match e {
         StoreError::Busy => Reply::error(503, "The project store is busy. Try again shortly."),
+        // workspace.cjs assertActive, through http.cjs errorResponse.
+        StoreError::Gone => Reply::error(410, "account no longer exists"),
         _ => Reply::internal(),
     }
 }
@@ -65,15 +67,27 @@ fn ids(raw_project: &str, raw_asset: &str) -> Option<(String, String)> {
     Some((id, asset))
 }
 
-fn write_asset_file(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+/// Writes the image into `dir` (below `user_dir`), making `dir`'s missing levels (mode 0700) one
+/// at a time below the user's directory but never that directory itself: when the account was
+/// removed meanwhile, the write fails instead of recreating it (sbstndalton/noevia#1425).
+fn write_asset_file(user_dir: &Path, dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+    let below = dir
+        .strip_prefix(user_dir)
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
     let mut builder = std::fs::DirBuilder::new();
-    builder.recursive(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
     }
-    builder.create(dir)?;
+    let mut at = user_dir.to_path_buf();
+    for part in below.components() {
+        at.push(part);
+        match builder.create(&at) {
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && at.is_dir() => {}
+            other => other?,
+        }
+    }
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
@@ -169,8 +183,12 @@ pub fn post(ctx: Ctx<'_>, raw_project: &str, body: &[u8], over: bool) -> Reply {
         js::random36(6)
     );
     let assets_dir = store::asset_dir(&dir, &id);
-    if write_asset_file(&assets_dir, &asset_id, &bytes).is_err() {
-        return Reply::internal();
+    match write_asset_file(&dir, &assets_dir, &asset_id, &bytes) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && !dir.exists() => {
+            return store_failure(&store::StoreError::Gone);
+        }
+        Err(_) => return Reply::internal(),
     }
     let entry = JValue::obj([
         ("id", JValue::Str(asset_id.clone())),

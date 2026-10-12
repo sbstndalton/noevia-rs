@@ -798,3 +798,145 @@ fn deleting_with_a_whole_list_save_drops_rusts_meta() {
         (false, false, false)
     );
 }
+
+/// sbstndalton/noevia#1426: a chat turn sets the chat's routing flags (core projects.cjs
+/// `setChatFlags`) after its route choice, which can wait long; the workspace was read when the
+/// turn began. Rust saves the chat retitled in between (`list`: "free" for the free list, "project"
+/// for p1's chat list). `stale`: the control, the flags set on the turn's own view as index.cjs did
+/// before. Returns the chat's title and forceLocal flag on disk afterwards.
+fn flags_interleaving(core: &str, list: &str, stale: bool) -> (String, Option<bool>) {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("users").join(FREE_USER);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join(store::PROJECTS_FILE),
+        "{\n  \"projects\": [\n    {\n      \"id\": \"p1\",\n      \"name\": \"Synthetic\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [\n        {\n          \"id\": \"c1\",\n          \"title\": \"Old\",\n          \"updatedAt\": 5\n        }\n      ],\n      \"instructionSkills\": {}\n    }\n  ]\n}",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("free-chats.json"),
+        "[\n  {\n    \"id\": \"c1\",\n    \"title\": \"Old\",\n    \"updatedAt\": 5\n  }\n]",
+    )
+    .unwrap();
+    // The same id in both lists keeps the two variants alike; each touches only its own list.
+    if list == "project" {
+        std::fs::write(dir.join("free-chats.json"), "[]").unwrap();
+    } else {
+        std::fs::write(
+            dir.join(store::PROJECTS_FILE),
+            "{\n  \"projects\": [\n    {\n      \"id\": \"p1\",\n      \"name\": \"Synthetic\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {}\n    }\n  ]\n}",
+        )
+        .unwrap();
+    }
+    let script = r#"
+      const [core, root, user, list, stale] = process.argv.slice(1);
+      const fs = require('fs'), path = require('path');
+      const { createWorkspaceStore } = require(core + '/server/workspace.cjs');
+      const { createProjectStore } = require(core + '/server/projects.cjs');
+      const ws = createWorkspaceStore(root, { id: 'synthetic', label: 'Synthetic' }, null, { rustProjects: true, rustFreeChats: true }).get(user);
+      if (!ws.freeChatsFile || !ws.projectsFile) throw new Error('the slices are not on');
+      const proxy = (field) => new Proxy([], {
+        get(_t, prop) { const v = ws[field][prop]; return typeof v === 'function' ? v.bind(ws[field]) : v; },
+        set(_t, prop, v) { ws[field][prop] = v; return true; },
+        ownKeys() { return Reflect.ownKeys(ws[field]); },
+        getOwnPropertyDescriptor(_t, prop) { return Reflect.getOwnPropertyDescriptor(ws[field], prop); },
+      });
+      const PROJECTS = proxy('projects'), FREE_CHATS = proxy('freeChats');
+      const store = createProjectStore({ fs, path, currentWorkspace: () => ws, PROJECTS, FREE_CHATS });
+      const projectId = list === 'project' ? 'p1' : null;
+      // The turn waits for its route choice; Rust saves meanwhile.
+      fs.writeFileSync(path.join(ws.dir, 'node.paused'), '');
+      const until = Date.now() + 20000;
+      while (!fs.existsSync(path.join(ws.dir, 'node.go'))) {
+        if (Date.now() > until) throw new Error('Rust never saved');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
+      }
+      const patch = { forceLocal: true };
+      if (stale === '1') {
+        // index.cjs before #1426: the flags set on the turn's own view, saved.
+        const chats = projectId ? store.getProject(projectId)?.chats : FREE_CHATS;
+        const meta = chats.find((c) => c && c.id === 'c1');
+        if (!meta) throw new Error('no meta');
+        Object.assign(meta, patch);
+        if (projectId) store.saveProjects(PROJECTS); else store.saveFreeChats(FREE_CHATS);
+      } else if (!store.setChatFlags(projectId, 'c1', patch)) {
+        throw new Error('setChatFlags found no meta');
+      }
+    "#;
+    let mut node = Command::new("node")
+        .args([
+            "-e",
+            script,
+            core,
+            root.path().to_str().unwrap(),
+            FREE_USER,
+            list,
+            if stale { "1" } else { "0" },
+        ])
+        .spawn()
+        .expect("node on PATH");
+    let paused = dir.join("node.paused");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !paused.exists() {
+        assert!(std::time::Instant::now() < until, "node never paused");
+        assert!(node.try_wait().unwrap().is_none(), "node exited early");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let body = br#"{"chats":[{"id":"c1","title":"Retitled","updatedAt":9}]}"#;
+    let r = if list == "project" {
+        server_projects::chats::post(free_ctx(root.path()), "p1", body, false, true)
+    } else {
+        server_projects::free_chats::post(free_ctx(root.path()), body, false, true)
+    };
+    assert_eq!(r.status, 200, "{r:?}");
+    std::fs::write(dir.join("node.go"), "").unwrap();
+    assert!(node.wait().unwrap().success(), "node side failed");
+    let meta = if list == "project" {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join(store::PROJECTS_FILE)).unwrap())
+                .unwrap();
+        v["projects"][0]["chats"][0].clone()
+    } else {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("free-chats.json")).unwrap())
+                .unwrap();
+        v[0].clone()
+    };
+    assert_eq!(meta["id"], "c1", "{meta}");
+    (
+        meta["title"].as_str().unwrap().to_string(),
+        meta["forceLocal"].as_bool(),
+    )
+}
+
+#[test]
+fn routing_flags_set_after_a_rust_free_save_keep_its_title() {
+    let Some(core) = core() else { return };
+    assert_eq!(
+        flags_interleaving(&core, "free", false),
+        ("Retitled".to_string(), Some(true))
+    );
+}
+
+#[test]
+fn routing_flags_set_after_a_rust_chat_list_save_keep_its_title() {
+    let Some(core) = core() else { return };
+    assert_eq!(
+        flags_interleaving(&core, "project", false),
+        ("Retitled".to_string(), Some(true))
+    );
+}
+
+/// The control: flags set on the turn's stale view put the old title back.
+#[test]
+fn routing_flags_on_a_stale_view_revert_rusts_title() {
+    let Some(core) = core() else { return };
+    assert_eq!(
+        flags_interleaving(&core, "free", true),
+        ("Old".to_string(), Some(true))
+    );
+    assert_eq!(
+        flags_interleaving(&core, "project", true),
+        ("Old".to_string(), Some(true))
+    );
+}

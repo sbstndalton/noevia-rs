@@ -5,6 +5,11 @@
 //! on the WHATWG pathname Node routes on; the user it returns is the only one whose files are
 //! touched. A path the routes.toml pattern matches but Node's own route regex would not (a
 //! trailing slash, an empty segment) still goes to Node, as before.
+//!
+//! A write passes the gate again right before it touches a file (sbstndalton/noevia#1425): the
+//! body is read between the two, for as long as the client takes, and an account removed (or a
+//! session revoked) meanwhile must not write. The gate only reads the store, so running it twice
+//! changes nothing. The store underneath never recreates a removed user's directory either.
 
 use crate::identity::{self, Rejection};
 use crate::reply;
@@ -112,6 +117,7 @@ pub async fn serve(
     let layer = Arc::clone(&app.identity);
     let now = identity::now_ms();
     let gate_path = path.clone();
+    let (regate_layer, regate_creds) = (Arc::clone(&layer), creds.clone());
     let authn =
         match tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, &gate_path, now))
             .await
@@ -136,14 +142,21 @@ pub async fn serve(
     // routes/projects.cjs: `authn?.user?.role === 'admin'` (a device token acts as a member).
     let admin = authn.user.role == server_auth::Role::Admin;
     let user = authn.user.id;
+    let writes = matches!(
+        route,
+        Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats
+    ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
+        if writes {
+            regate(&regate_layer, &regate_creds, &path, now, &data_dir, &user)?;
+        }
         let ctx = Ctx {
             data_dir: &data_dir,
             user_id: &user,
             switch,
             now_ms: now,
         };
-        match (route, upload) {
+        Ok(match (route, upload) {
             (Route::Upload { project }, Some(b)) => assets::post(ctx, &project, &b.bytes, b.over),
             (Route::One { project, asset }, _) if method == "DELETE" => {
                 assets::delete(ctx, &project, &asset)
@@ -158,12 +171,55 @@ pub async fn serve(
             (Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats, None) => {
                 Reply::internal()
             }
-        }
+        })
     })
     .await;
     match done {
-        Ok(r) => respond(r),
+        Ok(Ok(r)) => respond(r),
+        Ok(Err(Refused::Removed)) => reply::json(
+            StatusCode::GONE,
+            &serde_json::json!({"error": "account no longer exists"}),
+            true,
+        ),
+        Ok(Err(Refused::Gate(rejection))) => rejection.into_response(),
         Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+    }
+}
+
+/// Why a write was refused on its second pass through the gate.
+#[derive(Debug, Clone, Copy)]
+enum Refused {
+    /// The gate refuses the session and the user's directory is gone: the account was removed
+    /// meanwhile. Node's `assertActive` answer, 410 (core http.cjs errorResponse).
+    Removed,
+    /// Any other refusal: the gate's own answer.
+    Gate(Rejection),
+}
+
+/// The gate once more, for the user it let through before the body was read.
+fn regate(
+    layer: &crate::identity::IdentityLayer,
+    creds: &server_auth::Creds,
+    path: &str,
+    now: i64,
+    data_dir: &std::path::Path,
+    user: &str,
+) -> Result<(), Refused> {
+    let refused = match layer.gate_blocking(creds, path, now) {
+        Ok(id) if id.user.id == user => return Ok(()),
+        Ok(_) => Rejection::Refused(server_auth::Refusal::Unauthorized),
+        Err(rejection) => rejection,
+    };
+    let dir_gone = server_projects::store::user_dir(data_dir, user).is_ok_and(|d| !d.exists());
+    if dir_gone
+        && matches!(
+            refused,
+            Rejection::Refused(server_auth::Refusal::Unauthorized)
+        )
+    {
+        Err(Refused::Removed)
+    } else {
+        Err(Refused::Gate(refused))
     }
 }
 

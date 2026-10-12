@@ -17,6 +17,10 @@ pub enum StoreError {
     Corrupt,
     /// The lock is held by a live writer past its wait.
     Busy,
+    /// The user's directory is gone: the account was removed (core workspace.cjs `remove` deletes
+    /// it) after the request passed the gate. Node's `assertActive` answer, a 410; nothing is
+    /// written and the directory is not recreated (sbstndalton/noevia#1425).
+    Gone,
     Io(std::io::Error),
     Write(server_store::json::JsonError),
 }
@@ -118,21 +122,50 @@ pub fn read_json(file: &Path) -> Result<Option<JValue>, StoreError> {
     }
 }
 
+/// The user's directory, which a shared-file save never creates: [`StoreError::Gone`] when it is
+/// missing (the account was removed while the request was in flight).
+fn existing(dir: &Path) -> Result<(), StoreError> {
+    match std::fs::symlink_metadata(dir) {
+        Ok(m) if m.is_dir() => Ok(()),
+        Ok(_) => Err(StoreError::Corrupt),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(StoreError::Gone),
+        Err(e) => Err(StoreError::Io(e)),
+    }
+}
+
+/// A lock or a write that found the user's directory gone meanwhile.
+fn gone_if_missing(e: StoreError) -> StoreError {
+    let missing = match &e {
+        StoreError::Io(io) => io.kind() == std::io::ErrorKind::NotFound,
+        StoreError::Write(server_store::json::JsonError::Io(io)) => {
+            io.kind() == std::io::ErrorKind::NotFound
+        }
+        _ => false,
+    };
+    if missing {
+        StoreError::Gone
+    } else {
+        e
+    }
+}
+
 /// One read-modify-write of `dir/projects.json` under the shared lock: `change` gets the projects as
 /// they are on disk now and returns its result and whether it changed them; only then is the
-/// file written (Node's bytes, atomically).
+/// file written (Node's bytes, atomically). The user's directory must exist ([`StoreError::Gone`]).
 pub fn update<T>(
     dir: &Path,
     switch: RustProjects,
     change: impl FnOnce(&mut Vec<JValue>) -> (T, bool),
 ) -> Result<T, StoreError> {
-    let _held = lock::acquire(&dir.join(PROJECTS_FILE))?;
+    existing(dir)?;
+    let _held = lock::acquire(&dir.join(PROJECTS_FILE))
+        .map_err(|e| gone_if_missing(StoreError::from(e)))?;
     let mut projects = read(dir)?;
     let (out, changed) = change(&mut projects);
     if changed {
         let text = serialise(projects);
         server_store::json::write_shared_projects(dir, PROJECTS_FILE, &text, switch)
-            .map_err(StoreError::Write)?;
+            .map_err(|e| gone_if_missing(StoreError::Write(e)))?;
     }
     Ok(out)
 }
@@ -140,23 +173,17 @@ pub fn update<T>(
 /// One read-modify-write of `dir/free-chats.json` under its lock shared with Node
 /// (`free-chats.json.lock`, core rust-projects.cjs `createFreeChatsFile`): `change` gets the file as
 /// [`read_json`] reads it now and returns its result and, when the list is to be saved, the list;
-/// that is written as `atomicJson(file, list)` writes it. The user's directory is created first
-/// (mode 0700), as workspace.cjs does on every request: a new account may have no file yet.
+/// that is written as `atomicJson(file, list)` writes it. The user's directory is never created
+/// here ([`StoreError::Gone`] when it is missing): Node's workspace load makes it for every
+/// signed-in user, and its removal means the account was deleted (sbstndalton/noevia#1425).
 pub fn update_free<T>(
     dir: &Path,
     switch: RustProjects,
     change: impl FnOnce(Option<JValue>) -> (T, Option<Vec<JValue>>),
 ) -> Result<T, StoreError> {
-    let mut builder = std::fs::DirBuilder::new();
-    builder.recursive(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
-    builder.create(dir)?;
+    existing(dir)?;
     let file = dir.join(crate::chats::FREE_CHATS_FILE);
-    let _held = lock::acquire(&file)?;
+    let _held = lock::acquire(&file).map_err(|e| gone_if_missing(StoreError::from(e)))?;
     let stored = read_json(&file)?;
     let (out, list) = change(stored);
     if let Some(list) = list {
@@ -167,7 +194,7 @@ pub fn update_free<T>(
             &text,
             switch,
         )
-        .map_err(StoreError::Write)?;
+        .map_err(|e| gone_if_missing(StoreError::Write(e)))?;
     }
     Ok(out)
 }
@@ -294,19 +321,14 @@ mod free_tests {
     use super::*;
 
     #[test]
-    fn update_free_creates_the_dir_writes_atomic_json_and_only_when_asked() {
+    fn update_free_writes_atomic_json_and_only_when_asked() {
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join("users").join("u");
+        std::fs::create_dir_all(&dir).unwrap();
         let on = RustProjects::from_env_value(Some("1")).unwrap();
         let seen = update_free(&dir, on, |stored| (stored, None)).unwrap();
         assert_eq!(seen, None, "missing: readJson's fallback");
         assert!(!dir.join("free-chats.json").exists(), "nothing written");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&dir).unwrap().permissions().mode();
-            assert_eq!(mode & 0o777, 0o700);
-        }
         update_free(&dir, on, |_| ((), Some(Vec::new()))).unwrap();
         assert_eq!(
             std::fs::read_to_string(dir.join("free-chats.json")).unwrap(),
@@ -324,5 +346,38 @@ mod free_tests {
         assert!(dir.join("free-chats.json.lock").exists(), "long-lived lock");
         std::fs::write(dir.join("free-chats.json"), "{nope").unwrap();
         assert_eq!(update_free(&dir, on, |s| (s, None)).unwrap(), None);
+    }
+
+    /// sbstndalton/noevia#1425: a removed account's directory is never recreated, by either save.
+    #[test]
+    fn a_missing_user_dir_is_gone_and_stays_gone() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join("u");
+        let on = RustProjects::from_env_value(Some("1")).unwrap();
+        let mut ran = false;
+        let r = update_free(&dir, on, |_| {
+            ran = true;
+            ((), Some(Vec::new()))
+        });
+        assert!(matches!(r, Err(StoreError::Gone)), "{r:?}");
+        let r = update(&dir, on, |_| ((), true));
+        assert!(matches!(r, Err(StoreError::Gone)), "{r:?}");
+        assert!(!ran, "nothing read or changed");
+        assert!(!root.path().join("users").exists(), "not recreated");
+        // Removed after the lock was taken: the write fails, nothing comes back.
+        std::fs::create_dir_all(&dir).unwrap();
+        let r = update_free(&dir, on, |_| {
+            std::fs::remove_dir_all(&dir).unwrap();
+            ((), Some(Vec::new()))
+        });
+        assert!(matches!(r, Err(StoreError::Gone)), "{r:?}");
+        assert!(!dir.exists(), "not recreated");
+        std::fs::create_dir_all(&dir).unwrap();
+        let r = update(&dir, on, |_| {
+            std::fs::remove_dir_all(&dir).unwrap();
+            ((), true)
+        });
+        assert!(matches!(r, Err(StoreError::Gone)), "{r:?}");
+        assert!(!dir.exists(), "not recreated");
     }
 }

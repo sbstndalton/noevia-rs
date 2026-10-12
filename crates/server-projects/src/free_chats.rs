@@ -15,6 +15,10 @@
 //!   sweep) take while the slice is on (core rust-projects.cjs `createFreeChatsFile`, which merges
 //!   its saves per item, so neither side drops the other's metas).
 //!
+//! The user's directory is never created here: when it is gone (the account was removed while the
+//! request was in flight) the save answers Node's `assertActive` 410 and writes nothing
+//! (sbstndalton/noevia#1425; Node's own POST maps that throw to 400 `invalid JSON`, #1419).
+//!
 //! `DELETE /api/freechats/{id}` stays Node's: it also removes the chat's transcript, context meter,
 //! brain note and attachments project, which this crate does not do.
 //!

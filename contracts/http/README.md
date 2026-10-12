@@ -106,6 +106,11 @@ own `POST /api/freechats` answers 503 `RUST_PROJECTS_OWNED`. Node does so only w
 move writes the list it adds to before the one it removes from, so a crash between the two leaves
 a chat in both lists, never in neither. A front with the free slice needs core#76 or later.
 
+A project write (an image upload or delete, a chat-list or free-list save) passes the gate again
+right before it touches a file, since its body is read after the first pass, and the store never
+creates the user's directory: a write for an account removed meanwhile answers Node's 410
+`account no longer exists` and leaves nothing behind (sbstndalton/noevia#1425).
+
 CI job `corpus-replay-front-rust-projects` regenerates the chat-list fixture at core.ref and
 compares the bytes (and the free-chat fixture), replays the corpus through the front with both
 switches, with both chat slices, with the project chat slice only and with neither (zero
