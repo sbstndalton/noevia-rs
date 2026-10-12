@@ -85,13 +85,19 @@ mod tests {
         for api in [false, true] {
             let mut h = HeaderMap::new();
             security_headers(&mut h, api);
-            assert_eq!(h["strict-transport-security"], HSTS);
+            assert_eq!(
+                h.get("strict-transport-security").map(|v| v.as_bytes()),
+                Some(HSTS.as_bytes())
+            );
             assert!(!HSTS.contains("includeSubDomains"));
             assert!(HSTS
                 .strip_prefix("max-age=")
                 .and_then(|n| n.parse::<u64>().ok())
                 .is_some_and(|n| n >= 15_552_000));
-            assert_eq!(h["permissions-policy"], PERMISSIONS_POLICY);
+            assert_eq!(
+                h.get("permissions-policy").map(|v| v.as_bytes()),
+                Some(PERMISSIONS_POLICY.as_bytes())
+            );
             for feature in ["camera", "microphone", "geolocation", "payment", "usb"] {
                 assert!(
                     PERMISSIONS_POLICY.contains(&format!("{feature}=()")),
