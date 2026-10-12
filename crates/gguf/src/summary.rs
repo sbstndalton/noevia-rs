@@ -230,6 +230,24 @@ fn float_json(v: Option<f64>) -> Json {
     v.map_or(Json::Null, Json::Float)
 }
 
+/// #1197 `_param_count`: the declared general.parameter_count when it is a usable number, else the
+/// tensor-info count (`_tensor_params`), else the declared value as it is (absent, or not usable).
+fn param_count(raw: &Raw) -> Option<Value> {
+    let declared = raw.get("general.parameter_count");
+    let usable = match declared {
+        Some(Value::Int(i)) => *i > 0,
+        Some(Value::Float(f)) => *f > 0.0,
+        _ => false,
+    };
+    if usable {
+        return declared.cloned();
+    }
+    match raw.get("_tensor_params") {
+        Some(Value::Int(n)) if *n > 0 => Some(Value::Int(*n)),
+        _ => declared.cloned(),
+    }
+}
+
 /// `_fmt_params`: "7.2 B" style parameter counts.
 fn fmt_params(v: Option<&Value>) -> Result<Json, SummaryError> {
     let n = match v {
@@ -442,6 +460,7 @@ fn summarize_once(raw: &Raw) -> Result<Json, SummaryError> {
         _ => a("vocab_size"),
     };
 
+    let params = param_count(raw);
     let general = Json::object([
         ("name", g("general.name")),
         ("description", g("general.description")),
@@ -450,8 +469,8 @@ fn summarize_once(raw: &Raw) -> Result<Json, SummaryError> {
         ("url", g("general.url")),
         ("quant", quant_name(raw.get("general.file_type"))?),
         ("quant_version", g("general.quantization_version")),
-        ("params", fmt_params(raw.get("general.parameter_count"))?),
-        ("params_raw", g("general.parameter_count")),
+        ("params", fmt_params(params.as_ref())?),
+        ("params_raw", Json::from(params.as_ref())),
         ("gguf_version", g("_gguf_version")),
         ("tensor_count", g("_tensor_count")),
         ("kv_count", g("_kv_count")),
