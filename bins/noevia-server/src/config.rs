@@ -38,6 +38,9 @@ pub struct Config {
     pub rust_reasoning_settings: Option<server_store::RustReasoningSettings>,
     pub rust_routing_mode: Option<server_store::RustRoutingMode>,
     pub routing_feature_env: Option<bool>,
+    /// NOEVIA_RUST_ROUTING_DEFAULT=1 (M6, #1305): refused without NOEVIA_RUST_AUTH=1 and without the
+    /// compiled rust-routing-default feature; any other value is off.
+    pub rust_routing_default: bool,
     pub rust_sampling_settings: Option<server_store::RustSamplingSettings>,
     pub usage_clock: Result<server_usage::summary::Clock, server_usage::Fault>,
     /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
@@ -109,6 +112,7 @@ impl Config {
             rust_sampling_settings: self.rust_sampling_settings.is_some(),
             rust_reasoning_settings: self.rust_reasoning_settings.is_some(),
             rust_routing_mode: self.rust_routing_mode.is_some(),
+            rust_routing_default: self.rust_routing_default,
         }
     }
 
@@ -166,6 +170,19 @@ impl Config {
         } else {
             None
         };
+        let rust_routing_default = if get("NOEVIA_RUST_ROUTING_DEFAULT").as_deref() == Some("1") {
+            if rust_auth.is_none() {
+                return Err("NOEVIA_RUST_ROUTING_DEFAULT=1 needs NOEVIA_RUST_AUTH=1".into());
+            }
+            if !cfg!(feature = "rust-routing-default") {
+                return Err(
+                    "NOEVIA_RUST_ROUTING_DEFAULT=1 needs compiled rust-routing-default".into(),
+                );
+            }
+            true
+        } else {
+            false
+        };
         let routing_feature_env = if rust_routing_mode.is_some() {
             server_routing_mode::feature_env(get("NOEVIA_FEATURE_ROUTING_MODES").as_deref())
                 .map_err(|e| e.message)?
@@ -199,6 +216,7 @@ impl Config {
             rust_reasoning_settings,
             rust_routing_mode,
             routing_feature_env,
+            rust_routing_default,
             usage_clock: server_usage::summary::Clock::system(&get),
         })
     }
@@ -424,5 +442,55 @@ mod routing_tests {
             _ => None,
         });
         assert!(invalid.is_err());
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod routing_default_tests {
+    use super::*;
+
+    fn lookup(pairs: &[(&str, &str)]) -> Result<Config, String> {
+        let pairs: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        Config::from_lookup(|k| pairs.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone()))
+    }
+
+    #[test]
+    fn routing_default_switch_is_exact_auth_required_and_compiled() {
+        const UP: (&str, &str) = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9");
+        for value in [None, Some("0"), Some("true"), Some(" 1"), Some("1 ")] {
+            let mut pairs = vec![UP];
+            if let Some(v) = value {
+                pairs.push(("NOEVIA_RUST_ROUTING_DEFAULT", v));
+            }
+            let c = lookup(&pairs).unwrap();
+            assert!(!c.rust_routing_default);
+            assert!(!c.switches().on("NOEVIA_RUST_ROUTING_DEFAULT"));
+        }
+        // Switched on without NOEVIA_RUST_AUTH is a startup refusal, never a silent Node answer.
+        assert!(lookup(&[UP, ("NOEVIA_RUST_ROUTING_DEFAULT", "1")])
+            .unwrap_err()
+            .contains("NOEVIA_RUST_AUTH=1"));
+        let enabled = lookup(&[
+            UP,
+            ("NOEVIA_RUST_AUTH", "1"),
+            ("NOEVIA_RUST_ROUTING_DEFAULT", "1"),
+        ]);
+        if cfg!(feature = "rust-routing-default") {
+            let c = enabled.unwrap();
+            assert!(c.rust_routing_default);
+            assert!(c.switches().on("NOEVIA_RUST_ROUTING_DEFAULT"));
+        } else {
+            assert!(enabled
+                .unwrap_err()
+                .contains("compiled rust-routing-default"));
+        }
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-routing-default"),
+            cfg!(feature = "rust-routing-default")
+        );
     }
 }

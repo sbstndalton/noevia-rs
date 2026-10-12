@@ -12,6 +12,7 @@ pub mod project_routes;
 pub mod reasoning_settings_routes;
 pub mod reply;
 pub mod routes;
+pub mod routing_default_routes;
 pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
@@ -52,6 +53,8 @@ pub const FEATURES: &[&str] = &[
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
     "rust-routing-mode",
+    #[cfg(feature = "rust-routing-default")]
+    "rust-routing-default",
 ];
 
 pub struct App {
@@ -70,6 +73,7 @@ pub struct App {
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
+    pub routing_default: Arc<tokio::sync::Semaphore>,
     pub routing_files:
         Option<Result<server_routing_mode::storage::Root, server_routing_mode::storage::Fault>>,
 }
@@ -101,6 +105,7 @@ impl App {
             reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
+            routing_default: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_files,
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
@@ -145,6 +150,7 @@ async fn handle(
                         | routes::Native::SamplingSettings
                         | routes::Native::ReasoningSettings
                         | routes::Native::RoutingMode
+                        | routes::Native::RoutingDefault
                 )
             ) {
                 native = on_whatwg;
@@ -160,7 +166,8 @@ async fn handle(
             | routes::Native::Usage
             | routes::Native::SamplingSettings
             | routes::Native::ReasoningSettings
-            | routes::Native::RoutingMode,
+            | routes::Native::RoutingMode
+            | routes::Native::RoutingDefault,
         )
         | None => false,
     };
@@ -215,6 +222,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             project_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::RoutingDefault) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            routing_default_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             health::ready(&app.config.upstream, app.version.as_deref()).await

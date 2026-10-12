@@ -35,6 +35,8 @@ pub struct Switches {
     pub rust_sampling_settings: bool,
     pub rust_reasoning_settings: bool,
     pub rust_routing_mode: bool,
+    /// NOEVIA_RUST_ROUTING_DEFAULT=1 (M6, only with rust_auth, config.rs): GET /api/routing-default.
+    pub rust_routing_default: bool,
 }
 
 impl Switches {
@@ -46,6 +48,7 @@ impl Switches {
             "NOEVIA_RUST_SAMPLING_SETTINGS" => self.rust_sampling_settings,
             "NOEVIA_RUST_REASONING_SETTINGS" => self.rust_reasoning_settings,
             "NOEVIA_RUST_ROUTING_MODE" => self.rust_routing_mode,
+            "NOEVIA_RUST_ROUTING_DEFAULT" => self.rust_routing_default,
             _ => false,
         }
     }
@@ -80,7 +83,12 @@ pub enum Native {
     SamplingSettings,
     ReasoningSettings,
     RoutingMode,
+    /// GET /api/routing-default (M6, NOEVIA_RUST_ROUTING_DEFAULT): crates/server-routing-default.
+    RoutingDefault,
 }
+
+/// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
+const ROUTING_DEFAULT: &str = "/api/routing-default";
 
 /// The routes [`Native::Projects`] implements.
 const PROJECT_ROUTES: &[&str] = &[
@@ -107,6 +115,7 @@ const FREE_CHATS: &str = "/api/freechats";
 fn compiled(route: &Route) -> bool {
     (route.path != PROJECT_CHATS || cfg!(feature = "rust-project-chats"))
         && (route.path != FREE_CHATS || cfg!(feature = "rust-free-chats"))
+        && (route.path != ROUTING_DEFAULT || cfg!(feature = "rust-routing-default"))
 }
 
 /// The native handler a rust-owned route is implemented by.
@@ -124,6 +133,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         }
         (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ROUTES.contains(&p) => {
             Some(Native::Projects)
+        }
+        (ROUTING_DEFAULT, false, Some("NOEVIA_RUST_ROUTING_DEFAULT")) => {
+            Some(Native::RoutingDefault)
         }
         ("/api/reasoning-settings", false, Some("NOEVIA_RUST_REASONING_SETTINGS")) => {
             Some(Native::ReasoningSettings)
@@ -255,6 +267,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_routing_default: false,
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -267,6 +280,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_routing_default: false,
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -280,6 +294,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_routing_default: false,
         };
         let both = Switches {
             rust_auth: true,
@@ -288,6 +303,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_routing_default: false,
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
@@ -392,6 +408,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_routing_default: false,
             ..Default::default()
         };
         for p in ["/api/usage", "/api/usage/aggregate"] {
