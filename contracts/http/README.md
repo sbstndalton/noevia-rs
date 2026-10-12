@@ -72,8 +72,12 @@ first slice is a project's images: `POST /api/projects/{id}/assets`, `GET` and `
 /api/projects/{id}/assets/{assetId}` (crates/server-projects `assets`). The second is a project's
 chat list: `GET` and `POST /api/projects/{id}/chats` (crates/server-projects `chats`: core's
 getProject heal and instruction-skill reconcile, chat-lists.cjs mergeChats with tombstones and the
-other lists' ids, chat-framing.cjs normalizeFrame, the reconcile every save runs). JavaScript
-strings keep their lone surrogates (js-json `wtf16`), as Node stores them.
+other lists' ids, chat-framing.cjs normalizeFrame, the reconcile every save runs). The third is
+the free-chat list: `GET` and `POST /api/freechats` (crates/server-projects `free_chats`: the same
+mergeChats over `free-chats.json`, skipping and reporting ids a project holds). `DELETE
+/api/freechats/{chatId}` stays Node's: it also removes the chat's transcript, context meter, brain
+note and attachments project. JavaScript strings keep their lone surrogates (js-json `wtf16`), as
+Node stores them.
 
 `projects.json` cannot have one writer yet (Node's other project routes, the chat turn and a chat's
 move or delete still change it), so while the switch is on both processes write it only under one lock (flock(2) LOCK_EX on a long-lived
@@ -92,13 +96,26 @@ the chat slice needs a core that merges `chats` per item (core#75 or later): noe
 `deploy/tools/assemble-release.sh` refuses a release whose front owns a project route its core's
 `OWNED_ROUTES` does not list.
 
+`free-chats.json` has the same arrangement under its own lock (`free-chats.json.lock`): while the
+free-chat slice is on, Node's writers of the file (a chat's move into or out of a project, a free
+chat's delete, the routing flags, an import, the retention sweep) take that lock, re-read the file
+when it changed and save by a per-item merge of the list (core `createFreeChatsFile`), and its
+own `POST /api/freechats` answers 503 `RUST_PROJECTS_OWNED`. Node does so only with
+`NOEVIA_RUST_FREE_CHATS_CONFIRMED=1`, which the supervisor sets only once `--features` lists
+`rust-free-chats`; the front answers the free list only when built with that cargo feature. A
+move writes the list it adds to before the one it removes from, so a crash between the two leaves
+a chat in both lists, never in neither. A front with the free slice needs core#76 or later.
+
 CI job `corpus-replay-front-rust-projects` regenerates the chat-list fixture at core.ref and
-compares the bytes, replays the corpus through the front with both switches, with and without the
-chat slice (zero differences, Node-only data dir), runs the Node-vs-Rust lock races (`server-projects --test
-node_lock`: images and chat lists, each with a blind-save control that must lose data) and the
-generated chat-list saves against core's own route (`--test chats_property`), and a negative
-control where Node is told the front owns the project routes but the front does not: the uploads
-and chat-list saves must be refused with 503.
+compares the bytes (and the free-chat fixture), replays the corpus through the front with both
+switches, with both chat slices, with the project chat slice only and with neither (zero
+differences, Node-only data dir), runs the Node-vs-Rust lock races (`server-projects --test
+node_lock`: images, chat lists and the free list, each with a blind-save control that must lose
+data, and a chat's move and a free chat's delete interleaved with the front's free-list save) and
+the generated saves against core's own routes (`--test chats_property --test
+free_chats_property`), and a negative control where Node is told the front owns the project
+routes but the front does not: the uploads, chat-list and free-chat-list saves must be refused
+with 503.
 
 `core.sha256` records the twice-fetched, byte-identical codeload archive SHA-256 for
 `core.ref` (metadata; existing replay CI consumes the single SHA in `core.ref`).
@@ -146,4 +163,4 @@ The mandatory reasoning job verifies the actual spawn and factory seam, rejects
 a removed preload, and runs `host-control` with a 12 GiB input. That full replay
 must reject exactly the strict `budgetGib`, `hostRamGib` and `maxGib` fields;
 all other fields and statuses remain checked. The regular 8 GiB Node baseline
-and native front must match all 207 exchanges and final state.
+and native front must match all 228 exchanges and final state.

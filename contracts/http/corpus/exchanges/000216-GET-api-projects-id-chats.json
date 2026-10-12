@@ -1,0 +1,76 @@
+{
+  "v": 1,
+  "seq": 216,
+  "request": {
+    "method": "GET",
+    "path": "/api/projects/<id:24>/chats",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "chats": [
+          {
+            "id": "chat-alpha",
+            "title": "Alpha renamed",
+            "updatedAt": 350,
+            "preview": "",
+            "pinned": false,
+            "archived": false,
+            "frame": null,
+            "forceLocal": true,
+            "createdAt": 100
+          },
+          {
+            "id": "chat-gamma",
+            "title": "New task",
+            "updatedAt": 260,
+            "preview": "",
+            "pinned": false,
+            "archived": false,
+            "allowCloud": false,
+            "createdAt": 7
+          },
+          {
+            "id": "chatbetax",
+            "title": "[object Object]",
+            "updatedAt": 200,
+            "preview": "p,,3",
+            "pinned": false,
+            "archived": false
+          },
+          {
+            "id": "free-alpha",
+            "title": "New chat",
+            "updatedAt": 6,
+            "preview": "",
+            "pinned": false,
+            "archived": false,
+            "allowCloud": false,
+            "createdAt": 7
+          }
+        ]
+      }
+    }
+  }
+}

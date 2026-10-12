@@ -27,6 +27,10 @@ fn features_cli_outputs_only_the_compiled_capabilities() {
         expected.lines().any(|line| line == "rust-project-chats"),
         cfg!(feature = "rust-project-chats")
     );
+    assert_eq!(
+        expected.lines().any(|line| line == "rust-free-chats"),
+        cfg!(feature = "rust-free-chats")
+    );
 }
 
 #[cfg(unix)]
@@ -84,6 +88,7 @@ fn featureless_replay_checks_all_switches_from_one_complete_probe() {
         "rust-auth",
         "rust-projects",
         "rust-project-chats",
+        "rust-free-chats",
         "rust-usage",
         "rust-sampling-settings",
     ] {

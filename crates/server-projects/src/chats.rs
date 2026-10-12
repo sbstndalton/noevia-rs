@@ -43,11 +43,11 @@ pub const TOMBSTONES_FILE: &str = "deleted-chats.json";
 pub const FREE_CHATS_FILE: &str = "free-chats.json";
 const CONTEXT_PREFIX: &str = "cowork-chat-context-";
 
-fn store_failure(e: &StoreError) -> Reply {
+pub(crate) fn store_failure(e: &StoreError) -> Reply {
     crate::assets::store_failure(e)
 }
 
-fn invalid_json() -> Reply {
+pub(crate) fn invalid_json() -> Reply {
     Reply::error(400, "invalid JSON")
 }
 
@@ -181,6 +181,18 @@ pub fn get(ctx: Ctx<'_>, raw_project: &str) -> Reply {
 
 /// The POST body's metas as routes/projects.cjs builds them; `Err` is the reply (a 400).
 fn incoming(body: &[u8], admin: bool, now_ms: i64) -> Result<Vec<JValue>, Reply> {
+    incoming_metas(body, admin, now_ms, "New task")
+}
+
+/// A chat-list POST body's metas as core builds them (routes/projects.cjs for a project's list,
+/// routes/chat-lists.cjs for the free list: the same normalisation, `untitled` the only
+/// difference); `Err` is the reply (a 400).
+pub(crate) fn incoming_metas(
+    body: &[u8],
+    admin: bool,
+    now_ms: i64,
+    untitled: &str,
+) -> Result<Vec<JValue>, Reply> {
     let body = wtf16::parse(&String::from_utf8_lossy(body)).map_err(|_| invalid_json())?;
     if body.is_nullish() {
         return Err(invalid_json()); // body.chats on null: a TypeError, caught as invalid JSON
@@ -207,7 +219,7 @@ fn incoming(body: &[u8], admin: bool, now_ms: i64) -> Result<Vec<JValue>, Reply>
             };
             Ok(wtf16::slice(&s, cap))
         };
-        let title = text("title", "New task", 120)?;
+        let title = text("title", untitled, 120)?;
         let updated = c.get("updatedAt").as_num().unwrap_or(now_ms as f64);
         let preview = text("preview", "", 200)?;
         let mut meta = vec![
@@ -244,7 +256,7 @@ fn incoming(body: &[u8], admin: bool, now_ms: i64) -> Result<Vec<JValue>, Reply>
 }
 
 /// Why the part of the POST inside Node's `try` did not complete.
-enum SaveFailure {
+pub(crate) enum SaveFailure {
     /// Node throws there: its catch answers 400 invalid JSON.
     Throw,
     /// Data Node never writes and this port does not reproduce: 500.
@@ -303,7 +315,7 @@ fn sort_key(chat: &JValue) -> Option<f64> {
 
 /// chat-lists.cjs `mergeChats(current, incoming, tombstones, elsewhere)`; `current` is the stored
 /// list's items (objects with a string id are kept).
-fn merge_chats(
+pub(crate) fn merge_chats(
     current: &[JValue],
     incoming: &[JValue],
     tombstones: &HashSet<String>,
@@ -355,7 +367,7 @@ fn merge_chats(
 
 /// The ids of a list's chats as `for (const c of list) if (c && typeof c.id === 'string')` reads
 /// them; `Err` where `for...of` throws (a truthy value that is not iterable).
-fn list_ids(list: &JValue, into: &mut HashSet<String>) -> Result<(), ()> {
+pub(crate) fn list_ids(list: &JValue, into: &mut HashSet<String>) -> Result<(), ()> {
     match list {
         JValue::Arr(items) => {
             for c in items {
@@ -402,17 +414,7 @@ fn save_chats(
             list_ids(p.get("chats"), &mut elsewhere).map_err(|()| SaveFailure::Throw)?;
         }
     }
-    // readTombstones: the strings of a JSON array; anything else (or no file) is none.
-    let mut tombstones = HashSet::new();
-    if let Some(JValue::Arr(ids)) =
-        store::read_json(&dir.join(TOMBSTONES_FILE)).map_err(|_| SaveFailure::Unsupported)?
-    {
-        for id in ids {
-            if let JValue::Str(s) = id {
-                tombstones.insert(s);
-            }
-        }
-    }
+    let tombstones = read_tombstones(dir)?;
     let merged = match memory.get("chats") {
         JValue::Arr(items) => merge_chats(items, incoming, &tombstones, &elsewhere)?,
         v if !v.truthy() || matches!(v, JValue::Str(_)) => {
@@ -437,7 +439,28 @@ fn save_chats(
             store::set(p, "instructionSkills", value);
         }
     }
-    // skippedElsewhere(chats, elsewhere).
+    Ok(skipped_elsewhere(incoming, &elsewhere))
+}
+
+/// chat-lists.cjs `readTombstones(dir)`: the strings of a JSON array in deleted-chats.json;
+/// anything else (or no file) is none.
+pub(crate) fn read_tombstones(dir: &Path) -> Result<HashSet<String>, SaveFailure> {
+    let mut tombstones = HashSet::new();
+    if let Some(JValue::Arr(ids)) =
+        store::read_json(&dir.join(TOMBSTONES_FILE)).map_err(|_| SaveFailure::Unsupported)?
+    {
+        for id in ids {
+            if let JValue::Str(s) = id {
+                tombstones.insert(s);
+            }
+        }
+    }
+    Ok(tombstones)
+}
+
+/// chat-lists.cjs `skippedElsewhere(incoming, elsewhere)`: the incoming ids another list holds,
+/// once each, in order.
+pub(crate) fn skipped_elsewhere(incoming: &[JValue], elsewhere: &HashSet<String>) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut skipped = Vec::new();
     for c in incoming {
@@ -447,7 +470,19 @@ fn save_chats(
             }
         }
     }
-    Ok(skipped)
+    skipped
+}
+
+/// `{ ok: true }`, with `skipped` when there are any.
+pub(crate) fn saved_reply(skipped: Vec<String>) -> Reply {
+    let mut out = vec![("ok".to_string(), JValue::Bool(true))];
+    if !skipped.is_empty() {
+        out.push((
+            "skipped".to_string(),
+            JValue::Arr(skipped.into_iter().map(JValue::Str).collect()),
+        ));
+    }
+    Reply::json(200, wtf16::stringify(&JValue::Obj(out)).unwrap_or_default())
 }
 
 /// POST /api/projects/{id}/chats. `body` was read up to [`BODY_LIMIT`]; `over` when it was
@@ -493,17 +528,7 @@ pub fn post(ctx: Ctx<'_>, raw_project: &str, body: &[u8], over: bool, admin: boo
         };
         // On a failure only getProject's save is written, as in Node (it came first).
         match save_chats(&dir, projects, at, memory, chats) {
-            Ok(skipped) => {
-                let mut out = vec![("ok".to_string(), JValue::Bool(true))];
-                if !skipped.is_empty() {
-                    out.push((
-                        "skipped".to_string(),
-                        JValue::Arr(skipped.into_iter().map(JValue::Str).collect()),
-                    ));
-                }
-                let text = wtf16::stringify(&JValue::Obj(out)).unwrap_or_default();
-                (Reply::json(200, text), true)
-            }
+            Ok(skipped) => (saved_reply(skipped), true),
             Err(SaveFailure::Throw) => (invalid_json(), healed),
             Err(SaveFailure::Unsupported) => (Reply::internal(), healed),
         }

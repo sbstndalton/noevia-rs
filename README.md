@@ -459,6 +459,9 @@ one slice at a time.
   getProject heal, instruction-skill reconcile, mergeChats and normalizeFrame). Differential table from core's own route on synthetic workspaces:
   `node tools/gen-project-chats-fixtures.cjs <noevia-core> crates/server-projects/tests/fixtures/node-chats.v1.json`;
   `tests/chats_property.rs` also runs generated saves through core when `NOEVIA_CORE_CHECKOUT` is set.
+  With the cargo feature `rust-free-chats` also the free-chat list (`GET`/`POST /api/freechats`;
+  the delete stays Node's): `node tools/gen-free-chats-fixtures.cjs <noevia-core>
+  crates/server-projects/tests/fixtures/node-free-chats.v1.json`, `tests/free_chats_property.rs`.
 - `crates/passkey` (M3): @simplewebauthn/server v14's `verifyRegistrationResponse` and
   `verifyAuthenticationResponse` as core auth.cjs calls them, check for check, so passkeys Node
   stored sign in under Rust: @hexagon/base64's lenient decoding, tiny-cbor's decode/re-encode

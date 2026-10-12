@@ -194,9 +194,10 @@ impl RustRoutingMode {
     }
 }
 
-/// The per-user file M4 shares with Node (core `server/rust-projects.cjs`): written by both, each
-/// only under the shared lock (crates/server-projects `lock`) and never from a stale copy.
-pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json"];
+/// The per-user files M4 shares with Node (core `server/rust-projects.cjs`): written by both, each
+/// only under its shared lock (crates/server-projects `lock`) and never from a stale copy.
+/// free-chats.json is the free-chat slice's (crates/server-projects `free_chats`).
+pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json", "free-chats.json"];
 
 /// Columns Rust reads or writes, per table, with the core module that creates them. Each must
 /// exist; Node may add others. (`diary_connectors` is optional: diary-connectors.cjs creates it

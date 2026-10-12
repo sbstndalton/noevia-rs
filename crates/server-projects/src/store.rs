@@ -137,6 +137,41 @@ pub fn update<T>(
     Ok(out)
 }
 
+/// One read-modify-write of `dir/free-chats.json` under its lock shared with Node
+/// (`free-chats.json.lock`, core rust-projects.cjs `createFreeChatsFile`): `change` gets the file as
+/// [`read_json`] reads it now and returns its result and, when the list is to be saved, the list;
+/// that is written as `atomicJson(file, list)` writes it. The user's directory is created first
+/// (mode 0700), as workspace.cjs does on every request: a new account may have no file yet.
+pub fn update_free<T>(
+    dir: &Path,
+    switch: RustProjects,
+    change: impl FnOnce(Option<JValue>) -> (T, Option<Vec<JValue>>),
+) -> Result<T, StoreError> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dir)?;
+    let file = dir.join(crate::chats::FREE_CHATS_FILE);
+    let _held = lock::acquire(&file)?;
+    let stored = read_json(&file)?;
+    let (out, list) = change(stored);
+    if let Some(list) = list {
+        let text = js_json::wtf16::stringify_pretty(&JValue::Arr(list)).unwrap_or_default();
+        server_store::json::write_shared_projects(
+            dir,
+            crate::chats::FREE_CHATS_FILE,
+            &text,
+            switch,
+        )
+        .map_err(StoreError::Write)?;
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -250,5 +285,44 @@ mod tests {
             .map(|e| e.unwrap().file_name())
             .collect();
         assert_eq!(names.len(), 2, "no temp file left: {names:?}");
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod free_tests {
+    use super::*;
+
+    #[test]
+    fn update_free_creates_the_dir_writes_atomic_json_and_only_when_asked() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join("u");
+        let on = RustProjects::from_env_value(Some("1")).unwrap();
+        let seen = update_free(&dir, on, |stored| (stored, None)).unwrap();
+        assert_eq!(seen, None, "missing: readJson's fallback");
+        assert!(!dir.join("free-chats.json").exists(), "nothing written");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&dir).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o700);
+        }
+        update_free(&dir, on, |_| ((), Some(Vec::new()))).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("free-chats.json")).unwrap(),
+            "[]"
+        );
+        let one = JValue::obj([
+            ("id", JValue::Str("a".into())),
+            ("updatedAt", JValue::Num(1.0)),
+        ]);
+        update_free(&dir, on, |_| ((), Some(vec![one]))).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("free-chats.json")).unwrap(),
+            "[\n  {\n    \"id\": \"a\",\n    \"updatedAt\": 1\n  }\n]"
+        );
+        assert!(dir.join("free-chats.json.lock").exists(), "long-lived lock");
+        std::fs::write(dir.join("free-chats.json"), "{nope").unwrap();
+        assert_eq!(update_free(&dir, on, |s| (s, None)).unwrap(), None);
     }
 }

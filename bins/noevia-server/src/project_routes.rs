@@ -1,6 +1,6 @@
 //! M4 (NOEVIA_RUST_PROJECTS=1, with NOEVIA_RUST_AUTH=1): the front answers a project's image
-//! routes (crates/server-projects `assets`) and its chat list (`chats`) itself instead of
-//! proxying them. The request passes
+//! routes (crates/server-projects `assets`), its chat list (`chats`) and the free-chat list
+//! (`free_chats`) itself instead of proxying them. The request passes
 //! Node's gate first (server-auth: session, origin + CSRF for writes, device-token limits), here
 //! on the WHATWG pathname Node routes on; the user it returns is the only one whose files are
 //! touched. A path the routes.toml pattern matches but Node's own route regex would not (a
@@ -12,7 +12,7 @@ use crate::App;
 use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
-use server_projects::{assets, chats, Ctx, Reply};
+use server_projects::{assets, chats, free_chats, Ctx, Reply};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,12 +25,23 @@ pub enum Route {
     Chats { project: String },
     /// POST /api/projects/{id}/chats
     SaveChats { project: String },
+    /// GET /api/freechats
+    FreeChats,
+    /// POST /api/freechats
+    SaveFreeChats,
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
-/// `^\/api\/projects\/([^/]+)\/chats$`, with the methods its handlers answer; `None` sends the
-/// request on to Node.
+/// `^\/api\/projects\/([^/]+)\/chats$`, and routes/chat-lists.cjs's `p === '/api/freechats'`,
+/// with the methods its handlers answer; `None` sends the request on to Node.
 pub fn route(method: &str, path: &str) -> Option<Route> {
+    if path == "/api/freechats" {
+        return match method {
+            "GET" => Some(Route::FreeChats),
+            "POST" => Some(Route::SaveFreeChats),
+            _ => None,
+        };
+    }
     let rest = path.strip_prefix("/api/projects/")?;
     let parts: Vec<&str> = rest.split('/').collect();
     match (method, parts.as_slice()) {
@@ -111,8 +122,8 @@ pub async fn serve(
         };
     let limit = match &route {
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
-        Route::SaveChats { .. } => Some(chats::BODY_LIMIT),
-        Route::One { .. } | Route::Chats { .. } => None,
+        Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
+        Route::One { .. } | Route::Chats { .. } | Route::FreeChats => None,
     };
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
@@ -142,7 +153,11 @@ pub async fn serve(
             (Route::SaveChats { project }, Some(b)) => {
                 chats::post(ctx, &project, &b.bytes, b.over, admin)
             }
-            (Route::Upload { .. } | Route::SaveChats { .. }, None) => Reply::internal(),
+            (Route::FreeChats, _) => free_chats::get(ctx),
+            (Route::SaveFreeChats, Some(b)) => free_chats::post(ctx, &b.bytes, b.over, admin),
+            (Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats, None) => {
+                Reply::internal()
+            }
         }
     })
     .await;
@@ -155,6 +170,21 @@ pub async fn serve(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn free_chat_list_matchers() {
+        assert_eq!(route("GET", "/api/freechats"), Some(Route::FreeChats));
+        assert_eq!(route("POST", "/api/freechats"), Some(Route::SaveFreeChats));
+        for (m, p) in [
+            ("DELETE", "/api/freechats"),
+            ("PUT", "/api/freechats"),
+            ("GET", "/api/freechats/"),
+            ("DELETE", "/api/freechats/c1"),
+            ("GET", "/api/freechatsx"),
+        ] {
+            assert_eq!(route(m, p), None, "{m} {p}");
+        }
+    }
 
     #[test]
     fn chat_list_matchers() {

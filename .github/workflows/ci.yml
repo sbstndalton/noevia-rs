@@ -386,8 +386,10 @@ jobs:
     # The front answers a project's image routes and (built with the cargo feature
     # rust-project-chats) its chat list itself (crates/server-projects) and writes projects.json
     # under the lock Node shares (core server/rust-projects.cjs); Node keeps writing the same file
-    # for its own project routes, merged under that lock. Zero differences and the data dir a
-    # Node-only run leaves, with and without the chat-list slice (sbstndalton/noevia#1409).
+    # for its own project routes, merged under that lock. Built with rust-free-chats as well it
+    # answers GET/POST /api/freechats and writes free-chats.json under that file's lock, which
+    # Node's own free-list writers (a move, a free chat's delete) share. Zero differences and the
+    # data dir a Node-only run leaves, with each slice and without it (sbstndalton/noevia#1409).
     name: Contract corpus replays clean with Rust owning project images (NOEVIA_RUST_PROJECTS=1)
     runs-on: ubuntu-latest
     steps:
@@ -429,27 +431,48 @@ jobs:
           node tools/gen-project-chats-fixtures.cjs "$GITHUB_WORKSPACE/core" "$RUNNER_TEMP/node-chats.v1.json"
           cmp crates/server-projects/tests/fixtures/node-chats.v1.json "$RUNNER_TEMP/node-chats.v1.json" \
             || { echo "::error::regenerate crates/server-projects/tests/fixtures/node-chats.v1.json with tools/gen-project-chats-fixtures.cjs at contracts/http/core.ref"; exit 1; }
+      - name: The committed free-chat fixture is core.ref's route output
+        run: |
+          set -euo pipefail
+          node tools/gen-free-chats-fixtures.cjs "$GITHUB_WORKSPACE/core" "$RUNNER_TEMP/node-free-chats.v1.json"
+          cmp crates/server-projects/tests/fixtures/node-free-chats.v1.json "$RUNNER_TEMP/node-free-chats.v1.json" \
+            || { echo "::error::regenerate crates/server-projects/tests/fixtures/node-free-chats.v1.json with tools/gen-free-chats-fixtures.cjs at contracts/http/core.ref"; exit 1; }
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Build a front with the images only (no rust-project-chats), kept aside
         run: |
           set -euo pipefail
           cargo build --locked -p replay -p noevia-server
-          if target/debug/noevia-server --features | grep -qx rust-project-chats; then
-            echo "::error::a build without the cargo feature lists rust-project-chats"; exit 1
-          fi
+          for feature in rust-project-chats rust-free-chats; do
+            if target/debug/noevia-server --features | grep -qx "$feature"; then
+              echo "::error::a build without the cargo feature lists $feature"; exit 1
+            fi
+          done
           mkdir -p "$RUNNER_TEMP/images-only"
           cp target/debug/noevia-server target/debug/corpus-launcher "$RUNNER_TEMP/images-only/"
-      - name: Build the front with the chat-list slice
+      - name: Build a front with the project chat list but not the free one, kept aside
         run: |
           set -euo pipefail
           cargo build --locked -p replay -p noevia-server --features rust-project-chats
           target/debug/noevia-server --features | grep -qx rust-project-chats
-      - name: The chat-list slice's routing and capability tests
+          if target/debug/noevia-server --features | grep -qx rust-free-chats; then
+            echo "::error::a build without the cargo feature lists rust-free-chats"; exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/chats-only"
+          cp target/debug/noevia-server target/debug/corpus-launcher "$RUNNER_TEMP/chats-only/"
+      - name: Build the front with both chat-list slices
         run: |
-          cargo clippy --locked -p noevia-server --all-targets --features rust-project-chats -- -D warnings
-          cargo test --locked -p noevia-server --features rust-project-chats
-      - name: Node and Rust share the projects.json lock and lose no write (and the blind-save control does); generated chat-list saves answer as core's route
-        run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock --test chats_property
+          set -euo pipefail
+          cargo build --locked -p replay -p noevia-server --features rust-project-chats,rust-free-chats
+          target/debug/noevia-server --features | grep -qx rust-project-chats
+          target/debug/noevia-server --features | grep -qx rust-free-chats
+      - name: The chat-list slices' routing and capability tests
+        run: |
+          cargo clippy --locked -p noevia-server --all-targets --features rust-project-chats,rust-free-chats -- -D warnings
+          cargo test --locked -p noevia-server --features rust-project-chats,rust-free-chats
+          cargo clippy --locked -p noevia-server --all-targets --features rust-free-chats -- -D warnings
+          cargo test --locked -p noevia-server --features rust-free-chats
+      - name: Node and Rust share the projects.json and free-chats.json locks and lose no write (and the blind-save controls do); generated chat-list saves answer as core's route
+        run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock --test chats_property --test free_chats_property
       - name: Replay against Node directly (reference data dir)
         run: |
           set -euo pipefail
@@ -467,7 +490,7 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-front" \
             --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/replay-front-report.json" --state-out "$RUNNER_TEMP/rust-projects-state.json" \
-            --state-ignore '*projects.json.lock' \
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"
       - name: "An images-only front (rust-projects without rust-project-chats): Node keeps the chat list, still 0 differences"
         # sbstndalton/noevia#1409: the supervisor confirms the chat-list slice to Node only for a
@@ -479,11 +502,23 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-images-only" \
             --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$RUNNER_TEMP/images-only/noevia-server'" \
             --report "$RUNNER_TEMP/images-only-report.json" \
-            --state-ignore '*projects.json.lock' \
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
+            --expect-state "$RUNNER_TEMP/node-state.json"
+      - name: "A front without rust-free-chats: Node keeps the free-chat list, still 0 differences"
+        # The supervisor confirms the free-chat slice to Node only for a front that lists
+        # rust-free-chats, so Node answers the free-list saves this front forwards.
+        run: |
+          set -euo pipefail
+          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+            --ignore-body hours --ignore-body peakHour/hour \
+            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-chats-only" \
+            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$RUNNER_TEMP/chats-only/noevia-server'" \
+            --report "$RUNNER_TEMP/chats-only-report.json" \
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"
       - name: "Negative control: Node told the front owns the image and chat-list routes refuses their writes"
-        # The same run with the front started without the switch: the image writes and chat-list
-        # saves reach Node, which must answer 503 RUST_PROJECTS_OWNED, so the clean replay above was
+        # The same run with the front started without the switch: the image writes, chat-list
+        # saves and free-chat-list saves reach Node, which must answer 503 RUST_PROJECTS_OWNED, so the clean replay above was
         # the front's work.
         run: |
           set -uo pipefail
@@ -497,7 +532,7 @@ jobs:
           python3 - "$RUNNER_TEMP/control-report.json" <<'PY'
           import json, re, sys
           rows = json.load(open(sys.argv[1]))
-          for what, pattern in (("image uploads", r"/api/projects/[^/]+/assets"), ("chat-list saves", r"/api/projects/[^/]+/chats")):
+          for what, pattern in (("image uploads", r"/api/projects/[^/]+/assets"), ("chat-list saves", r"/api/projects/[^/]+/chats"), ("free-chat-list saves", r"/api/freechats")):
               up = [r for r in rows if r["method"] == "POST" and re.fullmatch(pattern, r["path"]) and r["expectedStatus"] == 200]
               assert up and all(r["status"] == 503 for r in up), up
               print("negative control: Node refused", len(up), what, "with 503")
@@ -512,7 +547,9 @@ jobs:
             ${{ runner.temp }}/rust-projects-state.json
             ${{ runner.temp }}/control-report.json
             ${{ runner.temp }}/images-only-report.json
+            ${{ runner.temp }}/chats-only-report.json
             ${{ runner.temp }}/node-chats.v1.json
+            ${{ runner.temp }}/node-free-chats.v1.json
           if-no-files-found: ignore
 
   dav-parse-wasm:
