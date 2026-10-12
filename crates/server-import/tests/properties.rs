@@ -34,7 +34,7 @@ fn all_admitted_plans_are_deterministic_unique_and_count_consistent() {
             .collect::<Vec<_>>();
         let ids = free
             .iter()
-            .chain(grouped.into_iter())
+            .chain(grouped)
             .map(|m| m["id"].as_str().unwrap())
             .collect::<std::collections::HashSet<_>>();
         assert_eq!(ids.len(), count);
