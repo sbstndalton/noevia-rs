@@ -237,6 +237,103 @@ fn first_run_setup_signs_the_owner_in_once() {
     assert_eq!(r.headers[0].1, "Bearer realm=\"cowork\"");
 }
 
+/// #1483: the profile's session list shows only sessions that can still sign in (the same rule
+/// authenticate applies), removes the dead rows of this account, shows when each live one ends
+/// (the earlier of its absolute and idle limits), and never touches another account's rows.
+#[test]
+fn profile_lists_only_sessions_that_can_still_sign_in() {
+    const DAY: i64 = 24 * 60 * 60 * 1000;
+    let w = world(false);
+    let mut owner = Browser::new("198.51.100.7");
+    let id = setup(&w, &mut owner);
+    let live_hash = server_auth::js::digest(owner.session.as_deref().unwrap());
+    // Synthetic rows: one dead for five weeks (absolute limit passed), one idle past the idle limit.
+    let insert = |hash: &str, user: &str, created: i64, seen: i64, expires: i64| {
+        w.node
+            .execute(
+                "INSERT INTO sessions(id_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at,user_agent,ip) VALUES(?1,?2,'csrf',?3,?4,?5,'Synthetic Browser','127.0.0.1')",
+                (hash, user, created, seen, expires),
+            )
+            .unwrap();
+    };
+    insert(
+        "stale-five-weeks-1483",
+        &id,
+        T0 - 35 * DAY,
+        T0 - 35 * DAY,
+        T0 - 5 * DAY,
+    );
+    insert(
+        "idle-eight-days-1483",
+        &id,
+        T0 - 10 * DAY,
+        T0 - 8 * DAY,
+        T0 + 20 * DAY,
+    );
+    // Another account's dead row: this account's listing must not remove it.
+    w.node
+        .execute(
+            "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('other-1483','Other','other-1483','Other','member','synthetic','wa-other-1483',?1,?1)",
+            [T0],
+        )
+        .unwrap();
+    insert(
+        "other-stale-1483",
+        "other-1483",
+        T0 - 35 * DAY,
+        T0 - 35 * DAY,
+        T0 - 5 * DAY,
+    );
+
+    let (s, v, _) = call(&w, &mut owner, "GET", "/api/profile", "", T0 + DAY);
+    assert_eq!(s, 200);
+    let listed: Vec<&str> = v["sessions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        listed,
+        vec![live_hash.as_str()],
+        "only the live session is listed"
+    );
+    assert_eq!(v["sessions"][0]["current"], true);
+    // The live session ends at the earlier of its absolute limit and its idle limit.
+    let ends: i64 = w
+        .node
+        .query_row(
+            "SELECT MIN(expires_at,last_seen_at+604800000) FROM sessions WHERE id_hash=?1",
+            [&live_hash],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(v["sessions"][0]["expiresAt"].as_i64(), Some(ends));
+    assert!(ends > T0 + DAY, "a live session ends in the future");
+    // The dead rows of this account are removed, not just hidden; the other account's row is kept.
+    assert_eq!(
+        count(
+            &w,
+            "SELECT count(*) FROM sessions WHERE id_hash='stale-five-weeks-1483'"
+        ),
+        0
+    );
+    assert_eq!(
+        count(
+            &w,
+            "SELECT count(*) FROM sessions WHERE id_hash='idle-eight-days-1483'"
+        ),
+        0
+    );
+    assert_eq!(
+        count(
+            &w,
+            "SELECT count(*) FROM sessions WHERE id_hash='other-stale-1483'"
+        ),
+        1
+    );
+}
+
 #[test]
 fn password_sign_in_and_its_limits() {
     let w = world(false);
