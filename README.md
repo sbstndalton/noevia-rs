@@ -454,9 +454,9 @@ one slice at a time.
   Node writes: lone surrogates (a preview cut mid-emoji) kept and written back as `\udxxx`, JS
   property order for array-index keys; it says whether a refusal is one `JSON.parse` shares.
 - `crates/server-projects` (M4): the project routes the front answers under
-  `NOEVIA_RUST_PROJECTS`: a project's images, and its chat list (`GET`/`POST
-  /api/projects/{id}/chats`, with core's getProject heal, instruction-skill reconcile, mergeChats
-  and normalizeFrame). Differential table from core's own route on synthetic workspaces:
+  `NOEVIA_RUST_PROJECTS`: a project's images, and (in a noevia-server built with the cargo feature
+  `rust-project-chats`) its chat list (`GET`/`POST /api/projects/{id}/chats`, with core's
+  getProject heal, instruction-skill reconcile, mergeChats and normalizeFrame). Differential table from core's own route on synthetic workspaces:
   `node tools/gen-project-chats-fixtures.cjs <noevia-core> crates/server-projects/tests/fixtures/node-chats.v1.json`;
   `tests/chats_property.rs` also runs generated saves through core when `NOEVIA_CORE_CHECKOUT` is set.
 - `crates/passkey` (M3): @simplewebauthn/server v14's `verifyRegistrationResponse` and

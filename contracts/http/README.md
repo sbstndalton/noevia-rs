@@ -82,13 +82,19 @@ and writes Node's exact `atomicJson` bytes; Node re-reads it when it changed and
 per-project, per-field three-way merge (`assets`, `retiredAssets` and `chats` per item), so neither
 drops the other's change. With `NOEVIA_FRONT=rust`, `NOEVIA_RUST_AUTH_CONFIRMED=1` and
 `NOEVIA_RUST_PROJECTS_CONFIRMED=1` (the supervisor sets the last once `--features` lists
-`rust-projects`), Node's copies of the image writes and of the chat-list save answer 503
-`RUST_PROJECTS_OWNED`; a request start that takes in the front's change nudges Node's chat vault
-mirror, as Node's own project writes did. Node and front must come from one release: a core that
-refuses the chat-list save behind a front that does not serve it would refuse every save.
+`rust-projects`), Node's copies of the image writes answer 503 `RUST_PROJECTS_OWNED`; its
+chat-list save does so only with `NOEVIA_RUST_PROJECT_CHATS_CONFIRMED=1` as well, which the
+supervisor sets only once `--features` lists `rust-project-chats`. The front answers the chat list
+only when built with the cargo feature of that name; without it, the route stays Node's under the
+switch, and Node, unconfirmed, answers it (sbstndalton/noevia#1409). A request start that takes in
+the front's change nudges Node's chat vault mirror, as Node's own project writes did. A front with
+the chat slice needs a core that merges `chats` per item (core#75 or later): noevia's
+`deploy/tools/assemble-release.sh` refuses a release whose front owns a project route its core's
+`OWNED_ROUTES` does not list.
 
-CI job `corpus-replay-front-rust-projects` replays the corpus through the front with both switches
-(zero differences, Node-only data dir), runs the Node-vs-Rust lock races (`server-projects --test
+CI job `corpus-replay-front-rust-projects` regenerates the chat-list fixture at core.ref and
+compares the bytes, replays the corpus through the front with both switches, with and without the
+chat slice (zero differences, Node-only data dir), runs the Node-vs-Rust lock races (`server-projects --test
 node_lock`: images and chat lists, each with a blind-save control that must lose data) and the
 generated chat-list saves against core's own route (`--test chats_property`), and a negative
 control where Node is told the front owns the project routes but the front does not: the uploads
