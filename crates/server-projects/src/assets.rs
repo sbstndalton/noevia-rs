@@ -10,6 +10,7 @@
 use crate::js;
 use crate::store::{self, StoreError};
 use crate::{Body, Ctx, Reply};
+use js_json::wtf16;
 use js_json::JValue;
 use std::path::Path;
 
@@ -121,7 +122,9 @@ pub fn post(ctx: Ctx<'_>, raw_project: &str, body: &[u8], over: bool) -> Reply {
     if over {
         return Reply::error(413, "That image is larger than the 8 MB limit.");
     }
-    let Ok(body) = js_json::parse(&String::from_utf8_lossy(body)) else {
+    // Lossless (wtf16): Node keeps a lone surrogate that a 200-unit cut of the name leaves behind,
+    // and stores it; a plain String cannot hold one (#1403).
+    let Ok(body) = wtf16::parse(&String::from_utf8_lossy(body)) else {
         return Reply::error(400, "invalid JSON");
     };
     if matches!(body, JValue::Null) {
@@ -130,7 +133,7 @@ pub fn post(ctx: Ctx<'_>, raw_project: &str, body: &[u8], over: bool) -> Reply {
     let Some(name) = string_or_empty(body.get("name")) else {
         return Reply::internal();
     };
-    let name = js_json::js_slice(&name, 200);
+    let name = wtf16::slice(&name, 200);
     let Some(mime) = string_or_empty(body.get("mime")) else {
         return Reply::internal();
     };
@@ -221,7 +224,7 @@ pub fn post(ctx: Ctx<'_>, raw_project: &str, body: &[u8], over: bool) -> Reply {
         return reply;
     }
     let out = JValue::obj([("asset", entry)]);
-    Reply::json(200, js_json::stringify(&out).unwrap_or_default())
+    Reply::json(200, wtf16::stringify(&out).unwrap_or_default())
 }
 
 /// GET /api/projects/{id}/assets/{assetId}: the image bytes, or Node's 404s.
@@ -461,6 +464,39 @@ mod tests {
         assert_eq!(
             delete(f.ctx(), "proj-1", &id),
             Reply::error(404, "no such image")
+        );
+    }
+
+    #[test]
+    fn a_name_cut_inside_an_emoji_keeps_the_high_half_as_node_does() {
+        // 199 units, then an emoji (two units): the 200-unit cut leaves its high surrogate (#1403).
+        let f = Fixture::new(ONE);
+        let name = format!("{}😀tail", "a".repeat(199));
+        let body =
+            format!("{{\"name\":\"{name}\",\"mime\":\"image/png\",\"dataBase64\":\"{PNG}\"}}");
+        let r = post_json(&f, "proj-1", &body);
+        assert_eq!(r.status, 200, "{r:?}");
+        let Body::Json(text) = &r.body else { panic!() };
+        // JSON.stringify writes the lone high surrogate as an escape, in the reply and in the file.
+        let want = format!("\"name\":\"{}\\ud83d\",\"mime\"", "a".repeat(199));
+        assert!(text.contains(&want), "{text}");
+        let stored = std::fs::read_to_string(f.user().join("projects.json")).unwrap();
+        assert!(
+            stored.contains(&format!("\"name\": \"{}\\ud83d\"", "a".repeat(199))),
+            "{stored}"
+        );
+        // The store must still read back: the lossless reader takes what this wrote.
+        assert!(wtf16::parse(&stored).is_ok(), "{stored}");
+        // A name of exactly 200 units with the emoji fully inside is kept whole.
+        let whole = format!("{}😀", "a".repeat(198));
+        let body =
+            format!("{{\"name\":\"{whole}\",\"mime\":\"image/png\",\"dataBase64\":\"{PNG}\"}}");
+        let r = post_json(&f, "proj-1", &body);
+        assert_eq!(r.status, 200, "{r:?}");
+        let Body::Json(text) = &r.body else { panic!() };
+        assert!(
+            text.contains(&format!("\"name\":\"{whole}\",\"mime\"")),
+            "{text}"
         );
     }
 

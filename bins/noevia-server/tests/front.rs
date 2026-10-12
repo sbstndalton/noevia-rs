@@ -362,6 +362,7 @@ async fn headers_cookies_and_forwarded_for() {
             "/api/auth/login/password?x=1",
             &[
                 ("x-forwarded-for", "6.6.6.6"),
+                ("x-noevia-client-ip", "7.7.7.7"),
                 ("cookie", "cowork_session=s1"),
                 ("x-csrf-token", "t1"),
                 ("origin", "http://front.test"),
@@ -395,6 +396,10 @@ async fn headers_cookies_and_forwarded_for() {
         } else {
             assert!(h.get("x-forwarded-for").is_none(), "{h}");
         }
+        // #1245: the front's own answer for the client address, whatever the client sent under
+        // that name (the test client is the loopback peer).
+        let want = if trust { "6.6.6.6" } else { "127.0.0.1" };
+        assert_eq!(h["x-noevia-client-ip"], serde_json::json!([want]), "{h}");
     }
     // With TRUST_PROXY, a spoofed prefix never survives: only the rightmost entry is sent.
     let front = start_front(up_addr, &dist, true).await;

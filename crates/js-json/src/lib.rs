@@ -2,8 +2,9 @@
 //! M3): what `JSON.parse` gives a handler, what `JSON.stringify` sends back, and the coercions
 //! handlers apply to body fields (`String(v)`, `!!v`, `typeof`).
 //!
-//! - [`parse`] keeps object keys in insertion order (a later duplicate replaces the value in the
-//!   first one's place, as `JSON.parse` does) and every number as an `f64`. Stricter than
+//! - [`parse`] orders object keys as JS does: array-index keys first, ascending (#1404), the rest in
+//!   insertion order (a later duplicate replaces the value in the first one's place, as
+//!   `JSON.parse` does), and every number as an `f64`. Stricter than
 //!   `JSON.parse`, as refusals: strings with lone surrogate escapes, numbers outside the `f64`
 //!   range (JS: `Infinity`), and nesting deeper than serde_json's 128 levels.
 //! - [`stringify`] is `JSON.stringify(value)` byte for byte, `undefined` included (dropped in
@@ -222,6 +223,8 @@ impl<'de> Visitor<'de> for Seed {
                 out.push((k, v));
             }
         }
+        // JS property order: array-index keys first, ascending, then the rest as they came (#1404).
+        wtf16::order_keys(&mut out);
         Ok(JValue::Obj(out))
     }
 }
@@ -396,9 +399,11 @@ fn coerce(v: &JValue, depth: usize) -> Result<String, CoerceError> {
         JValue::Num(n) => number_to_string(*n),
         JValue::Str(s) => s.clone(),
         JValue::Obj(items) => {
-            if items.iter().any(|(k, _)| k == "toString" || k == "valueOf") {
-                // An own non-callable toString/valueOf: ToPrimitive throws (valueOf alone
-                // still falls through to toString in JS; refusing is the safe side).
+            // ToPrimitive (hint string) tries an own toString first. A JSON value is never callable,
+            // so an own toString is skipped, and then valueOf (inherited, returning the object)
+            // leaves no primitive: TypeError. An own valueOf alone is skipped too, and the inherited
+            // Object.prototype.toString answers "[object Object]" (#1405).
+            if items.iter().any(|(k, _)| k == "toString") {
                 return Err(CoerceError);
             }
             "[object Object]".into()
@@ -523,6 +528,31 @@ mod tests {
         assert_eq!(s("true"), "true");
         assert!(to_js_string(&parse(r#"{"toString":1}"#).unwrap()).is_err());
         assert_eq!(to_js_string(&JValue::Undefined).unwrap(), "undefined");
+        // An own valueOf alone: the inherited Object.prototype.toString answers (#1405).
+        assert_eq!(s(r#"{"valueOf":1}"#), "[object Object]");
+        assert_eq!(s(r#"{"valueOf":{}}"#), "[object Object]");
+        assert_eq!(s(r#"[{"valueOf":null}]"#), "[object Object]");
+        // An own toString (no JSON value is callable): TypeError, with or without valueOf.
+        assert!(to_js_string(&parse(r#"{"toString":null}"#).unwrap()).is_err());
+        assert!(to_js_string(&parse(r#"{"toString":1,"valueOf":2}"#).unwrap()).is_err());
+        assert!(to_js_string(&parse(r#"[1,{"toString":"x"}]"#).unwrap()).is_err());
+    }
+
+    #[test]
+    fn parse_orders_index_keys_first_like_js() {
+        // Node: JSON.stringify(JSON.parse(text)) for the same text (#1404).
+        let v =
+            parse(r#"{"b":1,"2":1,"10":1,"1":1,"01":1,"4294967295":1,"4294967294":1}"#).unwrap();
+        assert_eq!(
+            stringify(&v).unwrap(),
+            r#"{"1":1,"2":1,"10":1,"4294967294":1,"b":1,"01":1,"4294967295":1}"#
+        );
+        // A duplicate keeps the first position (after the index sort) and takes the last value.
+        let v = parse(r#"{"x":1,"5":"a","3":"b","x":2,"5":"c"}"#).unwrap();
+        assert_eq!(stringify(&v).unwrap(), r#"{"3":"b","5":"c","x":2}"#);
+        // Nested objects are ordered at every level; arrays keep their order.
+        let v = parse(r#"[{"z":0,"1":{"y":0,"0":0}}]"#).unwrap();
+        assert_eq!(stringify(&v).unwrap(), r#"[{"1":{"0":0,"y":0},"z":0}]"#);
     }
 
     #[test]

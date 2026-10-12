@@ -15,6 +15,10 @@
 //!   (auth.cjs clientAddress: the rightmost entry, if it is an IP). The proxy works that address
 //!   out the same way from what it received and sends exactly it, so a client cannot add entries
 //!   Node would pick up; without TRUST_PROXY no X-Forwarded-For reaches Node at all.
+//! - The front also sends its answer for the client address in X-Noevia-Client-Ip (#1245), with
+//!   or without TRUST_PROXY, after dropping any copy the client sent. Node reads it only from a
+//!   loopback peer with NOEVIA_FRONT=rust, so per-client limits and session addresses no longer
+//!   collapse into the front's own address.
 
 use crate::config::Upstream;
 use crate::reply;
@@ -97,6 +101,19 @@ pub fn forwarded_for(trust_proxy: bool, peer: IpAddr, headers: &HeaderMap) -> Op
         .rfind(|s| !s.is_empty())
         .and_then(|s| s.parse::<IpAddr>().ok());
     Some(last.unwrap_or(peer).to_string())
+}
+
+/// The header this front sends Node with the client's address (#1245). Node takes it only from a
+/// loopback peer and only with NOEVIA_FRONT=rust (core auth.cjs clientAddress); any copy the client
+/// sends under this name is replaced, so a client cannot choose its own address.
+pub const CLIENT_ADDRESS_HEADER: &str = "x-noevia-client-ip";
+
+/// The client address this front sends Node: what [`forwarded_for`] gives with TRUST_PROXY, else
+/// the socket peer. Without TRUST_PROXY the peer is the real client on a direct connection, which
+/// is what Node reads from its own socket when no front is in between. Behind a tunnel the peer
+/// is the tunnel's address, as it has always been without TRUST_PROXY.
+pub fn client_address(trust_proxy: bool, peer: IpAddr, headers: &HeaderMap) -> String {
+    forwarded_for(trust_proxy, peer, headers).unwrap_or_else(|| peer.to_string())
 }
 
 /// Aborts the connection task (closing Node's socket) when dropped.
@@ -227,10 +244,18 @@ impl LegacyProxy {
         parts.uri = uri;
         parts.version = axum::http::Version::HTTP_11;
         strip_hop_by_hop(&mut parts.headers);
+        // Computed from what the client sent, before either header is rewritten below.
         let xff = forwarded_for(self.trust_proxy, peer.ip(), &parts.headers);
+        let client = client_address(self.trust_proxy, peer.ip(), &parts.headers);
         parts.headers.remove("x-forwarded-for");
         if let Some(v) = xff.and_then(|a| HeaderValue::from_str(&a).ok()) {
             parts.headers.insert("x-forwarded-for", v);
+        }
+        // Node's clientAddress takes the front's own answer from this header (#1245). Whatever the
+        // client sent under that name is dropped: the value is this front's, or nothing.
+        parts.headers.remove(CLIENT_ADDRESS_HEADER);
+        if let Ok(v) = HeaderValue::from_str(&client) {
+            parts.headers.insert(CLIENT_ADDRESS_HEADER, v);
         }
         let over = Arc::new(AtomicBool::new(false));
         let body = CappedBody {
@@ -339,6 +364,27 @@ mod tests {
             forwarded_for(true, peer, &xff(&["2001:db8::1 , "])).as_deref(),
             Some("2001:db8::1")
         );
+    }
+
+    #[test]
+    fn client_address_is_the_peer_without_trust_and_the_rightmost_entry_with_it() {
+        let peer: IpAddr = "192.168.1.20".parse().unwrap();
+        // Direct LAN client, no TRUST_PROXY: the real address, never a forwarded one (#1245).
+        assert_eq!(
+            client_address(false, peer, &xff(&["1.2.3.4"])),
+            "192.168.1.20"
+        );
+        assert_eq!(client_address(false, peer, &xff(&[])), "192.168.1.20");
+        assert_eq!(
+            client_address(true, peer, &xff(&["6.6.6.6, 203.0.113.9"])),
+            "203.0.113.9"
+        );
+        assert_eq!(
+            client_address(true, peer, &xff(&["203.0.113.9, nope"])),
+            "192.168.1.20"
+        );
+        let mapped: IpAddr = "::ffff:10.0.0.7".parse().unwrap();
+        assert_eq!(client_address(false, mapped, &xff(&[])), "::ffff:10.0.0.7");
     }
 
     #[test]
