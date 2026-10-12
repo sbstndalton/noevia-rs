@@ -399,9 +399,11 @@ fn coerce(v: &JValue, depth: usize) -> Result<String, CoerceError> {
         JValue::Num(n) => number_to_string(*n),
         JValue::Str(s) => s.clone(),
         JValue::Obj(items) => {
-            if items.iter().any(|(k, _)| k == "toString" || k == "valueOf") {
-                // An own non-callable toString/valueOf: ToPrimitive throws (valueOf alone
-                // still falls through to toString in JS; refusing is the safe side).
+            // ToPrimitive (hint string) tries an own toString first. A JSON value is never callable,
+            // so an own toString is skipped, and then valueOf (inherited, returning the object)
+            // leaves no primitive: TypeError. An own valueOf alone is skipped too, and the inherited
+            // Object.prototype.toString answers "[object Object]" (#1405).
+            if items.iter().any(|(k, _)| k == "toString") {
                 return Err(CoerceError);
             }
             "[object Object]".into()
@@ -526,12 +528,21 @@ mod tests {
         assert_eq!(s("true"), "true");
         assert!(to_js_string(&parse(r#"{"toString":1}"#).unwrap()).is_err());
         assert_eq!(to_js_string(&JValue::Undefined).unwrap(), "undefined");
+        // An own valueOf alone: the inherited Object.prototype.toString answers (#1405).
+        assert_eq!(s(r#"{"valueOf":1}"#), "[object Object]");
+        assert_eq!(s(r#"{"valueOf":{}}"#), "[object Object]");
+        assert_eq!(s(r#"[{"valueOf":null}]"#), "[object Object]");
+        // An own toString (no JSON value is callable): TypeError, with or without valueOf.
+        assert!(to_js_string(&parse(r#"{"toString":null}"#).unwrap()).is_err());
+        assert!(to_js_string(&parse(r#"{"toString":1,"valueOf":2}"#).unwrap()).is_err());
+        assert!(to_js_string(&parse(r#"[1,{"toString":"x"}]"#).unwrap()).is_err());
     }
 
     #[test]
     fn parse_orders_index_keys_first_like_js() {
         // Node: JSON.stringify(JSON.parse(text)) for the same text (#1404).
-        let v = parse(r#"{"b":1,"2":1,"10":1,"1":1,"01":1,"4294967295":1,"4294967294":1}"#).unwrap();
+        let v =
+            parse(r#"{"b":1,"2":1,"10":1,"1":1,"01":1,"4294967295":1,"4294967294":1}"#).unwrap();
         assert_eq!(
             stringify(&v).unwrap(),
             r#"{"1":1,"2":1,"10":1,"4294967294":1,"b":1,"01":1,"4294967295":1}"#
