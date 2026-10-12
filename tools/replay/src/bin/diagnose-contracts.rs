@@ -1697,9 +1697,45 @@ mod tests {
         drop(server);
         drop(listener);
         eprintln!("closed-listener-policy-v1 phase=before-replacement listener_port={port}");
-        let replacement = reusable_probe(port).map_err(|e| phase("replacement-bind", e))?;
+        let replacement = rebind_after_teardown(port, Duration::from_secs(5))
+            .map_err(|e| phase("replacement-bind", e))?;
         assert!(reusable_probe(port).is_err());
         drop(replacement);
+        Ok(())
+    }
+    /// The closed connection's kernel teardown is asynchronous on Linux: a rebind can still see
+    /// EADDRINUSE for a short while after every fd is closed (CI errno=98, passed on rerun). Retry
+    /// only that refusal, within a fixed budget; any other error, or a conflict that outlives the
+    /// budget, is still returned to the caller.
+    fn rebind_after_teardown(port: u16, budget: Duration) -> std::io::Result<TcpListener> {
+        let deadline = std::time::Instant::now() + budget;
+        loop {
+            match reusable_probe(port) {
+                Ok(listener) => return Ok(listener),
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::AddrInUse
+                        && std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    #[test]
+    fn rebind_after_teardown_refuses_a_live_conflict_within_its_budget() -> Result<()> {
+        let live = reusable_probe(0)?;
+        let port = live.local_addr()?.port();
+        let started = std::time::Instant::now();
+        let error = match rebind_after_teardown(port, Duration::from_millis(60)) {
+            Ok(_) => return Err("live listener must keep its port".into()),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        drop(live);
+        let freed = rebind_after_teardown(port, Duration::from_secs(1))?;
+        drop(freed);
         Ok(())
     }
     #[test]
