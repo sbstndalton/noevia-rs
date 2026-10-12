@@ -466,11 +466,17 @@ jobs:
           target/debug/noevia-server --features | grep -qx rust-project-chats
           target/debug/noevia-server --features | grep -qx rust-free-chats
       - name: The chat-list slices' routing and capability tests
+        # The free slice alone first: each `cargo test` rebuilds target/debug/noevia-server with its
+        # features, and the replays below must run the front with both slices.
         run: |
-          cargo clippy --locked -p noevia-server --all-targets --features rust-project-chats,rust-free-chats -- -D warnings
-          cargo test --locked -p noevia-server --features rust-project-chats,rust-free-chats
+          set -euo pipefail
           cargo clippy --locked -p noevia-server --all-targets --features rust-free-chats -- -D warnings
           cargo test --locked -p noevia-server --features rust-free-chats
+          cargo clippy --locked -p noevia-server --all-targets --features rust-project-chats,rust-free-chats -- -D warnings
+          cargo test --locked -p noevia-server --features rust-project-chats,rust-free-chats
+          cargo build --locked -p replay -p noevia-server --features rust-project-chats,rust-free-chats
+          target/debug/noevia-server --features | grep -qx rust-project-chats
+          target/debug/noevia-server --features | grep -qx rust-free-chats
       - name: Node and Rust share the projects.json and free-chats.json locks and lose no write (and the blind-save controls do); generated chat-list saves answer as core's route
         run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock --test chats_property --test free_chats_property
       - name: Replay against Node directly (reference data dir)
@@ -485,6 +491,9 @@ jobs:
       - name: Replay through the Rust front with NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1
         run: |
           set -euo pipefail
+          features="$(target/debug/noevia-server --features)"
+          grep -qx rust-project-chats <<<"$features" && grep -qx rust-free-chats <<<"$features" \
+            || { echo "::error::the front under test lacks a chat slice"; exit 1; }
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-front" \
