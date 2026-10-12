@@ -132,10 +132,15 @@
     "DELETE /api/freechats/missing-free-chat",
     "DELETE /api/projects/<id:3>/chats/<id:8>",
     "DELETE /api/projects/<id:3>",
-    "DELETE /api/admin/users/<id:10>"
+    "DELETE /api/admin/users/<id:10>",
+    "POST /api/freechats",
+    "GET /api/projects/<id:24>/chats",
+    "POST /api/projects/<id:24>/chats",
+    "POST /api/projects/no-such-project/chats",
+    "GET /api/projects/no-such-project/chats"
   ],
   "dropped": 0,
-  "exchanges": 193,
+  "exchanges": 207,
   "generator": "noevia-core tools/contract-corpus/generate.cjs",
   "inputs": {
     "<secret:10>": {

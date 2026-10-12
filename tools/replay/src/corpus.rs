@@ -150,7 +150,7 @@ mod calendar_manifest_tests {
             corpus.utc_calendar,
             "native HTTP corpus must retain its strict UTC calendar contract"
         );
-        assert_eq!(corpus.exchanges.len(), 193);
+        assert_eq!(corpus.exchanges.len(), 207);
     }
     #[test]
     fn calendar_contract_is_explicit_and_exact() {
