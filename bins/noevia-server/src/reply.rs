@@ -1,11 +1,9 @@
-//! The reply shapes Node uses for natively answered requests: the security headers
-//! index.cjs sets on every response (HSTS and Permissions-Policy included, #1480), X-Noevia-API on /api/ paths, and http.cjs json().
+//! The reply shapes Node uses for natively answered requests: the four security headers
+//! index.cjs sets on every response, X-Noevia-API on /api/ paths, and http.cjs json().
 
 use axum::body::Body;
 use axum::http::{header, HeaderMap, HeaderValue, Response, StatusCode};
 
-pub const HSTS: &str = "max-age=15552000";
-pub const PERMISSIONS_POLICY: &str = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()";
 pub const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 /// index.cjs handleRequestScoped / handleRequest: set before any route answers.
@@ -22,15 +20,6 @@ pub fn security_headers(h: &mut HeaderMap, api: bool) {
     h.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(CSP),
-    );
-    // #1480: the same two headers as index.cjs (six months, no includeSubDomains; features off).
-    h.insert(
-        header::STRICT_TRANSPORT_SECURITY,
-        HeaderValue::from_static(HSTS),
-    );
-    h.insert(
-        "permissions-policy",
-        HeaderValue::from_static(PERMISSIONS_POLICY),
     );
     if api {
         h.insert("x-noevia-api", HeaderValue::from_static("1"));
@@ -72,38 +61,4 @@ pub fn code_net_refused() -> Response<Body> {
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     h.insert(header::CONNECTION, HeaderValue::from_static("close"));
     res
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // #1480: every natively answered reply carries HSTS (six months, never includeSubDomains) and a
-    // Permissions-Policy that switches off the features the app never calls, as index.cjs does.
-    #[test]
-    fn security_headers_carry_hsts_and_permissions_policy() {
-        for api in [false, true] {
-            let mut h = HeaderMap::new();
-            security_headers(&mut h, api);
-            assert_eq!(
-                h.get("strict-transport-security").map(|v| v.as_bytes()),
-                Some(HSTS.as_bytes())
-            );
-            assert!(!HSTS.contains("includeSubDomains"));
-            assert!(HSTS
-                .strip_prefix("max-age=")
-                .and_then(|n| n.parse::<u64>().ok())
-                .is_some_and(|n| n >= 15_552_000));
-            assert_eq!(
-                h.get("permissions-policy").map(|v| v.as_bytes()),
-                Some(PERMISSIONS_POLICY.as_bytes())
-            );
-            for feature in ["camera", "microphone", "geolocation", "payment", "usb"] {
-                assert!(
-                    PERMISSIONS_POLICY.contains(&format!("{feature}=()")),
-                    "{feature}"
-                );
-            }
-        }
-    }
 }
