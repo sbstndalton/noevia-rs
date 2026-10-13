@@ -158,6 +158,17 @@ fn redaction_semantics() {
         json!(["fatal api_key=[redacted]"])
     );
 }
+/// services #1379: the model name comes from the log as well, and is redacted like evidence.
+#[test]
+fn model_name_redaction_semantics() {
+    let v = analyse("spawning server instance with name=api_key=synthetic-secret-only on port 1\n[1] fatal x\ninstance name=api_key=synthetic-secret-only exited with status 1").unwrap();
+    assert_eq!(v["failures"][0]["model"], json!("api_key=[redacted]"));
+    assert_eq!(v["failures"][0]["evidence"], json!(["fatal x"]));
+    assert!(!v.to_string().contains("synthetic-secret-only"));
+    // An ordinary name is unchanged.
+    let v = analyse(&log("fatal x")).unwrap();
+    assert_eq!(v["failures"][0]["model"], json!("A"));
+}
 #[test]
 fn crossline_semantics() {
     let v=analyse("spawning server instance with name=A on port 1\nAuthorization:\n[1] fatal synthetic-secret-only\ninstance name=A exited with status 1").unwrap();
