@@ -78,6 +78,12 @@ get('get-no-file', { projects: null, free: null, tombstones: null }, 'proj-a');
 get('get-chats-string', withProjects((p) => { p[0].chats = 'abc'; }), 'proj-a');
 get('get-chats-object', withProjects((p) => { p[0].chats = { id: 'x' }; }), 'proj-a');
 get('get-chats-null', withProjects((p) => { p[0].chats = null; }), 'proj-a');
+// #1236/#1621: a damaged projects.json with non-object file entries loads without them; the saves
+// getProject (reconcile) and saveProjects make write the list without them.
+const nullFiles = (p) => { p[3].files.splice(1, 0, null, 7, 'x'); p[0].files = [null]; };
+get('get-null-files', withProjects(nullFiles), 'proj-skill');
+get('get-null-files-other', withProjects(nullFiles), 'proj-a');
+post('post-null-files', withProjects(nullFiles), 'proj-b', { chats: [{ id: 'cb2', title: 'B2', updatedAt: 60 }] });
 get('get-routing-chosen-not-healed', withProjects((p) => { p[2].routingChosen = true; }), 'cowork-chat-context-x1');
 get('get-lone-surrogates', { ...files.base, projects: pretty(base).replace('"p1"', '"p\\ud83d"').replace('"One"', '"\\udc00One"') }, 'proj-a');
 
