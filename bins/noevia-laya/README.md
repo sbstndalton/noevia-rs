@@ -29,9 +29,9 @@ Linux uses non-reaping waitid to detect an exited engine even when a descendant
 retains its pipe. On macOS idle exit detection relies on pipe EOF; Linux CI is
 the deployment qualification. Owned groups are killed before leaders are reaped.
 
-Qualification uses actual merged services worker commit
-`4f3cf816225d4ed12db33fd8e4a7e2d7ae946a4b`, independently matching codeload SHA256
-`13ba33192b044c91034ba9e9dff3c371e5cf85d197b8467bcae5c151c2294c17`.
+Qualification uses actual services worker commit (services#35 head, #1074)
+`920d57d82d8f4c817760255cff602e15ccc64448`, independently matching codeload SHA256
+`540e14cf3e495e74387cb6f39b12395615b31e8737bf304e757a0d3ab8976ffd`.
 Set `NOEVIA_LAYA_REFERENCE` to that checkout's `laya` directory. Run
 `cargo run --locked -p laya-service --example gen-fixtures -- "$NOEVIA_LAYA_REFERENCE" /tmp/laya-http.json`
 and compare the committed fixture, then `cargo test --locked -p laya-service`.
