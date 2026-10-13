@@ -1588,6 +1588,44 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// The checked-in SOURCE_ORACLE records the runtime and the sources of this harness; it
+    /// goes stale silently unless it is bound to them. Refresh by editing the three values.
+    #[test]
+    fn source_oracle_provenance_matches_this_harness() -> Result<()> {
+        let oracle: Value = serde_json::from_str(include_str!(
+            "../../../../contracts/http/corpus/model-manager-diagnose.v1/SOURCE_ORACLE.json"
+        ))?;
+        let provenance = oracle.get("provenance").ok_or("provenance")?;
+        assert_eq!(
+            provenance.get("runtime").and_then(Value::as_str),
+            Some(RUNTIME)
+        );
+        assert_eq!(
+            provenance.get("generator_sha256").and_then(Value::as_str),
+            Some(
+                format!(
+                    "{:x}",
+                    Sha256::digest(include_bytes!("diagnose-contracts.rs"))
+                )
+                .as_str()
+            ),
+            "generator_sha256 must hash diagnose-contracts.rs"
+        );
+        assert_eq!(
+            provenance
+                .get("owned_dependency_seam_sha256")
+                .and_then(Value::as_str),
+            Some(
+                format!(
+                    "{:x}",
+                    Sha256::digest(include_bytes!("support/diagnose_dependencies.rs"))
+                )
+                .as_str()
+            ),
+            "owned_dependency_seam_sha256 must hash support/diagnose_dependencies.rs"
+        );
+        Ok(())
+    }
     #[test]
     fn exited_child_diagnostics_never_reflect_synthetic_credentials() {
         let sentinel = "synthetic-qualification-credential-0123456789";

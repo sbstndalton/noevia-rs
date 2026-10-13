@@ -95,6 +95,16 @@ fn immutable_python_differential() {
             for f in actual["failures"].as_array().unwrap() {
                 assert_eq!(f["evidence"], json!([]), "{id}");
             }
+            // The exception only holds while Python keeps that evidence; if Python starts
+            // suppressing it too, this fails and the exception must be removed.
+            assert!(
+                redacted
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|f| !f["evidence"].as_array().unwrap().is_empty()),
+                "{id}: Python now suppresses cross-line evidence"
+            );
         } else {
             assert!(
                 narrowing == "redacted-evidence" || narrowing == "redacted-model",
@@ -112,17 +122,12 @@ fn immutable_python_differential() {
             .any(|prefix| id.starts_with(prefix));
             let out = actual["failures"].to_string();
             if numeric {
-                let mut raw = redacted.clone();
-                let mut safe = actual["failures"].clone();
-                for f in raw.as_array_mut().unwrap() {
-                    f.as_object_mut().unwrap().remove("evidence");
-                    f.as_object_mut().unwrap().remove("model");
-                }
-                for f in safe.as_array_mut().unwrap() {
-                    f.as_object_mut().unwrap().remove("evidence");
-                    f.as_object_mut().unwrap().remove("model");
-                }
-                assert_eq!(safe, raw, "{id}");
+                // Exactly Python's redacted answer with the numeric credential value also
+                // scrubbed, in the model and in every evidence line.
+                let want: Value =
+                    serde_json::from_str(&redacted.to_string().replace("12345", "[redacted]"))
+                        .unwrap();
+                assert_eq!(actual["failures"], want, "{id}");
                 assert_ne!(
                     actual["failures"], redacted,
                     "{id}: exception no longer needed"
