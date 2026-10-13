@@ -79,12 +79,29 @@ fn tenant_reads_only_their_own_file() {
     let root = Root::open(d.path()).unwrap();
     assert_eq!(root.read(A, &c).unwrap(), Routing::Manual);
     assert_eq!(root.read(B, &c).unwrap(), Routing::Auto);
-    // Upper-case hex is the same tenant on Node (/^[0-9a-f-]{36}$/i), and ids naming
-    // anything else never reach the filesystem.
-    assert_eq!(
-        root.read(&A.to_ascii_uppercase(), &c).unwrap(),
+    // Node's userDir accepts upper-case hex (/^[0-9a-f-]{36}$/i) and joins the id verbatim:
+    // `users/<id as given>`, never a case-folded name. An upper-case tenant directory answers
+    // for its upper-case id on every filesystem.
+    let upper = "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC";
+    std::fs::create_dir_all(d.path().join("users").join(upper)).unwrap();
+    std::fs::write(
+        d.path().join("users").join(upper).join(FILE),
+        r#"{"defaultRouting":"manual"}"#,
+    )
+    .unwrap();
+    assert_eq!(root.read(upper, &c).unwrap(), Routing::Manual);
+    // The upper-case spelling of A reads whatever the filesystem resolves for that verbatim
+    // name, as Node's path.join does: A's file on a case-insensitive filesystem (macOS),
+    // nothing (auto) on a case-sensitive one (Linux, production). The id is never folded.
+    let upper_a = A.to_ascii_uppercase();
+    let resolves = d.path().join("users").join(&upper_a).join(FILE).exists();
+    let expected = if resolves {
         Routing::Manual
-    );
+    } else {
+        Routing::Auto
+    };
+    assert_eq!(root.read(&upper_a, &c).unwrap(), expected);
+    // Ids naming anything else never reach the filesystem.
     for id in [
         "../aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         "",
