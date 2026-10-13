@@ -652,6 +652,70 @@ async fn static_bundle_like_static_files_cjs() {
     }
     assert!(up.hits.lock().unwrap().is_empty());
 
+    // #1469: a browser navigation to an unknown page gets the shell with a 404 (never a 304), so
+    // the app shows its own not-found page. Sec-Fetch-Dest decides where it is sent; otherwise
+    // an Accept naming text/html. Protocol paths and a script's fetch keep the JSON 404.
+    let (shell, _c) = call(front, "GET", "/", &[], b"").await;
+    let etag = shell.headers()["etag"].to_str().unwrap().to_string();
+    for (p, hdrs) in [
+        ("/nope", vec![("sec-fetch-dest", "document")]),
+        (
+            "/nope/deeper",
+            vec![("accept", "text/html,application/xhtml+xml")],
+        ),
+        (
+            "/index.html/",
+            vec![
+                ("sec-fetch-dest", "document"),
+                ("if-none-match", etag.as_str()),
+            ],
+        ),
+        (
+            "/settings/Models",
+            vec![("sec-fetch-dest", ""), ("accept", "text/html")],
+        ),
+    ] {
+        let (res, _c) = call(front, "GET", p, &hdrs, b"").await;
+        assert_eq!(res.status(), 404, "{p}");
+        assert_eq!(res.headers()["cache-control"], "no-store", "{p}");
+        assert_eq!(
+            res.headers()["content-type"],
+            "text/html; charset=utf-8",
+            "{p}"
+        );
+        assert!(text(res).await.starts_with("<!doctype html>"), "{p}");
+    }
+    let (res, _c) = call(
+        front,
+        "HEAD",
+        "/nope",
+        &[("sec-fetch-dest", "document")],
+        b"",
+    )
+    .await;
+    assert_eq!(res.status(), 404);
+    assert!(res
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .is_empty());
+    for (p, hdrs) in [
+        (
+            "/nope",
+            vec![("sec-fetch-dest", "empty"), ("accept", "text/html")],
+        ),
+        ("/nope", vec![("accept", "application/json")]),
+        ("/assets/missing.js", vec![("sec-fetch-dest", "document")]),
+        ("/assets/missing.js", vec![("accept", "text/html")]),
+    ] {
+        let (res, _c) = call(front, "GET", p, &hdrs, b"").await;
+        assert_eq!(res.status(), 404, "{p} {hdrs:?}");
+        assert_eq!(text(res).await, r#"{"error":"not found"}"#, "{p} {hdrs:?}");
+    }
+    assert!(up.hits.lock().unwrap().is_empty());
+
     // Node's own pages, and anything Node's URL parsing might read differently, go to Node.
     for p in [
         "/about",
@@ -682,6 +746,17 @@ async fn missing_bundle_is_a_read_error_like_node() {
     assert_eq!(text(res).await, r#"{"error":"read error"}"#);
     let (res, _c) = call(front, "GET", "/nope", &[], b"").await;
     assert_eq!(res.status(), 404);
+    // #1469 with no shell to send: the JSON 404, as Node falls through.
+    let (res, _c) = call(
+        front,
+        "GET",
+        "/nope",
+        &[("sec-fetch-dest", "document")],
+        b"",
+    )
+    .await;
+    assert_eq!(res.status(), 404);
+    assert_eq!(text(res).await, r#"{"error":"not found"}"#);
 }
 
 /// A raw HTTP/1.1 exchange: the bytes the front sent back before closing (or `None` if it

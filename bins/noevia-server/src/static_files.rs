@@ -6,7 +6,8 @@
 //! encoded body). Text files over 1 KiB are offered brotli (quality 8) or gzip (level 9),
 //! compressed once per file version and kept in memory. A file of the build wins; otherwise a
 //! client place (`/c/<id>`, `/settings/<section>`, ... spa-routes.cjs CLIENT_ROUTES) gets
-//! index.html; anything else a JSON 404.
+//! index.html; a browser navigation to any other page gets index.html with a 404 (#1469);
+//! anything else a JSON 404.
 //!
 //! Only canonical paths are answered here ([`canonical`]); a path whose URL parsing in Node could
 //! differ (dot segments, backslashes, characters WHATWG URL would percent-encode, `//`) is left
@@ -75,6 +76,32 @@ pub fn canonical(path: &str) -> bool {
         let s = seg.to_ascii_lowercase().replace("%2e", ".");
         s != "." && s != ".."
     })
+}
+
+/// spa-routes.cjs isProtocolPath: endpoints no person navigates to, which keep JSON 404s.
+fn is_protocol_path(p: &str) -> bool {
+    p == "/api"
+        || ["/api/", "/assets/", "/remote.php", "/dav", "/.well-known"]
+            .iter()
+            .any(|prefix| p.starts_with(prefix))
+}
+
+/// spa-routes.cjs isBrowserNavigation: a top-level page load. `Sec-Fetch-Dest` decides where the
+/// browser sends it; otherwise an Accept header naming text/html.
+fn is_browser_navigation(headers: &HeaderMap) -> bool {
+    // Node joins repeated headers with ", " for both (sec-fetch-dest is not a set-cookie style list).
+    let joined = |name: &str| -> Option<String> {
+        let values: Vec<&str> = headers
+            .get_all(name)
+            .iter()
+            .map(|v| v.to_str().unwrap_or(""))
+            .collect();
+        (!values.is_empty()).then(|| values.join(", "))
+    };
+    match joined("sec-fetch-dest") {
+        Some(dest) if !dest.is_empty() => dest == "document",
+        _ => joined("accept").is_some_and(|a| a.contains("text/html")),
+    }
 }
 
 /// spa-routes.cjs isClientRoute.
@@ -286,6 +313,7 @@ impl StaticFiles {
         headers: &HeaderMap,
         file: &Path,
         url_path: &str,
+        status: StatusCode,
     ) -> std::io::Result<Response<Body>> {
         let entry = self.entry(file)?;
         let hashed = url_path.starts_with("/assets/");
@@ -336,7 +364,8 @@ impl StaticFiles {
                 t.strip_prefix("W/").unwrap_or(t).to_string()
             })
             .collect();
-        if tags.iter().any(|t| *t == etag || t == "*") {
+        // The app's not-found page is the shell sent as a 404 (#1469): a 304 would drop the status.
+        if status == StatusCode::OK && tags.iter().any(|t| *t == etag || t == "*") {
             *res.status_mut() = StatusCode::NOT_MODIFIED;
             return Ok(res);
         }
@@ -356,6 +385,7 @@ impl StaticFiles {
             None => {}
         }
         h.insert(header::CONTENT_LENGTH, HeaderValue::from(body.len()));
+        *res.status_mut() = status;
         if method != Method::HEAD {
             *res.body_mut() = Body::from(body);
         }
@@ -366,13 +396,22 @@ impl StaticFiles {
     pub fn serve(&self, method: &Method, headers: &HeaderMap, path: &str) -> Response<Body> {
         let found = self.resolve(path);
         if found.is_none() && !is_client_route(path) {
+            // #1469: a browser navigation to an unknown page gets the shell with a 404, so the app
+            // shows its own not-found page; a script's fetch, a tool, or a protocol path keeps the
+            // JSON 404.
+            if !is_protocol_path(path) && is_browser_navigation(headers) {
+                let index = self.root.join("index.html");
+                if let Ok(res) = self.send(method, headers, &index, "/", StatusCode::NOT_FOUND) {
+                    return res;
+                }
+            }
             return reply::error(StatusCode::NOT_FOUND, "not found", false);
         }
         let (file, url_path) = match found {
             Some(f) => (f, path),
             None => (self.root.join("index.html"), "/"),
         };
-        match self.send(method, headers, &file, url_path) {
+        match self.send(method, headers, &file, url_path, StatusCode::OK) {
             Ok(res) => res,
             Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "read error", false),
         }
