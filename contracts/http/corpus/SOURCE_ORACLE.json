@@ -1,7 +1,7 @@
 {
   "captureDomain": "baseline",
-  "core": "f59155d9effbed083e911326bd74187613a7025c",
-  "coreArchiveSha256": "438b96fed84549214a282e06d4beeb33dd4c09e9132a2cbe62dcdc363233ee17",
+  "core": "83064ce1bc9baddb51e1054327db2a4aac2c54d1",
+  "coreArchiveSha256": "e28e8d3d1911d51189fe4f10dabf249fa87891e20aead776ad80f21a615fd98e",
   "dropped": 0,
   "exchanges": 228,
   "generator": "actual core tools/contract-corpus/generate.cjs",
