@@ -881,7 +881,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: sbstndalton/noevia-services
-          ref: 6c233f4a05730ed5dccd7997ae601e9999eaa6d7
+          ref: d890ab476d1f1a8b6de799d6428e45b6af42a473
           path: diagnose-services
       - name: Read unchanged actual core pin
         id: diagnose-core
@@ -935,6 +935,22 @@ jobs:
         run: |
           cargo run --locked -q -p noevia-model-manager --bin generate-diagnose-transport-oracle > "$RUNNER_TEMP/diagnose-sdk.json"
           cargo run --locked -q -p noevia-model-manager --bin generate-diagnose-transport-oracle -- --routes > "$RUNNER_TEMP/diagnose-routes.json"
+      - name: Committed Python diagnosis oracles are exactly what the generators produce
+        env:
+          NOEVIA_DIAGNOSE_SERVICES_SOURCE: ${{ github.workspace }}/diagnose-services
+        run: |
+          set -euo pipefail
+          cargo run --locked -q -p noevia-model-manager --bin generate-diagnose-oracle > "$RUNNER_TEMP/diagnose-pure.json"
+          # Only the interpreter's own patch/build string may differ from the committed bytes.
+          python3 - "$RUNNER_TEMP/diagnose-pure.json" bins/noevia-model-manager/tests/fixtures/diagnose-python.v1.json "$RUNNER_TEMP/diagnose-routes.json" bins/noevia-model-manager/tests/fixtures/diagnose-transport-python.v1.json <<'PYCMP'
+          import json, sys
+          for fresh, committed in [(sys.argv[1], sys.argv[2]), (sys.argv[3], sys.argv[4])]:
+              a = json.load(open(fresh)); b = json.load(open(committed))
+              assert a.get("python", "").startswith("3.12.") and b.get("python", "").startswith("3.12."), committed
+              a.pop("python"); b.pop("python")
+              assert a == b, committed + " is not what its generator produces"
+              print("current:", committed)
+          PYCMP
       - name: New closed native transport, route and retained ownership controls
         env:
           NOEVIA_DIAGNOSE_SDK_ORACLE: ${{ runner.temp }}/diagnose-sdk.json
@@ -993,6 +1009,7 @@ jobs:
           cargo build --locked -p noevia-model-manager --bin noevia-model-manager --features native-diagnose
           cargo build --locked -p noevia-server --bin noevia-server
           cargo clippy --locked -p replay --bin diagnose-contracts -- -D warnings
+          cargo test --locked -p replay --bin diagnose-contracts
           cargo test --locked -p noevia-model-manager --features native-diagnose --bin noevia-model-manager diagnosis_command_tests::native_child_confirmation_semantics -- --exact
           target/debug/corpus-launcher verify "$PWD/diagnose-core"
           target/debug/diagnose-contracts --startup
