@@ -17,6 +17,8 @@ fn features_cli_outputs_only_the_compiled_capabilities() {
         .collect::<String>();
     assert_eq!(output.stdout, expected.as_bytes());
     assert!(output.stderr.is_empty());
+    // Always compiled in: the front strips and re-stamps X-Noevia-Client-Ip (#1578).
+    assert!(expected.lines().any(|line| line == "client-address-header"));
     assert_eq!(
         expected
             .lines()

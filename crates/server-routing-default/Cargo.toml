@@ -1,0 +1,19 @@
+[package]
+name = "server-routing-default"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+server-routing-mode = { path = "../server-routing-mode" }
+rustix = { version = "1", features = ["fs", "process"] }
+
+[dev-dependencies]
+tempfile = "3"
+proptest = "1"
+serde_json = "1"

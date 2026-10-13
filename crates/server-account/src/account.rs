@@ -10,6 +10,10 @@ use js_json::JValue;
 use server_auth::{Credential, Identity};
 use server_store::rusqlite::types::Value;
 
+/// auth.cjs `IDLE_MS` (seven days): a session idle longer than this can no longer sign in
+/// (`identity.rs` applies the same limit).
+const SESSION_IDLE_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+
 fn ok_body() -> JValue {
     JValue::obj([("ok", JValue::from(true))])
 }
@@ -104,9 +108,18 @@ pub fn account(
             Credential::Session { id_hash, .. } => Some(id_hash.clone()),
             _ => None,
         };
+        // #1483: a session past its absolute limit, or idle past the idle limit, can never sign in, so
+        // this account's dead rows are removed here (never another account's) and not listed. Each
+        // live session shows when it ends: the earlier of its absolute and idle limits.
+        acct.writer.write(|tx| {
+            tx.execute(
+                "DELETE FROM sessions WHERE user_id=?1 AND (expires_at<=?2 OR last_seen_at+?3<=?2)",
+                (uid, now, SESSION_IDLE_MS),
+            )
+        })?;
         let (passkeys, sessions) = acct.writer.read(|r| {
             let pk = rows_js(r, "SELECT id,name,device_type AS deviceType,backed_up AS backedUp,created_at AS createdAt,last_used_at AS lastUsedAt FROM passkeys WHERE user_id=?1 ORDER BY created_at", [uid])?;
-            let ss = rows_js(r, "SELECT id_hash AS id,created_at AS createdAt,last_seen_at AS lastSeenAt,expires_at AS expiresAt,user_agent AS userAgent,ip FROM sessions WHERE user_id=?1 ORDER BY last_seen_at DESC", [uid])?;
+            let ss = rows_js(r, "SELECT id_hash AS id,created_at AS createdAt,last_seen_at AS lastSeenAt,MIN(expires_at,last_seen_at+?2) AS expiresAt,user_agent AS userAgent,ip FROM sessions WHERE user_id=?1 AND expires_at>?3 AND last_seen_at+?2>?3 ORDER BY last_seen_at DESC", (uid, SESSION_IDLE_MS, now))?;
             Ok((pk, ss))
         })?;
         let sessions = sessions

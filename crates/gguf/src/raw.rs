@@ -42,6 +42,11 @@ pub const MAX_PER_LAYER_KEPT: u64 = 4096;
 /// array falls back to sample + count, so a header of many such arrays stays cheap. Mirrors
 /// gguf_meta.py's `MAX_PER_LAYER_VALUES`.
 pub const MAX_PER_LAYER_VALUES: u64 = 64 * MAX_PER_LAYER_KEPT;
+/// #1197: the tensor-info block. ggml allows four dimensions; a dimension past 2^53-1 is refused, and
+/// a count past u64 (checked multiply or add) is refused (the JS and Python readers refuse the same), and the count is never read then.
+pub const MAX_TENSOR_COUNT: u64 = 100_000;
+pub const MAX_TENSOR_DIMS: u32 = 4;
+pub const MAX_TENSOR_DIM: u64 = (1 << 53) - 1;
 
 const BUF_CAPACITY: usize = 64 * 1024;
 
@@ -553,7 +558,53 @@ fn read_raw_inner<R: Read + Seek>(
             Value::Str("stopped at KV read: array runs past the end of the data".into()),
         );
     }
+    if !out.contains_key("_error") && tensor_count > 0 {
+        // #1197: read only after the KV pairs were read whole; a block cut short leaves no count.
+        match tensor_params(&mut src, tensor_count) {
+            Ok(total) => {
+                out.insert("_tensor_params".into(), Value::Int(i128::from(total)));
+            }
+            Err(f) => {
+                out.insert(
+                    "_tensor_params_error".into(),
+                    Value::Str(format!("tensor info block: {}", f.message())),
+                );
+            }
+        }
+    }
     Ok(out)
+}
+
+/// #1197: the element counts of the tensor-info block, summed. Each entry is a name (string),
+/// n_dimensions (u32), that many dimensions (u64), a ggml type (u32) and a data offset (u64); the
+/// weights are never read. A 0-dimension entry is one element.
+fn tensor_params<R: Read + Seek>(src: &mut Source<R>, count: u64) -> Result<u64, Fault> {
+    if count > MAX_TENSOR_COUNT {
+        return Err(Fault::Meta(format!("implausible tensor_count {count}")));
+    }
+    let mut total: u64 = 0;
+    for _ in 0..count {
+        src.skip_string()?;
+        let dims = src.u32()?;
+        if dims > MAX_TENSOR_DIMS {
+            return Err(Fault::Meta(format!("tensor declares {dims} dimensions")));
+        }
+        let mut elements: u64 = 1;
+        for _ in 0..dims {
+            let dim = src.u64()?;
+            if dim > MAX_TENSOR_DIM {
+                return Err(Fault::Meta("tensor dimension out of range".into()));
+            }
+            elements = elements
+                .checked_mul(dim)
+                .ok_or_else(|| Fault::Meta("tensor element count overflows".into()))?;
+        }
+        total = total
+            .checked_add(elements)
+            .ok_or_else(|| Fault::Meta("parameter count overflows".into()))?;
+        src.skip(4 + 8)?; // ggml type, data offset
+    }
+    Ok(total)
 }
 
 /// Parse GGUF metadata from an in-memory buffer (e.g. a range-fetched header).

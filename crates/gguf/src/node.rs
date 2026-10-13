@@ -35,6 +35,10 @@ pub const MAX_NEST: u32 = 64;
 pub const MAX_KEPT: u64 = 262_144;
 
 const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
+/// #1197 (gguf-meta.cjs `tensorParams`): at most this many tensors, four dimensions each, no
+/// dimension past Number.MAX_SAFE_INTEGER, and a total within u64 (the same as raw.rs).
+const MAX_TENSOR_COUNT: u64 = 100_000;
+const MAX_TENSOR_DIMS: u32 = 4;
 const T_BOOL: u32 = 7;
 const T_STRING: u32 = 8;
 const T_ARRAY: u32 = 9;
@@ -287,8 +291,34 @@ impl<F: Fn(&str) -> bool> Reader<'_, F> {
         Ok(keep.then_some(Val::List(out)))
     }
 
-    /// `readGguf`: every kv pair; `keep_key` names the ones kept (later duplicates win).
-    fn read(&mut self) -> Result<HashMap<String, Val>, Fault> {
+    /// #1197: the tensor-info block after the KV pairs, summed. Only a `Need` (bytes the host has
+    /// not supplied yet) is passed on; any other fault means no count, as the JS reader's catch.
+    fn tensor_params(&mut self, count: u64) -> Result<u64, Fault> {
+        if count > MAX_TENSOR_COUNT {
+            return Err(Fault::Eof);
+        }
+        let mut total: u64 = 0;
+        for _ in 0..count {
+            let n = self.u64()?;
+            self.skip(u128::from(n))?; // name
+            let dims = self.u32()?;
+            if dims > MAX_TENSOR_DIMS {
+                return Err(Fault::Eof);
+            }
+            let mut elements: u64 = 1;
+            for _ in 0..dims {
+                let dim = self.u64()?;
+                elements = elements.checked_mul(dim).ok_or(Fault::Range)?;
+            }
+            total = total.checked_add(elements).ok_or(Fault::Range)?;
+            self.skip(4 + 8)?; // ggml type, data offset
+        }
+        Ok(total)
+    }
+
+    /// `readGguf`: every kv pair; `keep_key` names the ones kept (later duplicates win). Also the
+    /// tensor-info count when the KV pairs were read whole (#1197), else None.
+    fn read(&mut self) -> Result<(HashMap<String, Val>, Option<u64>), Fault> {
         if self.take(4)? != b"GGUF" {
             return Err(Fault::NotGguf);
         }
@@ -296,7 +326,7 @@ impl<F: Fn(&str) -> bool> Reader<'_, F> {
         if !(2..=3).contains(&version) {
             return Err(Fault::Version(version));
         }
-        self.u64()?; // tensor count
+        let tensor_count = self.u64()?;
         let kv_count = self.u64()?;
         let mut kv = HashMap::new();
         for _ in 0..kv_count {
@@ -308,7 +338,16 @@ impl<F: Fn(&str) -> bool> Reader<'_, F> {
                 kv.insert(key, v);
             }
         }
-        Ok(kv)
+        let counted = if tensor_count > 0 {
+            match self.tensor_params(tensor_count) {
+                Ok(total) => Some(total),
+                Err(need @ Fault::Need { .. }) => return Err(need),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        Ok((kv, counted))
     }
 }
 
@@ -316,7 +355,7 @@ fn read_kept<F: Fn(&str) -> bool>(
     size: u64,
     segs: &[Segment<'_>],
     keep_key: F,
-) -> Result<HashMap<String, Val>, Fault> {
+) -> Result<(HashMap<String, Val>, Option<u64>), Fault> {
     Reader {
         segs,
         size,
@@ -478,16 +517,35 @@ pub fn summary_prefix(size: u64, win: &[u8]) -> Result<String, Fault> {
 /// the summary as ASCII JSON (keys in the JS order), or the fault.
 pub fn summary(size: u64, segs: &[Segment<'_>]) -> Result<String, Fault> {
     // Pass 1 finds the architecture (and every fault); pass 2 keeps only the keys it names.
-    let first = read_kept(size, segs, |k| k == "general.architecture")?;
+    let (first, _) = read_kept(size, segs, |k| k == "general.architecture")?;
     let arch = match first.get("general.architecture") {
         Some(Val::Str(s)) => s.clone(),
         _ => String::new(),
     };
     let names: Vec<String> = FIELDS.iter().map(|f| format!("{arch}.{}", f.1)).collect();
-    let kv = read_kept(size, segs, |k| {
-        k == "general.name" || k == "tokenizer.chat_template" || names.iter().any(|n| n == k)
+    let (kv, counted) = read_kept(size, segs, |k| {
+        k == "general.name"
+            || k == "general.parameter_count"
+            || k == "split.count"
+            || k == "tokenizer.chat_template"
+            || names.iter().any(|n| n == k)
     })?;
-    let mut out = String::from("{\"arch\":");
+    // #1197: a usable declared general.parameter_count, else the tensor-info count (gguf-meta.cjs parameterCount).
+    let declared = match kv.get("general.parameter_count") {
+        Some(Val::Num(n)) if n.is_finite() && *n > 0.0 => Some(*n),
+        _ => None,
+    };
+    // #1591: shard 1 of a split model lists only its own tensors, so their sum is a fraction of the model:
+    // with split.count > 1 only a declared count is a count.
+    let split = matches!(kv.get("split.count"), Some(Val::Num(n)) if *n > 1.0);
+    let counted = if split { None } else { counted };
+    let mut out = String::from("{");
+    if let Some(params) = declared.or(counted.map(|c| c as f64)) {
+        out.push_str("\"parameterCount\":");
+        write_num(&mut out, params);
+        out.push(',');
+    }
+    out.push_str("\"arch\":");
     write_str(&mut out, &arch);
     out.push_str(",\"name\":");
     match kv.get("general.name") {

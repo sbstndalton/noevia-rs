@@ -1,0 +1,334 @@
+{
+ "core": "e6cc63aa9e22982dab69e8502f30f05670138c2e",
+ "workspaceSha256": "38bce279a961d87632f4043ae27b7ec6b0628af32b8c113d960e39d93ba74033",
+ "cases": [
+  {
+   "name": "object-manual",
+   "file": {
+    "text": "{\"defaultRouting\":\"manual\"}"
+   },
+   "expected": {
+    "routing": "manual"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "object-auto",
+   "file": {
+    "text": "{\"defaultRouting\":\"auto\"}"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "case-differs",
+   "file": {
+    "text": "{\"defaultRouting\":\"Manual\"}"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "trailing-space-value",
+   "file": {
+    "text": "{\"defaultRouting\":\"manual \"}"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "escaped-value",
+   "file": {
+    "text": "{\"defaultRouting\":\"\\u006danual\"}"
+   },
+   "expected": {
+    "routing": "manual"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "escaped-key",
+   "file": {
+    "text": "{\"\\u0064efaultRouting\":\"manual\"}"
+   },
+   "expected": {
+    "routing": "manual"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "duplicate-last-auto",
+   "file": {
+    "text": "{\"defaultRouting\":\"manual\",\"defaultRouting\":\"auto\"}"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "duplicate-last-manual",
+   "file": {
+    "text": "{\"defaultRouting\":\"auto\",\"defaultRouting\":\"manual\"}"
+   },
+   "expected": {
+    "routing": "manual"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "duplicate-both-manual",
+   "file": {
+    "text": "{\"defaultRouting\":\"manual\",\"defaultRouting\":\"manual\"}"
+   },
+   "expected": {
+    "routing": "manual"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "null-value",
+   "file": {
+    "text": "{\"defaultRouting\":null}"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "number-value",
+   "file": {
+    "text": "{\"defaultRouting\":1}"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "array-value",
+   "file": {
+    "text": "{\"defaultRouting\":[\"manual\"]}"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "nested-only",
+   "file": {
+    "text": "{\"a\":{\"defaultRouting\":\"manual\"}}"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "top-null",
+   "file": {
+    "text": "null"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "top-array",
+   "file": {
+    "text": "[\"manual\"]"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "top-string",
+   "file": {
+    "text": "\"manual\""
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "top-zero",
+   "file": {
+    "text": "0"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "top-false",
+   "file": {
+    "text": "false"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "top-empty-string",
+   "file": {
+    "text": "\"\""
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "empty-file",
+   "file": {
+    "text": ""
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "malformed-brace",
+   "file": {
+    "text": "{"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "trailing-comma",
+   "file": {
+    "text": "{\"defaultRouting\":\"manual\",}"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "trailing-garbage",
+   "file": {
+    "text": "{\"defaultRouting\":\"manual\"} x"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "utf8-bom",
+   "file": {
+    "hex": "ff7b2264656661756c74526f7574696e67223a226d616e75616c227d"
+   },
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "whitespace-around",
+   "file": {
+    "text": "\n\t {\"defaultRouting\" : \"manual\" }\n"
+   },
+   "expected": {
+    "routing": "manual"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "huge-number-sibling",
+   "file": {
+    "text": "{\"defaultRouting\":\"manual\",\"x\":1e999}"
+   },
+   "expected": {
+    "routing": "manual"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "invalid-utf8-sibling",
+   "file": {
+    "hex": "7b226e6f7465223a22ff222c2264656661756c74526f7574696e67223a226d616e75616c227d"
+   },
+   "expected": {
+    "routing": "manual"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "lone-surrogate-sibling",
+   "file": {
+    "text": "{\"x\":\"\\uD800\",\"defaultRouting\":\"manual\"}"
+   },
+   "expected": {
+    "routing": "manual"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "missing-file",
+   "file": null,
+   "expected": {
+    "routing": "auto"
+   },
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+  },
+  {
+   "name": "other-tenant-auto",
+   "tenant": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "query": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+   "file": {
+    "text": "{\"defaultRouting\":\"manual\"}"
+   },
+   "expected": {
+    "routing": "auto"
+   }
+  }
+ ]
+}

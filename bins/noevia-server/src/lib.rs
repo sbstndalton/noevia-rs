@@ -12,6 +12,7 @@ pub mod project_routes;
 pub mod reasoning_settings_routes;
 pub mod reply;
 pub mod routes;
+pub mod routing_default_routes;
 pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
@@ -37,7 +38,13 @@ use std::sync::Arc;
 /// answers the free-chat list (`GET`/`POST /api/freechats`) under the same switch and shares
 /// free-chats.json with Node under its lock; confirmed to Node separately as well
 /// (NOEVIA_RUST_FREE_CHATS_CONFIRMED).
+///
+/// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
+/// own value on what it forwards (#1245). The web supervisor confirms it to Node
+/// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
+/// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "client-address-header",
     "code-net-guard",
     "header-read-timeout",
     "rust-auth",
@@ -52,6 +59,8 @@ pub const FEATURES: &[&str] = &[
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
     "rust-routing-mode",
+    #[cfg(feature = "rust-routing-default")]
+    "rust-routing-default",
 ];
 
 pub struct App {
@@ -70,6 +79,7 @@ pub struct App {
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
+    pub routing_default: Arc<tokio::sync::Semaphore>,
     pub routing_files:
         Option<Result<server_routing_mode::storage::Root, server_routing_mode::storage::Fault>>,
 }
@@ -101,6 +111,7 @@ impl App {
             reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
+            routing_default: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_files,
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
@@ -145,6 +156,7 @@ async fn handle(
                         | routes::Native::SamplingSettings
                         | routes::Native::ReasoningSettings
                         | routes::Native::RoutingMode
+                        | routes::Native::RoutingDefault
                 )
             ) {
                 native = on_whatwg;
@@ -160,7 +172,8 @@ async fn handle(
             | routes::Native::Usage
             | routes::Native::SamplingSettings
             | routes::Native::ReasoningSettings
-            | routes::Native::RoutingMode,
+            | routes::Native::RoutingMode
+            | routes::Native::RoutingDefault,
         )
         | None => false,
     };
@@ -215,6 +228,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             project_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::RoutingDefault) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            routing_default_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             health::ready(&app.config.upstream, app.version.as_deref()).await

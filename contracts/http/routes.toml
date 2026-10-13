@@ -680,8 +680,11 @@ methods = ["PUT"]
 switch = "NOEVIA_RUST_REASONING_SETTINGS"
 
 [[route]]
+# M6 (#1305): GET only; PUT and every other method stay Node-owned (preferences and projects writes).
 path = "/api/routing-default"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+switch = "NOEVIA_RUST_ROUTING_DEFAULT"
 
 [[route]]
 path = "/api/routing-mode"
