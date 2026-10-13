@@ -17,6 +17,7 @@ pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
 pub mod static_files;
+pub mod stats_routes;
 pub mod upkeep;
 pub mod usage_routes;
 
@@ -37,7 +38,9 @@ use std::sync::Arc;
 /// that answers it (sbstndalton/noevia#1409). `rust-free-chats` (cargo feature of that name): it
 /// answers the free-chat list (`GET`/`POST /api/freechats`) under the same switch and shares
 /// free-chats.json with Node under its lock; confirmed to Node separately as well
-/// (NOEVIA_RUST_FREE_CHATS_CONFIRMED).
+/// (NOEVIA_RUST_FREE_CHATS_CONFIRMED). `rust-stats` (cargo feature of that name): it answers
+/// `GET /api/stats` under NOEVIA_RUST_STATS (#1650); the supervisor confirms it to Node
+/// (NOEVIA_RUST_STATS_CONFIRMED), which then refuses that GET.
 ///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
@@ -61,6 +64,8 @@ pub const FEATURES: &[&str] = &[
     "rust-routing-mode",
     #[cfg(feature = "rust-routing-default")]
     "rust-routing-default",
+    #[cfg(feature = "rust-stats")]
+    "rust-stats",
 ];
 
 pub struct App {
@@ -80,6 +85,8 @@ pub struct App {
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
     pub routing_default: Arc<tokio::sync::Semaphore>,
+    /// GET /api/stats and its shared answer while NOEVIA_RUST_STATS is on (M6, #1650).
+    pub stats: Option<Arc<stats_routes::StatsLayer>>,
     pub routing_files:
         Option<Result<server_routing_mode::storage::Root, server_routing_mode::storage::Fault>>,
 }
@@ -112,6 +119,10 @@ impl App {
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_default: Arc::new(tokio::sync::Semaphore::new(4)),
+            stats: config
+                .rust_stats
+                .as_ref()
+                .map(|engine| Arc::new(stats_routes::StatsLayer::new(Arc::clone(engine)))),
             routing_files,
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
@@ -157,6 +168,7 @@ async fn handle(
                         | routes::Native::ReasoningSettings
                         | routes::Native::RoutingMode
                         | routes::Native::RoutingDefault
+                        | routes::Native::Stats
                 )
             ) {
                 native = on_whatwg;
@@ -173,10 +185,15 @@ async fn handle(
             | routes::Native::SamplingSettings
             | routes::Native::ReasoningSettings
             | routes::Native::RoutingMode
-            | routes::Native::RoutingDefault,
+            | routes::Native::RoutingDefault
+            | routes::Native::Stats,
         )
         | None => false,
     };
+    // A model or role write Node's gate lets through drops the shared /api/stats answer first.
+    if let Some(write) = stats_routes::invalidation(&app, &req, whatwg.as_deref()) {
+        write.run(&app).await;
+    }
     if app.writes.switch().is_some() && !served_bundle {
         // Node's gate wrote these on every request it saw; with NOEVIA_RUST_AUTH it no longer can.
         let creds = server_auth::Creds::from_headers(
@@ -234,6 +251,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             routing_default_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::Stats) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            stats_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             health::ready(&app.config.upstream, app.version.as_deref()).await

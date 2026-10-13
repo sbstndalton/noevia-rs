@@ -41,6 +41,14 @@ pub struct Config {
     /// NOEVIA_RUST_ROUTING_DEFAULT=1 (M6, #1305): refused without NOEVIA_RUST_AUTH=1 and without the
     /// compiled rust-routing-default feature; any other value is off.
     pub rust_routing_default: bool,
+    /// NOEVIA_RUST_STATS=1 (M6, #1650): the engine GET /api/stats reads, configured from the keys
+    /// core index.cjs reads (MODEL_MANAGER_KIND, MODEL_MANAGER_BASE_URL / LEMONADE_BASE_URL /
+    /// INFERENCE_BASE_URL, MODEL_MANAGER_API_KEY / INFERENCE_API_KEY / LEMONADE_API_KEY). Refused
+    /// without NOEVIA_RUST_AUTH=1 or the compiled rust-stats feature, where Node itself would not
+    /// start (an unknown kind, an invalid llama.cpp router URL), for an `https` engine (the front has
+    /// no TLS client) and for the Lemonade kind, whose MTP "last response" fallback is kept in
+    /// Node's memory; any other value is off and none of those keys is read.
+    pub rust_stats: Option<std::sync::Arc<server_stats::Engine>>,
     pub rust_sampling_settings: Option<server_store::RustSamplingSettings>,
     pub usage_clock: Result<server_usage::summary::Clock, server_usage::Fault>,
     /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
@@ -113,6 +121,7 @@ impl Config {
             rust_reasoning_settings: self.rust_reasoning_settings.is_some(),
             rust_routing_mode: self.rust_routing_mode.is_some(),
             rust_routing_default: self.rust_routing_default,
+            rust_stats: self.rust_stats.is_some(),
         }
     }
 
@@ -183,6 +192,22 @@ impl Config {
         } else {
             false
         };
+        let rust_stats = if get("NOEVIA_RUST_STATS").as_deref() == Some("1") {
+            if rust_auth.is_none() {
+                return Err("NOEVIA_RUST_STATS=1 needs NOEVIA_RUST_AUTH=1".into());
+            }
+            if !cfg!(feature = "rust-stats") {
+                return Err("NOEVIA_RUST_STATS=1 needs compiled rust-stats".into());
+            }
+            let engine = server_stats::Engine::from_lookup(&get)
+                .map_err(|e| format!("NOEVIA_RUST_STATS=1: {e}"))?;
+            if engine.kind() == server_stats::Kind::Lemonade {
+                return Err("NOEVIA_RUST_STATS=1 is not available with the Lemonade model manager: its MTP last-response fallback is recorded in Node".into());
+            }
+            Some(std::sync::Arc::new(engine))
+        } else {
+            None
+        };
         let routing_feature_env = if rust_routing_mode.is_some() {
             server_routing_mode::feature_env(get("NOEVIA_FEATURE_ROUTING_MODES").as_deref())
                 .map_err(|e| e.message)?
@@ -217,6 +242,7 @@ impl Config {
             rust_routing_mode,
             routing_feature_env,
             rust_routing_default,
+            rust_stats,
             usage_clock: server_usage::summary::Clock::system(&get),
         })
     }
@@ -492,5 +518,108 @@ mod routing_default_tests {
             crate::FEATURES.contains(&"rust-routing-default"),
             cfg!(feature = "rust-routing-default")
         );
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod stats_tests {
+    use super::*;
+
+    fn lookup(pairs: &[(&str, &str)]) -> Result<Config, String> {
+        let pairs: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        Config::from_lookup(|k| pairs.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone()))
+    }
+
+    const UP: (&str, &str) = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9");
+    const AUTH: (&str, &str) = ("NOEVIA_RUST_AUTH", "1");
+    const ON: (&str, &str) = ("NOEVIA_RUST_STATS", "1");
+
+    #[test]
+    fn stats_switch_is_exact_default_off_and_reads_nothing_while_off() {
+        for value in [None, Some("0"), Some("true"), Some(" 1"), Some("1 ")] {
+            let mut pairs = vec![UP, AUTH, ("MODEL_MANAGER_KIND", "not-a-kind")];
+            if let Some(v) = value {
+                pairs.push(("NOEVIA_RUST_STATS", v));
+            }
+            // Off, an engine configuration Node would refuse is not the front's business.
+            let c = lookup(&pairs).unwrap();
+            assert!(c.rust_stats.is_none());
+            assert!(!c.switches().on("NOEVIA_RUST_STATS"));
+        }
+    }
+
+    #[test]
+    fn stats_needs_auth_the_compiled_slice_and_an_engine_it_can_read() {
+        assert!(lookup(&[UP, ON])
+            .unwrap_err()
+            .contains("NOEVIA_RUST_AUTH=1"));
+        let enabled = lookup(&[
+            UP,
+            AUTH,
+            ON,
+            ("MODEL_MANAGER_KIND", "llamacpp"),
+            ("MODEL_MANAGER_BASE_URL", "http://router:8080/v1"),
+        ]);
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-stats"),
+            cfg!(feature = "rust-stats")
+        );
+        if !cfg!(feature = "rust-stats") {
+            assert!(enabled.unwrap_err().contains("compiled rust-stats"));
+            return;
+        }
+        let c = enabled.unwrap();
+        assert!(c.switches().on("NOEVIA_RUST_STATS"));
+        assert_eq!(
+            c.rust_stats.as_ref().unwrap().kind(),
+            server_stats::Kind::LlamaCpp
+        );
+        // No engine configured at all is the `none` kind, as in Node.
+        let c = lookup(&[UP, AUTH, ON]).unwrap();
+        assert_eq!(
+            c.rust_stats.as_ref().unwrap().kind(),
+            server_stats::Kind::None
+        );
+        for (pairs, words) in [
+            (
+                vec![("MODEL_MANAGER_KIND", "ollama")],
+                "unsupported MODEL_MANAGER_KIND",
+            ),
+            (
+                vec![
+                    ("MODEL_MANAGER_KIND", "llamacpp"),
+                    ("MODEL_MANAGER_BASE_URL", "http://u:p@r:1"),
+                ],
+                "Invalid llama.cpp router URL",
+            ),
+            (
+                vec![
+                    ("MODEL_MANAGER_KIND", "llamacpp"),
+                    ("MODEL_MANAGER_BASE_URL", "https://r:1"),
+                ],
+                "plain http",
+            ),
+            (
+                vec![("LEMONADE_BASE_URL", "http://lemonade:8000")],
+                "Lemonade",
+            ),
+            (
+                vec![
+                    ("MODEL_MANAGER_KIND", "Lemonade"),
+                    ("MODEL_MANAGER_BASE_URL", "http://l:1"),
+                ],
+                "Lemonade",
+            ),
+        ] {
+            let mut all = vec![UP, AUTH, ON];
+            all.extend(pairs);
+            let err = lookup(&all).unwrap_err();
+            assert!(err.contains(words), "{err}");
+            assert!(err.starts_with("NOEVIA_RUST_STATS=1"), "{err}");
+        }
     }
 }

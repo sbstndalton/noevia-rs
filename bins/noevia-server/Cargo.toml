@@ -20,6 +20,8 @@ rust-reasoning-settings = []
 rust-routing-mode = []
 # M6 (#1305): GET /api/routing-default under NOEVIA_RUST_ROUTING_DEFAULT (src/routes.rs ROUTING_DEFAULT).
 rust-routing-default = []
+# M6 (#1650): GET /api/stats under NOEVIA_RUST_STATS (src/routes.rs STATS, crates/server-stats).
+rust-stats = []
 # M4's second slice: a project's chat list under NOEVIA_RUST_PROJECTS (src/routes.rs PROJECT_CHATS).
 rust-project-chats = []
 # M4's third slice: the free-chat list under NOEVIA_RUST_PROJECTS (src/routes.rs FREE_CHATS).
@@ -31,6 +33,7 @@ server-reasoning-settings = { path = "../../crates/server-reasoning-settings" }
 server-sampling-settings = { path = "../../crates/server-sampling-settings" }
 server-usage = { path = "../../crates/server-usage" }
 server-routing-default = { path = "../../crates/server-routing-default" }
+server-stats = { path = "../../crates/server-stats" }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 base64 = "0.22"
 brotli = "8"

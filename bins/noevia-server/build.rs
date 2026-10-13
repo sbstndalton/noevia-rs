@@ -38,6 +38,7 @@ const SWITCHES: &[&str] = &[
     "NOEVIA_RUST_REASONING_SETTINGS",
     "NOEVIA_RUST_ROUTING_MODE",
     "NOEVIA_RUST_ROUTING_DEFAULT",
+    "NOEVIA_RUST_STATS",
 ];
 
 fn yes() -> bool {
