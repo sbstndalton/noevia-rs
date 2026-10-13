@@ -29,11 +29,13 @@
       "cache-control": "no-store",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       "content-type": "application/json",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
       "referrer-policy": "same-origin",
       "set-cookie": [
         "cowork_session=<secret:3>; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
         "cowork_csrf=<secret:4>; Path=/; SameSite=Lax; Max-Age=2592000"
       ],
+      "strict-transport-security": "max-age=15552000",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
       "x-noevia-api": "1"

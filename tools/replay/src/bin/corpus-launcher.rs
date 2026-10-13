@@ -88,7 +88,7 @@ fn finalize_capture(core: &Path, out: &Path) -> Result<(), String> {
         ))
     };
     let wasm = hash(&core.join("server/wasm/dav-parse.wasm"))?;
-    if wasm != "040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd87cb2e978575" {
+    if wasm != "c5c300907dba8ed36b38bbfcd92dc33f18be77319712504106abb09d5b8ce05b" {
         return Err("actual core WASM provenance mismatch".into());
     }
     let mut command = Command::new("node");
