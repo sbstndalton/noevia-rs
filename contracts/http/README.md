@@ -126,6 +126,26 @@ with 503.
 `core.ref` (metadata; existing replay CI consumes the single SHA in `core.ref`).
 The core#61 landing provides the required native OCR front acceptance gate (#1271).
 
+## M6: engine statistics (`NOEVIA_RUST_STATS`, sbstndalton/noevia#1650)
+
+`GET /api/stats` (every open page polls it) is Rust's under `NOEVIA_RUST_STATS=1` in a build with
+the cargo feature `rust-stats` (listed by `--features`); the front refuses the switch without
+`NOEVIA_RUST_AUTH=1`. crates/server-stats ports core's handler, its 2 s shared read (concurrent
+polls share one engine read; a model or role write that passes Node's gate drops it) and the engine
+reads, from the same environment keys Node reads (`MODEL_MANAGER_KIND`, `MODEL_MANAGER_BASE_URL` /
+`LEMONADE_BASE_URL` / `INFERENCE_BASE_URL`, the API key chain). Other methods stay Node's. With
+`NOEVIA_FRONT=rust` and `NOEVIA_RUST_STATS_CONFIRMED=1` (set once `--features` lists `rust-stats`)
+Node answers that GET with 503 (core `statsRustOwned`).
+
+The reply is Node's byte for byte (`tests/oracle.cjs` drives core's own handler and adapters over
+synthetic engines; `tests/differential.rs` replays every case). Deliberate differences: for
+llama.cpp the reads Node makes but never uses for that kind (`health()`, `listModels()`) are not
+made; the Lemonade kind is a startup refusal (its MTP last-response fallback lives in Node's
+memory); an `https` engine is a startup refusal (no TLS client in the front); a value nested 64
+deep that the JS would look into is a 503 rather than a guess. CI job `stats-native` (workflow
+stats.yml) also replays the corpus through the front with the switch on, and once more against a
+synthetic engine to show only `/api/stats` follows the front.
+
 ### UTC calendar replay contract (#1308)
 
 The committed manifest explicitly opts into version 1 of `calendarContract` (UTC,

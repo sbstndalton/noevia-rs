@@ -20,7 +20,7 @@ origin="${PUBLIC_ORIGIN:-http://127.0.0.1:$port}"
 # (M3), and its projects.json coordination only by one that lists rust-projects (M4, which needs M3);
 # its chat-list refusal only by one that also lists rust-project-chats (sbstndalton/noevia#1409),
 # and its free-chat coordination and refusal only by one that lists rust-free-chats.
-unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_PROJECT_CHATS_CONFIRMED NOEVIA_RUST_FREE_CHATS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED
+unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_PROJECT_CHATS_CONFIRMED NOEVIA_RUST_FREE_CHATS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED NOEVIA_RUST_STATS_CONFIRMED
 confirmed=""
 projects_confirmed=""
 project_chats_confirmed=""
@@ -29,6 +29,7 @@ usage_confirmed=""
 sampling_confirmed=""
 reasoning_confirmed=""
 routing_confirmed=""
+stats_confirmed=""
 # Capture once on the first needed check, before confirming ownership.
 features=""
 features_loaded=""
@@ -74,9 +75,16 @@ if [ "${NOEVIA_RUST_ROUTING_MODE:-}" = 1 ]; then
   has_feature rust-routing-mode || { echo "replay-front: no rust-routing-mode" >&2; exit 2; }
   routing_confirmed=1
 fi
+# M6 (#1650): GET /api/stats; Node refuses it (core routes/models.cjs statsRustOwned) only once the
+# front lists rust-stats.
+if [ "${NOEVIA_RUST_STATS:-}" = 1 ]; then
+  [ -n "$confirmed" ] || { echo "replay-front: engine statistics need native auth" >&2; exit 2; }
+  has_feature rust-stats || { echo "replay-front: no rust-stats" >&2; exit 2; }
+  stats_confirmed=1
+fi
 UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" \
   NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_PROJECT_CHATS_CONFIRMED="$project_chats_confirmed" NOEVIA_RUST_FREE_CHATS_CONFIRMED="$free_chats_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$reasoning_confirmed" \
-  NOEVIA_RUST_ROUTING_MODE_CONFIRMED="$routing_confirmed" \
+  NOEVIA_RUST_ROUTING_MODE_CONFIRMED="$routing_confirmed" NOEVIA_RUST_STATS_CONFIRMED="$stats_confirmed" \
   "$(dirname "$front")/corpus-launcher" serve "$core" &
 node_pid=$!
 # CI's M4 negative control only: Node is told the front owns the project image routes, the front is
@@ -90,6 +98,9 @@ elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_REASONING_SETTINGS:-}" = 1 ]; then
 elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_SAMPLING_SETTINGS:-}" = 1 ]; then
   # Test-only omission: valid native auth continues; confirmed Node sampling must refuse.
   PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_SAMPLING_SETTINGS "$front" &
+elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_STATS:-}" = 1 ]; then
+  # Test-only omission: native auth continues; confirmed Node must refuse GET /api/stats.
+  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_STATS "$front" &
 elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_USAGE:-}" = 1 ]; then
   # Test-only omission: Node reporting stays confirmed/refused, auth remains native.
   PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_USAGE "$front" &

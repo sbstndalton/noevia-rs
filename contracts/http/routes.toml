@@ -714,8 +714,12 @@ switch = "NOEVIA_RUST_AUTH"
 methods = ["GET"]
 
 [[route]]
+# M6 (#1650): GET only (crates/server-stats); every other method stays Node's, which answers them
+# all as it always did.
 path = "/api/stats"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+switch = "NOEVIA_RUST_STATS"
 
 [[route]]
 path = "/api/tool-approvals/{approvalId}"
