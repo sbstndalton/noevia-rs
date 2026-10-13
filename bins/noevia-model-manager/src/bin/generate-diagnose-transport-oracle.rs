@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const REF: &str = "6c233f4a05730ed5dccd7997ae601e9999eaa6d7";
+const REF: &str = "d890ab476d1f1a8b6de799d6428e45b6af42a473";
 fn python() -> String {
     std::env::var("PYTHON").unwrap_or_else(|_| "/tmp/s1-prompts-native-venv/bin/python".into())
 }
@@ -51,7 +51,7 @@ fn source() -> Result<Vec<u8>, String> {
         return Err("immutable API source refused".into());
     }
     if format!("{:x}", Sha256::digest(&output.stdout))
-        != "cbd633a8f9e150ff8f93fa3191bd7b4dd9278c43d093b19b8d1686ce1f979a19"
+        != "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6"
     {
         return Err("immutable API source hash mismatch".into());
     }
@@ -86,7 +86,7 @@ fn route_oracle() -> Result<(), String> {
     let api = String::from_utf8(source()?).map_err(|e| e.to_string())?;
     let main = immutable(
         "model-manager/app/main.py",
-        "28f0acd83bffa88c781373a7f568ef5e73def8333da1221f0dbac49055242cbb",
+        "6f0af60535cbe505cf301a82ad132ead1378ef9f11deebb1e5dce68c20d1d131",
     )?;
     let services = immutable(
         "model-manager/app/services.py",
@@ -139,12 +139,20 @@ fn route_oracle() -> Result<(), String> {
             cases.push(json!({"id":format!("{id}-{method}"),"method":method,"path":path,"token":"synthetic-shared-token-00000000000","configured":["synthetic-backend"],"log":"spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv\ninstance name=synthetic-model exited with status 1"}));
         }
     }
+    // services #1379: the actual backend_diagnose redacts each failure's model and evidence
+    // with redact_log_line after matching. The Rust route test compares these bodies exactly.
+    for (id, log) in [
+        ("redacted-credential-model-and-evidence-GET", "spawning server instance with name=api_key=synthetic-secret-only on port 18001\n[18001] failed to allocate kv api_key=synthetic-secret-only\ninstance name=api_key=synthetic-secret-only exited with status 1"),
+        ("redacted-token-shaped-model-GET", "spawning server instance with name=hf_abcdefghijklmnopqrst on port 18001\n[18001] out of device memory Authorization: Bearer synthetic-secret-only\ninstance name=hf_abcdefghijklmnopqrst exited with status 1"),
+    ] {
+        cases.push(json!({"id":id,"method":"GET","path":"/api/v1/backends/synthetic-backend/diagnose","token":"synthetic-shared-token-00000000000","configured":["synthetic-backend"],"log":log}));
+    }
     cases.push(json!({"id":"wrong-token-auth-first","method":"GET","path":"/api/v1/backends/synthetic-backend/diagnose","token":"wrong","configured":["synthetic-backend"],"log":""}));
     let input = serde_json::to_vec(
         &json!({"api":api,"main":main,"services":services,"diagnose":diagnose,"cases":cases}),
     )
     .map_err(|e| e.to_string())?;
-    let script = r#"import ast,asyncio,dataclasses,json,sys,types,os,importlib.metadata
+    let script = r#"import ast,asyncio,dataclasses,json,re,sys,types,os,importlib.metadata
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI,APIRouter,HTTPException,Request
@@ -160,6 +168,10 @@ def selected(source,names,scope):
     nodes=[node for node in ast.parse(source).body if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)) and node.name in names]
     assert {node.name for node in nodes}==set(names)
     exec(compile(ast.Module(body=nodes,type_ignores=[]),'immutable-selected.py','exec'),scope)
+def assigned(source,name,scope):
+    nodes=[node for node in ast.parse(source).body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id==name for target in node.targets)]
+    assert len(nodes)==1
+    exec(compile(ast.Module(body=nodes,type_ignores=[]),'immutable-assigned.py','exec'),scope)
 package=types.ModuleType('synthetic_app');package.__path__=[];sys.modules['synthetic_app']=package
 diagnose=types.ModuleType('synthetic_app.diagnose');sys.modules[diagnose.__name__]=diagnose
 exec(compile(p['diagnose'],'immutable-diagnose.py','exec'),diagnose.__dict__)
@@ -177,8 +189,9 @@ async def run():
         selected(p['services'],['discover_llama_containers','_effective_container_names'],scope)
         services=types.SimpleNamespace(**scope)
         app=FastAPI(title='Model Loader');router=APIRouter(prefix='/api/v1')
-        api={'__package__':'synthetic_app','router':router,'services':services,'HTTPException':HTTPException,'dataclasses':dataclasses,'Path':Path,'Any':Any}
-        selected(p['api'],['_plain','_logs_since_start','backend_diagnose'],api)
+        api={'__package__':'synthetic_app','router':router,'services':services,'HTTPException':HTTPException,'dataclasses':dataclasses,'Path':Path,'Any':Any,'re':re}
+        assigned(p['api'],'_SECRET_PATTERNS',api)
+        selected(p['api'],['_plain','_logs_since_start','redact_log_line','backend_diagnose'],api)
         middleware={'app':app,'settings':settings,'os':os,'Request':Request,'Response':Response}
         selected(p['main'],['_require_token'],middleware)
         app.include_router(router)
@@ -347,7 +360,7 @@ json.dump({'python':sys.version,'sdk':docker.__version__,'requests':requests.__v
         }
         runs.push(json!({"zone":zone,"result":result,"actual_unix_requests":wire}));
     }
-    let value = json!({"schema":1,"oracle_ref":REF,"api_sha256":"cbd633a8f9e150ff8f93fa3191bd7b4dd9278c43d093b19b8d1686ce1f979a19","generator_sha256":format!("{:x}",Sha256::digest(include_bytes!("generate-diagnose-transport-oracle.rs"))),"process_sha256":format!("{:x}",Sha256::digest(include_bytes!("support/diagnose_process.rs"))),"wire_boundary":"actual SDK logs/HTTP over Rust-owned fresh private Unix socket; fixed synthetic result collaborator suppresses inspect","runs":runs});
+    let value = json!({"schema":1,"oracle_ref":REF,"api_sha256":"800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6","generator_sha256":format!("{:x}",Sha256::digest(include_bytes!("generate-diagnose-transport-oracle.rs"))),"process_sha256":format!("{:x}",Sha256::digest(include_bytes!("support/diagnose_process.rs"))),"wire_boundary":"actual SDK logs/HTTP over Rust-owned fresh private Unix socket; fixed synthetic result collaborator suppresses inspect","runs":runs});
     let bytes = serde_json::to_vec_pretty(&value).map_err(|e| e.to_string())?;
     if bytes.len() > 1024 * 1024 {
         return Err("SDK fixture cap".into());

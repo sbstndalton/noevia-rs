@@ -22,14 +22,14 @@ use std::{
 };
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const TOKEN: &str = "synthetic-prompts-publicfront-token-0123456789abcdef";
-const RUNTIME: &str = "6c233f4a05730ed5dccd7997ae601e9999eaa6d7";
+const RUNTIME: &str = "d890ab476d1f1a8b6de799d6428e45b6af42a473";
 fn qualification_path(key: &str, default: &str) -> PathBuf {
     std::env::var_os(key)
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(default))
 }
 // AST-only immutable selected functions; no production application startup.
-const SHIM: &str = r#"import ast,dataclasses,os,sys,types,importlib.metadata,json
+const SHIM: &str = r#"import ast,dataclasses,os,re,sys,types,importlib.metadata,json
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI,APIRouter,HTTPException,Request
@@ -60,8 +60,11 @@ scope={'settings':settings,'DockerException':DockerException,'_docker_client':la
 selected(p['services'],['discover_llama_containers','_effective_container_names'],scope)
 services=types.SimpleNamespace(**scope)
 app=FastAPI(title='Model Loader');router=APIRouter(prefix='/api/v1')
-api={'__package__':'synthetic_app','router':router,'services':services,'HTTPException':HTTPException,'dataclasses':dataclasses,'Path':Path,'Any':Any}
-selected(p['api'],['_plain','_logs_since_start','backend_diagnose','health'],api)
+api={'__package__':'synthetic_app','router':router,'services':services,'HTTPException':HTTPException,'dataclasses':dataclasses,'Path':Path,'Any':Any,'re':re}
+secret=[n for n in ast.parse(p['api']).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_SECRET_PATTERNS' for t in n.targets)]
+assert len(secret)==1
+exec(compile(ast.Module(body=secret,type_ignores=[]),'immutable-secret-patterns.py','exec'),api)
+selected(p['api'],['_plain','_logs_since_start','redact_log_line','backend_diagnose','health'],api)
 middleware={'app':app,'settings':settings,'os':os,'Request':Request,'Response':Response}
 selected(p['main'],['_require_token'],middleware)
 # Qualification-only refusal until the separately authorized services follow-on.

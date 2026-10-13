@@ -19,11 +19,11 @@ fn native_cutoffs_match_bound_actual_sdk_utc_wire_and_refuse_narrowed_dates() {
     let fixture: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(
         fixture.get("oracle_ref").unwrap(),
-        "6c233f4a05730ed5dccd7997ae601e9999eaa6d7"
+        "d890ab476d1f1a8b6de799d6428e45b6af42a473"
     );
     assert_eq!(
         fixture.get("api_sha256").unwrap(),
-        "cbd633a8f9e150ff8f93fa3191bd7b4dd9278c43d093b19b8d1686ce1f979a19"
+        "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6"
     );
     let generator = fixture.get("generator_sha256").unwrap().as_str().unwrap();
     let current = format!(

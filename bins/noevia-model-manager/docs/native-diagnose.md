@@ -11,8 +11,9 @@ zones fail configuration before bind, child spawn or store access. The default
 Python selector preserves the parent's timezone. The selected native child inherits
 explicit UTC and receives `NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED=1`;
 the supervised Python child receives `0` when diagnosis is off, and Python exec
-scrubs this confirmation. The production services refusal guard is a separate
-follow-on: public qualification uses an explicitly test-only AST shim guard.
+scrubs this confirmation. Services d245183 ships the production refusal guard in
+`_require_token`; public qualification additionally keeps its explicitly test-only AST
+shim guard.
 
 ## Acquisition and refusals
 
@@ -44,8 +45,25 @@ Non-TTY frames require exact eight-byte Docker headers, stream kinds 1 or 2,
 zero reserved bytes and complete bounded payloads. TTY reads are raw. Ambiguous
 Content-Length/Transfer-Encoding, unsupported encodings, trailers, redirects,
 malformed framing and exceeded caps return fixed sanitized 503. Ordinary transport
-failure or timeout returns 200 with empty failures. Native evidence always passes
-the existing Redactor; redaction is a named stronger security difference.
+failure or timeout returns 200 with empty failures.
+
+## Redaction
+
+Python `backend_diagnose` (services #1379) redacts each failure's model name and every
+evidence line with `redact_log_line` after matching. The port does the same with the
+existing Redactor, after matching, so rule order and failure bookkeeping are unchanged.
+The oracle is pinned to services `d890ab476d1f1a8b6de799d6428e45b6af42a473`. The pure
+differential fixture records the actual `redact_log_line` output for every case and the
+Rust answer must equal it exactly; the route fixture runs the actual `backend_diagnose`
+with a credential-shaped model name and evidence. Two named stronger security
+differences remain:
+
+- the Redactor is broader for numeric-looking credentials (`password=12345`,
+  `TOKEN=12345`), which Python's pattern deliberately leaves (the fixture asserts that
+  these cases still differ, so the exception cannot go stale), and for its Unicode word
+  and delimiter classes (see the README);
+- cross-line contextual suppression: evidence whose joined block redacts differently
+  from its separate lines is dropped entirely, where Python keeps the raw line.
 
 ## Ownership and deadline
 

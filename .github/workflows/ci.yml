@@ -881,7 +881,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: sbstndalton/noevia-services
-          ref: 6c233f4a05730ed5dccd7997ae601e9999eaa6d7
+          ref: d890ab476d1f1a8b6de799d6428e45b6af42a473
           path: diagnose-services
       - name: Read unchanged actual core pin
         id: diagnose-core
