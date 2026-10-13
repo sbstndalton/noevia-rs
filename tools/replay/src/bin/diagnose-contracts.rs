@@ -1487,47 +1487,61 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if security_only {
+        // services #1379: Python backend_diagnose redacts the model name and evidence too, so
+        // both public paths must now return the same redacted body; neither may carry the secret.
         let secret = "synthetic-public-secret-0000000001";
         let log=format!("spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv Authorization: Bearer {secret}\ninstance name=synthetic-model exited with status 1");
-        oracle.insert("logs".into(), json!({"synthetic-security":log}));
+        let model_log=format!("spawning server instance with name=api_key={secret} on port 18001\n[18001] failed to allocate kv api_key={secret}\ninstance name=api_key={secret} exited with status 1");
+        oracle.insert(
+            "logs".into(),
+            json!({"synthetic-security":log,"synthetic-security-model":model_log}),
+        );
         let input = Value::Object(oracle);
         let baseline = run_mode(core, bins, "python", &input)?;
         let candidate = run_mode(core, bins, "rust", &input)?;
         artifact(
             Path::new("/tmp/s1-diagnose-public-security.json"),
-            &json!({"baseline":baseline,"candidate":candidate,"named_difference":"Native evidence uses existing Redactor; fixed synthetic bearer removed. Python unchanged.","security_difference_rows":1,"zero_difference_claim":false}),
-        )?;
-        let baseline_body = baseline
-            .first()
-            .and_then(|row| row.get("response"))
-            .and_then(|row| row.get("body"))
-            .ok_or("security baseline body")?;
-        let candidate_body = candidate
-            .first()
-            .and_then(|row| row.get("response"))
-            .and_then(|row| row.get("body"))
-            .ok_or("security candidate body")?;
-        let baseline_text = serde_json::to_string(baseline_body)?;
-        let candidate_text = serde_json::to_string(candidate_body)?;
-        require(
-            baseline_text.contains(secret)
-                && !candidate_text.contains(secret)
-                && candidate_text.contains("[redacted]"),
-            "named native redaction security difference",
+            &json!({"baseline":baseline,"candidate":candidate,"named_difference":"None for these probes: Python (services #1379) and native both redact model and evidence with the same output. Remaining stronger native differences (numeric credentials, cross-line suppression) are asserted in the pure differential.","security_difference_rows":0,"zero_difference_claim":false}),
         )?;
         require(
-            baseline
-                .first()
+            baseline.len() >= 2 && candidate.len() >= 2,
+            "security rows present",
+        )?;
+        for index in 0..2 {
+            let baseline_body = baseline
+                .get(index)
                 .and_then(|row| row.get("response"))
-                .and_then(|row| row.get("status"))
-                == Some(&json!(200))
-                && candidate
-                    .first()
+                .and_then(|row| row.get("body"))
+                .ok_or("security baseline body")?;
+            let candidate_body = candidate
+                .get(index)
+                .and_then(|row| row.get("response"))
+                .and_then(|row| row.get("body"))
+                .ok_or("security candidate body")?;
+            let baseline_text = serde_json::to_string(baseline_body)?;
+            let candidate_text = serde_json::to_string(candidate_body)?;
+            require(
+                !baseline_text.contains(secret)
+                    && !candidate_text.contains(secret)
+                    && baseline_text.contains("[redacted]")
+                    && candidate_text.contains("[redacted]")
+                    && baseline_body == candidate_body,
+                "python and native redact model and evidence identically",
+            )?;
+            require(
+                baseline
+                    .get(index)
                     .and_then(|row| row.get("response"))
                     .and_then(|row| row.get("status"))
-                    == Some(&json!(200)),
-            "security responses are complete success",
-        )?;
+                    == Some(&json!(200))
+                    && candidate
+                        .get(index)
+                        .and_then(|row| row.get("response"))
+                        .and_then(|row| row.get("status"))
+                        == Some(&json!(200)),
+                "security responses are complete success",
+            )?;
+        }
         return Ok(());
     }
     let fixture: Value = serde_json::from_slice(include_bytes!(
