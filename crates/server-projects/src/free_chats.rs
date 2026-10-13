@@ -4,7 +4,9 @@
 //! front answers it only in a build with the cargo feature `rust-free-chats`.
 //!
 //! - GET: `{ chats }`, the stored list as it is (Node serves its workspace copy unsanitised): the
-//!   file read fresh, `[]` when it is missing or not JSON (workspace.cjs `readJson(file, [])`).
+//!   file read fresh, `[]` when it is missing or not JSON (workspace.cjs `readJson(file, [])`), or
+//!   when it holds anything but a list (`null`, a string, a number, an object: workspace.cjs loads
+//!   that as an empty list since #1420).
 //! - POST `{ chats: [...] }`: each meta normalised as Node does (id reduced to `[A-Za-z0-9_-]`, 80
 //!   units; title 120 (`New chat` when falsy) and preview 200 UTF-16 units; `mode: 'cowork'` kept
 //!   for an admin only), then merged into the stored list: same-id entries replaced keeping the
@@ -13,11 +15,17 @@
 //!   newest first, 1,000 at most. Written under `free-chats.json.lock`, the lock Node's own writers
 //!   of the file (a chat's move, a free chat's delete, the routing flags, an import, the retention
 //!   sweep) take while the slice is on (core rust-projects.cjs `createFreeChatsFile`, which merges
-//!   its saves per item, so neither side drops the other's metas).
+//!   its saves per item, so neither side drops the other's metas). A stored value that is not a
+//!   list is merged into as an empty list (#1420).
+//! - Only reading the request is a 400 (`invalid JSON`; `chats array required` for any body that
+//!   is not an object with a `chats` array, `null` included). A save that fails once the request
+//!   was understood answers as core http.cjs `saveFailureReply` (#1419): a busy store 503
+//!   `PROJECTS_BUSY` with `Retry-After: 1`, a removed account 410, anything else 500 `could not
+//!   save the free chats; nothing was changed`.
 //!
 //! The user's directory is never created here: when it is gone (the account was removed while the
 //! request was in flight) the save answers Node's `assertActive` 410 and writes nothing
-//! (sbstndalton/noevia#1425; Node's own POST maps that throw to 400 `invalid JSON`, #1419).
+//! (sbstndalton/noevia#1425; since #1419 Node's own POST answers that 410 as well).
 //!
 //! `DELETE /api/freechats/{id}` stays Node's: it also removes the chat's transcript, context meter,
 //! brain note and attachments project, which this crate does not do.
@@ -26,44 +34,25 @@
 //! lone surrogates kept as Node keeps them), and the stored lists it reads back (free-chats.json,
 //! projects.json for the other lists' ids, deleted-chats.json).
 //!
-//! Stricter than Node, as refusals (500): a stored free list that is `null` (Node's GET throws
-//! after it wrote its status line) or an object with a `length` key (Node serialises it as an
-//! array-like); a stored meta whose `updatedAt` is a string or an object (Node's sort is then
-//! inconsistent); and what [`crate::chats`] refuses in a body or a file.
+//! Stricter than Node, as refusals (500): a stored meta whose `updatedAt` is a string or an object
+//! (Node's sort is then inconsistent); and what [`crate::chats`] refuses in a body or a file.
 
-use crate::chats::{self, SaveFailure, FREE_CHATS_FILE};
+use crate::chats::{self, Incoming, SaveFailure, FREE_CHATS_FILE};
 use crate::store;
 use crate::{Ctx, Reply};
 use js_json::wtf16;
 use js_json::JValue;
 use std::collections::HashSet;
 
-/// What `JSON.stringify({ chats: FREE_CHATS })` makes of the stored value: FREE_CHATS is a Proxy
-/// over an array (index.cjs `arrayProxy`), so it serialises as an array whatever the workspace
-/// holds: its `length` and indices are the stored value's. `None` where this port refuses.
-fn as_served(stored: JValue) -> Option<Vec<JValue>> {
+/// routes/chat-lists.cjs's `saveFailureReply` message for the free-chat list.
+pub const FREE_CHATS_SAVE_FAILED: &str = "could not save the free chats; nothing was changed";
+
+/// The free list core's workspace holds for a stored value (workspace.cjs since #1420:
+/// `Array.isArray(list) ? list : []`), which GET serves and POST merges into.
+fn as_list(stored: Option<JValue>) -> Vec<JValue> {
     match stored {
-        JValue::Arr(items) => Some(items),
-        // `"ab".length` and `"ab"[i]`: one string per UTF-16 unit, a pair cut in two.
-        JValue::Str(s) => {
-            let mut units = Vec::new();
-            for c in s.chars() {
-                let mut buf = [0u16; 2];
-                let encoded = c.encode_utf16(&mut buf);
-                if wtf16::lone_unit(c).is_some() || encoded.len() == 1 {
-                    units.push(JValue::Str(c.to_string()));
-                } else {
-                    for unit in encoded.iter() {
-                        units.push(JValue::Str(wtf16::lone_char(*unit)?.to_string()));
-                    }
-                }
-            }
-            Some(units)
-        }
-        // No `length`: an empty array.
-        JValue::Num(_) | JValue::Bool(_) => Some(Vec::new()),
-        JValue::Obj(ref items) if !items.iter().any(|(k, _)| k == "length") => Some(Vec::new()),
-        _ => None,
+        Some(JValue::Arr(items)) => items,
+        _ => Vec::new(),
     }
 }
 
@@ -103,13 +92,12 @@ pub fn get(ctx: Ctx<'_>) -> Reply {
         return reply;
     }
     let stored = match store::read_json(&dir.join(FREE_CHATS_FILE)) {
-        Ok(v) => v.unwrap_or(JValue::Arr(Vec::new())),
+        Ok(v) => v,
         Err(e) => return chats::store_failure(&e),
     };
-    let Some(list) = as_served(stored) else {
-        return Reply::internal();
-    };
-    let out = JValue::obj([("chats", JValue::Arr(list))]);
+    // routes/chat-lists.cjs reads the list before the status line (#1420): `Array.from` of an
+    // array never throws, so its 500 `could not read the free chats` has no case here.
+    let out = JValue::obj([("chats", JValue::Arr(as_list(stored)))]);
     Reply::json(200, wtf16::stringify(&out).unwrap_or_default())
 }
 
@@ -136,13 +124,9 @@ fn save(
 ) -> Result<(Vec<JValue>, Vec<String>), SaveFailure> {
     let elsewhere = ids_in_projects(projects)?;
     let tombstones = chats::read_tombstones(dir)?;
-    // `Array.from(FREE_CHATS)` and then `FREE_CHATS.splice(...)`: only an array has `splice`, so
-    // any other stored value throws (readJson's fallback, [], for a missing or non-JSON file).
-    let current = match stored {
-        None => Vec::new(),
-        Some(JValue::Arr(items)) => items,
-        Some(_) => return Err(SaveFailure::Throw),
-    };
+    // `Array.from(FREE_CHATS)`: the workspace's list, empty for a missing, non-JSON or non-list
+    // file (#1420; before it, a non-list stored value made `FREE_CHATS.splice` throw).
+    let current = as_list(stored);
     let merged = chats::merge_chats(&current, incoming, &tombstones, &elsewhere)?;
     Ok((merged, chats::skipped_elsewhere(incoming, &elsewhere)))
 }
@@ -163,7 +147,8 @@ pub fn post(ctx: Ctx<'_>, body: &[u8], over: bool, admin: bool) -> Reply {
     }
     let incoming = match chats::incoming_metas(body, admin, ctx.now_ms, "New chat") {
         Ok(chats) => chats,
-        Err(reply) => return reply,
+        Err(Incoming::Request(reply)) => return reply,
+        Err(Incoming::Throw) => return chats::save_failed(FREE_CHATS_SAVE_FAILED),
     };
     let saved = store::update_free(&dir, ctx.switch, |stored| {
         // projects.json as it is now (Node's request-start view; its writes are atomic renames).
@@ -173,13 +158,15 @@ pub fn post(ctx: Ctx<'_>, body: &[u8], over: bool, admin: bool) -> Reply {
         };
         match save(&dir, &projects, stored, &incoming) {
             Ok((list, skipped)) => (chats::saved_reply(skipped), Some(list)),
-            Err(SaveFailure::Throw) => (chats::invalid_json(), None),
-            Err(SaveFailure::Unsupported) => (Reply::internal(), None),
+            Err(SaveFailure::Throw | SaveFailure::Unsupported) => {
+                (chats::save_failed(FREE_CHATS_SAVE_FAILED), None)
+            }
         }
     });
     match saved {
         Ok(reply) => reply,
-        Err(e) => chats::store_failure(&e),
+        // The lock, the re-read and the write are saveFreeChats's, inside core's `try`.
+        Err(e) => chats::save_failure(&e, FREE_CHATS_SAVE_FAILED),
     }
 }
 
@@ -188,20 +175,29 @@ pub fn post(ctx: Ctx<'_>, body: &[u8], over: bool, admin: bool) -> Reply {
 mod tests {
     use super::*;
 
+    // #1420: a stored list is served and merged as it is; anything else is the empty list.
     #[test]
-    fn served_like_nodes_array_proxy() {
-        let s = |v: &str| {
-            wtf16::stringify(&JValue::Arr(as_served(wtf16::parse(v).unwrap()).unwrap())).unwrap()
+    fn only_a_stored_list_is_a_list() {
+        let s = |v: Option<&str>| {
+            wtf16::stringify(&JValue::Arr(as_list(v.map(|v| wtf16::parse(v).unwrap())))).unwrap()
         };
-        assert_eq!(s("[{\"id\":\"a\"},null,3]"), "[{\"id\":\"a\"},null,3]");
-        assert_eq!(s("\"ab\""), "[\"a\",\"b\"]");
-        assert_eq!(s("\"\\ud83d\\ude00x\""), "[\"\\ud83d\",\"\\ude00\",\"x\"]");
-        assert_eq!(s("\"\\ud83d\""), "[\"\\ud83d\"]");
-        assert_eq!(s("5"), "[]");
-        assert_eq!(s("true"), "[]");
-        assert_eq!(s("{\"a\":1}"), "[]");
-        assert!(as_served(JValue::Null).is_none());
-        assert!(as_served(wtf16::parse("{\"length\":1}").unwrap()).is_none());
+        assert_eq!(
+            s(Some("[{\"id\":\"a\"},null,3]")),
+            "[{\"id\":\"a\"},null,3]"
+        );
+        assert_eq!(s(Some("[]")), "[]");
+        for other in [
+            "null",
+            "\"ab\"",
+            "\"\\ud83d\\ude00x\"",
+            "5",
+            "true",
+            "{\"a\":1}",
+            "{\"length\":1,\"0\":\"x\"}",
+        ] {
+            assert_eq!(s(Some(other)), "[]", "{other}");
+        }
+        assert_eq!(s(None), "[]");
     }
 
     #[test]

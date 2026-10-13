@@ -15,12 +15,11 @@ use server_projects::{chats, free_chats, Body, Ctx};
 use server_store::RustProjects;
 
 /// Cases where Node answers what the port refuses (no write): a number past the f64 range in the
-/// body; a stored list that is an object with a `length` key (Node serialises it as an array-like);
-/// a stored meta whose `updatedAt` is a non-numeric string (Node's sort comparator is then
-/// inconsistent).
+/// body; a stored meta whose `updatedAt` is a non-numeric string (Node's sort comparator is then
+/// inconsistent). (A stored object with a `length` key was one until #1420: Node now loads any
+/// stored value that is not a list as `[]`, and so does the port.)
 const STRICTER: &[(&str, u16)] = &[
     ("post-body-infinity", 400),
-    ("get-object-length", 500),
     ("post-stored-updated-string", 500),
 ];
 
