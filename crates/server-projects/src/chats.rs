@@ -13,6 +13,11 @@
 //!   of the account holds (its free chats, its other projects) are skipped and reported
 //!   (`skipped`, #765); newest first, 1,000 at most. Then every project's instruction skills are
 //!   reconciled (`saveProjects`) and the file is written under the lock shared with Node.
+//! - Only reading the request is a 400 (`invalid JSON`; `chats array required` for any body that
+//!   is not an object with a `chats` array, `null` included). A save that fails once the request
+//!   was understood answers as core http.cjs `saveFailureReply` (#1406): a busy store 503
+//!   `PROJECTS_BUSY` with `Retry-After: 1`, a removed account 410, anything else 500 `could not
+//!   save the chats; nothing was changed`.
 //!
 //! Untrusted input it hardens: the project id from the URL (`decodeURIComponent`, compared, never
 //! a path), the JSON body (at most 1 MiB, Node's readBody limit; 1,000 metas; lone surrogates kept
@@ -49,6 +54,44 @@ pub(crate) fn store_failure(e: &StoreError) -> Reply {
 
 pub(crate) fn invalid_json() -> Reply {
     Reply::error(400, "invalid JSON")
+}
+
+/// routes/projects.cjs's `saveFailureReply` message for a project's chat list.
+pub const CHATS_SAVE_FAILED: &str = "could not save the chats; nothing was changed";
+
+/// core http.cjs `saveFailureReply(json, res, err, fallback)` (#1406/#1419): the answer to a save
+/// that failed after the request was understood. Never a 400: the error's own status is kept (a
+/// busy store's 503 `PROJECTS_BUSY`, which says when to retry, and `assertActive`'s 410), and
+/// anything else is a 500 with the route's fixed message, so no internal error text is shown.
+pub(crate) fn save_failure(e: &StoreError, fallback: &str) -> Reply {
+    match e {
+        // rust-projects.cjs busy(): its message and code, and the Retry-After json() is given.
+        StoreError::Busy => {
+            let mut text = String::from("{\"error\":");
+            js_json::quote("The project store is busy. Try again shortly.", &mut text);
+            text.push_str(",\"code\":\"PROJECTS_BUSY\"}");
+            Reply {
+                status: 503,
+                body: crate::Body::Bytes {
+                    headers: vec![
+                        ("content-type", "application/json".into()),
+                        ("cache-control", "no-store".into()),
+                        ("retry-after", "1".into()),
+                    ],
+                    bytes: text.into_bytes(),
+                },
+            }
+        }
+        // workspace.cjs assertActive: status 410 and no code.
+        StoreError::Gone => Reply::error(410, "account no longer exists"),
+        _ => Reply::error(500, fallback),
+    }
+}
+
+/// [`save_failure`] for a failure inside the save that is not the store's (Node's catch gets a
+/// TypeError, or this port refuses a shape there): the route's fixed 500.
+pub(crate) fn save_failed(fallback: &str) -> Reply {
+    Reply::error(500, fallback)
 }
 
 /// `'key' in o` for a value from JSON.parse (own keys only: Object.prototype has none of the
@@ -179,26 +222,40 @@ pub fn get(ctx: Ctx<'_>, raw_project: &str) -> Reply {
     }
 }
 
-/// The POST body's metas as routes/projects.cjs builds them; `Err` is the reply (a 400).
-fn incoming(body: &[u8], admin: bool, now_ms: i64) -> Result<Vec<JValue>, Reply> {
+/// Why a chat-list POST body gave no metas.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Incoming {
+    /// The request itself is bad, before core's `try`: this 400.
+    Request(Reply),
+    /// Building the metas threw inside core's `try` (a title or preview `String()` cannot
+    /// convert): its catch, `saveFailureReply`'s 500 (#1406/#1419).
+    Throw,
+}
+
+/// The POST body's metas as routes/projects.cjs builds them.
+fn incoming(body: &[u8], admin: bool, now_ms: i64) -> Result<Vec<JValue>, Incoming> {
     incoming_metas(body, admin, now_ms, "New task")
 }
 
 /// A chat-list POST body's metas as core builds them (routes/projects.cjs for a project's list,
 /// routes/chat-lists.cjs for the free list: the same normalisation, `untitled` the only
-/// difference); `Err` is the reply (a 400).
+/// difference).
 pub(crate) fn incoming_metas(
     body: &[u8],
     admin: bool,
     now_ms: i64,
     untitled: &str,
-) -> Result<Vec<JValue>, Reply> {
-    let body = wtf16::parse(&String::from_utf8_lossy(body)).map_err(|_| invalid_json())?;
-    if body.is_nullish() {
-        return Err(invalid_json()); // body.chats on null: a TypeError, caught as invalid JSON
-    }
-    let JValue::Arr(chats) = body.get("chats") else {
-        return Err(Reply::error(400, "chats array required"));
+) -> Result<Vec<JValue>, Incoming> {
+    let body = wtf16::parse(&String::from_utf8_lossy(body))
+        .map_err(|_| Incoming::Request(invalid_json()))?;
+    // `!body || typeof body !== 'object' || !Array.isArray(body.chats)`, before the `try` (#1406):
+    // a `null` body is this 400 too, no longer a TypeError caught as `invalid JSON`.
+    let chats = match &body {
+        JValue::Obj(_) | JValue::Arr(_) => match body.get("chats") {
+            JValue::Arr(chats) => chats,
+            _ => return Err(Incoming::Request(Reply::error(400, "chats array required"))),
+        },
+        _ => return Err(Incoming::Request(Reply::error(400, "chats array required"))),
     };
     let mut out = Vec::new();
     for c in chats
@@ -210,10 +267,10 @@ pub(crate) fn incoming_metas(
             .chars()
             .take(80)
             .collect();
-        let text = |key: &str, fallback: &str, cap: usize| -> Result<String, Reply> {
+        let text = |key: &str, fallback: &str, cap: usize| -> Result<String, Incoming> {
             let v = c.get(key);
             let s = if v.truthy() {
-                js_json::to_js_string(v).map_err(|_| invalid_json())?
+                js_json::to_js_string(v).map_err(|_| Incoming::Throw)?
             } else {
                 fallback.to_string()
             };
@@ -255,11 +312,13 @@ pub(crate) fn incoming_metas(
     Ok(out)
 }
 
-/// Why the part of the POST inside Node's `try` did not complete.
+/// Why the part of the POST inside Node's `try` did not complete. Both answer
+/// `saveFailureReply`'s fixed 500 (#1406/#1419); before core d1e998b Node's catch made a throw
+/// there a 400 `invalid JSON`.
 pub(crate) enum SaveFailure {
-    /// Node throws there: its catch answers 400 invalid JSON.
+    /// Node throws there (a TypeError: no status, so its catch answers the fixed 500).
     Throw,
-    /// Data Node never writes and this port does not reproduce: 500.
+    /// Data Node never writes and this port does not reproduce: refused with the same 500.
     Unsupported,
 }
 
@@ -399,14 +458,10 @@ fn save_chats(
     let mut elsewhere = HashSet::new();
     let free =
         store::read_json(&dir.join(FREE_CHATS_FILE)).map_err(|_| SaveFailure::Unsupported)?;
-    match free {
-        // readJson's fallback, [].
-        None => {}
-        // Node iterates its cached copy: null, a number or an object throws.
-        Some(v @ (JValue::Arr(_) | JValue::Str(_))) => {
-            list_ids(&v, &mut elsewhere).map_err(|()| SaveFailure::Throw)?
-        }
-        Some(_) => return Err(SaveFailure::Throw),
+    // workspace.cjs loads a free-chats.json that is not a list (null, an object, a string, a
+    // number) as an empty list (#1420), and readJson's fallback for a missing file is [] too.
+    if let Some(v @ JValue::Arr(_)) = free {
+        list_ids(&v, &mut elsewhere).map_err(|()| SaveFailure::Throw)?;
     }
     for (i, p) in projects.iter().enumerate() {
         let p = if i == at { &memory } else { p };
@@ -524,17 +579,188 @@ pub fn post(ctx: Ctx<'_>, raw_project: &str, body: &[u8], over: bool, admin: boo
         }
         let chats = match &parsed {
             Ok(chats) => chats,
-            Err(reply) => return (reply.clone(), healed),
+            Err(Incoming::Request(reply)) => return (reply.clone(), healed),
+            Err(Incoming::Throw) => return (save_failed(CHATS_SAVE_FAILED), healed),
         };
         // On a failure only getProject's save is written, as in Node (it came first).
         match save_chats(&dir, projects, at, memory, chats) {
             Ok(skipped) => (saved_reply(skipped), true),
-            Err(SaveFailure::Throw) => (invalid_json(), healed),
-            Err(SaveFailure::Unsupported) => (Reply::internal(), healed),
+            Err(SaveFailure::Throw | SaveFailure::Unsupported) => {
+                (save_failed(CHATS_SAVE_FAILED), healed)
+            }
         }
     });
     match saved {
         Ok(reply) => reply,
-        Err(e) => store_failure(&e),
+        // The lock, the re-read and the write are saveProjects's, inside core's `try`.
+        Err(e) => save_failure(&e, CHATS_SAVE_FAILED),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+mod tests {
+    use super::*;
+    use crate::{free_chats, Body};
+
+    const USER: &str = "11111111-2222-4333-8444-555555555555";
+    const PROJECTS: &str = "{\n  \"projects\": [\n    {\n      \"id\": \"proj-a\",\n      \"name\": \"A\",\n      \"chats\": [],\n      \"instructionSkills\": {}\n    }\n  ]\n}";
+    const SAVE: &[u8] = br#"{"chats":[{"id":"c1","title":"T","updatedAt":5}]}"#;
+
+    fn workspace() -> (tempfile::TempDir, std::path::PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(USER);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(store::PROJECTS_FILE), PROJECTS).unwrap();
+        (root, dir)
+    }
+
+    fn ctx(root: &Path) -> Ctx<'_> {
+        Ctx {
+            data_dir: root,
+            user_id: USER,
+            switch: server_store::RustProjects::from_env_value(Some("1")).unwrap(),
+            now_ms: 1_700_000_000_000,
+        }
+    }
+
+    const BUSY: &str =
+        r#"{"error":"The project store is busy. Try again shortly.","code":"PROJECTS_BUSY"}"#;
+
+    /// rust-projects.cjs busy() through http.cjs saveFailureReply and json(): 503, its message
+    /// and code, and Retry-After: 1 (#1406/#1419).
+    fn assert_busy(r: &Reply) {
+        assert_eq!(r.status, 503);
+        let Body::Bytes { headers, bytes } = &r.body else {
+            panic!("a busy save carries Retry-After: {r:?}")
+        };
+        assert_eq!(
+            headers,
+            &vec![
+                ("content-type", "application/json".to_string()),
+                ("cache-control", "no-store".to_string()),
+                ("retry-after", "1".to_string()),
+            ]
+        );
+        assert_eq!(std::str::from_utf8(bytes).unwrap(), BUSY);
+    }
+
+    #[test]
+    fn a_busy_project_store_is_a_503_with_retry_after_and_nothing_changes() {
+        let (root, dir) = workspace();
+        let _held = crate::lock::acquire(&dir.join(store::PROJECTS_FILE)).unwrap();
+        assert_busy(&post(ctx(root.path()), "proj-a", SAVE, false, false));
+        assert_eq!(
+            std::fs::read_to_string(dir.join(store::PROJECTS_FILE)).unwrap(),
+            PROJECTS
+        );
+    }
+
+    #[test]
+    fn a_busy_free_list_is_a_503_with_retry_after_and_nothing_changes() {
+        let (root, dir) = workspace();
+        let _held = crate::lock::acquire(&dir.join(FREE_CHATS_FILE)).unwrap();
+        assert_busy(&free_chats::post(ctx(root.path()), SAVE, false, false));
+        assert!(!dir.join(FREE_CHATS_FILE).exists());
+    }
+
+    #[test]
+    fn save_failures_keep_a_status_or_say_nothing_was_changed() {
+        let gone = Reply::error(410, "account no longer exists");
+        for fallback in [CHATS_SAVE_FAILED, free_chats::FREE_CHATS_SAVE_FAILED] {
+            assert_busy(&save_failure(&StoreError::Busy, fallback));
+            assert_eq!(save_failure(&StoreError::Gone, fallback), gone);
+            // Anything else never shows its own text and is never a 400.
+            for e in [
+                StoreError::Io(std::io::Error::other("synthetic disk failure")),
+                StoreError::Corrupt,
+                StoreError::InvalidUser,
+            ] {
+                let r = save_failure(&e, fallback);
+                assert_eq!(r, Reply::error(500, fallback));
+                let Body::Json(text) = &r.body else {
+                    panic!("json")
+                };
+                assert!(!text.contains("synthetic"), "{text}");
+            }
+        }
+        assert_eq!(
+            CHATS_SAVE_FAILED,
+            "could not save the chats; nothing was changed"
+        );
+        assert_eq!(
+            free_chats::FREE_CHATS_SAVE_FAILED,
+            "could not save the free chats; nothing was changed"
+        );
+    }
+
+    #[test]
+    fn only_reading_the_request_is_a_400() {
+        let required = Incoming::Request(Reply::error(400, "chats array required"));
+        for body in [
+            "null",
+            "5",
+            "0",
+            "true",
+            "false",
+            "\"x\"",
+            "\"\"",
+            "[]",
+            "{}",
+            "{\"chats\":null}",
+            "{\"chats\":{}}",
+            "{\"chats\":\"ab\"}",
+        ] {
+            assert_eq!(
+                incoming_metas(body.as_bytes(), false, 1, "New task"),
+                Err(required.clone()),
+                "{body}"
+            );
+        }
+        for body in ["", "{", "nul", "{\"chats\":[}"] {
+            assert_eq!(
+                incoming_metas(body.as_bytes(), false, 1, "New task"),
+                Err(Incoming::Request(invalid_json())),
+                "{body}"
+            );
+        }
+        // A title String() cannot convert throws inside core's try: the save failure, not a 400.
+        assert_eq!(
+            incoming_metas(
+                br#"{"chats":[{"id":"a","title":{"toString":1}}]}"#,
+                false,
+                1,
+                "New task"
+            ),
+            Err(Incoming::Throw)
+        );
+        assert_eq!(
+            incoming_metas(br#"{"chats":[]}"#, false, 1, "New task"),
+            Ok(Vec::new())
+        );
+    }
+
+    #[test]
+    fn a_free_list_that_is_not_a_list_holds_no_ids_for_a_project_save() {
+        for stored in [
+            "null",
+            "{\"a\":1}",
+            "5",
+            "\"c1\"",
+            "{\"length\":1,\"0\":{\"id\":\"c1\"}}",
+        ] {
+            let (root, dir) = workspace();
+            std::fs::write(dir.join(FREE_CHATS_FILE), stored).unwrap();
+            let r = post(ctx(root.path()), "proj-a", SAVE, false, false);
+            assert_eq!(r, saved_reply(Vec::new()), "{stored}");
+            assert!(std::fs::read_to_string(dir.join(store::PROJECTS_FILE))
+                .unwrap()
+                .contains("\"c1\""));
+            // The free list itself is not rewritten by a project's save.
+            assert_eq!(
+                std::fs::read_to_string(dir.join(FREE_CHATS_FILE)).unwrap(),
+                stored
+            );
+        }
     }
 }

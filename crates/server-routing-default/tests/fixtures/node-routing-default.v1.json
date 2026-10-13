@@ -1,6 +1,6 @@
 {
- "core": "e6cc63aa9e22982dab69e8502f30f05670138c2e",
- "workspaceSha256": "38bce279a961d87632f4043ae27b7ec6b0628af32b8c113d960e39d93ba74033",
+ "core": "f59155d9effbed083e911326bd74187613a7025c",
+ "workspaceSha256": "c2800dfa597322e0c75c338aec745c32caa782a236dac5f144c44a857166f852",
  "cases": [
   {
    "name": "object-manual",

@@ -30,7 +30,9 @@
       "cache-control": "no-cache, no-transform",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       "content-type": "text/event-stream",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
       "referrer-policy": "same-origin",
+      "strict-transport-security": "max-age=15552000",
       "x-accel-buffering": "no",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
@@ -44,20 +46,6 @@
             "type": "meta",
             "model": "synthetic-chat-model",
             "chatId": "<id:8>"
-          },
-          "json": true
-        },
-        {
-          "data": {
-            "type": "sources",
-            "sources": [
-              {
-                "id": "notes.md",
-                "file": "notes.md",
-                "snippet": "# Synthetic notes Alpha beta gamma.",
-                "kind": "file"
-              }
-            ]
           },
           "json": true
         },

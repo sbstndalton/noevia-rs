@@ -1,7 +1,8 @@
 //! sbstndalton/noevia#1425: a project write whose account is removed while its body is still
 //! arriving (the gate ran before the body was read) writes nothing and never recreates the
 //! removed user's directory. The front re-runs the gate before the write, and the store never
-//! makes the user's directory. Synthetic data only.
+//! makes the user's directory. Synthetic data only. Also the chat lists' other save failures
+//! (#1406/#1419): a busy store is 503 with Retry-After, a null body 400 `chats array required`.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -75,6 +76,54 @@ async fn call_slow(
     let status = text[9..12].parse().unwrap();
     let body = text.split_once("\r\n\r\n").unwrap().1.to_string();
     (status, body)
+}
+
+/// One HTTP/1.1 exchange at once: the status, the response head (lower-case names) and the body.
+#[cfg(any(feature = "rust-free-chats", feature = "rust-project-chats"))]
+async fn call(
+    addr: SocketAddr,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> (u16, String, String) {
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    let mut req = format!(
+        "{method} {path} HTTP/1.1\r\nhost: front.test\r\nconnection: close\r\ncontent-length: {}\r\n",
+        body.len()
+    );
+    for (k, v) in headers {
+        req.push_str(&format!("{k}: {v}\r\n"));
+    }
+    req.push_str("\r\n");
+    req.push_str(body);
+    s.write_all(req.as_bytes()).await.unwrap();
+    let mut out = Vec::new();
+    s.read_to_end(&mut out).await.unwrap();
+    let text = String::from_utf8(out).unwrap();
+    let status = text[9..12].parse().unwrap();
+    let (head, body) = text.split_once("\r\n\r\n").unwrap();
+    (status, head.to_ascii_lowercase(), body.to_string())
+}
+
+/// sbstndalton/noevia#1406/#1419: a chat-list save that finds the store busy answers as core's
+/// saveFailureReply: 503 PROJECTS_BUSY with Retry-After: 1 and Node's headers, never a 400.
+#[cfg(any(feature = "rust-free-chats", feature = "rust-project-chats"))]
+fn assert_busy_reply((status, head, body): &(u16, String, String)) {
+    assert_eq!(*status, 503, "{head}");
+    assert_eq!(
+        body,
+        r#"{"error":"The project store is busy. Try again shortly.","code":"PROJECTS_BUSY"}"#
+    );
+    for line in [
+        "retry-after: 1",
+        "content-type: application/json",
+        "cache-control: no-store",
+        "x-noevia-api: 1",
+        "strict-transport-security: max-age=15552000",
+    ] {
+        assert!(head.lines().any(|l| l == line), "{line} missing in {head}");
+    }
 }
 
 async fn front() -> Front {
@@ -291,6 +340,17 @@ mod free_chats {
     }
 
     #[tokio::test]
+    async fn a_free_chat_save_on_a_busy_store_is_a_503_with_retry_after() {
+        let f = front().await;
+        let file = f.user_dir().join("free-chats.json");
+        let held = server_projects::lock::acquire(&file).unwrap();
+        let reply = call(f.addr, "POST", "/api/freechats", &write_headers(&f), SAVE).await;
+        drop(held);
+        assert_busy_reply(&reply);
+        assert!(!file.exists());
+    }
+
+    #[tokio::test]
     async fn a_free_chat_save_still_works_for_a_live_account() {
         let f = front().await;
         let (status, body) = call_slow(
@@ -314,6 +374,44 @@ mod free_chats {
 #[cfg(feature = "rust-project-chats")]
 mod project_chats {
     use super::*;
+
+    #[tokio::test]
+    async fn a_chat_list_save_on_a_busy_store_is_a_503_with_retry_after() {
+        let f = front().await;
+        seed_project(&f);
+        let file = f.user_dir().join("projects.json");
+        let before = std::fs::read_to_string(&file).unwrap();
+        let held = server_projects::lock::acquire(&file).unwrap();
+        let reply = call(
+            f.addr,
+            "POST",
+            "/api/projects/proj-synthetic/chats",
+            &write_headers(&f),
+            r#"{"chats":[{"id":"chat-synthetic","title":"T","updatedAt":5}]}"#,
+        )
+        .await;
+        drop(held);
+        assert_busy_reply(&reply);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn a_null_chat_list_body_is_chats_array_required() {
+        let f = front().await;
+        seed_project(&f);
+        let (status, _, body) = call(
+            f.addr,
+            "POST",
+            "/api/projects/proj-synthetic/chats",
+            &write_headers(&f),
+            "null",
+        )
+        .await;
+        assert_eq!(
+            (status, body.as_str()),
+            (400, r#"{"error":"chats array required"}"#)
+        );
+    }
 
     #[tokio::test]
     async fn a_chat_list_save_for_an_account_removed_mid_body_is_gone() {

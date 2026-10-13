@@ -1,5 +1,5 @@
 {
- "core": "e6cc63aa9e22982dab69e8502f30f05670138c2e",
+ "core": "f59155d9effbed083e911326bd74187613a7025c",
  "node": "v22",
  "user": "11111111-2222-4333-8444-555555555555",
  "cases": [
@@ -84,7 +84,7 @@
    "body": null,
    "expected": {
     "status": 200,
-    "body": "{\"chats\":[\"a\",\"b\",\"\\ud83d\",\"\\ude00\",\"\\udc00\",\"z\"]}",
+    "body": "{\"chats\":[]}",
     "freeAfter": null
    }
   },
@@ -152,7 +152,7 @@
    "body": null,
    "expected": {
     "status": 200,
-    "body": "{\"chats\":[\"x\",null]}",
+    "body": "{\"chats\":[]}",
     "freeAfter": null
    }
   },
@@ -168,8 +168,8 @@
    "method": "GET",
    "body": null,
    "expected": {
-    "status": 500,
-    "body": "{\"error\":\"Internal error\"}",
+    "status": 200,
+    "body": "{\"chats\":[]}",
     "freeAfter": null
    }
   },
@@ -474,8 +474,8 @@
    "method": "POST",
    "body": "{\"chats\":[{\"id\":\"bad\",\"title\":{\"toString\":1}}]}",
    "expected": {
-    "status": 400,
-    "body": "{\"error\":\"invalid JSON\"}",
+    "status": 500,
+    "body": "{\"error\":\"could not save the free chats; nothing was changed\"}",
     "freeAfter": null
    }
   },
@@ -730,7 +730,7 @@
    "body": "null",
    "expected": {
     "status": 400,
-    "body": "{\"error\":\"invalid JSON\"}",
+    "body": "{\"error\":\"chats array required\"}",
     "freeAfter": null
    }
   },
@@ -995,9 +995,9 @@
    "method": "POST",
    "body": "{\"chats\":[{\"id\":\"a\",\"updatedAt\":1}]}",
    "expected": {
-    "status": 400,
-    "body": "{\"error\":\"invalid JSON\"}",
-    "freeAfter": null
+    "status": 200,
+    "body": "{\"ok\":true}",
+    "freeAfter": "[\n  {\n    \"id\": \"a\",\n    \"title\": \"New chat\",\n    \"updatedAt\": 1,\n    \"preview\": \"\",\n    \"pinned\": false,\n    \"archived\": false\n  }\n]"
    }
   },
   {
@@ -1012,9 +1012,9 @@
    "method": "POST",
    "body": "{\"chats\":[{\"id\":\"a\",\"updatedAt\":1}]}",
    "expected": {
-    "status": 400,
-    "body": "{\"error\":\"invalid JSON\"}",
-    "freeAfter": null
+    "status": 200,
+    "body": "{\"ok\":true}",
+    "freeAfter": "[\n  {\n    \"id\": \"a\",\n    \"title\": \"New chat\",\n    \"updatedAt\": 1,\n    \"preview\": \"\",\n    \"pinned\": false,\n    \"archived\": false\n  }\n]"
    }
   },
   {
@@ -1029,9 +1029,9 @@
    "method": "POST",
    "body": "{\"chats\":[{\"id\":\"a\",\"updatedAt\":1}]}",
    "expected": {
-    "status": 400,
-    "body": "{\"error\":\"invalid JSON\"}",
-    "freeAfter": null
+    "status": 200,
+    "body": "{\"ok\":true}",
+    "freeAfter": "[\n  {\n    \"id\": \"a\",\n    \"title\": \"New chat\",\n    \"updatedAt\": 1,\n    \"preview\": \"\",\n    \"pinned\": false,\n    \"archived\": false\n  }\n]"
    }
   },
   {
@@ -1046,9 +1046,9 @@
    "method": "POST",
    "body": "{\"chats\":[{\"id\":\"a\",\"updatedAt\":1}]}",
    "expected": {
-    "status": 400,
-    "body": "{\"error\":\"invalid JSON\"}",
-    "freeAfter": null
+    "status": 200,
+    "body": "{\"ok\":true}",
+    "freeAfter": "[\n  {\n    \"id\": \"a\",\n    \"title\": \"New chat\",\n    \"updatedAt\": 1,\n    \"preview\": \"\",\n    \"pinned\": false,\n    \"archived\": false\n  }\n]"
    }
   },
   {
@@ -1114,8 +1114,8 @@
    "method": "POST",
    "body": "{\"chats\":[{\"id\":\"q\",\"updatedAt\":1}]}",
    "expected": {
-    "status": 400,
-    "body": "{\"error\":\"invalid JSON\"}",
+    "status": 500,
+    "body": "{\"error\":\"could not save the free chats; nothing was changed\"}",
     "freeAfter": null
    }
   },
@@ -1131,8 +1131,8 @@
    "method": "POST",
    "body": "{\"chats\":[{\"id\":\"q\",\"updatedAt\":1}]}",
    "expected": {
-    "status": 400,
-    "body": "{\"error\":\"invalid JSON\"}",
+    "status": 500,
+    "body": "{\"error\":\"could not save the free chats; nothing was changed\"}",
     "freeAfter": null
    }
   },
