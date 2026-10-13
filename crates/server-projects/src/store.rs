@@ -74,8 +74,26 @@ pub fn read(dir: &Path) -> Result<Vec<JValue>, StoreError> {
     let parsed = js_json::wtf16::parse(&text).map_err(|_| StoreError::Corrupt)?;
     match parsed.get("projects") {
         JValue::Undefined | JValue::Null => Ok(Vec::new()),
-        JValue::Arr(items) => Ok(items.clone()),
+        JValue::Arr(items) => {
+            let mut projects = items.clone();
+            drop_null_files(&mut projects);
+            Ok(projects)
+        }
         _ => Err(StoreError::Corrupt),
+    }
+}
+
+/// workspace.cjs load (#1236): in each project whose `files` is an array, the entries that are not
+/// objects (`f && typeof f === 'object'`: a `null` from a damaged projects.json, a number, a
+/// string) are dropped, so no reader meets them. Node does it to the list it holds, so the next
+/// save it makes writes the list without them; a write from here does the same.
+fn drop_null_files(projects: &mut [JValue]) {
+    for project in projects.iter_mut() {
+        if let JValue::Obj(fields) = project {
+            if let Some((_, JValue::Arr(files))) = fields.iter_mut().find(|(k, _)| k == "files") {
+                files.retain(|f| matches!(f, JValue::Obj(_) | JValue::Arr(_)));
+            }
+        }
     }
 }
 
@@ -346,6 +364,38 @@ mod free_tests {
         assert!(dir.join("free-chats.json.lock").exists(), "long-lived lock");
         std::fs::write(dir.join("free-chats.json"), "{nope").unwrap();
         assert_eq!(update_free(&dir, on, |s| (s, None)).unwrap(), None);
+    }
+
+    /// sbstndalton/noevia#1236 / #1621: a damaged projects.json with non-object `files` entries
+    /// reads without them, as core's workspace load holds it; the next write leaves them out.
+    #[test]
+    fn null_file_entries_are_dropped_on_read() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path();
+        std::fs::write(
+            dir.join(PROJECTS_FILE),
+            r#"{"projects":[{"id":"p1","files":[null,{"name":"a.md","content":"x"},7,"s",false]},{"id":"p2","files":"abc"},null,{"id":"p3"}]}"#,
+        )
+        .unwrap();
+        let projects = read(dir).unwrap();
+        assert_eq!(
+            js_json::wtf16::stringify(&JValue::Arr(projects)).unwrap(),
+            r#"[{"id":"p1","files":[{"name":"a.md","content":"x"}]},{"id":"p2","files":"abc"},null,{"id":"p3"}]"#
+        );
+        let on = RustProjects::from_env_value(Some("1")).unwrap();
+        update(dir, on, |_| ((), true)).unwrap();
+        let text = std::fs::read_to_string(dir.join(PROJECTS_FILE)).unwrap();
+        let saved = js_json::wtf16::parse(&text).unwrap();
+        let saved = match saved.get("projects") {
+            JValue::Arr(items) => items.clone(),
+            _ => Vec::new(),
+        };
+        let files = saved.first().unwrap().get("files");
+        assert_eq!(
+            js_json::wtf16::stringify(files).unwrap(),
+            r#"[{"name":"a.md","content":"x"}]"#,
+            "{text}"
+        );
     }
 
     /// sbstndalton/noevia#1425: a removed account's directory is never recreated, by either save.
