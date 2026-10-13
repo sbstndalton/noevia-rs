@@ -535,6 +535,11 @@ async fn ready_reports_node_readiness_and_the_served_version() {
         ("referrer-policy", "same-origin"),
         ("x-frame-options", "DENY"),
         ("content-security-policy", noevia_server::reply::CSP),
+        ("strict-transport-security", noevia_server::reply::HSTS),
+        (
+            "permissions-policy",
+            noevia_server::reply::PERMISSIONS_POLICY,
+        ),
     ] {
         assert_eq!(h[k], v, "{k}");
     }
