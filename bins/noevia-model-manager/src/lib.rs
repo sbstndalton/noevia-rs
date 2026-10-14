@@ -66,6 +66,25 @@ pub struct StateData {
     pub legacy: reqwest::Client,
 }
 
+/// #1668: what the Python child is told about the guarded embedding service: its container and
+/// address, so it skips only env names that point at it. `None` clears them all.
+pub fn embed_guard_env(service: Option<(&str, &str)>) -> [(&'static str, Option<String>); 3] {
+    [
+        (
+            "NOEVIA_EMBED_SERVICE_GUARDED",
+            service.map(|_| "1".to_owned()),
+        ),
+        (
+            "NOEVIA_EMBED_SERVICE_CONTAINER",
+            service.map(|(c, _)| c.to_owned()),
+        ),
+        (
+            "NOEVIA_EMBED_SERVICE_URL",
+            service.map(|(_, u)| u.to_owned()),
+        ),
+    ]
+}
+
 /// #1668: PUT /api/v1/embedding-service restarts and stops a container, so it is never left open.
 pub fn require_embed_token(container: &str, token: &str) -> Result<(), &'static str> {
     if !container.is_empty() && token.is_empty() {

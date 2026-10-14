@@ -733,3 +733,22 @@ fn all_hex_container_names_are_refused() {
     }
     assert!(ScopedControl::new("/x".into(), "cowork-embed-1").is_ok());
 }
+
+#[test]
+fn the_python_child_learns_which_container_and_address_are_guarded() {
+    let on = noevia_model_manager::embed_guard_env(Some(("cowork-embed-1", "http://embed:8080")));
+    assert_eq!(
+        on.map(|(k, v)| (k, v.unwrap_or_default())),
+        [
+            ("NOEVIA_EMBED_SERVICE_GUARDED", "1".to_owned()),
+            (
+                "NOEVIA_EMBED_SERVICE_CONTAINER",
+                "cowork-embed-1".to_owned()
+            ),
+            ("NOEVIA_EMBED_SERVICE_URL", "http://embed:8080".to_owned()),
+        ]
+    );
+    assert!(noevia_model_manager::embed_guard_env(None)
+        .iter()
+        .all(|(_, v)| v.is_none()));
+}
