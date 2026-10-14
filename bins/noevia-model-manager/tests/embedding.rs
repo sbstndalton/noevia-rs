@@ -840,6 +840,39 @@ async fn a_roll_back_never_loads_the_attempted_set() {
     );
 }
 
+#[tokio::test]
+async fn a_stop_then_failed_start_never_lets_the_old_warm_up_load() {
+    // #1696: [A] warming (stuck router), stop succeeds, [A] again fails in Docker and rolls back
+    // to off. A late Docker restart lists A unloaded: nothing may load it.
+    let f = fixture();
+    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    *f.router.stuck.lock().unwrap() = true;
+    f.router.set(&[]);
+    f.service
+        .apply(serve(&[(NOMIC, NOMIC_FILE)]))
+        .await
+        .unwrap();
+    f.service.apply(Desired::default()).await.unwrap();
+    *f.control.fail.lock().unwrap() = true;
+    assert!(f
+        .service
+        .apply(serve(&[(NOMIC, NOMIC_FILE)]))
+        .await
+        .is_err());
+    assert!(
+        f.service.saved().unwrap().unwrap().models.is_empty(),
+        "rolled back to off"
+    );
+    f.router.loads.lock().unwrap().clear();
+    f.router.set(&[(NOMIC, false)]);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let loads = f.router.loads.lock().unwrap().clone();
+    assert!(
+        loads.is_empty(),
+        "no stale warm-up loads after roll-back to off: {loads:?}"
+    );
+}
+
 /// Docker that answers until told to hang (#1682).
 #[derive(Default)]
 struct HangLater {

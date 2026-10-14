@@ -391,6 +391,8 @@ impl EmbeddingService {
         }
         self.set_broken(None);
         if saved.models.is_empty() {
+            // #1696: a warm-up of the set before the stop must not load anything later.
+            self.next_warm_generation();
             // A stopped container holds no model file.
             let saved = Saved::default();
             self.write_store(&saved).map_err(Refusal::Unavailable)?;
@@ -403,6 +405,9 @@ impl EmbeddingService {
     /// A failed or timed-out Docker action: go back to the models that were set, but keep every
     /// model either set may have loaded protected, because Docker may still carry the action out.
     fn roll_back(self: &Arc<Self>, current: &Saved, attempted: &Saved) {
+        // #1696: stop any running warm-up first, also when the restored set is empty (off): a
+        // late Docker restart onto the attempted preset must not be loaded by a stale warm-up.
+        self.next_warm_generation();
         let back = Saved {
             models: current.models.clone(),
             previous: unique(
@@ -419,10 +424,8 @@ impl EmbeddingService {
         if let Err(e) = stored.and(rendered) {
             self.set_broken(Some(e));
         }
-        // #1682 / #1685: a warm-up only starts after a Docker action succeeded, so the attempted
-        // set never has one; the one running (if any) is for the set restored here. Replace it
-        // with a fresh warm-up (new generation, the old one stops) so the restored models get
-        // loaded and `previous` is released once only they are loaded.
+        // #1682: the bump above also stopped the warm-up of the restored set; start a fresh one
+        // so the restored models get loaded and `previous` is released once only they are loaded.
         if !back.models.is_empty() {
             self.spawn_warm(back.models.iter().map(|e| e.model.clone()).collect());
         }
