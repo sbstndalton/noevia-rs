@@ -1049,3 +1049,105 @@ async fn a_failing_re_warm_backs_off() {
     watcher.abort();
     assert!(f.router.models.lock().unwrap()[0].loaded);
 }
+
+// ── #1726: image presets (multimodal RAG) ───────────────────────────────────────────────────────
+fn with_projector(f: &Fixture, names: &[&str]) {
+    for name in names {
+        std::fs::write(
+            f.dir.path().join("models/embeddinggemma-2").join(name),
+            b"GGUF",
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn image_presets_are_off_unless_multimodal_rag_is_on() {
+    let f = fixture();
+    with_projector(&f, &["mmproj-embeddinggemma-2-F16.gguf"]);
+    f.service.seed(GEMMA, GEMMA_FILE).unwrap();
+    assert!(!preset(&f).contains(".vision"), "{}", preset(&f));
+    assert!(!preset(&f).contains("mmproj"));
+}
+
+#[tokio::test]
+async fn a_projector_beside_the_model_gets_its_own_preset_that_never_loads_at_start() {
+    let f = fixture_with(|s| s.with_vision(true));
+    with_projector(&f, &["mmproj-embeddinggemma-2-F16.gguf"]);
+    f.service.seed(GEMMA, GEMMA_FILE).unwrap();
+    let text = preset(&f);
+    assert!(
+        text.contains("\n[embeddinggemma-2]\nmodel = /models/embeddinggemma-2/embeddinggemma-2-Q8_0.gguf\n\n[embeddinggemma-2.vision]\nmodel = /models/embeddinggemma-2/embeddinggemma-2-Q8_0.gguf\nmmproj = /models/embeddinggemma-2/mmproj-embeddinggemma-2-F16.gguf\nload-on-startup = false\n"),
+        "{text}"
+    );
+    // The text preset itself carries no projector: text embedding never loads it.
+    assert_eq!(text.matches("mmproj = ").count(), 1);
+    // Status names the alias for web (rag.cjs mediaModelFor).
+    f.router
+        .set(&[(GEMMA, false), ("embeddinggemma-2.vision", false)]);
+    let status = f.service.status().await;
+    assert_eq!(status["vision"][0]["model"], GEMMA);
+    assert_eq!(status["vision"][0]["alias"], "embeddinggemma-2.vision");
+    assert_eq!(
+        status["vision"][0]["mmproj"],
+        "embeddinggemma-2/mmproj-embeddinggemma-2-F16.gguf"
+    );
+    // A warm-up loads the text model only.
+    f.service.warm(&[GEMMA.to_string()]).await;
+    assert_eq!(
+        f.router.loads.lock().unwrap().clone(),
+        vec![GEMMA.to_string()]
+    );
+}
+
+#[test]
+fn a_model_without_exactly_one_projector_gets_no_image_preset() {
+    let f = fixture_with(|s| s.with_vision(true));
+    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    assert!(!preset(&f).contains(".vision"));
+    let g = fixture_with(|s| s.with_vision(true));
+    with_projector(&g, &["mmproj-a.gguf", "mmproj-b.gguf"]);
+    g.service.seed(GEMMA, GEMMA_FILE).unwrap();
+    assert!(!preset(&g).contains(".vision"), "ambiguous: two projectors");
+}
+
+#[tokio::test]
+async fn the_projector_of_a_served_model_cannot_be_deleted() {
+    let f = fixture_with(|s| s.with_vision(true));
+    with_projector(&f, &["mmproj-embeddinggemma-2-F16.gguf"]);
+    f.service.seed(GEMMA, GEMMA_FILE).unwrap();
+    f.router.set(&[(GEMMA, true)]);
+    assert!(
+        f.service
+            .protects("embeddinggemma-2/mmproj-embeddinggemma-2-F16.gguf")
+            .await
+    );
+    assert!(f.service.protects("mmproj-embeddinggemma-2-F16").await);
+    let off = fixture();
+    with_projector(&off, &["mmproj-embeddinggemma-2-F16.gguf"]);
+    off.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    off.router.set(&[(NOMIC, true)]);
+    assert!(
+        !off.service
+            .protects("embeddinggemma-2/mmproj-embeddinggemma-2-F16.gguf")
+            .await
+    );
+}
+
+#[tokio::test]
+async fn a_loaded_image_preset_does_not_hold_back_releasing_the_old_model() {
+    let f = fixture_with(|s| s.with_vision(true));
+    with_projector(&f, &["mmproj-embeddinggemma-2-F16.gguf"]);
+    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.router.set(&[(NOMIC, true)]);
+    f.service
+        .apply(serve(&[(GEMMA, GEMMA_FILE)]))
+        .await
+        .unwrap();
+    assert_eq!(f.service.saved().unwrap().unwrap().previous.len(), 1);
+    // The router restarted onto the new preset: the new model and its image preset are loaded.
+    f.router
+        .set(&[(GEMMA, true), ("embeddinggemma-2.vision", true)]);
+    settle(&f).await;
+    assert!(f.service.saved().unwrap().unwrap().previous.is_empty());
+}

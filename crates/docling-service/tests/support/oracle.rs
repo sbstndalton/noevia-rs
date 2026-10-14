@@ -10,23 +10,23 @@ use std::{
     time::Duration,
 };
 pub type Error = Box<dyn std::error::Error>;
-pub const REF: &str = "e99c41e02d0226b9d432c3da1741f772da6c57ba";
+pub const REF: &str = "b45a122c04173a14e884fa1aa93a6a101281431d";
 pub const HASHES: &[(&str, &str)] = &[
     (
         "server.py",
-        "97bda681d83b3137fd4261c37d30df7cd261f55555ca8b62982c02f892d9d082",
+        "cc70c4d6aa015083e78bf09c67aad230ee7e09bb0759bc5c2993d8571f131880",
     ),
     (
         "isolation.py",
-        "49bef971629aebaf68a63b358a021d702e3660dbe4876d6d05dc45e57b142983",
+        "b67b303c18fa5331fe9fb3094370fed572fd1a070a0adf920e912757efd4e7d0",
     ),
     (
         "isolated_worker.py",
-        "543fc179d5a58b1dfe919016a163d3786b93be8a44c232b2977e3004ba38b281",
+        "b41e2cb8f0a5748038ef35d87d34dd111f57e71b96cf50a576a334844e5e4013",
     ),
     (
         "extract.py",
-        "37b817e24184a5b5d0a0759376ec2ded87de50a36c09d18e46553dc2b322b8b4",
+        "ffa7f5e383834acdb55a8b387e14929c8a8accf6a5b0ae651f87611006b42e69",
     ),
 ];
 fn string(s: impl Into<String>) -> JValue {
