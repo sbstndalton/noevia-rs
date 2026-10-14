@@ -9,6 +9,15 @@
 //! `/api/models`, `/api/model-manager`, `/api/auto-roles`, past the session and CSRF gate) drops
 //! the shared answer before it is proxied, as Node's handler drops its own before the write runs;
 //! a request the gate refuses drops nothing, so a signed-out client cannot force engine reads.
+//! Those gate reads are bounded too ([`INVALIDATION_PERMITS`]); past the bound the drop is skipped,
+//! which costs at most one answer up to [`STATS_TTL`] old, never an engine read.
+//!
+//! A request with no credential at all (no `cowork_session` cookie, no Authorization header) gets
+//! Node's 401 before it takes a gate permit, so signed-out polls can neither see 503 nor use up the
+//! permits signed-in polls need.
+//!
+//! HEAD stays Node's on purpose (sbstndalton/noevia#1654): nothing in the app sends it, Node's gate
+//! refuses it signed out, and owning it would add a second contract for no caller.
 //!
 //! The engine address is configuration (config.rs); nothing from the request reaches it.
 use crate::{identity, reply, App};
@@ -27,10 +36,14 @@ const ROUTE: &str = "/api/stats";
 /// 503 rather than queued (every open page polls every 2-3 s and simply asks again).
 const GATE_PERMITS: usize = 32;
 
+/// Gate reads in flight at once for model and role writes (see the module documentation).
+pub const INVALIDATION_PERMITS: usize = 4;
+
 pub struct StatsLayer {
     engine: Arc<Engine>,
     read: SharedRead<Arc<Reply>>,
     gate: Arc<Semaphore>,
+    invalidation_gate: Arc<Semaphore>,
 }
 
 impl StatsLayer {
@@ -39,6 +52,7 @@ impl StatsLayer {
             engine,
             read: SharedRead::new(STATS_TTL),
             gate: Arc::new(Semaphore::new(GATE_PERMITS)),
+            invalidation_gate: Arc::new(Semaphore::new(INVALIDATION_PERMITS)),
         }
     }
 
@@ -53,6 +67,19 @@ impl StatsLayer {
     /// Drops the shared answer.
     pub fn clear(&self) {
         self.read.clear();
+    }
+
+    /// Takes every gate permit (poll and invalidation) until the returned guards drop: what a
+    /// burst of slow identity reads looks like, for tests.
+    #[doc(hidden)]
+    pub fn hold_every_permit(&self) -> Vec<tokio::sync::OwnedSemaphorePermit> {
+        [&self.gate, &self.invalidation_gate]
+            .into_iter()
+            .filter_map(|g| {
+                let n = u32::try_from(g.available_permits()).ok()?;
+                Arc::clone(g).try_acquire_many_owned(n).ok()
+            })
+            .collect()
     }
 }
 
@@ -78,10 +105,13 @@ pub async fn serve(
         return app.proxy.forward(conn.peer, req).await;
     }
     let (parts, _body) = req.into_parts();
+    let creds = identity::creds_of(&parts);
+    if app.identity.authenticator().is_some() && !server_auth::request::could_authenticate(&creds) {
+        return identity::Rejection::Refused(server_auth::Refusal::Unauthorized).into_response();
+    }
     let Ok(permit) = Arc::clone(&stats.gate).try_acquire_owned() else {
         return busy();
     };
-    let creds = identity::creds_of(&parts);
     let layer = Arc::clone(&app.identity);
     let now = identity::now_ms();
     let gated = tokio::task::spawn_blocking(move || {
@@ -135,12 +165,21 @@ pub fn invalidation(app: &App, req: &Request<Body>, whatwg: Option<&str>) -> Opt
 
 impl Invalidation {
     pub async fn run(self, app: &Arc<App>) {
+        if !server_auth::request::could_authenticate(&self.creds) {
+            return;
+        }
+        let Ok(permit) = Arc::clone(&self.stats.invalidation_gate).try_acquire_owned() else {
+            return;
+        };
         let layer = Arc::clone(&app.identity);
         let (creds, path) = (self.creds, self.path);
         let now = identity::now_ms();
-        let passed = tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, &path, now))
-            .await
-            .is_ok_and(|r| r.is_ok());
+        let passed = tokio::task::spawn_blocking(move || {
+            let _p = permit;
+            layer.gate_blocking(&creds, &path, now)
+        })
+        .await
+        .is_ok_and(|r| r.is_ok());
         if passed {
             self.stats.clear();
         }
