@@ -235,6 +235,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             None => child_command.env_remove(key),
         };
     }
+    // #1747: idle chat models unload themselves (llama.cpp `sleep-idle-seconds` in the chat
+    // preset's `[*]` section). A bad value stops startup; a preset that cannot be rewritten does not.
+    let idle_unload = Arc::new(noevia_model_manager::idle_unload::Reconciler::new(
+        environment("MODELS_INI_PATH", "/models/models.ini")?.into(),
+        noevia_model_manager::idle_unload::parse(Some(&environment(
+            noevia_model_manager::idle_unload::ENV,
+            "",
+        )?))?,
+    ));
+    if let Err(error) = idle_unload.reconcile().await {
+        eprintln!("idle unload: {error}");
+    }
     let mut child = child_command.spawn()?;
     let _host_sampler = host
         .as_ref()
@@ -254,6 +266,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         permits: tokio::sync::Semaphore::new(4),
         legacy,
         legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
+        idle_unload: Some(idle_unload),
     });
     // Retain native stores and their lifetime writer locks until the child is reaped.
     let serve = axum::serve(listener, router(state.clone()));

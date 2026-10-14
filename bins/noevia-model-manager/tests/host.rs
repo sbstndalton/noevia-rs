@@ -138,3 +138,55 @@ async fn sampler_cadence_cancellation_and_timeout_bound_work() {
     tokio::task::yield_now().await;
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
+
+/// #1747: a GTT read that never returns ends only the GTT reader; /proc sampling carries on.
+#[tokio::test(start_paused = true)]
+async fn stuck_gtt_read_never_stalls_host_sampling() {
+    let history = Arc::new(Mutex::new(HostHistory::default()));
+    let gtt_calls = Arc::new(AtomicUsize::new(0));
+    let observed = gtt_calls.clone();
+    let _sampler = HostSampler::start_with_gtt(
+        history.clone(),
+        || async {
+            (
+                Ok("cpu 0 0 0 0".into()),
+                Ok("MemTotal: 1048576 kB\n".into()),
+            )
+        },
+        move || {
+            observed.fetch_add(1, Ordering::SeqCst);
+            std::future::pending()
+        },
+    );
+    for _ in 0..5 {
+        tokio::task::yield_now().await;
+        tokio::time::advance(std::time::Duration::from_secs(2)).await;
+        tokio::task::yield_now().await;
+    }
+    assert!(history.lock().await.retained() >= 5);
+    assert_eq!(gtt_calls.load(Ordering::SeqCst), 1);
+    let json = serde_json::to_value(history.lock().await.response()).unwrap();
+    assert!(json["current"].get("gtt_used_gb").is_none());
+}
+
+#[tokio::test(start_paused = true)]
+async fn gtt_reading_reaches_host_points() {
+    let history = Arc::new(Mutex::new(HostHistory::default()));
+    let _sampler = HostSampler::start_with_gtt(
+        history.clone(),
+        || async {
+            (
+                Ok("cpu 0 0 0 0".into()),
+                Ok("MemTotal: 1048576 kB\n".into()),
+            )
+        },
+        || async { Some(7_086_696_448) },
+    );
+    for _ in 0..3 {
+        tokio::task::yield_now().await;
+        tokio::time::advance(std::time::Duration::from_secs(2)).await;
+        tokio::task::yield_now().await;
+    }
+    let json = serde_json::to_value(history.lock().await.response()).unwrap();
+    assert_eq!(json["current"]["gtt_used_gb"], 6.6);
+}
