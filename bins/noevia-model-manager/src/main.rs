@@ -142,6 +142,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    // #1668: the settings-driven embedding service. The preset is rendered (and the env seed
+    // read, once) before the listener binds, so a compose `depends_on: service_healthy` start
+    // never shows the embed router a missing preset.
+    let embed_container = environment("EMBED_CONTAINER", "")?;
+    let embedding = if embed_container.is_empty() {
+        None
+    } else {
+        let data = environment("DATA_DIR", "/data")?;
+        let service = noevia_model_manager::embedding::EmbeddingService::new(
+            embed_container.clone(),
+            environment("MODELS_DIR", "/models")?.into(),
+            environment("EMBED_MODELS_MOUNT", "/models")?,
+            environment("EMBED_PRESET_PATH", "/config/embedding.ini")?.into(),
+            std::path::Path::new(&data).join("embedding-service.json"),
+            Arc::new(noevia_model_manager::docker::ScopedControl::new(
+                docker.socket.clone(),
+                &embed_container,
+            )?),
+            Arc::new(noevia_model_manager::embedding::HttpProbe::new(
+                &environment("EMBED_URL", "http://embed:8080")?,
+            )?),
+        );
+        service.seed(
+            &environment("EMBEDDING_MODEL", "")?,
+            &environment("EMBED_MODEL_FILE", "")?,
+        )?;
+        Some(Arc::new(service))
+    };
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;
     // Refuse an existing loopback listener before spawn: ownership is never borrowed from
     // an unknown process. uvicorn receives only the fixed private loopback address.
@@ -183,6 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "native-prompts")]
         prompts,
         sections,
+        embedding,
         host,
         token,
         configured,

@@ -43,21 +43,7 @@ impl UnixDocker {
         if !allowed_read(path) {
             return Err("Docker operation refused");
         }
-        let stream = UnixStream::connect(&self.socket)
-            .await
-            .map_err(|_| "docker unreachable")?;
-        let (mut sender, connection) = http1::Builder::new()
-            .max_buf_size(8192)
-            .handshake(TokioIo::new(stream))
-            .await
-            .map_err(|_| "Docker protocol refused")?;
-        // The driver belongs to this request. Every return from the exchange observes its join
-        // before the caller can release admission. If this future is dropped instead (timeout or
-        // cancellation), the driver is only aborted; that drop path observes no join.
-        let driver = AbortDriver::spawn(connection);
-        let result = exchange(&mut sender, path).await;
-        driver.finish().await;
-        result
+        send(&self.socket, "GET", path).await
     }
     async fn inspect(&self, name: &str) -> Result<ContainerInspectResponse, &'static str> {
         let path = format!("/containers/{}/json", segment(name)?);
@@ -72,11 +58,37 @@ impl UnixDocker {
     }
 }
 
+async fn send(
+    socket: &std::path::Path,
+    method: &'static str,
+    path: &str,
+) -> Result<(StatusCode, Vec<u8>), &'static str> {
+    let stream = UnixStream::connect(socket)
+        .await
+        .map_err(|_| "docker unreachable")?;
+    let (mut sender, connection) = http1::Builder::new()
+        .max_buf_size(8192)
+        .handshake(TokioIo::new(stream))
+        .await
+        .map_err(|_| "Docker protocol refused")?;
+    // The driver belongs to this request. Every return from the exchange observes its join
+    // before the caller can release admission. If this future is dropped instead (timeout or
+    // cancellation), the driver is only aborted; that drop path observes no join.
+    let driver = AbortDriver::spawn(connection);
+    let result = exchange(&mut sender, method, path).await;
+    driver.finish().await;
+    result
+}
+
 type Sender = http1::SendRequest<Empty<Bytes>>;
 
-async fn exchange(sender: &mut Sender, path: &str) -> Result<(StatusCode, Vec<u8>), &'static str> {
+async fn exchange(
+    sender: &mut Sender,
+    method: &'static str,
+    path: &str,
+) -> Result<(StatusCode, Vec<u8>), &'static str> {
     let request = Request::builder()
-        .method("GET")
+        .method(method)
         .uri(path)
         .header("host", "localhost")
         .header("connection", "close")
@@ -117,7 +129,8 @@ async fn exchange(sender: &mut Sender, path: &str) -> Result<(StatusCode, Vec<u8
         }
     }
     let status = response.status();
-    if status.is_redirection() {
+    // Docker answers 304 to stopping an already-stopped container; that is not a redirect.
+    if status.is_redirection() && !(method == "POST" && status == StatusCode::NOT_MODIFIED) {
         return Err("Docker redirect refused");
     }
     let mut body = response.into_body();
@@ -215,6 +228,50 @@ fn segment(value: &str) -> Result<&str, &'static str> {
     }
     Ok(value)
 }
+/// The only Docker writes the model manager may make (#1668): restart or stop of the one
+/// configured embedding container. Never other containers, never create, exec or kill.
+pub fn allowed_write(path: &str, container: &str) -> bool {
+    segment(container).is_ok()
+        && (path == format!("/containers/{container}/restart?t=10")
+            || path == format!("/containers/{container}/stop?t=10"))
+}
+
+/// Docker control scoped to one container fixed at construction.
+pub struct ScopedControl {
+    pub socket: PathBuf,
+    container: String,
+}
+impl ScopedControl {
+    pub fn new(socket: PathBuf, container: &str) -> Result<Self, &'static str> {
+        segment(container)?;
+        Ok(Self {
+            socket,
+            container: container.to_owned(),
+        })
+    }
+}
+impl crate::embedding::ServiceControl for ScopedControl {
+    fn act(&self, action: crate::embedding::Action) -> Job<'_, ()> {
+        Box::pin(async move {
+            let verb = match action {
+                crate::embedding::Action::Restart => "restart",
+                crate::embedding::Action::Stop => "stop",
+            };
+            let path = format!("/containers/{}/{verb}?t=10", self.container);
+            if !allowed_write(&path, &self.container) {
+                return Err("Docker operation refused");
+            }
+            let (status, _) = send(&self.socket, "POST", &path).await?;
+            match status.as_u16() {
+                // 304: already stopped.
+                204 | 304 => Ok(()),
+                404 => Err("embedding container not found"),
+                _ => Err("Docker refused the embedding container action"),
+            }
+        })
+    }
+}
+
 fn allowed_read(path: &str) -> bool {
     if path == "/containers/json?all=true&limit=1025&size=false" {
         return true;

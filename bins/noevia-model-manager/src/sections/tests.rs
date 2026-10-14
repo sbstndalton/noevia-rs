@@ -100,6 +100,7 @@ fn state(reader: Arc<dyn Read>) -> Arc<crate::StateData> {
         #[cfg(feature = "native-prompts")]
         prompts: None,
         sections: Some(Arc::new(Sections::new(reader))),
+        embedding: None,
         host: None,
         token: "fixture-token".into(),
         configured: Vec::new(),

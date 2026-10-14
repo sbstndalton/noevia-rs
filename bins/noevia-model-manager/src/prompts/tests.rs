@@ -175,6 +175,7 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
                 .unwrap(),
         )),
         sections: None,
+        embedding: None,
         host: None,
         token: "synthetic-service-token".into(),
         configured: vec![],

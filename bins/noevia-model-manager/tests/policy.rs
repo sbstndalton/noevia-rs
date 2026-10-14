@@ -52,6 +52,7 @@ fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
         #[cfg(feature = "native-prompts")]
         prompts: None,
         sections: None,
+        embedding: None,
         host: None,
         token: token.into(),
         configured: vec!["synthetic-engine".into()],

@@ -60,6 +60,7 @@ pub fn state(reader: Arc<dyn DiagnosisRead>, configured: Vec<String>) -> Arc<Sta
         #[cfg(feature = "native-prompts")]
         prompts: None,
         sections: None,
+        embedding: None,
         host: None,
         token: TOKEN.into(),
         configured,

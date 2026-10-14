@@ -3,6 +3,7 @@ pub mod diagnose;
 #[cfg(feature = "native-diagnose")]
 pub mod diagnose_docker;
 pub mod docker;
+pub mod embedding;
 pub mod host;
 #[cfg(feature = "native-prompts")]
 pub mod prompts;
@@ -33,7 +34,7 @@ pub fn legacy_client() -> Result<reqwest::Client, reqwest::Error> {
         .timeout(LEGACY_TIMEOUT)
         .build()
 }
-type Job<'a, T> = Pin<Box<dyn Future<Output = Result<T, &'static str>> + Send + 'a>>;
+pub type Job<'a, T> = Pin<Box<dyn Future<Output = Result<T, &'static str>> + Send + 'a>>;
 
 #[derive(Clone, Debug)]
 pub struct Container {
@@ -54,6 +55,8 @@ pub struct StateData {
     #[cfg(feature = "native-prompts")]
     pub prompts: Option<Arc<prompts::Prompts>>,
     pub sections: Option<Arc<sections::Sections>>,
+    /// #1668: present only when EMBED_CONTAINER names the embedding service.
+    pub embedding: Option<Arc<embedding::EmbeddingService>>,
     pub host: Option<Arc<tokio::sync::Mutex<host::HostHistory>>>,
     pub token: String,
     pub configured: Vec<String>,
@@ -590,6 +593,14 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    if let Some(service) = state.embedding.clone() {
+        if path == "/api/v1/embedding-service" {
+            return native_embedding(&service, req).await;
+        }
+        if path == "/api/v1/models/delete" && req.method() == Method::POST {
+            return guarded_delete(state, service, req).await;
+        }
+    }
     let name = path
         .strip_prefix("/api/v1/backends/")
         .and_then(|p| p.strip_suffix("/logs"))
@@ -600,6 +611,11 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         }
         return native_logs(&state, name, req.uri().query().unwrap_or_default()).await;
     }
+    forward(state, req).await
+}
+
+async fn forward(state: Arc<StateData>, req: Request) -> Response {
+    let path = req.uri().path();
     if !python_owned(req.method().as_str(), path) {
         if ["GET", "POST", "PUT", "DELETE"]
             .iter()
@@ -658,6 +674,60 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         Body::from(bytes),
     )
         .into_response()
+}
+
+async fn native_embedding(service: &Arc<embedding::EmbeddingService>, req: Request) -> Response {
+    match *req.method() {
+        Method::GET => Json(service.status().await).into_response(),
+        Method::PUT => {
+            let Ok(raw) = to_bytes(req.into_body(), 16 * 1024).await else {
+                return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+            };
+            let Ok(choice) = serde_json::from_slice::<embedding::Choice>(&raw) else {
+                return detail(StatusCode::BAD_REQUEST, "invalid embedding choice");
+            };
+            match service.apply(choice).await {
+                Ok(saved) => (StatusCode::ACCEPTED, Json(json!(saved))).into_response(),
+                Err(embedding::Refusal::Invalid(text)) => detail(StatusCode::BAD_REQUEST, text),
+                Err(embedding::Refusal::Unavailable(text)) => {
+                    detail(StatusCode::SERVICE_UNAVAILABLE, text)
+                }
+            }
+        }
+        _ => detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed"),
+    }
+}
+
+/// #336/#1668: the embedding router holds its model through the preset, not its command line,
+/// so the legacy holder scan cannot see it. Refuse here, before anything is forwarded.
+async fn guarded_delete(
+    state: Arc<StateData>,
+    service: Arc<embedding::EmbeddingService>,
+    req: Request,
+) -> Response {
+    let (parts, body) = req.into_parts();
+    let Ok(raw) = to_bytes(body, REQUEST_CAP).await else {
+        return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+    };
+    let keys: Vec<String> = serde_json::from_slice::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| v.get("models").and_then(|m| m.as_array()).cloned())
+        .unwrap_or_default()
+        .iter()
+        .map(|k| match k {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        })
+        .collect();
+    for key in &keys {
+        if service.protects(key).await {
+            return detail(
+                StatusCode::CONFLICT,
+                "The embedding service is set to run this model or still has it loaded. Switch embedding to another model or turn embedding off first.",
+            );
+        }
+    }
+    forward(state, Request::from_parts(parts, Body::from(raw))).await
 }
 
 #[cfg(feature = "native-prompts")]
