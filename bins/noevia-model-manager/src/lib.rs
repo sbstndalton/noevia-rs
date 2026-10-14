@@ -366,9 +366,8 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     {
         return dispatch(state, req).await;
     }
-    let permit = match state.permits.try_acquire() {
-        Ok(p) => p,
-        Err(_) => return detail(StatusCode::SERVICE_UNAVAILABLE, "service is busy"),
+    let Some(admission) = Admission::try_new(&state) else {
+        return detail(StatusCode::SERVICE_UNAVAILABLE, "service is busy");
     };
     let native = path
         .strip_prefix("/api/v1/backends/")
@@ -386,14 +385,69 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     } else {
         LEGACY_TIMEOUT
     };
-    let result = tokio::time::timeout(budget, dispatch(state.clone(), req)).await;
-    drop(permit);
+    // The dispatch future is dropped inside the scope (also on a timeout), so a Docker driver it
+    // leaves behind is registered with this admission and joined before the permit returns.
+    // (tokio drops a scoped future inside its scope, also when the request itself is dropped.)
+    let result = docker::ORPHANS
+        .scope(
+            admission.orphans.clone(),
+            tokio::time::timeout(budget, dispatch(state.clone(), req)),
+        )
+        .await;
+    admission.release().await;
     match result {
         Ok(r) => r,
         Err(_) => detail(
             StatusCode::GATEWAY_TIMEOUT,
             "model manager request timed out",
         ),
+    }
+}
+
+/// One of the request permits (noevia#1385). The permit is taken out of the semaphore with
+/// `forget` and given back only after every Docker driver the request left behind has been
+/// joined: inline in [`Admission::release`], or, when the request future is dropped (the client
+/// went away), by a task that owns those joins and the permit until they are observed.
+struct Admission {
+    state: Arc<StateData>,
+    orphans: docker::Orphans,
+    held: bool,
+}
+
+impl Admission {
+    fn try_new(state: &Arc<StateData>) -> Option<Self> {
+        state.permits.try_acquire().ok()?.forget();
+        Some(Admission {
+            state: state.clone(),
+            orphans: Default::default(),
+            held: true,
+        })
+    }
+
+    async fn release(mut self) {
+        docker::observe(&self.orphans).await;
+        self.held = false;
+        self.state.permits.add_permits(1);
+    }
+}
+
+impl Drop for Admission {
+    fn drop(&mut self) {
+        if !self.held {
+            return;
+        }
+        self.held = false;
+        let (state, orphans) = (self.state.clone(), self.orphans.clone());
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                runtime.spawn(async move {
+                    docker::observe(&orphans).await;
+                    state.permits.add_permits(1);
+                });
+            }
+            // No runtime left (shutdown): no task can still be running a driver.
+            Err(_) => state.permits.add_permits(1),
+        }
     }
 }
 
