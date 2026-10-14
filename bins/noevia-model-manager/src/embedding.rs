@@ -28,6 +28,10 @@ pub const MAX_MODELS: usize = 2;
 
 /// Longest a restart or stop of the embedding container may take before the change is rolled back.
 pub const ACT_TIMEOUT: Duration = Duration::from_secs(30);
+/// #1677: how long a change waits for another change (or a delete check) to finish. The request
+/// budget is ACT_TIMEOUT + LOCK_WAIT plus a margin, so a change that waited too long gives up
+/// itself and can never be applied after its caller was told it failed.
+pub const LOCK_WAIT: Duration = Duration::from_secs(15);
 
 /// One served model. `model` is the router alias (the name clients send); `file` is the GGUF
 /// path relative to the models directory.
@@ -88,6 +92,9 @@ pub struct EmbeddingService {
     /// delete is refused (fail closed) and status reports the error; a successful apply clears it.
     broken: std::sync::Mutex<Option<&'static str>>,
     act_timeout: Duration,
+    lock_wait: Duration,
+    /// #1678: bumped by every new warm-up and by a roll-back; an older warm-up stops.
+    warm_generation: std::sync::atomic::AtomicU64,
     warm_interval: Duration,
     warm_attempts: u32,
 }
@@ -137,6 +144,8 @@ impl EmbeddingService {
             lock: tokio::sync::Mutex::new(()),
             broken: std::sync::Mutex::new(None),
             act_timeout: ACT_TIMEOUT,
+            lock_wait: LOCK_WAIT,
+            warm_generation: std::sync::atomic::AtomicU64::new(0),
             warm_interval: Duration::from_secs(2),
             warm_attempts: 90,
         }
@@ -147,6 +156,13 @@ impl EmbeddingService {
     pub fn with_warm(mut self, interval: Duration, attempts: u32) -> Self {
         self.warm_interval = interval;
         self.warm_attempts = attempts;
+        self
+    }
+
+    /// Test hook: shorten the wait for the change lock.
+    #[must_use]
+    pub fn with_lock_wait(mut self, wait: Duration) -> Self {
+        self.lock_wait = wait;
         self
     }
 
@@ -235,9 +251,26 @@ impl EmbeddingService {
         if saved.models.is_empty() {
             return;
         }
+        self.spawn_warm(saved.models.iter().map(|e| e.model.clone()).collect());
+    }
+
+    /// Start a warm-up for `models`; any earlier one stops at its next step.
+    fn spawn_warm(self: &Arc<Self>, models: Vec<String>) {
+        let generation = self.next_warm_generation();
         let this = self.clone();
-        let models: Vec<String> = saved.models.iter().map(|e| e.model.clone()).collect();
-        tokio::spawn(async move { this.warm(&models).await });
+        tokio::spawn(async move { this.warm_generation_run(&models, generation).await });
+    }
+
+    fn next_warm_generation(&self) -> u64 {
+        self.warm_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            .wrapping_add(1)
+    }
+
+    fn warm_current(&self, generation: u64) -> bool {
+        self.warm_generation
+            .load(std::sync::atomic::Ordering::SeqCst)
+            == generation
     }
 
     fn write_store(&self, saved: &Saved) -> Result<(), &'static str> {
@@ -315,7 +348,11 @@ impl EmbeddingService {
     }
 
     async fn apply_held(self: &Arc<Self>, desired: Desired) -> Result<Saved, Refusal> {
-        let _guard = self.lock.lock().await;
+        let Ok(_guard) = tokio::time::timeout(self.lock_wait, self.lock.lock()).await else {
+            return Err(Refusal::Unavailable(
+                "another embedding change is still running; nothing was changed",
+            ));
+        };
         // Validate under the lock: a delete holding it may just have removed the file.
         self.validate(&desired)?;
         let current = self
@@ -359,15 +396,15 @@ impl EmbeddingService {
             self.write_store(&saved).map_err(Refusal::Unavailable)?;
             return Ok(saved);
         }
-        let this = self.clone();
-        let models: Vec<String> = saved.models.iter().map(|e| e.model.clone()).collect();
-        tokio::spawn(async move { this.warm(&models).await });
+        self.spawn_warm(saved.models.iter().map(|e| e.model.clone()).collect());
         Ok(saved)
     }
 
     /// A failed or timed-out Docker action: go back to the models that were set, but keep every
     /// model either set may have loaded protected, because Docker may still carry the action out.
     fn roll_back(&self, current: &Saved, attempted: &Saved) {
+        // #1678: a warm-up for the attempted set must not keep loading models that were rolled back.
+        self.next_warm_generation();
         let back = Saved {
             models: current.models.clone(),
             previous: unique(
@@ -389,8 +426,16 @@ impl EmbeddingService {
     /// Load every alias once the restarted router answers, then release `previous` when the router
     /// reports nothing else loaded.
     pub async fn warm(&self, wanted: &[String]) {
+        let generation = self.next_warm_generation();
+        self.warm_generation_run(wanted, generation).await;
+    }
+
+    async fn warm_generation_run(&self, wanted: &[String], generation: u64) {
         for _ in 0..self.warm_attempts {
             tokio::time::sleep(self.warm_interval).await;
+            if !self.warm_current(generation) {
+                return;
+            }
             let Ok(models) = self.probe.models().await else {
                 continue;
             };
@@ -398,6 +443,9 @@ impl EmbeddingService {
             if wanted.iter().all(|w| loaded(w)) {
                 if models.iter().all(|m| !m.loaded || wanted.contains(&m.id)) {
                     let _guard = self.lock.lock().await;
+                    if !self.warm_current(generation) {
+                        return;
+                    }
                     if let Ok(Some(mut saved)) = self.saved() {
                         let current: Vec<&String> = saved.models.iter().map(|e| &e.model).collect();
                         if current.len() == wanted.len()

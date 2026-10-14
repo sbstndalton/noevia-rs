@@ -30,11 +30,19 @@ use tower::ServiceExt;
 #[derive(Default)]
 struct Control {
     actions: Mutex<Vec<Action>>,
+    fail: Mutex<bool>,
 }
 impl ServiceControl for Control {
     fn act(&self, action: Action) -> Job<'_, ()> {
         self.actions.lock().unwrap().push(action);
-        Box::pin(async { Ok(()) })
+        let fail = *self.fail.lock().unwrap();
+        Box::pin(async move {
+            if fail {
+                Err("Docker refused the embedding container action")
+            } else {
+                Ok(())
+            }
+        })
     }
 }
 
@@ -44,6 +52,8 @@ struct Router {
     models: Mutex<Vec<Served>>,
     loads: Mutex<Vec<String>>,
     reachable: Mutex<bool>,
+    /// The router accepts loads but never finishes one.
+    stuck: Mutex<bool>,
 }
 impl Router {
     fn set(&self, models: &[(&str, bool)]) {
@@ -71,6 +81,9 @@ impl Probe for Router {
     }
     fn load<'a>(&'a self, model: &'a str) -> Job<'a, ()> {
         self.loads.lock().unwrap().push(model.into());
+        if *self.stuck.lock().unwrap() {
+            return Box::pin(async { Ok(()) });
+        }
         // Loading succeeds: the router now reports only that model loaded.
         let mut models = self.models.lock().unwrap();
         for m in models.iter_mut() {
@@ -88,6 +101,10 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
+    fixture_with(|s| s)
+}
+
+fn fixture_with(tune: impl FnOnce(EmbeddingService) -> EmbeddingService) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let models = dir.path().join("models");
     for file in [
@@ -112,6 +129,7 @@ fn fixture() -> Fixture {
         router.clone(),
     )
     .with_warm(Duration::from_millis(5), 50);
+    let service = tune(service);
     Fixture {
         dir,
         control,
@@ -436,6 +454,10 @@ impl DockerRead for NoDocker {
 }
 
 fn state(service: Arc<EmbeddingService>) -> Arc<StateData> {
+    state_at(service, noevia_model_manager::LEGACY_BASE)
+}
+
+fn state_at(service: Arc<EmbeddingService>, legacy_base: &str) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -450,6 +472,7 @@ fn state(service: Arc<EmbeddingService>) -> Arc<StateData> {
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(2),
         legacy: noevia_model_manager::legacy_client().unwrap(),
+        legacy_base: legacy_base.to_owned(),
     })
 }
 
@@ -529,17 +552,17 @@ async fn boot_warms_the_saved_models_so_the_router_reports_them_loaded() {
     );
 }
 
-/// A fake Python delete at 127.0.0.1:8091: signals when a delete arrives, waits, then removes the
+/// A fake Python delete on an ephemeral loopback port (#1678; returns its base URL): signals when a delete arrives, waits, then removes the
 /// file, like a slow `delete_gguf`.
 async fn slow_python_delete(
     file: std::path::PathBuf,
 ) -> (
+    String,
     tokio::sync::oneshot::Receiver<()>,
     tokio::task::JoinHandle<()>,
 ) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8091")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
     let (arrived, arrived_rx) = tokio::sync::oneshot::channel();
     let arrived = Arc::new(Mutex::new(Some(arrived)));
     let app = axum::Router::new().route(
@@ -560,15 +583,16 @@ async fn slow_python_delete(
     let server = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    (arrived_rx, server)
+    (base, arrived_rx, server)
 }
 
 #[tokio::test]
 async fn switch_to_a_model_being_deleted_never_saves_it_as_served() {
     let f = fixture();
     f.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    let (arrived, server) = slow_python_delete(f.dir.path().join("models").join(GEMMA_FILE)).await;
-    let s = state(f.service.clone());
+    let (base, arrived, server) =
+        slow_python_delete(f.dir.path().join("models").join(GEMMA_FILE)).await;
+    let s = state_at(f.service.clone(), &base);
     let delete = tokio::spawn(call(
         s,
         "POST",
@@ -751,4 +775,66 @@ fn the_python_child_learns_which_container_and_address_are_guarded() {
     assert!(noevia_model_manager::embed_guard_env(None)
         .iter()
         .all(|(_, v)| v.is_none()));
+}
+
+#[tokio::test]
+async fn a_change_that_cannot_get_the_lock_in_time_gives_up_and_never_applies_later() {
+    // #1677: the caller's request budget is ACT_TIMEOUT + LOCK_WAIT; past it the caller was told
+    // the change failed, so it must not happen afterwards.
+    let f = fixture_with(|s| s.with_lock_wait(Duration::from_millis(50)));
+    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    let held = f.service.hold().await;
+    let applied = f
+        .service
+        .apply(serve(&[(NOMIC, NOMIC_FILE), (GEMMA, GEMMA_FILE)]))
+        .await;
+    assert!(
+        matches!(applied, Err(Refusal::Unavailable(_))),
+        "{applied:?}"
+    );
+    drop(held);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(
+        f.service.saved().unwrap().unwrap().models,
+        vec![entry(NOMIC, NOMIC_FILE)]
+    );
+    assert!(!preset(&f).contains(GEMMA));
+    assert!(f.control.actions.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_roll_back_stops_the_warm_up_of_the_set_that_was_rolled_back() {
+    // #1678: a later failed change rolls back; the earlier warm-up must not keep loading models.
+    let f = fixture();
+    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    *f.router.stuck.lock().unwrap() = true;
+    f.router.set(&[(NOMIC, true), (GEMMA, false)]);
+    f.service
+        .apply(serve(&[(NOMIC, NOMIC_FILE), (GEMMA, GEMMA_FILE)]))
+        .await
+        .unwrap();
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        if !f.router.loads.lock().unwrap().is_empty() {
+            break;
+        }
+    }
+    assert!(
+        !f.router.loads.lock().unwrap().is_empty(),
+        "the warm-up is loading"
+    );
+    *f.control.fail.lock().unwrap() = true;
+    assert!(f
+        .service
+        .apply(serve(&[(NOMIC, NOMIC_FILE)]))
+        .await
+        .is_err());
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let after = f.router.loads.lock().unwrap().len();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        f.router.loads.lock().unwrap().len(),
+        after,
+        "the rolled-back warm-up stopped"
+    );
 }

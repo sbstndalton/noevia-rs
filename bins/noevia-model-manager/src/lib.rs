@@ -26,6 +26,7 @@ pub const LOG_CAP: usize = 1024 * 1024;
 const INVENTORY_CAP: usize = 1024;
 const REQUEST_CAP: usize = 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(5);
+pub const LEGACY_BASE: &str = "http://127.0.0.1:8091";
 pub const LEGACY_TIMEOUT: Duration = Duration::from_secs(600);
 pub fn legacy_client() -> Result<reqwest::Client, reqwest::Error> {
     reqwest::Client::builder()
@@ -64,6 +65,8 @@ pub struct StateData {
     pub redactor: Redactor,
     pub permits: Semaphore,
     pub legacy: reqwest::Client,
+    /// The legacy child's address (production: LEGACY_BASE); tests use an ephemeral port.
+    pub legacy_base: String,
 }
 
 /// #1668: what the Python child is told about the guarded embedding service: its container and
@@ -381,7 +384,7 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
         TIMEOUT
     } else if path == "/api/v1/embedding-service" && state.embedding.is_some() {
         // The Docker action is bounded by embedding::ACT_TIMEOUT and runs in its own task.
-        embedding::ACT_TIMEOUT + Duration::from_secs(15)
+        embedding::ACT_TIMEOUT + embedding::LOCK_WAIT + Duration::from_secs(5)
     } else {
         LEGACY_TIMEOUT
     };
@@ -721,7 +724,7 @@ async fn forward(state: Arc<StateData>, req: Request) -> Response {
         .unwrap_or("/");
     let mut legacy = state
         .legacy
-        .request(parts.method, format!("http://127.0.0.1:8091{target}"))
+        .request(parts.method, format!("{}{target}", state.legacy_base))
         .body(bytes);
     if let Some(content_type) = parts.headers.get("content-type") {
         legacy = legacy.header("content-type", content_type);

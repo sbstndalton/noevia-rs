@@ -631,6 +631,7 @@ mod tests {
             redactor: crate::Redactor::new().unwrap(),
             permits: tokio::sync::Semaphore::new(4),
             legacy: crate::legacy_client().unwrap(),
+            legacy_base: crate::LEGACY_BASE.to_owned(),
         })
     }
 

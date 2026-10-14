@@ -243,6 +243,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         redactor,
         permits: tokio::sync::Semaphore::new(4),
         legacy,
+        legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
     });
     // Retain native stores and their lifetime writer locks until the child is reaped.
     let serve = axum::serve(listener, router(state.clone()));
