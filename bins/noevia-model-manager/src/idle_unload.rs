@@ -210,16 +210,49 @@ fn reconcile_with(
     exchange: bool,
     hook: &mut dyn FnMut(u32, Stage),
 ) -> Result<Option<String>, &'static str> {
+    reconcile_inner(path, setting, exchange, hook, &mut swap)
+}
+
+type Swap<'a> = dyn FnMut(&Path, &Path) -> rustix::io::Result<()> + 'a;
+
+fn reconcile_inner(
+    path: &Path,
+    setting: Option<u32>,
+    exchange: bool,
+    hook: &mut dyn FnMut(u32, Stage),
+    swapper: &mut Swap<'_>,
+) -> Result<Option<String>, &'static str> {
+    let mut raced = false;
     for attempt in 0..ATTEMPTS {
         if attempt > 0 {
             std::thread::sleep(std::time::Duration::from_millis(25 * u64::from(attempt)));
         }
-        match round(path, setting, exchange, &mut |stage| hook(attempt, stage))? {
-            Round::Done(revision) => return Ok(revision),
-            Round::Lost => continue,
+        match round(
+            path,
+            setting,
+            exchange,
+            &mut |stage| hook(attempt, stage),
+            swapper,
+        )? {
+            // After a lost race the caller's response belongs to a save another writer has
+            // since superseded: its revision is left as Python reported it (a later save then
+            // gets a safe 409 rather than silently building on text it never saw).
+            Round::Done(revision) => return Ok(revision.filter(|_| !raced)),
+            Round::Lost => raced = true,
         }
     }
     Err("chat preset kept changing; idle unload key not written this time")
+}
+
+/// Python's editor fsyncs the directory after its rename; do the same so a rename survives a
+/// crash. Best effort: the rename itself already happened.
+fn sync_dir(dir: &Path) {
+    if std::fs::File::open(dir).and_then(|d| d.sync_all()).is_err() {
+        eprintln!(
+            "WARN idle unload: directory fsync failed for {}",
+            dir.display()
+        );
+    }
 }
 
 fn round(
@@ -227,6 +260,7 @@ fn round(
     setting: Option<u32>,
     exchange: bool,
     hook: &mut dyn FnMut(Stage),
+    swapper: &mut Swap<'_>,
 ) -> Result<Round, &'static str> {
     let Some(before) = read_capped(path)? else {
         return Ok(Round::Done(None));
@@ -247,24 +281,41 @@ fn round(
         .map_err(|_| "chat preset write failed")?;
     std::fs::set_permissions(tmp.path(), permissions).map_err(|_| "chat preset write failed")?;
     hook(Stage::BeforeCommit);
-    if exchange && swap(tmp.path(), path).is_ok() {
+    if exchange && swapper(tmp.path(), path).is_ok() {
+        sync_dir(dir);
         hook(Stage::AfterExchange);
-        // `tmp` now names the file we displaced; dropping it removes whatever it holds.
-        if read_capped(tmp.path())?.as_deref() == Some(before.as_slice()) {
-            return Ok(Round::Done(Some(revision)));
+        // `tmp` now names the file we displaced. On success or a clean undo it holds nothing
+        // anyone needs and is removed on drop; on any error it may hold another writer's
+        // acknowledged save, so it is kept on disk and its path reported.
+        let outcome = (|| -> Result<Round, &'static str> {
+            if read_capped(tmp.path())?.as_deref() == Some(before.as_slice()) {
+                return Ok(Round::Done(Some(revision)));
+            }
+            // Lost: put the displaced text back. If a write also landed after our exchange,
+            // the swap brings back the older text, so swap once more to keep the newest.
+            swapper(tmp.path(), path).map_err(|_| "chat preset restore failed")?;
+            if read_capped(tmp.path())?.as_deref() != Some(next.as_bytes()) {
+                swapper(tmp.path(), path).map_err(|_| "chat preset restore failed")?;
+            }
+            sync_dir(dir);
+            Ok(Round::Lost)
+        })();
+        if outcome.is_err() {
+            match tmp.keep() {
+                Ok((_, kept)) => eprintln!(
+                    "WARN idle unload: kept the displaced chat preset at {}",
+                    kept.display()
+                ),
+                Err(_) => eprintln!("WARN idle unload: could not keep the displaced chat preset"),
+            }
         }
-        // Lost: put the displaced text back. If a write also landed after our exchange, the
-        // swap brings back the older text, so swap once more to keep the newest.
-        swap(tmp.path(), path).map_err(|_| "chat preset restore failed")?;
-        if read_capped(tmp.path())?.as_deref() != Some(next.as_bytes()) {
-            swap(tmp.path(), path).map_err(|_| "chat preset restore failed")?;
-        }
-        return Ok(Round::Lost);
+        return outcome;
     }
     if read_capped(path)?.as_deref() != Some(before.as_slice()) {
         return Ok(Round::Lost);
     }
     tmp.persist(path).map_err(|_| "chat preset write failed")?;
+    sync_dir(dir);
     Ok(Round::Done(Some(revision)))
 }
 
@@ -468,13 +519,12 @@ mod tests {
                 std::fs::write(&path, PY1).unwrap();
             }
         };
-        let revision = reconcile_with(&path, Some(900), exchange, &mut hook)
-            .unwrap()
-            .unwrap();
+        let revision = reconcile_with(&path, Some(900), exchange, &mut hook).unwrap();
         // Python's save is kept and the key is added on the retry; nothing of ours was lost.
         let now = std::fs::read_to_string(&path).unwrap();
         assert_eq!(now, apply(PY1, Some(900)).unwrap());
-        assert_eq!(revision, hex(&Sha256::digest(now.as_bytes())));
+        // A race was seen, so the caller's response revision is not replaced.
+        assert_eq!(revision, None);
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
@@ -534,5 +584,60 @@ mod tests {
         );
         assert_eq!(std::fs::read(&path).unwrap(), vec![0xff, 0xfe]);
         assert!(reconcile_file(dir.path(), Some(900)).is_err());
+    }
+
+    #[test]
+    fn an_uncontested_write_reports_its_revision_and_a_raced_one_does_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("models.ini");
+        std::fs::write(&path, "[gemma]\n").unwrap();
+        let revision = reconcile_with(&path, Some(900), true, &mut |_, _| {})
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            revision,
+            hex(&Sha256::digest(std::fs::read(&path).unwrap()))
+        );
+        std::fs::write(&path, "[gemma]\n").unwrap();
+        let mut hook = |attempt: u32, stage: Stage| {
+            if attempt == 0 && stage == Stage::BeforeCommit {
+                std::fs::write(&path, PY1).unwrap();
+            }
+        };
+        assert_eq!(reconcile_with(&path, Some(900), true, &mut hook), Ok(None));
+    }
+
+    #[test]
+    fn a_failed_swap_back_keeps_the_displaced_save_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("models.ini");
+        std::fs::write(&path, "[gemma]\n").unwrap();
+        let mut hook = |_: u32, stage: Stage| {
+            if stage == Stage::BeforeCommit {
+                std::fs::write(&path, PY1).unwrap();
+            }
+        };
+        let mut calls = 0;
+        let mut swapper = |a: &Path, b: &Path| {
+            calls += 1;
+            if calls == 1 {
+                swap(a, b)
+            } else {
+                Err(rustix::io::Errno::IO)
+            }
+        };
+        assert_eq!(
+            reconcile_inner(&path, Some(900), true, &mut hook, &mut swapper),
+            Err("chat preset restore failed")
+        );
+        // Python's acknowledged save was displaced by our exchange and could not be swapped
+        // back: it must still exist on disk next to the preset.
+        let kept: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p != &path)
+            .map(|p| std::fs::read_to_string(p).unwrap())
+            .collect();
+        assert_eq!(kept, vec![PY1.to_owned()]);
     }
 }
