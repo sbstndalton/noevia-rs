@@ -121,7 +121,7 @@ def extract(path,name):
         let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", port))
             .await
             .unwrap();
-        socket.write_all(b"POST /extract HTTP/1.0\r\nHost: localhost\r\nX-Document-Name: x.md\r\nContent-Length: 4\r\n\r\nFORK").await.unwrap();
+        socket.write_all(b"POST /extract HTTP/1.0\r\nHost: localhost\r\nX-Document-Name: x.docx\r\nContent-Length: 4\r\n\r\nFORK").await.unwrap();
         let mut buffer = [0u8; 4096];
         let count = tokio::time::timeout(Duration::from_secs(2), notification.recv(&mut buffer))
             .await
@@ -130,7 +130,7 @@ def extract(path,name):
         let started: serde_json::Value = serde_json::from_slice(&buffer[..count]).unwrap();
         let input = PathBuf::from(started["path"].as_str().unwrap());
         assert!(input.is_file());
-        assert_eq!(input.file_name().unwrap(), "input.md");
+        assert_eq!(input.file_name().unwrap(), "input.docx");
         assert!(input
             .parent()
             .unwrap()
@@ -253,13 +253,13 @@ async fn real_worker_maximum_unicode_text_and_page_envelope_fit_frame_cap() {
     std::fs::write(root.path().join("extract.py"),"def extract(path,name):\n return {'pages':[{'number':n,'text':'\\U0001f4c4'*200000 if n<=10 else '', 'status':'native','method':'docling','truncated':False} for n in range(1,301)],'total':300,'truncatedPages':False}\n").unwrap();
     let mut config = docling_service::Config::production(root.path().to_owned());
     config.python = "python3".into();
-    let path = root.path().join("input.md");
+    let path = root.path().join("input.docx");
     std::fs::write(&path, "synthetic").unwrap();
     let mut worker = docling_service::Worker::new(config);
     let result = worker
         .convert(
             &path,
-            "x.md",
+            "x.docx",
             tokio::time::Instant::now() + Duration::from_secs(10),
         )
         .await

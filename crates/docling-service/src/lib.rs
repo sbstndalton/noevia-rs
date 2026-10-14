@@ -13,9 +13,10 @@ pub const CONNECTION_CAP: usize = 8;
 // Two million Unicode characters can require 24 MB as escaped surrogate pairs.
 // 32 MiB also admits the bounded 300-page envelope; larger engine output is refused.
 pub const FRAME_CAP: usize = 32 * 1024 * 1024;
+// No .md (#1711): the engine image has no Markdown reader and core reads Markdown as text.
 pub const FORMATS: &[&str] = &[
-    ".bmp", ".csv", ".docx", ".epub", ".htm", ".html", ".jpeg", ".jpg", ".md", ".odp", ".ods",
-    ".odt", ".pdf", ".png", ".pptx", ".tif", ".tiff", ".xlsx",
+    ".bmp", ".csv", ".docx", ".epub", ".htm", ".html", ".jpeg", ".jpg", ".odp", ".ods", ".odt",
+    ".pdf", ".png", ".pptx", ".tif", ".tiff", ".xlsx",
 ];
 
 #[derive(Clone, Debug)]

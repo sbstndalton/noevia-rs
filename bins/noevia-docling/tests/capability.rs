@@ -148,7 +148,7 @@ async fn native_binary_real_worker_and_graceful_shutdown() {
     let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", port))
         .await
         .unwrap();
-    socket.write_all(b"POST /extract HTTP/1.0\r\nHost: localhost\r\nX-Document-Name: x.md\r\nContent-Length: 1\r\n\r\nx").await.unwrap();
+    socket.write_all(b"POST /extract HTTP/1.0\r\nHost: localhost\r\nX-Document-Name: x.docx\r\nContent-Length: 1\r\n\r\nx").await.unwrap();
     let mut bytes = Vec::new();
     tokio::time::timeout(Duration::from_secs(3), socket.read_to_end(&mut bytes))
         .await

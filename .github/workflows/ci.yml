@@ -27,8 +27,8 @@ jobs:
       - name: Verify merged Docling worker oracle (#1322)
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/b25a677182097c5ed72221e01fee5d5587aa7043
-          echo '8f9f0b11654a2547f1bf99fddc5b31a60341c92355ed4fc86ad0012c807a7e39  /tmp/docling-services.tgz' | sha256sum -c -
+          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/e99c41e02d0226b9d432c3da1741f772da6c57ba
+          echo '44b72f51b9464b11790bbe08fdc41cf7c6ceed50dfb2d1a4c8a321ffb7647372  /tmp/docling-services.tgz' | sha256sum -c -
           mkdir .ci-docling
           tar -xzf /tmp/docling-services.tgz -C .ci-docling --strip-components=1
       - name: Verify merged Laya worker oracle (#1326)
@@ -105,8 +105,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -c 'import sys; assert sys.version_info[:2] == (3, 12)'
-          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/b25a677182097c5ed72221e01fee5d5587aa7043
-          echo '8f9f0b11654a2547f1bf99fddc5b31a60341c92355ed4fc86ad0012c807a7e39  /tmp/docling-services.tgz' | sha256sum -c -
+          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/e99c41e02d0226b9d432c3da1741f772da6c57ba
+          echo '44b72f51b9464b11790bbe08fdc41cf7c6ceed50dfb2d1a4c8a321ffb7647372  /tmp/docling-services.tgz' | sha256sum -c -
           mkdir .ci-docling
           tar -xzf /tmp/docling-services.tgz -C .ci-docling --strip-components=1
       - name: Actual Python oracle is reproducible
