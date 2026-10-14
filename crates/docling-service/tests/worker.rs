@@ -16,6 +16,7 @@ for line in sys.stdin:
  if d==b'sleep':time.sleep(30)
  elif d==b'bad':sys.stdout.buffer.write(struct.pack('>I',40000000));sys.stdout.buffer.flush()
  elif d==b'error':send({'error':True})
+ elif d==b'echo':send({'ok':{'request':r}})
  else:send({'ok':{'pid':os.getpid(),'text':'synthetic'}})
 "#).unwrap();
     let mut config = Config::production(directory.path().to_owned());
@@ -257,4 +258,30 @@ async fn slow_incomplete_body_and_connection_admission_are_bounded() {
     tokio::time::sleep(Duration::from_millis(50)).await;
     assert_eq!(request(port, "x.docx", b"ok").await.0, 200);
     server.abort();
+}
+
+// sbstndalton/noevia#1726: the figures opt-in reaches the engine; without it the request is unchanged.
+#[tokio::test]
+async fn figures_are_forwarded_only_when_asked() {
+    let (directory, config) = fixture();
+    let path = directory.path().join("input.pdf");
+    std::fs::write(&path, "echo").unwrap();
+    let mut worker = Worker::new(config);
+    let plain = worker
+        .convert(&path, "x.pdf", Instant::now() + Duration::from_secs(2))
+        .await
+        .unwrap();
+    let keys: Vec<&String> = plain["request"].as_object().unwrap().keys().collect();
+    assert_eq!(keys, ["name", "path"]);
+    let with = worker
+        .convert_with(
+            &path,
+            "x.pdf",
+            true,
+            Instant::now() + Duration::from_secs(2),
+        )
+        .await
+        .unwrap();
+    assert_eq!(with["request"]["figures"], true);
+    assert_eq!(with["request"]["name"], "x.pdf");
 }
