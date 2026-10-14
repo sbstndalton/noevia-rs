@@ -1,7 +1,7 @@
 {
- "core": "d7ed7dd9bdd006166b4083abfac0c8ec09428a38",
+ "core": "2c4531781f808dc9a2a0fb4e2453d4ad0e0664ef",
  "sources": {
-  "server/routes/models.cjs": "4c2d0fc991d53ea1885c6bdd6510e527bd632888ca850a436efa40496ff22623",
+  "server/routes/models.cjs": "b6792225f55638fbbf87ef362aed732ca1f49b5bbfebb23061762d66c4e85938",
   "server/model-manager.cjs": "e4039ea8b74d9df28c5eeda3150237fb9c4d3a9dc5bc19d39949d5950c8579b8",
   "server/llamacpp-manager.cjs": "eb2085daef6732e6e51750a35aab1bfd992b816d6b2a50625d3a75bbb23c50af",
   "server/llamacpp-metrics.cjs": "db5ea8b37de919fc43e409866d7449b843f8d0a89c6e88da28e0276f1811cfe8",
