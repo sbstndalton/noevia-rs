@@ -120,3 +120,26 @@ Markdown mutation qualification (`cargo test -p server-export --test markdown <t
 
 Each was observed to fail an assertion independently, and source was restored. These
 controls qualify native formatting/admission, not the still-held HTTP export contract.
+
+# Export assembly (#1315)
+
+`assemble::build_export` is core `server/chat-export.cjs` `buildExport` (core
+`22dcb9d387a30fca090d970a2662268abac22c64`), ported as behaviour on top of `zip_store` and
+`markdown::render`: entry names (NFKD slug, id part, `-2`, `-3`, … collision suffixes, resumed
+per base name so ten thousand identical titles stay linear), project folders, `README.md`, and
+`conversations.json` byte for byte (`JSON.stringify(…, null, 2)` indented four spaces, with
+`reasoning`, `answers`, `answer`, `branches`, `branch` left out of every history entry). The byte
+and entry limits are checked in Node's order, so an input is refused with Node's class
+(`TooLarge` = 413, with `too_large_message`; `Type` = Node's TypeError).
+
+It still owns no route, tenant read, clock, audit write or switch: the caller hands it the free
+chats and projects and reads each history when asked, in Node's order. Narrower admission, as
+refusals (`Unsupported`), never different bytes: a truthy list that is not an array, a `now`
+outside years 0–9999, and the Markdown and ZIP foundations' own bounds.
+
+Reproduce the 34 synthetic Node cases (18 complete ZIPs, the rest error classes and messages):
+
+```
+node tools/gen-export-assembly-fixtures.cjs /path/to/core > crates/server-export/tests/fixtures/node-assembly.v1.json
+cargo test -p server-export --test assemble
+```
