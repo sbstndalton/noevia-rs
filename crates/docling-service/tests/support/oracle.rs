@@ -243,7 +243,13 @@ pub fn generate(source: &Path, output: &Path) -> Result<(), Error> {
     case!("POST", "/extract", Some("1"), Some("x.zip"), b"x");
     case!("POST", "/extract", Some("1"), Some("x.md "), b"x");
     case!("POST", "/extract", Some("+1"), Some("x.DOCX"), b"x");
-    case!("POST", "/extract", Some("1_0"), Some("x.docx"), b"abcdefghij");
+    case!(
+        "POST",
+        "/extract",
+        Some("1_0"),
+        Some("x.docx"),
+        b"abcdefghij"
+    );
     case!("POST", "/extract", Some("4"), Some("x.docx"), b"BOOM");
     // #1711: Markdown is read as text by core and is not a Docling input.
     case!("POST", "/extract", Some("1"), Some("x.md"), b"x");
