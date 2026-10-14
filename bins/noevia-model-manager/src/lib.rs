@@ -5,6 +5,7 @@ pub mod diagnose_docker;
 pub mod docker;
 pub mod embedding;
 pub mod host;
+pub mod idle_unload;
 #[cfg(feature = "native-prompts")]
 pub mod prompts;
 pub mod sections;
@@ -67,6 +68,8 @@ pub struct StateData {
     pub legacy: reqwest::Client,
     /// The legacy child's address (production: LEGACY_BASE); tests use an ephemeral port.
     pub legacy_base: String,
+    /// #1747: keeps the chat preset's global `sleep-idle-seconds` in line with the setting.
+    pub idle_unload: Option<Arc<idle_unload::Reconciler>>,
 }
 
 /// #1668: what the Python child is told about the guarded embedding service: its container and
@@ -713,6 +716,7 @@ async fn forward(state: Arc<StateData>, req: Request) -> Response {
         return detail(StatusCode::NOT_FOUND, "Not Found");
     }
     let (parts, body) = req.into_parts();
+    let mutating = parts.method != Method::GET;
     let bytes = match to_bytes(body, REQUEST_CAP).await {
         Ok(b) => b,
         Err(_) => return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit"),
@@ -755,12 +759,34 @@ async fn forward(state: Arc<StateData>, req: Request) -> Response {
         }
         bytes.extend_from_slice(&chunk);
     }
+    if mutating && status.is_success() {
+        if let Some(reconciler) = &state.idle_unload {
+            bytes = after_preset_write(reconciler, bytes).await;
+        }
+    }
     (
         status,
         [("content-type", "application/json")],
         Body::from(bytes),
     )
         .into_response()
+}
+
+/// #1747: a Python write may have dropped the chat preset's global idle key (the raw editor
+/// saves whatever text it was given). Put it back, and report the revision of the file as it now
+/// is, so the editor's next save is not refused as a conflict with our own rewrite.
+async fn after_preset_write(reconciler: &idle_unload::Reconciler, bytes: Vec<u8>) -> Vec<u8> {
+    let Ok(Some(revision)) = reconciler.reconcile().await else {
+        return bytes;
+    };
+    let Ok(serde_json::Value::Object(mut body)) = serde_json::from_slice(&bytes) else {
+        return bytes;
+    };
+    if !matches!(body.get("revision"), Some(serde_json::Value::String(_))) {
+        return bytes;
+    }
+    body.insert("revision".into(), serde_json::Value::String(revision));
+    serde_json::to_vec(&body).unwrap_or(bytes)
 }
 
 async fn native_embedding(service: &Arc<embedding::EmbeddingService>, req: Request) -> Response {

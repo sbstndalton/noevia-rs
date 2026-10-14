@@ -184,6 +184,7 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
         permits: tokio::sync::Semaphore::new(4),
         legacy: crate::legacy_client().unwrap(),
         legacy_base: crate::LEGACY_BASE.to_owned(),
+        idle_unload: None,
     })
 }
 fn root() -> tempfile::TempDir {
