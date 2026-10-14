@@ -829,12 +829,86 @@ async fn a_roll_back_stops_the_warm_up_of_the_set_that_was_rolled_back() {
         .apply(serve(&[(NOMIC, NOMIC_FILE)]))
         .await
         .is_err());
-    tokio::time::sleep(Duration::from_millis(30)).await;
-    let after = f.router.loads.lock().unwrap().len();
+    // #1682: the roll-back restores [nomic, gemma] and warms that set again; nothing outside the
+    // restored set is ever loaded.
     tokio::time::sleep(Duration::from_millis(100)).await;
+    let loads = f.router.loads.lock().unwrap().clone();
+    assert!(
+        loads.iter().all(|m| m == NOMIC || m == GEMMA),
+        "only the restored set is loaded: {loads:?}"
+    );
+}
+
+/// Docker that answers until told to hang (#1682).
+#[derive(Default)]
+struct HangLater {
+    hang: Mutex<bool>,
+}
+impl ServiceControl for HangLater {
+    fn act(&self, _: Action) -> Job<'_, ()> {
+        if *self.hang.lock().unwrap() {
+            Box::pin(std::future::pending())
+        } else {
+            Box::pin(async { Ok(()) })
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_roll_back_warms_the_restored_set_again() {
+    // #1682: apply [A,B] succeeds while its warm-up is still loading B; apply [B] then times out
+    // in Docker and rolls back to [A,B]. The roll-back stops the old warm-up, so it must start a
+    // new one, or B could stay unloaded and `previous` never be released.
+    let dir = tempfile::tempdir().unwrap();
+    let base = fixture();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    let control = Arc::new(HangLater::default());
+    let service = Arc::new(
+        EmbeddingService::new(
+            "cowork-embed-1".into(),
+            base.dir.path().join("models"),
+            "/models".into(),
+            dir.path().join("config/embedding.ini"),
+            dir.path().join("data/embedding-service.json"),
+            control.clone(),
+            base.router.clone(),
+        )
+        .with_warm(Duration::from_millis(5), 200)
+        .with_act_timeout(Duration::from_millis(50)),
+    );
+    service.seed(NOMIC, NOMIC_FILE).unwrap();
+    *base.router.stuck.lock().unwrap() = true;
+    base.router.set(&[(NOMIC, true), (GEMMA, false)]);
+    service
+        .apply(serve(&[(NOMIC, NOMIC_FILE), (GEMMA, GEMMA_FILE)]))
+        .await
+        .unwrap();
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        if !base.router.loads.lock().unwrap().is_empty() {
+            break;
+        }
+    }
+    assert!(
+        base.router.loads.lock().unwrap().iter().any(|m| m == GEMMA),
+        "the [A,B] warm-up is loading B"
+    );
+    *control.hang.lock().unwrap() = true;
+    assert!(matches!(
+        service.apply(serve(&[(GEMMA, GEMMA_FILE)])).await,
+        Err(Refusal::Unavailable(_))
+    ));
     assert_eq!(
-        f.router.loads.lock().unwrap().len(),
-        after,
-        "the rolled-back warm-up stopped"
+        service.saved().unwrap().unwrap().models,
+        vec![entry(NOMIC, NOMIC_FILE), entry(GEMMA, GEMMA_FILE)],
+        "rolled back to [A,B]"
+    );
+    base.router.loads.lock().unwrap().clear();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let loads = base.router.loads.lock().unwrap().clone();
+    assert!(
+        loads.iter().any(|m| m == GEMMA),
+        "the restored set still receives load calls after the roll-back: {loads:?}"
     );
 }
