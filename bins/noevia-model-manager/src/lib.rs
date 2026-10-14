@@ -3,6 +3,7 @@ pub mod diagnose;
 #[cfg(feature = "native-diagnose")]
 pub mod diagnose_docker;
 pub mod docker;
+pub mod embedding;
 pub mod host;
 #[cfg(feature = "native-prompts")]
 pub mod prompts;
@@ -25,6 +26,7 @@ pub const LOG_CAP: usize = 1024 * 1024;
 const INVENTORY_CAP: usize = 1024;
 const REQUEST_CAP: usize = 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(5);
+pub const LEGACY_BASE: &str = "http://127.0.0.1:8091";
 pub const LEGACY_TIMEOUT: Duration = Duration::from_secs(600);
 pub fn legacy_client() -> Result<reqwest::Client, reqwest::Error> {
     reqwest::Client::builder()
@@ -33,7 +35,7 @@ pub fn legacy_client() -> Result<reqwest::Client, reqwest::Error> {
         .timeout(LEGACY_TIMEOUT)
         .build()
 }
-type Job<'a, T> = Pin<Box<dyn Future<Output = Result<T, &'static str>> + Send + 'a>>;
+pub type Job<'a, T> = Pin<Box<dyn Future<Output = Result<T, &'static str>> + Send + 'a>>;
 
 #[derive(Clone, Debug)]
 pub struct Container {
@@ -54,6 +56,8 @@ pub struct StateData {
     #[cfg(feature = "native-prompts")]
     pub prompts: Option<Arc<prompts::Prompts>>,
     pub sections: Option<Arc<sections::Sections>>,
+    /// #1668: present only when EMBED_CONTAINER names the embedding service.
+    pub embedding: Option<Arc<embedding::EmbeddingService>>,
     pub host: Option<Arc<tokio::sync::Mutex<host::HostHistory>>>,
     pub token: String,
     pub configured: Vec<String>,
@@ -61,6 +65,35 @@ pub struct StateData {
     pub redactor: Redactor,
     pub permits: Semaphore,
     pub legacy: reqwest::Client,
+    /// The legacy child's address (production: LEGACY_BASE); tests use an ephemeral port.
+    pub legacy_base: String,
+}
+
+/// #1668: what the Python child is told about the guarded embedding service: its container and
+/// address, so it skips only env names that point at it. `None` clears them all.
+pub fn embed_guard_env(service: Option<(&str, &str)>) -> [(&'static str, Option<String>); 3] {
+    [
+        (
+            "NOEVIA_EMBED_SERVICE_GUARDED",
+            service.map(|_| "1".to_owned()),
+        ),
+        (
+            "NOEVIA_EMBED_SERVICE_CONTAINER",
+            service.map(|(c, _)| c.to_owned()),
+        ),
+        (
+            "NOEVIA_EMBED_SERVICE_URL",
+            service.map(|(_, u)| u.to_owned()),
+        ),
+    ]
+}
+
+/// #1668: PUT /api/v1/embedding-service restarts and stops a container, so it is never left open.
+pub fn require_embed_token(container: &str, token: &str) -> Result<(), &'static str> {
+    if !container.is_empty() && token.is_empty() {
+        return Err("EMBED_CONTAINER needs MODEL_LOADER_TOKEN: the embedding service route must not be open");
+    }
+    Ok(())
 }
 
 pub fn validate_token(raw: &str) -> Result<String, &'static str> {
@@ -349,6 +382,9 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
             && !matches!(prompts::classify(path), prompts::Route::NotOwned));
     let budget = if native || (path == "/api/v1/host" && state.host.is_some()) {
         TIMEOUT
+    } else if path == "/api/v1/embedding-service" && state.embedding.is_some() {
+        // The Docker action is bounded by embedding::ACT_TIMEOUT and runs in its own task.
+        embedding::ACT_TIMEOUT + embedding::LOCK_WAIT + Duration::from_secs(5)
     } else {
         LEGACY_TIMEOUT
     };
@@ -644,6 +680,14 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    if let Some(service) = state.embedding.clone() {
+        if path == "/api/v1/embedding-service" {
+            return native_embedding(&service, req).await;
+        }
+        if path == "/api/v1/models/delete" && req.method() == Method::POST {
+            return guarded_delete(state, service, req).await;
+        }
+    }
     let name = path
         .strip_prefix("/api/v1/backends/")
         .and_then(|p| p.strip_suffix("/logs"))
@@ -654,6 +698,11 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         }
         return native_logs(&state, name, req.uri().query().unwrap_or_default()).await;
     }
+    forward(state, req).await
+}
+
+async fn forward(state: Arc<StateData>, req: Request) -> Response {
+    let path = req.uri().path();
     if !python_owned(req.method().as_str(), path) {
         if ["GET", "POST", "PUT", "DELETE"]
             .iter()
@@ -675,7 +724,7 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         .unwrap_or("/");
     let mut legacy = state
         .legacy
-        .request(parts.method, format!("http://127.0.0.1:8091{target}"))
+        .request(parts.method, format!("{}{target}", state.legacy_base))
         .body(bytes);
     if let Some(content_type) = parts.headers.get("content-type") {
         legacy = legacy.header("content-type", content_type);
@@ -712,6 +761,63 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         Body::from(bytes),
     )
         .into_response()
+}
+
+async fn native_embedding(service: &Arc<embedding::EmbeddingService>, req: Request) -> Response {
+    match *req.method() {
+        Method::GET => Json(service.status().await).into_response(),
+        Method::PUT => {
+            let Ok(raw) = to_bytes(req.into_body(), 16 * 1024).await else {
+                return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+            };
+            let Ok(desired) = serde_json::from_slice::<embedding::Desired>(&raw) else {
+                return detail(StatusCode::BAD_REQUEST, "invalid embedding service request");
+            };
+            match service.apply(desired).await {
+                Ok(_) => (StatusCode::ACCEPTED, Json(service.status().await)).into_response(),
+                Err(embedding::Refusal::Invalid(text)) => detail(StatusCode::BAD_REQUEST, text),
+                Err(embedding::Refusal::Unavailable(text)) => {
+                    detail(StatusCode::SERVICE_UNAVAILABLE, text)
+                }
+            }
+        }
+        _ => detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed"),
+    }
+}
+
+/// #336/#1668: the embedding router holds its model through the preset, not its command line,
+/// so the legacy holder scan cannot see it. Refuse here, before anything is forwarded.
+async fn guarded_delete(
+    state: Arc<StateData>,
+    service: Arc<embedding::EmbeddingService>,
+    req: Request,
+) -> Response {
+    let (parts, body) = req.into_parts();
+    let Ok(raw) = to_bytes(body, REQUEST_CAP).await else {
+        return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+    };
+    let keys: Vec<String> = serde_json::from_slice::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| v.get("models").and_then(|m| m.as_array()).cloned())
+        .unwrap_or_default()
+        .iter()
+        .map(|k| match k {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        })
+        .collect();
+    // Held across the check and the forward, so a concurrent switch cannot choose a model whose
+    // file this request is deleting.
+    let _held = service.hold().await;
+    for key in &keys {
+        if service.protects(key).await {
+            return detail(
+                StatusCode::CONFLICT,
+                "The embedding service is set to run this model or still has it loaded. Switch embedding to another model or turn embedding off first.",
+            );
+        }
+    }
+    forward(state, Request::from_parts(parts, Body::from(raw))).await
 }
 
 #[cfg(feature = "native-prompts")]

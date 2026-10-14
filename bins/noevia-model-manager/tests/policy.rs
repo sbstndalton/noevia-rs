@@ -52,6 +52,7 @@ fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
         #[cfg(feature = "native-prompts")]
         prompts: None,
         sections: None,
+        embedding: None,
         host: None,
         token: token.into(),
         configured: vec!["synthetic-engine".into()],
@@ -59,6 +60,7 @@ fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(2),
         legacy: noevia_model_manager::legacy_client().unwrap(),
+        legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
     })
 }
 fn fake() -> Arc<Fake> {
