@@ -53,7 +53,8 @@ impl UnixDocker {
             .map_err(|_| "Docker protocol refused")?;
         // The driver belongs to this request. Every return from the exchange observes its join
         // before the caller can release admission. If this future is dropped instead (timeout or
-        // cancellation), the driver is only aborted; that drop path observes no join.
+        // cancellation), the driver is aborted and its join handed to the request's [`ORPHANS`],
+        // which the admission observes before the permit is returned (noevia#1385).
         let driver = AbortDriver::spawn(connection);
         let result = exchange(&mut sender, path).await;
         driver.finish().await;
@@ -135,15 +136,45 @@ async fn exchange(sender: &mut Sender, path: &str) -> Result<(StatusCode, Vec<u8
     Ok((status, raw))
 }
 
+/// Joins of connection drivers whose request future was dropped before `finish` (deadline or
+/// client gone). The admitted request owns one; its admission observes every join in it before
+/// the permit is given back (noevia#1385).
+pub(crate) type Orphans = std::sync::Arc<std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>>;
+
+tokio::task_local! {
+    /// The orphan list of the admitted request this task is running, if any.
+    pub(crate) static ORPHANS: Orphans;
+}
+
+/// Awaits every join in `orphans`, including any added while waiting.
+pub(crate) async fn observe(orphans: &Orphans) {
+    loop {
+        let batch = match orphans.lock() {
+            Ok(mut v) => std::mem::take(&mut *v),
+            Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
+        };
+        if batch.is_empty() {
+            return;
+        }
+        for task in batch {
+            let _ = task.await;
+        }
+    }
+}
+
 /// Owns one connection task. `finish` aborts it and observes its join. Dropping it without
-/// `finish` (the request future was cancelled) only requests the abort.
-struct AbortDriver<T>(Option<tokio::task::JoinHandle<T>>);
-impl<T: Send + 'static> AbortDriver<T> {
-    fn spawn<C>(connection: C) -> Self
+/// `finish` (the request future was cancelled) requests the abort and hands the join to the
+/// request's [`ORPHANS`]; outside an admitted request there is nobody to hand it to.
+struct AbortDriver(Option<tokio::task::JoinHandle<()>>);
+impl AbortDriver {
+    fn spawn<C, T>(connection: C) -> Self
     where
         C: std::future::Future<Output = T> + Send + 'static,
+        T: Send + 'static,
     {
-        Self(Some(spawn_driver(connection)))
+        Self(Some(spawn_driver(async move {
+            let _ = connection.await;
+        })))
     }
     async fn finish(mut self) {
         if let Some(task) = self.0.take() {
@@ -152,10 +183,14 @@ impl<T: Send + 'static> AbortDriver<T> {
         }
     }
 }
-impl<T> Drop for AbortDriver<T> {
+impl Drop for AbortDriver {
     fn drop(&mut self) {
-        if let Some(task) = &self.0 {
+        if let Some(task) = self.0.take() {
             task.abort();
+            let _ = ORPHANS.try_with(|orphans| match orphans.lock() {
+                Ok(mut v) => v.push(task),
+                Err(poisoned) => poisoned.into_inner().push(task),
+            });
         }
     }
 }
@@ -494,5 +529,111 @@ mod tests {
         ));
         assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
         peer.await.unwrap();
+    }
+
+    /// noevia#1385: a Docker peer that accepts and then never answers, held open until dropped.
+    fn silent() -> (tempfile::TempDir, PathBuf, tokio::sync::oneshot::Sender<()>) {
+        let root = tempfile::Builder::new()
+            .prefix("mm-docker-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let socket = root.path().join("docker.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            let accept = async {
+                loop {
+                    if let Ok((peer, _)) = listener.accept().await {
+                        held.push(peer);
+                    }
+                }
+            };
+            tokio::select! { _ = accept => {}, _ = stopped => {} }
+        });
+        (root, socket, stop)
+    }
+
+    fn admitted_state(socket: PathBuf) -> std::sync::Arc<crate::StateData> {
+        std::sync::Arc::new(crate::StateData {
+            #[cfg(feature = "native-diagnose")]
+            diagnosis: None,
+            #[cfg(feature = "native-prompts")]
+            prompts: None,
+            sections: None,
+            host: None,
+            token: String::new(),
+            configured: vec!["synthetic".into()],
+            docker: std::sync::Arc::new(UnixDocker { socket }),
+            redactor: crate::Redactor::new().unwrap(),
+            permits: tokio::sync::Semaphore::new(4),
+            legacy: crate::legacy_client().unwrap(),
+        })
+    }
+
+    fn logs_request() -> axum::http::Request<axum::body::Body> {
+        axum::http::Request::builder()
+            .uri("/api/v1/backends/synthetic/logs")
+            .body(axum::body::Body::empty())
+            .unwrap()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_timed_out_request_returns_its_permit_only_after_the_driver_join() {
+        use tower::ServiceExt;
+        let _serial = SERIAL.lock().await;
+        let (_root, socket, _stop) = silent();
+        let state = admitted_state(socket);
+        let response = crate::router(state.clone())
+            .oneshot(logs_request())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        // The permit is back, and the driver the timed-out read left behind is already joined.
+        assert_eq!(state.permits.available_permits(), 4);
+        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_dropped_request_holds_its_permit_until_the_driver_join_is_observed() {
+        use tower::ServiceExt;
+        let _serial = SERIAL.lock().await;
+        let (_root, socket, _stop) = silent();
+        let state = admitted_state(socket);
+        let mut request = Box::pin(crate::router(state.clone()).oneshot(logs_request()));
+        let started = std::time::Instant::now();
+        while live::COUNT.load(Ordering::SeqCst) == 0 {
+            tokio::select! {
+                biased;
+                _ = &mut request => panic!("the silent peer answered"),
+                _ = tokio::task::yield_now() => {}
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "no driver started"
+            );
+        }
+        assert_eq!(state.permits.available_permits(), 3);
+        // The client goes away: the request future is dropped mid-read.
+        drop(request);
+        let live_now = live::COUNT.load(Ordering::SeqCst);
+        assert!(
+            state.permits.available_permits() == 3 || live_now == 0,
+            "the permit came back while a driver ({live_now}) was still unjoined"
+        );
+        // Whenever the permit is back, no driver may still be live.
+        let started = std::time::Instant::now();
+        loop {
+            let permits = state.permits.available_permits();
+            if permits == 4 {
+                assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "permit never returned"
+            );
+            tokio::task::yield_now().await;
+        }
     }
 }
