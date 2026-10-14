@@ -288,8 +288,10 @@ impl HostSampler {
                 let Ok(ts) = SystemTime::now().duration_since(UNIX_EPOCH) else {
                     continue;
                 };
-                let Ok(gtt) = tokio::time::timeout(READ_TIMEOUT, gtt()).await else {
-                    return;
+                // A stuck sysfs read ends sampling like a stuck /proc read: work stays bounded.
+                let gtt = match tokio::time::timeout(READ_TIMEOUT, gtt()).await {
+                    Ok(gtt) => gtt,
+                    Err(_) => return,
                 };
                 let mut history = history.lock().await;
                 if history
