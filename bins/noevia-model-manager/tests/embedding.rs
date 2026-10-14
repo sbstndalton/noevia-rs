@@ -508,3 +508,23 @@ async fn service_route_reports_and_applies_choices() {
     assert_eq!(status, 202);
     assert_eq!(body["enabled"], false);
 }
+
+#[tokio::test]
+async fn boot_warms_the_saved_models_so_the_router_reports_them_loaded() {
+    let f = fixture();
+    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    // After a container restart the router lists the preset but has not loaded it yet.
+    f.router.set(&[(NOMIC, false)]);
+    f.service.start_warm();
+    for _ in 0..100 {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        if !f.router.loads.lock().unwrap().is_empty() {
+            break;
+        }
+    }
+    assert_eq!(*f.router.loads.lock().unwrap(), vec![NOMIC.to_owned()]);
+    assert!(
+        f.control.actions.lock().unwrap().is_empty(),
+        "boot never restarts or stops anything"
+    );
+}

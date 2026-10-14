@@ -178,6 +178,20 @@ impl EmbeddingService {
         Ok(saved)
     }
 
+    /// Boot (and any restart of the container behind our back): load the saved models so the
+    /// router reports them `loaded`, which is what noevia's identity check requires.
+    pub fn start_warm(self: &Arc<Self>) {
+        let Ok(Some(saved)) = self.saved() else {
+            return;
+        };
+        if saved.models.is_empty() {
+            return;
+        }
+        let this = self.clone();
+        let models: Vec<String> = saved.models.iter().map(|e| e.model.clone()).collect();
+        tokio::spawn(async move { this.warm(&models).await });
+    }
+
     fn write_store(&self, saved: &Saved) -> Result<(), &'static str> {
         let raw = serde_json::to_vec_pretty(saved).map_err(|_| "settings encode failed")?;
         atomic_write(&self.store, &raw)

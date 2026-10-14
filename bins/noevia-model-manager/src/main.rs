@@ -169,7 +169,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &environment("EMBEDDING_MODEL", "")?,
             &environment("EMBED_MODEL_FILE", "")?,
         )?;
-        Some(Arc::new(service))
+        let service = Arc::new(service);
+        service.start_warm();
+        Some(service)
     };
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;
     // Refuse an existing loopback listener before spawn: ownership is never borrowed from
