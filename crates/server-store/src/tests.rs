@@ -445,32 +445,46 @@ fn writer_refuses_unknown_actions_into_tables_it_writes() {
 }
 
 #[test]
-fn writer_refuses_a_trigger_on_a_table_it_writes_and_rechecks_after_a_schema_change() {
+fn a_trigger_can_abort_a_writers_statement_but_never_write_through_it() {
     let (dir, node) = node_db();
-    node.execute_batch("CREATE TRIGGER t AFTER DELETE ON audit_events BEGIN SELECT 1; END;")
-        .unwrap();
-    assert!(writer_refusal(dir.path())
-        .unwrap()
-        .contains("trigger t on audit_events"));
-    node.execute_batch("DROP TRIGGER t").unwrap();
+    node.execute_batch(
+        "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('u2','B','b','B','member','x','w2',1,1);
+         INSERT INTO sessions VALUES('mine','u1','c',1,1,9,'ua','ip'),('theirs','u2','c',1,1,9,'ua','ip');
+         CREATE TRIGGER wipe AFTER DELETE ON sessions BEGIN DELETE FROM sessions; END;",
+    )
+    .unwrap();
     let writer = Writer::open(dir.path(), RustAuth::for_tests()).unwrap();
-    // Added while the writer is open: the next write sees the new schema cookie and refuses.
+    // Signing out one session would delete every user's sessions through the trigger: refused whole.
+    let res = writer.write(|w| w.execute("DELETE FROM sessions WHERE id_hash='mine'", []));
+    assert!(matches!(res, Err(StoreError::NotOwned(_))), "{res:?}");
+    assert_eq!(count(&node, "SELECT count(*) FROM sessions"), 2);
+    // Added while the writer is open, on another owned table: refused the same way.
     node.execute_batch(
-        "CREATE TRIGGER s AFTER DELETE ON sessions BEGIN DELETE FROM sessions; END;",
+        "DROP TRIGGER wipe; CREATE TRIGGER grant AFTER INSERT ON challenges BEGIN UPDATE users SET role='admin'; END;",
     )
     .unwrap();
-    let err = writer
-        .write(|w| w.execute("DELETE FROM sessions WHERE id_hash='none'", []))
-        .unwrap_err();
-    assert!(
-        matches!(err, StoreError::NotReady(ref m) if m.contains("trigger s on sessions")),
-        "{err:?}"
+    let res = writer.write(|w| w.execute("INSERT INTO challenges VALUES('h','u1','k','c',9)", []));
+    assert!(matches!(res, Err(StoreError::NotOwned(_))), "{res:?}");
+    assert_eq!(
+        count(&node, "SELECT count(*) FROM users WHERE role='admin'"),
+        0
     );
-    // A trigger on a table Rust never writes is Node's business.
-    let (dir, node) = node_db();
+    // A trigger that only raises still aborts, as the audit-failure tests rely on.
     node.execute_batch(
-        "CREATE TABLE x(a); CREATE TRIGGER tx AFTER INSERT ON x BEGIN SELECT 1; END;",
+        "DROP TRIGGER grant; CREATE TRIGGER abort_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'synthetic'); END;",
     )
     .unwrap();
-    assert_eq!(writer_refusal(dir.path()), None);
+    let res = writer.write(|w| {
+        w.execute(
+            "INSERT INTO audit_events(action, created_at) VALUES('x', 1)",
+            [],
+        )
+    });
+    assert!(res.is_err());
+    assert!(!matches!(res, Err(StoreError::NotOwned(_))), "{res:?}");
+    // The plain delete works once the writing trigger is gone.
+    writer
+        .write(|w| w.execute("DELETE FROM sessions WHERE id_hash='mine'", []))
+        .unwrap();
+    assert_eq!(count(&node, "SELECT count(*) FROM sessions"), 1);
 }

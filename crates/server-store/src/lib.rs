@@ -436,6 +436,14 @@ fn owned_authorizer(
             if ctx.database_name != Some("main") {
                 return Authorization::Deny;
             }
+            // noevia#1378: inside a trigger body SQLite names the trigger as the accessor. Rust's
+            // statements never rely on a trigger, so a trigger that would write (delete another
+            // user's sessions, say) is denied, and the whole statement with it. A trigger that
+            // only RAISEs still aborts as before. Foreign-key actions carry no accessor; the
+            // known set of those is checked when the writer opens (verify_write_topology).
+            if ctx.accessor.is_some() {
+                return Authorization::Deny;
+            }
             if table_name == "settings" {
                 // Fixed-key grants authorize the caller statement, never persisted trigger/view SQL.
                 if ctx.accessor.is_some() {
@@ -587,8 +595,9 @@ const TOPOLOGY_TABLE_CAP: usize = 512;
 /// action between owned tables (a self-referencing `sessions.parent_session ... ON DELETE
 /// CASCADE`) or a trigger on one (deleting other sessions) would let one user's sign-out delete
 /// another user's rows. Refused unless every foreign key with an action whose child is a table
-/// this writer owns is one of [`KNOWN_FOREIGN_KEYS`], and no persistent trigger sits on a table it
-/// writes. Node's own guards are TEMP triggers on its connection, which this one never sees.
+/// this writer owns is one of [`KNOWN_FOREIGN_KEYS`]. Triggers are handled by
+/// [`owned_authorizer`]: a write inside a trigger body is denied, so a trigger can abort a
+/// statement (tests inject audit failures that way) but never write a row.
 fn verify_write_topology(
     conn: &Connection,
     owned: &[(&'static str, Access)],
@@ -634,16 +643,6 @@ fn verify_write_topology(
                 )));
             }
         }
-    }
-    let mut triggers = conn
-        .prepare("SELECT name, tbl_name FROM sqlite_master WHERE type='trigger' ORDER BY name")?;
-    let found: Vec<(String, String)> = triggers
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<Result<_, _>>()?;
-    if let Some((name, table)) = found.iter().find(|(_, t)| written(t)) {
-        return Err(StoreError::NotReady(format!(
-            "trigger {name} on {table}, a table Rust writes; not writing"
-        )));
     }
     Ok(())
 }
