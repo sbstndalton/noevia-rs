@@ -683,11 +683,11 @@ async fn native_embedding(service: &Arc<embedding::EmbeddingService>, req: Reque
             let Ok(raw) = to_bytes(req.into_body(), 16 * 1024).await else {
                 return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
             };
-            let Ok(choice) = serde_json::from_slice::<embedding::Choice>(&raw) else {
-                return detail(StatusCode::BAD_REQUEST, "invalid embedding choice");
+            let Ok(desired) = serde_json::from_slice::<embedding::Desired>(&raw) else {
+                return detail(StatusCode::BAD_REQUEST, "invalid embedding service request");
             };
-            match service.apply(choice).await {
-                Ok(saved) => (StatusCode::ACCEPTED, Json(json!(saved))).into_response(),
+            match service.apply(desired).await {
+                Ok(_) => (StatusCode::ACCEPTED, Json(service.status().await)).into_response(),
                 Err(embedding::Refusal::Invalid(text)) => detail(StatusCode::BAD_REQUEST, text),
                 Err(embedding::Refusal::Unavailable(text)) => {
                     detail(StatusCode::SERVICE_UNAVAILABLE, text)

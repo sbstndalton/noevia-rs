@@ -10,7 +10,8 @@ use http_body_util::BodyExt;
 use noevia_model_manager::{
     docker::{allowed_write, ScopedControl},
     embedding::{
-        parse_models, Action, Choice, EmbeddingService, Probe, Refusal, Served, ServiceControl,
+        parse_models, Action, Desired, EmbeddingService, Entry, Probe, Refusal, Served,
+        ServiceControl,
     },
     Container, DockerRead, Job, Redactor, StateData,
 };
@@ -124,26 +125,38 @@ const NOMIC_FILE: &str = "nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf";
 const GEMMA: &str = "embeddinggemma-2";
 const GEMMA_FILE: &str = "embeddinggemma-2/embeddinggemma-2-Q8_0.gguf";
 
-fn on(model: &str, file: &str) -> Choice {
-    Choice {
-        enabled: true,
-        model: Some(model.into()),
-        file: Some(file.into()),
+fn entry(model: &str, file: &str) -> Entry {
+    Entry {
+        model: model.into(),
+        file: file.into(),
+    }
+}
+fn serve(entries: &[(&str, &str)]) -> Desired {
+    Desired {
+        models: entries.iter().map(|(m, f)| entry(m, f)).collect(),
     }
 }
 fn preset(f: &Fixture) -> String {
     std::fs::read_to_string(f.dir.path().join("config/embedding.ini")).unwrap()
 }
+async fn settle(f: &Fixture) {
+    for _ in 0..200 {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        if f.service.saved().unwrap().unwrap().previous.is_empty() {
+            return;
+        }
+    }
+}
 
 #[test]
-fn env_seeds_once_and_saved_choice_wins_afterwards() {
+fn env_seeds_once_and_saved_state_wins_afterwards() {
     let f = fixture();
     let seeded = f.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    assert_eq!(seeded.choice, on(NOMIC, NOMIC_FILE));
+    assert_eq!(seeded.models, vec![entry(NOMIC, NOMIC_FILE)]);
     assert!(preset(&f).contains("[nomic-embed-text-v1]\nmodel = /models/nomic-embed-text-v1/"));
-    // A later boot with a different env keeps the saved choice.
+    // A later boot with a different env keeps the saved state.
     let again = f.service.seed(GEMMA, GEMMA_FILE).unwrap();
-    assert_eq!(again.choice, on(NOMIC, NOMIC_FILE));
+    assert_eq!(again.models, vec![entry(NOMIC, NOMIC_FILE)]);
     assert!(!preset(&f).contains(GEMMA));
 }
 
@@ -151,7 +164,7 @@ fn env_seeds_once_and_saved_choice_wins_afterwards() {
 fn unset_seed_means_off_and_preset_has_no_model() {
     let f = fixture();
     let seeded = f.service.seed("", "").unwrap();
-    assert!(!seeded.choice.enabled);
+    assert!(seeded.models.is_empty());
     assert!(!preset(&f).contains('['));
 }
 
@@ -165,31 +178,71 @@ fn preset_is_rerendered_from_saved_state_on_boot() {
 }
 
 #[tokio::test]
-async fn switch_restarts_only_the_service_and_frees_old_model_after_new_one_loads() {
+async fn switch_serves_both_while_reindexing_then_frees_the_old_model() {
     let f = fixture();
     f.service.seed(NOMIC, NOMIC_FILE).unwrap();
     f.router.set(&[(NOMIC, true)]);
-    let saved = f.service.apply(on(GEMMA, GEMMA_FILE)).await.unwrap();
-    assert_eq!(saved.previous, Some(on(NOMIC, NOMIC_FILE)));
+    // Start: the active model keeps serving search while the next one is built.
+    let saved = f
+        .service
+        .apply(serve(&[(NOMIC, NOMIC_FILE), (GEMMA, GEMMA_FILE)]))
+        .await
+        .unwrap();
+    assert!(saved.previous.is_empty());
     assert_eq!(*f.control.actions.lock().unwrap(), vec![Action::Restart]);
-    assert!(preset(&f).contains("[embeddinggemma-2]\nmodel = /models/embeddinggemma-2/"));
-    assert!(!preset(&f).contains(NOMIC));
-    // Until the router proves the switch, the old model stays protected.
-    assert!(f.service.protects(NOMIC_FILE).await);
-    assert!(f.service.protects(GEMMA).await);
-    // The restarted router lists the new preset unloaded; the warm-up loads it.
-    f.router.set(&[(GEMMA, false)]);
+    let text = preset(&f);
+    assert!(
+        text.contains("[nomic-embed-text-v1]")
+            && text.contains("[embeddinggemma-2]\nmodel = /models/embeddinggemma-2/")
+    );
+    f.router.set(&[(NOMIC, false), (GEMMA, false)]);
+    settle(&f).await;
     for _ in 0..100 {
-        tokio::time::sleep(Duration::from_millis(5)).await;
-        if f.service.saved().unwrap().unwrap().previous.is_none() {
+        if f.router.models.lock().unwrap().iter().all(|m| m.loaded) {
             break;
         }
+        tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    assert_eq!(*f.router.loads.lock().unwrap(), vec![GEMMA.to_owned()]);
-    assert_eq!(f.service.saved().unwrap().unwrap().previous, None);
+    assert!(f.router.loads.lock().unwrap().contains(&GEMMA.to_owned()));
+    assert!(f.service.protects(NOMIC_FILE).await);
+    assert!(f.service.protects(GEMMA).await);
+    // Finish: only the new model stays. The old one is protected until the router drops it.
+    let saved = f
+        .service
+        .apply(serve(&[(GEMMA, GEMMA_FILE)]))
+        .await
+        .unwrap();
+    assert_eq!(saved.previous, vec![entry(NOMIC, NOMIC_FILE)]);
+    assert!(!preset(&f).contains(NOMIC));
+    assert!(f.service.protects(NOMIC_FILE).await);
+    f.router.set(&[(GEMMA, true)]);
+    settle(&f).await;
+    assert!(f.service.saved().unwrap().unwrap().previous.is_empty());
     assert!(!f.service.protects(NOMIC_FILE).await);
     assert!(!f.service.protects("nomic-embed-text-v1").await);
     assert!(f.service.protects(GEMMA_FILE).await);
+    assert_eq!(
+        *f.control.actions.lock().unwrap(),
+        vec![Action::Restart, Action::Restart]
+    );
+}
+
+#[tokio::test]
+async fn old_model_stays_protected_while_the_router_still_reports_it_loaded() {
+    let f = fixture();
+    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.router.set(&[(NOMIC, true)]);
+    f.service
+        .apply(serve(&[(GEMMA, GEMMA_FILE)]))
+        .await
+        .unwrap();
+    // The router has not restarted yet: nomic is still the loaded model.
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    assert_eq!(
+        f.service.saved().unwrap().unwrap().previous,
+        vec![entry(NOMIC, NOMIC_FILE)]
+    );
+    assert!(f.service.protects(NOMIC_FILE).await);
 }
 
 #[tokio::test]
@@ -198,17 +251,8 @@ async fn turning_off_stops_the_service_and_frees_the_last_model() {
     f.service.seed(NOMIC, NOMIC_FILE).unwrap();
     f.router.set(&[(NOMIC, true)]);
     assert!(f.service.protects(NOMIC).await);
-    let saved = f
-        .service
-        .apply(Choice {
-            enabled: false,
-            model: Some("ignored".into()),
-            file: None,
-        })
-        .await
-        .unwrap();
-    assert!(!saved.choice.enabled);
-    assert_eq!(saved.previous, None);
+    let saved = f.service.apply(Desired::default()).await.unwrap();
+    assert!(saved.models.is_empty() && saved.previous.is_empty());
     assert_eq!(*f.control.actions.lock().unwrap(), vec![Action::Stop]);
     assert!(!preset(&f).contains('['));
     // The stopped container answers nothing.
@@ -241,20 +285,21 @@ async fn unreadable_saved_state_fails_closed() {
 }
 
 #[tokio::test]
-async fn invalid_choices_are_refused_without_touching_docker() {
+async fn invalid_requests_are_refused_without_touching_docker() {
     let f = fixture();
     f.service.seed(NOMIC, NOMIC_FILE).unwrap();
     for bad in [
-        on(GEMMA, "../etc/passwd.gguf"),
-        on(GEMMA, "/abs/model.gguf"),
-        on(GEMMA, "missing/model.gguf"),
-        on(GEMMA, "embeddinggemma-2/notes.txt"),
-        on("bad]\n[x", GEMMA_FILE),
-        Choice {
-            enabled: true,
-            model: None,
-            file: Some(GEMMA_FILE.into()),
-        },
+        serve(&[(GEMMA, "../etc/passwd.gguf")]),
+        serve(&[(GEMMA, "/abs/model.gguf")]),
+        serve(&[(GEMMA, "missing/model.gguf")]),
+        serve(&[(GEMMA, "embeddinggemma-2/notes.txt")]),
+        serve(&[("bad]\n[x", GEMMA_FILE)]),
+        serve(&[(GEMMA, GEMMA_FILE), (GEMMA, GEMMA_FILE)]),
+        serve(&[
+            (NOMIC, NOMIC_FILE),
+            (GEMMA, GEMMA_FILE),
+            ("third", GEMMA_FILE),
+        ]),
     ] {
         assert!(matches!(
             f.service.apply(bad).await,
@@ -263,8 +308,8 @@ async fn invalid_choices_are_refused_without_touching_docker() {
     }
     assert!(f.control.actions.lock().unwrap().is_empty());
     assert_eq!(
-        f.service.saved().unwrap().unwrap().choice,
-        on(NOMIC, NOMIC_FILE)
+        f.service.saved().unwrap().unwrap().models,
+        vec![entry(NOMIC, NOMIC_FILE)]
     );
 }
 
@@ -276,7 +321,7 @@ fn symlink_escape_from_models_dir_is_refused() {
     std::os::unix::fs::symlink(&outside, f.dir.path().join("models/escape.gguf")).unwrap();
     let rt = tokio::runtime::Runtime::new().unwrap();
     assert!(matches!(
-        rt.block_on(f.service.apply(on(GEMMA, "escape.gguf"))),
+        rt.block_on(f.service.apply(serve(&[(GEMMA, "escape.gguf")]))),
         Err(Refusal::Invalid(_))
     ));
 }
@@ -449,23 +494,17 @@ async fn service_route_reports_and_applies_choices() {
     let s = state(f.service.clone());
     let (status, body) = call(s.clone(), "GET", "/api/v1/embedding-service", "").await;
     assert_eq!(status, 200);
-    assert_eq!(body["model"], NOMIC);
+    assert_eq!(body["models"][0]["model"], NOMIC);
     assert_eq!(body["running"]["loaded"][0], NOMIC);
     let (status, _) = call(
         s.clone(),
         "PUT",
         "/api/v1/embedding-service",
-        r#"{"enabled":true,"model":"x","file":"../x.gguf"}"#,
+        r#"{"models":[{"model":"x","file":"../x.gguf"}]}"#,
     )
     .await;
     assert_eq!(status, 400);
-    let (status, body) = call(
-        s,
-        "PUT",
-        "/api/v1/embedding-service",
-        r#"{"enabled":false}"#,
-    )
-    .await;
+    let (status, body) = call(s, "PUT", "/api/v1/embedding-service", r#"{"models":[]}"#).await;
     assert_eq!(status, 202);
     assert_eq!(body["enabled"], false);
 }

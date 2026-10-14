@@ -1,14 +1,19 @@
 //! Settings-driven embedding service (sbstndalton/noevia#1668).
 //!
 //! The embedding container runs the stock llama.cpp server in router mode with its own preset
-//! file (`--models-preset /config/embedding.ini --models-max 1`). This module owns that file:
-//! the admin's choice is saved in `DATA_DIR/embedding-service.json`, rendered into the preset,
-//! and the configured container (and only that container) is restarted or stopped so the
-//! router picks it up. The container is separate from the chat engine, so no chat load can
-//! evict it.
+//! file (`--models-preset /config/embedding.ini --models-max 2`). This module owns that file.
+//! noevia saves the set of models the service must serve in `DATA_DIR/embedding-service.json`:
+//! usually one (the active model), two while a switch re-indexes (the active model keeps serving
+//! search while the next one builds its vectors), none when embedding is off. The set is rendered
+//! into the preset and the configured container, and only that container, is restarted (or
+//! stopped when the set is empty) so the router picks it up. The container is separate from the
+//! chat engine, so no chat model load can evict it.
 //!
 //! The environment (`EMBEDDING_MODEL` + `EMBED_MODEL_FILE`) is a seed only: it is read when no
-//! saved choice exists, and the saved choice wins from then on (#1638).
+//! saved state exists, and the saved state wins from then on (#1638).
+//!
+//! Nothing here is embedding-specific except names and defaults; a reranker service can reuse it
+//! with its own container, preset and state file (#1665).
 use crate::Job;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -18,25 +23,30 @@ use std::{
     time::Duration,
 };
 
-/// What the admin chose. `model` is the router alias (the name clients send); `file` is the
-/// GGUF path relative to the models directory.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Choice {
-    pub enabled: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub file: Option<String>,
+/// Most models one service serves at once: the active one and the one a switch is building.
+pub const MAX_MODELS: usize = 2;
+
+/// One served model. `model` is the router alias (the name clients send); `file` is the GGUF
+/// path relative to the models directory.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Entry {
+    pub model: String,
+    pub file: String,
 }
 
-/// Saved state. `previous` is the model the service ran before the last switch; it stays
-/// protected from delete until the router reports the new model loaded (or the service is off).
+/// What noevia asks the service to serve. Empty: embedding is off and the container is stopped.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Desired {
+    pub models: Vec<Entry>,
+}
+
+/// Saved state. `previous` lists models that left the set; they stay protected from delete until
+/// the router reports them unloaded (or the container is stopped).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Saved {
-    #[serde(flatten)]
-    pub choice: Choice,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub previous: Option<Choice>,
+    pub models: Vec<Entry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub previous: Vec<Entry>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -94,14 +104,12 @@ fn valid_relative(value: &str) -> bool {
     let path = Path::new(value);
     value.len() <= 1024
         && value.ends_with(".gguf")
-        && !value.contains('\n')
-        && !value.contains('\r')
+        && !value.contains(['\n', '\r'])
         && path.components().count() <= 4
         && path.components().all(|c| matches!(c, Component::Normal(_)))
 }
 
 impl EmbeddingService {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         container: String,
         models_dir: PathBuf,
@@ -126,6 +134,7 @@ impl EmbeddingService {
     }
 
     /// Test hook: shorten the warm-up poll.
+    #[must_use]
     pub fn with_warm(mut self, interval: Duration, attempts: u32) -> Self {
         self.warm_interval = interval;
         self.warm_attempts = attempts;
@@ -142,31 +151,30 @@ impl EmbeddingService {
         }
     }
 
-    /// Startup: the env seeds the saved choice only when none exists; afterwards the saved
-    /// choice wins. The preset is always re-rendered from the saved choice so a hand edit or
-    /// a lost file can never make the router serve something noevia did not choose.
+    /// Startup: the env seeds the saved state only when none exists; afterwards the saved state
+    /// wins. The preset is always re-rendered from the saved state, so a hand edit or a lost file
+    /// can never make the router serve something noevia did not choose.
     pub fn seed(&self, seed_model: &str, seed_file: &str) -> Result<Saved, &'static str> {
         let saved = match self.saved()? {
             Some(saved) => saved,
             None => {
-                let choice = if valid_alias(seed_model) && valid_relative(seed_file) {
-                    Choice {
-                        enabled: true,
-                        model: Some(seed_model.to_owned()),
-                        file: Some(seed_file.to_owned()),
-                    }
+                let models = if valid_alias(seed_model) && valid_relative(seed_file) {
+                    vec![Entry {
+                        model: seed_model.to_owned(),
+                        file: seed_file.to_owned(),
+                    }]
                 } else {
-                    Choice::default()
+                    Vec::new()
                 };
                 let saved = Saved {
-                    choice,
-                    previous: None,
+                    models,
+                    previous: Vec::new(),
                 };
                 self.write_store(&saved)?;
                 saved
             }
         };
-        self.render(&saved.choice)?;
+        self.render(&saved.models)?;
         Ok(saved)
     }
 
@@ -175,134 +183,139 @@ impl EmbeddingService {
         atomic_write(&self.store, &raw)
     }
 
-    pub fn preset_text(&self, choice: &Choice) -> String {
+    pub fn preset_text(&self, models: &[Entry]) -> String {
         let mut text = String::from(
             "version = 1\n; Written by noevia-model-manager (#1668). Change the embedding model on\n; noevia's Models page; edits here are overwritten.\n",
         );
-        if let (true, Some(model), Some(file)) = (choice.enabled, &choice.model, &choice.file) {
+        for entry in models {
             text.push_str(&format!(
-                "\n[{model}]\nmodel = {}/{file}\n",
-                self.mount.trim_end_matches('/')
+                "\n[{}]\nmodel = {}/{}\n",
+                entry.model,
+                self.mount.trim_end_matches('/'),
+                entry.file
             ));
         }
         text
     }
 
-    fn render(&self, choice: &Choice) -> Result<(), &'static str> {
-        atomic_write(&self.preset, self.preset_text(choice).as_bytes())
+    fn render(&self, models: &[Entry]) -> Result<(), &'static str> {
+        atomic_write(&self.preset, self.preset_text(models).as_bytes())
     }
 
-    fn validate(&self, choice: &Choice) -> Result<(), Refusal> {
-        if !choice.enabled {
+    fn validate(&self, desired: &Desired) -> Result<(), Refusal> {
+        if desired.models.len() > MAX_MODELS {
+            return Err(Refusal::Invalid("at most two embedding models at once"));
+        }
+        let root = if desired.models.is_empty() {
             return Ok(());
-        }
-        let model = choice
-            .model
-            .as_deref()
-            .ok_or(Refusal::Invalid("model is required"))?;
-        if !valid_alias(model) {
-            return Err(Refusal::Invalid("model name refused"));
-        }
-        let file = choice
-            .file
-            .as_deref()
-            .ok_or(Refusal::Invalid("file is required"))?;
-        if !valid_relative(file) {
-            return Err(Refusal::Invalid("file path refused"));
-        }
-        let root = self
-            .models_dir
-            .canonicalize()
-            .map_err(|_| Refusal::Unavailable("models directory unavailable"))?;
-        let full = root
-            .join(file)
-            .canonicalize()
-            .map_err(|_| Refusal::Invalid("model file not found"))?;
-        if !full.starts_with(&root) || !full.is_file() {
-            return Err(Refusal::Invalid("model file not found"));
+        } else {
+            self.models_dir
+                .canonicalize()
+                .map_err(|_| Refusal::Unavailable("models directory unavailable"))?
+        };
+        for (i, entry) in desired.models.iter().enumerate() {
+            if !valid_alias(&entry.model) {
+                return Err(Refusal::Invalid("model name refused"));
+            }
+            if desired
+                .models
+                .iter()
+                .take(i)
+                .any(|e| e.model == entry.model)
+            {
+                return Err(Refusal::Invalid("model listed twice"));
+            }
+            if !valid_relative(&entry.file) {
+                return Err(Refusal::Invalid("file path refused"));
+            }
+            let full = root
+                .join(&entry.file)
+                .canonicalize()
+                .map_err(|_| Refusal::Invalid("model file not found"))?;
+            if !full.starts_with(&root) || !full.is_file() {
+                return Err(Refusal::Invalid("model file not found"));
+            }
         }
         Ok(())
     }
 
-    /// Apply an admin choice: save, render, then restart (on) or stop (off) the one container.
-    /// Switching on returns before the model is loaded; callers poll `status` until the router
-    /// reports the alias `loaded` (noevia-core does, before it re-indexes).
-    pub async fn apply(self: &Arc<Self>, choice: Choice) -> Result<Saved, Refusal> {
-        self.validate(&choice)?;
+    /// Serve exactly `desired`: save, render, then restart the one container (or stop it when the
+    /// set is empty). Returns before the models load; callers poll `status` until the router
+    /// reports each alias `loaded` (noevia-core does, before it re-indexes).
+    pub async fn apply(self: &Arc<Self>, desired: Desired) -> Result<Saved, Refusal> {
+        self.validate(&desired)?;
         let _guard = self.lock.lock().await;
         let current = self
             .saved()
             .map_err(Refusal::Unavailable)?
             .unwrap_or_default();
-        let choice = if choice.enabled {
-            choice
-        } else {
-            Choice::default()
-        };
         // Keep protecting whatever the service may still hold until it is proven gone.
-        let previous = if current.choice.enabled && current.choice != choice {
-            Some(current.choice.clone())
-        } else {
-            current.previous.clone()
-        };
+        let mut previous: Vec<Entry> = current
+            .previous
+            .into_iter()
+            .chain(current.models)
+            .filter(|e| !desired.models.contains(e))
+            .collect();
+        previous.dedup();
         let saved = Saved {
-            choice: choice.clone(),
+            models: desired.models.clone(),
             previous,
         };
         self.write_store(&saved).map_err(Refusal::Unavailable)?;
-        self.render(&choice).map_err(Refusal::Unavailable)?;
-        let action = if choice.enabled {
-            Action::Restart
-        } else {
-            Action::Stop
-        };
+        self.render(&saved.models).map_err(Refusal::Unavailable)?;
+        if saved.models.is_empty() {
+            self.control
+                .act(Action::Stop)
+                .await
+                .map_err(Refusal::Unavailable)?;
+            // A stopped container holds no model file.
+            let saved = Saved::default();
+            self.write_store(&saved).map_err(Refusal::Unavailable)?;
+            return Ok(saved);
+        }
         self.control
-            .act(action)
+            .act(Action::Restart)
             .await
             .map_err(Refusal::Unavailable)?;
-        if choice.enabled {
-            let this = self.clone();
-            let model = choice.model.clone().unwrap_or_default();
-            tokio::spawn(async move { this.warm(&model).await });
-            Ok(saved)
-        } else {
-            // A stopped container holds no model file.
-            let saved = Saved {
-                choice,
-                previous: None,
-            };
-            self.write_store(&saved).map_err(Refusal::Unavailable)?;
-            Ok(saved)
-        }
+        let this = self.clone();
+        let models: Vec<String> = saved.models.iter().map(|e| e.model.clone()).collect();
+        tokio::spawn(async move { this.warm(&models).await });
+        Ok(saved)
     }
 
-    /// Load the chosen alias once the restarted router answers, then release `previous`.
-    pub async fn warm(&self, model: &str) {
+    /// Load every alias once the restarted router answers, then release `previous` when the router
+    /// reports nothing else loaded.
+    pub async fn warm(&self, wanted: &[String]) {
         for _ in 0..self.warm_attempts {
             tokio::time::sleep(self.warm_interval).await;
             let Ok(models) = self.probe.models().await else {
                 continue;
             };
-            if models.iter().any(|m| m.id == model && m.loaded) {
-                if models.iter().all(|m| m.id == model || !m.loaded) {
+            let loaded = |id: &str| models.iter().any(|m| m.id == id && m.loaded);
+            if wanted.iter().all(|w| loaded(w)) {
+                if models.iter().all(|m| !m.loaded || wanted.contains(&m.id)) {
                     let _guard = self.lock.lock().await;
                     if let Ok(Some(mut saved)) = self.saved() {
-                        if saved.choice.model.as_deref() == Some(model) {
-                            saved.previous = None;
+                        let current: Vec<&String> = saved.models.iter().map(|e| &e.model).collect();
+                        if current.len() == wanted.len()
+                            && wanted.iter().all(|w| current.contains(&w))
+                        {
+                            saved.previous.clear();
                             let _ = self.write_store(&saved);
                         }
                     }
                 }
                 return;
             }
-            if models.iter().any(|m| m.id == model) {
-                let _ = self.probe.load(model).await;
+            for w in wanted {
+                if !loaded(w) && models.iter().any(|m| &m.id == w) {
+                    let _ = self.probe.load(w).await;
+                }
             }
         }
     }
 
     pub async fn status(&self) -> Value {
-        let saved = self.saved();
         let running = match self.probe.models().await {
             Ok(models) => json!({
                 "reachable": true,
@@ -311,15 +324,14 @@ impl EmbeddingService {
             }),
             Err(_) => json!({"reachable": false, "loaded": [], "listed": []}),
         };
-        match saved {
+        match self.saved() {
             Ok(saved) => {
                 let saved = saved.unwrap_or_default();
                 json!({
                     "managed": true,
                     "container": self.container,
-                    "enabled": saved.choice.enabled,
-                    "model": saved.choice.model,
-                    "file": saved.choice.file,
+                    "enabled": !saved.models.is_empty(),
+                    "models": saved.models,
                     "previous": saved.previous,
                     "running": running,
                 })
@@ -330,33 +342,28 @@ impl EmbeddingService {
         }
     }
 
-    /// Delete keys (models-dir-relative route keys, directory names, file names or aliases)
-    /// that name a model the service is set to run or may still hold. Fails closed when the
+    /// True when a delete key (models-dir-relative route key, directory, file name or alias) names
+    /// a model the service is set to serve, may still hold, or reports loaded. Fails closed when the
     /// saved state is unreadable.
     pub async fn protects(&self, key: &str) -> bool {
         let Ok(saved) = self.saved() else {
             return true;
         };
         let saved = saved.unwrap_or_default();
-        let mut held: Vec<Choice> = Vec::new();
-        if saved.choice.enabled {
-            held.push(saved.choice.clone());
-        }
-        if let Some(previous) = saved.previous {
-            held.push(previous);
+        let key = key.trim_matches('/');
+        if saved
+            .models
+            .iter()
+            .chain(saved.previous.iter())
+            .any(|e| names_entry(key, e))
+        {
+            return true;
         }
         // A model the router reports loaded is held even if the saved state forgot it.
-        if let Ok(models) = self.probe.models().await {
-            for m in models.into_iter().filter(|m| m.loaded) {
-                held.push(Choice {
-                    enabled: true,
-                    model: Some(m.id),
-                    file: None,
-                });
-            }
+        match self.probe.models().await {
+            Ok(models) => models.iter().any(|m| m.loaded && m.id == key),
+            Err(_) => false,
         }
-        let key = key.trim_matches('/');
-        held.iter().any(|c| names_choice(key, c))
     }
 }
 
@@ -365,20 +372,15 @@ fn stem(value: &str) -> &str {
     name.strip_suffix(".gguf").unwrap_or(name)
 }
 
-fn names_choice(key: &str, choice: &Choice) -> bool {
+fn names_entry(key: &str, entry: &Entry) -> bool {
     if key.is_empty() {
         return false;
     }
-    if choice.model.as_deref() == Some(key) {
-        return true;
-    }
-    let Some(file) = choice.file.as_deref() else {
-        return false;
-    };
-    let dir = file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
-    key == file
-        || stem(key) == stem(file)
-        || (!dir.is_empty() && (key == dir || file.starts_with(&format!("{key}/"))))
+    let dir = entry.file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+    key == entry.model
+        || key == entry.file
+        || stem(key) == stem(&entry.file)
+        || (!dir.is_empty() && (key == dir || entry.file.starts_with(&format!("{key}/"))))
 }
 
 fn atomic_write(path: &Path, raw: &[u8]) -> Result<(), &'static str> {
@@ -389,7 +391,6 @@ fn atomic_write(path: &Path, raw: &[u8]) -> Result<(), &'static str> {
         .sync_all()
         .map_err(|_| "settings write failed")?;
     // The embed container reads the preset as another user; keep it world-readable.
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o644));
@@ -417,8 +418,8 @@ impl HttpProbe {
     }
 }
 
-/// `/v1/models` from either a router (each entry has `status.value`) or a single-model
-/// server (no status: whatever it lists is loaded).
+/// `/v1/models` from either a router (each entry has `status.value`) or a single-model server (no
+/// status: whatever it lists is loaded).
 pub fn parse_models(raw: &[u8]) -> Result<Vec<Served>, &'static str> {
     let value: Value = serde_json::from_slice(raw).map_err(|_| "models response refused")?;
     let data = value
@@ -466,7 +467,7 @@ impl Probe for HttpProbe {
             self.client
                 .post(format!("{}/models/load", self.base))
                 .header("content-type", "application/json")
-                .body(json!({"model": model}).to_string())
+                .body(json!({ "model": model }).to_string())
                 .send()
                 .await
                 .map_err(|_| "embedding service unreachable")?;
