@@ -86,6 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED")
+            .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .args(["app.main:app", "--host", "0.0.0.0", "--port", "8090"])
             .exec();
         return Err(error.into());
@@ -201,6 +202,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "native-prompts")]
         prompt_root.as_deref(),
     );
+    // #1668: the native front refuses deletes of the embedding service's models from its router
+    // state, so the legacy holder scan must not also pin the env-seeded embedding name forever.
+    if embedding.is_some() {
+        child_command.env("NOEVIA_EMBED_SERVICE_GUARDED", "1");
+    } else {
+        child_command.env_remove("NOEVIA_EMBED_SERVICE_GUARDED");
+    }
     let mut child = child_command.spawn()?;
     let _host_sampler = host
         .as_ref()
