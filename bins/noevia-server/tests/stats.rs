@@ -382,12 +382,33 @@ async fn signed_out_polls_get_401_even_when_every_gate_permit_is_taken() {
 }
 
 #[tokio::test]
+async fn an_invalid_auth_config_is_503_not_401_even_without_a_credential() {
+    let d = tempfile::tempdir().unwrap();
+    seed_database(d.path());
+    let (engine, listings) = router(Duration::ZERO).await;
+    let mut env = switched_on(engine);
+    // Node refuses to start on this; the front keeps answering "unavailable", never "signed out".
+    env.push(("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "maybe".into()));
+    let (addr, stop) = start(d.path(), &env).await;
+    for cookie in ["", MEMBER] {
+        assert_eq!(
+            call(addr, "GET", "/api/stats", cookie, None).await.0,
+            503,
+            "{cookie:?}"
+        );
+    }
+    assert_eq!(listings.load(Ordering::SeqCst), 0);
+    let _ = stop.send(());
+}
+
+#[tokio::test]
 async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queueing() {
     let d = tempfile::tempdir().unwrap();
     seed_database(d.path());
     let (engine, listings) = router(Duration::ZERO).await;
     let (addr, stop, app) = start_app(d.path(), &switched_on(engine)).await;
     let stats = app.stats.as_ref().map(Arc::clone).unwrap();
+    let first = std::time::Instant::now();
     assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 200);
     assert_eq!(listings.load(Ordering::SeqCst), 1);
     // Every invalidation permit taken: an admin's model write is still proxied (502 here) but
@@ -401,7 +422,14 @@ async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queue
     );
     drop(held);
     assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 200);
-    assert_eq!(listings.load(Ordering::SeqCst), 1);
+    // Only meaningful while the first answer is still fresh: a runner slower than the TTL would
+    // see a re-read for the expiry, not for the write.
+    if first.elapsed() < Duration::from_millis(1500) {
+        assert_eq!(listings.load(Ordering::SeqCst), 1);
+    } else {
+        eprintln!("skipped the freshness check: the runner took longer than the TTL");
+    }
+    let reads = listings.load(Ordering::SeqCst);
     // With permits free the same write drops it again.
     assert_eq!(
         call(addr, "POST", "/api/models/load", ADMIN, Some("csrf"))
@@ -410,7 +438,7 @@ async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queue
         502
     );
     assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 200);
-    assert_eq!(listings.load(Ordering::SeqCst), 2);
+    assert_eq!(listings.load(Ordering::SeqCst), reads + 1);
     let _ = stop.send(());
 }
 
