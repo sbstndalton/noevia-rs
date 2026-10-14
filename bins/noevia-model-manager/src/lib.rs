@@ -66,6 +66,14 @@ pub struct StateData {
     pub legacy: reqwest::Client,
 }
 
+/// #1668: PUT /api/v1/embedding-service restarts and stops a container, so it is never left open.
+pub fn require_embed_token(container: &str, token: &str) -> Result<(), &'static str> {
+    if !container.is_empty() && token.is_empty() {
+        return Err("EMBED_CONTAINER needs MODEL_LOADER_TOKEN: the embedding service route must not be open");
+    }
+    Ok(())
+}
+
 pub fn validate_token(raw: &str) -> Result<String, &'static str> {
     if raw.is_empty() {
         return Ok(String::new());
@@ -353,6 +361,9 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
             && !matches!(prompts::classify(path), prompts::Route::NotOwned));
     let budget = if native || (path == "/api/v1/host" && state.host.is_some()) {
         TIMEOUT
+    } else if path == "/api/v1/embedding-service" && state.embedding.is_some() {
+        // The Docker action is bounded by embedding::ACT_TIMEOUT and runs in its own task.
+        embedding::ACT_TIMEOUT + Duration::from_secs(15)
     } else {
         LEGACY_TIMEOUT
     };
@@ -719,6 +730,9 @@ async fn guarded_delete(
             other => other.to_string(),
         })
         .collect();
+    // Held across the check and the forward, so a concurrent switch cannot choose a model whose
+    // file this request is deleting.
+    let _held = service.hold().await;
     for key in &keys {
         if service.protects(key).await {
             return detail(

@@ -244,6 +244,11 @@ pub struct ScopedControl {
 impl ScopedControl {
     pub fn new(socket: PathBuf, container: &str) -> Result<Self, &'static str> {
         segment(container)?;
+        // Docker resolves an all-hex name as an id prefix too, which could reach another
+        // container; only a real container name is accepted.
+        if container.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return Err("EMBED_CONTAINER must be a container name, not an id");
+        }
         Ok(Self {
             socket,
             container: container.to_owned(),

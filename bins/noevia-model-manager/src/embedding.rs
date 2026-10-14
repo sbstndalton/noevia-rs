@@ -26,6 +26,9 @@ use std::{
 /// Most models one service serves at once: the active one and the one a switch is building.
 pub const MAX_MODELS: usize = 2;
 
+/// Longest a restart or stop of the embedding container may take before the change is rolled back.
+pub const ACT_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// One served model. `model` is the router alias (the name clients send); `file` is the GGUF
 /// path relative to the models directory.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,6 +84,10 @@ pub struct EmbeddingService {
     control: Arc<dyn ServiceControl>,
     probe: Arc<dyn Probe>,
     lock: tokio::sync::Mutex<()>,
+    /// Set when boot could not read or write the saved state or the preset. While set, every
+    /// delete is refused (fail closed) and status reports the error; a successful apply clears it.
+    broken: std::sync::Mutex<Option<&'static str>>,
+    act_timeout: Duration,
     warm_interval: Duration,
     warm_attempts: u32,
 }
@@ -128,6 +135,8 @@ impl EmbeddingService {
             control,
             probe,
             lock: tokio::sync::Mutex::new(()),
+            broken: std::sync::Mutex::new(None),
+            act_timeout: ACT_TIMEOUT,
             warm_interval: Duration::from_secs(2),
             warm_attempts: 90,
         }
@@ -139,6 +148,33 @@ impl EmbeddingService {
         self.warm_interval = interval;
         self.warm_attempts = attempts;
         self
+    }
+
+    /// Test hook: shorten the Docker action timeout.
+    #[must_use]
+    pub fn with_act_timeout(mut self, timeout: Duration) -> Self {
+        self.act_timeout = timeout;
+        self
+    }
+
+    fn broken(&self) -> Option<&'static str> {
+        *self
+            .broken
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn set_broken(&self, value: Option<&'static str>) {
+        *self
+            .broken
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = value;
+    }
+
+    /// Serialises delete checks (and the delete itself) with `apply`, so a model cannot be chosen
+    /// for the service while its file is being deleted, nor deleted while it is being chosen.
+    pub async fn hold(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.lock.lock().await
     }
 
     pub fn saved(&self) -> Result<Option<Saved>, &'static str> {
@@ -154,24 +190,36 @@ impl EmbeddingService {
     /// Startup: the env seeds the saved state only when none exists; afterwards the saved state
     /// wins. The preset is always re-rendered from the saved state, so a hand edit or a lost file
     /// can never make the router serve something noevia did not choose.
+    ///
+    /// An empty or invalid seed is not saved: the service is off for this boot, and a later boot
+    /// with the env filled in still seeds it (a first boot with the env unset must not turn
+    /// embedding off for good).
+    ///
+    /// On failure the service stays up in an error state (see `broken`) instead of taking the
+    /// whole model manager down; deletes are refused until a later apply succeeds.
     pub fn seed(&self, seed_model: &str, seed_file: &str) -> Result<Saved, &'static str> {
+        let result = self.seed_inner(seed_model, seed_file);
+        self.set_broken(result.as_ref().err().copied());
+        result
+    }
+
+    fn seed_inner(&self, seed_model: &str, seed_file: &str) -> Result<Saved, &'static str> {
         let saved = match self.saved()? {
             Some(saved) => saved,
             None => {
-                let models = if valid_alias(seed_model) && valid_relative(seed_file) {
-                    vec![Entry {
-                        model: seed_model.to_owned(),
-                        file: seed_file.to_owned(),
-                    }]
+                if valid_alias(seed_model) && valid_relative(seed_file) {
+                    let saved = Saved {
+                        models: vec![Entry {
+                            model: seed_model.to_owned(),
+                            file: seed_file.to_owned(),
+                        }],
+                        previous: Vec::new(),
+                    };
+                    self.write_store(&saved)?;
+                    saved
                 } else {
-                    Vec::new()
-                };
-                let saved = Saved {
-                    models,
-                    previous: Vec::new(),
-                };
-                self.write_store(&saved)?;
-                saved
+                    Saved::default()
+                }
             }
         };
         self.render(&saved.models)?;
@@ -256,45 +304,86 @@ impl EmbeddingService {
     /// Serve exactly `desired`: save, render, then restart the one container (or stop it when the
     /// set is empty). Returns before the models load; callers poll `status` until the router
     /// reports each alias `loaded` (noevia-core does, before it re-indexes).
+    ///
+    /// The change runs in its own task, so a caller that gives up (request timeout, closed
+    /// connection) can never leave it half done.
     pub async fn apply(self: &Arc<Self>, desired: Desired) -> Result<Saved, Refusal> {
-        self.validate(&desired)?;
+        let this = self.clone();
+        tokio::spawn(async move { this.apply_held(desired).await })
+            .await
+            .map_err(|_| Refusal::Unavailable("embedding service change failed"))?
+    }
+
+    async fn apply_held(self: &Arc<Self>, desired: Desired) -> Result<Saved, Refusal> {
         let _guard = self.lock.lock().await;
+        // Validate under the lock: a delete holding it may just have removed the file.
+        self.validate(&desired)?;
         let current = self
             .saved()
             .map_err(Refusal::Unavailable)?
             .unwrap_or_default();
         // Keep protecting whatever the service may still hold until it is proven gone.
-        let mut previous: Vec<Entry> = current
-            .previous
-            .into_iter()
-            .chain(current.models)
-            .filter(|e| !desired.models.contains(e))
-            .collect();
-        previous.dedup();
+        let previous = unique(
+            current
+                .previous
+                .iter()
+                .chain(current.models.iter())
+                .filter(|e| !desired.models.contains(e)),
+        );
         let saved = Saved {
             models: desired.models.clone(),
             previous,
         };
         self.write_store(&saved).map_err(Refusal::Unavailable)?;
-        self.render(&saved.models).map_err(Refusal::Unavailable)?;
+        if let Err(e) = self.render(&saved.models) {
+            self.roll_back(&current, &saved);
+            return Err(Refusal::Unavailable(e));
+        }
+        let action = if saved.models.is_empty() {
+            Action::Stop
+        } else {
+            Action::Restart
+        };
+        let acted = match tokio::time::timeout(self.act_timeout, self.control.act(action)).await {
+            Ok(result) => result,
+            Err(_) => Err("embedding container did not answer in time"),
+        };
+        if let Err(e) = acted {
+            self.roll_back(&current, &saved);
+            return Err(Refusal::Unavailable(e));
+        }
+        self.set_broken(None);
         if saved.models.is_empty() {
-            self.control
-                .act(Action::Stop)
-                .await
-                .map_err(Refusal::Unavailable)?;
             // A stopped container holds no model file.
             let saved = Saved::default();
             self.write_store(&saved).map_err(Refusal::Unavailable)?;
             return Ok(saved);
         }
-        self.control
-            .act(Action::Restart)
-            .await
-            .map_err(Refusal::Unavailable)?;
         let this = self.clone();
         let models: Vec<String> = saved.models.iter().map(|e| e.model.clone()).collect();
         tokio::spawn(async move { this.warm(&models).await });
         Ok(saved)
+    }
+
+    /// A failed or timed-out Docker action: go back to the models that were set, but keep every
+    /// model either set may have loaded protected, because Docker may still carry the action out.
+    fn roll_back(&self, current: &Saved, attempted: &Saved) {
+        let back = Saved {
+            models: current.models.clone(),
+            previous: unique(
+                current
+                    .previous
+                    .iter()
+                    .chain(attempted.previous.iter())
+                    .chain(attempted.models.iter())
+                    .filter(|e| !current.models.contains(e)),
+            ),
+        };
+        let stored = self.write_store(&back);
+        let rendered = self.render(&back.models);
+        if let Err(e) = stored.and(rendered) {
+            self.set_broken(Some(e));
+        }
     }
 
     /// Load every alias once the restarted router answers, then release `previous` when the router
@@ -338,6 +427,9 @@ impl EmbeddingService {
             }),
             Err(_) => json!({"reachable": false, "loaded": [], "listed": []}),
         };
+        if let Some(e) = self.broken() {
+            return json!({"managed": true, "container": self.container, "error": e, "running": running});
+        }
         match self.saved() {
             Ok(saved) => {
                 let saved = saved.unwrap_or_default();
@@ -358,8 +450,12 @@ impl EmbeddingService {
 
     /// True when a delete key (models-dir-relative route key, directory, file name or alias) names
     /// a model the service is set to serve, may still hold, or reports loaded. Fails closed when the
-    /// saved state is unreadable.
+    /// saved state is unreadable or boot left the service in an error state. Callers that act on
+    /// the answer hold `hold()` across the check and the action.
     pub async fn protects(&self, key: &str) -> bool {
+        if self.broken().is_some() {
+            return true;
+        }
         let Ok(saved) = self.saved() else {
             return true;
         };
@@ -381,6 +477,41 @@ impl EmbeddingService {
     }
 }
 
+fn unique<'a>(entries: impl Iterator<Item = &'a Entry>) -> Vec<Entry> {
+    let mut out: Vec<Entry> = Vec::new();
+    for entry in entries {
+        if !out.contains(entry) {
+            out.push(entry.clone());
+        }
+    }
+    out
+}
+
+/// `name-00001-of-00003.gguf` -> `name.gguf`: the model manager keys a sharded model by its shard
+/// base (`shard_key` in services.py), so both sides compare without the shard suffix.
+fn unshard(value: &str) -> String {
+    let Some(body) = value.strip_suffix(".gguf") else {
+        return value.to_owned();
+    };
+    // "-NNNNN-of-NNNNN" is 15 ASCII bytes.
+    let split = body.len().saturating_sub(15);
+    if let (Some(base), Some(tail)) = (body.get(..split), body.get(split..)) {
+        let digits = |t: Option<&str>| {
+            t.is_some_and(|t| t.len() == 5 && t.bytes().all(|c| c.is_ascii_digit()))
+        };
+        let shard = !base.is_empty()
+            && tail.len() == 15
+            && tail.starts_with('-')
+            && tail.get(6..10) == Some("-of-")
+            && digits(tail.get(1..6))
+            && digits(tail.get(10..));
+        if shard {
+            return format!("{base}.gguf");
+        }
+    }
+    value.to_owned()
+}
+
 fn stem(value: &str) -> &str {
     let name = value.rsplit('/').next().unwrap_or(value);
     name.strip_suffix(".gguf").unwrap_or(name)
@@ -391,9 +522,11 @@ fn names_entry(key: &str, entry: &Entry) -> bool {
         return false;
     }
     let dir = entry.file.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+    let (key_base, file_base) = (unshard(key), unshard(&entry.file));
     key == entry.model
         || key == entry.file
-        || stem(key) == stem(&entry.file)
+        || key_base == file_base
+        || stem(&key_base) == stem(&file_base)
         || (!dir.is_empty() && (key == dir || entry.file.starts_with(&format!("{key}/"))))
 }
 

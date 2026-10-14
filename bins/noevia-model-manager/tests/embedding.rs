@@ -528,3 +528,208 @@ async fn boot_warms_the_saved_models_so_the_router_reports_them_loaded() {
         "boot never restarts or stops anything"
     );
 }
+
+/// A fake Python delete at 127.0.0.1:8091: signals when a delete arrives, waits, then removes the
+/// file, like a slow `delete_gguf`.
+async fn slow_python_delete(
+    file: std::path::PathBuf,
+) -> (
+    tokio::sync::oneshot::Receiver<()>,
+    tokio::task::JoinHandle<()>,
+) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:8091")
+        .await
+        .unwrap();
+    let (arrived, arrived_rx) = tokio::sync::oneshot::channel();
+    let arrived = Arc::new(Mutex::new(Some(arrived)));
+    let app = axum::Router::new().route(
+        "/api/v1/models/delete",
+        axum::routing::post(move || {
+            let arrived = arrived.clone();
+            let file = file.clone();
+            async move {
+                if let Some(tx) = arrived.lock().unwrap().take() {
+                    let _ = tx.send(());
+                }
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                std::fs::remove_file(&file).unwrap();
+                axum::Json(serde_json::json!({"results":[{"ok":true}]}))
+            }
+        }),
+    );
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    (arrived_rx, server)
+}
+
+#[tokio::test]
+async fn switch_to_a_model_being_deleted_never_saves_it_as_served() {
+    let f = fixture();
+    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    let (arrived, server) = slow_python_delete(f.dir.path().join("models").join(GEMMA_FILE)).await;
+    let s = state(f.service.clone());
+    let delete = tokio::spawn(call(
+        s,
+        "POST",
+        "/api/v1/models/delete",
+        r#"{"models":["embeddinggemma-2/embeddinggemma-2-Q8_0.gguf"]}"#,
+    ));
+    // The delete passed the check and Python is removing the file: now switch to that model.
+    arrived.await.unwrap();
+    let applied = f
+        .service
+        .apply(serve(&[(NOMIC, NOMIC_FILE), (GEMMA, GEMMA_FILE)]))
+        .await;
+    let (status, _) = delete.await.unwrap();
+    server.abort();
+    assert_eq!(status, 200);
+    assert_eq!(applied, Err(Refusal::Invalid("model file not found")));
+    let saved = f.service.saved().unwrap().unwrap();
+    assert_eq!(saved.models, vec![entry(NOMIC, NOMIC_FILE)]);
+    assert!(!preset(&f).contains(GEMMA));
+    assert!(f.control.actions.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn sharded_models_are_protected_by_their_shard_base_key() {
+    let f = fixture();
+    let dir = f.dir.path().join("models/big-embed");
+    std::fs::create_dir_all(&dir).unwrap();
+    for part in [
+        "big-embed-00001-of-00002.gguf",
+        "big-embed-00002-of-00002.gguf",
+    ] {
+        std::fs::write(dir.join(part), b"GGUF").unwrap();
+    }
+    f.service.seed("", "").unwrap();
+    f.service
+        .apply(serve(&[(
+            "big-embed",
+            "big-embed/big-embed-00001-of-00002.gguf",
+        )]))
+        .await
+        .unwrap();
+    // services.py keys the entry by subdir + shard base; a flat copy by the base alone.
+    assert!(f.service.protects("big-embed/big-embed.gguf").await);
+    assert!(f.service.protects("big-embed.gguf").await);
+    assert!(!f.service.protects("other/other.gguf").await);
+}
+
+#[test]
+fn a_bad_state_file_or_read_only_config_leaves_an_error_state_that_refuses_deletes() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    // Unreadable saved state.
+    let f = fixture();
+    std::fs::write(
+        f.dir.path().join("data/embedding-service.json"),
+        "{not json",
+    )
+    .unwrap();
+    assert!(f.service.seed(NOMIC, NOMIC_FILE).is_err());
+    assert!(rt.block_on(f.service.protects("anything.gguf")));
+    assert!(rt.block_on(f.service.status())["error"].is_string());
+    // Preset directory not writable (stands in for a read-only /config): nothing saved, so only
+    // the error state keeps deletes refused.
+    let f = fixture();
+    std::fs::remove_dir_all(f.dir.path().join("config")).unwrap();
+    assert!(f.service.seed("", "").is_err());
+    assert!(f.service.saved().unwrap().is_none());
+    assert!(rt.block_on(f.service.protects(NOMIC_FILE)));
+    assert!(rt.block_on(f.service.status())["error"].is_string());
+}
+
+#[test]
+fn an_empty_first_boot_seed_is_not_saved_as_off_for_good() {
+    let f = fixture();
+    assert!(f.service.seed("", "").unwrap().models.is_empty());
+    assert!(f.service.saved().unwrap().is_none());
+    let seeded = f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    assert_eq!(seeded.models, vec![entry(NOMIC, NOMIC_FILE)]);
+}
+
+/// Docker that never answers.
+struct Hang;
+impl ServiceControl for Hang {
+    fn act(&self, _: Action) -> Job<'_, ()> {
+        Box::pin(std::future::pending())
+    }
+}
+
+#[tokio::test]
+async fn a_docker_timeout_rolls_back_and_keeps_both_models_protected() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = fixture();
+    let models = base.dir.path().join("models");
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    let service = Arc::new(
+        EmbeddingService::new(
+            "cowork-embed-1".into(),
+            models,
+            "/models".into(),
+            dir.path().join("config/embedding.ini"),
+            dir.path().join("data/embedding-service.json"),
+            Arc::new(Hang),
+            base.router.clone(),
+        )
+        .with_act_timeout(Duration::from_millis(50)),
+    );
+    service.seed(NOMIC, NOMIC_FILE).unwrap();
+    let result = service.apply(serve(&[(GEMMA, GEMMA_FILE)])).await;
+    assert!(matches!(result, Err(Refusal::Unavailable(_))));
+    let saved = service.saved().unwrap().unwrap();
+    assert_eq!(saved.models, vec![entry(NOMIC, NOMIC_FILE)]);
+    assert_eq!(saved.previous, vec![entry(GEMMA, GEMMA_FILE)]);
+    let ini = std::fs::read_to_string(dir.path().join("config/embedding.ini")).unwrap();
+    assert!(ini.contains(NOMIC) && !ini.contains(GEMMA));
+    // Docker may still restart onto either preset: both stay protected.
+    assert!(service.protects(NOMIC_FILE).await);
+    assert!(service.protects(GEMMA_FILE).await);
+    // Turning off from the same state also rolls back instead of claiming it is off.
+    assert!(service.apply(Desired::default()).await.is_err());
+    assert_eq!(
+        service.saved().unwrap().unwrap().models,
+        vec![entry(NOMIC, NOMIC_FILE)]
+    );
+}
+
+#[tokio::test]
+async fn previous_keeps_each_model_once_even_when_not_adjacent() {
+    let f = fixture();
+    let third = f.dir.path().join("models/third/third.gguf");
+    std::fs::create_dir_all(third.parent().unwrap()).unwrap();
+    std::fs::write(&third, b"GGUF").unwrap();
+    std::fs::write(
+        f.dir.path().join("data/embedding-service.json"),
+        serde_json::json!({
+            "models": [entry(GEMMA, GEMMA_FILE)],
+            "previous": [entry(NOMIC, NOMIC_FILE), entry(GEMMA, GEMMA_FILE), entry(NOMIC, NOMIC_FILE)],
+        })
+        .to_string(),
+    )
+    .unwrap();
+    f.service
+        .apply(serve(&[("third", "third/third.gguf")]))
+        .await
+        .unwrap();
+    assert_eq!(
+        f.service.saved().unwrap().unwrap().previous,
+        vec![entry(NOMIC, NOMIC_FILE), entry(GEMMA, GEMMA_FILE)]
+    );
+}
+
+#[test]
+fn the_service_route_is_never_left_without_a_token() {
+    assert!(noevia_model_manager::require_embed_token("cowork-embed-1", "").is_err());
+    assert!(noevia_model_manager::require_embed_token("cowork-embed-1", "t").is_ok());
+    assert!(noevia_model_manager::require_embed_token("", "").is_ok());
+}
+
+#[test]
+fn all_hex_container_names_are_refused() {
+    for id in ["abc123", "deadbeef", "0123456789"] {
+        assert!(ScopedControl::new("/x".into(), id).is_err(), "{id}");
+    }
+    assert!(ScopedControl::new("/x".into(), "cowork-embed-1").is_ok());
+}

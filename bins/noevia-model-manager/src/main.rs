@@ -147,6 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read, once) before the listener binds, so a compose `depends_on: service_healthy` start
     // never shows the embed router a missing preset.
     let embed_container = environment("EMBED_CONTAINER", "")?;
+    noevia_model_manager::require_embed_token(&embed_container, &token)?;
     let embedding = if embed_container.is_empty() {
         None
     } else {
@@ -165,10 +166,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &environment("EMBED_URL", "http://embed:8080")?,
             )?),
         );
-        service.seed(
+        // A bad state file or a read-only /config leaves the service in an error state (deletes
+        // refused, status reports it); it must not crash-loop the whole model manager.
+        if let Err(error) = service.seed(
             &environment("EMBEDDING_MODEL", "")?,
             &environment("EMBED_MODEL_FILE", "")?,
-        )?;
+        ) {
+            eprintln!("embedding service: {error}");
+        }
         let service = Arc::new(service);
         service.start_warm();
         Some(service)
