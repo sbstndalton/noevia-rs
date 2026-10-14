@@ -105,7 +105,18 @@ pub struct EmbeddingService {
     /// #1717: warm-ups currently running (boot, apply, roll-back or watcher).
     warms_running: std::sync::atomic::AtomicUsize,
     watch_interval: Duration,
+    /// #1726: multimodal RAG (NOEVIA_MULTIMODAL_RAG). When on, a served model whose directory holds
+    /// exactly one `mmproj*.gguf` (llama.cpp's own naming rule for a projector) also gets a second
+    /// preset, `<model>.vision`, with that projector. It is never loaded at start-up or by a warm-up:
+    /// the router loads it only when an image is embedded, so text embedding never pays for it.
+    vision: bool,
 }
+
+/// The router alias of a served model's image-embedding preset (#1726).
+pub fn vision_alias(model: &str) -> String {
+    format!("{model}{VISION_SUFFIX}")
+}
+pub const VISION_SUFFIX: &str = ".vision";
 
 /// How one warm-up ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -182,7 +193,48 @@ impl EmbeddingService {
             warm_attempts: 90,
             warms_running: std::sync::atomic::AtomicUsize::new(0),
             watch_interval: WATCH_INTERVAL,
+            vision: false,
         }
+    }
+
+    /// #1726: render `<model>.vision` presets for models that have a projector beside them.
+    #[must_use]
+    pub fn with_vision(mut self, on: bool) -> Self {
+        self.vision = on;
+        self
+    }
+
+    /// The models-dir-relative projector (`mmproj*.gguf`) in the same directory as `entry.file`,
+    /// when image presets are on and there is exactly one; llama.cpp requires a multimodal model to
+    /// sit in its own subdirectory, so a model at the top of the models directory has none. A
+    /// projector that resolves outside the models directory is ignored.
+    pub fn projector(&self, entry: &Entry) -> Option<String> {
+        if !self.vision {
+            return None;
+        }
+        let dir = Path::new(&entry.file).parent()?;
+        if dir.as_os_str().is_empty() {
+            return None;
+        }
+        let root = self.models_dir.canonicalize().ok()?;
+        let mut found = Vec::new();
+        for item in std::fs::read_dir(root.join(dir)).ok()?.flatten() {
+            let name = item.file_name();
+            let Some(name) = name.to_str() else { continue };
+            let lower = name.to_ascii_lowercase();
+            if !lower.starts_with("mmproj") || !lower.ends_with(".gguf") {
+                continue;
+            }
+            let full = item.path().canonicalize().ok()?;
+            if full.starts_with(&root) && full.is_file() {
+                found.push(format!("{}/{name}", dir.to_string_lossy()));
+            }
+        }
+        if found.len() != 1 {
+            return None;
+        }
+        let rel = found.pop()?;
+        (valid_relative(&rel) && valid_alias(&vision_alias(&entry.model))).then_some(rel)
     }
 
     /// Test hook: shorten the watcher's probe interval.
@@ -397,13 +449,23 @@ impl EmbeddingService {
         let mut text = String::from(
             "version = 1\n; Written by noevia-model-manager (#1668). Change the embedding model on\n; noevia's Models page; edits here are overwritten.\n",
         );
+        let mount = self.mount.trim_end_matches('/');
         for entry in models {
             text.push_str(&format!(
                 "\n[{}]\nmodel = {}/{}\n",
-                entry.model,
-                self.mount.trim_end_matches('/'),
-                entry.file
+                entry.model, mount, entry.file
             ));
+            // #1726: the same weights with their projector, loaded only when an image is embedded.
+            if let Some(projector) = self.projector(entry) {
+                text.push_str(&format!(
+                    "\n[{}]\nmodel = {}/{}\nmmproj = {}/{}\nload-on-startup = false\n",
+                    vision_alias(&entry.model),
+                    mount,
+                    entry.file,
+                    mount,
+                    projector
+                ));
+            }
         }
         text
     }
@@ -565,7 +627,11 @@ impl EmbeddingService {
             };
             let loaded = |id: &str| models.iter().any(|m| m.id == id && m.loaded);
             if wanted.iter().all(|w| loaded(w)) {
-                if models.iter().all(|m| !m.loaded || wanted.contains(&m.id)) {
+                // #1726: a model's own image preset being loaded does not hold an old model.
+                let own = |id: &String| {
+                    wanted.contains(id) || wanted.iter().any(|w| *id == vision_alias(w))
+                };
+                if models.iter().all(|m| !m.loaded || own(&m.id)) {
                     let _guard = self.lock.lock().await;
                     if !self.warm_current(generation) {
                         return WarmEnd::Superseded;
@@ -610,12 +676,23 @@ impl EmbeddingService {
         match self.saved() {
             Ok(saved) => {
                 let saved = saved.unwrap_or_default();
+                // #1726: which served models can embed images, and under which alias.
+                let vision: Vec<Value> = saved
+                    .models
+                    .iter()
+                    .filter_map(|e| {
+                        self.projector(e).map(|p| {
+                            json!({"model": e.model, "alias": vision_alias(&e.model), "mmproj": p})
+                        })
+                    })
+                    .collect();
                 json!({
                     "managed": true,
                     "container": self.container,
                     "enabled": !saved.models.is_empty(),
                     "models": saved.models,
                     "previous": saved.previous,
+                    "vision": vision,
                     "running": running,
                 })
             }
@@ -643,6 +720,16 @@ impl EmbeddingService {
             .iter()
             .chain(saved.previous.iter())
             .any(|e| names_entry(key, e))
+        {
+            return true;
+        }
+        // #1726: a served model's projector is held with it.
+        if saved
+            .models
+            .iter()
+            .chain(saved.previous.iter())
+            .filter_map(|e| self.projector(e))
+            .any(|p| key == p || stem(key) == stem(&p))
         {
             return true;
         }

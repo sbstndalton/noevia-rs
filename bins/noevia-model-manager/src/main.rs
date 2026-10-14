@@ -167,7 +167,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arc::new(noevia_model_manager::embedding::HttpProbe::new(
                 &environment("EMBED_URL", "http://embed:8080")?,
             )?),
-        );
+        )
+        // #1726: image presets for multimodal RAG; off unless the same switch web reads is on.
+        .with_vision(matches!(
+            environment("NOEVIA_MULTIMODAL_RAG", "")?
+                .trim()
+                .to_ascii_lowercase()
+                .as_str(),
+            "1" | "true" | "on" | "yes"
+        ));
         // A bad state file or a read-only /config leaves the service in an error state (deletes
         // refused, status reports it); it must not crash-loop the whole model manager.
         if let Err(error) = service.seed(
