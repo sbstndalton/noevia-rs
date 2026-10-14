@@ -803,39 +803,40 @@ async fn a_change_that_cannot_get_the_lock_in_time_gives_up_and_never_applies_la
 }
 
 #[tokio::test]
-async fn a_roll_back_stops_the_warm_up_of_the_set_that_was_rolled_back() {
-    // #1678: a later failed change rolls back; the earlier warm-up must not keep loading models.
+async fn a_roll_back_never_loads_the_attempted_set() {
+    // #1678 / #1685: a failed change rolls back; the model only the attempted set had is never
+    // loaded and stays protected in `previous`.
     let f = fixture();
     f.service.seed(NOMIC, NOMIC_FILE).unwrap();
     *f.router.stuck.lock().unwrap() = true;
-    f.router.set(&[(NOMIC, true), (GEMMA, false)]);
+    f.router.set(&[(NOMIC, false)]);
     f.service
-        .apply(serve(&[(NOMIC, NOMIC_FILE), (GEMMA, GEMMA_FILE)]))
+        .apply(serve(&[(NOMIC, NOMIC_FILE)]))
         .await
         .unwrap();
-    for _ in 0..100 {
-        tokio::time::sleep(Duration::from_millis(5)).await;
-        if !f.router.loads.lock().unwrap().is_empty() {
-            break;
-        }
-    }
-    assert!(
-        !f.router.loads.lock().unwrap().is_empty(),
-        "the warm-up is loading"
-    );
     *f.control.fail.lock().unwrap() = true;
     assert!(f
         .service
-        .apply(serve(&[(NOMIC, NOMIC_FILE)]))
+        .apply(serve(&[(GEMMA, GEMMA_FILE)]))
         .await
         .is_err());
-    // #1682: the roll-back restores [nomic, gemma] and warms that set again; nothing outside the
-    // restored set is ever loaded.
+    let saved = f.service.saved().unwrap().unwrap();
+    assert_eq!(saved.models, vec![entry(NOMIC, NOMIC_FILE)], "rolled back");
+    f.router.set(&[(NOMIC, true), (GEMMA, true)]);
     tokio::time::sleep(Duration::from_millis(100)).await;
     let loads = f.router.loads.lock().unwrap().clone();
     assert!(
-        loads.iter().all(|m| m == NOMIC || m == GEMMA),
-        "only the restored set is loaded: {loads:?}"
+        !loads.iter().any(|m| m == GEMMA),
+        "the attempted model is never loaded: {loads:?}"
+    );
+    assert!(
+        f.service
+            .saved()
+            .unwrap()
+            .unwrap()
+            .previous
+            .contains(&entry(GEMMA, GEMMA_FILE)),
+        "the attempted model stays protected while the router may still hold it"
     );
 }
 
