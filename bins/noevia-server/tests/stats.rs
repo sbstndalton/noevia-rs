@@ -168,6 +168,14 @@ async fn start(
     dir: &Path,
     extra: &[(&str, String)],
 ) -> (std::net::SocketAddr, oneshot::Sender<()>) {
+    let (addr, stop, _) = start_app(dir, extra).await;
+    (addr, stop)
+}
+
+async fn start_app(
+    dir: &Path,
+    extra: &[(&str, String)],
+) -> (std::net::SocketAddr, oneshot::Sender<()>, Arc<App>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let origin = format!("http://{addr}");
@@ -192,7 +200,7 @@ async fn start(
             let _ = rx.await;
         },
     ));
-    (addr, stop)
+    (addr, stop, app)
 }
 
 fn switched_on(port: u16) -> Vec<(&'static str, String)> {
@@ -343,6 +351,66 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
         expected += 1;
         assert_eq!(listings.load(Ordering::SeqCst), expected, "{method} {path}");
     }
+    let _ = stop.send(());
+}
+
+#[tokio::test]
+async fn signed_out_polls_get_401_even_when_every_gate_permit_is_taken() {
+    let d = tempfile::tempdir().unwrap();
+    seed_database(d.path());
+    let (engine, listings) = router(Duration::ZERO).await;
+    let (addr, stop, app) = start_app(d.path(), &switched_on(engine)).await;
+    let stats = app.stats.as_ref().map(Arc::clone).unwrap();
+    let held = stats.hold_every_permit();
+    // No credential at all is Node's 401 before a permit is taken (#1654), not "busy".
+    for cookie in ["", "cowork_csrf=x; theme=dark", "cowork_session="] {
+        let (status, headers, body) = call(addr, "GET", "/api/stats", cookie, None).await;
+        assert_eq!(
+            (status, body.as_str()),
+            (401, r#"{"error":"unauthorized"}"#),
+            "{cookie:?}"
+        );
+        assert!(headers.contains("www-authenticate: bearer realm=\"cowork\""));
+    }
+    // A credential still needs the gate, so with every permit taken it is told to retry.
+    assert_eq!(call(addr, "GET", "/api/stats", MEMBER, None).await.0, 503);
+    assert_eq!(listings.load(Ordering::SeqCst), 0);
+    drop(held);
+    assert_eq!(call(addr, "GET", "/api/stats", MEMBER, None).await.0, 200);
+    assert_eq!(listings.load(Ordering::SeqCst), 1);
+    let _ = stop.send(());
+}
+
+#[tokio::test]
+async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queueing() {
+    let d = tempfile::tempdir().unwrap();
+    seed_database(d.path());
+    let (engine, listings) = router(Duration::ZERO).await;
+    let (addr, stop, app) = start_app(d.path(), &switched_on(engine)).await;
+    let stats = app.stats.as_ref().map(Arc::clone).unwrap();
+    assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 200);
+    assert_eq!(listings.load(Ordering::SeqCst), 1);
+    // Every invalidation permit taken: an admin's model write is still proxied (502 here) but
+    // the drop is skipped, so the next poll inside the TTL keeps the shared answer.
+    let held = stats.hold_every_permit();
+    assert_eq!(
+        call(addr, "POST", "/api/models/load", ADMIN, Some("csrf"))
+            .await
+            .0,
+        502
+    );
+    drop(held);
+    assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 200);
+    assert_eq!(listings.load(Ordering::SeqCst), 1);
+    // With permits free the same write drops it again.
+    assert_eq!(
+        call(addr, "POST", "/api/models/load", ADMIN, Some("csrf"))
+            .await
+            .0,
+        502
+    );
+    assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 200);
+    assert_eq!(listings.load(Ordering::SeqCst), 2);
     let _ = stop.send(());
 }
 

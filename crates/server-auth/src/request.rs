@@ -106,6 +106,19 @@ pub fn cookie_value(header: &str, wanted: &str) -> Option<String> {
     found.map(|raw| js::decode_uri_component(raw).unwrap_or_else(|| raw.to_string()))
 }
 
+/// False only when no identity source can match, so the gate's answer is 401 without a store
+/// read: no non-empty `cowork_session` cookie (auth.cjs `authenticate`) and no Authorization
+/// header (a device bearer, or the legacy token, which is never empty when it is accepted).
+pub fn could_authenticate(creds: &Creds) -> bool {
+    creds
+        .cookie("cowork_session")
+        .is_some_and(|v| !v.is_empty())
+        || creds
+            .authorization
+            .as_deref()
+            .is_some_and(|a| !a.is_empty())
+}
+
 /// device-auth.cjs `hasSessionCookie`: any `;` part whose text before the first `=` (or all of
 /// it), trimmed, is `cowork_session` or `cowork_csrf`.
 pub fn has_session_cookie(creds: &Creds) -> bool {
@@ -172,6 +185,23 @@ mod tests {
             authorization: Some(v.to_string()),
             ..Creds::default()
         }
+    }
+
+    #[test]
+    fn could_authenticate_needs_a_session_cookie_or_authorization() {
+        let cookie = |v: &str| Creds {
+            cookie: Some(v.to_string()),
+            ..Creds::default()
+        };
+        assert!(!could_authenticate(&Creds::default()));
+        assert!(!could_authenticate(&auth("")));
+        assert!(!could_authenticate(&cookie("cowork_csrf=x; theme=dark")));
+        assert!(!could_authenticate(&cookie("cowork_session=")));
+        assert!(could_authenticate(&cookie(
+            "theme=dark; cowork_session=abc"
+        )));
+        assert!(could_authenticate(&auth("Bearer nva_x")));
+        assert!(could_authenticate(&auth("legacy-token")));
     }
 
     #[test]
