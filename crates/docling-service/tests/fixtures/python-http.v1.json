@@ -1,10 +1,10 @@
 {
-  "services": "b25a677182097c5ed72221e01fee5d5587aa7043",
+  "services": "e99c41e02d0226b9d432c3da1741f772da6c57ba",
   "sources": {
     "server.py": "97bda681d83b3137fd4261c37d30df7cd261f55555ca8b62982c02f892d9d082",
     "isolation.py": "49bef971629aebaf68a63b358a021d702e3660dbe4876d6d05dc45e57b142983",
     "isolated_worker.py": "543fc179d5a58b1dfe919016a163d3786b93be8a44c232b2977e3004ba38b281",
-    "extract.py": "76baed430a897ccd9e7cc5f3d5d927d368eda9b5e01dee8509874014cbb0e317"
+    "extract.py": "37b817e24184a5b5d0a0759376ec2ded87de50a36c09d18e46553dc2b322b8b4"
   },
   "cases": [
     {
@@ -27,7 +27,6 @@
             ".html",
             ".jpeg",
             ".jpg",
-            ".md",
             ".odp",
             ".ods",
             ".odt",
@@ -61,7 +60,6 @@
             ".html",
             ".jpeg",
             ".jpg",
-            ".md",
             ".odp",
             ".ods",
             ".odt",
@@ -233,7 +231,7 @@
       "method": "POST",
       "path": "/extract",
       "length": "+1",
-      "name": "x.MD",
+      "name": "x.DOCX",
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -257,7 +255,7 @@
       "method": "POST",
       "path": "/extract",
       "length": "1_0",
-      "name": "x.md",
+      "name": "x.docx",
       "data": "YWJjZGVmZ2hpag==",
       "expected": {
         "status": 200,
@@ -281,13 +279,27 @@
       "method": "POST",
       "path": "/extract",
       "length": "4",
-      "name": "x.md",
+      "name": "x.docx",
       "data": "Qk9PTQ==",
       "expected": {
         "status": 422,
         "type": "application/json",
         "body": {
           "error": "This document could not be read within its processing limits; the original is retained."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.md",
+      "data": "eA==",
+      "expected": {
+        "status": 415,
+        "type": "application/json",
+        "body": {
+          "error": "This worker cannot read .md."
         }
       }
     },
@@ -464,30 +476,6 @@
       "path": "/extract",
       "length": "1",
       "name": "x.jpg",
-      "data": "eA==",
-      "expected": {
-        "status": 200,
-        "type": "application/json",
-        "body": {
-          "pages": [
-            {
-              "number": 1,
-              "text": "ok",
-              "status": "native",
-              "method": "docling",
-              "truncated": false
-            }
-          ],
-          "total": 1,
-          "truncatedPages": false
-        }
-      }
-    },
-    {
-      "method": "POST",
-      "path": "/extract",
-      "length": "1",
-      "name": "x.md",
       "data": "eA==",
       "expected": {
         "status": 200,

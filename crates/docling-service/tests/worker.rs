@@ -26,24 +26,24 @@ for line in sys.stdin:
 #[tokio::test]
 async fn reuse_errors_timeout_and_oversized_frame() {
     let (directory, config) = fixture();
-    let path = directory.path().join("input.md");
+    let path = directory.path().join("input.docx");
     let mut worker = Worker::new(config);
     std::fs::write(&path, "ok").unwrap();
     let first = worker
-        .convert(&path, "x.md", Instant::now() + Duration::from_secs(2))
+        .convert(&path, "x.docx", Instant::now() + Duration::from_secs(2))
         .await
         .unwrap();
     std::fs::write(&path, "error").unwrap();
     assert_eq!(
         worker
-            .convert(&path, "x.md", Instant::now() + Duration::from_secs(2))
+            .convert(&path, "x.docx", Instant::now() + Duration::from_secs(2))
             .await,
         Err(Failure::Conversion)
     );
     std::fs::write(&path, "ok").unwrap();
     assert_eq!(
         worker
-            .convert(&path, "x.md", Instant::now() + Duration::from_secs(2))
+            .convert(&path, "x.docx", Instant::now() + Duration::from_secs(2))
             .await
             .unwrap(),
         first
@@ -51,14 +51,14 @@ async fn reuse_errors_timeout_and_oversized_frame() {
     std::fs::write(&path, "sleep").unwrap();
     assert_eq!(
         worker
-            .convert(&path, "x.md", Instant::now() + Duration::from_millis(50))
+            .convert(&path, "x.docx", Instant::now() + Duration::from_millis(50))
             .await,
         Err(Failure::Timeout)
     );
     std::fs::write(&path, "ok").unwrap();
     assert_ne!(
         worker
-            .convert(&path, "x.md", Instant::now() + Duration::from_secs(2))
+            .convert(&path, "x.docx", Instant::now() + Duration::from_secs(2))
             .await
             .unwrap()["pid"],
         first["pid"]
@@ -66,7 +66,7 @@ async fn reuse_errors_timeout_and_oversized_frame() {
     std::fs::write(&path, "bad").unwrap();
     assert_eq!(
         worker
-            .convert(&path, "x.md", Instant::now() + Duration::from_secs(2))
+            .convert(&path, "x.docx", Instant::now() + Duration::from_secs(2))
             .await,
         Err(Failure::Conversion)
     );
@@ -85,7 +85,7 @@ async fn import_failure_is_unavailable() {
         worker
             .convert(
                 &directory.path().join("input"),
-                "x.md",
+                "x.docx",
                 Instant::now() + Duration::from_secs(2)
             )
             .await,
@@ -100,11 +100,11 @@ async fn bad_or_slow_readiness_is_unavailable_and_next_request_recovers() {
         config.ready_timeout=Duration::from_millis(50);
         let worker_source=std::fs::read(root.path().join("isolated_worker.py")).unwrap();
         std::fs::write(root.path().join("isolated_worker.py"),script).unwrap();
-        let path=root.path().join("input.md");std::fs::write(&path,"ok").unwrap();
+        let path=root.path().join("input.docx");std::fs::write(&path,"ok").unwrap();
         let mut worker=Worker::new(config);
-        assert_eq!(worker.convert(&path,"x.md",Instant::now()+Duration::from_secs(1)).await,Err(Failure::Unavailable));
+        assert_eq!(worker.convert(&path,"x.docx",Instant::now()+Duration::from_secs(1)).await,Err(Failure::Unavailable));
         std::fs::write(root.path().join("isolated_worker.py"),worker_source).unwrap();
-        assert!(worker.convert(&path,"x.md",Instant::now()+Duration::from_secs(1)).await.is_ok());
+        assert!(worker.convert(&path,"x.docx",Instant::now()+Duration::from_secs(1)).await.is_ok());
         worker.stop().await;
     }
 }
@@ -122,8 +122,8 @@ async fn absolute_document_deadline_includes_readiness() {
     assert_eq!(
         worker
             .convert(
-                &root.path().join("input.md"),
-                "x.md",
+                &root.path().join("input.docx"),
+                "x.docx",
                 Instant::now() + Duration::from_millis(30)
             )
             .await,
@@ -176,16 +176,16 @@ async fn raw_http_full_and_half_close_cancel_and_release_slot() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let server = tokio::spawn(docling_service::serve(listener, config));
-    assert_eq!(request(port, "x.md", b"ok").await.0, 200);
+    assert_eq!(request(port, "x.docx", b"ok").await.0, 200);
     for half in [false, true] {
         let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", port))
             .await
             .unwrap();
-        socket.write_all(b"POST /extract HTTP/1.0\r\nHost: localhost\r\nX-Document-Name: x.md\r\nContent-Length: 5\r\n\r\nsleep").await.unwrap();
+        socket.write_all(b"POST /extract HTTP/1.0\r\nHost: localhost\r\nX-Document-Name: x.docx\r\nContent-Length: 5\r\n\r\nsleep").await.unwrap();
         tokio::time::sleep(Duration::from_millis(50)).await;
         // A subsequent request observing 503 proves the first owns its conversion
         // slot before cancellation. Bounded scheduler yield, not elapsed-time guess.
-        let busy = request(port, "x.md", b"ok").await;
+        let busy = request(port, "x.docx", b"ok").await;
         assert_eq!(busy.0, 503);
         if half {
             socket.shutdown().await.unwrap();
@@ -203,11 +203,11 @@ async fn raw_http_full_and_half_close_cancel_and_release_slot() {
         if !half {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        assert_eq!(request(port, "next.md", b"ok").await.0, 200);
+        assert_eq!(request(port, "next.docx", b"ok").await.0, 200);
     }
-    assert_eq!(request(port, "a/b.md", b"ok").await.0, 400);
+    assert_eq!(request(port, "a/b.docx", b"ok").await.0, 400);
     assert_eq!(request(port, "x.zip", b"ok").await.0, 415);
-    assert_eq!(request(port, "x.md", b"error").await.0, 422);
+    assert_eq!(request(port, "x.docx", b"error").await.0, 422);
     server.abort();
 }
 
@@ -223,7 +223,7 @@ async fn slow_incomplete_body_and_connection_admission_are_bounded() {
     let mut incomplete = tokio::net::TcpStream::connect(("127.0.0.1", port))
         .await
         .unwrap();
-    incomplete.write_all(b"POST /extract HTTP/1.0\r\nHost: localhost\r\nX-Document-Name: x.md\r\nContent-Length: 2\r\n\r\nx").await.unwrap();
+    incomplete.write_all(b"POST /extract HTTP/1.0\r\nHost: localhost\r\nX-Document-Name: x.docx\r\nContent-Length: 2\r\n\r\nx").await.unwrap();
     let mut bytes = Vec::new();
     tokio::time::timeout(Duration::from_secs(1), incomplete.read_to_end(&mut bytes))
         .await
@@ -231,7 +231,7 @@ async fn slow_incomplete_body_and_connection_admission_are_bounded() {
         .unwrap();
     assert!(bytes.starts_with(b"HTTP/1.0 400"));
     assert!(String::from_utf8_lossy(&bytes).contains("Incomplete document body."));
-    assert_eq!(request(port, "x.md", b"ok").await.0, 200);
+    assert_eq!(request(port, "x.docx", b"ok").await.0, 200);
     let mut stalled = Vec::new();
     for _ in 0..docling_service::CONNECTION_CAP {
         stalled.push(
@@ -255,6 +255,6 @@ async fn slow_incomplete_body_and_connection_admission_are_bounded() {
     );
     drop(stalled);
     tokio::time::sleep(Duration::from_millis(50)).await;
-    assert_eq!(request(port, "x.md", b"ok").await.0, 200);
+    assert_eq!(request(port, "x.docx", b"ok").await.0, 200);
     server.abort();
 }

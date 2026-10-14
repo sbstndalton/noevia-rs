@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 pub type Error = Box<dyn std::error::Error>;
-pub const REF: &str = "b25a677182097c5ed72221e01fee5d5587aa7043";
+pub const REF: &str = "e99c41e02d0226b9d432c3da1741f772da6c57ba";
 pub const HASHES: &[(&str, &str)] = &[
     (
         "server.py",
@@ -26,7 +26,7 @@ pub const HASHES: &[(&str, &str)] = &[
     ),
     (
         "extract.py",
-        "76baed430a897ccd9e7cc5f3d5d927d368eda9b5e01dee8509874014cbb0e317",
+        "37b817e24184a5b5d0a0759376ec2ded87de50a36c09d18e46553dc2b322b8b4",
     ),
 ];
 fn string(s: impl Into<String>) -> JValue {
@@ -59,7 +59,7 @@ pub fn prepare(source: &Path, target: &Path) -> Result<Vec<String>, Error> {
         formats.push(value.to_owned());
     }
     formats.sort();
-    if formats.len() != 18 {
+    if formats.len() != 17 {
         return Err("pinned format count changed".into());
     }
     for name in [
@@ -242,9 +242,11 @@ pub fn generate(source: &Path, output: &Path) -> Result<(), Error> {
     ));
     case!("POST", "/extract", Some("1"), Some("x.zip"), b"x");
     case!("POST", "/extract", Some("1"), Some("x.md "), b"x");
-    case!("POST", "/extract", Some("+1"), Some("x.MD"), b"x");
-    case!("POST", "/extract", Some("1_0"), Some("x.md"), b"abcdefghij");
-    case!("POST", "/extract", Some("4"), Some("x.md"), b"BOOM");
+    case!("POST", "/extract", Some("+1"), Some("x.DOCX"), b"x");
+    case!("POST", "/extract", Some("1_0"), Some("x.docx"), b"abcdefghij");
+    case!("POST", "/extract", Some("4"), Some("x.docx"), b"BOOM");
+    // #1711: Markdown is read as text by core and is not a Docling input.
+    case!("POST", "/extract", Some("1"), Some("x.md"), b"x");
     for suffix in formats {
         cases.push((
             "POST",

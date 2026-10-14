@@ -59,8 +59,8 @@ engines are synthetic. No model was imported, downloaded or loaded by these test
 ## Required qualification
 
 Set `NOEVIA_DOCLING_REFERENCE` to `docling/` from actual merged services
-`b25a677182097c5ed72221e01fee5d5587aa7043`, archive SHA-256
-`8f9f0b11654a2547f1bf99fddc5b31a60341c92355ed4fc86ad0012c807a7e39`.
+`e99c41e02d0226b9d432c3da1741f772da6c57ba`, archive SHA-256
+`44b72f51b9464b11790bbe08fdc41cf7c6ceed50dfb2d1a4c8a321ffb7647372`.
 Tests fail when the reference is missing; no silent skip. Source hashes are checked
 by the Rust-owned test harness before the actual server/isolation/worker modules are copied to synthetic state.
 Only the extraction collaborator is replaced. The Rust example owns source verification, preparation, cases, HTTP exchange and ordered
