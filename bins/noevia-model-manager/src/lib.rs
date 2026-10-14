@@ -716,7 +716,7 @@ async fn forward(state: Arc<StateData>, req: Request) -> Response {
         return detail(StatusCode::NOT_FOUND, "Not Found");
     }
     let (parts, body) = req.into_parts();
-    let mutating = parts.method != Method::GET;
+    let preset_write = idle_unload::writes_models_ini(parts.method.as_str(), parts.uri.path());
     let bytes = match to_bytes(body, REQUEST_CAP).await {
         Ok(b) => b,
         Err(_) => return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit"),
@@ -759,7 +759,7 @@ async fn forward(state: Arc<StateData>, req: Request) -> Response {
         }
         bytes.extend_from_slice(&chunk);
     }
-    if mutating && status.is_success() {
+    if preset_write && status.is_success() {
         if let Some(reconciler) = &state.idle_unload {
             bytes = after_preset_write(reconciler, bytes).await;
         }
@@ -772,9 +772,10 @@ async fn forward(state: Arc<StateData>, req: Request) -> Response {
         .into_response()
 }
 
-/// #1747: a Python write may have dropped the chat preset's global idle key (the raw editor
+/// #1747: a models.ini save may have dropped the chat preset's global idle key (the raw editor
 /// saves whatever text it was given). Put it back, and report the revision of the file as it now
-/// is, so the editor's next save is not refused as a conflict with our own rewrite.
+/// is, so the editor's next save is not refused as a conflict with our own rewrite. Only the
+/// models.ini save routes get here, and their `revision` is always the models.ini revision.
 async fn after_preset_write(reconciler: &idle_unload::Reconciler, bytes: Vec<u8>) -> Vec<u8> {
     let Ok(Some(revision)) = reconciler.reconcile().await else {
         return bytes;

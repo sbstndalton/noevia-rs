@@ -98,7 +98,8 @@ fn command(path: &std::path::Path, marker: &std::path::Path) -> Command {
         .env_remove("MODEL_MANAGER_PROMPTS_IMPL")
         .env_remove("MODEL_LOADER_TOKEN")
         .env_remove("LLAMA_CONTAINERS")
-        .env_remove("DOCKER_HOST");
+        .env_remove("DOCKER_HOST")
+        .env_remove("CHAT_MODEL_IDLE_UNLOAD_SECONDS");
     command
 }
 #[test]
@@ -386,6 +387,58 @@ fn selected_sections_confirm_child_without_python_startup() {
     );
     assert_eq!(std::fs::read(marker).unwrap(), b"1");
     assert_eq!(std::fs::read_dir(models.path()).unwrap().count(), 0);
+}
+/// #1747: a bad idle-unload setting refuses before the child; an existing chat preset gets the
+/// key at startup; an unreadable one is reported and startup continues to the child.
+#[cfg(feature = "native-logs")]
+#[test]
+fn idle_unload_startup_paths() {
+    let _ports = child_ports();
+    let (dir, marker) = owned_uvicorn();
+    let models = tempfile::tempdir().unwrap();
+    let ini = models.path().join("models.ini");
+    std::fs::write(&ini, "[chat]\nmodel = synthetic.gguf\n").unwrap();
+    let output = command(dir.path(), &marker)
+        .env("MODEL_MANAGER_IMPL", "rust")
+        .env("MODELS_INI_PATH", &ini)
+        .env("CHAT_MODEL_IDLE_UNLOAD_SECONDS", "-5")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("CHAT_MODEL_IDLE_UNLOAD_SECONDS"));
+    assert!(!marker.exists());
+    assert_eq!(
+        std::fs::read_to_string(&ini).unwrap(),
+        "[chat]\nmodel = synthetic.gguf\n"
+    );
+
+    let output = command(dir.path(), &marker)
+        .env("MODEL_MANAGER_IMPL", "rust")
+        .env("MODELS_INI_PATH", &ini)
+        .env_remove("CHAT_MODEL_IDLE_UNLOAD_SECONDS")
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited")
+    );
+    assert_eq!(
+        std::fs::read_to_string(&ini).unwrap(),
+        "[*]\nsleep-idle-seconds = 900\n\n[chat]\nmodel = synthetic.gguf\n"
+    );
+
+    std::fs::remove_file(&marker).unwrap();
+    std::fs::write(&ini, [0xff, 0xfe]).unwrap();
+    let output = command(dir.path(), &marker)
+        .env("MODEL_MANAGER_IMPL", "rust")
+        .env("MODELS_INI_PATH", &ini)
+        .env("CHAT_MODEL_IDLE_UNLOAD_SECONDS", "60")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("idle unload: chat preset is not UTF-8"));
+    assert!(stderr.contains("Python-owned endpoint process exited"));
+    assert!(marker.exists());
+    assert_eq!(std::fs::read(&ini).unwrap(), vec![0xff, 0xfe]);
 }
 #[cfg(not(feature = "native-logs"))]
 #[test]

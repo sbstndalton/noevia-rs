@@ -228,14 +228,21 @@ async fn read_fixed(path: &std::path::Path, first_line: bool) -> Result<String, 
 /// A single sequential task bounds work: timeout ends sampling, never spawning more reads.
 /// Drop aborts the sampler immediately; a pending fixed-path filesystem operation has at most
 /// one bounded read outstanding in Tokio's blocking pool.
+///
+/// #1747: GTT is read by a second, independent task that publishes its latest value. A stuck
+/// sysfs read ends only that task (its reading is cleared), never the /proc sampler.
 pub struct HostSampler {
     task: tokio::task::JoinHandle<()>,
+    gtt_task: tokio::task::JoinHandle<()>,
 }
 impl Drop for HostSampler {
     fn drop(&mut self) {
         self.task.abort();
+        self.gtt_task.abort();
     }
 }
+/// No GTT reading (none yet, unreadable, or the reader stopped).
+const GTT_NONE: u64 = u64::MAX;
 impl HostSampler {
     pub fn start(history: Arc<Mutex<HostHistory>>) -> Self {
         Self::start_with_gtt(
@@ -277,6 +284,25 @@ impl HostSampler {
         G: FnMut() -> GFut + Send + 'static,
         GFut: std::future::Future<Output = Option<u64>> + Send,
     {
+        let latest = Arc::new(std::sync::atomic::AtomicU64::new(GTT_NONE));
+        let publish = latest.clone();
+        let gtt_task = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(2));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                interval.tick().await;
+                match tokio::time::timeout(READ_TIMEOUT, gtt()).await {
+                    Ok(value) => publish.store(
+                        value.filter(|v| *v != GTT_NONE).unwrap_or(GTT_NONE),
+                        std::sync::atomic::Ordering::Relaxed,
+                    ),
+                    Err(_) => {
+                        publish.store(GTT_NONE, std::sync::atomic::Ordering::Relaxed);
+                        break;
+                    }
+                }
+            }
+        });
         let task = tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(2));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -288,11 +314,8 @@ impl HostSampler {
                 let Ok(ts) = SystemTime::now().duration_since(UNIX_EPOCH) else {
                     continue;
                 };
-                // A stuck sysfs read ends sampling like a stuck /proc read: work stays bounded.
-                let gtt = match tokio::time::timeout(READ_TIMEOUT, gtt()).await {
-                    Ok(gtt) => gtt,
-                    Err(_) => return,
-                };
+                let gtt = Some(latest.load(std::sync::atomic::Ordering::Relaxed))
+                    .filter(|v| *v != GTT_NONE);
                 let mut history = history.lock().await;
                 if history
                     .sample(
@@ -306,7 +329,7 @@ impl HostSampler {
                 }
             }
         });
-        Self { task }
+        Self { task, gtt_task }
     }
 }
 

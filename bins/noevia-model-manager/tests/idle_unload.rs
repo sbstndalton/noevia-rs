@@ -198,3 +198,40 @@ async fn per_model_override_is_never_touched() {
         "[*]\nsleep-idle-seconds = 900\n[pinned]\nsleep-idle-seconds = -1\n"
     );
 }
+
+/// Another file's save (here `PUT /api/v1/settings`) is forwarded untouched: no reconcile, and
+/// its own `revision` is never replaced with the models.ini hash.
+#[tokio::test]
+async fn other_routes_keep_their_revision_and_never_reconcile() {
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    std::fs::write(&ini, SAVED).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let app = axum::Router::new().route(
+        "/api/v1/settings",
+        axum::routing::put(|| async {
+            axum::Json(serde_json::json!({"ok":true,"revision":"settings-revision-7"}))
+        }),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let reconciler = Arc::new(Reconciler::new(ini.clone(), Some(900)));
+    let response = noevia_model_manager::router(state(&base, Some(reconciler)))
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/settings")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    let raw = response.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&raw).unwrap();
+    assert_eq!(body["revision"], "settings-revision-7");
+    assert_eq!(std::fs::read_to_string(&ini).unwrap(), SAVED);
+}
