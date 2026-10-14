@@ -32,6 +32,11 @@ pub const ACT_TIMEOUT: Duration = Duration::from_secs(30);
 /// budget is ACT_TIMEOUT + LOCK_WAIT plus a margin, so a change that waited too long gives up
 /// itself and can never be applied after its caller was told it failed.
 pub const LOCK_WAIT: Duration = Duration::from_secs(15);
+/// #1717: how often the watcher checks whether the router lost its models (an embed container
+/// restart that noevia did not make: crash, host reboot, manual recreate).
+pub const WATCH_INTERVAL: Duration = Duration::from_secs(30);
+/// #1717: a failing re-warm waits at most this many watch intervals before it tries again.
+pub const WATCH_MAX_BACKOFF: u32 = 32;
 
 /// One served model. `model` is the router alias (the name clients send); `file` is the GGUF
 /// path relative to the models directory.
@@ -97,6 +102,33 @@ pub struct EmbeddingService {
     warm_generation: std::sync::atomic::AtomicU64,
     warm_interval: Duration,
     warm_attempts: u32,
+    /// #1717: warm-ups currently running (boot, apply, roll-back or watcher).
+    warms_running: std::sync::atomic::AtomicUsize,
+    watch_interval: Duration,
+}
+
+/// How one warm-up ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WarmEnd {
+    Loaded,
+    /// A newer warm-up, apply or roll-back took over.
+    Superseded,
+    /// Every attempt ran out without the router reporting the models loaded.
+    Failed,
+}
+
+/// Counts a running warm-up for as long as it lives.
+struct Running<'a>(&'a std::sync::atomic::AtomicUsize);
+impl<'a> Running<'a> {
+    fn new(count: &'a std::sync::atomic::AtomicUsize) -> Self {
+        count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Self(count)
+    }
+}
+impl Drop for Running<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -148,7 +180,16 @@ impl EmbeddingService {
             warm_generation: std::sync::atomic::AtomicU64::new(0),
             warm_interval: Duration::from_secs(2),
             warm_attempts: 90,
+            warms_running: std::sync::atomic::AtomicUsize::new(0),
+            watch_interval: WATCH_INTERVAL,
         }
+    }
+
+    /// Test hook: shorten the watcher's probe interval.
+    #[must_use]
+    pub fn with_watch(mut self, interval: Duration) -> Self {
+        self.watch_interval = interval;
+        self
     }
 
     /// Test hook: shorten the warm-up poll.
@@ -242,7 +283,7 @@ impl EmbeddingService {
         Ok(saved)
     }
 
-    /// Boot (and any restart of the container behind our back): load the saved models so the
+    /// Boot (a restart of the container behind our back is `watch`'s job): load the saved models so the
     /// router reports them `loaded`, which is what noevia's identity check requires.
     pub fn start_warm(self: &Arc<Self>) {
         let Ok(Some(saved)) = self.saved() else {
@@ -258,7 +299,81 @@ impl EmbeddingService {
     fn spawn_warm(self: &Arc<Self>, models: Vec<String>) {
         let generation = self.next_warm_generation();
         let this = self.clone();
-        tokio::spawn(async move { this.warm_generation_run(&models, generation).await });
+        tokio::spawn(async move {
+            this.warm_generation_run(&models, generation).await;
+        });
+    }
+
+    /// #1717: keep the saved models loaded when the embed container restarts behind noevia's
+    /// back. Every watch interval the router is probed; when a saved model is listed but not
+    /// loaded, no change holds the lock and no warm-up is running, the saved models (and only
+    /// those, at most two, already in the preset) are warmed through the same generation
+    /// mechanism as apply and roll-back, so any later change supersedes it. A warm-up that runs
+    /// out of attempts backs off (doubling, up to `WATCH_MAX_BACKOFF` intervals) and is logged
+    /// once until the models load again. Off (an empty saved set) never warms.
+    pub fn watch(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
+        let this = self.clone();
+        tokio::spawn(async move {
+            let mut failures: u32 = 0;
+            let mut wait: u32 = 1;
+            loop {
+                for _ in 0..wait {
+                    tokio::time::sleep(this.watch_interval).await;
+                }
+                match this.rewarm_once().await {
+                    None => wait = 1,
+                    Some(WarmEnd::Loaded) => {
+                        if failures > 0 {
+                            eprintln!("embedding service: router models loaded again");
+                        }
+                        failures = 0;
+                        wait = 1;
+                    }
+                    Some(WarmEnd::Superseded) => wait = 1,
+                    Some(WarmEnd::Failed) => {
+                        if failures == 0 {
+                            eprintln!(
+                                "embedding service: router lists the saved models but could not load them; retrying with back-off"
+                            );
+                        }
+                        failures = failures.saturating_add(1);
+                        wait = 1u32
+                            .checked_shl(failures.min(31))
+                            .unwrap_or(u32::MAX)
+                            .min(WATCH_MAX_BACKOFF);
+                    }
+                }
+            }
+        })
+    }
+
+    /// One watcher check. `None`: nothing to do (off, broken, busy, unreachable or loaded).
+    async fn rewarm_once(&self) -> Option<WarmEnd> {
+        if self.broken().is_some()
+            || self.warms_running.load(std::sync::atomic::Ordering::SeqCst) > 0
+        {
+            return None;
+        }
+        // An apply (or a delete check) holds the lock: it owns the service right now.
+        let guard = self.lock.try_lock().ok()?;
+        let saved = self.saved().ok()??;
+        if saved.models.is_empty() {
+            return None;
+        }
+        let served = self.probe.models().await.ok()?;
+        let needs = saved.models.iter().any(|e| {
+            served.iter().any(|m| m.id == e.model)
+                && !served.iter().any(|m| m.id == e.model && m.loaded)
+        });
+        if !needs || self.warms_running.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+            return None;
+        }
+        // Take the generation while holding the lock, so the set cannot change in between; a
+        // later apply or roll-back bumps it and this warm-up stops.
+        let generation = self.next_warm_generation();
+        drop(guard);
+        let wanted: Vec<String> = saved.models.iter().map(|e| e.model.clone()).collect();
+        Some(self.warm_generation_run(&wanted, generation).await)
     }
 
     fn next_warm_generation(&self) -> u64 {
@@ -438,11 +553,12 @@ impl EmbeddingService {
         self.warm_generation_run(wanted, generation).await;
     }
 
-    async fn warm_generation_run(&self, wanted: &[String], generation: u64) {
+    async fn warm_generation_run(&self, wanted: &[String], generation: u64) -> WarmEnd {
+        let _running = Running::new(&self.warms_running);
         for _ in 0..self.warm_attempts {
             tokio::time::sleep(self.warm_interval).await;
             if !self.warm_current(generation) {
-                return;
+                return WarmEnd::Superseded;
             }
             let Ok(models) = self.probe.models().await else {
                 continue;
@@ -452,7 +568,7 @@ impl EmbeddingService {
                 if models.iter().all(|m| !m.loaded || wanted.contains(&m.id)) {
                     let _guard = self.lock.lock().await;
                     if !self.warm_current(generation) {
-                        return;
+                        return WarmEnd::Superseded;
                     }
                     if let Ok(Some(mut saved)) = self.saved() {
                         let current: Vec<&String> = saved.models.iter().map(|e| &e.model).collect();
@@ -464,13 +580,18 @@ impl EmbeddingService {
                         }
                     }
                 }
-                return;
+                return WarmEnd::Loaded;
             }
             for w in wanted {
                 if !loaded(w) && models.iter().any(|m| &m.id == w) {
                     let _ = self.probe.load(w).await;
                 }
             }
+        }
+        if self.warm_current(generation) {
+            WarmEnd::Failed
+        } else {
+            WarmEnd::Superseded
         }
     }
 

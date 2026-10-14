@@ -178,6 +178,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         let service = Arc::new(service);
         service.start_warm();
+        // #1717: re-warm after an embed restart noevia did not make.
+        drop(service.watch());
         Some(service)
     };
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;

@@ -946,3 +946,106 @@ async fn a_roll_back_warms_the_restored_set_again() {
         "the restored set still receives load calls after the roll-back: {loads:?}"
     );
 }
+
+/// #1717: a watched service with a short probe interval, seeded with nomic and settled (no
+/// boot warm-up running).
+fn watched(attempts: u32) -> Fixture {
+    let f = fixture_with(|s| {
+        s.with_warm(Duration::from_millis(5), attempts)
+            .with_watch(Duration::from_millis(20))
+    });
+    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f
+}
+
+#[tokio::test]
+async fn an_embed_restart_behind_our_back_is_warmed_within_the_probe_interval() {
+    let f = watched(50);
+    f.router.set(&[(NOMIC, true)]);
+    let watcher = f.service.watch();
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    assert!(
+        f.router.loads.lock().unwrap().is_empty(),
+        "nothing to do while loaded"
+    );
+    // The container restarts on its own: the router lists the preset, loads nothing.
+    f.router.set(&[(NOMIC, false)]);
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        if f.router.models.lock().unwrap()[0].loaded {
+            break;
+        }
+    }
+    watcher.abort();
+    assert_eq!(*f.router.loads.lock().unwrap(), vec![NOMIC.to_owned()]);
+    assert!(f.router.models.lock().unwrap()[0].loaded);
+    assert!(
+        f.control.actions.lock().unwrap().is_empty(),
+        "the watcher never restarts or stops anything"
+    );
+}
+
+#[tokio::test]
+async fn the_watcher_never_warms_while_a_change_holds_the_lock() {
+    let f = watched(50);
+    f.router.set(&[(NOMIC, false)]);
+    let guard = f.service.hold().await;
+    let watcher = f.service.watch();
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert!(
+        f.router.loads.lock().unwrap().is_empty(),
+        "an in-flight apply owns the service"
+    );
+    drop(guard);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    watcher.abort();
+    assert_eq!(*f.router.loads.lock().unwrap(), vec![NOMIC.to_owned()]);
+}
+
+#[tokio::test]
+async fn the_watcher_never_warms_when_embedding_is_off() {
+    let f = watched(50);
+    f.service.apply(serve(&[])).await.unwrap();
+    // Even if something is listed, an off service loads nothing.
+    f.router.set(&[(NOMIC, false), (GEMMA, false)]);
+    let watcher = f.service.watch();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    watcher.abort();
+    assert!(f.router.loads.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn the_watcher_only_loads_the_saved_models() {
+    let f = watched(50);
+    f.router.set(&[(NOMIC, false), (GEMMA, false)]);
+    let watcher = f.service.watch();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    watcher.abort();
+    let loads = f.router.loads.lock().unwrap().clone();
+    assert!(!loads.is_empty());
+    assert!(loads.iter().all(|m| m == NOMIC), "{loads:?}");
+}
+
+#[tokio::test]
+async fn a_failing_re_warm_backs_off() {
+    // Each warm-up tries twice (2 loads) and fails; without back-off a 20 ms probe would start
+    // one about every 30 ms, i.e. ~40 loads in 600 ms.
+    let f = watched(2);
+    *f.router.stuck.lock().unwrap() = true;
+    f.router.set(&[(NOMIC, false)]);
+    let watcher = f.service.watch();
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let failing = f.router.loads.lock().unwrap().len();
+    assert!(failing >= 2, "it tried at least once: {failing}");
+    assert!(failing <= 12, "back-off limits retries: {failing}");
+    // Once the router can load again, the watcher recovers on a later probe.
+    *f.router.stuck.lock().unwrap() = false;
+    for _ in 0..300 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        if f.router.models.lock().unwrap()[0].loaded {
+            break;
+        }
+    }
+    watcher.abort();
+    assert!(f.router.models.lock().unwrap()[0].loaded);
+}
