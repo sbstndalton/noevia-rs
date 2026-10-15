@@ -10,6 +10,7 @@ workspace = true
 [dependencies]
 chrono = "0.4"
 libc = "0.2"
+mem-return = { path = "../mem-return" }
 crc32fast = "1"
 js-json = { path = "../js-json" }
 policy-leaves = { path = "../policy-leaves" }
