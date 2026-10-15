@@ -99,6 +99,14 @@ enum HistoryFault {
     Unsupported,
 }
 
+/// Asks glibc to hand freed heap back to the OS (#1833). An export builds tens of MiB in a
+/// blocking-pool thread's arena and frees it; glibc keeps much of it, so a long-running front sat
+/// well above one export's peak. Call once an export's ZIP is sent or dropped; exports run one at a
+/// time, so a full trim is cheap. A no-op off glibc Linux (crate mem-return holds the one unsafe call).
+pub fn return_memory() {
+    mem_return::trim();
+}
+
 /// The export of the user `user_id` under `data_dir` (UI_DATA_DIR) at `now_ms`.
 pub fn export(data_dir: &Path, user_id: &str, now_ms: i64) -> Outcome {
     let Ok(dir) = server_projects::store::user_dir(data_dir, user_id) else {

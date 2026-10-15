@@ -61,6 +61,14 @@ struct Chunks {
     left: u64,
 }
 
+impl Drop for Chunks {
+    /// Sent or abandoned (a closed connection): the ZIP is freed, so give the heap back (#1833).
+    fn drop(&mut self) {
+        self.rest.clear();
+        server_export::route::return_memory();
+    }
+}
+
 impl http_body::Body for Chunks {
     type Data = bytes::Bytes;
     type Error = std::convert::Infallible;
@@ -140,14 +148,17 @@ pub async fn serve(
     let done = tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let when = identity::now_ms();
-        match export(&data_dir, &user, when) {
+        let done = match export(&data_dir, &user, when) {
             Outcome::Zip { chunks, len, day } => match audit(&worker, &user, len) {
-                Ok(()) => Done::Zip { chunks, len, day },
+                Ok(()) => return Done::Zip { chunks, len, day },
                 Err(_) => Done::Internal,
             },
             Outcome::TooLarge(message) => Done::TooLarge(message),
             Outcome::Internal => Done::Internal,
-        }
+        };
+        // Nothing is sent: what the export built is freed (a sent ZIP is trimmed by its body).
+        server_export::route::return_memory();
+        done
     })
     .await;
     match done {

@@ -1432,6 +1432,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mem-return"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2479,6 +2486,7 @@ dependencies = [
  "hex",
  "js-json",
  "libc",
+ "mem-return",
  "policy-leaves",
  "proptest",
  "serde_json",

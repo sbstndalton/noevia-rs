@@ -1,0 +1,16 @@
+[package]
+name = "mem-return"
+version = "0.1.0"
+description = "Hands freed heap back to the OS on glibc (malloc_trim): the workspace's one unsafe call, isolated here"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Not `workspace = true`: the workspace forbids unsafe code, and this crate's single FFI call needs
+# it. Everything else in the workspace stays forbidden.
+[lints.rust]
+unsafe_code = "deny"
+
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+libc = "0.2"

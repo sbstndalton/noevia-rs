@@ -68,6 +68,16 @@ fn text(spec: &Spec) -> String {
 /// Lays out `files` (chat id, history; exported in this order), each made, written and dropped in
 /// turn so the test's own data is not counted, and exports them.
 fn run(name: &str, files: Vec<(&str, Spec)>) -> usize {
+    let root = layout(name, files);
+    let out = export(root.path(), USER, 1_800_000_000_000);
+    let Outcome::Zip { len, .. } = &out else {
+        panic!("{name}: {out:?}");
+    };
+    println!("{name}: export of {:.1} MiB", *len as f64 / MIB as f64);
+    *len
+}
+
+fn layout(name: &str, files: Vec<(&str, Spec)>) -> tempfile::TempDir {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path().join("users").join(USER);
     std::fs::create_dir_all(&dir).unwrap();
@@ -84,12 +94,58 @@ fn run(name: &str, files: Vec<(&str, Spec)>) -> usize {
         );
         std::fs::write(dir.join(format!("history-{id}.json")), text).unwrap();
     }
-    let out = export(root.path(), USER, 1_800_000_000_000);
-    let Outcome::Zip { len, .. } = &out else {
-        panic!("{name}: {out:?}");
-    };
-    println!("{name}: export of {:.1} MiB", *len as f64 / MIB as f64);
-    *len
+    root
+}
+
+/// One export on a fresh thread (the route runs it on a blocking-pool thread, not the main one),
+/// its ZIP dropped when it returns, as the body drops its chunks once sent.
+fn export_once(name: &str, root: &std::path::Path) -> usize {
+    let root = root.to_path_buf();
+    let len = std::thread::spawn(move || {
+        let out = export(&root, USER, 1_800_000_000_000);
+        let Outcome::Zip { len, .. } = &out else {
+            panic!("{out:?}");
+        };
+        *len
+    })
+    .join()
+    .unwrap_or_else(|_| panic!("{name}: export failed"));
+    println!("{name}: export of {:.1} MiB", len as f64 / MIB as f64);
+    len
+}
+
+/// This process's current resident set (Linux `VmRSS`).
+fn rss_bytes() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let line = status.lines().find(|l| l.starts_with("VmRSS:"))?;
+    let kib: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kib * 1024)
+}
+
+/// #1833: five of the largest exports back to back in one process; prints `RSS <n> <bytes>` after
+/// each (with `NOEVIA_PEAK_TRIM=0` the allocator is not asked to return memory: the "before").
+fn repeat(times: usize) -> usize {
+    let full = HISTORY_READ_CAP as usize - 64 * 1024;
+    let root = layout(
+        "repeat",
+        vec![
+            ("a", Spec::Message(19 * MIB / 2, 0)),
+            ("b", Spec::Message(19 * MIB / 2, 0)),
+            ("last", Spec::Message(full - 100, 0)),
+        ],
+    );
+    let trim = std::env::var("NOEVIA_PEAK_TRIM").as_deref() != Ok("0");
+    let mut len = 0;
+    for n in 1..=times {
+        len = export_once("repeat", root.path());
+        if trim {
+            server_export::route::return_memory();
+        }
+        if let Some(rss) = rss_bytes() {
+            println!("RSS {n} {rss}");
+        }
+    }
+    len
 }
 
 /// One scenario, in this process.
@@ -125,11 +181,81 @@ fn scenario(name: &str) -> usize {
                 ("last", Spec::Values),
             ],
         ),
+        "repeat" => repeat(5),
+        // One export, the same way (a worker thread): the reference peak for `repeat`.
+        "single" => repeat(1),
         other => panic!("unknown scenario {other}"),
     }
 }
 
 const SCENARIOS: [&str; 3] = ["held", "content", "values"];
+
+/// Runs `name` in a fresh process with `trim` ("1"/"0"); its stdout.
+fn child(name: &str, trim: &str) -> String {
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "the_largest_admitted_exports_stay_under_150_mib",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env("NOEVIA_PEAK_SCENARIO", name)
+        .env("NOEVIA_PEAK_TRIM", trim)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        out.status.success(),
+        "{name}: {text}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    text
+}
+
+fn series(text: &str, tag: &str) -> Vec<u64> {
+    text.lines()
+        .filter_map(|l| l.strip_prefix(tag))
+        .filter_map(|l| l.split_whitespace().last()?.parse().ok())
+        .collect()
+}
+
+/// #1833: RSS after five back-to-back exports stays within the single-export peak plus 32 MiB.
+#[test]
+fn back_to_back_exports_return_memory() {
+    if std::env::var("NOEVIA_PEAK_SCENARIO").is_ok() {
+        return; // the other test is the child
+    }
+    let before = series(&child("repeat", "0"), "RSS ");
+    let single = series(&child("single", "1"), "PEAK single ");
+    let after = series(&child("repeat", "1"), "RSS ");
+    if before.is_empty() || single.is_empty() {
+        println!("RSS not measured on this OS");
+        return;
+    }
+    let mb = |v: &[u64]| {
+        v.iter()
+            .map(|b| format!("{:.1}", *b as f64 / MIB as f64))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    println!(
+        "single-export peak (same layout, worker thread): {} MiB",
+        mb(&single)
+    );
+    println!(
+        "RSS after each of 5 exports, no malloc_trim (before): {} MiB",
+        mb(&before)
+    );
+    println!(
+        "RSS after each of 5 exports, malloc_trim (after): {} MiB",
+        mb(&after)
+    );
+    let limit = single.iter().copied().max().unwrap_or(0) + 32 * MIB as u64;
+    assert!(
+        after.iter().all(|r| *r <= limit),
+        "RSS {after:?} over {limit}"
+    );
+}
 
 /// Each scenario runs in a fresh process (this test binary, re-entered with
 /// `NOEVIA_PEAK_SCENARIO`), so one export's peak is measured alone, as the route runs exports
