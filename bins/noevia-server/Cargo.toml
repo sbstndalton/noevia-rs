@@ -27,6 +27,9 @@ rust-routing-default = []
 rust-stats = []
 # M4 (#1315): GET /api/export/conversations under NOEVIA_RUST_EXPORT (src/routes.rs EXPORT, crates/server-export).
 rust-export = []
+# M6 (#1373): GET /api/providers/chatgpt under NOEVIA_RUST_CHATGPT_STATUS (src/routes.rs CHATGPT_STATUS,
+# crates/server-chatgpt-status).
+rust-chatgpt-status = ["dep:server-chatgpt-status", "dep:zeroize"]
 # M4's second slice: a project's chat list under NOEVIA_RUST_PROJECTS (src/routes.rs PROJECT_CHATS).
 rust-project-chats = []
 # M4's third slice: the free-chat list under NOEVIA_RUST_PROJECTS (src/routes.rs FREE_CHATS).
@@ -42,6 +45,7 @@ server-usage = { path = "../../crates/server-usage" }
 server-routing-default = { path = "../../crates/server-routing-default" }
 server-stats = { path = "../../crates/server-stats" }
 server-export = { path = "../../crates/server-export" }
+server-chatgpt-status = { path = "../../crates/server-chatgpt-status", optional = true }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 base64 = "0.22"
 brotli = "8"
@@ -67,6 +71,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 
 [dev-dependencies]
+secret-envelope = { path = "../../crates/secret-envelope" }
 tempfile = "3"
 http-body-util = { version = "0.1", features = ["channel"] }
 hyper = { version = "1", features = ["http1", "client", "server"] }

@@ -180,9 +180,8 @@ pub fn metadata_json(projected: &ProjectedConnection) -> String {
     out
 }
 
-/// Logical cap on the optional previous-key environment text, before UTF-16/decode allocation.
-/// Previous files take precedence. Over-cap environment inputs refuse rather than truncate.
-pub const PREVIOUS_ENV_BYTES: usize = 4096;
+/// Logical cap on the optional previous-key environment text (server-auth `load_existing`).
+pub const PREVIOUS_ENV_BYTES: usize = server_auth::secrets::PREVIOUS_ENV_BYTES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyReadError {
@@ -190,81 +189,17 @@ pub enum KeyReadError {
     Invalid,
 }
 
-fn read_existing_key(path: &std::path::Path) -> Result<Zeroizing<Vec<u8>>, std::io::Error> {
-    use std::io::Read;
-    use std::os::unix::fs::MetadataExt;
-    let fd = rustix::fs::open(
-        path,
-        rustix::fs::OFlags::RDONLY
-            | rustix::fs::OFlags::NOFOLLOW
-            | rustix::fs::OFlags::NONBLOCK
-            | rustix::fs::OFlags::CLOEXEC,
-        rustix::fs::Mode::empty(),
-    )?;
-    let mut file = std::fs::File::from(fd);
-    let before = file.metadata()?;
-    let invalid = || std::io::Error::from(std::io::ErrorKind::InvalidData);
-    if !before.is_file() || before.nlink() != 1 || before.len() != 32 {
-        return Err(invalid());
-    }
-    let mut bytes = Zeroizing::new(Vec::with_capacity(33));
-    (&mut file).take(33).read_to_end(&mut bytes)?;
-    let after = file.metadata()?;
-    if bytes.len() != 32
-        || before.dev() != after.dev()
-        || before.ino() != after.ino()
-        || after.nlink() != 1
-        || after.len() != 32
-        || before.mtime() != after.mtime()
-        || before.mtime_nsec() != after.mtime_nsec()
-        || before.ctime() != after.ctime()
-        || before.ctime_nsec() != after.ctime_nsec()
-    {
-        return Err(invalid());
-    }
-    Ok(bytes)
-}
-
-/// Open each final component once, without following it. This does not attest ancestor paths
-/// or provide an atomic filesystem snapshot. No permissions or file contents are changed.
+/// Open each final component once, without following it (server-auth `load_existing`, shared
+/// with the native ChatGPT status). This does not attest ancestor paths or provide an atomic
+/// filesystem snapshot. No permissions or file contents are changed.
 pub fn load_existing_keys(
     data_dir: &std::path::Path,
     previous_env: Option<&str>,
 ) -> Result<SecretKeys, KeyReadError> {
-    let current =
-        read_existing_key(&data_dir.join("secrets.key")).map_err(|_| KeyReadError::Unavailable)?;
-    let previous = match read_existing_key(&data_dir.join("secrets.key.previous")) {
-        Ok(bytes) => Some(bytes),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            match previous_env.filter(|v| !v.is_empty()) {
-                None => None,
-                Some(text) => {
-                    if text.len() > PREVIOUS_ENV_BYTES {
-                        return Err(KeyReadError::Invalid);
-                    }
-                    let units = Zeroizing::new(text.encode_utf16().collect::<Vec<_>>());
-                    let text =
-                        Zeroizing::new(String::from_utf16_lossy(policy_leaves::js_trim(&units)));
-                    let bytes = if text.len() == 64 && text.bytes().all(|b| b.is_ascii_hexdigit()) {
-                        text.as_bytes()
-                            .chunks(2)
-                            .filter_map(|p| {
-                                std::str::from_utf8(p)
-                                    .ok()
-                                    .and_then(|s| u8::from_str_radix(s, 16).ok())
-                            })
-                            .collect()
-                    } else {
-                        let units = Zeroizing::new(text.encode_utf16().collect::<Vec<_>>());
-                        secret_envelope::decode_base64_node(&units)
-                    };
-                    Some(Zeroizing::new(bytes))
-                }
-            }
-        }
-        Err(_) => return Err(KeyReadError::Invalid),
-    };
-    SecretKeys::from_existing_bytes(current, previous).map_err(|_| KeyReadError::Invalid)
+    server_auth::secrets::load_existing(data_dir, previous_env).map_err(|e| match e {
+        server_auth::secrets::SecretsError::NoKey => KeyReadError::Unavailable,
+        _ => KeyReadError::Invalid,
+    })
 }
 
 #[cfg(test)]

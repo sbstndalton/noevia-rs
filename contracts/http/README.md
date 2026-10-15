@@ -167,6 +167,26 @@ or stale in-memory list is not seen. CI job `export-native` (workflow export.yml
 Node oracle, runs the differential and HTTP tests, and replays the whole corpus through the front
 with the switch on (exchange 182 is the export), plus a negative control once core refuses.
 
+## M6: ChatGPT connection status (`NOEVIA_RUST_CHATGPT_STATUS`, sbstndalton/noevia#1373)
+
+`GET /api/providers/chatgpt` is Rust's under `NOEVIA_RUST_CHATGPT_STATUS=1` in a build with the
+cargo feature `rust-chatgpt-status`; the front refuses the switch without `NOEVIA_RUST_AUTH=1`,
+`UI_DATA_DIR` and valid native auth, or with an invalid `NOEVIA_FEATURE_CHATGPT_OAUTH`. Every other
+method and every `/api/providers/chatgpt/*` sibling (device login, poll, cancel, models) stays
+Node's. With `NOEVIA_FRONT=rust` and `NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED=1` Node answers that GET
+with 503 (core `rustChatgptStatusOwned`, core#73).
+
+crates/server-chatgpt-status reads the product flag first (off: Node's 404 before any OAuth row
+or key), then only the signed-in user's `chatgpt_oauth_tokens` row, through the read-only store: no
+DDL, no migration, no write. The secret keys are snapshotted once per process (a key file
+replaced on disk needs a coordinated restart). `plan` is projected to a short identifier in Node
+and Rust alike (core#135). A missing or older schema, an oversized or non-text row and unreadable
+keys are a sanitized 502 (`ChatGPT sign-in failed.`). CI job `chatgpt-status-native` (workflow
+chatgpt-status.yml) regenerates the Node oracle at `crates/server-chatgpt-status/tests/oracle-core.ref`,
+runs the differential, bounds and HTTP tests, and replays the whole corpus through the front with
+the switch on (exchange 147 is the status, flag off), plus a negative control once core passes the
+switch through its corpus launcher.
+
 ### UTC calendar replay contract (#1308)
 
 The committed manifest explicitly opts into version 1 of `calendarContract` (UTC,

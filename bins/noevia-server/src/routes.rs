@@ -46,6 +46,9 @@ pub struct Switches {
     /// NOEVIA_RUST_EXPORT=1 (M4, #1315, only with rust_projects, config.rs):
     /// GET /api/export/conversations.
     pub rust_export: bool,
+    /// NOEVIA_RUST_CHATGPT_STATUS=1 (M6, #1373, only with rust_auth, config.rs):
+    /// GET /api/providers/chatgpt.
+    pub rust_chatgpt_status: bool,
 }
 
 impl Switches {
@@ -62,6 +65,7 @@ impl Switches {
             "NOEVIA_RUST_ROUTING_DEFAULT" => self.rust_routing_default,
             "NOEVIA_RUST_STATS" => self.rust_stats,
             "NOEVIA_RUST_EXPORT" => self.rust_export,
+            "NOEVIA_RUST_CHATGPT_STATUS" => self.rust_chatgpt_status,
             _ => false,
         }
     }
@@ -106,6 +110,8 @@ pub enum Native {
     Stats,
     /// GET /api/export/conversations (M4, NOEVIA_RUST_EXPORT): crates/server-export.
     Export,
+    /// GET /api/providers/chatgpt (M6, NOEVIA_RUST_CHATGPT_STATUS): crates/server-chatgpt-status.
+    ChatgptStatus,
 }
 
 /// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
@@ -118,6 +124,11 @@ const STATS: &str = "/api/stats";
 /// The route [`Native::Export`] implements (GET only; routes.toml), answered only in a build with
 /// the cargo feature `rust-export` (listed by `--features`, so the supervisor confirms it to Node).
 const EXPORT: &str = "/api/export/conversations";
+
+/// The route [`Native::ChatgptStatus`] implements (GET only; routes.toml), answered only in a build
+/// with the cargo feature `rust-chatgpt-status` (listed by `--features`, so the supervisor confirms
+/// it to Node). Every sibling (`/device`, `/device/poll`, `/device/cancel`, `/models`) is Node's.
+const CHATGPT_STATUS: &str = "/api/providers/chatgpt";
 
 /// The routes [`Native::Projects`] implements.
 const PROJECT_ROUTES: &[&str] = &[
@@ -181,6 +192,7 @@ fn compiled(route: &Route) -> bool {
         && (![STORAGE_FILE, STORAGE_FILES_ROUTE].contains(&route.path)
             || cfg!(feature = "rust-storage-browse"))
         && (route.path != EXPORT || cfg!(feature = "rust-export"))
+        && (route.path != CHATGPT_STATUS || cfg!(feature = "rust-chatgpt-status"))
 }
 
 /// The native handler a rust-owned route is implemented by.
@@ -210,6 +222,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         }
         (STATS, false, Some("NOEVIA_RUST_STATS")) => Some(Native::Stats),
         (EXPORT, false, Some("NOEVIA_RUST_EXPORT")) => Some(Native::Export),
+        (CHATGPT_STATUS, false, Some("NOEVIA_RUST_CHATGPT_STATUS")) => Some(Native::ChatgptStatus),
         ("/api/reasoning-settings", false, Some("NOEVIA_RUST_REASONING_SETTINGS")) => {
             Some(Native::ReasoningSettings)
         }
@@ -353,6 +366,7 @@ mod tests {
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
+            rust_chatgpt_status: false,
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -370,6 +384,7 @@ mod tests {
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
+            rust_chatgpt_status: false,
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -388,6 +403,7 @@ mod tests {
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
+            rust_chatgpt_status: false,
         };
         let both = Switches {
             rust_auth: true,
@@ -401,6 +417,7 @@ mod tests {
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
+            rust_chatgpt_status: false,
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
@@ -508,6 +525,7 @@ mod tests {
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
+            rust_chatgpt_status: false,
             ..Default::default()
         };
         for p in ["/api/usage", "/api/usage/aggregate"] {
@@ -675,5 +693,47 @@ mod tests {
         }
         assert!(on.on("NOEVIA_RUST_EXPORT"));
         assert!(!projects.on("NOEVIA_RUST_EXPORT"));
+    }
+
+    #[test]
+    fn chatgpt_status_owns_only_the_exact_get_under_its_switch_in_a_build_with_the_slice() {
+        let auth = Switches {
+            rust_auth: true,
+            ..Default::default()
+        };
+        let on = Switches {
+            rust_chatgpt_status: true,
+            ..auth
+        };
+        let answered = cfg!(feature = "rust-chatgpt-status").then_some(Native::ChatgptStatus);
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-chatgpt-status"),
+            answered.is_some()
+        );
+        assert_eq!(dispatch("GET", "/api/providers/chatgpt"), None);
+        assert_eq!(dispatch_under("GET", "/api/providers/chatgpt", auth), None);
+        assert_eq!(
+            dispatch_under("GET", "/api/providers/chatgpt", on),
+            answered
+        );
+        // Node keeps every other method (its 405), every sibling and the provider list.
+        for (m, p) in [
+            ("HEAD", "/api/providers/chatgpt"),
+            ("POST", "/api/providers/chatgpt"),
+            ("PUT", "/api/providers/chatgpt"),
+            ("DELETE", "/api/providers/chatgpt"),
+            ("OPTIONS", "/api/providers/chatgpt"),
+            ("GET", "/api/providers/chatgpt/models"),
+            ("POST", "/api/providers/chatgpt/device"),
+            ("POST", "/api/providers/chatgpt/device/poll"),
+            ("POST", "/api/providers/chatgpt/device/cancel"),
+            ("GET", "/api/providers/chatgptx"),
+            ("GET", "/api/providers"),
+            ("GET", "/api/providers/chatgpt-oauth/models"),
+        ] {
+            assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+        }
+        assert!(on.on("NOEVIA_RUST_CHATGPT_STATUS"));
+        assert!(!auth.on("NOEVIA_RUST_CHATGPT_STATUS"));
     }
 }

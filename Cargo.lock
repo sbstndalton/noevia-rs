@@ -1607,10 +1607,12 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "secret-envelope",
  "serde",
  "serde_json",
  "server-account",
  "server-auth",
+ "server-chatgpt-status",
  "server-export",
  "server-projects",
  "server-reasoning-settings",
@@ -2467,11 +2469,26 @@ dependencies = [
  "argon2",
  "policy-leaves",
  "proptest",
+ "rustix",
  "secret-envelope",
  "serde_json",
  "server-store",
  "sha2",
  "subtle",
+ "tempfile",
+ "zeroize",
+]
+
+[[package]]
+name = "server-chatgpt-status"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "secret-envelope",
+ "serde_json",
+ "server-auth",
+ "server-routing-mode",
+ "server-store",
  "tempfile",
  "zeroize",
 ]

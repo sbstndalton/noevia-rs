@@ -650,8 +650,12 @@ path = "/api/providers"
 owner = "node"
 
 [[route]]
+# M6 (#1373): GET only (crates/server-chatgpt-status, read-only); every other method and every
+# /api/providers/chatgpt/* sibling stays Node's.
 path = "/api/providers/chatgpt"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+switch = "NOEVIA_RUST_CHATGPT_STATUS"
 
 [[route]]
 path = "/api/providers/chatgpt/device"

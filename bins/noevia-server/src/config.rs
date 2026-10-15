@@ -58,11 +58,40 @@ pub struct Config {
     /// one Node re-reads from disk, the owner's 2026-10-12 condition) and without UI_DATA_DIR; any
     /// other value is off.
     pub rust_export: bool,
+    /// NOEVIA_RUST_CHATGPT_STATUS=1 (M6, sbstndalton/noevia#1373): GET /api/providers/chatgpt.
+    /// Refused without NOEVIA_RUST_AUTH=1, the compiled rust-chatgpt-status feature, UI_DATA_DIR
+    /// and valid native auth, or with an invalid NOEVIA_FEATURE_CHATGPT_OAUTH (Node does not start
+    /// with one either); any other value is off and none of those keys is read.
+    pub rust_chatgpt_status: Option<ChatgptStatus>,
     pub rust_sampling_settings: Option<server_store::RustSamplingSettings>,
     pub usage_clock: Result<server_usage::summary::Clock, server_usage::Fault>,
     /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
     /// UI_DATA_DIR); `None` without UI_DATA_DIR.
     pub account: Option<server_account::Settings>,
+}
+
+/// The native ChatGPT status's startup inputs (#1373). Read once, as Node reads them once.
+#[derive(Debug, Clone)]
+pub struct ChatgptStatus {
+    /// NOEVIA_FEATURE_CHATGPT_OAUTH, parsed as core features.cjs `parseEnv` (it overrides the
+    /// admin setting while set).
+    pub feature_env: Option<bool>,
+    /// SECRETS_KEY_PREVIOUS (secrets.key.previous takes precedence), for the startup key snapshot.
+    pub previous_key_env: RedactedEnv,
+}
+
+/// An environment value that may be key material: cloned with the config, never printed.
+#[derive(Clone, Default)]
+pub struct RedactedEnv(pub Option<String>);
+
+impl std::fmt::Debug for RedactedEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_some() {
+            "RedactedEnv(set)"
+        } else {
+            "RedactedEnv(unset)"
+        })
+    }
 }
 
 /// Where Node listens. Only `http://<loopback ip>:<port>` is accepted: the proxy forwards session
@@ -134,6 +163,7 @@ impl Config {
             rust_routing_default: self.rust_routing_default,
             rust_stats: self.rust_stats.is_some(),
             rust_export: self.rust_export,
+            rust_chatgpt_status: self.rust_chatgpt_status.is_some(),
         }
     }
 
@@ -271,6 +301,32 @@ impl Config {
         } else {
             false
         };
+        let rust_chatgpt_status = if get("NOEVIA_RUST_CHATGPT_STATUS").as_deref() == Some("1") {
+            if rust_auth.is_none() {
+                return Err("NOEVIA_RUST_CHATGPT_STATUS=1 needs NOEVIA_RUST_AUTH=1".into());
+            }
+            if !cfg!(feature = "rust-chatgpt-status") {
+                return Err(
+                    "NOEVIA_RUST_CHATGPT_STATUS=1 needs compiled rust-chatgpt-status".into(),
+                );
+            }
+            if get("UI_DATA_DIR").is_none_or(|v| v.is_empty())
+                || server_auth::AuthConfig::from_lookup(&get).is_err()
+            {
+                return Err(
+                    "NOEVIA_RUST_CHATGPT_STATUS=1 needs UI_DATA_DIR and valid native auth".into(),
+                );
+            }
+            let feature_env =
+                server_routing_mode::feature_env(get("NOEVIA_FEATURE_CHATGPT_OAUTH").as_deref())
+                    .map_err(|e| format!("NOEVIA_FEATURE_CHATGPT_OAUTH: {}", e.message))?;
+            Some(ChatgptStatus {
+                feature_env,
+                previous_key_env: RedactedEnv(get("SECRETS_KEY_PREVIOUS")),
+            })
+        } else {
+            None
+        };
         let routing_feature_env = if rust_routing_mode.is_some() {
             server_routing_mode::feature_env(get("NOEVIA_FEATURE_ROUTING_MODES").as_deref())
                 .map_err(|e| e.message)?
@@ -309,6 +365,7 @@ impl Config {
             rust_routing_default,
             rust_stats,
             rust_export,
+            rust_chatgpt_status,
             usage_clock: server_usage::summary::Clock::system(&get),
         })
     }
@@ -754,5 +811,99 @@ mod export_tests {
         assert!(c.rust_export && c.switches().on("NOEVIA_RUST_EXPORT"));
         let err = lookup(&[UP, AUTH, PROJECTS, ON]).unwrap_err();
         assert!(err.contains("UI_DATA_DIR"), "{err}");
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod chatgpt_status_tests {
+    use super::*;
+
+    fn lookup(pairs: &[(&str, &str)]) -> Result<Config, String> {
+        let pairs: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        Config::from_lookup(|k| pairs.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone()))
+    }
+
+    const UP: (&str, &str) = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9");
+    const AUTH: (&str, &str) = ("NOEVIA_RUST_AUTH", "1");
+    const DATA: (&str, &str) = ("UI_DATA_DIR", "/data");
+    const ON: (&str, &str) = ("NOEVIA_RUST_CHATGPT_STATUS", "1");
+
+    #[test]
+    fn chatgpt_status_switch_is_exact_and_default_off() {
+        for value in [
+            None,
+            Some("0"),
+            Some("true"),
+            Some(" 1"),
+            Some("1 "),
+            Some(""),
+        ] {
+            let mut pairs = vec![UP, AUTH, DATA];
+            if let Some(v) = value {
+                pairs.push(("NOEVIA_RUST_CHATGPT_STATUS", v));
+            }
+            let c = lookup(&pairs).unwrap();
+            assert!(c.rust_chatgpt_status.is_none());
+            assert!(!c.switches().on("NOEVIA_RUST_CHATGPT_STATUS"));
+        }
+        // Off, an invalid product flag is not this switch's business.
+        assert!(lookup(&[UP, ("NOEVIA_FEATURE_CHATGPT_OAUTH", "maybe")]).is_ok());
+    }
+
+    #[test]
+    fn chatgpt_status_needs_auth_the_build_a_data_dir_and_a_valid_flag() {
+        let err = lookup(&[UP, ON, DATA]).unwrap_err();
+        assert!(err.contains("NOEVIA_RUST_AUTH=1"), "{err}");
+        let enabled = lookup(&[UP, AUTH, ON, DATA]);
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-chatgpt-status"),
+            cfg!(feature = "rust-chatgpt-status")
+        );
+        if !cfg!(feature = "rust-chatgpt-status") {
+            assert!(enabled
+                .unwrap_err()
+                .contains("compiled rust-chatgpt-status"));
+            return;
+        }
+        let c = enabled.unwrap();
+        assert!(c.switches().on("NOEVIA_RUST_CHATGPT_STATUS"));
+        assert_eq!(c.rust_chatgpt_status.as_ref().unwrap().feature_env, None);
+        let err = lookup(&[UP, AUTH, ON]).unwrap_err();
+        assert!(err.contains("UI_DATA_DIR"), "{err}");
+        let c = lookup(&[
+            UP,
+            AUTH,
+            ON,
+            DATA,
+            ("NOEVIA_FEATURE_CHATGPT_OAUTH", " Off "),
+        ])
+        .unwrap();
+        assert_eq!(
+            c.rust_chatgpt_status.as_ref().unwrap().feature_env,
+            Some(false)
+        );
+        let err = lookup(&[
+            UP,
+            AUTH,
+            ON,
+            DATA,
+            ("NOEVIA_FEATURE_CHATGPT_OAUTH", "maybe"),
+        ])
+        .unwrap_err();
+        assert!(err.contains("NOEVIA_FEATURE_CHATGPT_OAUTH"), "{err}");
+        // The previous key never reaches Debug output.
+        let c = lookup(&[
+            UP,
+            AUTH,
+            ON,
+            DATA,
+            ("SECRETS_KEY_PREVIOUS", "synthetic-previous-key"),
+        ])
+        .unwrap();
+        assert!(!format!("{c:?}").contains("synthetic-previous-key"));
     }
 }
