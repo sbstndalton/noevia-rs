@@ -3,6 +3,8 @@
 //! gives to Rust and proxies every other request to Node ([`legacy_proxy`], deleted with Node).
 
 pub mod account_routes;
+#[cfg(feature = "rust-chatgpt-status")]
+pub mod chatgpt_status_routes;
 pub mod code_net;
 pub mod config;
 pub mod export_routes;
@@ -50,7 +52,10 @@ use std::sync::Arc;
 /// (NOEVIA_RUST_STATS_CONFIRMED), which then refuses that GET. `rust-export` (cargo feature of
 /// that name): it answers `GET /api/export/conversations` under NOEVIA_RUST_EXPORT (#1315, with
 /// NOEVIA_RUST_PROJECTS and rust-free-chats); the supervisor confirms it to Node
-/// (NOEVIA_RUST_EXPORT_CONFIRMED), which then refuses that GET.
+/// (NOEVIA_RUST_EXPORT_CONFIRMED), which then refuses that GET. `rust-chatgpt-status` (cargo
+/// feature of that name): it answers `GET /api/providers/chatgpt` under NOEVIA_RUST_CHATGPT_STATUS
+/// (#1373); the supervisor confirms it to Node (NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED), which then
+/// refuses that GET.
 ///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
@@ -82,9 +87,14 @@ pub const FEATURES: &[&str] = &[
     "rust-stats",
     #[cfg(feature = "rust-export")]
     "rust-export",
+    #[cfg(feature = "rust-chatgpt-status")]
+    "rust-chatgpt-status",
 ];
 
 pub struct App {
+    /// GET /api/providers/chatgpt while NOEVIA_RUST_CHATGPT_STATUS is on (M6, #1373).
+    #[cfg(feature = "rust-chatgpt-status")]
+    pub chatgpt_status: Option<Arc<chatgpt_status_routes::StatusLayer>>,
     #[cfg(feature = "rust-storage-reads")]
     pub storage_metadata: Arc<storage_metadata_worker::Worker>,
     /// Storage list/read admission: four at once, one per account (#1368).
@@ -137,6 +147,8 @@ impl App {
                 .and_then(server_routing_mode::storage::Root::open)
         });
         Arc::new(App {
+            #[cfg(feature = "rust-chatgpt-status")]
+            chatgpt_status: chatgpt_status_routes::StatusLayer::new(&config).map(Arc::new),
             #[cfg(feature = "rust-storage-reads")]
             storage_metadata: Arc::new(storage_metadata_worker::Worker::default()),
             #[cfg(feature = "rust-storage-browse")]
@@ -205,6 +217,7 @@ async fn handle(
                         | routes::Native::RoutingDefault
                         | routes::Native::Stats
                         | routes::Native::Export
+                        | routes::Native::ChatgptStatus
                 )
             ) {
                 native = on_whatwg;
@@ -225,7 +238,8 @@ async fn handle(
             | routes::Native::RoutingMode
             | routes::Native::RoutingDefault
             | routes::Native::Stats
-            | routes::Native::Export,
+            | routes::Native::Export
+            | routes::Native::ChatgptStatus,
         )
         | None => false,
     };
@@ -324,6 +338,20 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             stats_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::ChatgptStatus) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-chatgpt-status")]
+            {
+                chatgpt_status_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-chatgpt-status"))]
+            {
+                let _ = p;
+                app.proxy.forward(conn.peer, req).await
+            }
         }
         Some(routes::Native::Export) => {
             let Some(p) = whatwg else {

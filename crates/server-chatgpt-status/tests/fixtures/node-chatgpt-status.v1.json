@@ -1,0 +1,916 @@
+{
+ "v": 1,
+ "owner": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+ "foreign": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+ "keys": {
+  "current": "0707070707070707070707070707070707070707070707070707070707070707",
+  "previous": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+  "other": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+ },
+ "chatgptDdl": "CREATE TABLE chatgpt_oauth_tokens(user_id TEXT PRIMARY KEY, data_enc TEXT NOT NULL,\n    state TEXT NOT NULL DEFAULT 'connected', updated_at INTEGER NOT NULL)",
+ "cases": [
+  {
+   "name": "flag off by default (no setting row)",
+   "flagEnv": null,
+   "setting": null,
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"person@example.test\",\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 404,
+    "body": "{\"error\":\"Sign in with ChatGPT is turned off on this server.\"}"
+   }
+  },
+  {
+   "name": "flag off by setting",
+   "flagEnv": null,
+   "setting": "false",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "raw": "enc:v2:not-even-read"
+     }
+    }
+   ],
+   "expected": {
+    "status": 404,
+    "body": "{\"error\":\"Sign in with ChatGPT is turned off on this server.\"}"
+   }
+  },
+  {
+   "name": "flag setting not exactly true",
+   "flagEnv": null,
+   "setting": "TRUE",
+   "previous": null,
+   "rows": [],
+   "expected": {
+    "status": 404,
+    "body": "{\"error\":\"Sign in with ChatGPT is turned off on this server.\"}"
+   }
+  },
+  {
+   "name": "flag setting with spaces",
+   "flagEnv": null,
+   "setting": " true",
+   "previous": null,
+   "rows": [],
+   "expected": {
+    "status": 404,
+    "body": "{\"error\":\"Sign in with ChatGPT is turned off on this server.\"}"
+   }
+  },
+  {
+   "name": "flag env off beats setting",
+   "flagEnv": "off",
+   "setting": "true",
+   "previous": null,
+   "rows": [],
+   "expected": {
+    "status": 404,
+    "body": "{\"error\":\"Sign in with ChatGPT is turned off on this server.\"}"
+   }
+  },
+  {
+   "name": "flag env on beats setting",
+   "flagEnv": " Yes ",
+   "setting": "false",
+   "previous": null,
+   "rows": [],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"disconnected\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "disconnected: no row",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"disconnected\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "disconnected: only a foreign tenant row",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"other@example.test\",\"plan\":\"team\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"disconnected\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"synthetic.person@example.test\",\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    },
+    {
+     "user": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"b@example.test\",\"plan\":\"team\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"s…@example.test\",\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, expired access token (status does not refresh)",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"pro\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":\"pro\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, no email or plan",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":null,\"plan\":null},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, email null, plan empty",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":null,\"plan\":\"\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":null,\"plan\":null},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, email without @",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"nobody\",\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":null,\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, email non-string",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":[\"a@b\"],\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":null,\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, email several @ and empty name",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"@a@b@example.test\",\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"@…@example.test\",\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, email emoji first (lone high surrogate)",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"😀x@example.test\",\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"\\ud83d…@example.test\",\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, email lone surrogate escapes",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"email\":\"\\udc00a@\\ud800.test\",\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"\\udc00…@\\ud800.test\",\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, email cut at 120 units inside a pair",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd😀😀\",\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\\ud83d\",\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, email long domain",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\",\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\",\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, duplicate keys last wins",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"email\":\"first@x.test\",\"plan\":\"plus\",\"email\":\"second@y.test\",\"plan\":\"team\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"s…@y.test\",\"plan\":\"team\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "connected, __proto__ key",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"__proto__\":{\"email\":\"x@y\"},\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":null,\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plan projection: credential-looking keys inside an object are dropped",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":{\"type\":\"plus\",\"name\":\"Plus\",\"tier\":\"paid\",\"access_token\":\"AT-PLAN-LEAK\",\"refresh_token\":\"RT-PLAN-LEAK\",\"apiKey\":\"sk-PLAN-LEAK\"}}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":null},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plan projection: array",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":[\"plus\"]}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":null},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plan projection: number and boolean",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":7}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":null},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plan projection: 41 characters",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":null},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plan projection: 40 characters",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"A9_.-A9_.-A9_.-A9_.-A9_.-A9_.-A9_.-A9_.-\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":\"A9_.-A9_.-A9_.-A9_.-A9_.-A9_.-A9_.-A9_.-\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plan projection: odd characters",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"plus plan\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":null},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plan projection: non-ASCII",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"tëam\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":null},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "reconnect state",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "reconnect",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "other state text",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "Connected",
+     "data": {
+      "raw": "enc:v2:never-opened"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "corrupt envelope",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "raw": "enc:v2:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "truncated envelope",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "raw": "enc:v2:"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "foreign tenant's ciphertext copied into the owner's row",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"b@example.test\",\"plan\":\"team\"}",
+      "key": "current",
+      "aad": "B"
+     }
+    },
+    {
+     "user": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"b@example.test\",\"plan\":\"team\"}",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "sealed with an unknown key",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"plus\"}",
+      "key": "other",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "sealed with the previous key (file)",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": "file",
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"plus\"}",
+      "key": "previous",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "sealed with the previous key (env)",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": "env",
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"plus\"}",
+      "key": "previous",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "previous key not configured",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"plus\"}",
+      "key": "previous",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "legacy v1 envelope",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"p@example.test\",\"plan\":\"plus\"}",
+      "key": "current",
+      "aad": null
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "legacy plaintext row",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "raw": "{\"accessToken\":\"AT-SYNTHETIC-LEAK\",\"refreshToken\":\"RT-SYNTHETIC-LEAK\",\"accountId\":\"acct-synthetic\",\"fedRamp\":false,\"expiresAt\":1800003600000,\"connectedAt\":1800000000000,\"email\":\"plain@example.test\",\"plan\":\"go\"}"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":\"go\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plaintext not JSON",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "not json",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plaintext empty",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plaintext JSON null",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "null",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plaintext JSON array",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "[{\"email\":\"p@example.test\"}]",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plaintext JSON string",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal": "\"p@example.test\"",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"reconnect\",\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  },
+  {
+   "name": "plaintext invalid UTF-8 becomes U+FFFD",
+   "flagEnv": null,
+   "setting": "true",
+   "previous": null,
+   "rows": [
+    {
+     "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+     "state": "connected",
+     "data": {
+      "seal_hex": "7b22656d61696c223a2270ff406578616d706c652e74657374222c22706c616e223a22706c7573227d",
+      "key": "current",
+      "aad": "owner"
+     }
+    }
+   ],
+   "expected": {
+    "status": 200,
+    "body": "{\"state\":\"connected\",\"account\":{\"email\":\"p…@example.test\",\"plan\":\"plus\"},\"providerId\":\"chatgpt-oauth\",\"external\":true}"
+   }
+  }
+ ]
+}

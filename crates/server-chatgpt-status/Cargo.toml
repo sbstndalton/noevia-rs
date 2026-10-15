@@ -1,0 +1,23 @@
+[package]
+name = "server-chatgpt-status"
+version = "0.1.0"
+description = "Native GET /api/providers/chatgpt (noevia#1373): the signed-in account's ChatGPT connection status, read-only, differential-tested against core"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+server-store = { path = "../server-store" }
+server-auth = { path = "../server-auth" }
+js-json = { path = "../js-json" }
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+server-routing-mode = { path = "../server-routing-mode" }
+secret-envelope = { path = "../secret-envelope" }
+serde_json = "1"
+tempfile = "3"
