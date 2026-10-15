@@ -34,7 +34,9 @@ past the wait, NULL/number/invalid-UTF-8 value) answers FastAPI's exact
 
 - One read-only connection per request (`SQLITE_OPEN_READ_ONLY`), inside the shared admission
   permits and the 5 s native budget; 4 s busy wait; a progress-handler deadline.
-- The file is never created and never converted to WAL (Python's connection does both).
+- The database file is never created and never converted to WAL (Python's connection does both).
+  On a WAL database the read-only connection can still create the `-shm`/`-wal` side files,
+  which SQLite needs for reading; the database file's contents are not written.
 - A stored value over 64 KiB is refused (500) instead of being read.
 
 ## Oracle
