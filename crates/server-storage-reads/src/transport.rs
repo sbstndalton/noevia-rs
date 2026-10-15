@@ -11,7 +11,6 @@
 //! proxies, cookies and implicit retries are refused by the child; the one pre-header retry
 //! belongs to [`crate::protocol::execute`].
 use crate::{
-    admission::Admission,
     isolated,
     protocol::{decoded_fixture, Request, Response, Transport, TransportFailure},
     response_ipc::Reply,
@@ -31,23 +30,17 @@ pub struct ChildTransport<'a> {
     args: &'static [&'static str],
     start: Instant,
     cancelled: &'a AtomicBool,
-    owner: String,
 }
 
 impl<'a> ChildTransport<'a> {
-    /// `program` + `args` must name the fixed child mode. `owner` is the validated identity.
-    pub fn new(
-        program: PathBuf,
-        args: &'static [&'static str],
-        owner: &str,
-        cancelled: &'a AtomicBool,
-    ) -> Self {
+    /// `program` + `args` must name the fixed child mode. Admission (four operations, one per
+    /// account) belongs to the caller, which holds a permit for the whole operation.
+    pub fn new(program: PathBuf, args: &'static [&'static str], cancelled: &'a AtomicBool) -> Self {
         Self {
             program,
             args,
             start: Instant::now(),
             cancelled,
-            owner: owner.to_owned(),
         }
     }
 }
@@ -72,18 +65,16 @@ impl Transport for ChildTransport<'_> {
     fn attempt(&mut self, request: Request) -> Result<Response, TransportFailure> {
         let cap = request.body_cap;
         let budget = request.attempt_timeout;
-        // One attempt at a time per transport; the per-request admission is the caller's.
-        let admission = Admission::default();
-        let permit = admission
-            .try_acquire(&self.owner)
-            .map_err(|_| TransportFailure::Other)?;
+        // No admission here: `execute` drives the attempts of one operation one after another on
+        // this transport, and the caller's permit (one per account, four overall) covers them all.
         let mut command = Command::new(&self.program);
         command.args(self.args);
-        let reply = isolated::attempt_dns(command, request, budget, self.cancelled, permit)
-            .map_err(|error| match error {
+        let reply = isolated::attempt_dns(command, request, budget, self.cancelled, None).map_err(
+            |error| match error {
                 isolated::Error::Deadline => TransportFailure::Timeout,
                 _ => TransportFailure::Other,
-            })?;
+            },
+        )?;
         match reply.view() {
             Ok(Reply::Http {
                 status, payload, ..

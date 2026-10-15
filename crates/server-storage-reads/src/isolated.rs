@@ -108,7 +108,7 @@ pub fn attempt_dns(
     request: crate::protocol::Request,
     outer_remaining: Duration,
     cancelled: &AtomicBool,
-    permit: Permit,
+    permit: impl Into<Option<Permit>>,
 ) -> Result<OwnedReply, Error> {
     attempt_dns_observed(
         command,
@@ -124,7 +124,7 @@ pub fn attempt_dns_observed(
     request: crate::protocol::Request,
     outer_remaining: Duration,
     cancelled: &AtomicBool,
-    permit: Permit,
+    permit: impl Into<Option<Permit>>,
     observe: impl FnMut(NetworkObservation, u32),
 ) -> Result<OwnedReply, Error> {
     let budget = outer_remaining.min(request.attempt_timeout);
@@ -147,7 +147,7 @@ pub fn attempt_http_observed(
     request: crate::protocol::Request,
     deadline: Duration,
     cancelled: &AtomicBool,
-    permit: Permit,
+    permit: impl Into<Option<Permit>>,
     mut observe: impl FnMut(NetworkObservation, u32),
 ) -> Result<OwnedReply, Error> {
     let cap = request.body_cap;
@@ -159,7 +159,7 @@ pub fn attempt_http_observed(
         envelope,
         deadline,
         cancelled,
-        permit,
+        permit.into(),
         |stage, pid| match stage {
             PumpObservation::OutputProgress(bytes) => {
                 observe(NetworkObservation::OutputProgress(bytes), pid)
@@ -310,7 +310,7 @@ pub fn attempt_observed(
         Envelope::body(body_cap)?,
         deadline,
         cancelled,
-        permit,
+        Some(permit),
         |stage, pid| {
             if let PumpObservation::Existing(stage) = stage {
                 observe(stage, pid)
@@ -324,7 +324,7 @@ fn pump(
     envelope: Envelope,
     deadline: Duration,
     cancelled: &AtomicBool,
-    permit: Permit,
+    permit: Option<Permit>,
     mut observe: impl FnMut(PumpObservation, u32),
 ) -> Result<Vec<u8>, Error> {
     if input.len() > INPUT {
@@ -340,7 +340,7 @@ fn pump(
     let child = command.spawn().map_err(|_| Error::Setup)?;
     let mut owned = Owned {
         child,
-        permit: Some(permit),
+        permit,
         reaped: false,
     };
     let result = (|| {
