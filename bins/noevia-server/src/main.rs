@@ -45,8 +45,26 @@ async fn terminated() {
     }
 }
 
-#[tokio::main]
-async fn main() -> ExitCode {
+fn main() -> ExitCode {
+    // The owned outbound storage child (#1368): it sets its own limits before READY and must not
+    // start the server's runtime first.
+    #[cfg(feature = "rust-storage-browse")]
+    if std::env::args().nth(1).as_deref() == Some(server_storage_reads::transport::CHILD_ARG) {
+        return server_storage_reads::transport::child_main();
+    }
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime.block_on(server_main()),
+        Err(e) => {
+            eprintln!("noevia-server: runtime: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn server_main() -> ExitCode {
     // build/web-supervisor.sh asks before choosing this front (sbstndalton/noevia#1246).
     if std::env::args().nth(1).as_deref() == Some("--features") {
         return feature_probe(&mut io::stdout().lock());
