@@ -41,22 +41,6 @@
           "challenge": "<secret:27>",
           "allowCredentials": [
             {
-              "id": "<id:18>",
-              "transports": [
-                "internal",
-                "hybrid"
-              ],
-              "type": "public-key"
-            },
-            {
-              "id": "<id:19>",
-              "transports": [
-                "internal",
-                "hybrid"
-              ],
-              "type": "public-key"
-            },
-            {
               "id": "<id:20>",
               "transports": [
                 "internal",
@@ -74,6 +58,22 @@
             },
             {
               "id": "<id:22>",
+              "transports": [
+                "internal",
+                "hybrid"
+              ],
+              "type": "public-key"
+            },
+            {
+              "id": "<id:23>",
+              "transports": [
+                "internal",
+                "hybrid"
+              ],
+              "type": "public-key"
+            },
+            {
+              "id": "<id:24>",
               "transports": [
                 "internal",
                 "hybrid"

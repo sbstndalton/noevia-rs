@@ -29,6 +29,19 @@ const NOW = 1700000000123;
 const pretty = (v) => JSON.stringify(v, null, 2);
 
 // ── Synthetic workspaces ────────────────────────────────────────────────────
+// sbstndalton/noevia#1806: a source's text is in its own file (core source-text.cjs); projects.json
+// holds the pointer (textRef), its length and, for a front-matter skill, skillHeader. Every case's
+// workspace gets these text files, so Node reads them as it does live. (Inline text would be
+// migrated by Node's load, which is Node's own startup step, not the route's.)
+const TEXTS = {
+  'docs/SKILL.md': '---\nname: s\ndescription: d\n---\nbody',
+  '10': '---\r\nDescription : x\r\n---',
+  '2': 'plain',
+  'kept.md': 'no header',
+};
+const textRef = (t) => require('node:crypto').createHash('sha256').update(t, 'utf8').digest('hex');
+const skillHeader = (t) => { const h = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(t); return !!h && /^(?:name|description)\s*:/im.test(h[1]); };
+const sourceRow = (name, text) => ({ name, textRef: textRef(text), chars: text.length, ...(skillHeader(text) ? { skillHeader: true } : {}) });
 const frame = { projectId: 'proj-a', kind: 'idea', tags: ['alpha'], links: [], confirmed: true, source: 'user' };
 const base = {
   projects: [
@@ -42,12 +55,7 @@ const base = {
     ], instructionSkills: {} },
     { id: 'proj-b', name: 'Beta', modes: ['chat'], chats: [{ id: 'cb', title: 'B', updatedAt: 50, preview: '' }], instructionSkills: {} },
     { id: 'cowork-chat-context-x1', name: 'Chat attachments x1', modes: ['chat'], routing: 'manual', chats: [] },
-    { id: 'proj-skill', name: 'Skills', modes: ['chat'], files: [
-      { name: 'docs/SKILL.md', content: '---\nname: s\ndescription: d\n---\nbody' },
-      { name: '10', content: '---\r\nDescription : x\r\n---' },
-      { name: '2', content: 'plain' },
-      { name: 'kept.md', content: 'no header' },
-    ], instructionSkills: { 'kept.md': { enabled: true, reviewedHash: 'h1' }, 'gone.md': { enabled: false, reviewedHash: 'h2' } }, chats: [] },
+    { id: 'proj-skill', name: 'Skills', modes: ['chat'], files: Object.entries(TEXTS).map(([name, text]) => sourceRow(name, text)), instructionSkills: { 'kept.md': { enabled: true, reviewedHash: 'h1' }, 'gone.md': { enabled: false, reviewedHash: 'h2' } }, chats: [] },
     { id: 'proj-empty', name: 'Empty', modes: ['chat'] },
   ],
 };
@@ -114,6 +122,9 @@ post('post-empty-list', files.base, 'proj-a', { chats: [] });
 post('post-no-chats-key', files.base, 'proj-empty', { chats: [{ id: 'e1', updatedAt: 1 }] });
 post('post-heals-and-saves', files.base, 'cowork-chat-context-x1', { chats: [{ id: 'k1', updatedAt: 1 }] });
 post('post-reconciles-every-project', files.base, 'proj-b', { chats: [] });
+// #1806: a save of the list keeps every source pointer (textRef, chars, skillHeader) as stored.
+post('post-keeps-source-pointers', files.base, 'proj-skill', { chats: [{ id: 'sp', title: 'Pointers', updatedAt: 9 }] });
+post('post-pointer-skill-flag-dropped', withProjects((p) => { delete p[3].files[1].skillHeader; p[3].instructionSkills = {}; }), 'proj-skill', { chats: [] });
 post('post-cap', files.base, 'proj-a', { chats: Array.from({ length: 1005 }, (_, i) => ({ id: `m${i}`, updatedAt: i % 7, title: `m${i}` })) });
 post('post-lone-surrogates', files.base, 'proj-a', `{"chats":[{"id":"s1","title":"${'t'.repeat(119)}\\ud83d\\ude00","preview":"\\udc00p\\ud800","updatedAt":3,"frame":{"kind":"idea","tags":["\\ud83d"]}}]}`);
 post('post-emoji-cut', files.base, 'proj-a', { chats: [{ id: 's2', title: `${'t'.repeat(119)}😀`, preview: `${'p'.repeat(199)}😀x`, updatedAt: 4 }] });
@@ -153,6 +164,9 @@ async function run(c) {
   const dir = path.join(root, 'users', USER);
   fs.mkdirSync(dir, { recursive: true });
   if (c.ws.projects !== null) fs.writeFileSync(path.join(dir, 'projects.json'), c.ws.projects);
+  const texts = path.join(dir, 'project-sources', 'proj-skill');
+  fs.mkdirSync(texts, { recursive: true });
+  for (const text of Object.values(TEXTS)) fs.writeFileSync(path.join(texts, `${textRef(text)}.txt`), text);
   if (c.ws.free !== null) fs.writeFileSync(path.join(dir, 'free-chats.json'), c.ws.free);
   if (c.ws.tombstones !== null) fs.writeFileSync(path.join(dir, 'deleted-chats.json'), c.ws.tombstones);
   {

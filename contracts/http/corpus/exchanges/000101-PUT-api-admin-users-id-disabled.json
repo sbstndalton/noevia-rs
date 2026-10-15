@@ -3,7 +3,7 @@
   "seq": 101,
   "request": {
     "method": "PUT",
-    "path": "/api/admin/users/<id:10>/disabled",
+    "path": "/api/admin/users/<id:11>/disabled",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",

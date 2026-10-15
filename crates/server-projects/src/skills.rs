@@ -94,6 +94,28 @@ pub fn is_front_matter_skill(name: &str, content: &str) -> bool {
     skill_md_name(name) || front_matter(content).is_some_and(names_a_skill)
 }
 
+/// A source whose text is in its own file (core source-text.cjs, sbstndalton/noevia#1806):
+/// projects.json holds a 64-hex `textRef` pointer and no `content`. This port never reads the text.
+fn is_external(file: &JValue) -> bool {
+    matches!(file.get("content"), JValue::Undefined)
+        && file.get("textRef").as_str().is_some_and(|r| {
+            r.len() == 64 && r.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        })
+}
+
+/// core instruction-skills.cjs `looksLikeSkill(file)`: by name or front matter; a source whose text
+/// is in its own file answers from the `skillHeader` flag Node saved beside the pointer (`=== true`).
+fn looks_like_skill(file: &JValue, name: &str) -> Result<bool, Unsupported> {
+    if is_external(file) {
+        return Ok(skill_md_name(name) || matches!(file.get("skillHeader"), JValue::Bool(true)));
+    }
+    let content = match file.get("content") {
+        v if v.truthy() => js_json::to_js_string(v).map_err(|_| Unsupported)?,
+        _ => String::new(),
+    };
+    Ok(is_front_matter_skill(name, &content))
+}
+
 /// What `reconcile(project)` does, worked out without changing the project.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Plan {
@@ -156,13 +178,9 @@ pub fn plan(project: &JValue) -> Result<Plan, Unsupported> {
         let Some(name) = file.get("name").as_str() else {
             return Err(Unsupported);
         };
-        let content = match file.get("content") {
-            v if v.truthy() => js_json::to_js_string(v).map_err(|_| Unsupported)?,
-            _ => String::new(),
-        };
         let existing = by_name.get(name).copied();
         let reviewed = existing.is_some_and(|e| e.get("reviewedHash").truthy());
-        if is_front_matter_skill(name, &content) || reviewed {
+        if looks_like_skill(file, name)? || reviewed {
             let value = match existing {
                 Some(e) if e.truthy() => e.clone(),
                 _ => JValue::obj([
@@ -222,6 +240,28 @@ mod tests {
         assert!(!is_front_matter_skill("a.md", "---\n name: y\n---\n"));
         assert!(is_front_matter_skill("a.md", "---\nx\u{2028}name:\n---"));
         assert!(!is_front_matter_skill("a.md", "name: y"));
+    }
+
+    /// sbstndalton/noevia#1806: a source whose text is in its own file is judged by its name and the
+    /// `skillHeader` flag, never by a `content` it does not have; its pointer fields are untouched.
+    #[test]
+    fn reconcile_reads_the_flag_of_a_source_whose_text_is_in_its_file() {
+        let r = "a".repeat(64);
+        let src = format!(
+            r#"{{"id":"p","files":[{{"name":"helper.md","textRef":"{r}","chars":40,"skillHeader":true}},{{"name":"plain.md","textRef":"{r}","chars":3}},{{"name":"d/SKILL.md","textRef":"{r}","chars":0}},{{"name":"flag-not-true.md","textRef":"{r}","chars":1,"skillHeader":"yes"}},{{"name":"bad-ref.md","textRef":"xyz","skillHeader":true}},{{"name":"inline.md","content":"---\nname: n\n---","skillHeader":false}}],"instructionSkills":{{}}}}"#
+        );
+        let mut p = js_json::wtf16::parse(&src).unwrap();
+        let files_before = js_json::wtf16::stringify(p.get("files")).unwrap();
+        assert_eq!(reconcile(&mut p), Ok(true));
+        assert_eq!(
+            js_json::wtf16::stringify(p.get("instructionSkills")).unwrap(),
+            r#"{"helper.md":{"enabled":false,"reviewedHash":null},"d/SKILL.md":{"enabled":false,"reviewedHash":null},"inline.md":{"enabled":false,"reviewedHash":null}}"#
+        );
+        assert_eq!(
+            js_json::wtf16::stringify(p.get("files")).unwrap(),
+            files_before,
+            "pointers kept as they were"
+        );
     }
 
     #[test]

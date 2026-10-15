@@ -79,6 +79,12 @@ mergeChats over `free-chats.json`, skipping and reporting ids a project holds). 
 note and attachments project. JavaScript strings keep their lone surrogates (js-json `wtf16`), as
 Node stores them.
 
+Since sbstndalton/noevia#1806 a project source's text is not in projects.json: core keeps it in
+`project-sources/<project id>/<sha256>.txt` beside the file, and a source row holds `textRef` (the
+pointer), `chars` and, for a front-matter skill, `skillHeader`. Every Rust write keeps those fields
+as read (files are generic JSON here), and the instruction-skill reconcile reads `skillHeader` for a
+source whose text is in its file, as core's `looksLikeSkill` does; the text itself is never read.
+
 `projects.json` cannot have one writer yet (Node's other project routes, the chat turn and a chat's
 move or delete still change it), so while the switch is on both processes write it only under one lock (flock(2) LOCK_EX on a long-lived
 `projects.json.lock`, crates/server-projects `lock` = core `server/rust-projects.cjs`): Rust re-reads it for every change

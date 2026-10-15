@@ -56,7 +56,8 @@
         "files": [
           {
             "name": "notes.md",
-            "content": "# Synthetic notes\n\nAlpha beta gamma."
+            "textRef": "<id:4>",
+            "chars": 36
           }
         ],
         "model": "synthetic-chat-model",

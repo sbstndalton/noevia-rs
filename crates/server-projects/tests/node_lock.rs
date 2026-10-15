@@ -927,16 +927,20 @@ fn routing_flags_set_after_a_rust_chat_list_save_keep_its_title() {
     );
 }
 
-/// The control: flags set on the turn's stale view put the old title back.
+/// Formerly the control (flags set on the turn's stale view put the old title back). Since
+/// sbstndalton/noevia#1801 the save's three-way merge takes a chat meta both writers changed per
+/// field (core rust-projects.cjs mergeIdList, both lists), so even a save from the stale view keeps
+/// Rust's title; core main shows this with or without #1806. setChatFlags re-reading first (#1426)
+/// stays covered by the test above.
 #[test]
-fn routing_flags_on_a_stale_view_revert_rusts_title() {
+fn routing_flags_on_a_stale_view_keep_rusts_title_since_1801() {
     let Some(core) = core() else { return };
     assert_eq!(
         flags_interleaving(&core, "free", true),
-        ("Old".to_string(), Some(true))
+        ("Retitled".to_string(), Some(true))
     );
     assert_eq!(
         flags_interleaving(&core, "project", true),
-        ("Old".to_string(), Some(true))
+        ("Retitled".to_string(), Some(true))
     );
 }
