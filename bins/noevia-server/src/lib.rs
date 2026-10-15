@@ -17,11 +17,11 @@ pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
 pub mod static_files;
+pub mod stats_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
-pub mod stats_routes;
 pub mod upkeep;
 pub mod usage_routes;
 

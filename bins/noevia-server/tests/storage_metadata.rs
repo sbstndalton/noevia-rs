@@ -23,7 +23,8 @@ fn exact_get_default_off_and_selector_refusals() {
         );
         assert_eq!(
             dispatch_under(method, "/api/integrations/storage", on),
-            if method == "GET" {
+            // Only a build with the rust-storage-reads feature answers it (routes.rs compiled()).
+            if method == "GET" && cfg!(feature = "rust-storage-reads") {
                 Some(Native::StorageMetadata)
             } else {
                 None
