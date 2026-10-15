@@ -11,8 +11,9 @@
 //!
 //! `len` and slicing count code points, so this module does too. A store failure answers
 //! exactly like Python's unhandled exception: `500 text/plain; charset=utf-8`
-//! `Internal Server Error`. Deliberate differences (see docs/native-settings.md): the file is
-//! never created or converted to WAL, and a stored value over [`VALUE_CAP`] bytes is refused
+//! `Internal Server Error`. Deliberate differences (see docs/native-settings.md): the database
+//! file is never created or converted to WAL (a read-only connection to a WAL database can
+//! still create its `-shm`/`-wal` side files, as SQLite needs them to read), and a stored value over [`VALUE_CAP`] bytes is refused
 //! instead of being read in full.
 use rusqlite::{types::ValueRef, Connection, OpenFlags, OptionalExtension};
 use std::{
@@ -67,6 +68,8 @@ impl Settings {
 pub struct Unreadable;
 
 /// One bounded read-only lookup. `Ok(None)` is "no row" (Python's default "").
+/// Read-only means no write to the database file itself; on a WAL database SQLite may still
+/// create the `-shm`/`-wal` side files next to it.
 pub fn read(database: &Path, deadline: Instant) -> Result<Option<Stored>, Unreadable> {
     let db = Connection::open_with_flags(
         database,
