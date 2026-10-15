@@ -28,6 +28,7 @@ impl Transport for Fixture {
 #[test]
 fn list_output_16m_refusal_is_named_legacy_difference() -> Result<(), Box<dyn Error>> {
     let Some(root) = support::core_oracle() else {
+        support::oracle_skipped("list_output_16m_refusal_is_named_legacy_difference");
         return Ok(());
     };
     support::checked_source(&root, "storage-client.cjs")?;
@@ -84,6 +85,7 @@ fn list_output_16m_refusal_is_named_legacy_difference() -> Result<(), Box<dyn Er
 #[test]
 fn snapshot_endpoint_64k_refusal_is_named_legacy_difference() -> Result<(), Box<dyn Error>> {
     let Some(root) = support::core_oracle() else {
+        support::oracle_skipped("snapshot_endpoint_64k_refusal_is_named_legacy_difference");
         return Ok(());
     };
     support::checked_source(&root, "ssrf.cjs")?;

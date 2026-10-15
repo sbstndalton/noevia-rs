@@ -50,6 +50,7 @@ impl Transport for FixtureTransport {
 #[test]
 fn actual_client_deterministic_domain_zero_diff() -> Result<(), Box<dyn Error>> {
     let Some(root) = support::core_oracle() else {
+        support::oracle_skipped("actual_client_deterministic_domain_zero_diff");
         return Ok(());
     };
     // These are the indirect local collaborators loaded by the actual client.

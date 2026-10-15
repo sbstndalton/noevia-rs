@@ -14,6 +14,7 @@ fn actual_builtin_fetch_owned_tls_observations() {
     // Fixed installed Node 22 observations write retained captures under /tmp; they run only on
     // an explicitly prepared host (M4_NODE22_ORACLE=1), never in ordinary CI.
     if std::env::var("M4_NODE22_ORACLE").as_deref() != Ok("1") {
+        node22_skipped("actual_builtin_fetch_owned_tls_observations");
         return;
     }
     let fixture = lab::pki::Fixture::generate().unwrap_or_else(|_| unreachable!());
@@ -92,5 +93,20 @@ fn actual_builtin_fetch_owned_tls_observations() {
                 observed.get("undici").unwrap_or(&serde_json::Value::Null)
             );
         });
+    }
+}
+
+/// Record a skipped Node 22 observation so CI can count and show it (noevia#1827).
+fn node22_skipped(test: &str) {
+    eprintln!("M4 oracle skipped: {test} (set M4_NODE22_ORACLE=1 to run it)");
+    if let Some(log) = std::env::var_os("M4_ORACLE_SKIP_LOG") {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log)
+        {
+            let _ = writeln!(f, "{test}");
+        }
     }
 }

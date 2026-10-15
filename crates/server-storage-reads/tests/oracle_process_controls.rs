@@ -139,3 +139,26 @@ fn zombie(pid: rustix::process::Pid) -> bool {
     support::run_within(command, Vec::new(), Duration::from_secs(2))
         .is_ok_and(|o| o.stdout.starts_with(b"Z"))
 }
+
+/// The oracle source check opens with no-follow and requires one link (noevia#1827, #1371).
+#[test]
+fn oracle_sources_refuse_symlinks_hardlinks_and_fifos() -> Result<(), String> {
+    let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let path = |name: &str| dir.path().join(name).display().to_string();
+    std::fs::write(path("source.cjs"), b"synthetic").map_err(|e| e.to_string())?;
+    assert!(support::open_regular(&path("source.cjs")).is_ok());
+    std::os::unix::fs::symlink(path("source.cjs"), path("link.cjs")).map_err(|e| e.to_string())?;
+    assert!(support::open_regular(&path("link.cjs")).is_err());
+    std::fs::hard_link(path("source.cjs"), path("second.cjs")).map_err(|e| e.to_string())?;
+    assert!(support::open_regular(&path("source.cjs")).is_err());
+    std::fs::create_dir(path("directory")).map_err(|e| e.to_string())?;
+    assert!(support::open_regular(&path("directory")).is_err());
+    let mut mkfifo = Command::new("mkfifo");
+    mkfifo.arg(path("fifo"));
+    let made = support::run_within(mkfifo, Vec::new(), Duration::from_secs(5))?;
+    assert!(made.status.success(), "mkfifo failed");
+    let start = Instant::now();
+    assert!(support::open_regular(&path("fifo")).is_err());
+    assert!(start.elapsed() < FINITE, "FIFO open blocked");
+    Ok(())
+}

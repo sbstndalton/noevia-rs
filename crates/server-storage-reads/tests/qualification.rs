@@ -23,6 +23,7 @@ fn admission_releases_owner_and_global_slots_without_queue() -> Result<(), Box<d
 #[test]
 fn actual_http_malformed_utf8_and_named_last_chunk_exception() -> Result<(), Box<dyn Error>> {
     let Some(root) = support::core_oracle() else {
+        support::oracle_skipped("actual_http_malformed_utf8_and_named_last_chunk_exception");
         return Ok(());
     };
     support::checked_source(&root, "http.cjs")?;
