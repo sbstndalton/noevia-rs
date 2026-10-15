@@ -21,6 +21,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-prompts") {
                 output.write_all(b"native-prompts\n")?;
             }
+            if cfg!(feature = "native-settings") {
+                output.write_all(b"native-settings\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -34,6 +37,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sections_mode = environment("MODEL_MANAGER_SECTIONS_IMPL", "python")?;
     let prompts_mode = environment("MODEL_MANAGER_PROMPTS_IMPL", "python")?;
     let diagnose_mode = environment("MODEL_MANAGER_DIAGNOSE_IMPL", "python")?;
+    let settings_mode = environment("MODEL_MANAGER_SETTINGS_IMPL", "python")?;
+    if !matches!(settings_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_SETTINGS_IMPL must be python or rust".into());
+    }
+    if settings_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-settings")) {
+        return Err(
+            "native-settings requires rust model manager and compiled native-settings feature"
+                .into(),
+        );
+    }
+    #[cfg(feature = "native-settings")]
+    let settings_root = if settings_mode == "rust" {
+        Some(data_dir()?)
+    } else {
+        None
+    };
     if !matches!(diagnose_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_DIAGNOSE_IMPL must be python or rust".into());
     }
@@ -86,6 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -212,6 +232,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             noevia_model_manager::host::HostHistory::default(),
         ))
     });
+    #[cfg(feature = "native-settings")]
+    let settings = settings_root.as_deref().map(|root| {
+        Arc::new(noevia_model_manager::settings::Settings::new(
+            std::path::Path::new(root),
+        ))
+    });
     let mut child_command = legacy_command(
         tokio::process::Command::new("uvicorn"),
         &prompts_mode,
@@ -220,6 +246,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &diagnose_mode,
         #[cfg(feature = "native-prompts")]
         prompt_root.as_deref(),
+    );
+    settings_child(
+        &mut child_command,
+        &settings_mode,
+        #[cfg(feature = "native-settings")]
+        settings_root.as_deref(),
     );
     // #1668: the native front refuses deletes of the embedding service's models from its router
     // state, so the legacy holder scan must not also pin env names that point at that service
@@ -256,6 +288,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         diagnosis,
         #[cfg(feature = "native-prompts")]
         prompts,
+        #[cfg(feature = "native-settings")]
+        settings,
         sections,
         embedding,
         host,
@@ -304,9 +338,13 @@ fn environment(key: &str, default: &str) -> Result<String, &'static str> {
 
 #[cfg(feature = "native-prompts")]
 fn prompt_data_dir() -> Result<String, &'static str> {
+    data_dir()
+}
+#[cfg(any(feature = "native-prompts", feature = "native-settings"))]
+fn data_dir() -> Result<String, &'static str> {
     prompt_data_dir_from(std::env::vars_os())
 }
-#[cfg(feature = "native-prompts")]
+#[cfg(any(feature = "native-prompts", feature = "native-settings"))]
 fn prompt_data_dir_from(
     values: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<String, &'static str> {
@@ -317,7 +355,9 @@ fn prompt_data_dir_from(
             .to_str()
             .is_some_and(|key| key != "DATA_DIR" && key.eq_ignore_ascii_case("DATA_DIR"))
         {
-            return Err("native prompts require canonical DATA_DIR environment spelling");
+            return Err(
+                "native prompts and settings require canonical DATA_DIR environment spelling",
+            );
         }
         if key == "DATA_DIR" {
             root = Some(
@@ -329,7 +369,7 @@ fn prompt_data_dir_from(
     }
     let root = root.unwrap_or_else(|| "/data".to_owned());
     if root.len().saturating_add("/model_loader.db".len()) > 4096 {
-        return Err("native prompt root exceeded limit");
+        return Err("native DATA_DIR root exceeded limit");
     }
     Ok(root)
 }
@@ -370,6 +410,23 @@ fn legacy_command(
         child_command.env("DATA_DIR", root);
     }
     child_command
+}
+
+/// noevia#1318: the child refuses `GET /api/v1/settings` only when the native reader owns it,
+/// and reads/writes the same `DATA_DIR/model_loader.db` the native reader opens.
+fn settings_child(
+    child_command: &mut tokio::process::Command,
+    settings_mode: &str,
+    #[cfg(feature = "native-settings")] root: Option<&str>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED",
+        if settings_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-settings")]
+    if let Some(root) = root {
+        child_command.env("DATA_DIR", root);
+    }
 }
 
 fn reusable_probe(address: std::net::SocketAddrV4) -> std::io::Result<std::net::TcpListener> {
@@ -458,5 +515,37 @@ mod diagnosis_command_tests {
             );
         }
         Ok(())
+    }
+}
+
+// Compiled with the feature only, so other features' exact test inventories stay unchanged.
+#[cfg(all(test, feature = "native-settings"))]
+mod settings_command_tests {
+    #[test]
+    fn settings_confirmation_overrides_inherited_value() {
+        for (mode, marker) in [("python", "0"), ("rust", "1")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED", "hostile");
+            super::settings_child(
+                &mut command,
+                mode,
+                (mode == "rust").then_some("/synthetic/root"),
+            );
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            assert_eq!(
+                envs.get(std::ffi::OsStr::new(
+                    "NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED"
+                ))
+                .copied()
+                .flatten(),
+                Some(std::ffi::OsStr::new(marker))
+            );
+            assert_eq!(
+                envs.get(std::ffi::OsStr::new("DATA_DIR"))
+                    .copied()
+                    .flatten(),
+                (mode == "rust").then_some(std::ffi::OsStr::new("/synthetic/root"))
+            );
+        }
     }
 }

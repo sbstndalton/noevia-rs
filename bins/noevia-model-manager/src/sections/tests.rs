@@ -99,6 +99,8 @@ fn state(reader: Arc<dyn Read>) -> Arc<crate::StateData> {
         diagnosis: None,
         #[cfg(feature = "native-prompts")]
         prompts: None,
+        #[cfg(feature = "native-settings")]
+        settings: None,
         sections: Some(Arc::new(Sections::new(reader))),
         embedding: None,
         host: None,

@@ -51,6 +51,8 @@ fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
         diagnosis: None,
         #[cfg(feature = "native-prompts")]
         prompts: None,
+        #[cfg(feature = "native-settings")]
+        settings: None,
         sections: None,
         embedding: None,
         host: None,

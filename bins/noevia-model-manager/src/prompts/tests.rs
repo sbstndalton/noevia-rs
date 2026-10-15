@@ -169,6 +169,8 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
     std::sync::Arc::new(crate::StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
+        #[cfg(feature = "native-settings")]
+        settings: None,
         prompts: Some(std::sync::Arc::new(
             Prompts::open_with_clock(root, || Ok(1_700_000_000.125))
                 .await

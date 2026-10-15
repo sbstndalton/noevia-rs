@@ -152,4 +152,6 @@ Docker services or production data are used.
 
 ## Optional native backend diagnosis
 
+`native-settings` and `MODEL_MANAGER_SETTINGS_IMPL=rust` serve the read-only `GET /api/v1/settings` (`{hasToken, tokenHint}`), default off; `PUT` stays Python as the single writer. See [native settings read](docs/native-settings.md).
+
 `native-diagnose` and `MODEL_MANAGER_DIAGNOSE_IMPL=rust` select the whole internal backend diagnosis GET, default off. Selection requires exact `TZ=UTC` before startup. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.

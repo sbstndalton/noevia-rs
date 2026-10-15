@@ -96,6 +96,7 @@ fn command(path: &std::path::Path, marker: &std::path::Path) -> Command {
         .env_remove("MODEL_MANAGER_HOST_IMPL")
         .env_remove("MODEL_MANAGER_SECTIONS_IMPL")
         .env_remove("MODEL_MANAGER_PROMPTS_IMPL")
+        .env_remove("MODEL_MANAGER_SETTINGS_IMPL")
         .env_remove("MODEL_LOADER_TOKEN")
         .env_remove("LLAMA_CONTAINERS")
         .env_remove("DOCKER_HOST")
@@ -171,6 +172,72 @@ fn prompts_selector_omission_and_python_confirmation_are_closed_before_db_or_chi
     assert_eq!(output.status.code(), Some(42));
     assert_eq!(std::fs::read_to_string(marker).unwrap(), "unset");
     assert!(!database.exists());
+}
+
+#[test]
+fn settings_selector_omission_and_python_confirmation_are_closed_before_db_or_child() {
+    let (dir, marker) = owned_uvicorn();
+    let database = dir.path().join("data");
+    for (parent, settings) in [
+        ("python", "rust"),
+        ("rust", "invalid"),
+        ("rust", "Rust"),
+        ("invalid", "rust"),
+    ] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", parent)
+            .env("MODEL_MANAGER_SETTINGS_IMPL", settings)
+            .env("DATA_DIR", &database)
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success(), "{parent}/{settings}");
+        assert!(!database.exists());
+        assert!(!marker.exists());
+    }
+    if !cfg!(feature = "native-settings") {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", "rust")
+            .env("MODEL_MANAGER_SETTINGS_IMPL", "rust")
+            .env("DATA_DIR", &database)
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("compiled native-settings"));
+        assert!(!marker.exists());
+    }
+    // Default python: an inherited confirmation never reaches uvicorn, so Python keeps GET.
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script,"#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    for selected in [None, Some("python")] {
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED", "1");
+        if let Some(value) = selected {
+            cmd.env("MODEL_MANAGER_SETTINGS_IMPL", value);
+        }
+        let output = cmd.prompt_output().unwrap();
+        assert_eq!(output.status.code(), Some(42));
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
+        std::fs::remove_file(&marker).unwrap();
+    }
+    assert!(!database.exists());
+}
+
+#[cfg(feature = "native-settings")]
+#[test]
+fn native_settings_reject_case_folded_data_dir_aliases_before_child() {
+    let (dir, marker) = owned_uvicorn();
+    for alias in ["data_dir", "Data_Dir"] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", "rust")
+            .env("MODEL_MANAGER_SETTINGS_IMPL", "rust")
+            .env_remove("DATA_DIR")
+            .env(alias, dir.path().join("alias"))
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("canonical DATA_DIR"));
+        assert!(!marker.exists());
+    }
 }
 
 #[cfg(feature = "native-prompts")]
@@ -313,6 +380,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         }
         if cfg!(feature = "native-prompts") {
             expected.push_str("native-prompts\n");
+        }
+        if cfg!(feature = "native-settings") {
+            expected.push_str("native-settings\n");
         }
         assert_eq!(output.stdout, expected.as_bytes());
     }

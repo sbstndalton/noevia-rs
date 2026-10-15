@@ -9,6 +9,8 @@ pub mod idle_unload;
 #[cfg(feature = "native-prompts")]
 pub mod prompts;
 pub mod sections;
+#[cfg(feature = "native-settings")]
+pub mod settings;
 
 use axum::{
     body::{to_bytes, Body},
@@ -56,6 +58,9 @@ pub struct StateData {
     pub diagnosis: Option<Arc<diagnose_docker::Diagnosis>>,
     #[cfg(feature = "native-prompts")]
     pub prompts: Option<Arc<prompts::Prompts>>,
+    /// noevia#1318: native read-only `GET /api/v1/settings`; PUT stays with Python.
+    #[cfg(feature = "native-settings")]
+    pub settings: Option<Arc<settings::Settings>>,
     pub sections: Option<Arc<sections::Sections>>,
     /// #1668: present only when EMBED_CONTAINER names the embedding service.
     pub embedding: Option<Arc<embedding::EmbeddingService>>,
@@ -321,6 +326,13 @@ fn python_lines(text: &str) -> impl Iterator<Item = &str> {
 pub fn router(state: Arc<StateData>) -> Router {
     Router::new().fallback(handler).with_state(state)
 }
+/// Only the exact GET path is native; PUT (the writer), other methods and slash variants keep
+/// their existing forward/405/404 handling.
+#[cfg(feature = "native-settings")]
+fn native_settings_route(state: &StateData, method: &Method, path: &str) -> bool {
+    state.settings.is_some() && *method == Method::GET && path == "/api/v1/settings"
+}
+
 fn detail(status: StatusCode, text: &'static str) -> Response {
     (status, Json(json!({"detail":text}))).into_response()
 }
@@ -383,6 +395,8 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     let native = native
         || (state.prompts.is_some()
             && !matches!(prompts::classify(path), prompts::Route::NotOwned));
+    #[cfg(feature = "native-settings")]
+    let native = native || native_settings_route(&state, req.method(), path);
     let budget = if native || (path == "/api/v1/host" && state.host.is_some()) {
         TIMEOUT
     } else if path == "/api/v1/embedding-service" && state.embedding.is_some() {
@@ -665,6 +679,28 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
                 return native_sections(sections, path, req.uri().query().unwrap_or_default())
                     .await;
             }
+        }
+    }
+    #[cfg(feature = "native-settings")]
+    if native_settings_route(&state, req.method(), path) {
+        if let Some(settings) = &state.settings {
+            return match settings.response().await {
+                settings::Outcome::Json(bytes) => (
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    bytes,
+                )
+                    .into_response(),
+                // Byte-identical to FastAPI's unhandled-exception answer.
+                settings::Outcome::Failed => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    [(
+                        axum::http::header::CONTENT_TYPE,
+                        "text/plain; charset=utf-8",
+                    )],
+                    "Internal Server Error",
+                )
+                    .into_response(),
+            };
         }
     }
     if path == "/api/v1/health" {
