@@ -296,6 +296,7 @@ def cases():
     stricter = [
         ("stricter/archive-comment", comment(base, b"synthetic comment"), "archive comment"),
         ("stricter/prepended-bytes", b"MZ synthetic stub" + base, "data before the first member"),
+        ("stricter/appended-bytes", base + b"changed", "data after the end record"),
         ("stricter/nul-in-entry-name", None, "member name with NUL"),
         ("stricter/manifest-nan-setting", export(files, dirs, manifest=json.dumps(m)[:-1].encode() + b', "settings": NaN}'), "NaN in JSON"),
         ("stricter/manifest-nesting-200", export(files, dirs, manifest=json.dumps({**m, "settings": "@"}).encode().replace(b'"@"', b"[" * 200 + b"]" * 200)), "JSON nesting beyond serde_json's limit"),
