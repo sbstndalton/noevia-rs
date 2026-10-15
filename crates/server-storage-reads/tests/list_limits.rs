@@ -27,7 +27,9 @@ impl Transport for Fixture {
 }
 #[test]
 fn list_output_16m_refusal_is_named_legacy_difference() -> Result<(), Box<dyn Error>> {
-    let root = std::env::var("M4_CORE_ORACLE")?;
+    let Some(root) = support::core_oracle() else {
+        return Ok(());
+    };
     support::checked_source(&root, "storage-client.cjs")?;
     let name = format!("{}.txt", "a".repeat(76));
     let body = format!("<response><href>{name}</href></response>").repeat(25000);
@@ -81,7 +83,9 @@ fn list_output_16m_refusal_is_named_legacy_difference() -> Result<(), Box<dyn Er
 
 #[test]
 fn snapshot_endpoint_64k_refusal_is_named_legacy_difference() -> Result<(), Box<dyn Error>> {
-    let root = std::env::var("M4_CORE_ORACLE")?;
+    let Some(root) = support::core_oracle() else {
+        return Ok(());
+    };
     support::checked_source(&root, "ssrf.cjs")?;
     let base = format!("https://storage.invalid/{}", "a".repeat(65536));
     assert!(!endpoint_approved(&base, true, ""));

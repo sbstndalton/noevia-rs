@@ -22,7 +22,9 @@ fn admission_releases_owner_and_global_slots_without_queue() -> Result<(), Box<d
 
 #[test]
 fn actual_http_malformed_utf8_and_named_last_chunk_exception() -> Result<(), Box<dyn Error>> {
-    let root = std::env::var("M4_CORE_ORACLE")?;
+    let Some(root) = support::core_oracle() else {
+        return Ok(());
+    };
     support::checked_source(&root, "http.cjs")?;
     // A small fixed seam calls the actual HTTP helper. Synthetic Response objects
     // establish chunk layout only for this fixture; no real chunk equivalence claim.

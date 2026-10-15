@@ -29,6 +29,11 @@ fn artifact(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> std::io::Result<
 
 #[test]
 fn installed_builtin_source_capture() -> Result<(), String> {
+    // Fixed installed Node 22 observations write retained captures under /tmp; they run only on
+    // an explicitly prepared host (M4_NODE22_ORACLE=1), never in ordinary CI.
+    if std::env::var("M4_NODE22_ORACLE").as_deref() != Ok("1") {
+        return Ok(());
+    }
     let owned_directory = format!("{DIRECTORY}-{}", std::process::id());
     let directory = Path::new(&owned_directory);
     fs::DirBuilder::new()
@@ -172,6 +177,11 @@ fn observe(
 }
 #[test]
 fn actual_builtin_codec_observations_and_malformed_overcap_gate() -> Result<(), String> {
+    // Fixed installed Node 22 observations write retained captures under /tmp; they run only on
+    // an explicitly prepared host (M4_NODE22_ORACLE=1), never in ordinary CI.
+    if std::env::var("M4_NODE22_ORACLE").as_deref() != Ok("1") {
+        return Ok(());
+    }
     use server_storage_reads::{
         protocol::{Method, TransportFailure},
         response_ipc::Reply,

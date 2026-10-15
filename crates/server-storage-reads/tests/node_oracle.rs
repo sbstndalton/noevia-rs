@@ -49,7 +49,9 @@ impl Transport for FixtureTransport {
 
 #[test]
 fn actual_client_deterministic_domain_zero_diff() -> Result<(), Box<dyn Error>> {
-    let root = std::env::var("M4_CORE_ORACLE")?;
+    let Some(root) = support::core_oracle() else {
+        return Ok(());
+    };
     // These are the indirect local collaborators loaded by the actual client.
     // Compare bytes, not HEAD labels; active M6 commits are not the source base.
     for file in [

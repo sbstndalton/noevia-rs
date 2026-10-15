@@ -1,10 +1,17 @@
 //! Private source mutants, bounded Rust tooling; no network/real input.
+#[path = "support/capped_capture.rs"]
+mod capped_capture;
 #[path = "support/mutant_classifier.rs"]
 #[allow(dead_code)]
 mod mutant_classifier;
 #[allow(dead_code)]
 #[path = "../../../tools/qualification/process.rs"]
 mod process;
+/// Source inputs are read through the descriptor-capped reader, never unbounded (#1371).
+fn text(path: impl AsRef<Path>) -> Result<String, String> {
+    String::from_utf8(capped_capture::read(path.as_ref()).map_err(|_| "source read refused")?)
+        .map_err(|_| "source encoding refused".into())
+}
 use std::{
     fs,
     path::Path,
@@ -16,14 +23,12 @@ fn run() -> Result<(), String> {
     let cargo = std::env::var_os("M4_CARGO").unwrap_or_else(|| "cargo".into());
     let root = std::env::temp_dir().join(format!("m4-network-mutants-{}", std::process::id()));
     fs::create_dir(&root).map_err(|_| "owned fixture directory unavailable")?;
-    let original =
-        fs::read_to_string(source.join("src/isolated.rs")).map_err(|_| "source read failed")?;
-    let metadata = fs::read_to_string(source.join("src/response_ipc.rs"))
-        .map_err(|_| "metadata source failed")?;
-    let controls = fs::read_to_string(source.join("tests/network_policies.rs"))
-        .map_err(|_| "controls read failed")?;
-    let mut manifest =
-        fs::read_to_string(source.join("Cargo.toml")).map_err(|_| "manifest read failed")?;
+    let original = text(source.join("src/isolated.rs")).map_err(|_| "source read failed")?;
+    let metadata =
+        text(source.join("src/response_ipc.rs")).map_err(|_| "metadata source failed")?;
+    let controls =
+        text(source.join("tests/network_policies.rs")).map_err(|_| "controls read failed")?;
+    let mut manifest = text(source.join("Cargo.toml")).map_err(|_| "manifest read failed")?;
     for name in [
         "dav-parse",
         "storage-path",

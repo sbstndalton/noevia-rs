@@ -11,6 +11,11 @@ const NODE: &str = "/opt/homebrew/opt/node@22/bin/node";
 const SEAM: &str = r#"const fs=require('node:fs');const x=JSON.parse(fs.readFileSync(0,'utf8'));const C=require('node:crypto').X509Certificate;const ca=new C(fs.readFileSync(x.ca));const leaf=new C(fs.readFileSync(x.leaf));const v={node:process.version,undici:process.versions.undici,leafSelfIssued:leaf.subject===leaf.issuer,issuerMatchesCA:leaf.issuer===ca.subject};fetch(x.url,{method:x.method,headers:x.override?{host:'different.synthetic.invalid'}:{},redirect:'manual'}).then(async r=>{const b=await r.text();console.log(JSON.stringify({...v,status:r.status,body:b}));}).catch(e=>{const c=e?.cause?.code;const known=['ERR_TLS_CERT_ALTNAME_INVALID','UNABLE_TO_VERIFY_LEAF_SIGNATURE','SELF_SIGNED_CERT_IN_CHAIN','UNABLE_TO_GET_ISSUER_CERT_LOCALLY','DEPTH_ZERO_SELF_SIGNED_CERT','CERT_SIGNATURE_FAILURE','CERT_HAS_EXPIRED','ERR_SSL_NO_SUITABLE_SIGNATURE_ALGORITHM','ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR','ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE','ECONNREFUSED','ECONNRESET','EPROTO','UND_ERR_SOCKET','UND_ERR_CONNECT_TIMEOUT'];console.log(JSON.stringify({...v,refused:true,failure:known.includes(c)?c:'other',causePresent:!!e.cause,causeCodePresent:typeof c==='string'}));});"#;
 #[test]
 fn actual_builtin_fetch_owned_tls_observations() {
+    // Fixed installed Node 22 observations write retained captures under /tmp; they run only on
+    // an explicitly prepared host (M4_NODE22_ORACLE=1), never in ordinary CI.
+    if std::env::var("M4_NODE22_ORACLE").as_deref() != Ok("1") {
+        return;
+    }
     let fixture = lab::pki::Fixture::generate().unwrap_or_else(|_| unreachable!());
     for (trusted, method, host_override) in [
         (true, "GET", true),
