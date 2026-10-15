@@ -14,6 +14,13 @@ pub struct Root {
     #[cfg(test)]
     fixture: Option<std::path::PathBuf>,
 }
+#[cfg_attr(not(any(test, target_os = "linux")), allow(dead_code))]
+enum Opened {
+    Found(File),
+    Missing,
+    /// EACCES/EPERM opening it; callers decide whether that refuses.
+    Denied,
+}
 pub struct Entry {
     pub name: String,
     pub directory: bool,
@@ -57,6 +64,27 @@ impl Root {
         directory: bool,
         budget: &mut Budget,
     ) -> Result<Option<File>, Error> {
+        match self.open(relative, directory, budget)? {
+            Opened::Found(file) => Ok(Some(file)),
+            Opened::Missing => Ok(None),
+            Opened::Denied => Err(Error::Refused),
+        }
+    }
+    /// Like [`Root::entries`], but a folder the process may not open (EACCES/EPERM) is
+    /// `Ok(None)`, as `os.walk` skips it. Escapes and every other error still refuse.
+    #[cfg(feature = "native-model-updates")]
+    pub fn entries_unless_denied(
+        &self,
+        relative: &str,
+        budget: &mut Budget,
+    ) -> Result<Option<Vec<Entry>>, Error> {
+        match self.open(relative, true, budget)? {
+            Opened::Found(file) => self.list(file, relative, budget).map(Some),
+            Opened::Missing => Ok(Some(Vec::new())),
+            Opened::Denied => Ok(None),
+        }
+    }
+    fn open(&self, relative: &str, directory: bool, budget: &mut Budget) -> Result<Opened, Error> {
         budget.work()?;
         if relative.len() > 4096
             || relative.contains('\0')
@@ -71,14 +99,17 @@ impl Root {
             // Synthetic semantic adapter only; not containment evidence or production code.
             let file = match File::open(root.join(relative)) {
                 Ok(file) => file,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Opened::Missing),
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                    return Ok(Opened::Denied)
+                }
                 Err(_) => return Err(Error::Refused),
             };
             let metadata = file.metadata().map_err(|_| Error::Refused)?;
             if directory != metadata.is_dir() || (!directory && !metadata.is_file()) {
                 return Err(Error::Refused);
             }
-            return Ok(Some(file));
+            return Ok(Opened::Found(file));
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -100,7 +131,12 @@ impl Root {
             }
             let fd = match result {
                 Ok(fd) => fd,
-                Err(rustix::io::Errno::NOENT | rustix::io::Errno::NOTDIR) => return Ok(None),
+                Err(rustix::io::Errno::NOENT | rustix::io::Errno::NOTDIR) => {
+                    return Ok(Opened::Missing)
+                }
+                Err(rustix::io::Errno::ACCESS | rustix::io::Errno::PERM) => {
+                    return Ok(Opened::Denied)
+                }
                 Err(_) => return Err(Error::Refused),
             };
             let file = File::from(fd);
@@ -108,13 +144,16 @@ impl Root {
             if (directory && !metadata.is_dir()) || (!directory && !metadata.is_file()) {
                 return Err(Error::Refused);
             }
-            Ok(Some(file))
+            Ok(Opened::Found(file))
         }
     }
     pub fn entries(&self, relative: &str, budget: &mut Budget) -> Result<Vec<Entry>, Error> {
         let Some(file) = self.file(relative, true, budget)? else {
             return Ok(Vec::new());
         };
+        self.list(file, relative, budget)
+    }
+    fn list(&self, file: File, relative: &str, budget: &mut Budget) -> Result<Vec<Entry>, Error> {
         let directory = rustix::fs::Dir::new(file).map_err(|_| Error::Refused)?;
         let mut entries = Vec::new();
         for entry in directory {

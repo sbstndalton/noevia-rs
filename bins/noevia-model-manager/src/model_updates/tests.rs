@@ -83,8 +83,14 @@ pub(crate) fn build(root: &Path, case: &Value) -> (PathBuf, PathBuf, PathBuf) {
     match case["models"].as_str().unwrap_or("dir") {
         "missing" => {}
         "file" => std::fs::write(&models, b"").unwrap(),
-        "dir" => {
-            std::fs::create_dir(&models).unwrap();
+        kind @ ("dir" | "link") => {
+            if kind == "link" {
+                let real = root.join("real-models");
+                std::fs::create_dir(&real).unwrap();
+                std::os::unix::fs::symlink(&real, &models).unwrap();
+            } else {
+                std::fs::create_dir(&models).unwrap();
+            }
             for dir in case["dirs"].as_array().into_iter().flatten() {
                 std::fs::create_dir_all(models.join(dir.as_str().unwrap())).unwrap();
             }
@@ -100,6 +106,12 @@ pub(crate) fn build(root: &Path, case: &Value) -> (PathBuf, PathBuf, PathBuf) {
                     models.join(link[0].as_str().unwrap()),
                 )
                 .unwrap();
+            }
+            for link in case["abslinks"].as_array().into_iter().flatten() {
+                let target = std::fs::canonicalize(&models)
+                    .unwrap()
+                    .join(link[1].as_str().unwrap());
+                std::os::unix::fs::symlink(target, models.join(link[0].as_str().unwrap())).unwrap();
             }
             match &case["ini"] {
                 Value::Null => {}
@@ -153,6 +165,23 @@ pub(crate) fn build(root: &Path, case: &Value) -> (PathBuf, PathBuf, PathBuf) {
     (models, ini, data)
 }
 
+/// Applies (or, with `restore`, undoes) the case's folder permission modes.
+pub(crate) fn modes(models: &Path, case: &Value, restore: bool) {
+    use std::os::unix::fs::PermissionsExt;
+    for item in case["modes"].as_array().into_iter().flatten() {
+        let mode = if restore {
+            0o700
+        } else {
+            u32::try_from(item[1].as_u64().unwrap()).unwrap()
+        };
+        std::fs::set_permissions(
+            models.join(item[0].as_str().unwrap()),
+            std::fs::Permissions::from_mode(mode),
+        )
+        .unwrap();
+    }
+}
+
 fn run(models: &Path, ini: &Path, data: &Path) -> Outcome {
     compute(
         models,
@@ -182,7 +211,10 @@ fn actual_python_differential() {
         let db = data.join("model_loader.db");
         let before = std::fs::read(&db).ok();
         let expected = case["body"].as_str().unwrap();
-        match (run(&models, &ini, &data), case["status"].as_u64().unwrap()) {
+        modes(&models, &case, false);
+        let outcome = run(&models, &ini, &data);
+        modes(&models, &case, true);
+        match (outcome, case["status"].as_u64().unwrap()) {
             (Outcome::Json(body), 200) => {
                 assert_eq!(case["content_type"], "application/json", "{id}");
                 assert_eq!(String::from_utf8(body).unwrap(), expected, "{id}");
@@ -353,4 +385,36 @@ fn oversized_ini_and_store_values_answer_500() {
         assert_eq!(matches!(outcome, Outcome::Json(_)), ok, "{len}");
         assert_eq!(matches!(outcome, Outcome::Failed), !ok, "{len}");
     }
+}
+
+#[test]
+fn fifo_ini_answers_500_without_blocking() {
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir(&models).unwrap();
+    let ini = models.join("models.ini");
+    assert!(std::process::Command::new("mkfifo")
+        .arg(&ini)
+        .status()
+        .unwrap()
+        .success());
+    let data = dir.path().join("data");
+    std::fs::create_dir(&data).unwrap();
+    let started = Instant::now();
+    assert_eq!(run(&models, &ini, &data), Outcome::Failed);
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+}
+
+#[test]
+fn total_output_is_capped() {
+    let big = "x".repeat(60_000);
+    let mut checks = HashMap::new();
+    let mut entries = Vec::new();
+    for i in 0..200 {
+        let name = format!("m{i}.gguf");
+        checks.insert(name.clone(), (Stored::Null, Stored::Text(big.clone())));
+        entries.push(Entry { name, mtime: 0.0 });
+    }
+    assert!(render(&entries[..100], &checks).is_ok());
+    assert!(render(&entries, &checks).is_err());
 }

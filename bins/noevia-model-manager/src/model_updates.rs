@@ -39,6 +39,8 @@ pub const REFUSAL: &str = "Native model update status is unavailable";
 pub const VALUE_CAP: i32 = 64 * 1024;
 /// Most `update_check` rows read; more answers 500.
 pub const ROW_CAP: usize = 65_536;
+/// Largest response body; a larger answer is 500 instead of being built.
+pub const OUTPUT_CAP: usize = 8 * 1024 * 1024;
 /// Most model files listed; more answers the 503 refusal.
 pub const MODEL_CAP: usize = 4096;
 /// Python's sqlite3 waits 5 s for a lock; answer 500 (as Python does) inside the 5 s budget.
@@ -118,7 +120,9 @@ fn answer(
         Some(directory) => {
             check_ini(ini)?;
             if directory {
-                snapshot(&open(models).map_err(|_| Stop::Refused)?)?
+                // A symlinked MODELS_DIR is followed, as Python's os.walk(top) follows it.
+                let base = std::fs::canonicalize(models).map_err(|_| Stop::Refused)?;
+                snapshot(&open(&base).map_err(|_| Stop::Refused)?, &base)?
             } else {
                 Vec::new() // os.walk of a file yields nothing
             }
@@ -161,7 +165,19 @@ fn check_ini(path: &Path) -> Result<(), Stop> {
     if exists(path)?.is_none() {
         return Ok(());
     }
-    let file = std::fs::File::open(path).map_err(|_| Stop::Failed)?;
+    // Non-blocking open and a regular-file check: a FIFO or device answers 500 instead of
+    // parking a blocking thread (Python would hang on it).
+    let file = {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32)
+            .open(path)
+            .map_err(|_| Stop::Failed)?
+    };
+    if !file.metadata().map_err(|_| Stop::Failed)?.is_file() {
+        return Err(Stop::Failed);
+    }
     let mut bytes = Vec::new();
     bytes
         .try_reserve(INI_CAP.min(64 * 1024))
@@ -200,23 +216,52 @@ fn join(relative: &str, name: &str) -> String {
     }
 }
 
+/// Metadata of `base/relative` after resolving every link, if the result is inside `base`
+/// (canonical). `None` when it does not exist (a dangling link: `is_file()` is False).
+fn inside(base: &Path, relative: &str) -> Result<Option<std::fs::Metadata>, Stop> {
+    let target = match std::fs::canonicalize(base.join(relative)) {
+        Ok(target) => target,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(Stop::Refused),
+    };
+    if !target.starts_with(base) {
+        return Err(Stop::Refused);
+    }
+    std::fs::metadata(&target)
+        .map(Some)
+        .map_err(|_| Stop::Refused)
+}
+
 /// `utils.iter_gguf`: sorted files of a folder (any name ending `.gguf`, case-insensitively,
 /// that `is_file()` after following links), then its sorted real subfolders, four levels deep.
 fn walk(
     root: &Root,
+    base: &Path,
     relative: &str,
     depth: usize,
     out: &mut Vec<Found>,
     budget: &mut Budget,
 ) -> Result<(), Stop> {
-    let mut entries = root.entries(relative, budget).map_err(|_| Stop::Refused)?;
+    // os.walk silently skips a folder it may not list.
+    let Some(mut entries) = root
+        .entries_unless_denied(relative, budget)
+        .map_err(|_| Stop::Refused)?
+    else {
+        return Ok(());
+    };
     entries.sort_by(|a, b| a.name.cmp(&b.name));
     for entry in &entries {
         if entry.directory || !entry.name.to_lowercase().ends_with(".gguf") {
             continue;
         }
         let path = join(relative, &entry.name);
-        let Some(meta) = root.stat(&path, budget).map_err(|_| Stop::Refused)? else {
+        let meta = match root.stat(&path, budget) {
+            Ok(meta) => meta,
+            // The contained open refuses absolute links (and anything leaving the root). Follow
+            // the link only when its fully resolved target stays inside the models folder.
+            Err(_) => inside(base, &path)?,
+        };
+        let Some(meta) = meta else {
             continue; // dangling link: is_file() is False
         };
         if !meta.is_file() {
@@ -243,7 +288,14 @@ fn walk(
                 && !entry.name.starts_with('.')
                 && !SKIP_DIRS.contains(&entry.name.as_str())
             {
-                walk(root, &join(relative, &entry.name), depth + 1, out, budget)?;
+                walk(
+                    root,
+                    base,
+                    &join(relative, &entry.name),
+                    depth + 1,
+                    out,
+                    budget,
+                )?;
             }
         }
     }
@@ -292,10 +344,10 @@ fn imatrix(low: &str) -> bool {
 }
 
 /// `services.snapshot_models_dir().ggufs`, reduced to what the update map reads.
-fn snapshot(root: &Root) -> Result<Vec<Entry>, Stop> {
+fn snapshot(root: &Root, base: &Path) -> Result<Vec<Entry>, Stop> {
     let mut budget = Budget::default();
     let mut found = Vec::new();
-    walk(root, ".", 0, &mut found, &mut budget)?;
+    walk(root, base, ".", 0, &mut found, &mut budget)?;
     struct Group {
         subdir: String,
         base: String,
@@ -426,17 +478,31 @@ fn read_checks(
 fn render(entries: &[Entry], checks: &HashMap<String, (Stored, Stored)>) -> Result<Vec<u8>, Stop> {
     let mut order: Vec<(&str, String)> = Vec::new();
     let mut position: HashMap<&str, usize> = HashMap::new();
+    let mut size = 0usize;
     for entry in entries {
         let Some((remote, checked)) = checks.get(&entry.name) else {
             continue;
         };
         let value = status(remote, checked, entry.mtime)?;
         match position.get(entry.name.as_str()) {
-            Some(&i) => order.get_mut(i).ok_or(Stop::Failed)?.1 = value,
+            Some(&i) => {
+                let slot = order.get_mut(i).ok_or(Stop::Failed)?;
+                size = size
+                    .saturating_sub(slot.1.len())
+                    .saturating_add(value.len());
+                slot.1 = value;
+            }
             None => {
+                // Escaped key plus separators, at most six bytes per input byte.
+                size = size
+                    .saturating_add(value.len())
+                    .saturating_add(entry.name.len().saturating_mul(6) + 4);
                 position.insert(&entry.name, order.len());
                 order.push((&entry.name, value));
             }
+        }
+        if size > OUTPUT_CAP {
+            return Err(Stop::Failed);
         }
     }
     let mut out = String::from("{\"status\":{");
