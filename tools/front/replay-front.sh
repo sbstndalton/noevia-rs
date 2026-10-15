@@ -110,9 +110,6 @@ elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_SAMPLING_SETTINGS:-}" = 1 ]; then
 elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_STATS:-}" = 1 ]; then
   # Test-only omission: native auth continues; confirmed Node must refuse GET /api/stats.
   PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_STATS "$front" &
-elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_STORAGE_READS:-}" = 1 ]; then
-  # Test-only omission: native auth continues; confirmed Node must refuse the storage metadata GET.
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_STORAGE_READS "$front" &
 elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_USAGE:-}" = 1 ]; then
   # Test-only omission: Node reporting stays confirmed/refused, auth remains native.
   PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_USAGE "$front" &

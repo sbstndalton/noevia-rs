@@ -38,6 +38,10 @@ jobs:
         # skipped here; the process-seam and #1390 gate controls run.
         run: cargo test --locked -p server-storage-reads
       - name: Real headers, owner projection, worker and switch through the front
+        # storage_metadata.rs points the front at a dead legacy upstream (127.0.0.1:9) and still
+        # gets the metadata 200: the native-answer proof. The corpus harness (core
+        # tools/contract-corpus/serve.cjs) does not pass NOEVIA_RUST_STORAGE_READS to Node yet,
+        # so a Node-refusal negative replay control waits for that and a core repin.
         run: cargo test --locked -p noevia-server --features rust-storage-reads
       - name: Compiled capability and isolated featureless startup refusal
         run: |
@@ -78,34 +82,11 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-storage" \
             --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_STORAGE_READS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/storage-positive.json" --expect-state "$RUNNER_TEMP/node-state.json"
-      - name: "Negative control: confirmed Node refuses the metadata GET the front did not answer"
-        # Node is told the front owns GET /api/integrations/storage, but the front starts without
-        # the switch, so that GET reaches Node and is refused: exactly it differs. This proves the
-        # positive replay above was answered by the front, not proxied.
-        run: |
-          set -uo pipefail
-          if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
-              --ignore-body hours --ignore-body peakHour/hour \
-              --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \
-              --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_STORAGE_READS=1 REPLAY_FRONT_CONTROL_NODE_ONLY_STORAGE_READS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
-              --report "$RUNNER_TEMP/storage-control.json"; then
-            echo "::error::the Node-only control passed: the front did not answer the metadata GET"; exit 1
-          fi
-          python3 - "$RUNNER_TEMP/storage-control.json" <<'PY'
-          import json, sys
-          rows = json.load(open(sys.argv[1]))
-          bad = [r for r in rows if r['diffs'] or r['error'] or r['status'] != r['expectedStatus']]
-          owned = [r for r in bad if r['method'] == 'GET' and r['path'] == '/api/integrations/storage']
-          assert owned and len(owned) == len(bad), [(r['method'], r['path'], r['status']) for r in bad]
-          assert all(r['status'] == 503 for r in owned), owned
-          print('only GET /api/integrations/storage differs without the front:', len(owned))
-          PY
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: native-storage-reads-evidence
           path: |
             ${{ runner.temp }}/storage-positive.json
-            ${{ runner.temp }}/storage-control.json
             ${{ runner.temp }}/node-state.json
           if-no-files-found: ignore
