@@ -905,7 +905,10 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-settings --test settings --test lifecycle --bin noevia-model-manager
           cargo test --locked -p noevia-model-manager --features native-settings --lib settings::
       - name: Combined native features keep every existing test
-        run: cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings --lib --test settings --test lifecycle --test policy
+        # Prompt store tests need the prompt oracle env; the native-prompts job runs them.
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings --test settings --test lifecycle --test policy --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings --lib settings::
       - name: Settings capability omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-logs --test lifecycle

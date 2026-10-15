@@ -518,7 +518,8 @@ mod diagnosis_command_tests {
     }
 }
 
-#[cfg(test)]
+// Compiled with the feature only, so other features' exact test inventories stay unchanged.
+#[cfg(all(test, feature = "native-settings"))]
 mod settings_command_tests {
     #[test]
     fn settings_confirmation_overrides_inherited_value() {
@@ -528,7 +529,6 @@ mod settings_command_tests {
             super::settings_child(
                 &mut command,
                 mode,
-                #[cfg(feature = "native-settings")]
                 (mode == "rust").then_some("/synthetic/root"),
             );
             let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
@@ -540,7 +540,6 @@ mod settings_command_tests {
                 .flatten(),
                 Some(std::ffi::OsStr::new(marker))
             );
-            #[cfg(feature = "native-settings")]
             assert_eq!(
                 envs.get(std::ffi::OsStr::new("DATA_DIR"))
                     .copied()
