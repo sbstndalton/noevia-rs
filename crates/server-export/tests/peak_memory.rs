@@ -69,7 +69,12 @@ fn text(spec: &Spec) -> String {
 /// turn so the test's own data is not counted, and exports them.
 fn run(name: &str, files: Vec<(&str, Spec)>) -> usize {
     let root = layout(name, files);
-    export_once(name, root.path())
+    let out = export(root.path(), USER, 1_800_000_000_000);
+    let Outcome::Zip { len, .. } = &out else {
+        panic!("{name}: {out:?}");
+    };
+    println!("{name}: export of {:.1} MiB", *len as f64 / MIB as f64);
+    *len
 }
 
 fn layout(name: &str, files: Vec<(&str, Spec)>) -> tempfile::TempDir {
@@ -119,7 +124,7 @@ fn rss_bytes() -> Option<u64> {
 
 /// #1833: five of the largest exports back to back in one process; prints `RSS <n> <bytes>` after
 /// each (with `NOEVIA_PEAK_TRIM=0` the allocator is not asked to return memory: the "before").
-fn repeat() -> usize {
+fn repeat(times: usize) -> usize {
     let full = HISTORY_READ_CAP as usize - 64 * 1024;
     let root = layout(
         "repeat",
@@ -131,7 +136,7 @@ fn repeat() -> usize {
     );
     let trim = std::env::var("NOEVIA_PEAK_TRIM").as_deref() != Ok("0");
     let mut len = 0;
-    for n in 1..=5 {
+    for n in 1..=times {
         len = export_once("repeat", root.path());
         if trim {
             server_export::route::return_memory();
@@ -176,7 +181,9 @@ fn scenario(name: &str) -> usize {
                 ("last", Spec::Values),
             ],
         ),
-        "repeat" => repeat(),
+        "repeat" => repeat(5),
+        // One export, the same way (a worker thread): the reference peak for `repeat`.
+        "single" => repeat(1),
         other => panic!("unknown scenario {other}"),
     }
 }
@@ -219,7 +226,7 @@ fn back_to_back_exports_return_memory() {
         return; // the other test is the child
     }
     let before = series(&child("repeat", "0"), "RSS ");
-    let single = series(&child("content", "1"), "PEAK content ");
+    let single = series(&child("single", "1"), "PEAK single ");
     let after = series(&child("repeat", "1"), "RSS ");
     if before.is_empty() || single.is_empty() {
         println!("RSS not measured on this OS");
@@ -231,7 +238,7 @@ fn back_to_back_exports_return_memory() {
             .collect::<Vec<_>>()
             .join(", ")
     };
-    println!("single-export peak (content): {} MiB", mb(&single));
+    println!("single-export peak (same layout, worker thread): {} MiB", mb(&single));
     println!(
         "RSS after each of 5 exports, no malloc_trim (before): {} MiB",
         mb(&before)
