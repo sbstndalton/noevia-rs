@@ -215,3 +215,186 @@ fn fixed_locked_package_root_contract_controls() -> Result<(), String> {
     }
     Ok(())
 }
+
+fn case(id: &str) -> Result<serde_json::Value, String> {
+    topology::cases()?
+        .into_iter()
+        .find(|c| c.get("id") == Some(&json!(id)))
+        .ok_or_else(|| format!("fixed case {id}"))
+}
+
+/// noevia#1390 F1: Node's csrfValid is `''` for an absent header; it must compare as `false`.
+#[test]
+fn raw_node_csrf_is_normalised_exactly() -> Result<(), String> {
+    for (raw, expected) in [
+        (json!({"type":"string","value":""}), json!(false)),
+        (json!({"type":"boolean","value":false}), json!(false)),
+        (json!({"type":"boolean","value":true}), json!(true)),
+        (json!({"type":"object","value":null}), json!(null)),
+    ] {
+        assert_eq!(topology::observed_csrf(&raw)?, expected, "{raw}");
+    }
+    for raw in [
+        json!({"type":"string","value":"synthetic-csrf-a"}),
+        json!({"type":"string","value":"false"}),
+        json!({"type":"boolean","value":""}),
+        json!({"type":"boolean","value":null}),
+        json!({"type":"object","value":{}}),
+        json!({"type":"undefined","value":null}),
+        json!({"type":"number","value":0}),
+        json!({"value":""}),
+        json!({"type":"string"}),
+    ] {
+        assert!(topology::observed_csrf(&raw).is_err(), "{raw}");
+    }
+    Ok(())
+}
+
+/// noevia#1390 F2: a strict Rust refusal accepts only the exact typed Node exception it names.
+#[test]
+fn strict_refusal_accepts_only_the_named_typed_exception() -> Result<(), String> {
+    let dir = "/synthetic/node-00-00";
+    let key = case("K-current31")?;
+    let key_error = json!({"name":"Error","code":null,"reason":null,"message":format!("invalid credential-encryption key at {dir}/secrets.key")});
+    let accepted = json!({"id":"K-current31","exceptionPhase":"keys","error":key_error});
+    assert!(topology::qualify_refusal_exception(
+        &key,
+        "key refused",
+        &accepted,
+        dir
+    )?);
+    let mut refused = Vec::new();
+    // An unrelated factory/setup failure must not stand in for the key refusal.
+    refused.push(json!({"id":"K-current31","exceptionPhase":"factory","error":{"name":"TypeError","code":null,"reason":null,"message":"routes.handle is not a function"}}));
+    refused.push(json!({"id":"K-current31","exceptionPhase":"keys","error":{"name":"TypeError","code":null,"reason":null,"message":"routes.handle is not a function"}}));
+    // Another directory's key, a non-null reason/code, a missing or null record, no exception.
+    refused.push(json!({"id":"K-current31","exceptionPhase":"keys","error":{"name":"Error","code":null,"reason":null,"message":"invalid credential-encryption key at /elsewhere/secrets.key"}}));
+    let mut with_reason = accepted.clone();
+    *with_reason
+        .get_mut("error")
+        .and_then(|e| e.get_mut("reason"))
+        .ok_or("reason")? = json!("secret_envelope_failed");
+    refused.push(with_reason);
+    let mut with_code = accepted.clone();
+    *with_code
+        .get_mut("error")
+        .and_then(|e| e.get_mut("code"))
+        .ok_or("code")? = json!("EACCES");
+    refused.push(with_code);
+    refused.push(json!({"id":"K-current31","exceptionPhase":"keys"}));
+    refused.push(json!({"id":"K-current31","exceptionPhase":"keys","error":null}));
+    refused.push(json!({"id":"K-current31"}));
+    refused.push(json!({"id":"K-current31","exceptionPhase":7,"error":key_error}));
+    for node in &refused {
+        assert!(
+            topology::qualify_refusal_exception(&key, "key refused", node, dir).is_err(),
+            "{node}"
+        );
+    }
+
+    let missing = case("S-missing")?;
+    let state = json!([{"columns":[],"rows":[]}]);
+    let table = json!({"name":"SqliteError","code":"SQLITE_ERROR","reason":null,"message":"no such table: storage_connections"});
+    let semantic = json!({"id":"S-missing","exceptionPhase":"projection","error":table,"before":state,"after":state});
+    assert!(topology::qualify_refusal_exception(
+        &missing,
+        "projection:Schema",
+        &semantic,
+        dir
+    )?);
+    let mut delta = semantic.clone();
+    *delta.get_mut("after").ok_or("after")? = json!([]);
+    let mut wrong_phase = semantic.clone();
+    *wrong_phase.get_mut("exceptionPhase").ok_or("phase")? = json!("factory");
+    let unrelated = json!({"id":"S-missing","exceptionPhase":"projection","error":{"name":"TypeError","code":null,"reason":null,"message":"Cannot read properties of undefined"},"before":state,"after":state});
+    for node in [delta, wrong_phase, unrelated] {
+        assert!(
+            topology::qualify_refusal_exception(&missing, "projection:Schema", &node, dir).is_err(),
+            "{node}"
+        );
+    }
+    // The same SQLite error is not acceptable for a shape that does not drop the table.
+    let view = case("S-view")?;
+    assert!(
+        topology::qualify_refusal_exception(&view, "projection:Schema", &semantic, dir).is_err()
+    );
+    // No Node exception: the caller must go on to compare SQL effects, not accept.
+    assert!(!topology::qualify_refusal_exception(
+        &view,
+        "projection:Schema",
+        &json!({"id":"S-view"}),
+        dir
+    )?);
+    Ok(())
+}
+
+/// noevia#1390 F4: an operational failure keeps the capped partial streams and reaped status.
+#[test]
+fn operational_failures_retain_first_attempt_evidence() -> Result<(), String> {
+    use std::{process::Command, time::Duration};
+    let probe = env!("CARGO_BIN_EXE_private-oracle-probe");
+    let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+
+    let mut stalled = Command::new(probe);
+    stalled.arg("partial");
+    let output = process::bounded(stalled, Vec::new(), Duration::from_millis(500));
+    assert!(matches!(output.failure, Some(process::Failure::Deadline)));
+    assert_eq!(output.stdout, b"partial-stdout");
+    assert_eq!(output.stderr, b"partial-stderr");
+    let status = output.status.ok_or("reaped status retained")?;
+    assert!(!status.success());
+    topology::retain_capture(dir.path(), "stalled", &output)?;
+    assert_eq!(
+        std::fs::read(dir.path().join("stalled.stdout")).map_err(|e| e.to_string())?,
+        b"partial-stdout"
+    );
+    assert_eq!(
+        std::fs::read(dir.path().join("stalled.stderr")).map_err(|e| e.to_string())?,
+        b"partial-stderr"
+    );
+    let recorded: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(dir.path().join("stalled.status.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    assert_eq!(recorded.get("failure"), Some(&json!("Deadline")));
+    assert_eq!(recorded.get("success"), Some(&json!(false)));
+    assert!(recorded
+        .get("status_debug")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|s| !s.is_empty()));
+    // First-attempt evidence is never overwritten by a retry.
+    assert!(topology::retain_capture(dir.path(), "stalled", &output).is_err());
+
+    let mut noisy = Command::new(probe);
+    noisy.arg("stdout-noise");
+    let output = process::bounded(noisy, Vec::new(), Duration::from_secs(5));
+    assert!(matches!(output.failure, Some(process::Failure::OutputCap)));
+    assert_eq!(output.stdout.len(), 8 * 1024 * 1024);
+    assert!(output.status.is_some());
+    topology::retain_capture(dir.path(), "noisy", &output)?;
+    Ok(())
+}
+
+/// noevia#1390 F5: materialization, preflight, capture and comparison are separate invocations.
+#[test]
+fn stages_are_selected_one_at_a_time() {
+    let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    for (flag, stage) in [
+        ("--fixed-materialize-only", topology::Stage::Materialize),
+        ("--fixed-preflight-only", topology::Stage::Preflight),
+        ("--fixed-capture-only", topology::Stage::Capture),
+        ("--fixed-compare-only", topology::Stage::Compare),
+    ] {
+        assert_eq!(topology::stage(&args(&[flag])), Some(stage));
+    }
+    for refused in [
+        &[][..],
+        &["--fixed-capture-only", "--fixed-compare-only"][..],
+        &["--fixed-preflight-only", "--fixed-preflight-only"][..],
+        &["--fixed-all"][..],
+        &["--fixed-capture-only "][..],
+        &["fixed-capture-only"][..],
+    ] {
+        assert_eq!(topology::stage(&args(refused)), None, "{refused:?}");
+    }
+}

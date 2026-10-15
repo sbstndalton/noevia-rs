@@ -1358,3 +1358,111 @@ pub fn candidate(dir: &Path, case: &Value) -> Result<Value> {
         json!({"result":result.unwrap_or_else(|e|json!({"refusal":e})),"sql_before":before,"sql_after":after,"readonly":true,"identity_truth_limit":"nongate fixture identities are publicly constructible; only gate lane uses actual gate"}),
     )
 }
+
+/// noevia#1390 F1: the actual Node `csrfValid` returns `''` (not `false`) when the CSRF header
+/// is absent, a Boolean otherwise, and the adapter records `null` without an identity. Normalise
+/// exactly those raw observations to the Rust gate's Boolean/null; refuse every other shape so a
+/// changed Node dialect is a refusal rather than a silent mismatch or match.
+pub fn observed_csrf(raw: &Value) -> Result<Value> {
+    let value = raw.get("value").ok_or("raw CSRF value")?;
+    match string(raw, "type")? {
+        "boolean" => value
+            .as_bool()
+            .map(|v| json!(v))
+            .ok_or_else(|| "raw Boolean CSRF".into()),
+        "string" if value == &json!("") => Ok(json!(false)),
+        "object" if value.is_null() => Ok(Value::Null),
+        _ => Err("unexpected raw CSRF value".into()),
+    }
+}
+
+/// noevia#1390 F2: when Rust strictly refuses a case, the Node side may only have failed with
+/// the one typed exception that refusal names: a key-infrastructure error in the `keys` phase
+/// for the named key cases, or the missing-table SQLite error in the `projection` phase for the
+/// `missing` shape (with no SQL delta). Any other exception, phase or record (an unrelated
+/// factory/setup failure, a null/unknown record) is refused instead of counting as agreement.
+/// `Ok(false)` means Node raised nothing and the caller must still compare SQL effects.
+pub fn qualify_refusal_exception(
+    case: &Value,
+    refusal: &str,
+    node: &Value,
+    node_dir: &str,
+) -> Result<bool> {
+    let id = string(case, "id")?;
+    let phase = match node.get("exceptionPhase") {
+        None => None,
+        Some(Value::String(phase)) => Some(phase.as_str()),
+        Some(_) => return Err("untyped Node exception phase".into()),
+    };
+    if refusal == "key refused" && id != "K-missing" {
+        require(phase == Some("keys"), "actual key infrastructure refusal")?;
+        let error = node.get("error").ok_or("typed key exception")?;
+        require(
+            error.get("reason").is_some_and(Value::is_null),
+            "unknown key exception reason",
+        )?;
+        let message = string(error, "message")?;
+        let allowed = match id {
+            "K-current31" | "K-current33" => {
+                error.get("name") == Some(&json!("Error"))
+                    && error.get("code").is_some_and(Value::is_null)
+                    && message
+                        == format!("invalid credential-encryption key at {node_dir}/secrets.key")
+            }
+            "K-previous31" | "K-previous33" | "K-space-env" => {
+                error.get("name") == Some(&json!("Error"))
+                    && error.get("code").is_some_and(Value::is_null)
+                    && message == "invalid previous credential-encryption key (need 32 bytes)"
+            }
+            "K-previous-directory" => {
+                error.get("name") == Some(&json!("Error"))
+                    && error.get("code") == Some(&json!("EISDIR"))
+            }
+            _ => false,
+        };
+        require(allowed, "unknown key exception")?;
+        return Ok(true);
+    }
+    let Some(phase) = phase else {
+        return Ok(false);
+    };
+    let error = node.get("error").ok_or("typed semantic exception")?;
+    require(
+        phase == "projection"
+            && string(case, "shape")? == "missing"
+            && error.get("name") == Some(&json!("SqliteError"))
+            && error.get("code") == Some(&json!("SQLITE_ERROR"))
+            && error.get("reason").is_some_and(Value::is_null)
+            && error.get("message") == Some(&json!("no such table: storage_connections")),
+        "unknown Node semantic/operational exception",
+    )?;
+    require(
+        node.get("before") == node.get("after"),
+        "semantic exception SQL delta",
+    )?;
+    Ok(true)
+}
+
+/// noevia#1390 F5: each stage is a separate invocation with its own retained evidence, so the
+/// materialization and preflight can be reviewed before any capture, and capture before compare.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stage {
+    Materialize,
+    Preflight,
+    Capture,
+    Compare,
+}
+
+/// Exactly one stage flag; combined, repeated, empty or unknown arguments select nothing.
+pub fn stage(args: &[String]) -> Option<Stage> {
+    match args {
+        [mode] => match mode.as_str() {
+            "--fixed-materialize-only" => Some(Stage::Materialize),
+            "--fixed-preflight-only" => Some(Stage::Preflight),
+            "--fixed-capture-only" => Some(Stage::Capture),
+            "--fixed-compare-only" => Some(Stage::Compare),
+            _ => None,
+        },
+        _ => None,
+    }
+}

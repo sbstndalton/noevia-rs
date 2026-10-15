@@ -568,64 +568,15 @@ fn qualify_matrix(
             result.get("refusal").and_then(Value::as_str) == Some(refusal),
             "expected strict candidate refusal",
         )?;
-        let phase = node.get("exceptionPhase").and_then(Value::as_str);
-        if refusal == "key refused" && topology::string(case, "id")? != "K-missing" {
-            topology::require(phase == Some("keys"), "actual key infrastructure refusal")?;
-            let id = topology::string(case, "id")?;
-            let error = node.get("error").ok_or("typed key exception")?;
-            topology::require(
-                error.get("reason").is_some_and(Value::is_null),
-                "unknown key exception reason",
-            )?;
-            let message = topology::string(error, "message")?;
-            let allowed = match id {
-                "K-current31" | "K-current33" => {
-                    error.get("name") == Some(&json!("Error"))
-                        && error.get("code").is_some_and(Value::is_null)
-                        && message
-                            == format!(
-                                "invalid credential-encryption key at {}/secrets.key",
-                                candidate
-                                    .get("node_dir")
-                                    .and_then(Value::as_str)
-                                    .ok_or("node key directory")?
-                            )
-                }
-                "K-previous31" | "K-previous33" | "K-space-env" => {
-                    error.get("name") == Some(&json!("Error"))
-                        && error.get("code").is_some_and(Value::is_null)
-                        && message == "invalid previous credential-encryption key (need 32 bytes)"
-                }
-                "K-previous-directory" => {
-                    error.get("name") == Some(&json!("Error"))
-                        && error.get("code") == Some(&json!("EISDIR"))
-                }
-                _ => false,
-            };
-            topology::require(allowed, "unknown key exception")?;
-        } else {
-            if let Some(phase) = phase {
-                let error = node.get("error").ok_or("typed semantic exception")?;
-                topology::require(
-                    phase == "projection"
-                        && topology::string(case, "shape")? == "missing"
-                        && error.get("name") == Some(&json!("SqliteError"))
-                        && error.get("code") == Some(&json!("SQLITE_ERROR"))
-                        && error.get("reason").is_some_and(Value::is_null)
-                        && error.get("message")
-                            == Some(&json!("no such table: storage_connections")),
-                    "unknown Node semantic/operational exception",
-                )?;
-                topology::require(
-                    node.get("before") == node.get("after"),
-                    "semantic exception SQL delta",
-                )?;
-            } else {
-                if topology::string(case, "shape")? == "view" {
-                    topology::assert_view_factory_evidence(case, node)?;
-                }
-                qualify_sql_delta(case, node)?;
+        let node_dir = candidate
+            .get("node_dir")
+            .and_then(Value::as_str)
+            .ok_or("node key directory")?;
+        if !topology::qualify_refusal_exception(case, refusal, node, node_dir)? {
+            if topology::string(case, "shape")? == "view" {
+                topology::assert_view_factory_evidence(case, node)?;
             }
+            qualify_sql_delta(case, node)?;
         }
         return Ok(());
     }
@@ -636,16 +587,7 @@ fn qualify_matrix(
     if topology::string(case, "lane")? == "gate" {
         let components = node.get("components").ok_or("actual auth components")?;
         let raw = node.get("rawCsrf").ok_or("raw CSRF")?;
-        let value = raw.get("value").ok_or("raw CSRF value")?;
-        let observed = match topology::string(raw, "type")? {
-            "boolean" => value
-                .as_bool()
-                .map(|v| json!(v))
-                .ok_or("raw Boolean CSRF")?,
-            "string" if value == &json!("") => json!(false),
-            "object" if value.is_null() => Value::Null,
-            _ => return Err("unexpected raw CSRF value".into()),
-        };
+        let observed = topology::observed_csrf(raw)?;
         topology::require(
             components.get("csrfValid") == Some(&observed),
             "CSRF raw/Boolean observation binding",
@@ -983,14 +925,12 @@ fn qualify_sql_delta(case: &serde_json::Value, node: &serde_json::Value) -> topo
 
 fn main() {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
-    let result = match args.as_slice() {
-        [mode] if mode == "--fixed-materialize-only" => {
-            topology::materialize(FACTORY_ADAPTER).map(|_| ())
-        }
-        [mode] if mode == "--fixed-preflight-only" => preflight(),
-        [mode] if mode == "--fixed-capture-only" => run(),
-        [mode] if mode == "--fixed-compare-only" => compare(),
-        _ => {
+    let result = match topology::stage(&args) {
+        Some(topology::Stage::Materialize) => topology::materialize(FACTORY_ADAPTER).map(|_| ()),
+        Some(topology::Stage::Preflight) => preflight(),
+        Some(topology::Stage::Capture) => run(),
+        Some(topology::Stage::Compare) => compare(),
+        None => {
             eprintln!("one exact separately approved stage required");
             std::process::exit(2);
         }
