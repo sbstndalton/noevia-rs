@@ -27,8 +27,8 @@ jobs:
       - name: Verify merged Docling worker oracle (#1322)
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/b45a122c04173a14e884fa1aa93a6a101281431d
-          echo '3d69592f2b844b474a9ae0f0a6adb20ffa5be03de21e51039ff85305ebc64cff  /tmp/docling-services.tgz' | sha256sum -c -
+          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7
+          echo 'd35a0351a98514411a0e87f112d041e53096b1cda6d3e3b409a4765f9601d9bb  /tmp/docling-services.tgz' | sha256sum -c -
           mkdir .ci-docling
           tar -xzf /tmp/docling-services.tgz -C .ci-docling --strip-components=1
       - name: Verify merged Laya worker oracle (#1326)
@@ -105,8 +105,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -c 'import sys; assert sys.version_info[:2] == (3, 12)'
-          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/b45a122c04173a14e884fa1aa93a6a101281431d
-          echo '3d69592f2b844b474a9ae0f0a6adb20ffa5be03de21e51039ff85305ebc64cff  /tmp/docling-services.tgz' | sha256sum -c -
+          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7
+          echo 'd35a0351a98514411a0e87f112d041e53096b1cda6d3e3b409a4765f9601d9bb  /tmp/docling-services.tgz' | sha256sum -c -
           mkdir .ci-docling
           tar -xzf /tmp/docling-services.tgz -C .ci-docling --strip-components=1
       - name: Actual Python oracle is reproducible
@@ -1139,7 +1139,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-services
-          ref: 792ecf5c30653b61a3357b2f45d8cc41b3b292c5
+          ref: bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7
           path: legacy-services
       - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
         with:

@@ -1,10 +1,10 @@
 {
-  "services": "b45a122c04173a14e884fa1aa93a6a101281431d",
+  "services": "bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7",
   "sources": {
-    "server.py": "cc70c4d6aa015083e78bf09c67aad230ee7e09bb0759bc5c2993d8571f131880",
-    "isolation.py": "b67b303c18fa5331fe9fb3094370fed572fd1a070a0adf920e912757efd4e7d0",
-    "isolated_worker.py": "b41e2cb8f0a5748038ef35d87d34dd111f57e71b96cf50a576a334844e5e4013",
-    "extract.py": "ffa7f5e383834acdb55a8b387e14929c8a8accf6a5b0ae651f87611006b42e69"
+    "server.py": "8289b863ca478b3d9414ff9253e665da36ed4e646b9b4a47d85bcc0b0f22f1f5",
+    "isolation.py": "ddcbf7ba223b9e1cb4277a87302fa023a17b40b7b68f40efa65fc845f45071b1",
+    "isolated_worker.py": "744d2cd0f59c43d9e082dc5869318ab8dd671563e67b9342383b7773f8f65cda",
+    "extract.py": "e435afadaf0df8a4364bd7028e33b871c94ee6451b9fc622611760b1a5e29937"
   },
   "cases": [
     {
@@ -12,6 +12,7 @@
       "path": "/health",
       "length": null,
       "name": null,
+      "pages": null,
       "data": "",
       "expected": {
         "status": 200,
@@ -36,7 +37,9 @@
             ".tif",
             ".tiff",
             ".xlsx"
-          ]
+          ],
+          "ranges": true,
+          "rangedMaxBytes": 100663296
         }
       }
     },
@@ -45,6 +48,7 @@
       "path": "//health",
       "length": null,
       "name": null,
+      "pages": null,
       "data": "",
       "expected": {
         "status": 200,
@@ -69,7 +73,9 @@
             ".tif",
             ".tiff",
             ".xlsx"
-          ]
+          ],
+          "ranges": true,
+          "rangedMaxBytes": 100663296
         }
       }
     },
@@ -78,6 +84,7 @@
       "path": "/health?x=1",
       "length": null,
       "name": null,
+      "pages": null,
       "data": "",
       "expected": {
         "status": 404,
@@ -92,6 +99,7 @@
       "path": "/unknown",
       "length": null,
       "name": null,
+      "pages": null,
       "data": "",
       "expected": {
         "status": 404,
@@ -106,6 +114,7 @@
       "path": "/extract",
       "length": null,
       "name": "x.md",
+      "pages": null,
       "data": "",
       "expected": {
         "status": 400,
@@ -120,6 +129,7 @@
       "path": "/extract",
       "length": "26214401",
       "name": "x.md",
+      "pages": null,
       "data": "",
       "expected": {
         "status": 400,
@@ -134,6 +144,7 @@
       "path": "/extract",
       "length": "1",
       "name": null,
+      "pages": null,
       "data": "",
       "expected": {
         "status": 400,
@@ -148,6 +159,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x/y.md",
+      "pages": null,
       "data": "",
       "expected": {
         "status": 400,
@@ -162,6 +174,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x\\y.md",
+      "pages": null,
       "data": "",
       "expected": {
         "status": 400,
@@ -176,6 +189,7 @@
       "path": "/extract",
       "length": "1",
       "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "pages": null,
       "data": "",
       "expected": {
         "status": 400,
@@ -190,6 +204,7 @@
       "path": "/extract",
       "length": "1",
       "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 415,
@@ -204,6 +219,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.zip",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 415,
@@ -218,6 +234,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.md ",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 415,
@@ -232,6 +249,7 @@
       "path": "/extract",
       "length": "+1",
       "name": "x.DOCX",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -256,6 +274,7 @@
       "path": "/extract",
       "length": "1_0",
       "name": "x.docx",
+      "pages": null,
       "data": "YWJjZGVmZ2hpag==",
       "expected": {
         "status": 200,
@@ -280,6 +299,7 @@
       "path": "/extract",
       "length": "4",
       "name": "x.docx",
+      "pages": null,
       "data": "Qk9PTQ==",
       "expected": {
         "status": 422,
@@ -294,6 +314,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.md",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 415,
@@ -308,6 +329,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.bmp",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -332,6 +354,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.csv",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -356,6 +379,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.docx",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -380,6 +404,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.epub",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -404,6 +429,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.htm",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -428,6 +454,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.html",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -452,6 +479,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.jpeg",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -476,6 +504,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.jpg",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -500,6 +529,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.odp",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -524,6 +554,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.ods",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -548,6 +579,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.odt",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -572,6 +604,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.pdf",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -596,6 +629,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.png",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -620,6 +654,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.pptx",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -644,6 +679,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.tif",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -668,6 +704,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.tiff",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -692,6 +729,7 @@
       "path": "/extract",
       "length": "1",
       "name": "x.xlsx",
+      "pages": null,
       "data": "eA==",
       "expected": {
         "status": 200,
@@ -708,6 +746,1810 @@
           ],
           "total": 1,
           "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "1-3",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "page 1",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 2,
+              "text": "page 2",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 3,
+              "text": "page 3",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1000,
+          "truncatedPages": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": " 2-2 ",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 2,
+              "text": "page 2",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1000,
+          "truncatedPages": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "1-200",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "page 1",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 2,
+              "text": "page 2",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 3,
+              "text": "page 3",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 4,
+              "text": "page 4",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 5,
+              "text": "page 5",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 6,
+              "text": "page 6",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 7,
+              "text": "page 7",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 8,
+              "text": "page 8",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 9,
+              "text": "page 9",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 10,
+              "text": "page 10",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 11,
+              "text": "page 11",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 12,
+              "text": "page 12",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 13,
+              "text": "page 13",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 14,
+              "text": "page 14",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 15,
+              "text": "page 15",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 16,
+              "text": "page 16",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 17,
+              "text": "page 17",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 18,
+              "text": "page 18",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 19,
+              "text": "page 19",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 20,
+              "text": "page 20",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 21,
+              "text": "page 21",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 22,
+              "text": "page 22",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 23,
+              "text": "page 23",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 24,
+              "text": "page 24",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 25,
+              "text": "page 25",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 26,
+              "text": "page 26",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 27,
+              "text": "page 27",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 28,
+              "text": "page 28",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 29,
+              "text": "page 29",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 30,
+              "text": "page 30",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 31,
+              "text": "page 31",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 32,
+              "text": "page 32",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 33,
+              "text": "page 33",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 34,
+              "text": "page 34",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 35,
+              "text": "page 35",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 36,
+              "text": "page 36",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 37,
+              "text": "page 37",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 38,
+              "text": "page 38",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 39,
+              "text": "page 39",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 40,
+              "text": "page 40",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 41,
+              "text": "page 41",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 42,
+              "text": "page 42",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 43,
+              "text": "page 43",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 44,
+              "text": "page 44",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 45,
+              "text": "page 45",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 46,
+              "text": "page 46",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 47,
+              "text": "page 47",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 48,
+              "text": "page 48",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 49,
+              "text": "page 49",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 50,
+              "text": "page 50",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 51,
+              "text": "page 51",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 52,
+              "text": "page 52",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 53,
+              "text": "page 53",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 54,
+              "text": "page 54",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 55,
+              "text": "page 55",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 56,
+              "text": "page 56",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 57,
+              "text": "page 57",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 58,
+              "text": "page 58",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 59,
+              "text": "page 59",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 60,
+              "text": "page 60",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 61,
+              "text": "page 61",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 62,
+              "text": "page 62",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 63,
+              "text": "page 63",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 64,
+              "text": "page 64",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 65,
+              "text": "page 65",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 66,
+              "text": "page 66",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 67,
+              "text": "page 67",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 68,
+              "text": "page 68",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 69,
+              "text": "page 69",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 70,
+              "text": "page 70",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 71,
+              "text": "page 71",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 72,
+              "text": "page 72",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 73,
+              "text": "page 73",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 74,
+              "text": "page 74",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 75,
+              "text": "page 75",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 76,
+              "text": "page 76",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 77,
+              "text": "page 77",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 78,
+              "text": "page 78",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 79,
+              "text": "page 79",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 80,
+              "text": "page 80",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 81,
+              "text": "page 81",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 82,
+              "text": "page 82",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 83,
+              "text": "page 83",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 84,
+              "text": "page 84",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 85,
+              "text": "page 85",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 86,
+              "text": "page 86",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 87,
+              "text": "page 87",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 88,
+              "text": "page 88",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 89,
+              "text": "page 89",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 90,
+              "text": "page 90",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 91,
+              "text": "page 91",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 92,
+              "text": "page 92",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 93,
+              "text": "page 93",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 94,
+              "text": "page 94",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 95,
+              "text": "page 95",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 96,
+              "text": "page 96",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 97,
+              "text": "page 97",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 98,
+              "text": "page 98",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 99,
+              "text": "page 99",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 100,
+              "text": "page 100",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 101,
+              "text": "page 101",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 102,
+              "text": "page 102",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 103,
+              "text": "page 103",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 104,
+              "text": "page 104",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 105,
+              "text": "page 105",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 106,
+              "text": "page 106",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 107,
+              "text": "page 107",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 108,
+              "text": "page 108",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 109,
+              "text": "page 109",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 110,
+              "text": "page 110",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 111,
+              "text": "page 111",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 112,
+              "text": "page 112",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 113,
+              "text": "page 113",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 114,
+              "text": "page 114",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 115,
+              "text": "page 115",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 116,
+              "text": "page 116",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 117,
+              "text": "page 117",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 118,
+              "text": "page 118",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 119,
+              "text": "page 119",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 120,
+              "text": "page 120",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 121,
+              "text": "page 121",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 122,
+              "text": "page 122",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 123,
+              "text": "page 123",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 124,
+              "text": "page 124",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 125,
+              "text": "page 125",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 126,
+              "text": "page 126",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 127,
+              "text": "page 127",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 128,
+              "text": "page 128",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 129,
+              "text": "page 129",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 130,
+              "text": "page 130",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 131,
+              "text": "page 131",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 132,
+              "text": "page 132",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 133,
+              "text": "page 133",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 134,
+              "text": "page 134",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 135,
+              "text": "page 135",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 136,
+              "text": "page 136",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 137,
+              "text": "page 137",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 138,
+              "text": "page 138",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 139,
+              "text": "page 139",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 140,
+              "text": "page 140",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 141,
+              "text": "page 141",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 142,
+              "text": "page 142",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 143,
+              "text": "page 143",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 144,
+              "text": "page 144",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 145,
+              "text": "page 145",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 146,
+              "text": "page 146",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 147,
+              "text": "page 147",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 148,
+              "text": "page 148",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 149,
+              "text": "page 149",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 150,
+              "text": "page 150",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 151,
+              "text": "page 151",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 152,
+              "text": "page 152",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 153,
+              "text": "page 153",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 154,
+              "text": "page 154",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 155,
+              "text": "page 155",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 156,
+              "text": "page 156",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 157,
+              "text": "page 157",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 158,
+              "text": "page 158",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 159,
+              "text": "page 159",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 160,
+              "text": "page 160",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 161,
+              "text": "page 161",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 162,
+              "text": "page 162",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 163,
+              "text": "page 163",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 164,
+              "text": "page 164",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 165,
+              "text": "page 165",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 166,
+              "text": "page 166",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 167,
+              "text": "page 167",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 168,
+              "text": "page 168",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 169,
+              "text": "page 169",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 170,
+              "text": "page 170",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 171,
+              "text": "page 171",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 172,
+              "text": "page 172",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 173,
+              "text": "page 173",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 174,
+              "text": "page 174",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 175,
+              "text": "page 175",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 176,
+              "text": "page 176",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 177,
+              "text": "page 177",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 178,
+              "text": "page 178",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 179,
+              "text": "page 179",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 180,
+              "text": "page 180",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 181,
+              "text": "page 181",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 182,
+              "text": "page 182",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 183,
+              "text": "page 183",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 184,
+              "text": "page 184",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 185,
+              "text": "page 185",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 186,
+              "text": "page 186",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 187,
+              "text": "page 187",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 188,
+              "text": "page 188",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 189,
+              "text": "page 189",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 190,
+              "text": "page 190",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 191,
+              "text": "page 191",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 192,
+              "text": "page 192",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 193,
+              "text": "page 193",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 194,
+              "text": "page 194",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 195,
+              "text": "page 195",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 196,
+              "text": "page 196",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 197,
+              "text": "page 197",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 198,
+              "text": "page 198",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 199,
+              "text": "page 199",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 200,
+              "text": "page 200",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1000,
+          "truncatedPages": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "999801-999801",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 999801,
+              "text": "page 999801",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1000,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 1,
+              "text": "ok",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1,
+          "truncatedPages": false
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "0-1",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "3-2",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "1-201",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "a-b",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "7",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "-3",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "1-2-3",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "+1-2",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "1 -2",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "1234567-1234568",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf",
+      "pages": "٣-٤",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.PDF",
+      "pages": "4-5",
+      "data": "eA==",
+      "expected": {
+        "status": 200,
+        "type": "application/json",
+        "body": {
+          "pages": [
+            {
+              "number": 4,
+              "text": "page 4",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            },
+            {
+              "number": 5,
+              "text": "page 5",
+              "status": "native",
+              "method": "docling",
+              "truncated": false
+            }
+          ],
+          "total": 1000,
+          "truncatedPages": true
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.docx",
+      "pages": "1-2",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "1",
+      "name": "x.pdf ",
+      "pages": "1-2",
+      "data": "eA==",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "26214401",
+      "name": "x.pdf",
+      "pages": "",
+      "data": "",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": "100663297",
+      "name": "x.pdf",
+      "pages": "1-2",
+      "data": "",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/extract",
+      "length": null,
+      "name": "x.pdf",
+      "pages": "1-2",
+      "data": "",
+      "expected": {
+        "status": 400,
+        "type": "application/json",
+        "body": {
+          "error": "Invalid document size or name."
         }
       }
     }

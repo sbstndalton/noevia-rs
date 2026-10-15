@@ -10,23 +10,25 @@ use std::{
     time::Duration,
 };
 pub type Error = Box<dyn std::error::Error>;
-pub const REF: &str = "b45a122c04173a14e884fa1aa93a6a101281431d";
+/// 34 before #1867, plus 22 page-range cases.
+pub const CASES: usize = 56;
+pub const REF: &str = "bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7";
 pub const HASHES: &[(&str, &str)] = &[
     (
         "server.py",
-        "cc70c4d6aa015083e78bf09c67aad230ee7e09bb0759bc5c2993d8571f131880",
+        "8289b863ca478b3d9414ff9253e665da36ed4e646b9b4a47d85bcc0b0f22f1f5",
     ),
     (
         "isolation.py",
-        "b67b303c18fa5331fe9fb3094370fed572fd1a070a0adf920e912757efd4e7d0",
+        "ddcbf7ba223b9e1cb4277a87302fa023a17b40b7b68f40efa65fc845f45071b1",
     ),
     (
         "isolated_worker.py",
-        "b41e2cb8f0a5748038ef35d87d34dd111f57e71b96cf50a576a334844e5e4013",
+        "744d2cd0f59c43d9e082dc5869318ab8dd671563e67b9342383b7773f8f65cda",
     ),
     (
         "extract.py",
-        "ffa7f5e383834acdb55a8b387e14929c8a8accf6a5b0ae651f87611006b42e69",
+        "e435afadaf0df8a4364bd7028e33b871c94ee6451b9fc622611760b1a5e29937",
     ),
 ];
 fn string(s: impl Into<String>) -> JValue {
@@ -71,7 +73,7 @@ pub fn prepare(source: &Path, target: &Path) -> Result<Vec<String>, Error> {
         std::fs::copy(source.join(name), target.join(name))?;
     }
     let list = serde_json::to_string(&formats)?;
-    std::fs::write(target.join("extract.py"),format!("from fake_converter import extract as fake\nSUPPORTED=set({list})\ndef extract(path,name):\n result=fake(path,name)\n result.pop('pid',None)\n return result\n"))?;
+    std::fs::write(target.join("extract.py"),format!("from fake_converter import extract as fake\nSUPPORTED=set({list})\ndef extract(path,name,**options):\n result=fake(path,name,**options)\n result.pop('pid',None)\n return result\n"))?;
     Ok(formats)
 }
 // Fixed loader only: imports the pinned HTTP owner, binds before reporting ready,
@@ -124,12 +126,25 @@ impl Drop for Server {
         let _ = self.child.wait();
     }
 }
+#[allow(dead_code)] // used by the qualification tests, not by gen-fixtures
 pub fn exchange(
     port: u16,
     method: &str,
     path: &str,
     length: Option<&str>,
     name: Option<&str>,
+    data: &[u8],
+) -> Result<JValue, Error> {
+    exchange_pages(port, method, path, length, name, None, data)
+}
+/// #1867: with an `X-Document-Pages` header when `pages` is given.
+pub fn exchange_pages(
+    port: u16,
+    method: &str,
+    path: &str,
+    length: Option<&str>,
+    name: Option<&str>,
+    pages: Option<&str>,
     data: &[u8],
 ) -> Result<JValue, Error> {
     let mut socket = TcpStream::connect(("127.0.0.1", port))?;
@@ -141,6 +156,9 @@ pub fn exchange(
     }
     if let Some(n) = name {
         header.push_str(&format!("X-Document-Name: {n}\r\n"));
+    }
+    if let Some(p) = pages {
+        header.push_str(&format!("X-Document-Pages: {p}\r\n"));
     }
     header.push_str("\r\n");
     socket.write_all(header.as_bytes())?;
@@ -262,19 +280,62 @@ pub fn generate(source: &Path, output: &Path) -> Result<(), Error> {
             b"x".to_vec(),
         ));
     }
+    // #1867: page ranges (X-Document-Pages), PDFs only, and the ranged body cap.
+    let mut ranged: Vec<(Option<&'static str>, &'static str, &'static str)> = vec![];
+    for pages in [
+        "1-3",
+        " 2-2 ",
+        "1-200",
+        "999801-999801",
+        "",
+        "0-1",
+        "3-2",
+        "1-201",
+        "a-b",
+        "7",
+        "-3",
+        "1-2-3",
+        "+1-2",
+        "1 -2",
+        "1234567-1234568",
+        "\u{663}-\u{664}",
+    ] {
+        ranged.push((Some("1"), "x.pdf", pages));
+    }
+    ranged.push((Some("1"), "x.PDF", "4-5"));
+    ranged.push((Some("1"), "x.docx", "1-2"));
+    ranged.push((Some("1"), "x.pdf ", "1-2"));
+    ranged.push((Some("26214401"), "x.pdf", ""));
+    ranged.push((Some("100663297"), "x.pdf", "1-2"));
+    ranged.push((None, "x.pdf", "1-2"));
     let mut rows = vec![];
-    for (method, path, length, name, data) in cases {
-        let expected = exchange(server.port, method, path, length, name.as_deref(), &data)?;
+    let mut push = |method: &str,
+                    path: &str,
+                    length: Option<&str>,
+                    name: Option<&str>,
+                    pages: Option<&str>,
+                    data: &[u8]|
+     -> Result<(), Error> {
+        let expected = exchange_pages(server.port, method, path, length, name, pages, data)?;
         rows.push(JValue::obj([
             ("method", string(method)),
             ("path", string(path)),
             ("length", optional(length)),
-            ("name", optional(name.as_deref())),
+            ("name", optional(name)),
+            ("pages", optional(pages)),
             ("data", string(STANDARD.encode(data))),
             ("expected", expected),
         ]));
+        Ok(())
+    };
+    for (method, path, length, name, data) in cases {
+        push(method, path, length, name.as_deref(), None, &data)?;
     }
-    if rows.len() != 34 {
+    for (length, name, pages) in ranged {
+        let data: &[u8] = if length == Some("1") { b"x" } else { b"" };
+        push("POST", "/extract", length, Some(name), Some(pages), data)?;
+    }
+    if rows.len() != CASES {
         return Err("oracle case count changed".into());
     }
     let fixture = JValue::obj([
@@ -287,6 +348,6 @@ pub fn generate(source: &Path, output: &Path) -> Result<(), Error> {
     ]);
     let text = js_json::stringify_pretty(&fixture).ok_or("oracle serialization failed")?;
     std::fs::write(output, format!("{text}\n"))?;
-    println!("actual Python Docling HTTP goldens: 34");
+    println!("actual Python Docling HTTP goldens: {CASES}");
     Ok(())
 }

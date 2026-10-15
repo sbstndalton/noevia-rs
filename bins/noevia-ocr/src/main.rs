@@ -13,6 +13,61 @@ use std::{path::Path, process::Stdio, sync::Arc, time::Duration};
 use tokio::{process::Command, sync::Semaphore, time::Instant};
 const INPUT: usize = 25 * 1024 * 1024;
 const REDUCE_INPUT: usize = 60 * 1024 * 1024;
+// sbstndalton/noevia#1867: /extract renders only the asked pages (pdftoppm -f/-l), so it accepts a PDF
+// up to OCR_EXTRACT_MAX_BYTES (default 96 MiB, core's PROJECT_DOCUMENT_READ_BYTES default), streamed to
+// the temp file in CHUNK pieces and never held whole. Same contract as the Python worker.
+const EXTRACT_DEFAULT: usize = 96 * 1024 * 1024;
+const CHUNK: usize = 1024 * 1024;
+// 30 s per read and, in all, 30 s plus one second per BODY_RATE bytes.
+const BODY_SECONDS: u64 = 30;
+const BODY_RATE: usize = 256 * 1024;
+const MAX_PAGE: u64 = 100_000;
+// #1865/#1867: X-OCR-DPI, exactly 300 (default), 400 or 600: (dpi, longest side px, seconds per step).
+const DPIS: [(u32, u32, u64); 3] = [(300, 3500, 60), (400, 4700, 120), (600, 7000, 180)];
+fn extract_limit() -> usize {
+    std::env::var("OCR_EXTRACT_MAX_BYTES")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(EXTRACT_DEFAULT)
+}
+fn health() -> Value {
+    json!({"service":"ocr","ranges":true,"maxBytes":extract_limit(),"dpis":[300,400,600]})
+}
+/// The render DPI from an X-OCR-DPI value: 300 when absent or empty, None unless exactly 300/400/600.
+fn dpi_of(raw: Option<&str>) -> Option<u32> {
+    match raw.unwrap_or("").trim_matches([' ', '\t']) {
+        "" | "300" => Some(300),
+        "400" => Some(400),
+        "600" => Some(600),
+        _ => None,
+    }
+}
+fn render_args(page: u64, dpi: u32, pdf: &Path, image: &Path) -> (Vec<String>, u64) {
+    let (dpi, side, step) = DPIS
+        .iter()
+        .copied()
+        .find(|(d, _, _)| *d == dpi)
+        .unwrap_or(DPIS[0]);
+    (
+        strings(&[
+            "-f",
+            &page.to_string(),
+            "-l",
+            &page.to_string(),
+            "-singlefile",
+            "-scale-to",
+            &side.to_string(),
+            "-r",
+            &dpi.to_string(),
+            "-gray",
+            "-png",
+            &pdf.to_string_lossy(),
+            &image.to_string_lossy(),
+        ]),
+        step,
+    )
+}
 const INVALID: &str = "Invalid document size or page selection.";
 const OCR_ERROR: &str = "OCR failed or reached its processing limit; refresh to retry.";
 const REDUCE_ERROR: &str = "PDF could not be reduced below 25 MB or extracted within limits. Split or compress it locally and retry.";
@@ -30,16 +85,19 @@ fn reply(status: u16, body: Value) -> Response {
 fn error(status: u16, message: &str) -> Response {
     reply(status, json!({"error": message}))
 }
-fn selection(path: &str, length: Option<&str>, header: Option<&str>) -> Option<(usize, Vec<u64>)> {
+fn selection(
+    path: &str,
+    length: Option<&str>,
+    header: Option<&str>,
+    dpi: Option<&str>,
+) -> Option<(usize, Vec<u64>, u32)> {
     let size = length.unwrap_or("0").trim().parse::<usize>().ok()?;
-    if size == 0
-        || size
-            > if path == "/reduce-pdf" {
-                REDUCE_INPUT
-            } else {
-                INPUT
-            }
-    {
+    let limit = match path {
+        "/reduce-pdf" => REDUCE_INPUT,
+        "/extract" => extract_limit(),
+        _ => INPUT,
+    };
+    if size == 0 || size > limit {
         return None;
     }
     let pages: Value = if path == "/extract" {
@@ -54,12 +112,18 @@ fn selection(path: &str, length: Option<&str>, header: Option<&str>) -> Option<(
     let mut result = Vec::new();
     for value in list {
         let n = value.as_u64()?;
-        if !(1..=300).contains(&n) || result.contains(&n) {
+        if !(1..=MAX_PAGE).contains(&n) || result.contains(&n) {
             return None;
         }
         result.push(n);
     }
-    Some((size, result))
+    // The DPI is read (and refused when invalid) only where pages are rendered.
+    let dpi = if path == "/extract" {
+        dpi_of(dpi)?
+    } else {
+        300
+    };
+    Some((size, result, dpi))
 }
 // Child streams go to bounded private files, never an unbounded capture_output buffer.
 // Kill and reap on every timeout, output-limit failure and cancelled request.
@@ -151,38 +215,52 @@ fn text(data: &[u8]) -> String {
         .trim_matches(docx_text::is_python_space)
         .to_owned()
 }
-async fn extract(data: &[u8], pages: &[u64]) -> Result<Value, ()> {
-    let root = tempfile::tempdir().map_err(|_| ())?;
-    let pdf = root.path().join("input.pdf");
-    tokio::fs::write(&pdf, data).await.map_err(|_| ())?;
-    let image = root.path().join("page");
-    let png = root.path().join("page.png");
+/// Copy exactly `size` body bytes to `file`, one frame (at most CHUNK) at a time; Err when the body
+/// ends early, errs, stalls BODY_SECONDS, or outlasts its overall deadline.
+async fn receive(body: axum::body::Body, file: &Path, size: usize) -> Result<(), ()> {
+    use http_body_util::BodyExt;
+    use tokio::io::AsyncWriteExt;
+    let mut out = tokio::fs::File::create(file).await.map_err(|_| ())?;
+    let mut body = http_body_util::Limited::new(body, size);
+    let deadline = Instant::now() + Duration::from_secs(BODY_SECONDS + (size / BODY_RATE) as u64);
+    let mut received = 0usize;
+    while received < size {
+        let wait = deadline
+            .saturating_duration_since(Instant::now())
+            .min(Duration::from_secs(BODY_SECONDS));
+        let frame = match tokio::time::timeout(wait, body.frame()).await {
+            Ok(Some(Ok(frame))) => frame,
+            _ => return Err(()),
+        };
+        if let Ok(data) = frame.into_data() {
+            for piece in data.chunks(CHUNK) {
+                out.write_all(piece).await.map_err(|_| ())?;
+            }
+            received = received.checked_add(data.len()).ok_or(())?;
+        }
+    }
+    out.flush().await.map_err(|_| ())?;
+    if received == size {
+        Ok(())
+    } else {
+        Err(())
+    }
+}
+async fn extract(root: &Path, pdf: &Path, pages: &[u64], dpi: u32) -> Result<Value, ()> {
+    let image = root.join("page");
+    let png = root.join("page.png");
     let deadline = Instant::now() + Duration::from_secs(600);
     let mut results = Vec::new();
     for page in pages {
-        let args = strings(&[
-            "-f",
-            &page.to_string(),
-            "-l",
-            &page.to_string(),
-            "-singlefile",
-            "-scale-to",
-            "3500",
-            "-r",
-            "300",
-            "-gray",
-            "-png",
-            &pdf.to_string_lossy(),
-            &image.to_string_lossy(),
-        ]);
+        let (args, step) = render_args(*page, dpi, pdf, &image);
         let output = async {
             run(
                 "pdftoppm",
                 &args,
-                root.path(),
+                root,
                 1024 * 1024,
                 deadline,
-                60,
+                step,
                 &[(&png, 64 * 1024 * 1024)],
             )
             .await?;
@@ -196,10 +274,10 @@ async fn extract(data: &[u8], pages: &[u64]) -> Result<Value, ()> {
                     "--psm",
                     "3",
                 ]),
-                root.path(),
+                root,
                 4 * 1024 * 1024,
                 deadline,
-                60,
+                step,
                 &[],
             )
             .await
@@ -321,10 +399,12 @@ async fn reduce(data: &[u8]) -> Result<Value, ()> {
 async fn handle(State(slot): State<Arc<Semaphore>>, req: Request) -> Response {
     let path = req.uri().path().to_owned();
     if req.method() == axum::http::Method::GET {
-        return reply(
-            if req.uri() == "/health" { 200 } else { 404 },
-            json!({"service":"ocr"}),
-        );
+        // #1867: /health says what this worker reads; the 404 body is unchanged.
+        return if req.uri() == "/health" {
+            reply(200, health())
+        } else {
+            reply(404, json!({"service":"ocr"}))
+        };
     }
     if req.method() != axum::http::Method::POST {
         return error(501, "Unsupported method");
@@ -332,7 +412,7 @@ async fn handle(State(slot): State<Arc<Semaphore>>, req: Request) -> Response {
     if !["/extract", "/extract-docx", "/reduce-pdf"].contains(&req.uri().to_string().as_str()) {
         return error(404, "not found");
     }
-    let Some((size, pages)) = selection(
+    let Some((size, pages, dpi)) = selection(
         &path,
         req.headers()
             .get("content-length")
@@ -340,12 +420,35 @@ async fn handle(State(slot): State<Arc<Semaphore>>, req: Request) -> Response {
         req.headers()
             .get("x-ocr-pages")
             .and_then(|s| s.to_str().ok()),
+        req.headers()
+            .get("x-ocr-dpi")
+            .map(|s| s.to_str().unwrap_or("invalid")),
     ) else {
         return error(400, INVALID);
     };
     let Ok(_permit) = slot.try_acquire() else {
         return error(503, "OCR is busy; refresh to retry.");
     };
+    if path == "/extract" {
+        // Streamed to the temp file a chunk at a time (#1867), never held whole.
+        let Ok(root) = tempfile::Builder::new().prefix("noevia-ocr-").tempdir() else {
+            return reply(
+                200,
+                json!({"pages":pages.iter().map(|p|json!({"number":p,"error":OCR_ERROR})).collect::<Vec<_>>()}),
+            );
+        };
+        let pdf = root.path().join("input.pdf");
+        if receive(req.into_body(), &pdf, size).await.is_err() {
+            return error(400, "Incomplete document body.");
+        }
+        return match extract(root.path(), &pdf, &pages, dpi).await {
+            Ok(v) => reply(200, v),
+            Err(()) => reply(
+                200,
+                json!({"pages":pages.iter().map(|p|json!({"number":p,"error":OCR_ERROR})).collect::<Vec<_>>()}),
+            ),
+        };
+    }
     let body = tokio::time::timeout(Duration::from_secs(30), to_bytes(req.into_body(), size)).await;
     let data = match body {
         Ok(Ok(data)) if data.len() == size => data,
@@ -363,13 +466,7 @@ async fn handle(State(slot): State<Arc<Semaphore>>, req: Request) -> Response {
             Ok(v) => reply(200, v),
             Err(()) => error(422, REDUCE_ERROR),
         },
-        _ => match extract(&data, &pages).await {
-            Ok(v) => reply(200, v),
-            Err(()) => reply(
-                200,
-                json!({"pages":pages.iter().map(|p|json!({"number":p,"error":OCR_ERROR})).collect::<Vec<_>>()}),
-            ),
-        },
+        _ => error(404, "not found"),
     }
 }
 fn healthy_status(data: &[u8]) -> bool {
@@ -459,7 +556,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ServeLimits {
             connections: 32,
             header: Duration::from_secs(30),
-            lifetime: Duration::from_secs(665),
+            // #1867: plus the overall body deadline of the largest accepted /extract body.
+            lifetime: Duration::from_secs(665 + (extract_limit() / BODY_RATE) as u64),
         },
     )
     .await?;
@@ -478,17 +576,75 @@ mod tests {
     #[test]
     fn validation_boundaries() {
         for h in [
-            "[]", "[true]", "[1.0]", "[0]", "[301]", "[1,1]", "{}", "null",
+            "[]", "[true]", "[1.0]", "[0]", "[100001]", "[1,1]", "{}", "null",
         ] {
-            assert!(selection("/extract", Some("1"), Some(h)).is_none());
+            assert!(selection("/extract", Some("1"), Some(h), None).is_none());
         }
         assert_eq!(
-            selection("/extract", Some("1"), Some("[300,1]")),
-            Some((1, vec![300, 1]))
+            selection("/extract", Some("1"), Some("[300,1]"), None),
+            Some((1, vec![300, 1], 300))
         );
-        assert!(selection("/extract", Some("26214401"), Some("[1]")).is_none());
+        // #1867: pages of long documents, bodies over 25 MiB on /extract only, exact DPIs.
+        assert_eq!(
+            selection(
+                "/extract",
+                Some("26214401"),
+                Some("[301,100000]"),
+                Some(" 400\t")
+            ),
+            Some((26214401, vec![301, 100000], 400))
+        );
+        assert!(selection("/extract", Some("100663297"), Some("[1]"), None).is_none());
+        assert!(selection("/extract-docx", Some("26214401"), None, None).is_none());
+        for dpi in ["+400", "4_00", "0400", "400.0", "72", "1200", "invalid"] {
+            assert!(
+                selection("/extract", Some("1"), Some("[1]"), Some(dpi)).is_none(),
+                "{dpi}"
+            );
+        }
+        assert_eq!(
+            selection("/extract-docx", Some("1"), None, Some("junk")),
+            Some((1, vec![1], 300))
+        );
+        assert_eq!(dpi_of(Some("")), Some(300));
+        assert_eq!(dpi_of(Some("600")), Some(600));
     }
-    proptest::proptest! { #[test] fn arbitrary_pages_never_escape_bounds(s in ".{0,4096}") { if let Some((_,pages))=selection("/extract",Some("1"),Some(&s)) { proptest::prop_assert!(!pages.is_empty() && pages.len()<=50); for p in pages {proptest::prop_assert!((1..=300).contains(&p));} } } }
+    #[test]
+    fn a_retry_really_asks_the_renderer_for_more_pixels() {
+        let (pdf, image) = (Path::new("/in.pdf"), Path::new("/page"));
+        let side = |args: &[String], flag: &str| {
+            args.iter()
+                .position(|a| a == flag)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+                .unwrap_or_default()
+        };
+        let (base, base_step) = render_args(7, 300, pdf, image);
+        let (finer, finer_step) = render_args(7, 400, pdf, image);
+        let (finest, _) = render_args(7, 600, pdf, image);
+        assert_eq!(
+            (side(&base, "-scale-to"), side(&base, "-r")),
+            ("3500".into(), "300".into())
+        );
+        assert_eq!(
+            (side(&finer, "-scale-to"), side(&finer, "-r")),
+            ("4700".into(), "400".into())
+        );
+        assert_eq!(
+            (side(&finest, "-scale-to"), side(&finest, "-r")),
+            ("7000".into(), "600".into())
+        );
+        assert_eq!(
+            (side(&base, "-f"), side(&base, "-l")),
+            ("7".into(), "7".into())
+        );
+        assert!(finer_step > base_step);
+        assert_eq!(
+            health(),
+            json!({"service":"ocr","ranges":true,"maxBytes":EXTRACT_DEFAULT,"dpis":[300,400,600]})
+        );
+    }
+    proptest::proptest! { #[test] fn arbitrary_pages_never_escape_bounds(s in ".{0,4096}") { if let Some((_,pages,dpi))=selection("/extract",Some("1"),Some(&s),Some(&s)) { proptest::prop_assert!(!pages.is_empty() && pages.len()<=50); proptest::prop_assert!([300,400,600].contains(&dpi)); for p in pages {proptest::prop_assert!((1..=MAX_PAGE).contains(&p));} } } }
     #[test]
     fn encrypted_and_page_limits() {
         assert_eq!(info_pages(b"Pages: 300\nEncrypted: no"), Ok(300));
@@ -531,7 +687,20 @@ mod contract {
         pages: Option<&str>,
         body: &[u8],
     ) -> (u16, Value) {
+        native_dpi(method, path, length, pages, None, body).await
+    }
+    async fn native_dpi(
+        method: &str,
+        path: &str,
+        length: Option<&str>,
+        pages: Option<&str>,
+        dpi: Option<&str>,
+        body: &[u8],
+    ) -> (u16, Value) {
         let mut request = axum::http::Request::builder().method(method).uri(path);
+        if let Some(d) = dpi {
+            request = request.header("X-OCR-DPI", d);
+        }
         if let Some(n) = length {
             request = request.header("Content-Length", n);
         }
@@ -562,6 +731,18 @@ mod contract {
         pages: Option<&str>,
         body: &[u8],
     ) -> (u16, Value) {
+        legacy_dpi(port, method, path, length, pages, None, body)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn legacy_dpi(
+        port: u16,
+        method: &str,
+        path: &str,
+        length: Option<&str>,
+        pages: Option<&str>,
+        dpi: Option<&str>,
+        body: &[u8],
+    ) -> (u16, Value) {
         let mut stream = std::net::TcpStream::connect(("127.0.0.1", port))
             .unwrap_or_else(|e| unreachable!("{e}"));
         stream
@@ -577,6 +758,9 @@ mod contract {
         }
         if let Some(p) = pages {
             write!(stream, "X-OCR-Pages: {p}\r\n").unwrap_or_else(|e| unreachable!("{e}"));
+        }
+        if let Some(d) = dpi {
+            write!(stream, "X-OCR-DPI: {d}\r\n").unwrap_or_else(|e| unreachable!("{e}"));
         }
         stream
             .write_all(b"\r\n")
@@ -651,12 +835,14 @@ mod contract {
             ("POST", "/extract?x=1", Some("1"), Some("[1]"), b"x"),
             ("POST", "/extract", None, Some("[1]"), b""),
             ("POST", "/extract", Some("0"), Some("[1]"), b""),
-            ("POST", "/extract", Some("26214401"), Some("[1]"), b""),
+            ("POST", "/extract", Some("100663297"), Some("[1]"), b""),
+            ("POST", "/extract-docx", Some("26214401"), None, b""),
             ("POST", "/reduce-pdf", Some("62914561"), None, b""),
             ("POST", "/extract", Some("1"), Some("[true]"), b"x"),
             ("POST", "/extract", Some("1"), Some("[1.0]"), b"x"),
             ("POST", "/extract", Some("1"), Some("[1,1]"), b"x"),
-            ("POST", "/extract", Some("1"), Some("[301]"), b"x"),
+            ("POST", "/extract", Some("1"), Some("[100001]"), b"x"),
+            ("POST", "/extract", Some("1"), Some("[0]"), b"x"),
             ("POST", "/extract", Some("1"), Some("{}"), b"x"),
             ("POST", "/extract", Some("1"), Some("null"), b"x"),
             ("POST", "/extract", Some("2"), Some("[1]"), b"x"),
@@ -667,6 +853,22 @@ mod contract {
                 native(method, path, length, pages, body).await,
                 legacy(port, method, path, length, pages, body),
                 "{method} {path} {length:?} {pages:?}"
+            );
+        }
+        // #1867: the X-OCR-DPI contract, refused or read exactly as the Python worker does.
+        for (path, dpi) in [
+            ("/extract", "72"),
+            ("/extract", "+400"),
+            ("/extract", "4_00"),
+            ("/extract", "400.0"),
+            ("/extract", "x"),
+            ("/extract-docx", "junk"),
+        ] {
+            let pages = (path == "/extract").then_some("[1]");
+            assert_eq!(
+                native_dpi("POST", path, Some("1"), pages, Some(dpi), b"x").await,
+                legacy_dpi(port, "POST", path, Some("1"), pages, Some(dpi), b"x"),
+                "{path} DPI {dpi:?}"
             );
         }
         let cases: Value = serde_json::from_str(include_str!(
@@ -779,6 +981,76 @@ mod contract {
                 .unwrap_or_else(|e| unreachable!("{e}"));
             assert!(native_text.status.success());
             assert!(text(&native_text.stdout).contains("SYNTHETIC NATIVE TEXT"));
+        }
+        // #1867: a finer retry agrees with Python and really renders more pixels.
+        let scanned =
+            std::fs::read(root.path().join("scanned.pdf")).unwrap_or_else(|e| unreachable!("{e}"));
+        let length = scanned.len().to_string();
+        let expected = legacy_dpi(
+            port,
+            "POST",
+            "/extract",
+            Some(&length),
+            Some("[1]"),
+            Some("400"),
+            &scanned,
+        );
+        let actual = native_dpi(
+            "POST",
+            "/extract",
+            Some(&length),
+            Some("[1]"),
+            Some("400"),
+            &scanned,
+        )
+        .await;
+        assert_eq!(actual, expected, "OCR at 400 dpi");
+        assert!(serde_json::to_string(&actual.1)
+            .unwrap_or_default()
+            .contains("REF-2042"));
+        let mut longest = Vec::new();
+        for dpi in [300, 400] {
+            let image = root.path().join(format!("render-{dpi}"));
+            let (args, _) = render_args(1, dpi, &root.path().join("scanned.pdf"), &image);
+            let status = std::process::Command::new("pdftoppm")
+                .args(&args)
+                .status()
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            assert!(status.success());
+            let png =
+                std::fs::read(image.with_extension("png")).unwrap_or_else(|e| unreachable!("{e}"));
+            let field = |at: usize| {
+                u32::from_be_bytes(
+                    png.get(at..at + 4)
+                        .and_then(|b| b.try_into().ok())
+                        .unwrap_or_default(),
+                )
+            };
+            longest.push(field(16).max(field(20)));
+        }
+        assert_eq!(
+            longest,
+            vec![3500, 4700],
+            "the 400 dpi retry must render a larger page"
+        );
+        // #1867: ranged OCR of the image-only page of a PDF over 25 MiB, through both owners.
+        let large = root.path().join("large.pdf");
+        let status = std::process::Command::new("python3")
+            .args(["-c", "import synthetic_pdfs,sys; synthetic_pdfs.write_ballast_pdf(sys.argv[1], 27 * 1024 * 1024)"])
+            .arg(&large)
+            .current_dir(&reference)
+            .status()
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        assert!(status.success());
+        let bytes = std::fs::read(&large).unwrap_or_else(|e| unreachable!("{e}"));
+        assert!(bytes.len() > INPUT);
+        let length = bytes.len().to_string();
+        let expected = legacy(port, "POST", "/extract", Some(&length), Some("[3]"), &bytes);
+        let actual = native("POST", "/extract", Some(&length), Some("[3]"), &bytes).await;
+        assert_eq!(actual, expected, "ranged OCR of a >25 MiB PDF");
+        let output = serde_json::to_string(&actual.1).unwrap_or_default();
+        for token in ["REF-2042", "42.15", "-7.20", "34.95"] {
+            assert!(output.contains(token), "ranged OCR lost {token}: {output}");
         }
     }
     #[tokio::test]
