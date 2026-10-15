@@ -79,6 +79,23 @@ fn js_string<E>(v: &JValue) -> Result<String, Error<E>> {
     js_json::to_js_string(v).map_err(|_| Error::Type)
 }
 
+/// `Buffer.from(text, 'utf8')` for a string that may hold [`js_json::wtf16`] lone surrogates:
+/// Node encodes a lone surrogate as U+FFFD (EF BF BD). Text without one is returned unchanged.
+fn utf8_like_buffer(text: String) -> String {
+    if !text.chars().any(|c| js_json::wtf16::lone_unit(c).is_some()) {
+        return text;
+    }
+    text.chars()
+        .map(|c| {
+            if js_json::wtf16::lone_unit(c).is_some() {
+                '\u{FFFD}'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 /// `slug(text, fallback)`.
 fn slug<E>(text: &JValue, fallback: &str) -> Result<String, Error<E>> {
     let s = if text.truthy() {
@@ -157,8 +174,8 @@ fn iso<E>(ms: i64) -> Result<String, Error<E>> {
 struct Builder {
     limits: Limits,
     total: usize,
-    names: Vec<String>,
-    data: Vec<Vec<u8>>,
+    /// Entries are written as they are made (#1824): each payload is held once.
+    zip: crate::ZipWriter,
     taken: HashSet<String>,
     /// For a base name, the suffix its collision search resumes from: every lower one is taken,
     /// and taken names stay taken, so the result is Node's `-2`, `-3`, ... search.
@@ -195,9 +212,9 @@ impl Builder {
         }
         self.taken.insert(unique.clone());
         self.take(text.len())?;
-        self.names.push(unique);
-        self.data.push(text.into_bytes());
-        Ok(())
+        self.zip
+            .add(unique, vec![text.into_bytes()])
+            .map_err(Error::Zip)
     }
 }
 
@@ -205,10 +222,29 @@ impl Builder {
 pub fn build_export<E>(
     free_chats: &JValue,
     projects: &JValue,
-    mut read_history: impl FnMut(&JValue) -> Result<JValue, E>,
+    read_history: impl FnMut(&JValue) -> Result<JValue, E>,
     now_ms: i64,
     limits: Limits,
 ) -> Result<Vec<u8>, Error<E>> {
+    let (chunks, total) = build_export_chunks(free_chats, projects, read_history, now_ms, limits)?;
+    let mut out = Vec::new();
+    out.try_reserve_exact(total)
+        .map_err(|_| Error::Zip(crate::Error::Allocation))?;
+    for c in chunks {
+        out.extend_from_slice(&c);
+    }
+    Ok(out)
+}
+
+/// [`build_export`]'s bytes as the chunks they were made in, and their total length: the route
+/// sends them as they are, so the payload is never copied into one buffer (#1824).
+pub fn build_export_chunks<E>(
+    free_chats: &JValue,
+    projects: &JValue,
+    mut read_history: impl FnMut(&JValue) -> Result<JValue, E>,
+    now_ms: i64,
+    limits: Limits,
+) -> Result<(Vec<Vec<u8>>, usize), Error<E>> {
     let free = list(free_chats)?;
     let projects = list(projects)?;
     // projects.reduce((n, p) => n + (p.chats || []).length, 0): a nullish project is a TypeError.
@@ -226,12 +262,11 @@ pub fn build_export<E>(
     let mut b = Builder {
         limits,
         total: 0,
-        names: Vec::new(),
-        data: Vec::new(),
+        zip: crate::ZipWriter::new(),
         taken: HashSet::new(),
         next_suffix: HashMap::new(),
     };
-    let mut chat_json: Vec<String> = Vec::new();
+    let mut chat_json: Vec<Vec<u8>> = Vec::new();
     let mut add_chat =
         |b: &mut Builder, chat: &JValue, project: JValue| -> Result<String, Error<E>> {
             let history = read_history(chat.get("id")).map_err(Error::History)?;
@@ -268,11 +303,13 @@ pub fn build_export<E>(
                     JValue::Arr(entries.iter().map(exported_entry).collect()),
                 ),
             ]);
-            let json = js_json::stringify_pretty(&record)
+            // Lossless: a lone surrogate (a title or message cut mid-emoji) is written as
+            // JSON.stringify writes it, `\udxxx`; anything else is the same bytes as before.
+            let json = js_json::wtf16::stringify_pretty(&record)
                 .ok_or(Error::Type)?
                 .replace('\n', "\n    ");
             b.take(json.len())?;
-            chat_json.push(json);
+            chat_json.push(json.into_bytes());
             Ok(md)
         };
     for chat in free {
@@ -285,7 +322,7 @@ pub fn build_export<E>(
             id_part(chat.get("id"))?
         );
         let md = add_chat(&mut b, chat, JValue::Null)?;
-        b.add(name, md)?;
+        b.add(name, utf8_like_buffer(md))?;
     }
     for project in projects {
         let fallback = id_part(project.get("id"))?;
@@ -314,7 +351,7 @@ pub fn build_export<E>(
                 ("name", project.get("name").clone()),
             ]);
             let md = add_chat(&mut b, chat, tag)?;
-            b.add(name, md)?;
+            b.add(name, utf8_like_buffer(md))?;
         }
     }
     let count = chat_json.len();
@@ -337,25 +374,18 @@ pub fn build_export<E>(
             .saturating_add(tail.len())
             .saturating_add(sep.len().saturating_mul(count.saturating_sub(1))),
     )?;
-    let mut conversations = String::new();
-    conversations
-        .try_reserve(b.total)
-        .map_err(|_| Error::Zip(crate::Error::Allocation))?;
-    conversations.push_str(&head);
-    for (i, json) in chat_json.iter().enumerate() {
+    // conversations.json: the chat records moved in between the wrapper's pieces, not joined.
+    let mut parts = Vec::with_capacity(chat_json.len().saturating_mul(2).saturating_add(2));
+    parts.push(head.into_bytes());
+    for (i, json) in chat_json.into_iter().enumerate() {
         if i > 0 {
-            conversations.push_str(sep);
+            parts.push(sep.as_bytes().to_vec());
         }
-        conversations.push_str(json);
+        parts.push(json);
     }
-    conversations.push_str(tail);
-    b.names.push("conversations.json".into());
-    b.data.push(conversations.into_bytes());
-    let entries: Vec<crate::Entry<'_>> = b
-        .names
-        .iter()
-        .zip(&b.data)
-        .map(|(name, data)| crate::Entry { name, data })
-        .collect();
-    crate::zip_store(&entries, now_ms).map_err(Error::Zip)
+    parts.push(tail.as_bytes().to_vec());
+    b.zip
+        .add("conversations.json".into(), parts)
+        .map_err(Error::Zip)?;
+    b.zip.finish(now_ms).map_err(Error::Zip)
 }
