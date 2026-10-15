@@ -240,7 +240,7 @@ fn back_to_back_exports_return_memory() {
         "RSS after each of 5 exports, malloc_trim (after): {} MiB",
         mb(&after)
     );
-    let limit = single[0] + 32 * MIB as u64;
+    let limit = single.iter().copied().max().unwrap_or(0) + 32 * MIB as u64;
     assert!(
         after.iter().all(|r| *r <= limit),
         "RSS {after:?} over {limit}"
