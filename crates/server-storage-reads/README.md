@@ -1,10 +1,21 @@
 # Private storage reads — noevia#1368
 
-This standalone crate is **not integrated or deployable**. Its parent workspace,
-lock, server, routes, auth, configuration, store and build tools are unchanged.
-Base: Rust `c665b36106505419d80e01a106b0d402f5d157e2`; actual client oracle:
-core `010735c7d86d30269ab3f4a351b2135faea1c8e7`. Web predecessor:
+Published for review with the M4 storage-reads branch (noevia-rs `feat/m4-storage-reads`).
+Only `GET /api/integrations/storage` (connection metadata, never the secret) is wired into
+noevia-server, behind the cargo feature `rust-storage-reads` and the default-off deployment
+switch `NOEVIA_RUST_STORAGE_READS` (needs `NOEVIA_RUST_AUTH=1`; routes.toml owner stays Node's
+while the switch is off). `GET /api/integrations/storage/files` and
+`POST /api/integrations/storage/file` stay Node's in every build: the list/read engine below has
+no qualified production transport yet. Historical bases: Rust
+`c665b36106505419d80e01a106b0d402f5d157e2`; actual client oracle core
+`010735c7d86d30269ab3f4a351b2135faea1c8e7`; web predecessor
 `f7d21353dee9f11be663d6a9bf3258144f11c5d5`.
+
+Running the private oracles: `M4_CORE_ORACLE=<synthetic core checkout>` enables the actual-source
+Node oracles (`tests/node_oracle.rs`, `tests/qualification.rs`, `tests/list_limits.rs`) and
+`M4_NODE22_ORACLE=1` the installed Node 22 observations; ordinary `cargo test` skips them. The
+bounded process-seam controls (`tests/oracle_process_controls.rs`, noevia#1371) and the factory
+qualification gates (`tests/storage_factory_qualification.rs`, noevia#1390) always run.
 
 ## Implemented privately
 
