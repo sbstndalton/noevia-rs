@@ -28,7 +28,7 @@
 //! workspace.cjs `claimLegacy`'s `cpSync`, fills a user directory that did not exist before; a
 //! read of a half-copied file fails to parse and is refused (500), never exported.
 //!
-//! Memory (#1824): a history file is read up to 16 MiB (128 MiB per export), its values and depth
+//! Memory (#1824): a history file is read up to 12 MiB (#1830; 128 MiB per export), its values and depth
 //! are counted on the text before a tree is built (500,000 values, depth 40, else Node's 413), the
 //! text is moved, never copied, unless it must be decoded lossily, and the ZIP is made as chunks
 //! that are sent in order, so the payload is held once. Peak resident memory of the largest
@@ -55,7 +55,7 @@ use std::path::{Path, PathBuf};
 /// The largest free-chats.json or projects.json read.
 pub const META_READ_CAP: u64 = 16 * 1024 * 1024;
 /// The largest single history file read (#1824).
-pub const HISTORY_READ_CAP: u64 = 16 * 1024 * 1024;
+pub const HISTORY_READ_CAP: u64 = 12 * 1024 * 1024;
 /// The most history bytes read for one export (#1824).
 pub const TOTAL_READ_CAP: u64 = 128 * 1024 * 1024;
 /// The most JSON values (every array, object, string, number and literal, keys included) one

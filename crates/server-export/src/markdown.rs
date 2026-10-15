@@ -5,7 +5,7 @@ use js_json::JValue;
 use std::collections::HashSet;
 
 // Per chat (meta and history together). Sized for the export route (#1315), whose whole payload
-// is bounded at 64 MiB and whose history files are read up to 16 MiB each (#1824).
+// is bounded at 64 MiB and whose history files are read up to 12 MiB each (#1824, #1830).
 pub const MAX_INPUT_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_NODES: usize = 1_000_000;
 pub const MAX_DEPTH: usize = 32;
