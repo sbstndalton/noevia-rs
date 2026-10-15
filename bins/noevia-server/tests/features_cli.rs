@@ -20,6 +20,10 @@ fn features_cli_outputs_only_the_compiled_capabilities() {
     // Always compiled in: the front strips and re-stamps X-Noevia-Client-Ip (#1578).
     assert!(expected.lines().any(|line| line == "client-address-header"));
     assert_eq!(
+        expected.lines().any(|line| line == "rust-storage-reads"),
+        cfg!(feature = "rust-storage-reads")
+    );
+    assert_eq!(
         expected
             .lines()
             .any(|line| line == "rust-reasoning-settings"),

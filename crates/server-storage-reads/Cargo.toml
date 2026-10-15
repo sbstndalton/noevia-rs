@@ -1,0 +1,49 @@
+[package]
+name = "server-storage-reads"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+description = "Private bounded connected-storage read engine (noevia#1368)"
+
+
+[dependencies]
+policy-leaves = { path = "../policy-leaves" }
+dav-parse = { path = "../dav-parse" }
+storage-path = { path = "../storage-path" }
+s3-list-parse = { path = "../s3-list-parse" }
+s3-sign = { path = "../s3-sign" }
+js-json = { path = "../js-json" }
+server-auth = { path = "../server-auth" }
+server-store = { path = "../server-store" }
+secret-envelope = { path = "../secret-envelope" }
+url = "=2.5.8"
+base64 = "=0.22.1"
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
+rustix = { version = "=1.1.5", features = ["fs", "process", "param"] }
+tokio = { version = "=1.53.2", default-features = false, features = ["io-util", "net", "time", "rt"] }
+rustls = { version = "=0.23.45", default-features = false, features = ["std", "ring", "tls12"] }
+webpki-roots = "=1.0.9"
+hyper = { version = "=1.11.1", default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "=0.1.21", default-features = false, features = ["http1", "tokio"] }
+http-body = "=1.1.0"
+bytes = "=1.12.1"
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
+
+brotli-decompressor = { version = "=5.0.3", default-features = false, features = ["std"] }
+flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
+
+[dev-dependencies]
+sha2 = "=0.10.9"
+tempfile = "3"
+serde_json = "=1.0.151"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"

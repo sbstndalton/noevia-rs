@@ -129,6 +129,8 @@ async fn main() -> ExitCode {
     }
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let mut stop_wait = stop_rx.clone();
+    #[cfg(feature = "rust-storage-reads")]
+    let storage_metadata = std::sync::Arc::clone(&app.storage_metadata);
     let server = serve::serve(listener, app, serve::Limits::default(), async move {
         let mut rx = stop_rx;
         let _ = rx.wait_for(|s| *s).await;
@@ -141,10 +143,13 @@ async fn main() -> ExitCode {
         let _ = stop_wait.wait_for(|s| *s).await;
         tokio::time::sleep(DRAIN).await;
     };
-    tokio::select! {
+    let exit = tokio::select! {
         () = server => ExitCode::SUCCESS,
         _ = drained => ExitCode::SUCCESS,
-    }
+    };
+    #[cfg(feature = "rust-storage-reads")]
+    let _ = storage_metadata.shutdown().await;
+    exit
 }
 
 #[cfg(test)]
