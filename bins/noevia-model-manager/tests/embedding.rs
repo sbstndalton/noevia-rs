@@ -465,6 +465,8 @@ fn state_at(service: Arc<EmbeddingService>, legacy_base: &str) -> Arc<StateData>
         prompts: None,
         #[cfg(feature = "native-settings")]
         settings: None,
+        #[cfg(feature = "native-model-updates")]
+        model_updates: None,
         sections: None,
         embedding: Some(service),
         host: None,

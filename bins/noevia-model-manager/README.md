@@ -154,4 +154,6 @@ Docker services or production data are used.
 
 `native-settings` and `MODEL_MANAGER_SETTINGS_IMPL=rust` serve the read-only `GET /api/v1/settings` (`{hasToken, tokenHint}`), default off; `PUT` stays Python as the single writer. See [native settings read](docs/native-settings.md).
 
+`native-model-updates` and `MODEL_MANAGER_MODEL_UPDATES_IMPL=rust` serve the read-only `GET /api/v1/models/updates` (the models list's update-status badges), default off; every writer of the update store stays Python. See [native model update status](docs/native-model-updates.md).
+
 `native-diagnose` and `MODEL_MANAGER_DIAGNOSE_IMPL=rust` select the whole internal backend diagnosis GET, default off. Selection requires exact `TZ=UTC` before startup. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.

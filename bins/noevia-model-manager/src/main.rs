@@ -24,6 +24,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-settings") {
                 output.write_all(b"native-settings\n")?;
             }
+            if cfg!(feature = "native-model-updates") {
+                output.write_all(b"native-model-updates\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -50,6 +53,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "native-settings")]
     let settings_root = if settings_mode == "rust" {
         Some(data_dir()?)
+    } else {
+        None
+    };
+    let updates_mode = environment("MODEL_MANAGER_MODEL_UPDATES_IMPL", "python")?;
+    if !matches!(updates_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_MODEL_UPDATES_IMPL must be python or rust".into());
+    }
+    if updates_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-model-updates")) {
+        return Err(
+            "native-model-updates requires rust model manager and compiled native-model-updates feature"
+                .into(),
+        );
+    }
+    #[cfg(feature = "native-model-updates")]
+    let updates_roots = if updates_mode == "rust" {
+        Some(model_updates_roots(std::env::vars_os().collect())?)
     } else {
         None
     };
@@ -106,6 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -238,6 +258,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::Path::new(root),
         ))
     });
+    #[cfg(feature = "native-model-updates")]
+    let model_updates = updates_roots.as_ref().map(|roots| {
+        Arc::new(noevia_model_manager::model_updates::ModelUpdates::new(
+            std::path::Path::new(&roots.models),
+            std::path::Path::new(&roots.ini),
+            std::path::Path::new(&roots.data),
+        ))
+    });
     let mut child_command = legacy_command(
         tokio::process::Command::new("uvicorn"),
         &prompts_mode,
@@ -252,6 +280,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &settings_mode,
         #[cfg(feature = "native-settings")]
         settings_root.as_deref(),
+    );
+    model_updates_child(
+        &mut child_command,
+        &updates_mode,
+        #[cfg(feature = "native-model-updates")]
+        updates_roots.as_ref(),
     );
     // #1668: the native front refuses deletes of the embedding service's models from its router
     // state, so the legacy holder scan must not also pin env names that point at that service
@@ -290,6 +324,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         prompts,
         #[cfg(feature = "native-settings")]
         settings,
+        #[cfg(feature = "native-model-updates")]
+        model_updates,
         sections,
         embedding,
         host,
@@ -344,7 +380,11 @@ fn prompt_data_dir() -> Result<String, &'static str> {
 fn data_dir() -> Result<String, &'static str> {
     prompt_data_dir_from(std::env::vars_os())
 }
-#[cfg(any(feature = "native-prompts", feature = "native-settings"))]
+#[cfg(any(
+    feature = "native-prompts",
+    feature = "native-settings",
+    feature = "native-model-updates"
+))]
 fn prompt_data_dir_from(
     values: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<String, &'static str> {
@@ -372,6 +412,71 @@ fn prompt_data_dir_from(
         return Err("native DATA_DIR root exceeded limit");
     }
     Ok(root)
+}
+
+/// noevia#1318: the three roots `GET /api/v1/models/updates` reads, named exactly as the Python
+/// child reads them (its settings fold names, so case-folded aliases are refused).
+#[cfg(feature = "native-model-updates")]
+#[derive(Debug, PartialEq, Eq)]
+struct UpdatesRoots {
+    models: String,
+    ini: String,
+    data: String,
+}
+
+#[cfg(feature = "native-model-updates")]
+fn model_updates_roots(
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<UpdatesRoots, &'static str> {
+    let canonical = |name: &str, default: &str| -> Result<String, &'static str> {
+        let mut found = None;
+        for (key, value) in &values {
+            if key
+                .to_str()
+                .is_some_and(|key| key != name && key.eq_ignore_ascii_case(name))
+            {
+                return Err("native model updates require canonical MODELS_DIR, MODELS_INI_PATH and DATA_DIR environment spelling");
+            }
+            if key == name {
+                found = Some(
+                    value
+                        .to_str()
+                        .ok_or("environment setting must be UTF-8")?
+                        .to_owned(),
+                );
+            }
+        }
+        let found = found.unwrap_or_else(|| default.to_owned());
+        if found.is_empty() || found.len() > 4096 {
+            return Err("native model updates root exceeded limit");
+        }
+        Ok(found)
+    };
+    Ok(UpdatesRoots {
+        models: canonical("MODELS_DIR", "/models")?,
+        ini: canonical("MODELS_INI_PATH", "/models/models.ini")?,
+        data: prompt_data_dir_from(values.clone())?,
+    })
+}
+
+/// noevia#1318: the child refuses `GET /api/v1/models/updates` only when the native reader owns
+/// it, and is handed the same three roots the native reader opens.
+fn model_updates_child(
+    child_command: &mut tokio::process::Command,
+    updates_mode: &str,
+    #[cfg(feature = "native-model-updates")] roots: Option<&UpdatesRoots>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED",
+        if updates_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-model-updates")]
+    if let Some(roots) = roots {
+        child_command
+            .env("MODELS_DIR", &roots.models)
+            .env("MODELS_INI_PATH", &roots.ini)
+            .env("DATA_DIR", &roots.data);
+    }
 }
 
 fn legacy_command(
@@ -546,6 +651,86 @@ mod settings_command_tests {
                     .flatten(),
                 (mode == "rust").then_some(std::ffi::OsStr::new("/synthetic/root"))
             );
+        }
+    }
+}
+
+// Compiled with the feature only, so other features' exact test inventories stay unchanged.
+#[cfg(all(test, feature = "native-model-updates"))]
+#[allow(clippy::unwrap_used)]
+mod model_updates_command_tests {
+    use std::ffi::{OsStr, OsString};
+
+    fn vars(pairs: &[(&str, &str)]) -> Vec<(OsString, OsString)> {
+        pairs
+            .iter()
+            .map(|(k, v)| (OsString::from(k), OsString::from(v)))
+            .collect()
+    }
+
+    #[test]
+    fn roots_default_and_explicit() {
+        assert_eq!(
+            super::model_updates_roots(vars(&[])).unwrap(),
+            super::UpdatesRoots {
+                models: "/models".into(),
+                ini: "/models/models.ini".into(),
+                data: "/data".into()
+            }
+        );
+        let explicit = super::model_updates_roots(vars(&[
+            ("MODELS_DIR", "/synthetic/models"),
+            ("MODELS_INI_PATH", "/synthetic/presets.ini"),
+            ("DATA_DIR", "/synthetic/data"),
+        ]))
+        .unwrap();
+        assert_eq!(explicit.models, "/synthetic/models");
+        assert_eq!(explicit.ini, "/synthetic/presets.ini");
+        assert_eq!(explicit.data, "/synthetic/data");
+    }
+
+    #[test]
+    fn case_folded_aliases_and_empty_roots_are_refused() {
+        for alias in [
+            ("models_dir", "/x"),
+            ("Models_Ini_Path", "/x"),
+            ("data_dir", "/x"),
+            ("MODELS_DIR", ""),
+        ] {
+            assert!(
+                super::model_updates_roots(vars(&[alias])).is_err(),
+                "{alias:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn confirmation_overrides_inherited_value_and_roots_reach_child() {
+        let roots = super::UpdatesRoots {
+            models: "/synthetic/models".into(),
+            ini: "/synthetic/models/models.ini".into(),
+            data: "/synthetic/data".into(),
+        };
+        for (mode, marker) in [("python", "0"), ("rust", "1")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED",
+                "hostile",
+            );
+            super::model_updates_child(&mut command, mode, (mode == "rust").then_some(&roots));
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |key: &str| envs.get(OsStr::new(key)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED"),
+                Some(OsStr::new(marker))
+            );
+            let expected = |value: &'static str| (mode == "rust").then_some(OsStr::new(value));
+            assert_eq!(get("MODELS_DIR"), expected("/synthetic/models"));
+            assert_eq!(
+                get("MODELS_INI_PATH"),
+                expected("/synthetic/models/models.ini")
+            );
+            assert_eq!(get("DATA_DIR"), expected("/synthetic/data"));
         }
     }
 }
