@@ -179,3 +179,125 @@ async fn real_headers_owner_projection_omission_and_gate_before_keys() {
     );
     app.storage_metadata.shutdown().await.unwrap();
 }
+
+#[cfg(feature = "rust-storage-reads")]
+mod pool {
+    //! noevia#1827: authentication before a slot, a small pool, and keys only for stored rows.
+    use axum::{body::Body, http::Request};
+    use noevia_server::{config::Config, serve::Conn, storage_read_routes, App};
+    use server_store::rusqlite::Connection;
+    use sha2::{Digest, Sha256};
+    use std::sync::Arc;
+
+    const PATH: &str = "/api/integrations/storage";
+    const ID: &str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+
+    fn hash(v: &str) -> String {
+        Sha256::digest(v.as_bytes())
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
+    /// A synthetic data dir with one signed-in member and no storage connection or key file.
+    fn app(d: &tempfile::TempDir) -> Arc<App> {
+        let db = Connection::open(d.path().join("cowork.db")).unwrap();
+        db.execute_batch(include_str!(
+            "../../../crates/server-store/tests/fixtures/node-schema.sql"
+        ))
+        .unwrap();
+        db.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,?1,?1,'Synthetic','member','x',?1,1,1)",[ID]).unwrap();
+        let now = noevia_server::identity::now_ms();
+        db.execute(
+            "INSERT INTO sessions VALUES(?1,?2,?3,?4,?4,?5,'ua','127.0.0.1')",
+            (
+                hash("synthetic-session"),
+                ID,
+                hash("csrf"),
+                now,
+                now + 86400000,
+            ),
+        )
+        .unwrap();
+        let dir = d.path().display().to_string();
+        App::new(
+            Config::from_lookup(|k| match k {
+                "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+                "NOEVIA_RUST_AUTH" | "NOEVIA_RUST_STORAGE_READS" => Some("1".into()),
+                "UI_DATA_DIR" => Some(dir.clone()),
+                "PUBLIC_ORIGIN" => Some("http://127.0.0.1:8021".into()),
+                _ => None,
+            })
+            .unwrap(),
+        )
+    }
+
+    async fn get(app: &Arc<App>, cookie: Option<&str>) -> u16 {
+        let conn = Conn {
+            peer: "127.0.0.1:1".parse().unwrap(),
+            local: Some("127.0.0.1:8021".parse().unwrap()),
+        };
+        let mut req = Request::builder().uri(PATH);
+        if let Some(cookie) = cookie {
+            req = req.header("cookie", cookie);
+        }
+        storage_read_routes::serve(app, conn, req.body(Body::empty()).unwrap(), PATH.into())
+            .await
+            .status()
+            .as_u16()
+    }
+
+    const SIGNED_IN: Option<&str> = Some("cowork_session=synthetic-session");
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn two_concurrent_signed_in_requests_both_succeed() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("secrets.key"), vec![7; 32]).unwrap();
+        let app = app(&d);
+        let (a, b) = tokio::join!(get(&app, SIGNED_IN), get(&app, SIGNED_IN));
+        assert_eq!((a, b), (200, 200));
+        app.storage_metadata.shutdown().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn an_unauthenticated_flood_cannot_starve_a_signed_in_request() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("secrets.key"), vec![7; 32]).unwrap();
+        let app = app(&d);
+        let mut flood = Vec::new();
+        for i in 0..64 {
+            let app = Arc::clone(&app);
+            flood.push(tokio::spawn(async move {
+                let cookie = format!("cowork_session=forged-{i}");
+                get(&app, if i % 2 == 0 { None } else { Some(&cookie) }).await
+            }));
+        }
+        let signed_in = get(&app, SIGNED_IN).await;
+        for rejected in flood {
+            assert_eq!(rejected.await.unwrap(), 401);
+        }
+        assert_eq!(signed_in, 200);
+        app.storage_metadata.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn missing_or_invalid_keys_refuse_only_owners_with_a_stored_connection() {
+        let d = tempfile::tempdir().unwrap();
+        let app = app(&d);
+        // No key file: an owner without a connection still gets the no-connection answer.
+        assert_eq!(get(&app, SIGNED_IN).await, 200);
+        // An invalid key file: the same.
+        std::fs::write(d.path().join("secrets.key"), vec![7; 31]).unwrap();
+        assert_eq!(get(&app, SIGNED_IN).await, 200);
+        // With a stored connection the credential cannot be opened: refused.
+        let db = Connection::open(d.path().join("cowork.db")).unwrap();
+        db.execute("INSERT INTO storage_connections(user_id,kind,base_url,username,secret,corpus_root,updated_at) VALUES(?1,'webdav','https://synthetic.invalid','synthetic','enc:v2:synthetic','/owner',1)",[ID]).unwrap();
+        assert_eq!(get(&app, SIGNED_IN).await, 503);
+        std::fs::remove_file(d.path().join("secrets.key")).unwrap();
+        assert_eq!(get(&app, SIGNED_IN).await, 503);
+        // Valid keys again: the row is projected.
+        std::fs::write(d.path().join("secrets.key"), vec![7; 32]).unwrap();
+        assert_eq!(get(&app, SIGNED_IN).await, 200);
+        app.storage_metadata.shutdown().await.unwrap();
+    }
+}

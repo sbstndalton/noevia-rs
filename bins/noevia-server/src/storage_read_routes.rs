@@ -24,31 +24,40 @@ pub async fn serve(
     let layer = Arc::clone(&app.identity);
     let data_dir = app.config.data_dir.clone();
     let now = identity::now_ms();
+    // Authenticate before taking a worker slot (noevia#1827): an unauthenticated flood is
+    // answered here and never holds a slot an authenticated request needs.
+    let gate_layer = Arc::clone(&layer);
+    let id = match tokio::task::spawn_blocking(move || gate_layer.gate_blocking(&creds, PATH, now))
+        .await
+    {
+        Ok(Ok(id)) => id,
+        Ok(Err(rejection)) => return rejection.into_response(),
+        Err(_) => return unavailable(),
+    };
     app.storage_metadata
         .run(move || {
-            // The permit is already owned inside this job, before authentication or file IO.
-            let id = match layer.gate_blocking(&creds, PATH, now) {
-                Ok(id) => id,
-                Err(rejection) => return rejection.into_response(),
-            };
             let Some(data_dir) = data_dir else {
                 return unavailable();
             };
             let previous = std::env::var("SECRETS_KEY_PREVIOUS")
                 .ok()
                 .map(zeroize::Zeroizing::new);
-            let keys = match server_storage_reads::owner_secret::load_existing_keys(
+            // Missing or invalid keys refuse only owners with a stored connection; an owner with
+            // none gets the normal no-connection answer, as Node does (noevia#1827).
+            let keys = server_storage_reads::owner_secret::load_existing_keys(
                 &data_dir,
                 previous.as_deref().map(String::as_str),
-            ) {
-                Ok(keys) => keys,
-                Err(_) => return unavailable(),
-            };
+            )
+            .ok();
             let store = match layer.store_blocking() {
                 Ok(store) => store,
                 Err(_) => return unavailable(),
             };
-            match server_storage_reads::owner_secret::project_connection(&store, &id, &keys) {
+            match server_storage_reads::owner_secret::project_connection_with(
+                &store,
+                &id,
+                keys.as_ref(),
+            ) {
                 Ok(projected) => reply::json_text(
                     StatusCode::OK,
                     server_storage_reads::owner_secret::metadata_json(&projected),

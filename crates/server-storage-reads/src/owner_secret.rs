@@ -11,10 +11,10 @@ pub const DECRYPTED_BYTES: usize = 65_536;
 struct OwnerBoundSecretKeys<'a> {
     owner: String,
     role: Role,
-    keys: &'a SecretKeys,
+    keys: Option<&'a SecretKeys>,
 }
 impl<'a> OwnerBoundSecretKeys<'a> {
-    fn bind(identity: &Identity, keys: &'a SecretKeys) -> Result<Self, ProjectionError> {
+    fn bind(identity: &Identity, keys: Option<&'a SecretKeys>) -> Result<Self, ProjectionError> {
         let owner = identity.user.id.as_str();
         if owner.is_empty() || owner.len() > OWNER_BYTES {
             return Err(ProjectionError::Owner);
@@ -31,7 +31,10 @@ impl<'a> OwnerBoundSecretKeys<'a> {
         })
     }
     fn open(&self, value: &str) -> Result<(Zeroizing<String>, bool), ProjectionError> {
-        match self.keys.open(value, Some(&self.owner)) {
+        // A stored credential needs the keys; without them only rows are refused, never owners
+        // with no connection (who get the normal no-connection answer, as in Node).
+        let keys = self.keys.ok_or(ProjectionError::Unavailable)?;
+        match keys.open(value, Some(&self.owner)) {
             Ok((plain, _used)) => {
                 if plain.len() > DECRYPTED_BYTES {
                     return Err(ProjectionError::Cap);
@@ -73,6 +76,17 @@ pub fn project_connection(
     store: &Store,
     identity: &Identity,
     keys: &SecretKeys,
+) -> Result<ProjectedConnection, ProjectionError> {
+    project_connection_with(store, identity, Some(keys))
+}
+
+/// [`project_connection`] when the credential keys may be missing or invalid (noevia#1827): an
+/// owner with no connection row still gets the no-connection answer; an owner with a row is
+/// refused (`Unavailable`) because its stored credential cannot be opened.
+pub fn project_connection_with(
+    store: &Store,
+    identity: &Identity,
+    keys: Option<&SecretKeys>,
 ) -> Result<ProjectedConnection, ProjectionError> {
     let bound = OwnerBoundSecretKeys::bind(identity, keys)?;
     let row = connection_row::snapshot(store, &bound.owner)?;
