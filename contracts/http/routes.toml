@@ -503,6 +503,11 @@ owner = "node"
 path = "/api/models/load"
 owner = "node"
 
+# #1638: Settings → Inference machines (noevia-core routes/inference-machines.cjs), administrators only.
+[[route]]
+path = "/api/models/machines"
+owner = "node"
+
 [[route]]
 path = "/api/models/presets/reload"
 owner = "node"
