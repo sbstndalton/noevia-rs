@@ -159,15 +159,18 @@ headers; the switch is `NOEVIA_RUST_EXPORT=1` (needs `NOEVIA_RUST_PROJECTS=1` an
 
 Narrower than Node, as refusals: an unparsable free-chats.json or projects.json, a `projects` that
 is not a list, a value js-json cannot hold, or a symlinked or non-regular (FIFO) file is a 500 (Node
-would export less, its in-memory copy, or follow the link); a history file over 16 MiB or over
+would export less, its in-memory copy, or follow the link); a history file over 12 MiB (#1830) or over
 500,000 values / depth 40, more than 128 MiB of history in one export, or a chat over the Markdown
 bounds above is Node's 413 (#1824).
 
 Memory (#1824): values are counted on the text before any tree is built, the file text is moved
 rather than copied, and the ZIP is built as chunks (`ZipWriter`, the same bytes as `zip_store`)
-that the front sends in order, so the payload is held once. `tests/peak_memory.rs` exports a
-61.2 MiB ZIP (three ~9 MiB messages and one history at the value cap): peak RSS 122.5 MiB on
-macOS (`/usr/bin/time -l`, whole test process); on Linux the test asserts `VmHWM` < 150 MiB.
+that the front sends in order, so the payload is held once. `tests/peak_memory.rs` (#1830) runs
+three worst cases, each in its own process: a full history (the cap minus 64 KiB) read last while
+~48 MiB of payload is held, a full all-message history after ~38 MiB, and a history at the value
+cap after ~54 MiB; each exports 59–62 MiB. With a 16 MiB history cap the all-message case peaked
+at ~168 MiB (macOS), so the cap is 12 MiB: peaks 118 / 128 / 122 MiB (macOS); on Linux the test
+asserts `VmHWM` < 150 MiB for each.
 
 Reproduce the Node oracle (core's own workspace store, readHistory, route and http.cjs; flock(1)
 on PATH, as the M4 switches need) and the differential test:
