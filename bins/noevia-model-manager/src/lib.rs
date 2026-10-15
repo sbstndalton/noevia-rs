@@ -6,6 +6,8 @@ pub mod docker;
 pub mod embedding;
 pub mod host;
 pub mod idle_unload;
+#[cfg(feature = "native-model-updates")]
+pub mod model_updates;
 #[cfg(feature = "native-prompts")]
 pub mod prompts;
 pub mod sections;
@@ -61,6 +63,9 @@ pub struct StateData {
     /// noevia#1318: native read-only `GET /api/v1/settings`; PUT stays with Python.
     #[cfg(feature = "native-settings")]
     pub settings: Option<Arc<settings::Settings>>,
+    /// noevia#1318: native read-only `GET /api/v1/models/updates`; Python keeps every writer.
+    #[cfg(feature = "native-model-updates")]
+    pub model_updates: Option<Arc<model_updates::ModelUpdates>>,
     pub sections: Option<Arc<sections::Sections>>,
     /// #1668: present only when EMBED_CONTAINER names the embedding service.
     pub embedding: Option<Arc<embedding::EmbeddingService>>,
@@ -333,6 +338,27 @@ fn native_settings_route(state: &StateData, method: &Method, path: &str) -> bool
     state.settings.is_some() && *method == Method::GET && path == "/api/v1/settings"
 }
 
+/// Only the exact GET path is native; other methods and slash variants keep their existing
+/// forward/405/404 handling.
+#[cfg(feature = "native-model-updates")]
+fn native_model_updates_route(state: &StateData, method: &Method, path: &str) -> bool {
+    state.model_updates.is_some() && *method == Method::GET && path == "/api/v1/models/updates"
+}
+
+/// FastAPI's answer to an unhandled exception, byte for byte.
+#[cfg(feature = "native-model-updates")]
+fn internal_error() -> Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; charset=utf-8",
+        )],
+        "Internal Server Error",
+    )
+        .into_response()
+}
+
 fn detail(status: StatusCode, text: &'static str) -> Response {
     (status, Json(json!({"detail":text}))).into_response()
 }
@@ -397,6 +423,8 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
             && !matches!(prompts::classify(path), prompts::Route::NotOwned));
     #[cfg(feature = "native-settings")]
     let native = native || native_settings_route(&state, req.method(), path);
+    #[cfg(feature = "native-model-updates")]
+    let native = native || native_model_updates_route(&state, req.method(), path);
     let budget = if native || (path == "/api/v1/host" && state.host.is_some()) {
         TIMEOUT
     } else if path == "/api/v1/embedding-service" && state.embedding.is_some() {
@@ -700,6 +728,22 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
                     "Internal Server Error",
                 )
                     .into_response(),
+            };
+        }
+    }
+    #[cfg(feature = "native-model-updates")]
+    if native_model_updates_route(&state, req.method(), path) {
+        if let Some(updates) = &state.model_updates {
+            return match updates.response().await {
+                model_updates::Outcome::Json(bytes) => (
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    bytes,
+                )
+                    .into_response(),
+                model_updates::Outcome::Failed => internal_error(),
+                model_updates::Outcome::Refused => {
+                    detail(StatusCode::SERVICE_UNAVAILABLE, model_updates::REFUSAL)
+                }
             };
         }
     }

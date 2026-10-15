@@ -1,5 +1,5 @@
 //! Native configuration reads. Python remains the sole file writer.
-mod access;
+pub(crate) mod access;
 mod defaults;
 pub mod ini;
 use serde_json::{json, Value};

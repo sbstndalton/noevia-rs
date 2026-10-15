@@ -624,6 +624,8 @@ mod tests {
             prompts: None,
             #[cfg(feature = "native-settings")]
             settings: None,
+            #[cfg(feature = "native-model-updates")]
+            model_updates: None,
             sections: None,
             embedding: None,
             host: None,
