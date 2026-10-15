@@ -3295,6 +3295,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
+name = "workspace-restore-verify"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "miniz_oxide 0.8.9",
+ "proptest",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "workspace-restore-verify-cli"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde_json",
+ "workspace-restore-verify",
+]
+
+[[package]]
 name = "write16"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

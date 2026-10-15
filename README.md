@@ -248,6 +248,20 @@ one slice at a time.
   with `python3 -I tools/gen-tenant-assertion.py --diary <noevia-services>/diary --bin target/release/tenant-assertion`;
   copy `crates/tenant-assertion/tests/fixtures/tenant-assertion.v1.json` into noevia-services'
   `diary/tests/fixtures/` when it changes.
+- `crates/workspace-restore-verify` + `bins/workspace-restore-verify`
+  (`WORKSPACE_RESTORE_VERIFY_IMPL`, Diary, sbstndalton/noevia#982): the workspace ZIP gate of
+  noevia-services' `diary/agent/workspace_restore.py` `_verify` (operator restore, its preview and
+  the in-app ZIP import), every check in Python's order with Python's refusal class, plus a
+  stricter container (local headers must agree with the central directory, members tile the file,
+  no comment / prepended data / zip64 / NUL names, exact DEFLATE end and size). The crate docs list
+  every check and every intended difference. `workspace-restore-verify verify < archive.zip`
+  prints `accept <listing sha256>` or `reject: <code>`; no name or byte of the archive is printed.
+  The Diary runs it FIRST, then Python, and requires both listings to hash identically (fails
+  closed). `workspace-restore-verify self-test` is the image smoke test. The differential corpus
+  is regenerated with `python3 -I tools/gen-workspace-restore.py --diary <noevia-services>/diary --bin target/release/workspace-restore-verify`
+  (in a virtualenv with the Diary's requirements); copy
+  `crates/workspace-restore-verify/tests/fixtures/workspace-restore.v1.json` into
+  noevia-services' `diary/tests/fixtures/` when it changes.
 - `crates/dav-parse` + `bins/dav-parse-wasm` (sbstndalton/noevia#967): the storage browser's
   WebDAV PROPFIND (`Depth: 1`) listing parser, a port of noevia-core's `server/dav-listing.cjs`
   `listingRecordsJs` (entity decoding, WHATWG href resolution, `decodeURIComponent`, direct
