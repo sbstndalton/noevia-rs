@@ -722,7 +722,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-services
-          ref: 920d57d82d8f4c817760255cff602e15ccc64448
+          ref: 65f8b1f6dd8705dd9023ad8efdc4611445c6a73d
           path: legacy-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
