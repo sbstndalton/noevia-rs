@@ -3,7 +3,7 @@
   "seq": 198,
   "request": {
     "method": "GET",
-    "path": "/api/projects/<id:24>/chats",
+    "path": "/api/projects/<id:26>/chats",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",

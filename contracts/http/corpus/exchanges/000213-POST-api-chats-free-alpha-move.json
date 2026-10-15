@@ -16,7 +16,7 @@
     "body": {
       "kind": "json",
       "json": {
-        "projectId": "<id:24>"
+        "projectId": "<id:26>"
       }
     }
   },
@@ -38,7 +38,7 @@
       "json": {
         "ok": true,
         "from": null,
-        "projectId": "<id:24>"
+        "projectId": "<id:26>"
       }
     }
   }

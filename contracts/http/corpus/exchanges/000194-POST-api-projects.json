@@ -36,7 +36,7 @@
     "body": {
       "kind": "json",
       "json": {
-        "id": "<id:24>",
+        "id": "<id:26>",
         "name": "Synthetic chat list",
         "goal": "",
         "instructions": "",

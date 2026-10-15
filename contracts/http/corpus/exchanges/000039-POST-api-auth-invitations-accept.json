@@ -43,7 +43,7 @@
       "kind": "json",
       "json": {
         "user": {
-          "id": "<id:10>",
+          "id": "<id:11>",
           "username": "synthetic-member",
           "displayName": "Synthetic Member",
           "role": "member",

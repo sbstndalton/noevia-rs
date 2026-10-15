@@ -3,7 +3,7 @@
   "seq": 81,
   "request": {
     "method": "POST",
-    "path": "/api/admin/users/<id:10>/recovery",
+    "path": "/api/admin/users/<id:11>/recovery",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",

@@ -3,7 +3,7 @@
   "seq": 197,
   "request": {
     "method": "POST",
-    "path": "/api/projects/<id:24>/chats",
+    "path": "/api/projects/<id:26>/chats",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -59,7 +59,7 @@
             "updatedAt": 400
           },
           {
-            "id": "<id:8>",
+            "id": "<id:9>",
             "title": "Deleted chat",
             "updatedAt": 500
           },

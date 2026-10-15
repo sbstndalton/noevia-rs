@@ -1,9 +1,9 @@
 {
- "core": "cb865f4baf9f788e0aa0df90d935c0ea0de0a512",
+ "core": "885e625cddd1af99e23d892505f4e1eeb87608db",
  "sources": {
-  "server/routes/models.cjs": "1bdf2ecc0d9bde08544c80e258ea31fe9d1f1ef798b743a77d7f007960cde59c",
+  "server/routes/models.cjs": "4843878dd146a4ccea49b29a3b9431ab86ad930b2d39a80fbba8a5f03f19e507",
   "server/model-manager.cjs": "e4039ea8b74d9df28c5eeda3150237fb9c4d3a9dc5bc19d39949d5950c8579b8",
-  "server/llamacpp-manager.cjs": "81f9d167513d3fc3aa90d6c16a16d4c59fa38bdfeb36340615e2fcd97e747896",
+  "server/llamacpp-manager.cjs": "e9f38b81d959b1c33cd4807c3444a5e920f0cfd2bbd9092e463e9a94f3df01ce",
   "server/llamacpp-metrics.cjs": "db5ea8b37de919fc43e409866d7449b843f8d0a89c6e88da28e0276f1811cfe8",
   "server/mtp.cjs": "c138a70535f470d93a0d631dbad778f44cc88644abe8272fdbef5c7bea01d129",
   "server/engine-stats.cjs": "aad902ea1af78947971e1700dfaf41d00e9efd291cd15fa2a0d161e7260e260f",
