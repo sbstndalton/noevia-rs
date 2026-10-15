@@ -141,6 +141,11 @@ fn answer(method: &str, target: &str) -> (u16, String, Vec<u8>) {
         ("GET", "/dav/docs/latin.txt") => (200, String::new(), vec![0x63, 0x61, 0x66, 0xe9, 0x0a]),
         ("GET", "/dav/docs/huge.txt") => (200, String::new(), vec![b'a'; 900_000]),
         ("GET", "/dav/docs/err.md") => (500, String::new(), Vec::new()),
+        // A server that never sends its headers within the 15 s listing timeout.
+        ("PROPFIND", "/dav/stalled/") => {
+            std::thread::sleep(Duration::from_secs(17));
+            (404, String::new(), Vec::new())
+        }
         ("GET", "/s3/bucket") if q("list-type") == Some("2") => {
             let prefix = q("prefix").unwrap_or("");
             match (prefix, q("continuation-token")) {
@@ -198,6 +203,15 @@ fn handle_conn(mut stream: TcpStream, seen: &Mutex<Vec<Seen>>) {
     seen.lock()
         .unwrap()
         .push((method.clone(), target.clone(), headers));
+    if target == "/dav/docs/slow.md" {
+        // Headers at once, then the body stalls past the 20 s read timeout.
+        let _ = stream.write_all(
+            b"HTTP/1.1 200 Synthetic\r\nContent-Length: 10\r\nConnection: close\r\n\r\nhalf",
+        );
+        let _ = stream.flush();
+        std::thread::sleep(Duration::from_secs(23));
+        return;
+    }
     let (status, extra, body) = answer(&method, &target);
     let mut out = format!(
         "HTTP/1.1 {status} Synthetic\r\nContent-Length: {}\r\nConnection: close\r\n{extra}\r\n",
@@ -267,6 +281,12 @@ fn cases(port: u16) -> Vec<Case> {
         list("dav redirect", "/moved", dav("webdav")),
         list("dav unreadable", "/garbage", dav("webdav")),
         list("dav over cap", "/huge", dav("webdav")),
+        list("dav stalled headers", "/stalled", dav("webdav")),
+        list(
+            "dav unreachable",
+            "",
+            json!({"kind":"webdav","baseUrl":"http://127.0.0.1:1/dav","bucket":"","region":"us-east-1","username":"","secret":"","corpusRoot":""}),
+        ),
         list("s3 paged root", "", s3.clone()),
         list("s3 dir", "/docs", s3.clone()),
         list("local list", "", local.clone()),
@@ -282,6 +302,11 @@ fn cases(port: u16) -> Vec<Case> {
             dav("webdav"),
         ),
         read("dav 500", r#"{"path":"docs/err.md"}"#, dav("webdav")),
+        read(
+            "dav body stall",
+            r#"{"path":"docs/slow.md"}"#,
+            dav("webdav"),
+        ),
         read("unsupported type", r#"{"path":"x.bin"}"#, dav("webdav")),
         read("invalid path", r#"{"path":"../a.md"}"#, dav("webdav")),
         read("empty body", "", dav("webdav")),
@@ -346,7 +371,7 @@ fn node_answers(core: &str, cases: &[Case]) -> Vec<(u16, String)> {
         let _ = (&mut stdout).take(64 * 1024 * 1024).read_to_end(&mut out);
         let _ = tx.send(out);
     });
-    let out = match rx.recv_timeout(Duration::from_secs(120)) {
+    let out = match rx.recv_timeout(Duration::from_secs(240)) {
         Ok(out) => out,
         Err(_) => {
             let _ = child.kill();

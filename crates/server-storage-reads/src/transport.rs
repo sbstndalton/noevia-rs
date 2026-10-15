@@ -91,6 +91,10 @@ impl Transport for ChildTransport<'_> {
                 status,
                 body: decoded_fixture(payload, cap).map_err(|_| TransportFailure::Body)?,
             }),
+            Ok(Reply::Failure {
+                phase: crate::response_ipc::Phase::Body,
+                failure: TransportFailure::Timeout,
+            }) => Err(TransportFailure::BodyTimeout),
             Ok(Reply::Failure { failure, .. }) => Err(failure),
             Err(_) => Err(TransportFailure::Other),
         }

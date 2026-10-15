@@ -49,7 +49,8 @@ fn failure_code(failure: TransportFailure) -> u8 {
         TransportFailure::PreHeaderAborted => 2,
         TransportFailure::PreHeaderBrokenPipe => 3,
         TransportFailure::PreHeaderUnexpectedEof => 4,
-        TransportFailure::Timeout => 5,
+        // Parent-side only (a Body-phase Timeout); never encoded as its own code.
+        TransportFailure::Timeout | TransportFailure::BodyTimeout => 5,
         TransportFailure::Redirect => 6,
         TransportFailure::Tls => 7,
         TransportFailure::Dns => 8,

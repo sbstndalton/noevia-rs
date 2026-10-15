@@ -81,6 +81,8 @@ pub enum TransportFailure {
     Dns,
     Header,
     Body,
+    /// A deadline that expired after the response headers (while reading the body).
+    BodyTimeout,
     Other,
 }
 impl TransportFailure {
@@ -93,15 +95,25 @@ impl TransportFailure {
                 | Self::PreHeaderUnexpectedEof
         )
     }
+    /// Whether core storage-client.cjs `withRetry` repeats it once after 250 ms: every failure
+    /// undici reports as `TypeError: fetch failed` (no connection, DNS, TLS, a refused redirect
+    /// under `redirect: 'error'`, a malformed or reset response before its headers). A timeout
+    /// (`TimeoutError`) and anything after the headers are not retried.
+    pub fn node_retries(self) -> bool {
+        !matches!(self, Self::Timeout | Self::BodyTimeout | Self::Body)
+    }
+    /// The answer core gives (storage-client.cjs `transportError`, then the route): a timeout
+    /// before the headers is 504 "the storage server did not answer in time", any other
+    /// transport failure before them 502 "the storage server could not be reached". After the
+    /// headers the body read's own error passes through: undici's `terminated`, or the abort
+    /// signal's "The operation was aborted due to timeout".
     pub fn public(self) -> Failure {
-        Failure::new(
-            502,
-            if self == Self::Timeout {
-                "The operation was aborted due to timeout"
-            } else {
-                "fetch failed"
-            },
-        )
+        match self {
+            Self::Timeout => Failure::new(504, "the storage server did not answer in time"),
+            Self::BodyTimeout => Failure::new(502, "The operation was aborted due to timeout"),
+            Self::Body => Failure::new(502, "terminated"),
+            _ => Failure::new(502, "the storage server could not be reached"),
+        }
     }
 }
 
@@ -303,6 +315,8 @@ fn request(
         Method::Get
     };
     if method == Method::Propfind {
+        // undici sends `content-length: 0` on a body-less PROPFIND; so does this.
+        headers.push(("Content-Length".into(), Zeroizing::new("0".into())));
         headers.push(("Depth".into(), Zeroizing::new("1".into())));
         headers.push((
             "Content-Type".into(),
@@ -401,7 +415,7 @@ fn fetch(
                 }
                 return Ok(response.body);
             }
-            Err(error) if attempt == 0 && error.retryable() => {
+            Err(error) if attempt == 0 && error.node_retries() => {
                 if deadline.saturating_sub(transport.elapsed()) <= Duration::from_millis(250) {
                     return Err(TransportFailure::Timeout.public());
                 }
@@ -554,7 +568,8 @@ pub fn execute(
         || c.region.len() > s3_sign::MAX_REGION_BYTES
         || c.secret.len() > 8 * 1024 * 1024
     {
-        return Err(TransportFailure::Header.public());
+        // A named private input bound (SNAPSHOT_FIELD_BUDGET), not a Node answer.
+        return Err(Failure::new(502, "fetch failed"));
     }
     if c.kind == Kind::Local {
         return Err(Failure::new(

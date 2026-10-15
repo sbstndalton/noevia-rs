@@ -171,18 +171,46 @@ fn retry_is_typed_preheader_only_and_never_status() -> TestResult {
     );
     assert_eq!(transport.requests.len(), 2);
     assert_eq!(transport.delays, vec![Duration::from_millis(250)]);
+    // Not retried (core withRetry): a timeout, or anything after the headers.
+    for (failure, status, message) in [
+        (
+            TransportFailure::Timeout,
+            504,
+            "the storage server did not answer in time",
+        ),
+        (
+            TransportFailure::BodyTimeout,
+            502,
+            "The operation was aborted due to timeout",
+        ),
+        (TransportFailure::Body, 502, "terminated"),
+    ] {
+        let mut t = Fake::new(vec![Err(failure)]);
+        let error = execute(&c, &units("x.txt"), Operation::Read, &mut t)
+            .err()
+            .ok_or("missing error")?;
+        assert_eq!((error.status, error.message.as_str()), (status, message));
+        assert_eq!(t.requests.len(), 1);
+        assert!(t.delays.is_empty());
+    }
+    // Every `fetch failed` is retried once after 250 ms, then reported as unreachable.
     for failure in [
-        TransportFailure::Timeout,
         TransportFailure::Tls,
         TransportFailure::Dns,
         TransportFailure::Redirect,
-        TransportFailure::Body,
         TransportFailure::Header,
+        TransportFailure::Other,
     ] {
-        let mut t = Fake::new(vec![Err(failure)]);
-        assert!(execute(&c, &units("x.txt"), Operation::Read, &mut t).is_err());
-        assert_eq!(t.requests.len(), 1);
-        assert!(t.delays.is_empty());
+        let mut t = Fake::new(vec![Err(failure), Err(failure)]);
+        let error = execute(&c, &units("x.txt"), Operation::Read, &mut t)
+            .err()
+            .ok_or("missing error")?;
+        assert_eq!(
+            (error.status, error.message.as_str()),
+            (502, "the storage server could not be reached")
+        );
+        assert_eq!(t.requests.len(), 2);
+        assert_eq!(t.delays, vec![Duration::from_millis(250)]);
     }
     for status in [301, 401, 403, 404, 500, 502] {
         let mut t = Fake::new(vec![Ok((status, vec![]))]);
