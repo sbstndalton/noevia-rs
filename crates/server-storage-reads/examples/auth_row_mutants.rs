@@ -76,8 +76,9 @@ fn run() -> Result<(), String> {
         return Err("arguments".into());
     }
     let root = if continuing {
+        // The retained run to continue is named by the private operator, never hardcoded.
         std::path::PathBuf::from(
-            "/var/folders/_4/jbtxcfjd7hj2x9kvw4z5k7gm0000gp/T/m4-auth-row-mutants-87763",
+            std::env::var_os("M4_AUTH_ROW_MUTANTS_ROOT").ok_or("M4_AUTH_ROW_MUTANTS_ROOT unset")?,
         )
     } else {
         std::env::temp_dir().join(format!("m4-auth-row-mutants-{}", std::process::id()))
@@ -205,10 +206,25 @@ fn run() -> Result<(), String> {
         )?;
         let cargo = std::env::var_os("M4_CARGO").ok_or("fixed cargo missing")?;
         let mut cmd = Command::new(&cargo);
-        cmd.current_dir(&dir).env_clear()
-   .env("PATH","/Users/sebastiandalton/.rustup/toolchains/1.99.0-aarch64-apple-darwin/bin:/usr/bin:/bin")
-   .env("HOME",std::env::var_os("HOME").ok_or("home")?).env("LC_ALL","C").env("CARGO_TARGET_DIR",source.join("target/auth-row-mutants"))
-   .args(["test","--offline","--locked","--test","network_policies",test,"--","--exact"]);
+        cmd.current_dir(&dir)
+            .env_clear()
+            .env(
+                "PATH",
+                std::env::var_os("M4_TOOLCHAIN_PATH").ok_or("M4_TOOLCHAIN_PATH unset")?,
+            )
+            .env("HOME", std::env::var_os("HOME").ok_or("home")?)
+            .env("LC_ALL", "C")
+            .env("CARGO_TARGET_DIR", source.join("target/auth-row-mutants"))
+            .args([
+                "test",
+                "--offline",
+                "--locked",
+                "--test",
+                "network_policies",
+                test,
+                "--",
+                "--exact",
+            ]);
         put(&dir.join("command.txt"),format!("cargo={cargo:?}\ncwd={dir:?}\ntarget={:?}\ntest --offline --locked --test network_policies {test} -- --exact\n",source.join("target/auth-row-mutants")).as_bytes())?;
         let output = process::bounded(cmd, Vec::new(), Duration::from_secs(45))?;
         put(&dir.join("stdout"), &output.stdout)?;

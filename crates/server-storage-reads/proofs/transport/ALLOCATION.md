@@ -34,7 +34,7 @@ message parity, especially existing region WASM normalization, remains pending.
 ## Pinned source evidence and unresolved physical bounds
 
 Paths below are relative to registry root
-`/Users/sebastiandalton/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f`.
+`$CARGO_HOME/registry/src/index.crates.io-<hash>`.
 The nested manifest/lock compile only dependencies, never open sockets.
 
 * hyper-1.11.1/src/proto/h1/io.rs:23,195–243: default logical threshold

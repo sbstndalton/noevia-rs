@@ -48,7 +48,7 @@ actual route response. It must never obtain credentials from request JSON.
 The separate [synchronous child lifecycle proof](proofs/transport/LIFECYCLE.md)
 implements finite parent IPC and owned cleanup with Linux limit/NotDumpable setup.
 It has no HTTP adapter. Portable synthetic fixture modes are explicitly private;
-the actual Linux limit branch remains unexecuted on this Mac. Async supervisor,
+the actual Linux limit branch remains unexecuted on the macOS author host. Async supervisor,
 parent parser/sort bounds and network semantics remain held.
 
 Snapshot inputs are bounded before request construction at existing library

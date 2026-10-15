@@ -3,8 +3,7 @@
 This is an inactive private crate, not a route adapter or publication approval.
 The predecessor is dc75c609eae5f72ac8c37bbbfbffc925923d81c6 on Rust base
 c665b36106505419d80e01a106b0d402f5d157e2. The approved design is
-/tmp/m4-storage-tls-dns-next-design.md, SHA256
-02ee28d88cc634f4c0d67e5c1171cff64d6200d1e70a5774dbb2a26ada46dc11.
+held privately outside the repository.
 
 ## Production boundary
 
@@ -62,7 +61,7 @@ Only synthetic certs/keys are generated; keys are not printed. Local filesystem
 operations and kernel reap do not acquire a hard real-time guarantee.
 
 Installed LibreSSL 3.3.6 SHA256 is
-49db04c17e3a8c169ebc48a1149d78c165a86c04913203f46b2a14ce7f4a14fc.
+(private evidence held outside the repository).
 The initial shared prompt=no request config gave CA and leaf identical subjects
 despite distinct `-subj` arguments. Actual Node X509Certificate observations showed
 leafSelfIssued=true/issuerMatchesCA=true and DEPTH_ZERO_SELF_SIGNED_CERT. Separate
@@ -78,7 +77,7 @@ Node22.23.3 builtin fetch reports process.versions.undici=6.28.1: trusted owned 
 (with/without synthetic Host override) and PROPFIND succeed; untrusted leaf refuses
 before HTTP input. This is a narrow TLS observation, not route/output/Host-byte or
 npm Undici parity. Executable SHA256 is
-b6a0496318476702af424b12fe5f245a74c3cb93159e0c7411e6a95ad8c8d4db.
+(private evidence held outside the repository).
 
 Two actual source mutations were executed once (wrong original identity and wrong
 handshake phase), with exact sole-test/status101/panic-location/unique-policy-ID/

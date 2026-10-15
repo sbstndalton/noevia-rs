@@ -14,32 +14,48 @@ pub type Result<T> = std::result::Result<T, String>;
 pub const CORE: &str = "010735c7d86d30269ab3f4a351b2135faea1c8e7";
 pub const TREE: &str = "345adfa12da083eb5888ec232dc2d86b9b0383a5";
 pub const CANDIDATE: &str = "b375290c638f9f033ece2335ec2be35dfca86e35";
-pub const ROOT: &str = "/tmp/m4-storage-factory-oracle-b375-stage-c";
-pub const GIT: &str = "/Users/sebastiandalton/noevia-work/m6-chatgpt-status-core";
-pub const DEPS: &str = "/tmp/s1-diagnose-node-dependencies";
-pub const PROOF: &str = "/tmp/s1-diagnose-dependency-copy.json";
-pub const PROOF_SHA: &str = "98e91b95e8812e863a70dce0fe66bf39c4507b7e50b660936d244d509ad819cc";
 pub const NODE: &str = "/opt/homebrew/opt/node@22/bin/node";
-pub const NODE_SHA: &str = "b6a0496318476702af424b12fe5f245a74c3cb93159e0c7411e6a95ad8c8d4db";
 // Fixed installed native error dialect grounding, not complete dylib ancestry.
 pub const NODE_CRYPTO_LIBRARY: &str =
     "/opt/homebrew/Cellar/node@22/22.23.3_1/lib/libnode.127.dylib";
-pub const NODE_CRYPTO_LIBRARY_SHA: &str =
-    "cdceec4c9d2a50079954ade5a89f4e7887a620c0c4329296b1af660926a66f65";
+/// Private operator inputs. Paths, the installed-runtime digests and the stage approvals come
+/// from the environment of the private host that runs the matrix; the private evidence they
+/// name is held outside this repository. Unset digests/approvals are empty and refuse, so
+/// neither the CLI nor the tool can approve itself.
+fn private_input(name: &str) -> &'static str {
+    Box::leak(std::env::var(name).unwrap_or_default().into_boxed_str())
+}
+pub static ROOT: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_ROOT"));
+pub static GIT: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_CORE_GIT"));
+pub static DEPS: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_DEPS"));
+pub static PROOF: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_DEPS_PROOF"));
+pub static PROOF_SHA: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_DEPS_PROOF_SHA256"));
+pub static NODE_SHA: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_NODE_SHA256"));
+pub static NODE_CRYPTO_LIBRARY_SHA: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_NODE_CRYPTO_SHA256"));
+pub static WASM_SOURCE: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_WASM"));
+pub static WASM_SHA: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_WASM_SHA256"));
+pub static APPROVED_MANIFEST_SHA: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_APPROVED_MANIFEST_SHA256"));
+pub static APPROVED_PREFLIGHT_SHA: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_APPROVED_PREFLIGHT_SHA256"));
+pub static GIT_EVIDENCE: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_GIT_EVIDENCE"));
+pub static CAPTURE_ROOT: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_CAPTURE_ROOT"));
+pub static PREFLIGHT_ROOT: std::sync::LazyLock<&'static str> =
+    std::sync::LazyLock::new(|| private_input("M4_FACTORY_PREFLIGHT_ROOT"));
 pub const JS_GCM_AUTH_FAILURE: &str = "Unsupported state or unable to authenticate data";
 pub const STORAGE_EVIDENCE_SQL: &str = "SELECT * FROM storage_connections WHERE user_id=?";
-pub const WASM_SOURCE: &str = "/tmp/m4-storage-factory-approved-wasm";
-pub const WASM_SHA: &str = "040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd87cb2e978575";
 pub const NOW: i64 = 1_700_000_000_000;
-// Root must replace these only after inspecting the exact retained stage bytes.
-// Empty means unapproved; neither the CLI nor the tool can approve itself.
-pub const APPROVED_MANIFEST_SHA: &str =
-    "c0643f2c3d0fc58b115b08d14938f1e5e79e2da51ee56bf980950939064b8860";
-pub const APPROVED_PREFLIGHT_SHA: &str =
-    "db1bb3b061c7e4b0e75abfa84e4efb3eca4eb3a9b2dc358a0bc478a7c1838173";
-pub const GIT_EVIDENCE: &str = "/tmp/m4-storage-factory-git-third-attempt";
-pub const CAPTURE_ROOT: &str = "/tmp/m4-storage-factory-capture-second-attempt";
-pub const PREFLIGHT_ROOT: &str = "/tmp/m4-storage-factory-preflight-second-attempt";
 pub const SCHEMA: &str = include_str!("../../../server-store/tests/fixtures/node-schema.sql");
 pub fn require(ok: bool, message: &str) -> Result<()> {
     if ok {
@@ -476,7 +492,7 @@ pub fn shape_sql(shape: &str) -> Result<String> {
 }
 fn command(args: &[&str]) -> Result<Vec<u8>> {
     let mut cmd = Command::new("/usr/bin/git");
-    cmd.current_dir(GIT)
+    cmd.current_dir(*GIT)
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .args(args);
@@ -486,13 +502,13 @@ fn command(args: &[&str]) -> Result<Vec<u8>> {
     require(number < 1026, "Git command count")?;
     let stem = format!("git-{number:04}");
     put(
-        &Path::new(GIT_EVIDENCE).join(format!("{stem}.command.json")),
+        &Path::new(*GIT_EVIDENCE).join(format!("{stem}.command.json")),
         &json_bytes(
-            &json!({"program":"/usr/bin/git","args":args,"cwd":GIT,"env":{"PATH":"/usr/bin:/bin"}}),
+            &json!({"program":"/usr/bin/git","args":args,"cwd":*GIT,"env":{"PATH":"/usr/bin:/bin"}}),
             65536,
         )?,
     )?;
-    retain_capture(Path::new(GIT_EVIDENCE), &stem, &o)?;
+    retain_capture(Path::new(*GIT_EVIDENCE), &stem, &o)?;
     require(
         o.failure.is_none() && o.status.is_some_and(|s| s.success()) && o.stderr.is_empty(),
         "immutable Git read",
@@ -556,13 +572,13 @@ pub fn validate_package_root_closure(
 }
 pub fn materialize(adapter: &str) -> Result<Value> {
     let started = std::time::Instant::now();
-    let root = Path::new(ROOT);
+    let root = Path::new(*ROOT);
     require(!root.exists(), "fresh topology")?;
-    let proof_bytes = read(Path::new(PROOF), 2 * 1024 * 1024)?;
-    require(hash(&proof_bytes) == PROOF_SHA, "accepted proof")?;
+    let proof_bytes = read(Path::new(*PROOF), 2 * 1024 * 1024)?;
+    require(hash(&proof_bytes) == *PROOF_SHA, "accepted proof")?;
     let proof: Value = serde_json::from_slice(&proof_bytes).map_err(|_| "proof JSON")?;
     require(
-        proof.get("destination").and_then(Value::as_str) == Some(DEPS)
+        proof.get("destination").and_then(Value::as_str) == Some(*DEPS)
             && proof.get("total_bytes").and_then(Value::as_u64) == Some(19_185_089)
             && proof
                 .get("closure")
@@ -570,11 +586,11 @@ pub fn materialize(adapter: &str) -> Result<Value> {
                 .is_some_and(|v| v.len() == 65),
         "proof identity",
     )?;
-    let wasm = read(Path::new(WASM_SOURCE), 16 * 1024 * 1024)?;
-    require(hash(&wasm) == WASM_SHA, "pinned accepted WASM required")?;
+    let wasm = read(Path::new(*WASM_SOURCE), 16 * 1024 * 1024)?;
+    require(hash(&wasm) == *WASM_SHA, "pinned accepted WASM required")?;
     let node = read(Path::new(NODE), 128 * 1024 * 1024)?;
-    require(hash(&node) == NODE_SHA, "fixed Node binary")?;
-    directory(Path::new(GIT_EVIDENCE))?;
+    require(hash(&node) == *NODE_SHA, "fixed Node binary")?;
+    directory(Path::new(*GIT_EVIDENCE))?;
     require(
         command(&["rev-parse", &format!("{CORE}^{{tree}}")])? == format!("{TREE}\n").as_bytes(),
         "fixed CORE tree",
@@ -618,15 +634,15 @@ pub fn materialize(adapter: &str) -> Result<Value> {
     for (name, sha) in [
         (
             "server/package.json",
-            "f3f9375884302c7dcdd7fb510b7804f5dadcdced8ccabdc827638378353db19c",
+            private_input("M4_FACTORY_PACKAGE_SHA256"),
         ),
         (
             "server/package-lock.json",
-            "ad078a36d1f9b72ba7ffeb2fa945deca872ea81742c8fe1ed5c9323ddcf497e9",
+            private_input("M4_FACTORY_PACKAGE_LOCK_SHA256"),
         ),
         (
             "server/dav-parse.lock",
-            "31f3a5c5c8da2cf0926db19f9ef742b49301b26c1d9c395a98980bb3050c4337",
+            private_input("M4_FACTORY_DAV_PARSE_LOCK_SHA256"),
         ),
     ] {
         require(
@@ -675,7 +691,7 @@ pub fn materialize(adapter: &str) -> Result<Value> {
             expected.insert(p.clone(), item).is_none(),
             "dependency duplicate",
         )?;
-        let b = read(&Path::new(DEPS).join(&p), 16 * 1024 * 1024)?;
+        let b = read(&Path::new(*DEPS).join(&p), 16 * 1024 * 1024)?;
         require(
             item.get("bytes").and_then(Value::as_u64) == Some(b.len() as u64)
                 && item.get("sha256").and_then(Value::as_str) == Some(hash(&b).as_str()),
@@ -703,7 +719,7 @@ pub fn materialize(adapter: &str) -> Result<Value> {
     }
     require(deps_bytes == 19_185_089, "dependency total identity")?;
     validate_package_root_closure(&manifests, &expected_roots)?;
-    let mut queue = vec![(PathBuf::from(DEPS).join("node_modules"), 0usize)];
+    let mut queue = vec![(PathBuf::from(*DEPS).join("node_modules"), 0usize)];
     let mut visited = 0usize;
     let mut found = BTreeSet::new();
     while let Some((p, depth)) = queue.pop() {
@@ -724,7 +740,7 @@ pub fn materialize(adapter: &str) -> Result<Value> {
                 )?;
             }
         } else {
-            let name = p.strip_prefix(DEPS).map_err(|_| "dependency root")?;
+            let name = p.strip_prefix(*DEPS).map_err(|_| "dependency root")?;
             require(
                 expected.contains_key(name)
                     && m.is_file()
@@ -753,7 +769,7 @@ pub fn materialize(adapter: &str) -> Result<Value> {
     directory(root)?;
     let canonical = fs::canonicalize(root).map_err(|_| "canonical output")?;
     require(
-        canonical == Path::new("/private/tmp/m4-storage-factory-oracle-b375-stage-c"),
+        !ROOT.is_empty() && fs::canonicalize(*ROOT).is_ok_and(|c| c == canonical),
         "fixed canonical alias",
     )?;
     let mut inventory = Vec::new();
@@ -784,7 +800,7 @@ pub fn materialize(adapter: &str) -> Result<Value> {
         )?;
     }
     let input = cases()?;
-    let manifest = json!({"core":CORE,"tree":TREE,"candidate":CANDIDATE,"canonical_root":canonical,"node_sha256":NODE_SHA,"wasm_sha256":WASM_SHA,"dependency_proof_sha256":PROOF_SHA,"files":inventory,"cases_sha256":hash(&json_bytes(&json!(input),8*1024*1024)?),"adapter_sha256":hash(adapter.as_bytes()),"oracle_executed":false,"runtime_metadata":"not captured yet","qualification":"logical caps, trusted stable ancestry; no registry/dylib/RSS/OOM/kernel certificate"});
+    let manifest = json!({"core":CORE,"tree":TREE,"candidate":CANDIDATE,"canonical_root":canonical,"node_sha256":*NODE_SHA,"wasm_sha256":*WASM_SHA,"dependency_proof_sha256":*PROOF_SHA,"files":inventory,"cases_sha256":hash(&json_bytes(&json!(input),8*1024*1024)?),"adapter_sha256":hash(adapter.as_bytes()),"oracle_executed":false,"runtime_metadata":"not captured yet","qualification":"logical caps, trusted stable ancestry; no registry/dylib/RSS/OOM/kernel certificate"});
     put(
         &root.join("manifest.json"),
         &json_bytes(&manifest, 2 * 1024 * 1024)?,
@@ -794,7 +810,7 @@ pub fn materialize(adapter: &str) -> Result<Value> {
 
 /// Fresh observations, separate from the historical path/bytes/hash proof.
 pub fn verify_materialized(manifest: &Value) -> Result<()> {
-    let root = Path::new(ROOT);
+    let root = Path::new(*ROOT);
     let rows = manifest
         .get("files")
         .and_then(Value::as_array)
@@ -867,11 +883,11 @@ pub fn verify_materialized(manifest: &Value) -> Result<()> {
     }
     require(found == expected, "complete materialized inventory")?;
     require(
-        hash(&read(Path::new(NODE), 128 * 1024 * 1024)?) == NODE_SHA,
+        hash(&read(Path::new(NODE), 128 * 1024 * 1024)?) == *NODE_SHA,
         "fresh executable binding",
     )?;
     require(
-        hash(&read(Path::new(NODE_CRYPTO_LIBRARY), 128 * 1024 * 1024)?) == NODE_CRYPTO_LIBRARY_SHA,
+        hash(&read(Path::new(NODE_CRYPTO_LIBRARY), 128 * 1024 * 1024)?) == *NODE_CRYPTO_LIBRARY_SHA,
         "fixed native crypto error dialect bytes",
     )?;
     Ok(())
@@ -894,9 +910,9 @@ pub fn approved_manifest() -> Result<Value> {
         APPROVED_MANIFEST_SHA.len() == 64,
         "root manifest approval held",
     )?;
-    let bytes = read(&Path::new(ROOT).join("manifest.json"), 2 * 1024 * 1024)?;
+    let bytes = read(&Path::new(*ROOT).join("manifest.json"), 2 * 1024 * 1024)?;
     require(
-        hash(&bytes) == APPROVED_MANIFEST_SHA,
+        hash(&bytes) == *APPROVED_MANIFEST_SHA,
         "root approved manifest bytes",
     )?;
     let manifest = serde_json::from_slice(&bytes).map_err(|_| "manifest JSON")?;

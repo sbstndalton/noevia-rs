@@ -26,7 +26,7 @@ NotDumpable/readback, CORE0, AS268435456bytes soft/hard, CPU5seconds soft/6hard,
 limit readbacks, bounded /proc/self/statm read and128MiB baseline qualification.
 No laterexec/credentialchanges exist in the fixture. Standard OOM can terminate
 the child; no unsafe pre_exec/custom allocator/recoverable-OOM claim. Unsupported
-platform refuses. Linux branch has not been compiled or executed on this Mac;
+platform refuses. Linux branch has not been compiled or executed on the macOS author host;
 exact-target Linux CI baseline, API feature build and limit probes remain required.
 
 Primary Linux sources verified 2026-10-11:
@@ -90,7 +90,7 @@ different control assertion. CANCEL requires actual progress and cleanup before
 the policy deadline assertion. ADMISSION asserts an intermediate missing hold.
 All three affected actual source mutations reran once with the maintained Request
 copy inventory and passed exact classification; captured outputs/fixtures remain
-at `/var/folders/_4/jbtxcfjd7hj2x9kvw4z5k7gm0000gp/T/m4-owned-mutants-11040`.
+in a private temporary directory outside the repository.
 Forged process/setup/compile/deadline/cap/protocol/wrongtest/location/policy/extra
 panic controls were rejected, including actual compiled output variants. The two
 affected unmodified policy tests passed once. This supersedes only the earlier

@@ -15,9 +15,15 @@ use std::{
 };
 
 const NODE: &str = "/opt/homebrew/opt/node@22/bin/node";
-const DIRECTORY: &str = "/tmp/m4-codecs-node22-builtin-capture";
 const CAPTURE: &str = "process.stdout.write(JSON.stringify({node:process.version,undici:process.versions.undici})+'\\n');process.stdout.write(process.binding('natives')['internal/deps/undici/undici']);";
 
+/// Where retained Node 22 captures go: M4_NODE22_EVIDENCE, else the system temp directory.
+fn evidence_root() -> Result<String, String> {
+    std::env::var("M4_NODE22_EVIDENCE")
+        .ok()
+        .or_else(|| std::env::temp_dir().to_str().map(str::to_owned))
+        .ok_or_else(|| "evidence directory".into())
+}
 fn artifact(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
     let mut file = fs::OpenOptions::new()
         .write(true)
@@ -32,9 +38,14 @@ fn installed_builtin_source_capture() -> Result<(), String> {
     // Fixed installed Node 22 observations write retained captures under /tmp; they run only on
     // an explicitly prepared host (M4_NODE22_ORACLE=1), never in ordinary CI.
     if std::env::var("M4_NODE22_ORACLE").as_deref() != Ok("1") {
+        node22_skipped("installed_builtin_source_capture");
         return Ok(());
     }
-    let owned_directory = format!("{DIRECTORY}-{}", std::process::id());
+    let owned_directory = format!(
+        "{}/m4-codecs-node22-builtin-capture-{}",
+        evidence_root()?,
+        std::process::id()
+    );
     let directory = Path::new(&owned_directory);
     fs::DirBuilder::new()
         .mode(0o700)
@@ -93,7 +104,7 @@ fn installed_builtin_source_capture() -> Result<(), String> {
 #[path = "support/codec_lab.rs"]
 mod lab;
 const COMPRESS_BR: &str = "const z=require('node:zlib');console.log(JSON.stringify({node:process.version,undici:process.versions.undici,small:z.brotliCompressSync(Buffer.from('ordinary brotli')).toString('hex'),empty:z.brotliCompressSync(Buffer.alloc(0)).toString('hex'),overText:z.brotliCompressSync(Buffer.alloc(800001,120)).toString('hex'),overList:z.brotliCompressSync(Buffer.alloc(4194305,120)).toString('hex')}));";
-const FETCH_CAP: &str = "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync(0,'utf8'));const {readCappedText}=require('/private/tmp/sol-routing-core010735-oracle/server/http.cjs');const v={node:process.version,undici:process.versions.undici};fetch(x.url,{method:x.method,redirect:'error',signal:AbortSignal.timeout(5000)}).then(r=>readCappedText(r,x.cap).then(b=>console.log(JSON.stringify({...v,status:r.status,capped:b.capped,length:b.text.length,prefix:b.text.slice(0,16),suffix:b.text.slice(-16)})))).catch(()=>console.log(JSON.stringify({...v,refused:true})));";
+const FETCH_CAP: &str = "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync(0,'utf8'));const {readCappedText}=require(process.env.M4_CORE_ORACLE+'/server/http.cjs');const v={node:process.version,undici:process.versions.undici};fetch(x.url,{method:x.method,redirect:'error',signal:AbortSignal.timeout(5000)}).then(r=>readCappedText(r,x.cap).then(b=>console.log(JSON.stringify({...v,status:r.status,capped:b.capped,length:b.text.length,prefix:b.text.slice(0,16),suffix:b.text.slice(-16)})))).catch(()=>console.log(JSON.stringify({...v,refused:true})));";
 fn fixed_node(
     script: &'static str,
     input: Vec<u8>,
@@ -101,8 +112,16 @@ fn fixed_node(
 ) -> Result<serde_json::Value, String> {
     let mut command = Command::new(NODE);
     command.env_clear().args(["-e", script]);
+    // The fetch seams load the pinned core's http.cjs from the operator's oracle checkout.
+    if let Some(core) = std::env::var_os("M4_CORE_ORACLE") {
+        command.env("M4_CORE_ORACLE", core);
+    }
     let output = process::bounded(command, input, Duration::from_secs(8))?;
-    let owned_directory = format!("/tmp/m4-codecs-node22-observations-{}", std::process::id());
+    let owned_directory = format!(
+        "{}/m4-codecs-node22-observations-{}",
+        evidence_root()?,
+        std::process::id()
+    );
     let directory = Path::new(&owned_directory);
     if !directory.exists() {
         fs::DirBuilder::new()
@@ -180,6 +199,7 @@ fn actual_builtin_codec_observations_and_malformed_overcap_gate() -> Result<(), 
     // Fixed installed Node 22 observations write retained captures under /tmp; they run only on
     // an explicitly prepared host (M4_NODE22_ORACLE=1), never in ordinary CI.
     if std::env::var("M4_NODE22_ORACLE").as_deref() != Ok("1") {
+        node22_skipped("actual_builtin_codec_observations_and_malformed_overcap_gate");
         return Ok(());
     }
     use server_storage_reads::{
@@ -271,7 +291,7 @@ fn actual_builtin_codec_observations_and_malformed_overcap_gate() -> Result<(), 
     Ok(())
 }
 
-const FETCH_BUFFER: &str = "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync(0,'utf8'));const {readCappedBuffer}=require('/private/tmp/sol-routing-core010735-oracle/server/http.cjs');const v={node:process.version,undici:process.versions.undici};fetch(x.url,{method:x.method,redirect:'error',signal:AbortSignal.timeout(5000)}).then(r=>readCappedBuffer(r,800000).then(b=>console.log(JSON.stringify({...v,status:r.status,capped:b.capped,length:b.bytes.length,prefix:b.bytes.subarray(0,32).toString('hex'),suffix:b.bytes.subarray(-32).toString('hex')})))).catch(()=>console.log(JSON.stringify({...v,refused:true})));";
+const FETCH_BUFFER: &str = "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync(0,'utf8'));const {readCappedBuffer}=require(process.env.M4_CORE_ORACLE+'/server/http.cjs');const v={node:process.version,undici:process.versions.undici};fetch(x.url,{method:x.method,redirect:'error',signal:AbortSignal.timeout(5000)}).then(r=>readCappedBuffer(r,800000).then(b=>console.log(JSON.stringify({...v,status:r.status,capped:b.capped,length:b.bytes.length,prefix:b.bytes.subarray(0,32).toString('hex'),suffix:b.bytes.subarray(-32).toString('hex')})))).catch(()=>console.log(JSON.stringify({...v,refused:true})));";
 fn belowcap_matrix(br: &serde_json::Value) -> Result<(), String> {
     let small = hex(br, "small")?;
     let gzip = lab::encode("gzip", b"hello");
@@ -338,4 +358,19 @@ fn belowcap_matrix(br: &serde_json::Value) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Record a skipped Node 22 observation so CI can count and show it (noevia#1827).
+fn node22_skipped(test: &str) {
+    eprintln!("M4 oracle skipped: {test} (set M4_NODE22_ORACLE=1 to run it)");
+    if let Some(log) = std::env::var_os("M4_ORACLE_SKIP_LOG") {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log)
+        {
+            let _ = writeln!(f, "{test}");
+        }
+    }
 }

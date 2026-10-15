@@ -22,19 +22,19 @@ fn owner_plaintext_and_module_containment_controls() -> Result<(), String> {
     let mut missing = expected.clone();
     missing.as_object_mut().ok_or("object")?.remove("secret");
     assert!(topology::compare_private_projection(&expected, &missing).is_err());
-    let root = Path::new("/private/tmp/fixed-oracle");
+    let root = Path::new("/synthetic/fixed-oracle");
     let files = BTreeSet::from([PathBuf::from("server/auth.cjs")]);
     assert!(topology::contained_module(
         root,
-        "/private/tmp/fixed-oracle/server/auth.cjs",
+        "/synthetic/fixed-oracle/server/auth.cjs",
         &files
     ));
     for bad in [
-        "/private/tmp/fixed-oracle-other/server/auth.cjs",
-        "/private/tmp/fixed-oracle/server/../auth.cjs",
-        "/private/tmp/fixed-oracle/server/uninventoried.cjs",
+        "/synthetic/fixed-oracle-other/server/auth.cjs",
+        "/synthetic/fixed-oracle/server/../auth.cjs",
+        "/synthetic/fixed-oracle/server/uninventoried.cjs",
         "server/auth.cjs",
-        "/tmp/fixed-oracle/server/auth.cjs",
+        "/elsewhere/fixed-oracle/server/auth.cjs",
     ] {
         assert!(!topology::contained_module(root, bad, &files));
     }

@@ -46,5 +46,5 @@ headers/wire/logical-header/trailer limits and meaningful source-bound mutants;
 full listing-cap IPC owner boundary; exact Linux setup/runtime/baseline/resource
 probes; TLS/DNS/codecs actual runtime corpus; async supervisor/reap failures;
 parent parser/sort memory; owner/AAD/auth/CSRF/store/routes/shared/defaultoff.
-Mac compilation of startup APIs is not Linux resource execution. Standard OOM
+macOS compilation of startup APIs is not Linux resource execution. Standard OOM
 and kernel cleanup timing caveats remain. No production or publication approval.

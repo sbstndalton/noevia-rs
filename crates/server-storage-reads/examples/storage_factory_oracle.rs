@@ -83,10 +83,10 @@ fn preflight() -> topology::Result<()> {
         time::Duration,
     };
     let manifest = topology::approved_manifest()?;
-    let root = Path::new(topology::PREFLIGHT_ROOT);
+    let root = Path::new(*topology::PREFLIGHT_ROOT);
     topology::directory(root)?;
     let mut cmd = Command::new(topology::NODE);
-    cmd.current_dir(topology::ROOT)
+    cmd.current_dir(*topology::ROOT)
         .env_clear()
         .env("PATH", "/usr/bin:/bin")
         .env("HOME", root)
@@ -97,7 +97,7 @@ fn preflight() -> topology::Result<()> {
     topology::put(
         &root.join("command.json"),
         &topology::json_bytes(
-            &json!({"program":topology::NODE,"args":["--no-warnings","-e",PREFLIGHT],"cwd":topology::ROOT,"env":{"PATH":"/usr/bin:/bin","HOME":root,"LC_ALL":"C","TZ":"UTC","SECRET_ENVELOPE_IMPL":"js"},"node_sha256":topology::NODE_SHA,"manifest_sha256":topology::APPROVED_MANIFEST_SHA}),
+            &json!({"program":topology::NODE,"args":["--no-warnings","-e",PREFLIGHT],"cwd":*topology::ROOT,"env":{"PATH":"/usr/bin:/bin","HOME":root,"LC_ALL":"C","TZ":"UTC","SECRET_ENVELOPE_IMPL":"js"},"node_sha256":*topology::NODE_SHA,"manifest_sha256":*topology::APPROVED_MANIFEST_SHA}),
             65536,
         )?,
     )?;
@@ -153,7 +153,7 @@ fn preflight() -> topology::Result<()> {
     topology::put(
         &root.join("preflight.json"),
         &topology::json_bytes(
-            &json!({"manifest_sha256":topology::APPROVED_MANIFEST_SHA,"node_sha256":topology::NODE_SHA,"script_sha256":topology::hash(PREFLIGHT.as_bytes()),"stdout_sha256":topology::hash(&o.stdout),"stderr_sha256":topology::hash(&o.stderr),"status_sha256":topology::hash(&topology::read(&root.join("native-runtime.status.json"),4096)?),"observation":value,"limits":"logical cooperative; no OS/dylib ancestry/RSS/OOM/kernel certificate"}),
+            &json!({"manifest_sha256":*topology::APPROVED_MANIFEST_SHA,"node_sha256":*topology::NODE_SHA,"script_sha256":topology::hash(PREFLIGHT.as_bytes()),"stdout_sha256":topology::hash(&o.stdout),"stderr_sha256":topology::hash(&o.stderr),"status_sha256":topology::hash(&topology::read(&root.join("native-runtime.status.json"),4096)?),"observation":value,"limits":"logical cooperative; no OS/dylib ancestry/RSS/OOM/kernel certificate"}),
             2 * 1024 * 1024,
         )?,
     )?;
@@ -177,17 +177,17 @@ fn run() -> topology::Result<()> {
         "root preflight approval held",
     )?;
     let preflight = topology::read(
-        &Path::new(topology::PREFLIGHT_ROOT).join("preflight.json"),
+        &Path::new(*topology::PREFLIGHT_ROOT).join("preflight.json"),
         2 * 1024 * 1024,
     )?;
     topology::require(
-        topology::hash(&preflight) == topology::APPROVED_PREFLIGHT_SHA,
+        topology::hash(&preflight) == *topology::APPROVED_PREFLIGHT_SHA,
         "root approved preflight",
     )?;
     let p: Value = serde_json::from_slice(&preflight).map_err(|_| "preflight JSON")?;
     topology::require(
-        p.get("manifest_sha256") == Some(&json!(topology::APPROVED_MANIFEST_SHA))
-            && p.get("node_sha256") == Some(&json!(topology::NODE_SHA))
+        p.get("manifest_sha256") == Some(&json!(*topology::APPROVED_MANIFEST_SHA))
+            && p.get("node_sha256") == Some(&json!(*topology::NODE_SHA))
             && p.get("script_sha256") == Some(&json!(topology::hash(PREFLIGHT.as_bytes()))),
         "preflight source identity",
     )?;
@@ -199,13 +199,13 @@ fn run() -> topology::Result<()> {
         topology::require(
             p.get(field)
                 == Some(&json!(topology::hash(&topology::read(
-                    &Path::new(topology::PREFLIGHT_ROOT).join(file),
+                    &Path::new(*topology::PREFLIGHT_ROOT).join(file),
                     cap
                 )?))),
             "preflight retained raw binding",
         )?;
     }
-    let root = Path::new(topology::CAPTURE_ROOT);
+    let root = Path::new(*topology::CAPTURE_ROOT);
     topology::directory(root)?;
     topology::directory(&root.join("fixtures"))?;
     let files: BTreeSet<PathBuf> = manifest
@@ -279,7 +279,7 @@ fn run() -> topology::Result<()> {
             &input,
         )?;
         let mut cmd = Command::new(topology::NODE);
-        cmd.current_dir(topology::ROOT)
+        cmd.current_dir(*topology::ROOT)
             .env_clear()
             .env("PATH", "/usr/bin:/bin")
             .env("HOME", root)
@@ -290,7 +290,7 @@ fn run() -> topology::Result<()> {
         topology::put(
             &root.join(format!("command-{shard_index:02}.json")),
             &topology::json_bytes(
-                &json!({"program":topology::NODE,"args":["--no-warnings","qualification-adapter.cjs"],"cwd":topology::ROOT,"env":{"PATH":"/usr/bin:/bin","HOME":root,"LC_ALL":"C","TZ":"UTC","SECRET_ENVELOPE_IMPL":"js"},"input_sha256":topology::hash(&input),"node_sha256":topology::NODE_SHA,"adapter_sha256":topology::hash(FACTORY_ADAPTER.as_bytes())}),
+                &json!({"program":topology::NODE,"args":["--no-warnings","qualification-adapter.cjs"],"cwd":*topology::ROOT,"env":{"PATH":"/usr/bin:/bin","HOME":root,"LC_ALL":"C","TZ":"UTC","SECRET_ENVELOPE_IMPL":"js"},"input_sha256":topology::hash(&input),"node_sha256":*topology::NODE_SHA,"adapter_sha256":topology::hash(FACTORY_ADAPTER.as_bytes())}),
                 65536,
             )?,
         )?;
@@ -352,7 +352,7 @@ fn run() -> topology::Result<()> {
         )?;
         captures.push(json!({"shard":shard_index,"stdout_sha256":topology::hash(&output.stdout),"stderr_sha256":topology::hash(&output.stderr),"status_sha256":topology::hash(&topology::read(&root.join(format!("capture-{shard_index:02}.status.json")),4096)?),"candidate_sha256":topology::hash(&candidate_bytes)}));
     }
-    let report = json!({"actual_core":topology::CORE,"candidate_production":topology::CANDIDATE,"source_cases":126,"manifest_sha256":topology::APPROVED_MANIFEST_SHA,"preflight_sha256":topology::APPROVED_PREFLIGHT_SHA,"captures":captures,"qualification":"capture complete; no comparison certificate"});
+    let report = json!({"actual_core":topology::CORE,"candidate_production":topology::CANDIDATE,"source_cases":126,"manifest_sha256":*topology::APPROVED_MANIFEST_SHA,"preflight_sha256":*topology::APPROVED_PREFLIGHT_SHA,"captures":captures,"qualification":"capture complete; no comparison certificate"});
     topology::put(
         &root.join("capture-complete.json"),
         &topology::json_bytes(&report, 32 * 1024 * 1024)?,
@@ -363,13 +363,13 @@ fn run() -> topology::Result<()> {
 fn compare() -> topology::Result<()> {
     use serde_json::{json, Value};
     use std::path::Path;
-    let root = Path::new(topology::CAPTURE_ROOT);
+    let root = Path::new(*topology::CAPTURE_ROOT);
     let complete: Value =
         serde_json::from_slice(&topology::read(&root.join("capture-complete.json"), 65536)?)
             .map_err(|_| "complete JSON")?;
     topology::require(
-        complete.get("manifest_sha256") == Some(&json!(topology::APPROVED_MANIFEST_SHA))
-            && complete.get("preflight_sha256") == Some(&json!(topology::APPROVED_PREFLIGHT_SHA))
+        complete.get("manifest_sha256") == Some(&json!(*topology::APPROVED_MANIFEST_SHA))
+            && complete.get("preflight_sha256") == Some(&json!(*topology::APPROVED_PREFLIGHT_SHA))
             && topology::APPROVED_MANIFEST_SHA.len() == 64
             && topology::APPROVED_PREFLIGHT_SHA.len() == 64,
         "approved comparison inputs",

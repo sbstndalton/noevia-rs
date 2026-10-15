@@ -69,7 +69,7 @@ fn wrong_job_and_source_refuse_before_any_file_or_child() {
     for job in ["wrong", "storage-metadata-admission"] {
         assert!(acceptance::admit(&json!({"schema":1,"job":job,"rs":"wrong","core":acceptance::CORE,"supervisor":acceptance::SUPERVISOR,"sources":[],"artifacts":{}})).is_err());
     }
-    for path in ["relative", "/tmp/../outside", "/tmp/control\n"] {
+    for path in ["relative", "/synthetic/../outside", "/synthetic/control\n"] {
         assert!(acceptance::absolute(path).is_err());
     }
 }

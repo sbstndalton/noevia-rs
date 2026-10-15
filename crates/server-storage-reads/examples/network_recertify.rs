@@ -9,8 +9,11 @@ fn read(path: &Path) -> Result<Vec<u8>, String> {
     capped_capture::read(path).map_err(|_| "capture read refused".into())
 }
 fn run() -> Result<(), String> {
-    let root =
-        Path::new("/var/folders/_4/jbtxcfjd7hj2x9kvw4z5k7gm0000gp/T/m4-network-mutants-21014");
+    // The retained captures live in a private directory named by the operator.
+    let root = std::path::PathBuf::from(
+        std::env::var_os("M4_NETWORK_MUTANTS_ROOT").ok_or("M4_NETWORK_MUTANTS_ROOT unset")?,
+    );
+    let root = root.as_path();
     let source = String::from_utf8(read(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/network_policies.rs"),
     )?)
