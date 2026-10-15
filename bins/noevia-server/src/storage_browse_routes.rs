@@ -68,6 +68,31 @@ fn unavailable() -> Response<Body> {
     )
 }
 
+/// Why a signed-in request was answered with the generic 503 after the gate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UnavailableReason {
+    /// The caller's connection row could not be read or projected.
+    RowRead,
+    /// The identity store could not be opened.
+    StoreOpen,
+    /// The secrets key could not be loaded (the row is then read without it).
+    KeyLoad,
+}
+impl UnavailableReason {
+    fn line(self) -> &'static str {
+        match self {
+            Self::RowRead => {
+                "noevia-server: storage browse unavailable: connection row read failed"
+            }
+            Self::StoreOpen => "noevia-server: storage browse unavailable: store open failed",
+            Self::KeyLoad => "noevia-server: storage browse unavailable: secrets key load failed",
+        }
+    }
+}
+fn log_unavailable(reason: UnavailableReason) {
+    eprintln!("{}", reason.line());
+}
+
 /// Sets the cancellation flag when the request future is dropped, so the owned child is killed.
 struct CancelOnDrop(Arc<AtomicBool>);
 impl Drop for CancelOnDrop {
@@ -185,14 +210,25 @@ pub async fn serve(
         let previous = std::env::var("SECRETS_KEY_PREVIOUS")
             .ok()
             .map(zeroize::Zeroizing::new);
-        let keys =
-            owner_secret::load_existing_keys(&data_dir, previous.as_deref().map(String::as_str))
-                .ok();
+        // The public answer stays one 503; one fixed, secret-free line per failure class tells an
+        // operator which step failed (#1835). No error text, path, key or row value is logged.
+        let keys = match owner_secret::load_existing_keys(
+            &data_dir,
+            previous.as_deref().map(String::as_str),
+        ) {
+            Ok(keys) => Some(keys),
+            Err(_) => {
+                log_unavailable(UnavailableReason::KeyLoad);
+                None
+            }
+        };
         let Ok(store) = layer.store_blocking() else {
+            log_unavailable(UnavailableReason::StoreOpen);
             return unavailable();
         };
         let Ok(projected) = owner_secret::project_connection_with(&store, &id, keys.as_ref())
         else {
+            log_unavailable(UnavailableReason::RowRead);
             return unavailable();
         };
         drop(store);
@@ -220,7 +256,6 @@ pub async fn serve(
         let mut transport = server_storage_reads::transport::ChildTransport::new(
             program,
             &[server_storage_reads::transport::CHILD_ARG],
-            id.user.id.as_str(),
             &cancelled,
         );
         match protocol::execute(connection, &units, operation, &mut transport) {
@@ -242,6 +277,24 @@ pub async fn serve(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    #[test]
+    fn unavailable_lines_are_distinct_and_fixed() {
+        let lines = [
+            UnavailableReason::RowRead.line(),
+            UnavailableReason::StoreOpen.line(),
+            UnavailableReason::KeyLoad.line(),
+        ];
+        assert_eq!(
+            lines
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            3
+        );
+        assert!(lines.iter().all(
+            |l| l.starts_with("noevia-server: storage browse unavailable: ") && !l.contains('{')
+        ));
+    }
     #[test]
     fn decode_component_is_decode_uri_component() {
         let s = |v: &str| String::from_utf16(&decode_component(v).unwrap()).unwrap();

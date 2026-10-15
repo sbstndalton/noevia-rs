@@ -536,3 +536,53 @@ async fn native_matches_node() {
         .iter()
         .any(|(_, t, _)| t.contains("continuation-token=token-2")));
 }
+
+/// One `POST /api/integrations/storage/file` through the real gate with the given `x-csrf-token`
+/// (None: no header). The session cookie and its stored CSRF hash are valid.
+async fn file_post_with_csrf(app: &Arc<App>, csrf: Option<&str>) -> (u16, String) {
+    let mut req = Request::builder()
+        .method("POST")
+        .uri("/api/integrations/storage/file")
+        .header("cookie", "cowork_session=session-admin; cowork_csrf=csrf")
+        .header("origin", ORIGIN)
+        .header("content-type", "application/json");
+    if let Some(token) = csrf {
+        req = req.header("x-csrf-token", token);
+    }
+    let conn = Conn {
+        peer: "127.0.0.1:1".parse().unwrap(),
+        local: Some("127.0.0.1:8021".parse().unwrap()),
+    };
+    let res = storage_browse_routes::serve(
+        app,
+        conn,
+        req.body(Body::from(r#"{"path":"docs/a.md"}"#)).unwrap(),
+        "/api/integrations/storage/file".into(),
+    )
+    .await;
+    let status = res.status().as_u16();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8(bytes.to_vec()).unwrap())
+}
+
+/// Core index.cjs answers a state-changing request with a missing or wrong CSRF token with
+/// `403 {"error":"invalid CSRF token"}` before the route runs (#1835). The gate refuses before any
+/// connection read or outbound work, so this needs neither the oracle nor Linux.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_post_with_missing_or_wrong_csrf_is_nodes_403() {
+    let (_port, seen) = synthetic_storage();
+    let dir = tempfile::tempdir().unwrap();
+    let app = native_app(dir.path());
+    let expected = (403, r#"{"error":"invalid CSRF token"}"#.to_string());
+    assert_eq!(file_post_with_csrf(&app, None).await, expected, "missing");
+    assert_eq!(file_post_with_csrf(&app, Some("")).await, expected, "empty");
+    assert_eq!(
+        file_post_with_csrf(&app, Some("not-the-token")).await,
+        expected,
+        "wrong"
+    );
+    assert!(seen.lock().unwrap().is_empty(), "no outbound request");
+    // Control: the right token passes the gate (the body is then refused by the route, not by CSRF).
+    let (status, body) = file_post_with_csrf(&app, Some("csrf")).await;
+    assert_ne!(status, 403, "{body}");
+}
