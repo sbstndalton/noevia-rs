@@ -1,0 +1,688 @@
+{
+ "v": 1,
+ "users": {
+  "a": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+  "b": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"
+ },
+ "other": {
+  "free-chats.json": "[{\"id\":\"c1\",\"title\":\"B SECRET TITLE\"},{\"id\":\"b-only\",\"title\":\"B only\"}]",
+  "projects.json": "{\"projects\":[{\"id\":\"pb\",\"name\":\"B project\",\"chats\":[{\"id\":\"c2\",\"title\":\"B project chat\"}]}]}",
+  "history-c1.json": "{\"history\":[{\"role\":\"user\",\"content\":\"B SECRET CONTENT\"}]}",
+  "history-b-only.json": "{\"history\":[{\"role\":\"user\",\"content\":\"B SECRET CONTENT\"}]}"
+ },
+ "cases": [
+  {
+   "id": "no-files",
+   "files": {},
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "617"
+    },
+    "zipSha256": "8fa054fec3ad0d27e00d8a9f00860036c2248f720a001bb67e40802fd1663b4b",
+    "zipLength": 617,
+    "zip": "UEsDBBQAAAgAAFxkTl2ZdqK8IQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAwIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgYvY2GQAAABkAAAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFtdCn1QSwECFAAUAAAIAABcZE5dmXaivCEBAAAhAQAACQAAAAAAAAAAAAAAAAAAAAAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYGL2NhkAAAAZAAAABIAAAAAAAAAAAAAAAAASAEAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAAAgACAHcAAADcAQAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":617}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "no-user-directory",
+   "files": {},
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "missingDir": true,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "617"
+    },
+    "zipSha256": "8fa054fec3ad0d27e00d8a9f00860036c2248f720a001bb67e40802fd1663b4b",
+    "zipLength": 617,
+    "zip": "UEsDBBQAAAgAAFxkTl2ZdqK8IQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAwIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgYvY2GQAAABkAAAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFtdCn1QSwECFAAUAAAIAABcZE5dmXaivCEBAAAhAQAACQAAAAAAAAAAAAAAAAAAAAAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYGL2NhkAAAAZAAAABIAAAAAAAAAAAAAAAAASAEAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAAAgACAHcAAADcAQAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":617}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "free-chats-and-histories",
+   "files": {
+    "free-chats.json": "[\n  {\n    \"id\": \"c1\",\n    \"title\": \"Hello world\",\n    \"updatedAt\": 1800000000000,\n    \"preview\": \"p\"\n  },\n  {\n    \"id\": \"c2\",\n    \"title\": \"\",\n    \"updatedAt\": 0\n  },\n  {\n    \"id\": \"c3\",\n    \"title\": \"Hello world\"\n  }\n]",
+    "history-c1.json": "{\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is 2+2?\",\n      \"at\": 1\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"  4  \",\n      \"reasoning\": \"SECRET_REASONING\",\n      \"answers\": [\n        \"old\"\n      ],\n      \"answer\": 0,\n      \"branches\": [\n        {\n          \"c\": 1\n        }\n      ],\n      \"branch\": 1,\n      \"toolCalls\": [\n        {\n          \"name\": \"Read\"\n        },\n        null,\n        {\n          \"name\": \"\"\n        },\n        {\n          \"name\": \"Write\"\n        }\n      ]\n    },\n    {\n      \"role\": \"system\",\n      \"content\": \"SECRET_SYSTEM\"\n    },\n    {\n      \"role\": \"tool\",\n      \"content\": \"tool output\"\n    }\n  ]\n}",
+    "history-c2.json": "{\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": {\n        \"a\": 1\n      }\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": [\n        1,\n        [\n          2,\n          null\n        ],\n        \"x\"\n      ]\n    }\n  ]\n}",
+    "history-c3.json": "{\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"second\",\n      \"at\": 1\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"same title, so a -2 name\",\n      \"reasoning\": \"SECRET_REASONING\",\n      \"answers\": [\n        \"old\"\n      ],\n      \"answer\": 0,\n      \"branches\": [\n        {\n          \"c\": 1\n        }\n      ],\n      \"branch\": 1,\n      \"toolCalls\": [\n        {\n          \"name\": \"Read\"\n        },\n        null,\n        {\n          \"name\": \"\"\n        },\n        {\n          \"name\": \"Write\"\n        }\n      ]\n    },\n    {\n      \"role\": \"system\",\n      \"content\": \"SECRET_SYSTEM\"\n    },\n    {\n      \"role\": \"tool\",\n      \"content\": \"tool output\"\n    }\n  ]\n}"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "3227"
+    },
+    "zipSha256": "39daf140e59d9f789e6eca541fca7228ad1fdc6e56a13b7f210303c2d571bee5",
+    "zipLength": 3227,
+    "zip": "UEsDBBQAAAgAAFxkTl3lJwmNeQAAAHkAAAAXAAAAY2hhdHMvaGVsbG8td29ybGQtYzEubWQjIEhlbGxvIHdvcmxkCgpfTGFzdCB1cGRhdGVkIDIwMjctMDEtMTVUMDg6MDA6MDAuMDAwWl8KCiMjIFlvdQoKV2hhdCBpcyAyKzI/CgojIyBBc3Npc3RhbnQKCjQKCl9Ub29scyB1c2VkOiBSZWFkLCBXcml0ZV8KUEsDBBQAAAgAAFxkTl04Kv8NWgAAAFoAAAAZAAAAY2hhdHMvdW50aXRsZWQtY2hhdC1jMi5tZCMgVW50aXRsZWQgY2hhdAoKIyMgWW91CgpfKG5vIHRleHQpXwoKIyMgQXNzaXN0YW50Cgpbb2JqZWN0IE9iamVjdF0KCiMjIEFzc2lzdGFudAoKMSwyLCx4ClBLAwQUAAAIAABcZE5dOCXMdGEAAABhAAAAFwAAAGNoYXRzL2hlbGxvLXdvcmxkLWMzLm1kIyBIZWxsbyB3b3JsZAoKIyMgWW91CgpzZWNvbmQKCiMjIEFzc2lzdGFudAoKc2FtZSB0aXRsZSwgc28gYSAtMiBuYW1lCgpfVG9vbHMgdXNlZDogUmVhZCwgV3JpdGVfClBLAwQUAAAIAABcZE5deTqSNyEBAAAhAQAACQAAAFJFQURNRS5tZCMgbm9ldmlhIGNvbnZlcnNhdGlvbnMKCkV4cG9ydGVkIDIwMjYtMTAtMTRUMTI6MzQ6NTYuNzg5Wi4gMyBjaGF0cy4KCi0gYGNoYXRzL2A6IGNoYXRzIG91dHNpZGUgcHJvamVjdHMsIG9uZSBNYXJrZG93biBmaWxlIGVhY2guCi0gYHByb2plY3RzL2A6IGNoYXRzIGdyb3VwZWQgYnkgcHJvamVjdC4KLSBgY29udmVyc2F0aW9ucy5qc29uYDogZXZlcnl0aGluZyBhYm92ZSBpbiBvbmUgZmlsZSAoZm9ybWF0IG5vZXZpYS1jb252ZXJzYXRpb25zLXYxKS4KClRoaW5raW5nIHRleHQgaXMgbm90IGluY2x1ZGVkLgpQSwMEFAAACAAAXGROXYFUaeTwBwAA8AcAABIAAABjb252ZXJzYXRpb25zLmpzb257CiAgImZvcm1hdCI6ICJub2V2aWEtY29udmVyc2F0aW9ucy12MSIsCiAgImV4cG9ydGVkQXQiOiAiMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaIiwKICAiY2hhdHMiOiBbCiAgICB7CiAgICAgICJpZCI6ICJjMSIsCiAgICAgICJ0aXRsZSI6ICJIZWxsbyB3b3JsZCIsCiAgICAgICJ1cGRhdGVkQXQiOiAxODAwMDAwMDAwMDAwLAogICAgICAicHJvamVjdCI6IG51bGwsCiAgICAgICJoaXN0b3J5IjogWwogICAgICAgIHsKICAgICAgICAgICJyb2xlIjogInVzZXIiLAogICAgICAgICAgImNvbnRlbnQiOiAiV2hhdCBpcyAyKzI/IiwKICAgICAgICAgICJhdCI6IDEKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICJyb2xlIjogImFzc2lzdGFudCIsCiAgICAgICAgICAiY29udGVudCI6ICIgIDQgICIsCiAgICAgICAgICAidG9vbENhbGxzIjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgIm5hbWUiOiAiUmVhZCIKICAgICAgICAgICAgfSwKICAgICAgICAgICAgbnVsbCwKICAgICAgICAgICAgewogICAgICAgICAgICAgICJuYW1lIjogIiIKICAgICAgICAgICAgfSwKICAgICAgICAgICAgewogICAgICAgICAgICAgICJuYW1lIjogIldyaXRlIgogICAgICAgICAgICB9CiAgICAgICAgICBdCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAicm9sZSI6ICJzeXN0ZW0iLAogICAgICAgICAgImNvbnRlbnQiOiAiU0VDUkVUX1NZU1RFTSIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICJyb2xlIjogInRvb2wiLAogICAgICAgICAgImNvbnRlbnQiOiAidG9vbCBvdXRwdXQiCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAiaWQiOiAiYzIiLAogICAgICAidGl0bGUiOiAiIiwKICAgICAgInVwZGF0ZWRBdCI6IG51bGwsCiAgICAgICJwcm9qZWN0IjogbnVsbCwKICAgICAgImhpc3RvcnkiOiBbCiAgICAgICAgewogICAgICAgICAgInJvbGUiOiAidXNlciIsCiAgICAgICAgICAiY29udGVudCI6ICIiCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAicm9sZSI6ICJhc3Npc3RhbnQiLAogICAgICAgICAgImNvbnRlbnQiOiB7CiAgICAgICAgICAgICJhIjogMQogICAgICAgICAgfQogICAgICAgIH0sCiAgICAgICAgewogICAgICAgICAgInJvbGUiOiAiYXNzaXN0YW50IiwKICAgICAgICAgICJjb250ZW50IjogWwogICAgICAgICAgICAxLAogICAgICAgICAgICBbCiAgICAgICAgICAgICAgMiwKICAgICAgICAgICAgICBudWxsCiAgICAgICAgICAgIF0sCiAgICAgICAgICAgICJ4IgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImlkIjogImMzIiwKICAgICAgInRpdGxlIjogIkhlbGxvIHdvcmxkIiwKICAgICAgInVwZGF0ZWRBdCI6IG51bGwsCiAgICAgICJwcm9qZWN0IjogbnVsbCwKICAgICAgImhpc3RvcnkiOiBbCiAgICAgICAgewogICAgICAgICAgInJvbGUiOiAidXNlciIsCiAgICAgICAgICAiY29udGVudCI6ICJzZWNvbmQiLAogICAgICAgICAgImF0IjogMQogICAgICAgIH0sCiAgICAgICAgewogICAgICAgICAgInJvbGUiOiAiYXNzaXN0YW50IiwKICAgICAgICAgICJjb250ZW50IjogInNhbWUgdGl0bGUsIHNvIGEgLTIgbmFtZSIsCiAgICAgICAgICAidG9vbENhbGxzIjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgIm5hbWUiOiAiUmVhZCIKICAgICAgICAgICAgfSwKICAgICAgICAgICAgbnVsbCwKICAgICAgICAgICAgewogICAgICAgICAgICAgICJuYW1lIjogIiIKICAgICAgICAgICAgfSwKICAgICAgICAgICAgewogICAgICAgICAgICAgICJuYW1lIjogIldyaXRlIgogICAgICAgICAgICB9CiAgICAgICAgICBdCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAicm9sZSI6ICJzeXN0ZW0iLAogICAgICAgICAgImNvbnRlbnQiOiAiU0VDUkVUX1NZU1RFTSIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICJyb2xlIjogInRvb2wiLAogICAgICAgICAgImNvbnRlbnQiOiAidG9vbCBvdXRwdXQiCiAgICAgICAgfQogICAgICBdCiAgICB9CiAgXQp9UEsBAhQAFAAACAAAXGROXeUnCY15AAAAeQAAABcAAAAAAAAAAAAAAAAAAAAAAGNoYXRzL2hlbGxvLXdvcmxkLWMxLm1kUEsBAhQAFAAACAAAXGROXTgq/w1aAAAAWgAAABkAAAAAAAAAAAAAAAAArgAAAGNoYXRzL3VudGl0bGVkLWNoYXQtYzIubWRQSwECFAAUAAAIAABcZE5dOCXMdGEAAABhAAAAFwAAAAAAAAAAAAAAAAA/AQAAY2hhdHMvaGVsbG8td29ybGQtYzMubWRQSwECFAAUAAAIAABcZE5deTqSNyEBAAAhAQAACQAAAAAAAAAAAAAAAADVAQAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYFUaeTwBwAA8AcAABIAAAAAAAAAAAAAAAAAHQMAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAABQAFAEgBAAA9CwAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":3227}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "projects-and-internal-projects",
+   "files": {
+    "free-chats.json": "[]",
+    "projects.json": "{\n  \"projects\": [\n    {\n      \"id\": \"p1\",\n      \"name\": \"Research & Notes\",\n      \"files\": [\n        null,\n        {\n          \"name\": \"f\"\n        }\n      ],\n      \"chats\": [\n        {\n          \"id\": \"pc1\",\n          \"title\": \"In a project\",\n          \"updatedAt\": \"2026-10-01T10:00:00.000Z\"\n        },\n        {\n          \"id\": \"pc2\",\n          \"title\": \"In a project\"\n        }\n      ]\n    },\n    {\n      \"id\": \"cowork-diary-extras\",\n      \"name\": \"Diary attachments\",\n      \"chats\": [\n        {\n          \"id\": \"hidden1\",\n          \"title\": \"HIDDEN\"\n        }\n      ]\n    },\n    {\n      \"id\": \"cowork-chat-context-abc\",\n      \"name\": \"ctx\",\n      \"chats\": [\n        {\n          \"id\": \"hidden2\",\n          \"title\": \"HIDDEN\"\n        }\n      ]\n    },\n    {\n      \"id\": \"p2\",\n      \"name\": \"\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"p-3!\",\n      \"name\": \"😀\",\n      \"chats\": [\n        {\n          \"id\": \"pc3\",\n          \"title\": \"x\"\n        }\n      ]\n    },\n    {\n      \"id\": \"\",\n      \"name\": \"\",\n      \"chats\": [\n        {\n          \"id\": \"pc4\"\n        }\n      ]\n    }\n  ]\n}",
+    "history-pc1.json": "{\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"project q\",\n      \"at\": 1\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"project a\",\n      \"reasoning\": \"SECRET_REASONING\",\n      \"answers\": [\n        \"old\"\n      ],\n      \"answer\": 0,\n      \"branches\": [\n        {\n          \"c\": 1\n        }\n      ],\n      \"branch\": 1,\n      \"toolCalls\": [\n        {\n          \"name\": \"Read\"\n        },\n        null,\n        {\n          \"name\": \"\"\n        },\n        {\n          \"name\": \"Write\"\n        }\n      ]\n    },\n    {\n      \"role\": \"system\",\n      \"content\": \"SECRET_SYSTEM\"\n    },\n    {\n      \"role\": \"tool\",\n      \"content\": \"tool output\"\n    }\n  ]\n}",
+    "history-hidden1.json": "{\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"HIDDEN CONTENT\"\n    }\n  ]\n}"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "2692"
+    },
+    "zipSha256": "c93c9caa6447b04def2ebdb2973299eef7f47503d309683f9e43a55517e64cc1",
+    "zipLength": 2692,
+    "zip": "UEsDBBQAAAgAAFxkTl1Oo4QqfwAAAH8AAAArAAAAcHJvamVjdHMvcmVzZWFyY2gtbm90ZXMvaW4tYS1wcm9qZWN0LXBjMS5tZCMgSW4gYSBwcm9qZWN0CgpfTGFzdCB1cGRhdGVkIDIwMjYtMTAtMDFUMTA6MDA6MDAuMDAwWl8KCiMjIFlvdQoKcHJvamVjdCBxCgojIyBBc3Npc3RhbnQKCnByb2plY3QgYQoKX1Rvb2xzIHVzZWQ6IFJlYWQsIFdyaXRlXwpQSwMEFAAACAAAXGROXeLMVFIPAAAADwAAACsAAABwcm9qZWN0cy9yZXNlYXJjaC1ub3Rlcy9pbi1hLXByb2plY3QtcGMyLm1kIyBJbiBhIHByb2plY3QKUEsDBBQAAAgAAFxkTl3Mg72sBAAAAAQAAAAVAAAAcHJvamVjdHMvcC0zL3gtcGMzLm1kIyB4ClBLAwQUAAAIAABcZE5dq2nZZhAAAAAQAAAAJQAAAHByb2plY3RzL3Byb2plY3QvdW50aXRsZWQtY2hhdC1wYzQubWQjIFVudGl0bGVkIGNoYXQKUEsDBBQAAAgAAFxkTl1YnpODIQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiA0IGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgCdSh40FAACNBQAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFsKICAgIHsKICAgICAgImlkIjogInBjMSIsCiAgICAgICJ0aXRsZSI6ICJJbiBhIHByb2plY3QiLAogICAgICAidXBkYXRlZEF0IjogIjIwMjYtMTAtMDFUMTA6MDA6MDAuMDAwWiIsCiAgICAgICJwcm9qZWN0IjogewogICAgICAgICJpZCI6ICJwMSIsCiAgICAgICAgIm5hbWUiOiAiUmVzZWFyY2ggJiBOb3RlcyIKICAgICAgfSwKICAgICAgImhpc3RvcnkiOiBbCiAgICAgICAgewogICAgICAgICAgInJvbGUiOiAidXNlciIsCiAgICAgICAgICAiY29udGVudCI6ICJwcm9qZWN0IHEiLAogICAgICAgICAgImF0IjogMQogICAgICAgIH0sCiAgICAgICAgewogICAgICAgICAgInJvbGUiOiAiYXNzaXN0YW50IiwKICAgICAgICAgICJjb250ZW50IjogInByb2plY3QgYSIsCiAgICAgICAgICAidG9vbENhbGxzIjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgIm5hbWUiOiAiUmVhZCIKICAgICAgICAgICAgfSwKICAgICAgICAgICAgbnVsbCwKICAgICAgICAgICAgewogICAgICAgICAgICAgICJuYW1lIjogIiIKICAgICAgICAgICAgfSwKICAgICAgICAgICAgewogICAgICAgICAgICAgICJuYW1lIjogIldyaXRlIgogICAgICAgICAgICB9CiAgICAgICAgICBdCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAicm9sZSI6ICJzeXN0ZW0iLAogICAgICAgICAgImNvbnRlbnQiOiAiU0VDUkVUX1NZU1RFTSIKICAgICAgICB9LAogICAgICAgIHsKICAgICAgICAgICJyb2xlIjogInRvb2wiLAogICAgICAgICAgImNvbnRlbnQiOiAidG9vbCBvdXRwdXQiCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAiaWQiOiAicGMyIiwKICAgICAgInRpdGxlIjogIkluIGEgcHJvamVjdCIsCiAgICAgICJ1cGRhdGVkQXQiOiBudWxsLAogICAgICAicHJvamVjdCI6IHsKICAgICAgICAiaWQiOiAicDEiLAogICAgICAgICJuYW1lIjogIlJlc2VhcmNoICYgTm90ZXMiCiAgICAgIH0sCiAgICAgICJoaXN0b3J5IjogW10KICAgIH0sCiAgICB7CiAgICAgICJpZCI6ICJwYzMiLAogICAgICAidGl0bGUiOiAieCIsCiAgICAgICJ1cGRhdGVkQXQiOiBudWxsLAogICAgICAicHJvamVjdCI6IHsKICAgICAgICAiaWQiOiAicC0zISIsCiAgICAgICAgIm5hbWUiOiAi8J+YgCIKICAgICAgfSwKICAgICAgImhpc3RvcnkiOiBbXQogICAgfSwKICAgIHsKICAgICAgImlkIjogInBjNCIsCiAgICAgICJ0aXRsZSI6ICIiLAogICAgICAidXBkYXRlZEF0IjogbnVsbCwKICAgICAgInByb2plY3QiOiB7CiAgICAgICAgImlkIjogIiIsCiAgICAgICAgIm5hbWUiOiAiIgogICAgICB9LAogICAgICAiaGlzdG9yeSI6IFtdCiAgICB9CiAgXQp9UEsBAhQAFAAACAAAXGROXU6jhCp/AAAAfwAAACsAAAAAAAAAAAAAAAAAAAAAAHByb2plY3RzL3Jlc2VhcmNoLW5vdGVzL2luLWEtcHJvamVjdC1wYzEubWRQSwECFAAUAAAIAABcZE5d4sxUUg8AAAAPAAAAKwAAAAAAAAAAAAAAAADIAAAAcHJvamVjdHMvcmVzZWFyY2gtbm90ZXMvaW4tYS1wcm9qZWN0LXBjMi5tZFBLAQIUABQAAAgAAFxkTl3Mg72sBAAAAAQAAAAVAAAAAAAAAAAAAAAAACABAABwcm9qZWN0cy9wLTMveC1wYzMubWRQSwECFAAUAAAIAABcZE5dq2nZZhAAAAAQAAAAJQAAAAAAAAAAAAAAAABXAQAAcHJvamVjdHMvcHJvamVjdC91bnRpdGxlZC1jaGF0LXBjNC5tZFBLAQIUABQAAAgAAFxkTl1YnpODIQEAACEBAAAJAAAAAAAAAAAAAAAAAKoBAABSRUFETUUubWRQSwECFAAUAAAIAABcZE5dgCdSh40FAACNBQAAEgAAAAAAAAAAAAAAAADyAgAAY29udmVyc2F0aW9ucy5qc29uUEsFBgAAAAAGAAYAvwEAAK8IAAAAAA==",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":2692}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "free-chats-not-a-list",
+   "files": {
+    "free-chats.json": "{\"chats\":[{\"id\":\"x\"}]}"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "617"
+    },
+    "zipSha256": "8fa054fec3ad0d27e00d8a9f00860036c2248f720a001bb67e40802fd1663b4b",
+    "zipLength": 617,
+    "zip": "UEsDBBQAAAgAAFxkTl2ZdqK8IQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAwIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgYvY2GQAAABkAAAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFtdCn1QSwECFAAUAAAIAABcZE5dmXaivCEBAAAhAQAACQAAAAAAAAAAAAAAAAAAAAAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYGL2NhkAAAAZAAAABIAAAAAAAAAAAAAAAAASAEAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAAAgACAHcAAADcAQAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":617}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "free-chats-null",
+   "files": {
+    "free-chats.json": "null"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "617"
+    },
+    "zipSha256": "8fa054fec3ad0d27e00d8a9f00860036c2248f720a001bb67e40802fd1663b4b",
+    "zipLength": 617,
+    "zip": "UEsDBBQAAAgAAFxkTl2ZdqK8IQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAwIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgYvY2GQAAABkAAAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFtdCn1QSwECFAAUAAAIAABcZE5dmXaivCEBAAAhAQAACQAAAAAAAAAAAAAAAAAAAAAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYGL2NhkAAAAZAAAABIAAAAAAAAAAAAAAAAASAEAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAAAgACAHcAAADcAQAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":617}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "projects-json-null",
+   "files": {
+    "projects.json": "null"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "617"
+    },
+    "zipSha256": "8fa054fec3ad0d27e00d8a9f00860036c2248f720a001bb67e40802fd1663b4b",
+    "zipLength": 617,
+    "zip": "UEsDBBQAAAgAAFxkTl2ZdqK8IQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAwIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgYvY2GQAAABkAAAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFtdCn1QSwECFAAUAAAIAABcZE5dmXaivCEBAAAhAQAACQAAAAAAAAAAAAAAAAAAAAAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYGL2NhkAAAAZAAAABIAAAAAAAAAAAAAAAAASAEAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAAAgACAHcAAADcAQAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":617}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "projects-null",
+   "files": {
+    "projects.json": "{\"projects\":null}"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "617"
+    },
+    "zipSha256": "8fa054fec3ad0d27e00d8a9f00860036c2248f720a001bb67e40802fd1663b4b",
+    "zipLength": 617,
+    "zip": "UEsDBBQAAAgAAFxkTl2ZdqK8IQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAwIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgYvY2GQAAABkAAAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFtdCn1QSwECFAAUAAAIAABcZE5dmXaivCEBAAAhAQAACQAAAAAAAAAAAAAAAAAAAAAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYGL2NhkAAAAZAAAABIAAAAAAAAAAAAAAAAASAEAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAAAgACAHcAAADcAQAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":617}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "projects-file-is-a-list",
+   "files": {
+    "projects.json": "[1,2]"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "617"
+    },
+    "zipSha256": "8fa054fec3ad0d27e00d8a9f00860036c2248f720a001bb67e40802fd1663b4b",
+    "zipLength": 617,
+    "zip": "UEsDBBQAAAgAAFxkTl2ZdqK8IQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAwIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgYvY2GQAAABkAAAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFtdCn1QSwECFAAUAAAIAABcZE5dmXaivCEBAAAhAQAACQAAAAAAAAAAAAAAAAAAAAAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYGL2NhkAAAAZAAAABIAAAAAAAAAAAAAAAAASAEAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAAAgACAHcAAADcAQAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":617}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "history-edge-reads",
+   "files": {
+    "free-chats.json": "[{\"id\":\"invalid-json\"},{\"id\":\"null-json\"},{\"id\":\"null-history\"},{\"id\":\"is-a-dir\"},{\"id\":\"no-file\"},{\"id\":\"../x\"},{\"id\":\"..\"},{\"id\":null},{\"id\":12},{\"id\":\"bom\"},{\"id\":\"string-history\"},{\"id\":\"zero-history\"}]",
+    "history-invalid-json.json": "{\"history\": [",
+    "history-null-json.json": "null",
+    "history-null-history.json": "{\"history\": null}",
+    "history-is-a-dir.json": {
+     "dir": true
+    },
+    "history-x.json": "{\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"reached through ../x, reduced to x\"\n    }\n  ]\n}",
+    "history-12.json": "{\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"numeric id\"\n    }\n  ]\n}",
+    "history-bom.json": {
+     "hex": "efbbbf7b0a202022686973746f7279223a205b0a202020207b0a20202020202022726f6c65223a202275736572222c0a20202020202022636f6e74656e74223a2022424f4d220a202020207d0a20205d0a7d"
+    },
+    "history-zero-history.json": "{\"history\": 0}"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "4183"
+    },
+    "zipSha256": "00d5a567307b99b5b058c242cd979f9c9024ddaca6be8860c8fb7970c5a6a714",
+    "zipLength": 4183,
+    "zip": "UEsDBBQAAAgAAFxkTl2radlmEAAAABAAAAAjAAAAY2hhdHMvdW50aXRsZWQtY2hhdC1pbnZhbGlkLWpzb24ubWQjIFVudGl0bGVkIGNoYXQKUEsDBBQAAAgAAFxkTl2radlmEAAAABAAAAAgAAAAY2hhdHMvdW50aXRsZWQtY2hhdC1udWxsLWpzb24ubWQjIFVudGl0bGVkIGNoYXQKUEsDBBQAAAgAAFxkTl2radlmEAAAABAAAAAjAAAAY2hhdHMvdW50aXRsZWQtY2hhdC1udWxsLWhpc3RvcnkubWQjIFVudGl0bGVkIGNoYXQKUEsDBBQAAAgAAFxkTl2radlmEAAAABAAAAAfAAAAY2hhdHMvdW50aXRsZWQtY2hhdC1pcy1hLWRpci5tZCMgVW50aXRsZWQgY2hhdApQSwMEFAAACAAAXGROXatp2WYQAAAAEAAAAB4AAABjaGF0cy91bnRpdGxlZC1jaGF0LW5vLWZpbGUubWQjIFVudGl0bGVkIGNoYXQKUEsDBBQAAAgAAFxkTl1zELOMPAAAADwAAAAYAAAAY2hhdHMvdW50aXRsZWQtY2hhdC14Lm1kIyBVbnRpdGxlZCBjaGF0CgojIyBZb3UKCnJlYWNoZWQgdGhyb3VnaCAuLi94LCByZWR1Y2VkIHRvIHgKUEsDBBQAAAgAAFxkTl2radlmEAAAABAAAAAXAAAAY2hhdHMvdW50aXRsZWQtY2hhdC0ubWQjIFVudGl0bGVkIGNoYXQKUEsDBBQAAAgAAFxkTl2radlmEAAAABAAAAAbAAAAY2hhdHMvdW50aXRsZWQtY2hhdC1udWxsLm1kIyBVbnRpdGxlZCBjaGF0ClBLAwQUAAAIAABcZE5dToBtsiQAAAAkAAAAGQAAAGNoYXRzL3VudGl0bGVkLWNoYXQtMTIubWQjIFVudGl0bGVkIGNoYXQKCiMjIFlvdQoKbnVtZXJpYyBpZApQSwMEFAAACAAAXGROXatp2WYQAAAAEAAAABoAAABjaGF0cy91bnRpdGxlZC1jaGF0LWJvbS5tZCMgVW50aXRsZWQgY2hhdApQSwMEFAAACAAAXGROXatp2WYQAAAAEAAAACUAAABjaGF0cy91bnRpdGxlZC1jaGF0LXN0cmluZy1oaXN0b3J5Lm1kIyBVbnRpdGxlZCBjaGF0ClBLAwQUAAAIAABcZE5dq2nZZhAAAAAQAAAAIwAAAGNoYXRzL3VudGl0bGVkLWNoYXQtemVyby1oaXN0b3J5Lm1kIyBVbnRpdGxlZCBjaGF0ClBLAwQUAAAIAABcZE5dQ0AsSiIBAAAiAQAACQAAAFJFQURNRS5tZCMgbm9ldmlhIGNvbnZlcnNhdGlvbnMKCkV4cG9ydGVkIDIwMjYtMTAtMTRUMTI6MzQ6NTYuNzg5Wi4gMTIgY2hhdHMuCgotIGBjaGF0cy9gOiBjaGF0cyBvdXRzaWRlIHByb2plY3RzLCBvbmUgTWFya2Rvd24gZmlsZSBlYWNoLgotIGBwcm9qZWN0cy9gOiBjaGF0cyBncm91cGVkIGJ5IHByb2plY3QuCi0gYGNvbnZlcnNhdGlvbnMuanNvbmA6IGV2ZXJ5dGhpbmcgYWJvdmUgaW4gb25lIGZpbGUgKGZvcm1hdCBub2V2aWEtY29udmVyc2F0aW9ucy12MSkuCgpUaGlua2luZyB0ZXh0IGlzIG5vdCBpbmNsdWRlZC4KUEsDBBQAAAgAAFxkTl0U0rjW8QYAAPEGAAASAAAAY29udmVyc2F0aW9ucy5qc29uewogICJmb3JtYXQiOiAibm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEiLAogICJleHBvcnRlZEF0IjogIjIwMjYtMTAtMTRUMTI6MzQ6NTYuNzg5WiIsCiAgImNoYXRzIjogWwogICAgewogICAgICAiaWQiOiAiaW52YWxpZC1qc29uIiwKICAgICAgInRpdGxlIjogIiIsCiAgICAgICJ1cGRhdGVkQXQiOiBudWxsLAogICAgICAicHJvamVjdCI6IG51bGwsCiAgICAgICJoaXN0b3J5IjogW10KICAgIH0sCiAgICB7CiAgICAgICJpZCI6ICJudWxsLWpzb24iLAogICAgICAidGl0bGUiOiAiIiwKICAgICAgInVwZGF0ZWRBdCI6IG51bGwsCiAgICAgICJwcm9qZWN0IjogbnVsbCwKICAgICAgImhpc3RvcnkiOiBbXQogICAgfSwKICAgIHsKICAgICAgImlkIjogIm51bGwtaGlzdG9yeSIsCiAgICAgICJ0aXRsZSI6ICIiLAogICAgICAidXBkYXRlZEF0IjogbnVsbCwKICAgICAgInByb2plY3QiOiBudWxsLAogICAgICAiaGlzdG9yeSI6IFtdCiAgICB9LAogICAgewogICAgICAiaWQiOiAiaXMtYS1kaXIiLAogICAgICAidGl0bGUiOiAiIiwKICAgICAgInVwZGF0ZWRBdCI6IG51bGwsCiAgICAgICJwcm9qZWN0IjogbnVsbCwKICAgICAgImhpc3RvcnkiOiBbXQogICAgfSwKICAgIHsKICAgICAgImlkIjogIm5vLWZpbGUiLAogICAgICAidGl0bGUiOiAiIiwKICAgICAgInVwZGF0ZWRBdCI6IG51bGwsCiAgICAgICJwcm9qZWN0IjogbnVsbCwKICAgICAgImhpc3RvcnkiOiBbXQogICAgfSwKICAgIHsKICAgICAgImlkIjogIi4uL3giLAogICAgICAidGl0bGUiOiAiIiwKICAgICAgInVwZGF0ZWRBdCI6IG51bGwsCiAgICAgICJwcm9qZWN0IjogbnVsbCwKICAgICAgImhpc3RvcnkiOiBbCiAgICAgICAgewogICAgICAgICAgInJvbGUiOiAidXNlciIsCiAgICAgICAgICAiY29udGVudCI6ICJyZWFjaGVkIHRocm91Z2ggLi4veCwgcmVkdWNlZCB0byB4IgogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImlkIjogIi4uIiwKICAgICAgInRpdGxlIjogIiIsCiAgICAgICJ1cGRhdGVkQXQiOiBudWxsLAogICAgICAicHJvamVjdCI6IG51bGwsCiAgICAgICJoaXN0b3J5IjogW10KICAgIH0sCiAgICB7CiAgICAgICJpZCI6IG51bGwsCiAgICAgICJ0aXRsZSI6ICIiLAogICAgICAidXBkYXRlZEF0IjogbnVsbCwKICAgICAgInByb2plY3QiOiBudWxsLAogICAgICAiaGlzdG9yeSI6IFtdCiAgICB9LAogICAgewogICAgICAiaWQiOiAxMiwKICAgICAgInRpdGxlIjogIiIsCiAgICAgICJ1cGRhdGVkQXQiOiBudWxsLAogICAgICAicHJvamVjdCI6IG51bGwsCiAgICAgICJoaXN0b3J5IjogWwogICAgICAgIHsKICAgICAgICAgICJyb2xlIjogInVzZXIiLAogICAgICAgICAgImNvbnRlbnQiOiAibnVtZXJpYyBpZCIKICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJpZCI6ICJib20iLAogICAgICAidGl0bGUiOiAiIiwKICAgICAgInVwZGF0ZWRBdCI6IG51bGwsCiAgICAgICJwcm9qZWN0IjogbnVsbCwKICAgICAgImhpc3RvcnkiOiBbXQogICAgfSwKICAgIHsKICAgICAgImlkIjogInN0cmluZy1oaXN0b3J5IiwKICAgICAgInRpdGxlIjogIiIsCiAgICAgICJ1cGRhdGVkQXQiOiBudWxsLAogICAgICAicHJvamVjdCI6IG51bGwsCiAgICAgICJoaXN0b3J5IjogW10KICAgIH0sCiAgICB7CiAgICAgICJpZCI6ICJ6ZXJvLWhpc3RvcnkiLAogICAgICAidGl0bGUiOiAiIiwKICAgICAgInVwZGF0ZWRBdCI6IG51bGwsCiAgICAgICJwcm9qZWN0IjogbnVsbCwKICAgICAgImhpc3RvcnkiOiBbXQogICAgfQogIF0KfVBLAQIUABQAAAgAAFxkTl2radlmEAAAABAAAAAjAAAAAAAAAAAAAAAAAAAAAABjaGF0cy91bnRpdGxlZC1jaGF0LWludmFsaWQtanNvbi5tZFBLAQIUABQAAAgAAFxkTl2radlmEAAAABAAAAAgAAAAAAAAAAAAAAAAAFEAAABjaGF0cy91bnRpdGxlZC1jaGF0LW51bGwtanNvbi5tZFBLAQIUABQAAAgAAFxkTl2radlmEAAAABAAAAAjAAAAAAAAAAAAAAAAAJ8AAABjaGF0cy91bnRpdGxlZC1jaGF0LW51bGwtaGlzdG9yeS5tZFBLAQIUABQAAAgAAFxkTl2radlmEAAAABAAAAAfAAAAAAAAAAAAAAAAAPAAAABjaGF0cy91bnRpdGxlZC1jaGF0LWlzLWEtZGlyLm1kUEsBAhQAFAAACAAAXGROXatp2WYQAAAAEAAAAB4AAAAAAAAAAAAAAAAAPQEAAGNoYXRzL3VudGl0bGVkLWNoYXQtbm8tZmlsZS5tZFBLAQIUABQAAAgAAFxkTl1zELOMPAAAADwAAAAYAAAAAAAAAAAAAAAAAIkBAABjaGF0cy91bnRpdGxlZC1jaGF0LXgubWRQSwECFAAUAAAIAABcZE5dq2nZZhAAAAAQAAAAFwAAAAAAAAAAAAAAAAD7AQAAY2hhdHMvdW50aXRsZWQtY2hhdC0ubWRQSwECFAAUAAAIAABcZE5dq2nZZhAAAAAQAAAAGwAAAAAAAAAAAAAAAABAAgAAY2hhdHMvdW50aXRsZWQtY2hhdC1udWxsLm1kUEsBAhQAFAAACAAAXGROXU6AbbIkAAAAJAAAABkAAAAAAAAAAAAAAAAAiQIAAGNoYXRzL3VudGl0bGVkLWNoYXQtMTIubWRQSwECFAAUAAAIAABcZE5dq2nZZhAAAAAQAAAAGgAAAAAAAAAAAAAAAADkAgAAY2hhdHMvdW50aXRsZWQtY2hhdC1ib20ubWRQSwECFAAUAAAIAABcZE5dq2nZZhAAAAAQAAAAJQAAAAAAAAAAAAAAAAAsAwAAY2hhdHMvdW50aXRsZWQtY2hhdC1zdHJpbmctaGlzdG9yeS5tZFBLAQIUABQAAAgAAFxkTl2radlmEAAAABAAAAAjAAAAAAAAAAAAAAAAAH8DAABjaGF0cy91bnRpdGxlZC1jaGF0LXplcm8taGlzdG9yeS5tZFBLAQIUABQAAAgAAFxkTl1DQCxKIgEAACIBAAAJAAAAAAAAAAAAAAAAANADAABSRUFETUUubWRQSwECFAAUAAAIAABcZE5dFNK41vEGAADxBgAAEgAAAAAAAAAAAAAAAAAZBQAAY29udmVyc2F0aW9ucy5qc29uUEsFBgAAAAAOAA4ABwQAADoMAAAAAA==",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":4183}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "lone-surrogates-and-invalid-utf8",
+   "files": {
+    "free-chats.json": "[{\"id\":\"s1\",\"title\":\"cut \\ud83d\",\"updatedAt\":1800000000000},{\"id\":\"s2\",\"title\":\"bytes\"}]",
+    "history-s1.json": "{\"history\":[{\"role\":\"user\",\"content\":\"half \\ude00 emoji \\ud83d\\ude00 whole\"},{\"role\":\"assistant\",\"content\":\"ok\",\"reasoning\":\"\\ud800\"}]}",
+    "history-s2.json": {
+     "hex": "7b22686973746f7279223a5b7b22726f6c65223a2275736572222c22636f6e74656e74223a2262616420c328ff20656e64227d5d7d"
+    }
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "1507"
+    },
+    "zipSha256": "5d6f0a2335406e000cac7194db1fe2dd1df882259b28f54ea5bcf7ab475fdf85",
+    "zipLength": 1507,
+    "zip": "UEsDBBQAAAgAAFxkTl1a84eXaAAAAGgAAAAPAAAAY2hhdHMvY3V0LXMxLm1kIyBjdXQg77+9CgpfTGFzdCB1cGRhdGVkIDIwMjctMDEtMTVUMDg6MDA6MDAuMDAwWl8KCiMjIFlvdQoKaGFsZiDvv70gZW1vamkg8J+YgCB3aG9sZQoKIyMgQXNzaXN0YW50CgpvawpQSwMEFAAACAAAXGROXRU8rjAhAAAAIQAAABEAAABjaGF0cy9ieXRlcy1zMi5tZCMgYnl0ZXMKCiMjIFlvdQoKYmFkIO+/vSjvv70gZW5kClBLAwQUAAAIAABcZE5d2QGCTiEBAAAhAQAACQAAAFJFQURNRS5tZCMgbm9ldmlhIGNvbnZlcnNhdGlvbnMKCkV4cG9ydGVkIDIwMjYtMTAtMTRUMTI6MzQ6NTYuNzg5Wi4gMiBjaGF0cy4KCi0gYGNoYXRzL2A6IGNoYXRzIG91dHNpZGUgcHJvamVjdHMsIG9uZSBNYXJrZG93biBmaWxlIGVhY2guCi0gYHByb2plY3RzL2A6IGNoYXRzIGdyb3VwZWQgYnkgcHJvamVjdC4KLSBgY29udmVyc2F0aW9ucy5qc29uYDogZXZlcnl0aGluZyBhYm92ZSBpbiBvbmUgZmlsZSAoZm9ybWF0IG5vZXZpYS1jb252ZXJzYXRpb25zLXYxKS4KClRoaW5raW5nIHRleHQgaXMgbm90IGluY2x1ZGVkLgpQSwMEFAAACAAAXGROXRGm/Ch9AgAAfQIAABIAAABjb252ZXJzYXRpb25zLmpzb257CiAgImZvcm1hdCI6ICJub2V2aWEtY29udmVyc2F0aW9ucy12MSIsCiAgImV4cG9ydGVkQXQiOiAiMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaIiwKICAiY2hhdHMiOiBbCiAgICB7CiAgICAgICJpZCI6ICJzMSIsCiAgICAgICJ0aXRsZSI6ICJjdXQgXHVkODNkIiwKICAgICAgInVwZGF0ZWRBdCI6IDE4MDAwMDAwMDAwMDAsCiAgICAgICJwcm9qZWN0IjogbnVsbCwKICAgICAgImhpc3RvcnkiOiBbCiAgICAgICAgewogICAgICAgICAgInJvbGUiOiAidXNlciIsCiAgICAgICAgICAiY29udGVudCI6ICJoYWxmIFx1ZGUwMCBlbW9qaSDwn5iAIHdob2xlIgogICAgICAgIH0sCiAgICAgICAgewogICAgICAgICAgInJvbGUiOiAiYXNzaXN0YW50IiwKICAgICAgICAgICJjb250ZW50IjogIm9rIgogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImlkIjogInMyIiwKICAgICAgInRpdGxlIjogImJ5dGVzIiwKICAgICAgInVwZGF0ZWRBdCI6IG51bGwsCiAgICAgICJwcm9qZWN0IjogbnVsbCwKICAgICAgImhpc3RvcnkiOiBbCiAgICAgICAgewogICAgICAgICAgInJvbGUiOiAidXNlciIsCiAgICAgICAgICAiY29udGVudCI6ICJiYWQg77+9KO+/vSBlbmQiCiAgICAgICAgfQogICAgICBdCiAgICB9CiAgXQp9UEsBAhQAFAAACAAAXGROXVrzh5doAAAAaAAAAA8AAAAAAAAAAAAAAAAAAAAAAGNoYXRzL2N1dC1zMS5tZFBLAQIUABQAAAgAAFxkTl0VPK4wIQAAACEAAAARAAAAAAAAAAAAAAAAAJUAAABjaGF0cy9ieXRlcy1zMi5tZFBLAQIUABQAAAgAAFxkTl3ZAYJOIQEAACEBAAAJAAAAAAAAAAAAAAAAAOUAAABSRUFETUUubWRQSwECFAAUAAAIAABcZE5dEab8KH0CAAB9AgAAEgAAAAAAAAAAAAAAAAAtAgAAY29udmVyc2F0aW9ucy5qc29uUEsFBgAAAAAEAAQA8wAAANoEAAAAAA==",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":1507}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "too-many-chats",
+   "files": {
+    "free-chats.json": {
+     "prefix": "[",
+     "repeat": "{\"id\":\"c\",\"title\":\"same\"},",
+     "count": 19998,
+     "suffix": "{\"id\":\"c\",\"title\":\"same\"}]"
+    }
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 413,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "{\"error\":\"Your conversations are too large to export in one file (the limit is 64 MB and 20,000 chats). Delete conversations you no longer need and try again.\"}",
+    "audits": []
+   }
+  },
+  {
+   "id": "just-enough-chats",
+   "files": {
+    "free-chats.json": {
+     "prefix": "[",
+     "repeat": "{\"id\":\"c\",\"title\":\"same\"},",
+     "count": 19997,
+     "suffix": "{\"id\":\"c\",\"title\":\"same\"}]"
+    }
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "4897915"
+    },
+    "zipSha256": "1258b51e5373727ac2326e464b16369fa3066380005da5c178b4687ed43e2962",
+    "zipLength": 4897915,
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":4897915}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "too-many-bytes",
+   "files": {
+    "free-chats.json": "[{\"id\":\"big1\"},{\"id\":\"big2\"}]",
+    "history-big1.json": {
+     "prefix": "{\"history\":[{\"role\":\"user\",\"content\":\"",
+     "repeat": "abcdefgh",
+     "count": 2097152,
+     "suffix": "\"}]}"
+    },
+    "history-big2.json": {
+     "prefix": "{\"history\":[{\"role\":\"user\",\"content\":\"",
+     "repeat": "abcdefgh",
+     "count": 2097152,
+     "suffix": "\"}]}"
+    }
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 413,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "{\"error\":\"Your conversations are too large to export in one file (the limit is 64 MB and 20,000 chats). Delete conversations you no longer need and try again.\"}",
+    "audits": []
+   }
+  },
+  {
+   "id": "free-chat-null-entry",
+   "files": {
+    "free-chats.json": "[null]"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "{\"error\":\"Internal error\"}",
+    "audits": []
+   }
+  },
+  {
+   "id": "title-own-toString",
+   "files": {
+    "free-chats.json": "[{\"id\":\"t\",\"title\":{\"toString\":1}}]"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "{\"error\":\"Internal error\"}",
+    "audits": []
+   }
+  },
+  {
+   "id": "updatedAt-out-of-range",
+   "files": {
+    "free-chats.json": "[{\"id\":\"d\",\"updatedAt\":1e20}]"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "{\"error\":\"Internal error\"}",
+    "audits": []
+   }
+  },
+  {
+   "id": "project-null-entry",
+   "files": {
+    "projects.json": "{\"projects\":[null]}"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "{\"error\":\"Internal error\"}",
+    "audits": []
+   }
+  },
+  {
+   "id": "project-numeric-id",
+   "files": {
+    "projects.json": "{\"projects\":[{\"id\":5,\"name\":\"n\",\"chats\":[]}]}"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "{\"error\":\"Internal error\"}",
+    "audits": []
+   }
+  },
+  {
+   "id": "project-without-id",
+   "files": {
+    "projects.json": "{\"projects\":[{\"name\":\"n\",\"chats\":[]}]}"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "node": {
+    "status": 500,
+    "headers": {
+     "content-type": "application/json",
+     "content-disposition": null,
+     "cache-control": "no-store",
+     "content-length": null
+    },
+    "body": "{\"error\":\"Internal error\"}",
+    "audits": []
+   }
+  },
+  {
+   "id": "other-user-asks",
+   "files": {
+    "free-chats.json": "[{\"id\":\"a1\",\"title\":\"A SECRET TITLE\"}]",
+    "history-a1.json": "{\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"A SECRET CONTENT\"\n    }\n  ]\n}"
+   },
+   "user": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+   "now": 1791981296789,
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "1747"
+    },
+    "zipSha256": "50d068ddeb3bff9a81f5c42572474ac8b6f4a64ca183a3cb69f2a6a1695a55c4",
+    "zipLength": 1747,
+    "zip": "UEsDBBQAAAgAAFxkTl20jIwSKwAAACsAAAAaAAAAY2hhdHMvYi1zZWNyZXQtdGl0bGUtYzEubWQjIEIgU0VDUkVUIFRJVExFCgojIyBZb3UKCkIgU0VDUkVUIENPTlRFTlQKUEsDBBQAAAgAAFxkTl2YHa1JIwAAACMAAAAWAAAAY2hhdHMvYi1vbmx5LWItb25seS5tZCMgQiBvbmx5CgojIyBZb3UKCkIgU0VDUkVUIENPTlRFTlQKUEsDBBQAAAgAAFxkTl0VcBTuEQAAABEAAAAnAAAAcHJvamVjdHMvYi1wcm9qZWN0L2ItcHJvamVjdC1jaGF0LWMyLm1kIyBCIHByb2plY3QgY2hhdApQSwMEFAAACAAAXGROXXk6kjchAQAAIQEAAAkAAABSRUFETUUubWQjIG5vZXZpYSBjb252ZXJzYXRpb25zCgpFeHBvcnRlZCAyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVouIDMgY2hhdHMuCgotIGBjaGF0cy9gOiBjaGF0cyBvdXRzaWRlIHByb2plY3RzLCBvbmUgTWFya2Rvd24gZmlsZSBlYWNoLgotIGBwcm9qZWN0cy9gOiBjaGF0cyBncm91cGVkIGJ5IHByb2plY3QuCi0gYGNvbnZlcnNhdGlvbnMuanNvbmA6IGV2ZXJ5dGhpbmcgYWJvdmUgaW4gb25lIGZpbGUgKGZvcm1hdCBub2V2aWEtY29udmVyc2F0aW9ucy12MSkuCgpUaGlua2luZyB0ZXh0IGlzIG5vdCBpbmNsdWRlZC4KUEsDBBQAAAgAAFxkTl3IsaaE3QIAAN0CAAASAAAAY29udmVyc2F0aW9ucy5qc29uewogICJmb3JtYXQiOiAibm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEiLAogICJleHBvcnRlZEF0IjogIjIwMjYtMTAtMTRUMTI6MzQ6NTYuNzg5WiIsCiAgImNoYXRzIjogWwogICAgewogICAgICAiaWQiOiAiYzEiLAogICAgICAidGl0bGUiOiAiQiBTRUNSRVQgVElUTEUiLAogICAgICAidXBkYXRlZEF0IjogbnVsbCwKICAgICAgInByb2plY3QiOiBudWxsLAogICAgICAiaGlzdG9yeSI6IFsKICAgICAgICB7CiAgICAgICAgICAicm9sZSI6ICJ1c2VyIiwKICAgICAgICAgICJjb250ZW50IjogIkIgU0VDUkVUIENPTlRFTlQiCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAiaWQiOiAiYi1vbmx5IiwKICAgICAgInRpdGxlIjogIkIgb25seSIsCiAgICAgICJ1cGRhdGVkQXQiOiBudWxsLAogICAgICAicHJvamVjdCI6IG51bGwsCiAgICAgICJoaXN0b3J5IjogWwogICAgICAgIHsKICAgICAgICAgICJyb2xlIjogInVzZXIiLAogICAgICAgICAgImNvbnRlbnQiOiAiQiBTRUNSRVQgQ09OVEVOVCIKICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJpZCI6ICJjMiIsCiAgICAgICJ0aXRsZSI6ICJCIHByb2plY3QgY2hhdCIsCiAgICAgICJ1cGRhdGVkQXQiOiBudWxsLAogICAgICAicHJvamVjdCI6IHsKICAgICAgICAiaWQiOiAicGIiLAogICAgICAgICJuYW1lIjogIkIgcHJvamVjdCIKICAgICAgfSwKICAgICAgImhpc3RvcnkiOiBbXQogICAgfQogIF0KfVBLAQIUABQAAAgAAFxkTl20jIwSKwAAACsAAAAaAAAAAAAAAAAAAAAAAAAAAABjaGF0cy9iLXNlY3JldC10aXRsZS1jMS5tZFBLAQIUABQAAAgAAFxkTl2YHa1JIwAAACMAAAAWAAAAAAAAAAAAAAAAAGMAAABjaGF0cy9iLW9ubHktYi1vbmx5Lm1kUEsBAhQAFAAACAAAXGROXRVwFO4RAAAAEQAAACcAAAAAAAAAAAAAAAAAugAAAHByb2plY3RzL2ItcHJvamVjdC9iLXByb2plY3QtY2hhdC1jMi5tZFBLAQIUABQAAAgAAFxkTl15OpI3IQEAACEBAAAJAAAAAAAAAAAAAAAAABABAABSRUFETUUubWRQSwECFAAUAAAIAABcZE5dyLGmhN0CAADdAgAAEgAAAAAAAAAAAAAAAABYAgAAY29udmVyc2F0aW9ucy5qc29uUEsFBgAAAAAFAAUAWAEAAGUFAAAAAA==",
+    "audits": [
+     [
+      "export.conversations",
+      "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+      "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+      "{\"bytes\":1747}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "free-chats-invalid-json",
+   "files": {
+    "free-chats.json": "[{\"id\":"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "refusal": "Internal",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "617"
+    },
+    "zipSha256": "8fa054fec3ad0d27e00d8a9f00860036c2248f720a001bb67e40802fd1663b4b",
+    "zipLength": 617,
+    "zip": "UEsDBBQAAAgAAFxkTl2ZdqK8IQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAwIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgYvY2GQAAABkAAAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFtdCn1QSwECFAAUAAAIAABcZE5dmXaivCEBAAAhAQAACQAAAAAAAAAAAAAAAAAAAAAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYGL2NhkAAAAZAAAABIAAAAAAAAAAAAAAAAASAEAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAAAgACAHcAAADcAQAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":617}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "projects-invalid-json",
+   "files": {
+    "projects.json": "{\"projects\":"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "refusal": "Internal",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "617"
+    },
+    "zipSha256": "8fa054fec3ad0d27e00d8a9f00860036c2248f720a001bb67e40802fd1663b4b",
+    "zipLength": 617,
+    "zip": "UEsDBBQAAAgAAFxkTl2ZdqK8IQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAwIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgYvY2GQAAABkAAAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFtdCn1QSwECFAAUAAAIAABcZE5dmXaivCEBAAAhAQAACQAAAAAAAAAAAAAAAAAAAAAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYGL2NhkAAAAZAAAABIAAAAAAAAAAAAAAAAASAEAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAAAgACAHcAAADcAQAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":617}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "projects-not-a-list",
+   "files": {
+    "projects.json": "{\"projects\":{\"0\":{\"id\":\"p\"}}}"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "refusal": "Internal",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "617"
+    },
+    "zipSha256": "8fa054fec3ad0d27e00d8a9f00860036c2248f720a001bb67e40802fd1663b4b",
+    "zipLength": 617,
+    "zip": "UEsDBBQAAAgAAFxkTl2ZdqK8IQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAwIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dgYvY2GQAAABkAAAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFtdCn1QSwECFAAUAAAIAABcZE5dmXaivCEBAAAhAQAACQAAAAAAAAAAAAAAAAAAAAAAUkVBRE1FLm1kUEsBAhQAFAAACAAAXGROXYGL2NhkAAAAZAAAABIAAAAAAAAAAAAAAAAASAEAAGNvbnZlcnNhdGlvbnMuanNvblBLBQYAAAAAAgACAHcAAADcAQAAAAA=",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":617}"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "project-chats-a-string",
+   "files": {
+    "projects.json": "{\"projects\":[{\"id\":\"p\",\"name\":\"n\",\"chats\":\"ab\"}]}"
+   },
+   "user": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+   "now": 1791981296789,
+   "refusal": "Internal",
+   "node": {
+    "status": 200,
+    "headers": {
+     "content-type": "application/zip",
+     "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-14.zip\"",
+     "cache-control": "no-store",
+     "content-length": "1243"
+    },
+    "zipSha256": "6b73d3435b77f1a54010f589a49c9aec6b39da39abd163faaf4947034f4dffdb",
+    "zipLength": 1243,
+    "zip": "UEsDBBQAAAgAAFxkTl2radlmEAAAABAAAAAlAAAAcHJvamVjdHMvbi91bnRpdGxlZC1jaGF0LXVuZGVmaW5lZC5tZCMgVW50aXRsZWQgY2hhdApQSwMEFAAACAAAXGROXatp2WYQAAAAEAAAACcAAABwcm9qZWN0cy9uL3VudGl0bGVkLWNoYXQtdW5kZWZpbmVkLTIubWQjIFVudGl0bGVkIGNoYXQKUEsDBBQAAAgAAFxkTl3ZAYJOIQEAACEBAAAJAAAAUkVBRE1FLm1kIyBub2V2aWEgY29udmVyc2F0aW9ucwoKRXhwb3J0ZWQgMjAyNi0xMC0xNFQxMjozNDo1Ni43ODlaLiAyIGNoYXRzLgoKLSBgY2hhdHMvYDogY2hhdHMgb3V0c2lkZSBwcm9qZWN0cywgb25lIE1hcmtkb3duIGZpbGUgZWFjaC4KLSBgcHJvamVjdHMvYDogY2hhdHMgZ3JvdXBlZCBieSBwcm9qZWN0LgotIGBjb252ZXJzYXRpb25zLmpzb25gOiBldmVyeXRoaW5nIGFib3ZlIGluIG9uZSBmaWxlIChmb3JtYXQgbm9ldmlhLWNvbnZlcnNhdGlvbnMtdjEpLgoKVGhpbmtpbmcgdGV4dCBpcyBub3QgaW5jbHVkZWQuClBLAwQUAAAIAABcZE5dzcGiLIYBAACGAQAAEgAAAGNvbnZlcnNhdGlvbnMuanNvbnsKICAiZm9ybWF0IjogIm5vZXZpYS1jb252ZXJzYXRpb25zLXYxIiwKICAiZXhwb3J0ZWRBdCI6ICIyMDI2LTEwLTE0VDEyOjM0OjU2Ljc4OVoiLAogICJjaGF0cyI6IFsKICAgIHsKICAgICAgInRpdGxlIjogIiIsCiAgICAgICJ1cGRhdGVkQXQiOiBudWxsLAogICAgICAicHJvamVjdCI6IHsKICAgICAgICAiaWQiOiAicCIsCiAgICAgICAgIm5hbWUiOiAibiIKICAgICAgfSwKICAgICAgImhpc3RvcnkiOiBbXQogICAgfSwKICAgIHsKICAgICAgInRpdGxlIjogIiIsCiAgICAgICJ1cGRhdGVkQXQiOiBudWxsLAogICAgICAicHJvamVjdCI6IHsKICAgICAgICAiaWQiOiAicCIsCiAgICAgICAgIm5hbWUiOiAibiIKICAgICAgfSwKICAgICAgImhpc3RvcnkiOiBbXQogICAgfQogIF0KfVBLAQIUABQAAAgAAFxkTl2radlmEAAAABAAAAAlAAAAAAAAAAAAAAAAAAAAAABwcm9qZWN0cy9uL3VudGl0bGVkLWNoYXQtdW5kZWZpbmVkLm1kUEsBAhQAFAAACAAAXGROXatp2WYQAAAAEAAAACcAAAAAAAAAAAAAAAAAUwAAAHByb2plY3RzL24vdW50aXRsZWQtY2hhdC11bmRlZmluZWQtMi5tZFBLAQIUABQAAAgAAFxkTl3ZAYJOIQEAACEBAAAJAAAAAAAAAAAAAAAAAKgAAABSRUFETUUubWRQSwECFAAUAAAIAABcZE5dzcGiLIYBAACGAQAAEgAAAAAAAAAAAAAAAADwAQAAY29udmVyc2F0aW9ucy5qc29uUEsFBgAAAAAEAAQAHwEAAKYDAAAAAA==",
+    "audits": [
+     [
+      "export.conversations",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "{\"bytes\":1243}"
+     ]
+    ]
+   }
+  }
+ ]
+}

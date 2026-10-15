@@ -5,6 +5,7 @@
 pub mod account_routes;
 pub mod code_net;
 pub mod config;
+pub mod export_routes;
 pub mod health;
 pub mod identity;
 pub mod legacy_proxy;
@@ -40,7 +41,10 @@ use std::sync::Arc;
 /// free-chats.json with Node under its lock; confirmed to Node separately as well
 /// (NOEVIA_RUST_FREE_CHATS_CONFIRMED). `rust-stats` (cargo feature of that name): it answers
 /// `GET /api/stats` under NOEVIA_RUST_STATS (#1650); the supervisor confirms it to Node
-/// (NOEVIA_RUST_STATS_CONFIRMED), which then refuses that GET.
+/// (NOEVIA_RUST_STATS_CONFIRMED), which then refuses that GET. `rust-export` (cargo feature of
+/// that name): it answers `GET /api/export/conversations` under NOEVIA_RUST_EXPORT (#1315, with
+/// NOEVIA_RUST_PROJECTS and rust-free-chats); the supervisor confirms it to Node
+/// (NOEVIA_RUST_EXPORT_CONFIRMED), which then refuses that GET.
 ///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
@@ -66,6 +70,8 @@ pub const FEATURES: &[&str] = &[
     "rust-routing-default",
     #[cfg(feature = "rust-stats")]
     "rust-stats",
+    #[cfg(feature = "rust-export")]
+    "rust-export",
 ];
 
 pub struct App {
@@ -87,6 +93,8 @@ pub struct App {
     pub routing_default: Arc<tokio::sync::Semaphore>,
     /// GET /api/stats and its shared answer while NOEVIA_RUST_STATS is on (M6, #1650).
     pub stats: Option<Arc<stats_routes::StatsLayer>>,
+    /// GET /api/export/conversations runs one export at a time (#1315; export_routes.rs).
+    pub export: Arc<tokio::sync::Semaphore>,
     pub routing_files:
         Option<Result<server_routing_mode::storage::Root, server_routing_mode::storage::Fault>>,
 }
@@ -119,6 +127,7 @@ impl App {
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_default: Arc::new(tokio::sync::Semaphore::new(4)),
+            export: Arc::new(tokio::sync::Semaphore::new(1)),
             stats: config
                 .rust_stats
                 .as_ref()
@@ -169,6 +178,7 @@ async fn handle(
                         | routes::Native::RoutingMode
                         | routes::Native::RoutingDefault
                         | routes::Native::Stats
+                        | routes::Native::Export
                 )
             ) {
                 native = on_whatwg;
@@ -186,7 +196,8 @@ async fn handle(
             | routes::Native::ReasoningSettings
             | routes::Native::RoutingMode
             | routes::Native::RoutingDefault
-            | routes::Native::Stats,
+            | routes::Native::Stats
+            | routes::Native::Export,
         )
         | None => false,
     };
@@ -257,6 +268,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             stats_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::Export) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            export_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             health::ready(&app.config.upstream, app.version.as_deref()).await

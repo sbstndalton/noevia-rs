@@ -1604,6 +1604,7 @@ dependencies = [
  "serde_json",
  "server-account",
  "server-auth",
+ "server-export",
  "server-projects",
  "server-reasoning-settings",
  "server-routing-default",
@@ -2425,10 +2426,14 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "crc32fast",
+ "hex",
  "js-json",
  "policy-leaves",
  "proptest",
  "serde_json",
+ "server-projects",
+ "sha2",
+ "tempfile",
  "unicode-normalization",
 ]
 

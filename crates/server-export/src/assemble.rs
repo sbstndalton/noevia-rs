@@ -79,6 +79,23 @@ fn js_string<E>(v: &JValue) -> Result<String, Error<E>> {
     js_json::to_js_string(v).map_err(|_| Error::Type)
 }
 
+/// `Buffer.from(text, 'utf8')` for a string that may hold [`js_json::wtf16`] lone surrogates:
+/// Node encodes a lone surrogate as U+FFFD (EF BF BD). Text without one is returned unchanged.
+fn utf8_like_buffer(text: String) -> String {
+    if !text.chars().any(|c| js_json::wtf16::lone_unit(c).is_some()) {
+        return text;
+    }
+    text.chars()
+        .map(|c| {
+            if js_json::wtf16::lone_unit(c).is_some() {
+                '\u{FFFD}'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
 /// `slug(text, fallback)`.
 fn slug<E>(text: &JValue, fallback: &str) -> Result<String, Error<E>> {
     let s = if text.truthy() {
@@ -268,7 +285,9 @@ pub fn build_export<E>(
                     JValue::Arr(entries.iter().map(exported_entry).collect()),
                 ),
             ]);
-            let json = js_json::stringify_pretty(&record)
+            // Lossless: a lone surrogate (a title or message cut mid-emoji) is written as
+            // JSON.stringify writes it, `\udxxx`; anything else is the same bytes as before.
+            let json = js_json::wtf16::stringify_pretty(&record)
                 .ok_or(Error::Type)?
                 .replace('\n', "\n    ");
             b.take(json.len())?;
@@ -285,7 +304,7 @@ pub fn build_export<E>(
             id_part(chat.get("id"))?
         );
         let md = add_chat(&mut b, chat, JValue::Null)?;
-        b.add(name, md)?;
+        b.add(name, utf8_like_buffer(md))?;
     }
     for project in projects {
         let fallback = id_part(project.get("id"))?;
@@ -314,7 +333,7 @@ pub fn build_export<E>(
                 ("name", project.get("name").clone()),
             ]);
             let md = add_chat(&mut b, chat, tag)?;
-            b.add(name, md)?;
+            b.add(name, utf8_like_buffer(md))?;
         }
     }
     let count = chat_json.len();

@@ -1,5 +1,6 @@
-//! Bounded classic stored-ZIP foundation for native conversation export (#1315).
-//! This does not own an HTTP route, read a tenant, or implement conversation policy yet.
+//! Native conversation export (#1315): the bounded classic stored-ZIP foundation (this file),
+//! the Markdown policy ([`markdown`]), buildExport ([`assemble`]) and the route's tenant reads
+//! ([`route`]). The HTTP handler, the audit row and the switch live in bins/noevia-server.
 //! Bytes follow core9655984 chat-export.cjs zipStore; UTF-8 names, UTC DOS timestamps,
 //! no compression, descriptors, comments or extra fields. Payload <=64MiB, <=20,000 entries.
 //! Additional fail-closed work bound: all entry names combined <=1MiB (individual <=u16::MAX).
@@ -143,3 +144,5 @@ mod tests {
 /// Bounded native conversation Markdown policy (#1317); no HTTP ownership.
 pub mod assemble;
 pub mod markdown;
+/// `GET /api/export/conversations`: what the route reads and answers (#1315).
+pub mod route;

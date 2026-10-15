@@ -4,10 +4,12 @@ use chrono::{Datelike, NaiveDate, Timelike, Utc};
 use js_json::JValue;
 use std::collections::HashSet;
 
-pub const MAX_INPUT_BYTES: usize = 1024 * 1024;
-pub const MAX_NODES: usize = 20_000;
+// Per chat (meta and history together). Sized for the export route (#1315), whose whole payload
+// is bounded at 64 MiB and whose history files are read up to 64 MiB each.
+pub const MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_NODES: usize = 4_000_000;
 pub const MAX_DEPTH: usize = 32;
-pub const MAX_RENDER_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_RENDER_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
