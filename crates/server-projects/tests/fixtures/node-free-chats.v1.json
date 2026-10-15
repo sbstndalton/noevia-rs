@@ -1,5 +1,5 @@
 {
- "core": "885e625cddd1af99e23d892505f4e1eeb87608db",
+ "core": "0d40c986acb3898f9ce864038f635a797dcfe622",
  "node": "v22",
  "user": "11111111-2222-4333-8444-555555555555",
  "cases": [
@@ -253,8 +253,8 @@
    "method": "GET",
    "body": null,
    "expected": {
-    "status": 500,
-    "body": "{\"error\":\"Internal error\"}",
+    "status": 200,
+    "body": "{\"chats\":[{\"id\":\"f1\",\"title\":\"One\",\"updatedAt\":300,\"preview\":\"p1\",\"pinned\":false,\"archived\":false,\"frame\":{\"kind\":\"idea\",\"tags\":[\"alpha\"],\"links\":[],\"confirmed\":true,\"source\":\"user\"},\"forceLocal\":true,\"createdAt\":100},{\"id\":\"f2\",\"title\":\"Two\",\"updatedAt\":200,\"preview\":\"\",\"pinned\":true,\"archived\":false},{\"id\":\"dead-1\",\"title\":\"Deleted\",\"updatedAt\":250,\"preview\":\"\"},{\"id\":\"tie-1\",\"title\":\"Tie\",\"updatedAt\":200,\"preview\":\"\"},{\"id\":\"nul\",\"title\":\"Null time\",\"updatedAt\":null,\"preview\":\"\"},\"stray-string\",null,{\"title\":\"no id\"}]}",
     "freeAfter": null
    }
   },
@@ -287,8 +287,8 @@
    "method": "GET",
    "body": null,
    "expected": {
-    "status": 500,
-    "body": "{\"error\":\"Internal error\"}",
+    "status": 200,
+    "body": "{\"chats\":[{\"id\":\"f1\",\"title\":\"One\",\"updatedAt\":300,\"preview\":\"p1\",\"pinned\":false,\"archived\":false,\"frame\":{\"kind\":\"idea\",\"tags\":[\"alpha\"],\"links\":[],\"confirmed\":true,\"source\":\"user\"},\"forceLocal\":true,\"createdAt\":100},{\"id\":\"f2\",\"title\":\"Two\",\"updatedAt\":200,\"preview\":\"\",\"pinned\":true,\"archived\":false},{\"id\":\"dead-1\",\"title\":\"Deleted\",\"updatedAt\":250,\"preview\":\"\"},{\"id\":\"tie-1\",\"title\":\"Tie\",\"updatedAt\":200,\"preview\":\"\"},{\"id\":\"nul\",\"title\":\"Null time\",\"updatedAt\":null,\"preview\":\"\"},\"stray-string\",null,{\"title\":\"no id\"}]}",
     "freeAfter": null
    }
   },
@@ -1199,9 +1199,9 @@
    "method": "POST",
    "body": "{\"chats\":[{\"id\":\"q\",\"updatedAt\":1}]}",
    "expected": {
-    "status": 500,
-    "body": "{\"error\":\"Internal error\"}",
-    "freeAfter": null
+    "status": 200,
+    "body": "{\"ok\":true}",
+    "freeAfter": "[\n  {\n    \"id\": \"f1\",\n    \"title\": \"One\",\n    \"updatedAt\": 300,\n    \"preview\": \"p1\",\n    \"pinned\": false,\n    \"archived\": false,\n    \"frame\": {\n      \"kind\": \"idea\",\n      \"tags\": [\n        \"alpha\"\n      ],\n      \"links\": [],\n      \"confirmed\": true,\n      \"source\": \"user\"\n    },\n    \"forceLocal\": true,\n    \"createdAt\": 100\n  },\n  {\n    \"id\": \"f2\",\n    \"title\": \"Two\",\n    \"updatedAt\": 200,\n    \"preview\": \"\",\n    \"pinned\": true,\n    \"archived\": false\n  },\n  {\n    \"id\": \"tie-1\",\n    \"title\": \"Tie\",\n    \"updatedAt\": 200,\n    \"preview\": \"\"\n  },\n  {\n    \"id\": \"q\",\n    \"title\": \"New chat\",\n    \"updatedAt\": 1,\n    \"preview\": \"\",\n    \"pinned\": false,\n    \"archived\": false\n  },\n  {\n    \"id\": \"nul\",\n    \"title\": \"Null time\",\n    \"updatedAt\": null,\n    \"preview\": \"\"\n  }\n]"
    }
   },
   {
@@ -1233,9 +1233,9 @@
    "method": "POST",
    "body": "{\"chats\":[{\"id\":\"q\",\"updatedAt\":1}]}",
    "expected": {
-    "status": 500,
-    "body": "{\"error\":\"Internal error\"}",
-    "freeAfter": null
+    "status": 200,
+    "body": "{\"ok\":true}",
+    "freeAfter": "[\n  {\n    \"id\": \"f1\",\n    \"title\": \"One\",\n    \"updatedAt\": 300,\n    \"preview\": \"p1\",\n    \"pinned\": false,\n    \"archived\": false,\n    \"frame\": {\n      \"kind\": \"idea\",\n      \"tags\": [\n        \"alpha\"\n      ],\n      \"links\": [],\n      \"confirmed\": true,\n      \"source\": \"user\"\n    },\n    \"forceLocal\": true,\n    \"createdAt\": 100\n  },\n  {\n    \"id\": \"f2\",\n    \"title\": \"Two\",\n    \"updatedAt\": 200,\n    \"preview\": \"\",\n    \"pinned\": true,\n    \"archived\": false\n  },\n  {\n    \"id\": \"tie-1\",\n    \"title\": \"Tie\",\n    \"updatedAt\": 200,\n    \"preview\": \"\"\n  },\n  {\n    \"id\": \"q\",\n    \"title\": \"New chat\",\n    \"updatedAt\": 1,\n    \"preview\": \"\",\n    \"pinned\": false,\n    \"archived\": false\n  },\n  {\n    \"id\": \"nul\",\n    \"title\": \"Null time\",\n    \"updatedAt\": null,\n    \"preview\": \"\"\n  }\n]"
    }
   },
   {

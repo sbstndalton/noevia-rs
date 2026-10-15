@@ -23,7 +23,7 @@ jobs:
           repository: sbstndalton/noevia-core
           ref: ${{ steps.core.outputs.sha }}
           path: core
-      - name: Read the oracle core pin (core with the plan projection, core#135)
+      - name: Read the oracle core pin (core main with the plan projection, core#135 and later)
         id: oracle
         run: |
           set -euo pipefail
@@ -105,13 +105,11 @@ jobs:
             --report "$RUNNER_TEMP/chatgpt-positive.json" \
             --expect-state "$RUNNER_TEMP/node-state.json"
       - name: "Negative control: a confirmed Node refuses the status the front no longer answers"
-        # Meaningful once the pinned core's corpus launcher passes the status switch through (core#135);
-        # skipped, and said so, while core.ref predates it.
+        # core.ref's corpus launcher passes the status switch through (core#135); a core without it
+        # fails here, never skips.
         run: |
           set -uo pipefail
-          if ! grep -q NOEVIA_RUST_CHATGPT_STATUS core/tools/contract-corpus/serve.cjs; then
-            echo "::notice::core.ref's corpus launcher has no NOEVIA_RUST_CHATGPT_STATUS yet: negative control skipped"; exit 0
-          fi
+          grep -q NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED core/tools/contract-corpus/serve.cjs || { echo "::error::core.ref's corpus launcher does not pass NOEVIA_RUST_CHATGPT_STATUS through"; exit 1; }
           if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
               --ignore-body hours --ignore-body peakHour/hour \
               --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \
