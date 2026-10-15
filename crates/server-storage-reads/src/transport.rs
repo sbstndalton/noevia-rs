@@ -94,7 +94,7 @@ impl Transport for ChildTransport<'_> {
             Ok(Reply::Failure {
                 phase: crate::response_ipc::Phase::Body,
                 failure: TransportFailure::Timeout,
-            }) => Err(TransportFailure::BodyTimeout),
+            }) => Err(TransportFailure::Body),
             Ok(Reply::Failure { failure, .. }) => Err(failure),
             Err(_) => Err(TransportFailure::Other),
         }

@@ -178,11 +178,6 @@ fn retry_is_typed_preheader_only_and_never_status() -> TestResult {
             504,
             "the storage server did not answer in time",
         ),
-        (
-            TransportFailure::BodyTimeout,
-            502,
-            "The operation was aborted due to timeout",
-        ),
         (TransportFailure::Body, 502, "terminated"),
     ] {
         let mut t = Fake::new(vec![Err(failure)]);

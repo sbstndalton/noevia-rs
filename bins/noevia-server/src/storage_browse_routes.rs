@@ -16,6 +16,14 @@
 //! entries and 16 MiB of JSON; a file read keeps at most 800 000 bytes and 200 000 UTF-16 units of
 //! preview. Overall deadlines are the engine's (31 s DAV list, 610 s S3 list, 41 s read).
 //! A cancelled request kills the child.
+//!
+//! Memory per request in this process (the 64 MiB budget, #1368): the POST body is capped at
+//! 1 MiB; one reply frame of at most cap + 19 bytes is decoded into text of at most three times
+//! the cap (U+FFFD expansion; the engine refuses more), and the frame is freed before parsing.
+//! A listing then holds that page text (12 MiB at most), the parsed entries (16 MiB) and the
+//! response JSON (16 MiB): about 44 MiB at the peak, less once the page is dropped; a file read
+//! holds at most 800 000 bytes of text, about 2.4 MB decoded, and a 200 000-unit preview. The
+//! child is a separate process with a 256 MiB address-space limit set before READY.
 use crate::{identity, reply, App};
 use axum::{
     body::Body,
