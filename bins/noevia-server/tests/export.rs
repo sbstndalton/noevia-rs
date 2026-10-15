@@ -195,9 +195,10 @@ async fn a_signed_in_export_is_the_users_own_audited_and_nodes_bytes() {
     assert_eq!(status, 200, "{head}");
     let when = exported_at(&body);
     let want = server_export::route::export(&f.data, &f.user, when);
-    let server_export::route::Outcome::Zip { bytes, day } = want else {
+    let server_export::route::Outcome::Zip { chunks, day, .. } = want else {
         panic!("{want:?}");
     };
+    let bytes = chunks.concat();
     assert_eq!(body, bytes);
     for line in [
         "content-type: application/zip".to_string(),

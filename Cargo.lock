@@ -2428,6 +2428,7 @@ dependencies = [
  "crc32fast",
  "hex",
  "js-json",
+ "libc",
  "policy-leaves",
  "proptest",
  "serde_json",

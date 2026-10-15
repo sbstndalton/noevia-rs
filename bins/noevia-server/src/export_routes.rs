@@ -13,8 +13,8 @@
 //!    too-large export is Node's 413 `{"error": …}`, neither audited nor sent; a failure is 500.
 //!
 //! Every other method (Node's 405), a trailing slash and every other path stay Node's. Exports run
-//! one at a time (Node builds them synchronously, one at a time too): each holds up to the 64 MiB
-//! payload and its ZIP in memory.
+//! one at a time (Node builds them synchronously, one at a time too). An export holds its ZIP once,
+//! as the chunks it was made in, which the body sends in order (#1824).
 
 use crate::identity;
 use crate::reply;
@@ -33,7 +33,11 @@ pub const AUDIT_ACTION: &str = "export.conversations";
 
 /// What the blocking part produced.
 enum Done {
-    Zip { bytes: Vec<u8>, day: String },
+    Zip {
+        chunks: Vec<Vec<u8>>,
+        len: usize,
+        day: String,
+    },
     TooLarge(String),
     Internal,
 }
@@ -51,15 +55,47 @@ fn audit(app: &App, user: &str, bytes: usize) -> Result<(), server_store::StoreE
     })
 }
 
+/// The ZIP's chunks as a body, sent in order and dropped as they go, never joined (#1824).
+struct Chunks {
+    rest: std::collections::VecDeque<Vec<u8>>,
+    left: u64,
+}
+
+impl http_body::Body for Chunks {
+    type Data = bytes::Bytes;
+    type Error = std::convert::Infallible;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        let next = self.rest.pop_front();
+        std::task::Poll::Ready(next.map(|c| {
+            self.left = self.left.saturating_sub(c.len() as u64);
+            Ok(http_body::Frame::data(bytes::Bytes::from(c)))
+        }))
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.rest.is_empty()
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        http_body::SizeHint::with_exact(self.left)
+    }
+}
+
 /// The 200 reply: index.cjs's security headers, then routes/export.cjs's writeHead.
-fn download(bytes: Vec<u8>, day: &str) -> Response<Body> {
-    let len = bytes.len();
+fn download(chunks: Vec<Vec<u8>>, len: usize, day: &str) -> Response<Body> {
     let Ok(disposition) = HeaderValue::from_str(&format!(
         "attachment; filename=\"noevia-conversations-{day}.zip\""
     )) else {
         return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true);
     };
-    let mut res = Response::new(Body::from(bytes));
+    let mut res = Response::new(Body::new(Chunks {
+        rest: chunks.into_iter().filter(|c| !c.is_empty()).collect(),
+        left: len as u64,
+    }));
     let h = res.headers_mut();
     reply::security_headers(h, true);
     h.insert(
@@ -105,8 +141,8 @@ pub async fn serve(
         let _permit = permit;
         let when = identity::now_ms();
         match export(&data_dir, &user, when) {
-            Outcome::Zip { bytes, day } => match audit(&worker, &user, bytes.len()) {
-                Ok(()) => Done::Zip { bytes, day },
+            Outcome::Zip { chunks, len, day } => match audit(&worker, &user, len) {
+                Ok(()) => Done::Zip { chunks, len, day },
                 Err(_) => Done::Internal,
             },
             Outcome::TooLarge(message) => Done::TooLarge(message),
@@ -115,7 +151,7 @@ pub async fn serve(
     })
     .await;
     match done {
-        Ok(Done::Zip { bytes, day }) => download(bytes, &day),
+        Ok(Done::Zip { chunks, len, day }) => download(chunks, len, &day),
         Ok(Done::TooLarge(message)) => reply::error(StatusCode::PAYLOAD_TOO_LARGE, &message, true),
         Ok(Done::Internal) | Err(_) => {
             reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true)

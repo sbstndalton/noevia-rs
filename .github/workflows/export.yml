@@ -42,6 +42,8 @@ jobs:
           cmp "$RUNNER_TEMP/node-export-route.json" crates/server-export/tests/fixtures/node-export-route.v1.json
       - name: Node-differential export, tenant isolation and read bounds
         run: NOEVIA_EXPORT_ROUTE_FIXTURE="$RUNNER_TEMP/node-export-route.json" cargo test --locked -p server-export
+      - name: "Peak memory of the largest admitted export (#1824: VmHWM < 150 MiB)"
+        run: cargo test --locked --release -p server-export --test peak_memory -- --nocapture
       - name: Real HTTP gate, audit, headers, 413 and switch through the front
         run: |
           set -euo pipefail

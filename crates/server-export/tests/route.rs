@@ -104,9 +104,16 @@ fn every_node_case_is_answered_as_node_answers_it() {
         }
         match node["status"].as_u64().unwrap() {
             200 => {
-                let Outcome::Zip { bytes, day } = got else {
+                let Outcome::Zip {
+                    ref chunks,
+                    len,
+                    ref day,
+                } = got
+                else {
                     panic!("{id}: Node answered 200, the front {got:?}");
                 };
+                let bytes = chunks.concat();
+                assert_eq!(bytes.len(), len, "{id}: length");
                 assert_eq!(
                     hex::encode(Sha256::digest(&bytes)),
                     node["zipSha256"].as_str().unwrap(),
@@ -185,4 +192,72 @@ fn oversized_history_files_are_refused_before_they_are_read_whole() {
     for bad in ["../users/x", "", "aaaaaaaa-1111-4111-8111-aaaaaaaaaaa/"] {
         assert_eq!(export(root.path(), bad, 0), Outcome::Internal);
     }
+}
+
+fn tenant() -> (tempfile::TempDir, std::path::PathBuf, &'static str) {
+    let root = tempfile::tempdir().unwrap();
+    let user = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+    let dir = root.path().join("users").join(user);
+    std::fs::create_dir_all(&dir).unwrap();
+    (root, dir, user)
+}
+
+/// #1824: a history that is a symlink (even to a valid history of the same user) or a FIFO is
+/// refused, never followed or waited on; a directory stays Node's empty history.
+#[cfg(unix)]
+#[test]
+fn history_symlinks_and_fifos_are_refused_not_followed() {
+    let (root, dir, user) = tenant();
+    std::fs::write(dir.join("free-chats.json"), r#"[{"id":"s"}]"#).unwrap();
+    std::fs::write(
+        dir.join("real.json"),
+        r#"{"history":[{"role":"user","content":"x"}]}"#,
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(dir.join("real.json"), dir.join("history-s.json")).unwrap();
+    assert_eq!(export(root.path(), user, 0), Outcome::Internal);
+    std::fs::remove_file(dir.join("history-s.json")).unwrap();
+    assert!(std::process::Command::new("mkfifo")
+        .arg(dir.join("history-s.json"))
+        .status()
+        .unwrap()
+        .success());
+    // Returns at once (O_NONBLOCK): refused, not a hang waiting for a writer.
+    assert_eq!(export(root.path(), user, 0), Outcome::Internal);
+    std::fs::remove_file(dir.join("history-s.json")).unwrap();
+    std::fs::create_dir(dir.join("history-s.json")).unwrap();
+    assert!(matches!(export(root.path(), user, 0), Outcome::Zip { .. }));
+    // A symlinked store file is refused as well.
+    std::fs::remove_file(dir.join("free-chats.json")).unwrap();
+    std::os::unix::fs::symlink(dir.join("real.json"), dir.join("free-chats.json")).unwrap();
+    assert_eq!(export(root.path(), user, 0), Outcome::Internal);
+}
+
+/// #1824: a small file holding very many values (or very deep nesting) is refused with the 413
+/// on the text, before any tree is built.
+#[test]
+fn value_count_and_depth_are_refused_before_parsing() {
+    use server_export::route::{MAX_FILE_DEPTH, MAX_FILE_VALUES};
+    let (root, dir, user) = tenant();
+    std::fs::write(dir.join("free-chats.json"), r#"[{"id":"v"}]"#).unwrap();
+    let many = format!(
+        r#"{{"history":[{}]}}"#,
+        vec!["0"; MAX_FILE_VALUES].join(",")
+    );
+    std::fs::write(dir.join("history-v.json"), &many).unwrap();
+    assert!(matches!(export(root.path(), user, 0), Outcome::TooLarge(_)));
+    let deep = format!(
+        r#"{{"history":{}{}}}"#,
+        "[".repeat(MAX_FILE_DEPTH),
+        "]".repeat(MAX_FILE_DEPTH)
+    );
+    std::fs::write(dir.join("history-v.json"), &deep).unwrap();
+    assert!(matches!(export(root.path(), user, 0), Outcome::TooLarge(_)));
+    // Brackets and quotes inside strings are not structure.
+    let quoted = format!(
+        r#"{{"history":[{{"role":"user","content":"{}\"[{{"}}]}}"#,
+        "[{".repeat(MAX_FILE_DEPTH)
+    );
+    std::fs::write(dir.join("history-v.json"), &quoted).unwrap();
+    assert!(matches!(export(root.path(), user, 0), Outcome::Zip { .. }));
 }

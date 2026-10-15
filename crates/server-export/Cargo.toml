@@ -9,6 +9,7 @@ publish.workspace = true
 workspace = true
 [dependencies]
 chrono = "0.4"
+libc = "0.2"
 crc32fast = "1"
 js-json = { path = "../js-json" }
 policy-leaves = { path = "../policy-leaves" }
