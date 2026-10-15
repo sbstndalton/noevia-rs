@@ -344,8 +344,12 @@ path = "/api/diary/workspace-import"
 owner = "node"
 
 [[route]]
+# M4 (#1315): GET only (crates/server-export, read from the user's files on disk); every other
+# method stays Node's, which answers 405.
 path = "/api/export/conversations"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+switch = "NOEVIA_RUST_EXPORT"
 
 [[route]]
 path = "/api/features"

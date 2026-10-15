@@ -152,6 +152,21 @@ deep that the JS would look into is a 503 rather than a guess. CI job `stats-nat
 stats.yml) also replays the corpus through the front with the switch on, and once more against a
 synthetic engine to show only `/api/stats` follows the front.
 
+## M4: conversation export (`NOEVIA_RUST_EXPORT`, sbstndalton/noevia#1315)
+
+`GET /api/export/conversations` is Rust's under `NOEVIA_RUST_EXPORT=1` in a build with the cargo
+features `rust-export` and `rust-free-chats`; the front refuses the switch without
+`NOEVIA_RUST_PROJECTS=1` (and so `NOEVIA_RUST_AUTH=1`) or `UI_DATA_DIR`. It reads the signed-in
+user's free-chats.json, projects.json and history files fresh from disk (crates/server-export
+`route`), appends the `export.conversations` audit row as Node does, and answers Node's bytes,
+headers, 413 and 500. Other methods stay Node's (405). With `NOEVIA_FRONT=rust` and
+`NOEVIA_RUST_EXPORT_CONFIRMED=1` Node answers that GET with 503 (core `exportRustOwned`).
+
+Accepted difference (owner, 2026-10-12): the front exports what is on disk; a Node process's unsaved
+or stale in-memory list is not seen. CI job `export-native` (workflow export.yml) regenerates the
+Node oracle, runs the differential and HTTP tests, and replays the whole corpus through the front
+with the switch on (exchange 182 is the export), plus a negative control once core refuses.
+
 ### UTC calendar replay contract (#1308)
 
 The committed manifest explicitly opts into version 1 of `calendarContract` (UTC,

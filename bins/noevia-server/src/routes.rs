@@ -39,6 +39,9 @@ pub struct Switches {
     pub rust_routing_default: bool,
     /// NOEVIA_RUST_STATS=1 (M6, #1650, only with rust_auth, config.rs): GET /api/stats.
     pub rust_stats: bool,
+    /// NOEVIA_RUST_EXPORT=1 (M4, #1315, only with rust_projects, config.rs):
+    /// GET /api/export/conversations.
+    pub rust_export: bool,
 }
 
 impl Switches {
@@ -52,6 +55,7 @@ impl Switches {
             "NOEVIA_RUST_ROUTING_MODE" => self.rust_routing_mode,
             "NOEVIA_RUST_ROUTING_DEFAULT" => self.rust_routing_default,
             "NOEVIA_RUST_STATS" => self.rust_stats,
+            "NOEVIA_RUST_EXPORT" => self.rust_export,
             _ => false,
         }
     }
@@ -90,6 +94,8 @@ pub enum Native {
     RoutingDefault,
     /// GET /api/stats (M6, NOEVIA_RUST_STATS): crates/server-stats.
     Stats,
+    /// GET /api/export/conversations (M4, NOEVIA_RUST_EXPORT): crates/server-export.
+    Export,
 }
 
 /// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
@@ -98,6 +104,10 @@ const ROUTING_DEFAULT: &str = "/api/routing-default";
 /// The route [`Native::Stats`] implements (GET only; routes.toml), answered only in a build with
 /// the cargo feature `rust-stats` (listed by `--features`, so the supervisor confirms it to Node).
 const STATS: &str = "/api/stats";
+
+/// The route [`Native::Export`] implements (GET only; routes.toml), answered only in a build with
+/// the cargo feature `rust-export` (listed by `--features`, so the supervisor confirms it to Node).
+const EXPORT: &str = "/api/export/conversations";
 
 /// The routes [`Native::Projects`] implements.
 const PROJECT_ROUTES: &[&str] = &[
@@ -126,6 +136,7 @@ fn compiled(route: &Route) -> bool {
         && (route.path != FREE_CHATS || cfg!(feature = "rust-free-chats"))
         && (route.path != ROUTING_DEFAULT || cfg!(feature = "rust-routing-default"))
         && (route.path != STATS || cfg!(feature = "rust-stats"))
+        && (route.path != EXPORT || cfg!(feature = "rust-export"))
 }
 
 /// The native handler a rust-owned route is implemented by.
@@ -148,6 +159,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
             Some(Native::RoutingDefault)
         }
         (STATS, false, Some("NOEVIA_RUST_STATS")) => Some(Native::Stats),
+        (EXPORT, false, Some("NOEVIA_RUST_EXPORT")) => Some(Native::Export),
         ("/api/reasoning-settings", false, Some("NOEVIA_RUST_REASONING_SETTINGS")) => {
             Some(Native::ReasoningSettings)
         }
@@ -280,6 +292,7 @@ mod tests {
             rust_routing_mode: false,
             rust_routing_default: false,
             rust_stats: false,
+            rust_export: false,
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -294,6 +307,7 @@ mod tests {
             rust_routing_mode: false,
             rust_routing_default: false,
             rust_stats: false,
+            rust_export: false,
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -309,6 +323,7 @@ mod tests {
             rust_routing_mode: false,
             rust_routing_default: false,
             rust_stats: false,
+            rust_export: false,
         };
         let both = Switches {
             rust_auth: true,
@@ -319,6 +334,7 @@ mod tests {
             rust_routing_mode: false,
             rust_routing_default: false,
             rust_stats: false,
+            rust_export: false,
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
@@ -425,6 +441,7 @@ mod tests {
             rust_routing_mode: false,
             rust_routing_default: false,
             rust_stats: false,
+            rust_export: false,
             ..Default::default()
         };
         for p in ["/api/usage", "/api/usage/aggregate"] {
@@ -552,5 +569,45 @@ mod tests {
         }
         assert!(on.on("NOEVIA_RUST_STATS"));
         assert!(!auth.on("NOEVIA_RUST_STATS"));
+    }
+
+    #[test]
+    fn export_owns_only_get_under_its_switch_in_a_build_with_the_slice() {
+        let projects = Switches {
+            rust_auth: true,
+            rust_projects: true,
+            ..Default::default()
+        };
+        let on = Switches {
+            rust_export: true,
+            ..projects
+        };
+        let answered = cfg!(feature = "rust-export").then_some(Native::Export);
+        assert_eq!(crate::FEATURES.contains(&"rust-export"), answered.is_some());
+        assert_eq!(dispatch("GET", "/api/export/conversations"), None);
+        assert_eq!(
+            dispatch_under("GET", "/api/export/conversations", projects),
+            None
+        );
+        assert_eq!(
+            dispatch_under("GET", "/api/export/conversations", on),
+            answered
+        );
+        // Node keeps every other method (its 405) and the paths around it. (A trailing slash
+        // matches the routes.toml pattern; export_routes.rs forwards it, Node matching exactly.)
+        for (m, p) in [
+            ("HEAD", "/api/export/conversations"),
+            ("POST", "/api/export/conversations"),
+            ("PUT", "/api/export/conversations"),
+            ("DELETE", "/api/export/conversations"),
+            ("OPTIONS", "/api/export/conversations"),
+            ("GET", "/api/export/conversationsx"),
+            ("GET", "/api/export"),
+            ("GET", "/api/diary/workspace-export"),
+        ] {
+            assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+        }
+        assert!(on.on("NOEVIA_RUST_EXPORT"));
+        assert!(!projects.on("NOEVIA_RUST_EXPORT"));
     }
 }

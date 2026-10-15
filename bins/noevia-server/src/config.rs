@@ -49,6 +49,12 @@ pub struct Config {
     /// no TLS client) and for the Lemonade kind, whose MTP "last response" fallback is kept in
     /// Node's memory; any other value is off and none of those keys is read.
     pub rust_stats: Option<std::sync::Arc<server_stats::Engine>>,
+    /// NOEVIA_RUST_EXPORT=1 (M4, sbstndalton/noevia#1315): GET /api/export/conversations, read from
+    /// the user's files on disk. Refused without NOEVIA_RUST_PROJECTS=1 (and so NOEVIA_RUST_AUTH=1),
+    /// without the compiled rust-export and rust-free-chats features (the free-chat list must be
+    /// one Node re-reads from disk, the owner's 2026-10-12 condition) and without UI_DATA_DIR; any
+    /// other value is off.
+    pub rust_export: bool,
     pub rust_sampling_settings: Option<server_store::RustSamplingSettings>,
     pub usage_clock: Result<server_usage::summary::Clock, server_usage::Fault>,
     /// What the account routes read (PUBLIC_ORIGIN, WEBAUTHN_RP_ID, TRUST_PROXY, COWORK_DAV_PORT,
@@ -122,6 +128,7 @@ impl Config {
             rust_routing_mode: self.rust_routing_mode.is_some(),
             rust_routing_default: self.rust_routing_default,
             rust_stats: self.rust_stats.is_some(),
+            rust_export: self.rust_export,
         }
     }
 
@@ -208,6 +215,23 @@ impl Config {
         } else {
             None
         };
+        let rust_export = if get("NOEVIA_RUST_EXPORT").as_deref() == Some("1") {
+            if rust_projects.is_none() {
+                return Err("NOEVIA_RUST_EXPORT=1 needs NOEVIA_RUST_PROJECTS=1".into());
+            }
+            if !cfg!(feature = "rust-export") {
+                return Err("NOEVIA_RUST_EXPORT=1 needs compiled rust-export".into());
+            }
+            if !cfg!(feature = "rust-free-chats") {
+                return Err("NOEVIA_RUST_EXPORT=1 needs compiled rust-free-chats".into());
+            }
+            if get("UI_DATA_DIR").filter(|d| !d.is_empty()).is_none() {
+                return Err("NOEVIA_RUST_EXPORT=1 needs UI_DATA_DIR".into());
+            }
+            true
+        } else {
+            false
+        };
         let routing_feature_env = if rust_routing_mode.is_some() {
             server_routing_mode::feature_env(get("NOEVIA_FEATURE_ROUTING_MODES").as_deref())
                 .map_err(|e| e.message)?
@@ -243,6 +267,7 @@ impl Config {
             routing_feature_env,
             rust_routing_default,
             rust_stats,
+            rust_export,
             usage_clock: server_usage::summary::Clock::system(&get),
         })
     }
@@ -621,5 +646,72 @@ mod stats_tests {
             assert!(err.contains(words), "{err}");
             assert!(err.starts_with("NOEVIA_RUST_STATS=1"), "{err}");
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod export_tests {
+    use super::*;
+
+    fn lookup(pairs: &[(&str, &str)]) -> Result<Config, String> {
+        let pairs: Vec<(String, String)> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        Config::from_lookup(|k| pairs.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone()))
+    }
+
+    const UP: (&str, &str) = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9");
+    const AUTH: (&str, &str) = ("NOEVIA_RUST_AUTH", "1");
+    const PROJECTS: (&str, &str) = ("NOEVIA_RUST_PROJECTS", "1");
+    const DATA: (&str, &str) = ("UI_DATA_DIR", "/data");
+    const ON: (&str, &str) = ("NOEVIA_RUST_EXPORT", "1");
+
+    #[test]
+    fn export_switch_is_exact_and_default_off() {
+        for value in [
+            None,
+            Some("0"),
+            Some("true"),
+            Some(" 1"),
+            Some("1 "),
+            Some(""),
+        ] {
+            let mut pairs = vec![UP, AUTH, PROJECTS, DATA];
+            if let Some(v) = value {
+                pairs.push(("NOEVIA_RUST_EXPORT", v));
+            }
+            let c = lookup(&pairs).unwrap();
+            assert!(!c.rust_export);
+            assert!(!c.switches().on("NOEVIA_RUST_EXPORT"));
+        }
+        // Off, nothing it needs is required.
+        assert!(!lookup(&[UP]).unwrap().rust_export);
+    }
+
+    #[test]
+    fn export_needs_projects_the_compiled_slices_and_a_data_dir() {
+        let err = lookup(&[UP, ON, DATA]).unwrap_err();
+        assert!(err.contains("NOEVIA_RUST_PROJECTS=1"), "{err}");
+        let err = lookup(&[UP, AUTH, ON, DATA]).unwrap_err();
+        assert!(err.contains("NOEVIA_RUST_PROJECTS=1"), "{err}");
+        let enabled = lookup(&[UP, AUTH, PROJECTS, ON, DATA]);
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-export"),
+            cfg!(feature = "rust-export")
+        );
+        if !cfg!(feature = "rust-export") {
+            assert!(enabled.unwrap_err().contains("compiled rust-export"));
+            return;
+        }
+        if !cfg!(feature = "rust-free-chats") {
+            assert!(enabled.unwrap_err().contains("compiled rust-free-chats"));
+            return;
+        }
+        let c = enabled.unwrap();
+        assert!(c.rust_export && c.switches().on("NOEVIA_RUST_EXPORT"));
+        let err = lookup(&[UP, AUTH, PROJECTS, ON]).unwrap_err();
+        assert!(err.contains("UI_DATA_DIR"), "{err}");
     }
 }
