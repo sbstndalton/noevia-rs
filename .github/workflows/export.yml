@@ -96,13 +96,12 @@ jobs:
             --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"
       - name: "Negative control: a confirmed Node refuses the export the front no longer answers"
-        # Meaningful once the pinned core refuses a confirmed export (noevia-core exportRustOwned);
-        # skipped, and said so, while core.ref predates it.
+        # core.ref refuses a confirmed export (noevia-core#132 exportRustOwned) and its corpus
+        # launcher passes the switch through; a core without either fails here, never skips.
         run: |
           set -uo pipefail
-          if ! grep -q exportRustOwned core/server/routes/export.cjs; then
-            echo "::notice::core.ref has no exportRustOwned yet: negative control skipped"; exit 0
-          fi
+          grep -q exportRustOwned core/server/routes/export.cjs || { echo "::error::core.ref has no exportRustOwned"; exit 1; }
+          grep -q NOEVIA_RUST_EXPORT_CONFIRMED core/tools/contract-corpus/serve.cjs || { echo "::error::core.ref's corpus launcher does not pass NOEVIA_RUST_EXPORT through"; exit 1; }
           if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
               --ignore-body hours --ignore-body peakHour/hour \
               --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \

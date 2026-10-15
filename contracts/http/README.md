@@ -165,7 +165,8 @@ headers, 413 and 500. Other methods stay Node's (405). With `NOEVIA_FRONT=rust` 
 Accepted difference (owner, 2026-10-12): the front exports what is on disk; a Node process's unsaved
 or stale in-memory list is not seen. CI job `export-native` (workflow export.yml) regenerates the
 Node oracle, runs the differential and HTTP tests, and replays the whole corpus through the front
-with the switch on (exchange 182 is the export), plus a negative control once core refuses.
+with the switch on (exchange 182 is the export), plus a negative control: Node, confirmed, must
+refuse it with 503 (never skipped).
 
 ## M6: ChatGPT connection status (`NOEVIA_RUST_CHATGPT_STATUS`, sbstndalton/noevia#1373)
 
@@ -184,8 +185,8 @@ and Rust alike (core#135). A missing or older schema, an oversized or non-text r
 keys are a sanitized 502 (`ChatGPT sign-in failed.`). CI job `chatgpt-status-native` (workflow
 chatgpt-status.yml) regenerates the Node oracle at `crates/server-chatgpt-status/tests/oracle-core.ref`,
 runs the differential, bounds and HTTP tests, and replays the whole corpus through the front with
-the switch on (exchange 147 is the status, flag off), plus a negative control once core passes the
-switch through its corpus launcher.
+the switch on (exchange 147 is the status, flag off), plus a negative control: Node, confirmed,
+must refuse it with 503 (never skipped).
 
 ### UTC calendar replay contract (#1308)
 

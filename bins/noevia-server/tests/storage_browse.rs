@@ -586,3 +586,174 @@ async fn file_post_with_missing_or_wrong_csrf_is_nodes_403() {
     let (status, body) = file_post_with_csrf(&app, Some("csrf")).await;
     assert_ne!(status, 403, "{body}");
 }
+
+/// core routes/storage.cjs with core's own ownership selectors (features.cjs
+/// `rustStorageReadsOwned`, `rustStorageBrowseOwned`) over the given environment; each row is one
+/// request against a saved local connection, answered `[status, body]`.
+/// Method, path, body, Node environment, expected refusal body (None: Node answers).
+type RefusalCase<'a> = (
+    &'a str,
+    &'a str,
+    Option<&'a str>,
+    &'a Value,
+    Option<&'a str>,
+);
+
+const REFUSAL_SEAM: &str = r#"'use strict';
+const fs=require('node:fs');const core=process.argv[1];const {Readable}=require('node:stream');
+const {createStorageRoutes}=require(core+'/server/routes/storage.cjs');
+const http=require(core+'/server/http.cjs');
+const features=require(core+'/server/features.cjs');
+(async()=>{const cases=JSON.parse(fs.readFileSync(0,'utf8'));const out=[];
+for(const c of cases){
+  const routes=createStorageRoutes({json:http.json,readJson:http.readJson,authService:{getStorage:()=>({kind:'local',baseUrl:'',bucket:'',region:'us-east-1',username:'',corpusRoot:''})},storageClient:require(core+'/server/storage-client.cjs'),endpointApproved:async()=>false,fetch:()=>{throw new Error('no outbound request');},crypto:require('node:crypto'),
+    storageReadsOwned:()=>features.rustStorageReadsOwned(c.env),storageBrowseOwned:()=>features.rustStorageBrowseOwned(c.env)});
+  const req=Readable.from(c.body===null?[]:[Buffer.from(c.body,'utf8')]);req.method=c.method;req.headers={'content-type':'application/json'};
+  let status=null,body=null;const res={setHeader(){},getHeader(){},writeHead(s){status=s;},end(b){body=String(b);}};
+  try{const handled=await routes(req,res,{path:c.path,authn:{user:{id:'synthetic-owner',role:'admin'}}});if(!handled){status=0;body='unhandled';}}
+  catch(e){const f=http.errorResponse(e);status=f.status;body=JSON.stringify(f.body);}
+  out.push([status,body]);}
+process.stdout.write(JSON.stringify(out));})().catch((e)=>{console.error(e);process.exitCode=1;});
+"#;
+
+/// Negative control for the native list/read and metadata (noevia#1368): once the supervisor has
+/// confirmed the front (NOEVIA_FRONT=rust, NOEVIA_RUST_AUTH_CONFIRMED and the slice's
+/// *_CONFIRMED), the actual core route must refuse with 503 and its owned code, so only the front
+/// can answer them. The read (`POST /api/integrations/storage/file`) has no corpus exchange; this
+/// is its refusal proof. An unconfirmed switch must not refuse (control of the control).
+#[test]
+fn confirmed_node_refuses_the_storage_routes_the_front_owns() {
+    let Ok(core) = std::env::var("NOEVIA_STORAGE_ORACLE_CORE") else {
+        skipped("NOEVIA_STORAGE_ORACLE_CORE unset (refusal control)");
+        return;
+    };
+    let auth =
+        json!({"NOEVIA_FRONT":"rust","NOEVIA_RUST_AUTH":"1","NOEVIA_RUST_AUTH_CONFIRMED":"1"});
+    let with = |extra: Value| {
+        let mut env = auth.clone();
+        env.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        env
+    };
+    let browse =
+        with(json!({"NOEVIA_RUST_STORAGE_BROWSE":"1","NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED":"1"}));
+    let reads =
+        with(json!({"NOEVIA_RUST_STORAGE_READS":"1","NOEVIA_RUST_STORAGE_READS_CONFIRMED":"1"}));
+    let unconfirmed =
+        with(json!({"NOEVIA_RUST_STORAGE_BROWSE":"1","NOEVIA_RUST_STORAGE_READS":"1"}));
+    let browse_refusal = r#"{"error":"Storage browsing is owned by the Rust front.","code":"RUST_STORAGE_BROWSE_OWNED"}"#;
+    let reads_refusal = r#"{"error":"Storage metadata reads are owned by the Rust front.","code":"RUST_STORAGE_READS_OWNED"}"#;
+    let read_body = Some(r#"{"path":"docs/a.md"}"#);
+    let cases: Vec<RefusalCase> = vec![
+        (
+            "GET",
+            "/api/integrations/storage/files",
+            None,
+            &browse,
+            Some(browse_refusal),
+        ),
+        (
+            "GET",
+            "/api/integrations/storage/files/docs/sub",
+            None,
+            &browse,
+            Some(browse_refusal),
+        ),
+        (
+            "POST",
+            "/api/integrations/storage/file",
+            read_body,
+            &browse,
+            Some(browse_refusal),
+        ),
+        (
+            "GET",
+            "/api/integrations/storage",
+            None,
+            &reads,
+            Some(reads_refusal),
+        ),
+        // Each slice is confirmed on its own: the other slice's routes stay Node's.
+        ("GET", "/api/integrations/storage", None, &browse, None),
+        ("GET", "/api/integrations/storage/files", None, &reads, None),
+        (
+            "POST",
+            "/api/integrations/storage/file",
+            read_body,
+            &reads,
+            None,
+        ),
+        // Switch without the supervisor's confirmation: Node answers.
+        (
+            "GET",
+            "/api/integrations/storage/files",
+            None,
+            &unconfirmed,
+            None,
+        ),
+        (
+            "POST",
+            "/api/integrations/storage/file",
+            read_body,
+            &unconfirmed,
+            None,
+        ),
+        ("GET", "/api/integrations/storage", None, &unconfirmed, None),
+    ];
+    let input = json!(cases
+        .iter()
+        .map(|(m, p, b, env, _)| json!({"method":m,"path":p,"body":b,"env":env}))
+        .collect::<Vec<_>>());
+    let mut child =
+        Command::new(std::env::var("NOEVIA_STORAGE_ORACLE_NODE").unwrap_or_else(|_| "node".into()))
+            .args(["-e", REFUSAL_SEAM, &core])
+            .env("NODE_PATH", format!("{core}/server/node_modules"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("node");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.to_string().as_bytes())
+        .unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut stdout = child.stdout.take().unwrap();
+    std::thread::spawn(move || {
+        let mut out = Vec::new();
+        let _ = (&mut stdout).take(1024 * 1024).read_to_end(&mut out);
+        let _ = tx.send(out);
+    });
+    let out = rx
+        .recv_timeout(Duration::from_secs(120))
+        .unwrap_or_else(|_| {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("Node refusal oracle timed out");
+        });
+    assert!(
+        child.wait().unwrap().success(),
+        "Node refusal oracle failed"
+    );
+    let rows: Vec<(u16, String)> = serde_json::from_slice(&out).unwrap();
+    assert_eq!(rows.len(), cases.len());
+    for ((method, path, _, env, refusal), (status, body)) in cases.iter().zip(&rows) {
+        match refusal {
+            Some(expected) => assert_eq!(
+                (*status, body.as_str()),
+                (503, *expected),
+                "{method} {path} with {env}: Node must refuse"
+            ),
+            None => {
+                assert_ne!(
+                    *status, 503,
+                    "{method} {path} with {env}: Node must answer: {body}"
+                );
+                assert_ne!(*status, 0, "{method} {path}: unhandled");
+            }
+        }
+    }
+}

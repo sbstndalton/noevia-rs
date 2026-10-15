@@ -56,21 +56,20 @@ fn as_list(stored: Option<JValue>) -> Vec<JValue> {
     }
 }
 
-/// The projects workspace.cjs `get()` loads before any route runs (switch off: `readJson(file,
-/// { projects: [] }).projects || []`, then its `provider` and `modes` loops), or the 500 Node
-/// answers when that load throws: a file holding `null`, a truthy `projects` that is not an
-/// array, an entry that is `null` or a primitive (`project.modes = [...]` throws in strict mode).
+/// The projects workspace.cjs `get()` loads before any route runs (switch off: `(readJson(file,
+/// { projects: [] }) || {}).projects`, kept only when it is an array, else `[]` (core#126,
+/// sbstndalton/noevia#1806: a file holding `null` or a `projects` that is not an array loads as an
+/// empty list), then its `provider` and `modes` loops), or the 500 Node answers when that load
+/// throws: an entry that is `null` or a primitive (`project.modes = [...]` throws in strict mode).
 fn workspace_projects(dir: &std::path::Path) -> Result<Vec<JValue>, Reply> {
     let stored =
         store::read_json(&dir.join(store::PROJECTS_FILE)).map_err(|e| chats::store_failure(&e))?;
     let projects = match stored {
-        None => return Ok(Vec::new()),
-        Some(JValue::Null) => return Err(Reply::internal()),
         Some(v) => match v.get("projects") {
             JValue::Arr(items) => items.clone(),
-            p if !p.truthy() => return Ok(Vec::new()),
-            _ => return Err(Reply::internal()),
+            _ => return Ok(Vec::new()),
         },
+        None => return Ok(Vec::new()),
     };
     if projects
         .iter()
