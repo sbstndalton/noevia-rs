@@ -624,6 +624,10 @@ path = "/api/projects/{id}/sources/sync"
 owner = "node"
 
 [[route]]
+path = "/api/projects/{id}/sources/text"
+owner = "node"
+
+[[route]]
 path = "/api/projects/{id}/upload"
 owner = "node"
 
