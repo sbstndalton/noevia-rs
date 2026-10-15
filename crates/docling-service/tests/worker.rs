@@ -17,6 +17,7 @@ for line in sys.stdin:
  elif d==b'bad':sys.stdout.buffer.write(struct.pack('>I',40000000));sys.stdout.buffer.flush()
  elif d==b'error':send({'error':True})
  elif d==b'echo':send({'ok':{'request':r}})
+ elif d[:5]==b'large':send({'ok':{'request':r,'size':len(d)}})
  else:send({'ok':{'pid':os.getpid(),'text':'synthetic'}})
 "#).unwrap();
     let mut config = Config::production(directory.path().to_owned());
@@ -284,4 +285,62 @@ async fn figures_are_forwarded_only_when_asked() {
         .unwrap();
     assert_eq!(with["request"]["figures"], true);
     assert_eq!(with["request"]["name"], "x.pdf");
+}
+
+#[tokio::test]
+async fn ranges_are_forwarded_and_a_ranged_body_over_25_mib_is_streamed() {
+    // sbstndalton/noevia#1867: X-Document-Pages reaches the engine as "pages": [first, last], and a
+    // ranged PDF may exceed the 25 MiB whole-document cap (it is written to the temp file in chunks).
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (directory, config) = fixture();
+    let path = directory.path().join("input.pdf");
+    std::fs::write(&path, "echo").unwrap();
+    let mut worker = Worker::new(config.clone());
+    let ranged = worker
+        .convert_range(
+            &path,
+            "x.pdf",
+            false,
+            Some((26, 50)),
+            Instant::now() + Duration::from_secs(2),
+        )
+        .await
+        .unwrap();
+    assert_eq!(ranged["request"]["pages"], serde_json::json!([26, 50]));
+    assert!(ranged["request"].get("figures").is_none());
+    worker.stop().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(docling_service::serve(listener, config));
+    let size = docling_service::BODY_CAP + 5 * 1024 * 1024;
+    let mut body = vec![0u8; size];
+    body[..5].copy_from_slice(b"large");
+    for (pages, status) in [(None, "400"), (Some("2-3"), "200")] {
+        let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
+        let mut head = format!("POST /extract HTTP/1.0\r\nHost: localhost\r\nX-Document-Name: big.pdf\r\nContent-Length: {size}\r\n");
+        if let Some(p) = pages {
+            head.push_str(&format!("X-Document-Pages: {p}\r\n"));
+        }
+        head.push_str("\r\n");
+        socket.write_all(head.as_bytes()).await.unwrap();
+        if pages.is_some() {
+            socket.write_all(&body).await.unwrap();
+        }
+        let mut reply = Vec::new();
+        tokio::time::timeout(Duration::from_secs(20), socket.read_to_end(&mut reply))
+            .await
+            .unwrap()
+            .unwrap();
+        let text = String::from_utf8_lossy(&reply);
+        assert!(text.starts_with(&format!("HTTP/1.0 {status}")), "{text}");
+        if pages.is_some() {
+            let split = reply.windows(4).position(|b| b == b"\r\n\r\n").unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&reply[split + 4..]).unwrap();
+            assert_eq!(json["size"], size, "received whole");
+            assert_eq!(json["request"]["pages"], serde_json::json!([2, 3]));
+        }
+    }
+    server.abort();
 }

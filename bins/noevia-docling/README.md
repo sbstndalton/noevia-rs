@@ -59,14 +59,17 @@ engines are synthetic. No model was imported, downloaded or loaded by these test
 ## Required qualification
 
 Set `NOEVIA_DOCLING_REFERENCE` to `docling/` from actual merged services
-`b45a122c04173a14e884fa1aa93a6a101281431d`, archive SHA-256
-`3d69592f2b844b474a9ae0f0a6adb20ffa5be03de21e51039ff85305ebc64cff`.
+`bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7` (sbstndalton/noevia#1867 page ranges), archive SHA-256
+`d35a0351a98514411a0e87f112d041e53096b1cda6d3e3b409a4765f9601d9bb`.
 Tests fail when the reference is missing; no silent skip. Source hashes are checked
 by the Rust-owned test harness before the actual server/isolation/worker modules are copied to synthetic state.
 Only the extraction collaborator is replaced. The Rust example owns source verification, preparation, cases, HTTP exchange and ordered
 serialization. Fixed minimal Python glue loads the actual server and synthetic engine;
 it defines no oracle cases or HTTP policy. The generator runs real localhost
-Python HTTP requests and records 34 JSON cases, including all supported formats.
+Python HTTP requests and records 56 JSON cases, including all supported formats and 22
+`X-Document-Pages` cases (#1867: PDFs only, at most 200 pages, ASCII digits, ranged bodies up to
+`DOCLING_RANGED_MAX_BYTES`, default 96 MiB, streamed to the temp file in 1 MiB chunks; `/health`
+advertises `ranges` and `rangedMaxBytes`).
 
 ```
 cargo run --locked -p docling-service --example gen-fixtures -- "$NOEVIA_DOCLING_REFERENCE" /tmp/docling-http.json

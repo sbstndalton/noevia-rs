@@ -35,6 +35,9 @@ async fn actual_python_http_goldens_through_native_real_worker() {
         if let Some(name) = case["name"].as_str() {
             header.push_str(&format!("X-Document-Name: {name}\r\n"));
         }
+        if let Some(pages) = case["pages"].as_str() {
+            header.push_str(&format!("X-Document-Pages: {pages}\r\n"));
+        }
         let mut data = header.into_bytes();
         data.extend_from_slice(b"\r\n");
         data.extend_from_slice(&STANDARD.decode(case["data"].as_str().unwrap()).unwrap());
@@ -83,7 +86,7 @@ async fn actual_python_http_goldens_through_native_real_worker() {
         );
         count += 1;
     }
-    assert_eq!(count, 34, "no corpus rows silently dropped");
+    assert_eq!(count, oracle::CASES, "no corpus rows silently dropped");
     server.abort();
     let _ = server.await;
 }

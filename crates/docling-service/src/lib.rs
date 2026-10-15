@@ -9,6 +9,14 @@ use tokio::{
 };
 
 pub const BODY_CAP: usize = 25 * 1024 * 1024;
+/// sbstndalton/noevia#1867: a request for a page range of a PDF (`X-Document-Pages: first-last`) may
+/// carry a file up to `Config::ranged_body_cap` (DOCLING_RANGED_MAX_BYTES, default 96 MiB): only the
+/// range is converted, and the body is streamed to the temp file in CHUNK pieces, never held whole.
+pub const RANGED_BODY_CAP: usize = 96 * 1024 * 1024;
+pub const MAX_RANGE_PAGES: u64 = 200;
+const CHUNK: usize = 1024 * 1024;
+/// The body has `body_timeout` per read and, in all, `body_timeout` plus one second per BODY_RATE bytes.
+const BODY_RATE: usize = 256 * 1024;
 pub const CONNECTION_CAP: usize = 8;
 // Two million Unicode characters can require 24 MB as escaped surrogate pairs.
 // 32 MiB also admits the bounded 300-page envelope; larger engine output is refused.
@@ -28,6 +36,8 @@ pub struct Config {
     pub ready_timeout: Duration,
     pub body_timeout: Duration,
     pub header_timeout: Duration,
+    /// #1867: the largest body of a ranged request.
+    pub ranged_body_cap: usize,
 }
 impl Config {
     pub fn production(directory: PathBuf) -> Self {
@@ -39,6 +49,11 @@ impl Config {
             ready_timeout: Duration::from_secs(30),
             body_timeout: Duration::from_secs(30),
             header_timeout: Duration::from_secs(30),
+            ranged_body_cap: std::env::var("DOCLING_RANGED_MAX_BYTES")
+                .ok()
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .filter(|v| *v > 0)
+                .unwrap_or(RANGED_BODY_CAP),
         }
     }
 }
@@ -153,6 +168,19 @@ impl Worker {
         figures: bool,
         deadline: Instant,
     ) -> Result<Value, Failure> {
+        self.convert_range(path, name, figures, None, deadline)
+            .await
+    }
+    /// #1867: `pages` (first, last) converts only that page range of a PDF. Without it the request
+    /// line is byte-for-byte what it always was.
+    pub async fn convert_range(
+        &mut self,
+        path: &std::path::Path,
+        name: &str,
+        figures: bool,
+        pages: Option<(u64, u64)>,
+        deadline: Instant,
+    ) -> Result<Value, Failure> {
         // Probe idle stdout without waiting or reaping. EOF means the warm worker
         // died; unsolicited bytes violate framing. Cleanup precedes a fresh start.
         // Never try_wait/reap before group cleanup: descendants may still exist.
@@ -176,12 +204,16 @@ impl Worker {
         if self.process.is_none() {
             self.start(deadline).await?;
         }
-        let request = if figures {
-            serde_json::to_vec(&json!({"path":path,"name":name,"figures":true}))
-        } else {
-            serde_json::to_vec(&json!({"path":path,"name":name}))
+        let mut request = json!({"path":path,"name":name});
+        if let Some(object) = request.as_object_mut() {
+            if figures {
+                object.insert("figures".into(), json!(true));
+            }
+            if let Some((first, last)) = pages {
+                object.insert("pages".into(), json!([first, last]));
+            }
         }
-        .map_err(|_| Failure::Conversion)?;
+        let request = serde_json::to_vec(&request).map_err(|_| Failure::Conversion)?;
         if request.len() > 4096 {
             return Err(Failure::Conversion);
         }
@@ -300,6 +332,7 @@ pub async fn serve_with_shutdown(
     use std::sync::Arc;
     let connections = Arc::new(tokio::sync::Semaphore::new(CONNECTION_CAP));
     let header_timeout = config.header_timeout;
+    let ranged_cap = config.ranged_body_cap;
     let worker = Arc::new(tokio::sync::Mutex::new(Worker::new(config)));
     let mut tasks = tokio::task::JoinSet::new();
     tokio::pin!(shutdown);
@@ -317,7 +350,7 @@ pub async fn serve_with_shutdown(
         let worker = worker.clone();
         tasks.spawn(async move {
             let _permit = permit;
-            let _ = connection(socket, worker, header_timeout).await;
+            let _ = connection(socket, worker, header_timeout, ranged_cap).await;
         });
     }
     tasks.abort_all();
@@ -341,6 +374,8 @@ struct Headers {
     name: Option<String>,
     /// #1726: `X-Document-Figures: 1`.
     figures: bool,
+    /// #1867: the first `X-Document-Pages`.
+    pages: Option<String>,
 }
 async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
     // Read only the header, never speculative body bytes before admission. Bounded
@@ -377,6 +412,7 @@ async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
         length: None,
         name: None,
         figures: false,
+        pages: None,
     };
     for (count, line) in lines.filter(|line| !line.is_empty()).enumerate() {
         if count >= 99 {
@@ -389,6 +425,9 @@ async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
         if key.eq_ignore_ascii_case("x-document-name") && result.name.is_none() {
             result.name = Some(value.trim_start_matches([' ', '\t']).to_owned());
         }
+        if key.eq_ignore_ascii_case("x-document-pages") && result.pages.is_none() {
+            result.pages = Some(value.to_owned());
+        }
         if key.eq_ignore_ascii_case("x-document-figures") {
             result.figures = value.trim() == "1";
         }
@@ -398,7 +437,34 @@ async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
     }
     Ok(result)
 }
-fn selection(headers: &Headers) -> Option<(usize, &str, String)> {
+/// (first, last) from an X-Document-Pages value "first-last": Ok(None) when absent or empty, Err when
+/// invalid. ASCII digits only, at most six each, first >= 1, at most MAX_RANGE_PAGES pages.
+fn page_range(raw: Option<&str>) -> Result<Option<(u64, u64)>, ()> {
+    let value = raw.unwrap_or("").trim_matches([' ', '\t']);
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let (first, last) = value.split_once('-').ok_or(())?;
+    let number = |part: &str| {
+        if part.is_empty() || part.len() > 6 || !part.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(());
+        }
+        part.parse::<u64>().map_err(|_| ())
+    };
+    let (first, last) = (number(first)?, number(last)?);
+    if first < 1 || first > last || last - first >= MAX_RANGE_PAGES {
+        return Err(());
+    }
+    Ok(Some((first, last)))
+}
+type Selection<'a> = (usize, &'a str, String, Option<(u64, u64)>);
+fn selection(headers: &Headers, ranged_cap: usize) -> Option<Selection<'_>> {
+    let pages = page_range(headers.pages.as_deref()).ok()?;
+    let cap = if pages.is_some() {
+        ranged_cap
+    } else {
+        BODY_CAP
+    };
     let length = headers.length.as_deref().unwrap_or("0").trim();
     let length = length.strip_prefix('+').unwrap_or(length);
     let mut size = 0usize;
@@ -414,7 +480,7 @@ fn selection(headers: &Headers) -> Option<(usize, &str, String)> {
         size = size
             .checked_mul(10)?
             .checked_add(usize::from(byte - b'0'))?;
-        if size > BODY_CAP {
+        if size > cap {
             return None;
         }
         previous_digit = true;
@@ -423,8 +489,12 @@ fn selection(headers: &Headers) -> Option<(usize, &str, String)> {
         return None;
     }
     let name = headers.name.as_deref()?;
+    // A range is for PDFs only (the Python worker's `name.lower().endswith(".pdf")`).
+    if pages.is_some() && !name.to_lowercase().ends_with(".pdf") {
+        return None;
+    }
     if size == 0
-        || size > BODY_CAP
+        || size > cap
         || name.is_empty()
         || name.chars().count() > 200
         || name.contains(['/', '\\'])
@@ -435,7 +505,7 @@ fn selection(headers: &Headers) -> Option<(usize, &str, String)> {
         .rsplit_once('.')
         .map(|(_, suffix)| format!(".{}", suffix.to_lowercase()))
         .unwrap_or_default();
-    Some((size, name, suffix))
+    Some((size, name, suffix, pages))
 }
 async fn reply(
     socket: &mut tokio::net::TcpStream,
@@ -480,10 +550,56 @@ async fn reply_bytes(
         .await
         .map_err(|_| std::io::Error::other("response deadline"))?
 }
+enum Received {
+    Incomplete,
+    Storage,
+}
+/// Copy exactly `size` body bytes from the socket to `path`, CHUNK at a time: Incomplete when the body
+/// ends early, a read stalls `idle`, or `deadline` passes; Storage when the file cannot be written.
+async fn receive(
+    socket: &mut tokio::net::TcpStream,
+    path: &std::path::Path,
+    size: usize,
+    idle: Duration,
+    deadline: Instant,
+) -> Result<(), Received> {
+    let mut file = tokio::fs::File::create(path)
+        .await
+        .map_err(|_| Received::Storage)?;
+    let mut buffer = Vec::new();
+    buffer
+        .try_reserve_exact(CHUNK.min(size))
+        .map_err(|_| Received::Storage)?;
+    buffer.resize(CHUNK.min(size), 0);
+    let mut received = 0usize;
+    while received < size {
+        let want = CHUNK.min(size - received);
+        let read_by = deadline.min(Instant::now().checked_add(idle).unwrap_or(deadline));
+        let count = match timeout_at(
+            read_by,
+            socket.read(buffer.get_mut(..want).ok_or(Received::Storage)?),
+        )
+        .await
+        {
+            Ok(Ok(count)) if count > 0 => count,
+            _ => return Err(Received::Incomplete),
+        };
+        timeout_at(
+            deadline,
+            file.write_all(buffer.get(..count).ok_or(Received::Storage)?),
+        )
+        .await
+        .map_err(|_| Received::Storage)?
+        .map_err(|_| Received::Storage)?;
+        received += count;
+    }
+    file.flush().await.map_err(|_| Received::Storage)
+}
 async fn connection(
     mut socket: tokio::net::TcpStream,
     worker: std::sync::Arc<tokio::sync::Mutex<Worker>>,
     header_timeout: Duration,
+    ranged_cap: usize,
 ) -> std::io::Result<()> {
     let parsed = tokio::time::timeout(header_timeout, headers(&mut socket)).await;
     let Ok(Ok(headers)) = parsed else {
@@ -494,7 +610,8 @@ async fn connection(
             &mut socket,
             if headers.path == "/health" { 200 } else { 404 },
             if headers.path == "/health" {
-                json!({"service":"docling","formats":FORMATS})
+                // #1867: `ranges` and the ranged body cap; core asks before it sends a range.
+                json!({"service":"docling","formats":FORMATS,"ranges":true,"rangedMaxBytes":ranged_cap})
             } else {
                 json!({"service":"docling"})
             },
@@ -520,50 +637,56 @@ async fn connection(
     if headers.path != "/extract" {
         return reply(&mut socket, 404, json!({"error":"not found"})).await;
     }
-    let Some((size, name, suffix)) = selection(&headers) else {
+    let Some((size, name, suffix, pages)) = selection(&headers, ranged_cap) else {
         return reply(&mut socket, 400, json!({"error":INVALID})).await;
     };
     let Ok(mut worker) = worker.try_lock() else {
         return reply(&mut socket, 503, json!({"error":BUSY})).await;
     };
-    let Some(body_deadline) = Instant::now().checked_add(worker.config.body_timeout) else {
-        drop(worker);
-        return reply(&mut socket, 503, json!({"error":UNAVAILABLE})).await;
-    };
-    let mut data = Vec::new();
-    if data.try_reserve_exact(size).is_err() {
-        drop(worker);
-        return reply(&mut socket, 503, json!({"error":UNAVAILABLE})).await;
-    }
-    data.resize(size, 0);
-    if !matches!(
-        timeout_at(body_deadline, socket.read_exact(&mut data)).await,
-        Ok(Ok(_))
-    ) {
-        drop(worker);
-        return reply(
-            &mut socket,
-            400,
-            json!({"error":"Incomplete document body."}),
-        )
-        .await;
-    }
-    if !FORMATS.contains(&suffix.as_str()) {
-        drop(worker);
-        return reply(&mut socket, 415, json!({"error":format!("This worker cannot read {}.", if suffix.is_empty() {"files without an extension"} else {&suffix})})).await;
-    }
     let directory = tempfile::Builder::new()
         .prefix("noevia-docling-")
         .tempdir()?;
     let path = directory.path().join(format!("input{suffix}"));
-    if !matches!(
-        timeout_at(body_deadline, tokio::fs::write(&path, &data)).await,
-        Ok(Ok(()))
-    ) {
+    // Streamed to the temp file a chunk at a time (#1867), so a large ranged body is never held whole.
+    let overall = worker
+        .config
+        .body_timeout
+        .checked_add(Duration::from_secs((size / BODY_RATE) as u64));
+    let Some(body_deadline) = overall.and_then(|d| Instant::now().checked_add(d)) else {
         drop(worker);
         return reply(&mut socket, 503, json!({"error":UNAVAILABLE})).await;
+    };
+    match receive(
+        &mut socket,
+        &path,
+        size,
+        worker.config.body_timeout,
+        body_deadline,
+    )
+    .await
+    {
+        Ok(()) => (),
+        Err(Received::Incomplete) => {
+            drop(directory);
+            drop(worker);
+            return reply(
+                &mut socket,
+                400,
+                json!({"error":"Incomplete document body."}),
+            )
+            .await;
+        }
+        Err(Received::Storage) => {
+            drop(directory);
+            drop(worker);
+            return reply(&mut socket, 503, json!({"error":UNAVAILABLE})).await;
+        }
     }
-    drop(data);
+    if !FORMATS.contains(&suffix.as_str()) {
+        drop(directory);
+        drop(worker);
+        return reply(&mut socket, 415, json!({"error":format!("This worker cannot read {}.", if suffix.is_empty() {"files without an extension"} else {&suffix})})).await;
+    }
     let duration = if matches!(suffix.as_str(), ".pdf" | ".tif" | ".tiff") {
         worker.config.long_timeout
     } else {
@@ -579,7 +702,7 @@ async fn connection(
     let outcome = tokio::select! {
         biased;
         _ = socket.read(&mut probe) => Err(Failure::Cancelled),
-        result = worker.convert_with(&path, name, headers.figures, deadline) => result,
+        result = worker.convert_range(&path, name, headers.figures, pages, deadline) => result,
     };
     if outcome == Err(Failure::Cancelled) {
         worker.stop().await;
@@ -635,11 +758,62 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn page_ranges_are_strict_and_pdf_only() {
+        assert_eq!(page_range(None), Ok(None));
+        assert_eq!(page_range(Some(" \t")), Ok(None));
+        assert_eq!(page_range(Some(" 3-9\t")), Ok(Some((3, 9))));
+        assert_eq!(page_range(Some("1-200")), Ok(Some((1, 200))));
+        assert_eq!(
+            page_range(Some("999801-999999")),
+            Ok(Some((999801, 999999)))
+        );
+        for bad in [
+            "0-1",
+            "3-2",
+            "1-201",
+            "a-b",
+            "7",
+            "-3",
+            "1-2-3",
+            "+1-2",
+            "1 -2",
+            "1-",
+            "-",
+            "1234567-1234568",
+            "\u{663}-\u{664}",
+            "\u{ff11}-\u{ff12}",
+        ] {
+            assert_eq!(page_range(Some(bad)), Err(()), "{bad:?}");
+        }
+        let headers = |length: &str, name: &str, pages: Option<&str>| Headers {
+            method: "POST".into(),
+            path: "/extract".into(),
+            length: Some(length.into()),
+            name: Some(name.into()),
+            figures: false,
+            pages: pages.map(str::to_owned),
+        };
+        let over = (BODY_CAP + 1).to_string();
+        assert!(selection(&headers(&over, "x.pdf", None), RANGED_BODY_CAP).is_none());
+        assert_eq!(
+            selection(&headers(&over, "x.PDF", Some("2-3")), RANGED_BODY_CAP).map(|s| (s.0, s.3)),
+            Some((BODY_CAP + 1, Some((2, 3))))
+        );
+        let beyond = (RANGED_BODY_CAP + 1).to_string();
+        assert!(selection(&headers(&beyond, "x.pdf", Some("2-3")), RANGED_BODY_CAP).is_none());
+        assert!(selection(&headers("1", "x.docx", Some("1-2")), RANGED_BODY_CAP).is_none());
+        assert!(selection(&headers("1", "x.pdf", Some("0-2")), RANGED_BODY_CAP).is_none());
+        assert_eq!(
+            selection(&headers("1", "x.docx", Some("")), RANGED_BODY_CAP).map(|s| s.3),
+            Some(None)
+        );
+    }
     proptest::proptest! {
         #[test]
         fn arbitrary_names_never_escape_input_bounds(name in ".{0,512}", length in 0usize..BODY_CAP+2) {
-            let headers=Headers{method:"POST".into(),path:"/extract".into(),length:Some(length.to_string()),name:Some(name),figures:false};
-            if let Some((size,name,suffix))=selection(&headers) {
+            let headers=Headers{method:"POST".into(),path:"/extract".into(),length:Some(length.to_string()),name:Some(name),figures:false,pages:None};
+            if let Some((size,name,suffix,_))=selection(&headers, RANGED_BODY_CAP) {
                 proptest::prop_assert!((1..=BODY_CAP).contains(&size));
                 proptest::prop_assert!(!name.is_empty() && name.chars().count()<=200 && !name.contains(['/', '\\']));
                 proptest::prop_assert!(suffix.is_empty() || suffix.starts_with('.'));

@@ -10,16 +10,20 @@ This binary owns `/health`, `/extract`, `/extract-docx` and `/reduce-pdf` direct
 engines. No Python, Node, wasm, pdfium or pdf.js participates in native requests. Deployment
 selection is owned by noevia-services/integration and remains Python by default.
 
-The reference is noevia-services `792ecf5c30653b61a3357b2f45d8cc41b3b292c5`.
-A single processing slot, 25 MiB normal / 60 MiB reduction input, 50 unique integer pages
-between 1 and 300, 30-second body read, 600-second OCR / 160-second reduction budgets,
+The reference is noevia-services `bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7`.
+A single processing slot, 25 MiB `/extract-docx` / 60 MiB reduction input, `/extract` up to
+`OCR_EXTRACT_MAX_BYTES` (default 96 MiB, sbstndalton/noevia#1867) streamed to the temp file and
+rendered only for the asked pages, 50 unique integer pages between 1 and 100000, `X-OCR-DPI`
+exactly 300 (default, 3500 px), 400 (4700 px) or 600 (7000 px), `/health` advertising
+`ranges`, `maxBytes` and `dpis`, 30-second body reads (in all 30 s plus 1 s per 256 KiB), 600-second OCR / 160-second reduction budgets,
 step timeouts, error objects, Unicode trimming and scalar-character text truncation follow it.
 Children run in private process groups; timeout/cancellation/success kill remaining descendants,
 and the direct child is reaped. Temporary files are removed on all exits. Logs never contain
 document content or subprocess stderr.
 
 Additional hardening: 32 connections, 32 headers / 32 KiB header buffer, 30-second headers,
-one request per connection, 665-second whole-connection lifetime. Private stdout/stderr and
+one request per connection, 665-second whole-connection lifetime plus the largest /extract body's
+read allowance. `tests/memory.rs` bounds the peak RSS of a 90 MiB ranged `/extract` (CI, Linux). Private stdout/stderr and
 artifacts are checked every 20 ms and fail closed on excess (4 MiB OCR stdout, 1 MiB diagnostics,
 64 MiB raster, 190000 bytes native text, 25 MiB reduced PDF). File reads always take cap+1 bytes
 before checking; no output is read into an unbounded buffer. Disk output can exceed its threshold
