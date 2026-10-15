@@ -492,9 +492,11 @@ fn status(remote: &Stored, checked: &Stored, mtime: f64) -> Result<String, Stop>
     // A naive datetime minus an aware one raises TypeError.
     let offset = parsed.offset_us.ok_or(Stop::Failed)?;
     let remote_us = parsed.local_us() - i128::from(offset);
+    // `strftime("%Y-%m-%d")` on the service's Linux/glibc Python 3.12: `%Y` is not zero-padded
+    // (year 5 renders `5`), while `%m` and `%d` are.
     let delta = remote_us - local;
     Ok(format!(
-        "{{\"status\":\"{}\",\"remote\":\"{:04}-{:02}-{:02}\",\"checked_at\":{checked},\"delta_days\":{}}}",
+        "{{\"status\":\"{}\",\"remote\":\"{}-{:02}-{:02}\",\"checked_at\":{checked},\"delta_days\":{}}}",
         if remote_us > local { "stale" } else { "up-to-date" },
         parsed.year,
         parsed.month,

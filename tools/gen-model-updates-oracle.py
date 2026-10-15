@@ -8,6 +8,9 @@ content type and body bytes of `GET /api/v1/models/updates`:
 
     python3 -I tools/gen-model-updates-oracle.py <services>/model-manager/app > fixture.json
 
+Run it on Linux, as CI does: the route formats dates with `strftime("%Y-%m-%d")`, and glibc does
+not zero-pad `%Y` for years before 1000 where macOS does. The committed fixture is the Linux answer.
+
 It also records CPython's own `datetime.fromisoformat` (the C implementation production runs)
 for a deterministic corpus of timestamp strings, so the native port of that parser is checked
 far beyond what one HTTP case can hold.

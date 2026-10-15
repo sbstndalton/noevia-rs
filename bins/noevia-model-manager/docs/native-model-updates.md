@@ -59,6 +59,6 @@ the wait, or a model mtime past year 9999 when its remote time parsed.
 snapshot, ini and db code) on synthetic model folders, ini files and stores, and records CPython's
 `datetime.fromisoformat` for a deterministic corpus of about 3,800 strings. It writes
 `tests/fixtures/model-updates-python.v1.json`. The `native-model-updates` CI job regenerates it
-from the pinned services ref with Python 3.12 and requires identical bytes. The lib tests rebuild
+from the pinned services ref with Python 3.12 and requires identical bytes. Generate it on Linux: the service's glibc `strftime` does not zero-pad `%Y` before year 1000 (macOS does), and the route returns that unpadded year as Python does. The lib tests rebuild
 every case through a synthetic root on any platform; `tests/model_updates.rs` runs the same cases
 through the router and the real opener on Linux.
