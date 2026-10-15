@@ -35,6 +35,7 @@ pub struct Switches {
     pub rust_sampling_settings: bool,
     pub rust_reasoning_settings: bool,
     pub rust_routing_mode: bool,
+    pub rust_storage_reads: bool,
     /// NOEVIA_RUST_ROUTING_DEFAULT=1 (M6, only with rust_auth, config.rs): GET /api/routing-default.
     pub rust_routing_default: bool,
     /// NOEVIA_RUST_STATS=1 (M6, #1650, only with rust_auth, config.rs): GET /api/stats.
@@ -53,6 +54,7 @@ impl Switches {
             "NOEVIA_RUST_SAMPLING_SETTINGS" => self.rust_sampling_settings,
             "NOEVIA_RUST_REASONING_SETTINGS" => self.rust_reasoning_settings,
             "NOEVIA_RUST_ROUTING_MODE" => self.rust_routing_mode,
+            "NOEVIA_RUST_STORAGE_READS" => self.rust_storage_reads,
             "NOEVIA_RUST_ROUTING_DEFAULT" => self.rust_routing_default,
             "NOEVIA_RUST_STATS" => self.rust_stats,
             "NOEVIA_RUST_EXPORT" => self.rust_export,
@@ -90,6 +92,7 @@ pub enum Native {
     SamplingSettings,
     ReasoningSettings,
     RoutingMode,
+    StorageMetadata,
     /// GET /api/routing-default (M6, NOEVIA_RUST_ROUTING_DEFAULT): crates/server-routing-default.
     RoutingDefault,
     /// GET /api/stats (M6, NOEVIA_RUST_STATS): crates/server-stats.
@@ -130,18 +133,28 @@ const PROJECT_CHATS: &str = "/api/projects/{projectId}/chats";
 /// `DELETE /api/freechats/{chatId}` is Node's in every build (routes.toml).
 const FREE_CHATS: &str = "/api/freechats";
 
+/// The route [`Native::StorageMetadata`] implements (GET only; routes.toml), answered only in a
+/// build with the cargo feature `rust-storage-reads` under NOEVIA_RUST_STORAGE_READS (#1368). The
+/// list (`/files`) and text read (`/file`) routes stay Node's in every build until a bounded
+/// transport adapter is qualified.
+const STORAGE_METADATA: &str = "/api/integrations/storage";
+
 /// Whether this build answers `route` itself when its switch is on.
 fn compiled(route: &Route) -> bool {
     (route.path != PROJECT_CHATS || cfg!(feature = "rust-project-chats"))
         && (route.path != FREE_CHATS || cfg!(feature = "rust-free-chats"))
         && (route.path != ROUTING_DEFAULT || cfg!(feature = "rust-routing-default"))
         && (route.path != STATS || cfg!(feature = "rust-stats"))
+        && (route.path != STORAGE_METADATA || cfg!(feature = "rust-storage-reads"))
         && (route.path != EXPORT || cfg!(feature = "rust-export"))
 }
 
 /// The native handler a rust-owned route is implemented by.
 pub fn native_for(route: &Route) -> Option<Native> {
     match (route.path, route.catch_all, route.switch) {
+        (STORAGE_METADATA, false, Some("NOEVIA_RUST_STORAGE_READS")) => {
+            Some(Native::StorageMetadata)
+        }
         (
             "/api/routing-mode" | "/api/routing-mode/allowed",
             false,
@@ -234,6 +247,11 @@ pub fn dispatch(method: &str, path: &str) -> Option<Native> {
 /// [`dispatch`] under the deployment switches that are on.
 pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Native> {
     let route = route_for(path)?;
+    if route.switch == Some("NOEVIA_RUST_STORAGE_READS")
+        && (path != STORAGE_METADATA || method != "GET" || !switches.rust_auth)
+    {
+        return None;
+    }
     if route.owner_under(switches) != Owner::Rust {
         return None;
     }
@@ -290,6 +308,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_storage_reads: false,
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
@@ -305,6 +324,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_storage_reads: false,
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
@@ -321,6 +341,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_storage_reads: false,
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
@@ -332,6 +353,7 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_storage_reads: false,
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,

@@ -19,6 +19,10 @@ pub mod sampling_settings_routes;
 pub mod serve;
 pub mod static_files;
 pub mod stats_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod storage_metadata_worker;
+#[cfg(feature = "rust-storage-reads")]
+pub mod storage_read_routes;
 pub mod upkeep;
 pub mod usage_routes;
 
@@ -62,6 +66,8 @@ pub const FEATURES: &[&str] = &[
     "rust-free-chats",
     "rust-usage",
     "rust-sampling-settings",
+    #[cfg(feature = "rust-storage-reads")]
+    "rust-storage-reads",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
@@ -75,6 +81,8 @@ pub const FEATURES: &[&str] = &[
 ];
 
 pub struct App {
+    #[cfg(feature = "rust-storage-reads")]
+    pub storage_metadata: Arc<storage_metadata_worker::Worker>,
     pub config: config::Config,
     pub proxy: legacy_proxy::LegacyProxy,
     pub statics: static_files::StaticFiles,
@@ -119,6 +127,8 @@ impl App {
                 .and_then(server_routing_mode::storage::Root::open)
         });
         Arc::new(App {
+            #[cfg(feature = "rust-storage-reads")]
+            storage_metadata: Arc::new(storage_metadata_worker::Worker::default()),
             identity,
             writes,
             accounts,
@@ -175,6 +185,7 @@ async fn handle(
                         | routes::Native::Usage
                         | routes::Native::SamplingSettings
                         | routes::Native::ReasoningSettings
+                        | routes::Native::StorageMetadata
                         | routes::Native::RoutingMode
                         | routes::Native::RoutingDefault
                         | routes::Native::Stats
@@ -194,6 +205,7 @@ async fn handle(
             | routes::Native::Usage
             | routes::Native::SamplingSettings
             | routes::Native::ReasoningSettings
+            | routes::Native::StorageMetadata
             | routes::Native::RoutingMode
             | routes::Native::RoutingDefault
             | routes::Native::Stats
@@ -221,6 +233,20 @@ async fn handle(
         .await;
     }
     match native {
+        Some(routes::Native::StorageMetadata) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-reads")]
+            {
+                storage_read_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = p;
+                reply::error(StatusCode::SERVICE_UNAVAILABLE, "Storage unavailable", true)
+            }
+        }
         Some(routes::Native::RoutingMode) => {
             let Some(p) = whatwg else {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);

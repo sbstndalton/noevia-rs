@@ -70,6 +70,24 @@ fn decode_previous_env(text: &str) -> Vec<u8> {
 }
 
 impl SecretKeys {
+    /// Construct from already bounded, existing key material. Never performs filesystem IO.
+    pub fn from_existing_bytes(
+        current: Zeroizing<Vec<u8>>,
+        previous: Option<Zeroizing<Vec<u8>>>,
+    ) -> Result<Self, SecretsError> {
+        if current.len() != secret_envelope::KEY_BYTES {
+            return Err(SecretsError::BadKey("current"));
+        }
+        if previous
+            .as_ref()
+            .is_some_and(|p| p.len() != secret_envelope::KEY_BYTES)
+        {
+            return Err(SecretsError::BadKey("previous"));
+        }
+        let previous = previous.filter(|p| p.as_slice() != current.as_slice());
+        Ok(Self { current, previous })
+    }
+
     /// Loads as createSecretStore does (without generating). `previous_env` is
     /// `SECRETS_KEY_PREVIOUS`.
     pub fn load(data_dir: &Path, previous_env: Option<&str>) -> Result<Self, SecretsError> {
@@ -229,5 +247,29 @@ mod tests {
         assert!(!SecretKeys::load(d.path(), None).unwrap().has_previous());
         let dbg = format!("{:?}", SecretKeys::load(d.path(), None).unwrap());
         assert!(!dbg.contains("[1"), "{dbg}");
+    }
+}
+
+#[cfg(test)]
+mod existing_bytes_tests {
+    use super::*;
+    #[test]
+    fn validates_both_lengths_and_drops_equal_previous() {
+        assert!(SecretKeys::from_existing_bytes(Zeroizing::new(vec![0; 31]), None).is_err());
+        assert!(SecretKeys::from_existing_bytes(
+            Zeroizing::new(vec![0; 32]),
+            Some(Zeroizing::new(vec![1; 33]))
+        )
+        .is_err());
+        let equal = SecretKeys::from_existing_bytes(
+            Zeroizing::new(vec![0; 32]),
+            Some(Zeroizing::new(vec![0; 32])),
+        );
+        assert!(equal.is_ok_and(|keys| !keys.has_previous()));
+        let different = SecretKeys::from_existing_bytes(
+            Zeroizing::new(vec![0; 32]),
+            Some(Zeroizing::new(vec![1; 32])),
+        );
+        assert!(different.is_ok_and(|keys| keys.has_previous()));
     }
 }

@@ -1,0 +1,106 @@
+name: Native connected-storage metadata GET
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  storage-reads-native:
+    name: Required native storage metadata contracts (#1368)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read actual merged core pin
+        id: core
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/http/core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core.outputs.sha }}
+          path: core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked -p server-storage-reads -p noevia-server --all-targets --features noevia-server/rust-storage-reads -- -D warnings
+      - name: Bounded engine, owner projection, oracle process and qualification-gate controls
+        # The actual-source oracles need a private synthetic checkout (M4_CORE_ORACLE) and the
+        # installed Node 22 observations a prepared host (M4_NODE22_ORACLE=1). Each skip is logged
+        # and counted in the job summary below rather than passing silently.
+        env:
+          M4_ORACLE_SKIP_LOG: ${{ runner.temp }}/m4-oracle-skips.txt
+        run: cargo test --locked -p server-storage-reads
+      - name: Count skipped private oracles
+        if: always()
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/m4-oracle-skips.txt"
+          count=$( [ -f "$log" ] && wc -l < "$log" | tr -d ' ' || echo 0)
+          echo "::notice::$count private M4 oracle tests skipped (no M4_CORE_ORACLE / M4_NODE22_ORACLE on CI)"
+          {
+            echo "### Private M4 oracles skipped: $count"
+            [ -f "$log" ] && sed 's/^/- /' "$log"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Real headers, owner projection, worker and switch through the front
+        # storage_metadata.rs points the front at a dead legacy upstream (127.0.0.1:9) and still
+        # gets the metadata 200: the native-answer proof. core#133 (merged) makes the corpus
+        # launcher pass NOEVIA_RUST_STORAGE_READS to Node; the Node-refusal negative replay control
+        # follows once contracts/http/core.ref is repinned to a core that includes it.
+        run: cargo test --locked -p noevia-server --features rust-storage-reads
+      - name: Compiled capability and isolated featureless startup refusal
+        run: |
+          set -euo pipefail
+          cargo build --locked --target-dir target/storage-featureless -p noevia-server --no-default-features
+          if target/storage-featureless/debug/noevia-server --features | grep -qx rust-storage-reads; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 NOEVIA_RUST_AUTH=1 NOEVIA_RUST_STORAGE_READS=1 target/storage-featureless/debug/noevia-server > "$RUNNER_TEMP/storage-featureless.log" 2>&1; then exit 1; fi
+          grep -q 'needs compiled rust-storage-reads' "$RUNNER_TEMP/storage-featureless.log"
+          cargo build --locked -p replay -p noevia-server --features noevia-server/rust-storage-reads
+          target/debug/noevia-server --features | grep -qx rust-storage-reads
+      - run: npm ci --no-fund --no-audit
+        working-directory: core/server
+      - name: Build dav-parse.wasm at core's pinned noevia-rs ref
+        working-directory: core
+        run: |
+          set -euo pipefail
+          eval "$(grep -E '^(NOEVIA_RS_REF|NOEVIA_RS_SHA256|DAV_PARSE_WASM_SHA256)=[0-9a-f]+$' server/dav-parse.lock)"
+          [[ "$NOEVIA_RS_REF" =~ ^[0-9a-f]{40}$ ]]
+          curl -fsSL "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$NOEVIA_RS_REF" -o "$RUNNER_TEMP/rs.tgz"
+          echo "$NOEVIA_RS_SHA256  $RUNNER_TEMP/rs.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/rs-pin" && tar -xzf "$RUNNER_TEMP/rs.tgz" --strip-components=1 -C "$RUNNER_TEMP/rs-pin"
+          "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
+          echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
+      - name: Replay against Node directly (reference data dir)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/seed"
+          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+            --ignore-body hours --ignore-body peakHour/hour \
+            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
+            --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
+            --state-out "$RUNNER_TEMP/node-state.json"
+      - name: Full replay through the front with NOEVIA_RUST_AUTH=1 NOEVIA_RUST_STORAGE_READS=1
+        run: |
+          set -euo pipefail
+          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+            --ignore-body hours --ignore-body peakHour/hour \
+            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-storage" \
+            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_STORAGE_READS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
+            --report "$RUNNER_TEMP/storage-positive.json" --expect-state "$RUNNER_TEMP/node-state.json"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-storage-reads-evidence
+          path: |
+            ${{ runner.temp }}/storage-positive.json
+            ${{ runner.temp }}/node-state.json
+          if-no-files-found: ignore
