@@ -238,7 +238,10 @@ fn back_to_back_exports_return_memory() {
             .collect::<Vec<_>>()
             .join(", ")
     };
-    println!("single-export peak (same layout, worker thread): {} MiB", mb(&single));
+    println!(
+        "single-export peak (same layout, worker thread): {} MiB",
+        mb(&single)
+    );
     println!(
         "RSS after each of 5 exports, no malloc_trim (before): {} MiB",
         mb(&before)
