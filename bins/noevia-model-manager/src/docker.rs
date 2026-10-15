@@ -43,77 +43,7 @@ impl UnixDocker {
         if !allowed_read(path) {
             return Err("Docker operation refused");
         }
-        let stream = UnixStream::connect(&self.socket)
-            .await
-            .map_err(|_| "docker unreachable")?;
-        let (mut sender, connection) = http1::Builder::new()
-            .max_buf_size(8192)
-            .handshake(TokioIo::new(stream))
-            .await
-            .map_err(|_| "Docker protocol refused")?;
-        // Driver belongs to this request and is aborted on EVERY exit, including timeout.
-        let driver = AbortDriver(tokio::spawn(async move {
-            let _ = connection.await;
-        }));
-        let request = Request::builder()
-            .method("GET")
-            .uri(path)
-            .header("host", "localhost")
-            .header("connection", "close")
-            .body(Empty::<Bytes>::new())
-            .map_err(|_| "Docker request refused")?;
-        let response = sender
-            .send_request(request)
-            .await
-            .map_err(|_| "Docker protocol refused")?;
-        if response.headers().len() > 32
-            || response
-                .headers()
-                .iter()
-                .map(|(k, v)| k.as_str().len().saturating_add(v.as_bytes().len()))
-                .sum::<usize>()
-                > 8192
-        {
-            return Err("Docker headers exceeded limit");
-        }
-        if response.headers().contains_key("transfer-encoding")
-            && response.headers().contains_key("content-length")
-        {
-            return Err("Docker ambiguous framing refused");
-        }
-        if let Some(te) = response.headers().get("transfer-encoding") {
-            if te.as_bytes() != b"chunked" {
-                return Err("Docker transfer encoding refused");
-            }
-        }
-        if let Some(length) = response.headers().get("content-length") {
-            let length = length
-                .to_str()
-                .ok()
-                .and_then(|s| s.parse::<usize>().ok())
-                .ok_or("Docker content length refused")?;
-            if length > LOG_CAP {
-                return Err("Docker response exceeded limit");
-            }
-        }
-        let status = response.status();
-        if status.is_redirection() {
-            return Err("Docker redirect refused");
-        }
-        let mut body = response.into_body();
-        let mut raw = Vec::new();
-        while let Some(frame) = body.frame().await {
-            let frame = frame.map_err(|_| "Docker response truncated")?;
-            let data = frame.into_data().map_err(|_| "Docker trailers refused")?;
-            if raw.len().saturating_add(data.len()) > LOG_CAP {
-                return Err("Docker response exceeded limit");
-            }
-            raw.try_reserve(data.len())
-                .map_err(|_| "allocation refused")?;
-            raw.extend_from_slice(&data);
-        }
-        drop(driver);
-        Ok((status, raw))
+        send(&self.socket, "GET", path).await
     }
     async fn inspect(&self, name: &str) -> Result<ContainerInspectResponse, &'static str> {
         let path = format!("/containers/{}/json", segment(name)?);
@@ -127,10 +57,198 @@ impl UnixDocker {
         serde_json::from_slice(&raw).map_err(|_| "Docker inspect response refused")
     }
 }
-struct AbortDriver(tokio::task::JoinHandle<()>);
+
+async fn send(
+    socket: &std::path::Path,
+    method: &'static str,
+    path: &str,
+) -> Result<(StatusCode, Vec<u8>), &'static str> {
+    let stream = UnixStream::connect(socket)
+        .await
+        .map_err(|_| "docker unreachable")?;
+    let (mut sender, connection) = http1::Builder::new()
+        .max_buf_size(8192)
+        .handshake(TokioIo::new(stream))
+        .await
+        .map_err(|_| "Docker protocol refused")?;
+    // The driver belongs to this request. Every return from the exchange observes its join
+    // before the caller can release admission. If this future is dropped instead (timeout or
+    // cancellation), the driver is aborted and its join handed to the request's [`ORPHANS`],
+    // which the admission observes before the permit is returned (noevia#1385).
+    let driver = AbortDriver::spawn(connection);
+    let result = exchange(&mut sender, method, path).await;
+    driver.finish().await;
+    result
+}
+
+type Sender = http1::SendRequest<Empty<Bytes>>;
+
+async fn exchange(
+    sender: &mut Sender,
+    method: &'static str,
+    path: &str,
+) -> Result<(StatusCode, Vec<u8>), &'static str> {
+    let request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("host", "localhost")
+        .header("connection", "close")
+        .body(Empty::<Bytes>::new())
+        .map_err(|_| "Docker request refused")?;
+    let response = sender
+        .send_request(request)
+        .await
+        .map_err(|_| "Docker protocol refused")?;
+    if response.headers().len() > 32
+        || response
+            .headers()
+            .iter()
+            .map(|(k, v)| k.as_str().len().saturating_add(v.as_bytes().len()))
+            .sum::<usize>()
+            > 8192
+    {
+        return Err("Docker headers exceeded limit");
+    }
+    if response.headers().contains_key("transfer-encoding")
+        && response.headers().contains_key("content-length")
+    {
+        return Err("Docker ambiguous framing refused");
+    }
+    if let Some(te) = response.headers().get("transfer-encoding") {
+        if te.as_bytes() != b"chunked" {
+            return Err("Docker transfer encoding refused");
+        }
+    }
+    if let Some(length) = response.headers().get("content-length") {
+        let length = length
+            .to_str()
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .ok_or("Docker content length refused")?;
+        if length > LOG_CAP {
+            return Err("Docker response exceeded limit");
+        }
+    }
+    let status = response.status();
+    // Docker answers 304 to stopping an already-stopped container; that is not a redirect.
+    if status.is_redirection() && !(method == "POST" && status == StatusCode::NOT_MODIFIED) {
+        return Err("Docker redirect refused");
+    }
+    let mut body = response.into_body();
+    let mut raw = Vec::new();
+    while let Some(frame) = body.frame().await {
+        let frame = frame.map_err(|_| "Docker response truncated")?;
+        let data = frame.into_data().map_err(|_| "Docker trailers refused")?;
+        if raw.len().saturating_add(data.len()) > LOG_CAP {
+            return Err("Docker response exceeded limit");
+        }
+        raw.try_reserve(data.len())
+            .map_err(|_| "allocation refused")?;
+        raw.extend_from_slice(&data);
+    }
+    Ok((status, raw))
+}
+
+/// Joins of connection drivers whose request future was dropped before `finish` (deadline or
+/// client gone). The admitted request owns one; its admission observes every join in it before
+/// the permit is given back (noevia#1385).
+pub(crate) type Orphans = std::sync::Arc<std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>>;
+
+tokio::task_local! {
+    /// The orphan list of the admitted request this task is running, if any.
+    pub(crate) static ORPHANS: Orphans;
+}
+
+/// Awaits every join in `orphans`, including any added while waiting.
+pub(crate) async fn observe(orphans: &Orphans) {
+    loop {
+        let batch = match orphans.lock() {
+            Ok(mut v) => std::mem::take(&mut *v),
+            Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
+        };
+        if batch.is_empty() {
+            return;
+        }
+        for task in batch {
+            let _ = task.await;
+        }
+    }
+}
+
+/// Owns one connection task. `finish` aborts it and observes its join. Dropping it without
+/// `finish` (the request future was cancelled) requests the abort and hands the join to the
+/// request's [`ORPHANS`]; outside an admitted request there is nobody to hand it to.
+struct AbortDriver(Option<tokio::task::JoinHandle<()>>);
+impl AbortDriver {
+    fn spawn<C, T>(connection: C) -> Self
+    where
+        C: std::future::Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+    {
+        Self(Some(spawn_driver(async move {
+            let _ = connection.await;
+        })))
+    }
+    async fn finish(mut self) {
+        if let Some(task) = self.0.take() {
+            task.abort();
+            let _ = task.await;
+        }
+    }
+}
 impl Drop for AbortDriver {
     fn drop(&mut self) {
-        self.0.abort();
+        if let Some(task) = self.0.take() {
+            task.abort();
+            let _ = ORPHANS.try_with(|orphans| match orphans.lock() {
+                Ok(mut v) => v.push(task),
+                Err(poisoned) => poisoned.into_inner().push(task),
+            });
+        }
+    }
+}
+
+#[cfg(not(test))]
+fn spawn_driver<C, T>(connection: C) -> tokio::task::JoinHandle<T>
+where
+    C: std::future::Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::spawn(connection)
+}
+
+/// Test builds count each driver from spawn until its future is dropped; see `live`.
+#[cfg(test)]
+fn spawn_driver<C, T>(connection: C) -> tokio::task::JoinHandle<T>
+where
+    C: std::future::Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    let live = live::enter();
+    tokio::spawn(async move {
+        let _live = live;
+        connection.await
+    })
+}
+
+#[cfg(test)]
+mod live {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    pub static COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    /// Counted from spawn until the driver's future is dropped, whether it finished or was aborted.
+    pub struct Guard;
+
+    pub fn enter() -> Guard {
+        COUNT.fetch_add(1, Ordering::SeqCst);
+        Guard
+    }
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            COUNT.fetch_sub(1, Ordering::SeqCst);
+        }
     }
 }
 
@@ -145,6 +263,55 @@ fn segment(value: &str) -> Result<&str, &'static str> {
     }
     Ok(value)
 }
+/// The only Docker writes the model manager may make (#1668): restart or stop of the one
+/// configured embedding container. Never other containers, never create, exec or kill.
+pub fn allowed_write(path: &str, container: &str) -> bool {
+    segment(container).is_ok()
+        && (path == format!("/containers/{container}/restart?t=10")
+            || path == format!("/containers/{container}/stop?t=10"))
+}
+
+/// Docker control scoped to one container fixed at construction.
+pub struct ScopedControl {
+    pub socket: PathBuf,
+    container: String,
+}
+impl ScopedControl {
+    pub fn new(socket: PathBuf, container: &str) -> Result<Self, &'static str> {
+        segment(container)?;
+        // Docker resolves an all-hex name as an id prefix too, which could reach another
+        // container; only a real container name is accepted.
+        if container.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return Err("EMBED_CONTAINER must be a container name, not an id");
+        }
+        Ok(Self {
+            socket,
+            container: container.to_owned(),
+        })
+    }
+}
+impl crate::embedding::ServiceControl for ScopedControl {
+    fn act(&self, action: crate::embedding::Action) -> Job<'_, ()> {
+        Box::pin(async move {
+            let verb = match action {
+                crate::embedding::Action::Restart => "restart",
+                crate::embedding::Action::Stop => "stop",
+            };
+            let path = format!("/containers/{}/{verb}?t=10", self.container);
+            if !allowed_write(&path, &self.container) {
+                return Err("Docker operation refused");
+            }
+            let (status, _) = send(&self.socket, "POST", &path).await?;
+            match status.as_u16() {
+                // 304: already stopped.
+                204 | 304 => Ok(()),
+                404 => Err("embedding container not found"),
+                _ => Err("Docker refused the embedding container action"),
+            }
+        })
+    }
+}
+
 fn allowed_read(path: &str) -> bool {
     if path == "/containers/json?all=true&limit=1025&size=false" {
         return true;
@@ -345,4 +512,193 @@ pub fn decode_frames(raw: &[u8], tty: bool) -> Result<Vec<u8>, &'static str> {
         remaining = remaining.get(end..).ok_or("Docker log frame truncated")?;
     }
     Ok(out)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// The driver counter is process-wide, so these controls run one at a time.
+    static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// A synthetic Unix Docker peer: reads one request head, writes `response`, then keeps the
+    /// socket open until the client closes it, so a refused read never sees an end of stream.
+    fn serve(response: Vec<u8>) -> (tempfile::TempDir, PathBuf, tokio::task::JoinHandle<()>) {
+        let root = tempfile::Builder::new()
+            .prefix("mm-docker-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let socket = root.path().join("docker.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let peer = tokio::spawn(async move {
+            let (mut peer, _) = listener.accept().await.unwrap();
+            let mut head = Vec::new();
+            let mut chunk = [0u8; 512];
+            while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                match peer.read(&mut chunk).await {
+                    Ok(n) if n > 0 => head.extend_from_slice(chunk.get(..n).unwrap()),
+                    _ => break,
+                }
+            }
+            let _ = peer.write_all(&response).await;
+            let _ = tokio::time::timeout(Duration::from_secs(5), peer.read(&mut chunk)).await;
+        });
+        (root, socket, peer)
+    }
+
+    #[tokio::test]
+    async fn answered_read_observes_its_driver_join() {
+        let _serial = SERIAL.lock().await;
+        let (_root, socket, peer) =
+            serve(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".to_vec());
+        let docker = UnixDocker { socket };
+        let (status, body) = docker.read("/containers/synthetic/json").await.unwrap();
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, b"{}");
+        // Admission may be released once read returns, so its driver must already be joined.
+        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+        peer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn refused_framing_observes_its_driver_join() {
+        let _serial = SERIAL.lock().await;
+        let (_root, socket, peer) = serve(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{}".to_vec(),
+        );
+        let docker = UnixDocker { socket };
+        assert!(docker.read("/containers/synthetic/json").await.is_err());
+        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+        peer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn early_refusal_with_pending_body_observes_its_driver_join() {
+        let _serial = SERIAL.lock().await;
+        // The declared length is over the cap, so read refuses from the headers while the body
+        // is still pending on the open socket: the driver is live when the refusal is returned.
+        let (_root, socket, peer) = serve(
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", LOG_CAP + 1).into_bytes(),
+        );
+        let docker = UnixDocker { socket };
+        assert!(matches!(
+            docker.read("/containers/synthetic/json").await,
+            Err("Docker response exceeded limit")
+        ));
+        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+        peer.await.unwrap();
+    }
+
+    /// noevia#1385: a Docker peer that accepts and then never answers, held open until dropped.
+    fn silent() -> (tempfile::TempDir, PathBuf, tokio::sync::oneshot::Sender<()>) {
+        let root = tempfile::Builder::new()
+            .prefix("mm-docker-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let socket = root.path().join("docker.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            let accept = async {
+                loop {
+                    if let Ok((peer, _)) = listener.accept().await {
+                        held.push(peer);
+                    }
+                }
+            };
+            tokio::select! { _ = accept => {}, _ = stopped => {} }
+        });
+        (root, socket, stop)
+    }
+
+    fn admitted_state(socket: PathBuf) -> std::sync::Arc<crate::StateData> {
+        std::sync::Arc::new(crate::StateData {
+            #[cfg(feature = "native-diagnose")]
+            diagnosis: None,
+            #[cfg(feature = "native-prompts")]
+            prompts: None,
+            sections: None,
+            embedding: None,
+            host: None,
+            token: String::new(),
+            configured: vec!["synthetic".into()],
+            docker: std::sync::Arc::new(UnixDocker { socket }),
+            redactor: crate::Redactor::new().unwrap(),
+            permits: tokio::sync::Semaphore::new(4),
+            legacy: crate::legacy_client().unwrap(),
+            legacy_base: crate::LEGACY_BASE.to_owned(),
+            idle_unload: None,
+        })
+    }
+
+    fn logs_request() -> axum::http::Request<axum::body::Body> {
+        axum::http::Request::builder()
+            .uri("/api/v1/backends/synthetic/logs")
+            .body(axum::body::Body::empty())
+            .unwrap()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_timed_out_request_returns_its_permit_only_after_the_driver_join() {
+        use tower::ServiceExt;
+        let _serial = SERIAL.lock().await;
+        let (_root, socket, _stop) = silent();
+        let state = admitted_state(socket);
+        let response = crate::router(state.clone())
+            .oneshot(logs_request())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        // The permit is back, and the driver the timed-out read left behind is already joined.
+        assert_eq!(state.permits.available_permits(), 4);
+        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn a_dropped_request_holds_its_permit_until_the_driver_join_is_observed() {
+        use tower::ServiceExt;
+        let _serial = SERIAL.lock().await;
+        let (_root, socket, _stop) = silent();
+        let state = admitted_state(socket);
+        let mut request = Box::pin(crate::router(state.clone()).oneshot(logs_request()));
+        let started = std::time::Instant::now();
+        while live::COUNT.load(Ordering::SeqCst) == 0 {
+            tokio::select! {
+                biased;
+                _ = &mut request => panic!("the silent peer answered"),
+                _ = tokio::task::yield_now() => {}
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "no driver started"
+            );
+        }
+        assert_eq!(state.permits.available_permits(), 3);
+        // The client goes away: the request future is dropped mid-read.
+        drop(request);
+        let live_now = live::COUNT.load(Ordering::SeqCst);
+        assert!(
+            state.permits.available_permits() == 3 || live_now == 0,
+            "the permit came back while a driver ({live_now}) was still unjoined"
+        );
+        // Whenever the permit is back, no driver may still be live.
+        let started = std::time::Instant::now();
+        loop {
+            let permits = state.permits.available_permits();
+            if permits == 4 {
+                assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(5),
+                "permit never returned"
+            );
+            tokio::task::yield_now().await;
+        }
+    }
 }

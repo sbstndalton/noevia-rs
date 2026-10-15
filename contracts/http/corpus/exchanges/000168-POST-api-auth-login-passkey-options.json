@@ -26,7 +26,9 @@
       "cache-control": "no-store",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       "content-type": "application/json",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
       "referrer-policy": "same-origin",
+      "strict-transport-security": "max-age=15552000",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
       "x-noevia-api": "1"
@@ -38,22 +40,6 @@
           "rpId": "127.0.0.1",
           "challenge": "<secret:27>",
           "allowCredentials": [
-            {
-              "id": "<id:18>",
-              "transports": [
-                "internal",
-                "hybrid"
-              ],
-              "type": "public-key"
-            },
-            {
-              "id": "<id:19>",
-              "transports": [
-                "internal",
-                "hybrid"
-              ],
-              "type": "public-key"
-            },
             {
               "id": "<id:20>",
               "transports": [
@@ -72,6 +58,22 @@
             },
             {
               "id": "<id:22>",
+              "transports": [
+                "internal",
+                "hybrid"
+              ],
+              "type": "public-key"
+            },
+            {
+              "id": "<id:23>",
+              "transports": [
+                "internal",
+                "hybrid"
+              ],
+              "type": "public-key"
+            },
+            {
+              "id": "<id:24>",
               "transports": [
                 "internal",
                 "hybrid"

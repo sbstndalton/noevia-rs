@@ -69,25 +69,88 @@ is proven live.
 `NOEVIA_RUST_PROJECTS=1`, and the front refuses to start with it unless `NOEVIA_RUST_AUTH=1` too
 (the front gates the routes it owns itself, and writes the session upkeep Node's gate wrote). The
 first slice is a project's images: `POST /api/projects/{id}/assets`, `GET` and `DELETE
-/api/projects/{id}/assets/{assetId}` (crates/server-projects `assets`).
+/api/projects/{id}/assets/{assetId}` (crates/server-projects `assets`). The second is a project's
+chat list: `GET` and `POST /api/projects/{id}/chats` (crates/server-projects `chats`: core's
+getProject heal and instruction-skill reconcile, chat-lists.cjs mergeChats with tombstones and the
+other lists' ids, chat-framing.cjs normalizeFrame, the reconcile every save runs). The third is
+the free-chat list: `GET` and `POST /api/freechats` (crates/server-projects `free_chats`: the same
+mergeChats over `free-chats.json`, skipping and reporting ids a project holds). `DELETE
+/api/freechats/{chatId}` stays Node's: it also removes the chat's transcript, context meter, brain
+note and attachments project. JavaScript strings keep their lone surrogates (js-json `wtf16`), as
+Node stores them.
 
-`projects.json` cannot have one writer yet (Node's chat routes keep chat metas in it), so while
-the switch is on both processes write it only under one lock (flock(2) LOCK_EX on a long-lived
+Since sbstndalton/noevia#1806 a project source's text is not in projects.json: core keeps it in
+`project-sources/<project id>/<sha256>.txt` beside the file, and a source row holds `textRef` (the
+pointer), `chars` and, for a front-matter skill, `skillHeader`. Every Rust write keeps those fields
+as read (files are generic JSON here), and the instruction-skill reconcile reads `skillHeader` for a
+source whose text is in its file, as core's `looksLikeSkill` does; the text itself is never read.
+
+`projects.json` cannot have one writer yet (Node's other project routes, the chat turn and a chat's
+move or delete still change it), so while the switch is on both processes write it only under one lock (flock(2) LOCK_EX on a long-lived
 `projects.json.lock`, crates/server-projects `lock` = core `server/rust-projects.cjs`): Rust re-reads it for every change
 and writes Node's exact `atomicJson` bytes; Node re-reads it when it changed and saves by a
-per-project, per-field three-way merge, so neither drops the other's change. With
-`NOEVIA_FRONT=rust`, `NOEVIA_RUST_AUTH_CONFIRMED=1` and `NOEVIA_RUST_PROJECTS_CONFIRMED=1` (the
-supervisor sets the last once `--features` lists `rust-projects`), Node's copies of the image
-writes answer 503 `RUST_PROJECTS_OWNED`.
+per-project, per-field three-way merge (`assets`, `retiredAssets` and `chats` per item), so neither
+drops the other's change. With `NOEVIA_FRONT=rust`, `NOEVIA_RUST_AUTH_CONFIRMED=1` and
+`NOEVIA_RUST_PROJECTS_CONFIRMED=1` (the supervisor sets the last once `--features` lists
+`rust-projects`), Node's copies of the image writes answer 503 `RUST_PROJECTS_OWNED`; its
+chat-list save does so only with `NOEVIA_RUST_PROJECT_CHATS_CONFIRMED=1` as well, which the
+supervisor sets only once `--features` lists `rust-project-chats`. The front answers the chat list
+only when built with the cargo feature of that name; without it, the route stays Node's under the
+switch, and Node, unconfirmed, answers it (sbstndalton/noevia#1409). A request start that takes in
+the front's change nudges Node's chat vault mirror, as Node's own project writes did. A front with
+the chat slice needs a core that merges `chats` per item (core#75 or later): noevia's
+`deploy/tools/assemble-release.sh` refuses a release whose front owns a project route its core's
+`OWNED_ROUTES` does not list.
 
-CI job `corpus-replay-front-rust-projects` replays the corpus through the front with both switches
-(zero differences, Node-only data dir), runs the Node-vs-Rust lock race (`server-projects --test
-node_lock`, with a blind-save control that must lose data), and a negative control where Node is
-told the front owns the image routes but the front does not: the uploads must be refused with 503.
+`free-chats.json` has the same arrangement under its own lock (`free-chats.json.lock`): while the
+free-chat slice is on, Node's writers of the file (a chat's move into or out of a project, a free
+chat's delete, the routing flags, an import, the retention sweep) take that lock, re-read the file
+when it changed and save by a per-item merge of the list (core `createFreeChatsFile`), and its
+own `POST /api/freechats` answers 503 `RUST_PROJECTS_OWNED`. Node does so only with
+`NOEVIA_RUST_FREE_CHATS_CONFIRMED=1`, which the supervisor sets only once `--features` lists
+`rust-free-chats`; the front answers the free list only when built with that cargo feature. A
+move writes the list it adds to before the one it removes from, so a crash between the two leaves
+a chat in both lists, never in neither. A front with the free slice needs core#76 or later.
+
+A project write (an image upload or delete, a chat-list or free-list save) passes the gate again
+right before it touches a file, since its body is read after the first pass, and the store never
+creates the user's directory: a write for an account removed meanwhile answers Node's 410
+`account no longer exists` and leaves nothing behind (sbstndalton/noevia#1425).
+
+CI job `corpus-replay-front-rust-projects` regenerates the chat-list fixture at core.ref and
+compares the bytes (and the free-chat fixture), replays the corpus through the front with both
+switches, with both chat slices, with the project chat slice only and with neither (zero
+differences, Node-only data dir), runs the Node-vs-Rust lock races (`server-projects --test
+node_lock`: images, chat lists and the free list, each with a blind-save control that must lose
+data, and a chat's move and a free chat's delete interleaved with the front's free-list save) and
+the generated saves against core's own routes (`--test chats_property --test
+free_chats_property`), and a negative control where Node is told the front owns the project
+routes but the front does not: the uploads, chat-list and free-chat-list saves must be refused
+with 503.
 
 `core.sha256` records the twice-fetched, byte-identical codeload archive SHA-256 for
 `core.ref` (metadata; existing replay CI consumes the single SHA in `core.ref`).
 The core#61 landing provides the required native OCR front acceptance gate (#1271).
+
+## M6: engine statistics (`NOEVIA_RUST_STATS`, sbstndalton/noevia#1650)
+
+`GET /api/stats` (every open page polls it) is Rust's under `NOEVIA_RUST_STATS=1` in a build with
+the cargo feature `rust-stats` (listed by `--features`); the front refuses the switch without
+`NOEVIA_RUST_AUTH=1`. crates/server-stats ports core's handler, its 2 s shared read (concurrent
+polls share one engine read; a model or role write that passes Node's gate drops it) and the engine
+reads, from the same environment keys Node reads (`MODEL_MANAGER_KIND`, `MODEL_MANAGER_BASE_URL` /
+`LEMONADE_BASE_URL` / `INFERENCE_BASE_URL`, the API key chain). Other methods stay Node's. With
+`NOEVIA_FRONT=rust` and `NOEVIA_RUST_STATS_CONFIRMED=1` (set once `--features` lists `rust-stats`)
+Node answers that GET with 503 (core `statsRustOwned`).
+
+The reply is Node's byte for byte (`tests/oracle.cjs` drives core's own handler and adapters over
+synthetic engines; `tests/differential.rs` replays every case). Deliberate differences: for
+llama.cpp the reads Node makes but never uses for that kind (`health()`, `listModels()`) are not
+made; the Lemonade kind is a startup refusal (its MTP last-response fallback lives in Node's
+memory); an `https` engine is a startup refusal (no TLS client in the front); a value nested 64
+deep that the JS would look into is a 503 rather than a guess. CI job `stats-native` (workflow
+stats.yml) also replays the corpus through the front with the switch on, and once more against a
+synthetic engine to show only `/api/stats` follows the front.
 
 ### UTC calendar replay contract (#1308)
 
@@ -131,4 +194,4 @@ The mandatory reasoning job verifies the actual spawn and factory seam, rejects
 a removed preload, and runs `host-control` with a 12 GiB input. That full replay
 must reject exactly the strict `budgetGib`, `hostRamGib` and `maxGib` fields;
 all other fields and statuses remain checked. The regular 8 GiB Node baseline
-and native front must match all 193 exchanges and final state.
+and native front must match all 228 exchanges and final state.

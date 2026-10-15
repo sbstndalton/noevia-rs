@@ -32,7 +32,7 @@ import json, pathlib, sys
 source=json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert source.get('core')==pathlib.Path(sys.argv[2]).read_text().strip(), 'capture source is not the actual pinned core'
 assert source.get('hostInput')=={'module':'server/inference-budget.cjs','collaborator':'readMeminfo','memTotalKib':8388608}, 'capture lacks the Rust-owned synthetic host input seam'
-assert source.get('exchanges')==193 and source.get('dropped')==0, 'capture count or dropped exchanges changed'
+assert source.get('exchanges')==228 and source.get('dropped')==0, 'capture count or dropped exchanges changed'
 PYHOST
 # Preserve the Rust-owned calendar qualification metadata when replacing Node capture bytes.
 python3 - "$dest/manifest.json" "$tmp/c/manifest.json" <<'PYCALENDAR'

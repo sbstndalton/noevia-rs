@@ -319,7 +319,10 @@ impl Analyzer {
                 )
             };
             let mut evidence = Vec::new();
-            charge(&mut retained, f.model.len())?;
+            // services #1379: the model name is raw container output too; it leaves through the
+            // same redaction as the evidence, after matching, so failure bookkeeping is unchanged.
+            let model = self.redact(f.model, work)?;
+            charge(&mut retained, model.len())?;
             if !suppress {
                 for line in &f.evidence {
                     let safe = self.redact(line, work)?;
@@ -339,8 +342,8 @@ impl Analyzer {
                     evidence.clear();
                 }
             }
-            // Value contains only bounded static fields, admitted model and scrubbed evidence.
-            serde_json::to_writer(&mut writer,&serde_json::json!({"model":f.model,"status":f.status,"cause":cause,"title":title,"advice":advice,"evidence":evidence})).map_err(|_|writer.reason())?;
+            // Value contains only bounded static fields, the scrubbed model and scrubbed evidence.
+            serde_json::to_writer(&mut writer,&serde_json::json!({"model":model,"status":f.status,"cause":cause,"title":title,"advice":advice,"evidence":evidence})).map_err(|_|writer.reason())?;
         }
         writer.write_all(b"]}").map_err(|_| writer.reason())?;
         work.check()?;

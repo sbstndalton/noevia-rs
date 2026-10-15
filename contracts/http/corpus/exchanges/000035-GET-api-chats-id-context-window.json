@@ -3,7 +3,7 @@
   "seq": 35,
   "request": {
     "method": "GET",
-    "path": "/api/chats/<id:8>/context-window",
+    "path": "/api/chats/<id:9>/context-window",
     "query": [],
     "headers": {
       "accept": "application/json, text/event-stream",
@@ -21,7 +21,9 @@
       "cache-control": "no-store",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       "content-type": "application/json",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
       "referrer-policy": "same-origin",
+      "strict-transport-security": "max-age=15552000",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
       "x-noevia-api": "1"
@@ -34,17 +36,17 @@
           "limit": 8192,
           "limitSource": "Conservative fallback; backend limit unavailable",
           "estimated": true,
-          "used": 17119,
+          "used": 5092,
           "reserve": 2048,
           "safety": 1229,
           "parts": [
             {
               "name": "Messages & summary",
-              "tokens": 16496
+              "tokens": 4213
             },
             {
               "name": "Instructions, memory & sources",
-              "tokens": 279
+              "tokens": 535
             },
             {
               "name": "Tools",

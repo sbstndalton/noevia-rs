@@ -1,0 +1,45 @@
+{
+  "v": 1,
+  "seq": 213,
+  "request": {
+    "method": "POST",
+    "path": "/api/chats/free-alpha/move",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node",
+      "x-csrf-token": "<secret:4>"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "projectId": "<id:26>"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
+      "referrer-policy": "same-origin",
+      "strict-transport-security": "max-age=15552000",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "ok": true,
+        "from": null,
+        "projectId": "<id:26>"
+      }
+    }
+  }
+}

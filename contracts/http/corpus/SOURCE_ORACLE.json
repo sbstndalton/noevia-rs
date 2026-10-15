@@ -1,16 +1,16 @@
 {
   "captureDomain": "baseline",
-  "core": "010735c7d86d30269ab3f4a351b2135faea1c8e7",
-  "coreArchiveSha256": "0c43134dc1aad5af9fb464d84041b6712be4df0d4094ab0d95f63ff4893d0705",
+  "core": "885e625cddd1af99e23d892505f4e1eeb87608db",
+  "coreArchiveSha256": "6bb30486610a66ecbfec6c48d11e71ae21e3eb10ebcd2ec2e74e8d531eb91881",
   "dropped": 0,
-  "exchanges": 193,
+  "exchanges": 228,
   "generator": "actual core tools/contract-corpus/generate.cjs",
-  "generatorSha256": "264ff1d9751a20ead3ea6f6fb3a0f57931ebb6607c64161f1198e68047e803f9",
+  "generatorSha256": "567a11d9925d7b9897d4f2e18564e8928ce090616b3a7c53b92535eb0f1145b8",
   "hostInput": {
     "collaborator": "readMeminfo",
     "memTotalKib": 8388608,
     "module": "server/inference-budget.cjs"
   },
   "node": "v22.23.3",
-  "wasmSha256": "040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd87cb2e978575"
+  "wasmSha256": "c5c300907dba8ed36b38bbfcd92dc33f18be77319712504106abb09d5b8ce05b"
 }

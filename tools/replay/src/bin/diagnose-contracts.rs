@@ -22,14 +22,14 @@ use std::{
 };
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const TOKEN: &str = "synthetic-prompts-publicfront-token-0123456789abcdef";
-const RUNTIME: &str = "6c233f4a05730ed5dccd7997ae601e9999eaa6d7";
+const RUNTIME: &str = "d890ab476d1f1a8b6de799d6428e45b6af42a473";
 fn qualification_path(key: &str, default: &str) -> PathBuf {
     std::env::var_os(key)
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(default))
 }
 // AST-only immutable selected functions; no production application startup.
-const SHIM: &str = r#"import ast,dataclasses,os,sys,types,importlib.metadata,json
+const SHIM: &str = r#"import ast,dataclasses,os,re,sys,types,importlib.metadata,json
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI,APIRouter,HTTPException,Request
@@ -60,8 +60,11 @@ scope={'settings':settings,'DockerException':DockerException,'_docker_client':la
 selected(p['services'],['discover_llama_containers','_effective_container_names'],scope)
 services=types.SimpleNamespace(**scope)
 app=FastAPI(title='Model Loader');router=APIRouter(prefix='/api/v1')
-api={'__package__':'synthetic_app','router':router,'services':services,'HTTPException':HTTPException,'dataclasses':dataclasses,'Path':Path,'Any':Any}
-selected(p['api'],['_plain','_logs_since_start','backend_diagnose','health'],api)
+api={'__package__':'synthetic_app','router':router,'services':services,'HTTPException':HTTPException,'dataclasses':dataclasses,'Path':Path,'Any':Any,'re':re}
+secret=[n for n in ast.parse(p['api']).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_SECRET_PATTERNS' for t in n.targets)]
+assert len(secret)==1
+exec(compile(ast.Module(body=secret,type_ignores=[]),'immutable-secret-patterns.py','exec'),api)
+selected(p['api'],['_plain','_logs_since_start','redact_log_line','backend_diagnose','health'],api)
 middleware={'app':app,'settings':settings,'os':os,'Request':Request,'Response':Response}
 selected(p['main'],['_require_token'],middleware)
 # Qualification-only refusal until the separately authorized services follow-on.
@@ -1484,47 +1487,61 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if security_only {
+        // services #1379: Python backend_diagnose redacts the model name and evidence too, so
+        // both public paths must now return the same redacted body; neither may carry the secret.
         let secret = "synthetic-public-secret-0000000001";
         let log=format!("spawning server instance with name=synthetic-model on port 18001\n[18001] failed to allocate kv Authorization: Bearer {secret}\ninstance name=synthetic-model exited with status 1");
-        oracle.insert("logs".into(), json!({"synthetic-security":log}));
+        let model_log=format!("spawning server instance with name=api_key={secret} on port 18001\n[18001] failed to allocate kv api_key={secret}\ninstance name=api_key={secret} exited with status 1");
+        oracle.insert(
+            "logs".into(),
+            json!({"synthetic-security":log,"synthetic-security-model":model_log}),
+        );
         let input = Value::Object(oracle);
         let baseline = run_mode(core, bins, "python", &input)?;
         let candidate = run_mode(core, bins, "rust", &input)?;
         artifact(
             Path::new("/tmp/s1-diagnose-public-security.json"),
-            &json!({"baseline":baseline,"candidate":candidate,"named_difference":"Native evidence uses existing Redactor; fixed synthetic bearer removed. Python unchanged.","security_difference_rows":1,"zero_difference_claim":false}),
-        )?;
-        let baseline_body = baseline
-            .first()
-            .and_then(|row| row.get("response"))
-            .and_then(|row| row.get("body"))
-            .ok_or("security baseline body")?;
-        let candidate_body = candidate
-            .first()
-            .and_then(|row| row.get("response"))
-            .and_then(|row| row.get("body"))
-            .ok_or("security candidate body")?;
-        let baseline_text = serde_json::to_string(baseline_body)?;
-        let candidate_text = serde_json::to_string(candidate_body)?;
-        require(
-            baseline_text.contains(secret)
-                && !candidate_text.contains(secret)
-                && candidate_text.contains("[redacted]"),
-            "named native redaction security difference",
+            &json!({"baseline":baseline,"candidate":candidate,"named_difference":"None for these probes: Python (services #1379) and native both redact model and evidence with the same output. Remaining stronger native differences (numeric credentials, cross-line suppression) are asserted in the pure differential.","security_difference_rows":0,"zero_difference_claim":false}),
         )?;
         require(
-            baseline
-                .first()
+            baseline.len() >= 2 && candidate.len() >= 2,
+            "security rows present",
+        )?;
+        for index in 0..2 {
+            let baseline_body = baseline
+                .get(index)
                 .and_then(|row| row.get("response"))
-                .and_then(|row| row.get("status"))
-                == Some(&json!(200))
-                && candidate
-                    .first()
+                .and_then(|row| row.get("body"))
+                .ok_or("security baseline body")?;
+            let candidate_body = candidate
+                .get(index)
+                .and_then(|row| row.get("response"))
+                .and_then(|row| row.get("body"))
+                .ok_or("security candidate body")?;
+            let baseline_text = serde_json::to_string(baseline_body)?;
+            let candidate_text = serde_json::to_string(candidate_body)?;
+            require(
+                !baseline_text.contains(secret)
+                    && !candidate_text.contains(secret)
+                    && baseline_text.contains("[redacted]")
+                    && candidate_text.contains("[redacted]")
+                    && baseline_body == candidate_body,
+                "python and native redact model and evidence identically",
+            )?;
+            require(
+                baseline
+                    .get(index)
                     .and_then(|row| row.get("response"))
                     .and_then(|row| row.get("status"))
-                    == Some(&json!(200)),
-            "security responses are complete success",
-        )?;
+                    == Some(&json!(200))
+                    && candidate
+                        .get(index)
+                        .and_then(|row| row.get("response"))
+                        .and_then(|row| row.get("status"))
+                        == Some(&json!(200)),
+                "security responses are complete success",
+            )?;
+        }
         return Ok(());
     }
     let fixture: Value = serde_json::from_slice(include_bytes!(
@@ -1571,6 +1588,44 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// The checked-in SOURCE_ORACLE records the runtime and the sources of this harness; it
+    /// goes stale silently unless it is bound to them. Refresh by editing the three values.
+    #[test]
+    fn source_oracle_provenance_matches_this_harness() -> Result<()> {
+        let oracle: Value = serde_json::from_str(include_str!(
+            "../../../../contracts/http/corpus/model-manager-diagnose.v1/SOURCE_ORACLE.json"
+        ))?;
+        let provenance = oracle.get("provenance").ok_or("provenance")?;
+        assert_eq!(
+            provenance.get("runtime").and_then(Value::as_str),
+            Some(RUNTIME)
+        );
+        assert_eq!(
+            provenance.get("generator_sha256").and_then(Value::as_str),
+            Some(
+                format!(
+                    "{:x}",
+                    Sha256::digest(include_bytes!("diagnose-contracts.rs"))
+                )
+                .as_str()
+            ),
+            "generator_sha256 must hash diagnose-contracts.rs"
+        );
+        assert_eq!(
+            provenance
+                .get("owned_dependency_seam_sha256")
+                .and_then(Value::as_str),
+            Some(
+                format!(
+                    "{:x}",
+                    Sha256::digest(include_bytes!("support/diagnose_dependencies.rs"))
+                )
+                .as_str()
+            ),
+            "owned_dependency_seam_sha256 must hash support/diagnose_dependencies.rs"
+        );
+        Ok(())
+    }
     #[test]
     fn exited_child_diagnostics_never_reflect_synthetic_credentials() {
         let sentinel = "synthetic-qualification-credential-0123456789";
@@ -1697,9 +1752,45 @@ mod tests {
         drop(server);
         drop(listener);
         eprintln!("closed-listener-policy-v1 phase=before-replacement listener_port={port}");
-        let replacement = reusable_probe(port).map_err(|e| phase("replacement-bind", e))?;
+        let replacement = rebind_after_teardown(port, Duration::from_secs(5))
+            .map_err(|e| phase("replacement-bind", e))?;
         assert!(reusable_probe(port).is_err());
         drop(replacement);
+        Ok(())
+    }
+    /// The closed connection's kernel teardown is asynchronous on Linux: a rebind can still see
+    /// EADDRINUSE for a short while after every fd is closed (CI errno=98, passed on rerun). Retry
+    /// only that refusal, within a fixed budget; any other error, or a conflict that outlives the
+    /// budget, is still returned to the caller.
+    fn rebind_after_teardown(port: u16, budget: Duration) -> std::io::Result<TcpListener> {
+        let deadline = std::time::Instant::now() + budget;
+        loop {
+            match reusable_probe(port) {
+                Ok(listener) => return Ok(listener),
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::AddrInUse
+                        && std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    #[test]
+    fn rebind_after_teardown_refuses_a_live_conflict_within_its_budget() -> Result<()> {
+        let live = reusable_probe(0)?;
+        let port = live.local_addr()?.port();
+        let started = std::time::Instant::now();
+        let error = match rebind_after_teardown(port, Duration::from_millis(60)) {
+            Ok(_) => return Err("live listener must keep its port".into()),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::AddrInUse);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        drop(live);
+        let freed = rebind_after_teardown(port, Duration::from_secs(1))?;
+        drop(freed);
         Ok(())
     }
     #[test]

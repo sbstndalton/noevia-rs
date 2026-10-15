@@ -36,6 +36,10 @@ pub struct Switches {
     pub rust_reasoning_settings: bool,
     pub rust_routing_mode: bool,
     pub rust_storage_reads: bool,
+    /// NOEVIA_RUST_ROUTING_DEFAULT=1 (M6, only with rust_auth, config.rs): GET /api/routing-default.
+    pub rust_routing_default: bool,
+    /// NOEVIA_RUST_STATS=1 (M6, #1650, only with rust_auth, config.rs): GET /api/stats.
+    pub rust_stats: bool,
 }
 
 impl Switches {
@@ -48,6 +52,8 @@ impl Switches {
             "NOEVIA_RUST_REASONING_SETTINGS" => self.rust_reasoning_settings,
             "NOEVIA_RUST_ROUTING_MODE" => self.rust_routing_mode,
             "NOEVIA_RUST_STORAGE_READS" => self.rust_storage_reads,
+            "NOEVIA_RUST_ROUTING_DEFAULT" => self.rust_routing_default,
+            "NOEVIA_RUST_STATS" => self.rust_stats,
             _ => false,
         }
     }
@@ -75,25 +81,67 @@ pub enum Native {
     Static,
     /// Sign-in and the account (M3, NOEVIA_RUST_AUTH): crates/server-account.
     Account,
-    /// A project's images (M4, NOEVIA_RUST_PROJECTS): crates/server-projects `assets`.
-    ProjectAssets,
+    /// The project routes ported so far (M4, NOEVIA_RUST_PROJECTS): crates/server-projects
+    /// `assets` (a project's images), `chats` (its chat list) and `free_chats` (the free-chat list).
+    Projects,
     Usage,
     SamplingSettings,
     ReasoningSettings,
     RoutingMode,
     StorageMetadata,
+    /// GET /api/routing-default (M6, NOEVIA_RUST_ROUTING_DEFAULT): crates/server-routing-default.
+    RoutingDefault,
+    /// GET /api/stats (M6, NOEVIA_RUST_STATS): crates/server-stats.
+    Stats,
 }
 
-/// The routes [`Native::ProjectAssets`] implements.
-const PROJECT_ASSET_ROUTES: &[&str] = &[
+/// The route [`Native::RoutingDefault`] implements (GET only; routes.toml).
+const ROUTING_DEFAULT: &str = "/api/routing-default";
+
+/// The route [`Native::Stats`] implements (GET only; routes.toml), answered only in a build with
+/// the cargo feature `rust-stats` (listed by `--features`, so the supervisor confirms it to Node).
+const STATS: &str = "/api/stats";
+
+/// The routes [`Native::Projects`] implements.
+const PROJECT_ROUTES: &[&str] = &[
     "/api/projects/{id}/assets",
     "/api/projects/{id}/assets/{assetId}",
+    PROJECT_CHATS,
+    FREE_CHATS,
 ];
+
+/// A project's chat list: the second M4 slice. It is answered here only in a build with the cargo
+/// feature `rust-project-chats`, which `--features` then lists, so the supervisor can confirm the
+/// slice to Node on its own (core rust-projects.cjs chatsEnabledFrom, sbstndalton/noevia#1409).
+/// Without it the route stays Node's under NOEVIA_RUST_PROJECTS too, as in a front that answers
+/// only the images.
+const PROJECT_CHATS: &str = "/api/projects/{projectId}/chats";
+
+/// The free-chat list: the third M4 slice, answered here only in a build with the cargo feature
+/// `rust-free-chats` (listed by `--features`; the supervisor confirms it to Node on its own, core
+/// rust-projects.cjs freeChatsEnabledFrom). Without it the route stays Node's under the switch.
+/// `DELETE /api/freechats/{chatId}` is Node's in every build (routes.toml).
+const FREE_CHATS: &str = "/api/freechats";
+
+/// The route [`Native::StorageMetadata`] implements (GET only; routes.toml), answered only in a
+/// build with the cargo feature `rust-storage-reads` under NOEVIA_RUST_STORAGE_READS (#1368). The
+/// list (`/files`) and text read (`/file`) routes stay Node's in every build until a bounded
+/// transport adapter is qualified.
+const STORAGE_METADATA: &str = "/api/integrations/storage";
+
+/// Whether this build answers `route` itself when its switch is on.
+fn compiled(route: &Route) -> bool {
+    (route.path != PROJECT_CHATS || cfg!(feature = "rust-project-chats"))
+        && (route.path != FREE_CHATS || cfg!(feature = "rust-free-chats"))
+        && (route.path != ROUTING_DEFAULT || cfg!(feature = "rust-routing-default"))
+        && (route.path != STATS || cfg!(feature = "rust-stats"))
+        && (route.path != STORAGE_METADATA || cfg!(feature = "rust-storage-reads"))
+}
 
 /// The native handler a rust-owned route is implemented by.
 pub fn native_for(route: &Route) -> Option<Native> {
     match (route.path, route.catch_all, route.switch) {
-        ("/api/integrations/storage", false, Some("NOEVIA_RUST_STORAGE_READS")) => {
+        (STORAGE_METADATA, false, Some("NOEVIA_RUST_STORAGE_READS")) => {
             Some(Native::StorageMetadata)
         }
         (
@@ -106,9 +154,13 @@ pub fn native_for(route: &Route) -> Option<Native> {
         (_, false, Some("NOEVIA_RUST_AUTH")) if route.path.starts_with("/api/") => {
             Some(Native::Account)
         }
-        (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ASSET_ROUTES.contains(&p) => {
-            Some(Native::ProjectAssets)
+        (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ROUTES.contains(&p) => {
+            Some(Native::Projects)
         }
+        (ROUTING_DEFAULT, false, Some("NOEVIA_RUST_ROUTING_DEFAULT")) => {
+            Some(Native::RoutingDefault)
+        }
+        (STATS, false, Some("NOEVIA_RUST_STATS")) => Some(Native::Stats),
         ("/api/reasoning-settings", false, Some("NOEVIA_RUST_REASONING_SETTINGS")) => {
             Some(Native::ReasoningSettings)
         }
@@ -184,7 +236,7 @@ pub fn dispatch(method: &str, path: &str) -> Option<Native> {
 pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Native> {
     let route = route_for(path)?;
     if route.switch == Some("NOEVIA_RUST_STORAGE_READS")
-        && (path != "/api/integrations/storage" || method != "GET" || !switches.rust_auth)
+        && (path != STORAGE_METADATA || method != "GET" || !switches.rust_auth)
     {
         return None;
     }
@@ -192,6 +244,9 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
         return None;
     }
     if !route.methods.is_empty() && !route.methods.contains(&method) {
+        return None;
+    }
+    if !compiled(route) {
         return None;
     }
     native_for(route)
@@ -242,6 +297,8 @@ mod tests {
             rust_reasoning_settings: false,
             rust_routing_mode: false,
             rust_storage_reads: false,
+            rust_routing_default: false,
+            rust_stats: false,
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -255,6 +312,8 @@ mod tests {
             rust_reasoning_settings: false,
             rust_routing_mode: false,
             rust_storage_reads: false,
+            rust_routing_default: false,
+            rust_stats: false,
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -269,6 +328,8 @@ mod tests {
             rust_reasoning_settings: false,
             rust_routing_mode: false,
             rust_storage_reads: false,
+            rust_routing_default: false,
+            rust_stats: false,
         };
         let both = Switches {
             rust_auth: true,
@@ -278,6 +339,8 @@ mod tests {
             rust_reasoning_settings: false,
             rust_routing_mode: false,
             rust_storage_reads: false,
+            rust_routing_default: false,
+            rust_stats: false,
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
@@ -288,7 +351,7 @@ mod tests {
             assert_eq!(dispatch_under(m, p, auth), None, "{m} {p}");
             assert_eq!(
                 dispatch_under(m, p, both),
-                Some(Native::ProjectAssets),
+                Some(Native::Projects),
                 "{m} {p}"
             );
         }
@@ -299,7 +362,49 @@ mod tests {
             ("POST", "/api/projects/p1/assets/img-1"),
             ("POST", "/api/projects/p1/upload"),
             ("DELETE", "/api/projects/p1"),
-            ("GET", "/api/projects/p1/chats"),
+        ] {
+            assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn a_projects_chat_list_is_rusts_only_under_the_switch_for_get_and_post() {
+        let auth = Switches {
+            rust_auth: true,
+            ..Default::default()
+        };
+        let both = Switches {
+            rust_auth: true,
+            rust_projects: true,
+            ..Default::default()
+        };
+        // Only a build with the chat-list slice answers it (#1409); without, it stays Node's.
+        let answered = cfg!(feature = "rust-project-chats").then_some(Native::Projects);
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-project-chats"),
+            answered.is_some()
+        );
+        for m in ["GET", "POST"] {
+            let p = "/api/projects/p1/chats";
+            assert_eq!(dispatch(m, p), None, "{m}");
+            assert_eq!(dispatch_under(m, p, auth), None, "{m}");
+            assert_eq!(dispatch_under(m, p, both), answered, "{m}");
+        }
+        // The images do not depend on it.
+        assert_eq!(
+            dispatch_under("POST", "/api/projects/p1/assets", both),
+            Some(Native::Projects)
+        );
+        // Node keeps every other method, the chat routes below the list, and the project itself.
+        for (m, p) in [
+            ("PUT", "/api/projects/p1/chats"),
+            ("DELETE", "/api/projects/p1/chats"),
+            ("HEAD", "/api/projects/p1/chats"),
+            ("GET", "/api/projects/p1/chats/c1"),
+            ("DELETE", "/api/projects/p1/chats/c1"),
+            ("POST", "/api/projects"),
+            ("POST", "/api/projects/p1/config"),
+            ("DELETE", "/api/projects/p1"),
         ] {
             assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
         }
@@ -340,6 +445,8 @@ mod tests {
             rust_sampling_settings: false,
             rust_reasoning_settings: false,
             rust_routing_mode: false,
+            rust_routing_default: false,
+            rust_stats: false,
             ..Default::default()
         };
         for p in ["/api/usage", "/api/usage/aggregate"] {
@@ -390,5 +497,82 @@ mod tests {
             dispatch_under("PUT", "/api/reasoning-settings", on),
             Some(Native::ReasoningSettings)
         );
+    }
+
+    #[test]
+    fn the_free_chat_list_is_rusts_only_under_the_switch_for_get_and_post() {
+        let auth = Switches {
+            rust_auth: true,
+            ..Default::default()
+        };
+        let both = Switches {
+            rust_auth: true,
+            rust_projects: true,
+            ..Default::default()
+        };
+        // Only a build with the free-chat slice answers it; without, it stays Node's.
+        let answered = cfg!(feature = "rust-free-chats").then_some(Native::Projects);
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-free-chats"),
+            answered.is_some()
+        );
+        for m in ["GET", "POST"] {
+            assert_eq!(dispatch(m, "/api/freechats"), None, "{m}");
+            assert_eq!(dispatch_under(m, "/api/freechats", auth), None, "{m}");
+            assert_eq!(dispatch_under(m, "/api/freechats", both), answered, "{m}");
+        }
+        // Independent of the project chat-list slice.
+        assert_eq!(
+            dispatch_under("GET", "/api/projects/p1/chats", both),
+            cfg!(feature = "rust-project-chats").then_some(Native::Projects)
+        );
+        // Node keeps a free chat's delete (transcript, attachments project), every other method,
+        // and the paths around it.
+        for (m, p) in [
+            ("DELETE", "/api/freechats/c1"),
+            ("GET", "/api/freechats/c1"),
+            ("POST", "/api/freechats/c1"),
+            ("PUT", "/api/freechats"),
+            ("DELETE", "/api/freechats"),
+            ("HEAD", "/api/freechats"),
+            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/workspace"),
+        ] {
+            assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn stats_owns_only_get_under_its_switch_in_a_build_with_the_slice() {
+        let auth = Switches {
+            rust_auth: true,
+            ..Default::default()
+        };
+        let on = Switches {
+            rust_auth: true,
+            rust_stats: true,
+            ..Default::default()
+        };
+        let answered = cfg!(feature = "rust-stats").then_some(Native::Stats);
+        assert_eq!(crate::FEATURES.contains(&"rust-stats"), answered.is_some());
+        assert_eq!(dispatch("GET", "/api/stats"), None);
+        assert_eq!(dispatch_under("GET", "/api/stats", auth), None);
+        assert_eq!(dispatch_under("GET", "/api/stats", on), answered);
+        // Node keeps every other method (it answers them all) and the paths around it.
+        for (m, p) in [
+            ("HEAD", "/api/stats"),
+            ("POST", "/api/stats"),
+            ("PUT", "/api/stats"),
+            ("DELETE", "/api/stats"),
+            ("OPTIONS", "/api/stats"),
+            ("GET", "/api/stats/x"),
+            ("GET", "/api/statsx"),
+            ("GET", "/api/models"),
+            ("POST", "/api/auto-roles"),
+        ] {
+            assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+        }
+        assert!(on.on("NOEVIA_RUST_STATS"));
+        assert!(!auth.on("NOEVIA_RUST_STATS"));
     }
 }

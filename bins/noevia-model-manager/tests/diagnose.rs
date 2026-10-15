@@ -36,6 +36,14 @@ fn immutable_python_differential() {
         "17a4670f6189d215189b5a6f321cd82547dfe06e"
     );
     assert_eq!(
+        fixture["oracle"]["ref"],
+        "d890ab476d1f1a8b6de799d6428e45b6af42a473"
+    );
+    assert_eq!(
+        fixture["oracle"]["api_blob"],
+        "f783b5a8af67865af6975fc7d6f9ef0b6023ea71"
+    );
+    assert_eq!(
         fixture["generator_sha256"],
         format!(
             "{:x}",
@@ -64,11 +72,18 @@ fn immutable_python_differential() {
             continue;
         }
         let expected: Value = serde_json::from_str(c["expected_json"].as_str().unwrap()).unwrap();
+        // services #1379: backend_diagnose redacts each failure's model and evidence after
+        // matching; this is what the Python route returns.
+        let redacted: Value = serde_json::from_str(c["redacted_json"].as_str().unwrap()).unwrap();
         let actual = analyse(text).unwrap();
         if narrowing.is_empty() {
-            assert_eq!(actual["failures"], expected, "{id}");
-        } else {
-            let mut raw = expected.clone();
+            // Nothing to redact: Python's pre- and post-#1379 answers coincide with the port.
+            assert_eq!(redacted, expected, "{id}");
+            assert_eq!(actual["failures"], redacted, "{id}");
+        } else if narrowing == "cross-line-evidence-suppression" {
+            // Named stronger difference that remains: the port suppresses evidence whose
+            // joined block redacts differently from its separate lines; Python does not.
+            let mut raw = redacted.clone();
             let mut safe = actual["failures"].clone();
             for f in raw.as_array_mut().unwrap() {
                 f.as_object_mut().unwrap().remove("evidence");
@@ -77,25 +92,59 @@ fn immutable_python_differential() {
                 f.as_object_mut().unwrap().remove("evidence");
             }
             assert_eq!(safe, raw, "{id}");
-            if narrowing == "cross-line-evidence-suppression" {
-                for f in actual["failures"].as_array().unwrap() {
-                    assert_eq!(f["evidence"], json!([]), "{id}");
-                }
+            for f in actual["failures"].as_array().unwrap() {
+                assert_eq!(f["evidence"], json!([]), "{id}");
+            }
+            // The exception only holds while Python keeps that evidence; if Python starts
+            // suppressing it too, this fails and the exception must be removed.
+            assert!(
+                redacted
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|f| !f["evidence"].as_array().unwrap().is_empty()),
+                "{id}: Python now suppresses cross-line evidence"
+            );
+        } else {
+            assert!(
+                narrowing == "redacted-evidence" || narrowing == "redacted-model",
+                "{id}"
+            );
+            // Numeric-looking credentials are the second remaining stronger difference:
+            // Python leaves `password=12345` and `TOKEN=12345`; the port scrubs them.
+            let numeric = [
+                "secret-9-",
+                "secret-10-",
+                "model-secret-9",
+                "model-secret-10",
+            ]
+            .iter()
+            .any(|prefix| id.starts_with(prefix));
+            let out = actual["failures"].to_string();
+            if numeric {
+                // Exactly Python's redacted answer with the numeric credential value also
+                // scrubbed, in the model and in every evidence line.
+                let want: Value =
+                    serde_json::from_str(&redacted.to_string().replace("12345", "[redacted]"))
+                        .unwrap();
+                assert_eq!(actual["failures"], want, "{id}");
+                assert_ne!(
+                    actual["failures"], redacted,
+                    "{id}: exception no longer needed"
+                );
+                assert!(out.contains("[redacted]") && !out.contains("12345"), "{id}");
             } else {
-                let evidence = actual["failures"][0]["evidence"].to_string();
-                assert!(evidence.contains("[redacted]"), "{id}");
-                for marker in [
-                    "synthetic-secret-only",
-                    "abcdefghijklmnopqrst",
-                    "abcdefghijklmnop",
-                    "AKIAABCDEFGHIJKLMNOP",
-                    "eyJabcdefgh.abcdefgh.abcdefgh",
-                ] {
-                    assert!(!evidence.contains(marker), "{id}");
-                }
-                if id.starts_with("secret-9-") || id.starts_with("secret-10-") {
-                    assert!(!evidence.contains("12345"), "{id}");
-                }
+                // Every other credential shape agrees with Python's redacted answer exactly.
+                assert_eq!(actual["failures"], redacted, "{id}");
+            }
+            for marker in [
+                "synthetic-secret-only",
+                "abcdefghijklmnopqrst",
+                "abcdefghijklmnop",
+                "AKIAABCDEFGHIJKLMNOP",
+                "eyJabcdefgh.abcdefgh.abcdefgh",
+            ] {
+                assert!(!out.contains(marker), "{id}");
             }
         }
     }
@@ -157,6 +206,17 @@ fn redaction_semantics() {
         v["failures"][0]["evidence"],
         json!(["fatal api_key=[redacted]"])
     );
+}
+/// services #1379: the model name comes from the log as well, and is redacted like evidence.
+#[test]
+fn model_name_redaction_semantics() {
+    let v = analyse("spawning server instance with name=api_key=synthetic-secret-only on port 1\n[1] fatal x\ninstance name=api_key=synthetic-secret-only exited with status 1").unwrap();
+    assert_eq!(v["failures"][0]["model"], json!("api_key=[redacted]"));
+    assert_eq!(v["failures"][0]["evidence"], json!(["fatal x"]));
+    assert!(!v.to_string().contains("synthetic-secret-only"));
+    // An ordinary name is unchanged.
+    let v = analyse(&log("fatal x")).unwrap();
+    assert_eq!(v["failures"][0]["model"], json!("A"));
 }
 #[test]
 fn crossline_semantics() {

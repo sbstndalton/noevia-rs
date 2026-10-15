@@ -51,7 +51,12 @@ fn oracle_v6_public(a: Ipv6Addr) -> bool {
     let teredo = s[0] == 0x2001 && s[1] == 0;
     let doc = s[0] == 0x2001 && s[1] == 0x0db8;
     let six_to_four = s[0] == 0x2002;
-    global && !teredo && !doc && !six_to_four
+    // Non-global blocks (#1099): documentation 3fff::/20 (RFC 9637), benchmarking 2001:2::/48,
+    // ORCHID 2001:10::/28 and ORCHIDv2 2001:20::/28.
+    let doc_3fff = s[0] == 0x3fff && s[1] & 0xf000 == 0;
+    let bench = s[0] == 0x2001 && s[1] == 0x0002 && s[2] == 0;
+    let orchid = s[0] == 0x2001 && (s[1] & 0xfff0 == 0x0010 || s[1] & 0xfff0 == 0x0020);
+    global && !teredo && !doc && !six_to_four && !doc_3fff && !bench && !orchid
 }
 
 fn oracle_public(host: &str) -> bool {

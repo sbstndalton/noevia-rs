@@ -1,0 +1,23 @@
+[package]
+name = "server-stats"
+version = "0.1.0"
+description = "noevia-core's GET /api/stats in Rust (M6, sbstndalton/noevia#1650): the engine reads, their 2 s shared answer and the reply bytes"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+tool-exchange = { path = "../tool-exchange" }
+# No TLS, no proxy, no decompression: plain HTTP to the configured engine only (engine.rs).
+reqwest = { version = "0.12", default-features = false }
+tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "test-util"] }

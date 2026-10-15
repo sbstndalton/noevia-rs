@@ -175,6 +175,7 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
                 .unwrap(),
         )),
         sections: None,
+        embedding: None,
         host: None,
         token: "synthetic-service-token".into(),
         configured: vec![],
@@ -182,6 +183,8 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
         redactor: crate::Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(4),
         legacy: crate::legacy_client().unwrap(),
+        legacy_base: crate::LEGACY_BASE.to_owned(),
+        idle_unload: None,
     })
 }
 fn root() -> tempfile::TempDir {

@@ -194,9 +194,10 @@ impl RustRoutingMode {
     }
 }
 
-/// The per-user file M4 shares with Node (core `server/rust-projects.cjs`): written by both, each
-/// only under the shared lock (crates/server-projects `lock`) and never from a stale copy.
-pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json"];
+/// The per-user files M4 shares with Node (core `server/rust-projects.cjs`): written by both, each
+/// only under its shared lock (crates/server-projects `lock`) and never from a stale copy.
+/// free-chats.json is the free-chat slice's (crates/server-projects `free_chats`).
+pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json", "free-chats.json"];
 
 /// Columns Rust reads or writes, per table, with the core module that creates them. Each must
 /// exist; Node may add others. (`diary_connectors` is optional: diary-connectors.cjs creates it
@@ -408,9 +409,9 @@ fn read_only_authorizer(ctx: AuthContext<'_>) -> Authorization {
             pragma_name,
             pragma_value: None,
         } if READ_PRAGMAS.contains(&pragma_name) => Authorization::Allow,
-        // table_info's value is the table it describes, not a setting.
+        // table_info's and foreign_key_list's value is the table they describe, not a setting.
         AuthAction::Pragma {
-            pragma_name: "table_info",
+            pragma_name: "table_info" | "foreign_key_list",
             ..
         } => Authorization::Allow,
         _ => Authorization::Deny,
@@ -433,6 +434,14 @@ fn owned_authorizer(
         | AuthAction::Delete { table_name }
         | AuthAction::Update { table_name, .. } => {
             if ctx.database_name != Some("main") {
+                return Authorization::Deny;
+            }
+            // noevia#1378: inside a trigger body SQLite names the trigger as the accessor. Rust's
+            // statements never rely on a trigger, so a trigger that would write (delete another
+            // user's sessions, say) is denied, and the whole statement with it. A trigger that
+            // only RAISEs still aborts as before. Foreign-key actions carry no accessor; the
+            // known set of those is checked when the writer opens (verify_write_topology).
+            if ctx.accessor.is_some() {
                 return Authorization::Deny;
             }
             if table_name == "settings" {
@@ -464,8 +473,194 @@ fn schema_cookie(conn: &Connection) -> Result<i64, StoreError> {
     Ok(conn.query_row("PRAGMA schema_version", [], |r| r.get(0))?)
 }
 
-/// The startup/upgrade check, see the crate docs.
-fn verify(conn: &Connection) -> Result<(), StoreError> {
+/// Every foreign key Node's schema declares (core `auth.cjs`, `app-passwords.cjs`,
+/// `device-auth.cjs`, `dav-settings.cjs`, `diary-connectors.cjs`, `tool-policy.cjs`), as
+/// (child table, column, parent table, parent column, ON UPDATE, ON DELETE). Checked against the
+/// live database on 2026-10-14: exactly these fifteen, and no triggers.
+pub const KNOWN_FOREIGN_KEYS: &[(&str, &str, &str, &str, &str, &str)] = &[
+    (
+        "app_passwords",
+        "user_id",
+        "users",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+    (
+        "dav_settings",
+        "user_id",
+        "users",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+    (
+        "device_authorizations",
+        "user_id",
+        "users",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+    (
+        "device_grants",
+        "user_id",
+        "users",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+    (
+        "device_tokens",
+        "grant_id",
+        "device_grants",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+    (
+        "diary_connectors",
+        "user_id",
+        "users",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+    (
+        "invitations",
+        "created_by",
+        "users",
+        "id",
+        "NO ACTION",
+        "NO ACTION",
+    ),
+    ("passkeys", "user_id", "users", "id", "NO ACTION", "CASCADE"),
+    (
+        "recoveries",
+        "created_by",
+        "users",
+        "id",
+        "NO ACTION",
+        "NO ACTION",
+    ),
+    (
+        "recoveries",
+        "user_id",
+        "users",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+    ("sessions", "user_id", "users", "id", "NO ACTION", "CASCADE"),
+    (
+        "storage_connections",
+        "user_id",
+        "users",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+    (
+        "tool_policies",
+        "user_id",
+        "users",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+    (
+        "user_appearance",
+        "user_id",
+        "users",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+    (
+        "user_features",
+        "user_id",
+        "users",
+        "id",
+        "NO ACTION",
+        "CASCADE",
+    ),
+];
+
+/// At most this many tables are inspected; a database with more is refused for writing.
+const TOPOLOGY_TABLE_CAP: usize = 512;
+
+/// noevia#1378: what a [`Writer`]'s statement can set off beyond the row it names. The authorizer
+/// already refuses a foreign-key action that reaches a table the writer does not own
+/// (`a_cascade_reaches_only_tables_the_writer_owns`), but it grants a whole owned table, so an
+/// action between owned tables (a self-referencing `sessions.parent_session ... ON DELETE
+/// CASCADE`) or a trigger on one (deleting other sessions) would let one user's sign-out delete
+/// another user's rows. Refused unless every foreign key with an action whose child is a table
+/// this writer owns is one of [`KNOWN_FOREIGN_KEYS`]. Triggers are handled by
+/// [`owned_authorizer`]: a write inside a trigger body is denied, so a trigger can abort a
+/// statement (tests inject audit failures that way) but never write a row.
+fn verify_write_topology(
+    conn: &Connection,
+    owned: &[(&'static str, Access)],
+) -> Result<(), StoreError> {
+    let written = |t: &str| t == "settings" || owned.iter().any(|(o, _)| *o == t);
+    let mut tables = conn.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name LIMIT ?1",
+    )?;
+    let names: Vec<String> = tables
+        .query_map([TOPOLOGY_TABLE_CAP as i64 + 1], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    if names.len() > TOPOLOGY_TABLE_CAP {
+        return Err(StoreError::NotReady(format!(
+            "more than {TOPOLOGY_TABLE_CAP} tables; not writing"
+        )));
+    }
+    let mut fks = conn.prepare(
+        "SELECT \"from\", \"table\", coalesce(\"to\", ''), on_update, on_delete FROM pragma_foreign_key_list(?1)",
+    )?;
+    for child in &names {
+        let rows: Vec<(String, String, String, String, String)> = fks
+            .query_map([child], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            })?
+            .collect::<Result<_, _>>()?;
+        for (from, parent, to, on_update, on_delete) in rows {
+            let inert =
+                |a: &str| a.eq_ignore_ascii_case("NO ACTION") || a.eq_ignore_ascii_case("RESTRICT");
+            if (inert(&on_update) && inert(&on_delete)) || !written(child) {
+                continue;
+            }
+            let known = KNOWN_FOREIGN_KEYS.iter().any(|(c, f, p, t, u, d)| {
+                c == child
+                    && *f == from
+                    && *p == parent
+                    && *t == to
+                    && *u == on_update
+                    && *d == on_delete
+            });
+            if !known {
+                return Err(StoreError::NotReady(format!(
+                    "unexpected foreign key {child}.{from} -> {parent}({to}) ON UPDATE {on_update} ON DELETE {on_delete}; not writing"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The startup/upgrade check, see the crate docs. A writer's connection also gets
+/// [`verify_write_topology`].
+fn verify(
+    conn: &Connection,
+    owned: Option<&'static [(&'static str, Access)]>,
+) -> Result<(), StoreError> {
+    verify_schema(conn)?;
+    if let Some(owned) = owned {
+        verify_write_topology(conn, owned)?;
+    }
+    Ok(())
+}
+
+fn verify_schema(conn: &Connection) -> Result<(), StoreError> {
     let mode: String = conn.query_row("PRAGMA journal_mode", [], |r| r.get(0))?;
     if !mode.eq_ignore_ascii_case("wal") {
         return Err(StoreError::NotReady(format!(
@@ -517,6 +712,8 @@ struct Inner {
     conn: Connection,
     /// The schema cookie [`verify`] last passed at.
     verified: i64,
+    /// A [`Writer`]'s grants: [`verify_write_topology`] is part of every check. None for a [`Store`].
+    owned: Option<&'static [(&'static str, Access)]>,
 }
 
 impl Inner {
@@ -538,7 +735,7 @@ impl Inner {
         }
         let cookie = schema_cookie(&self.conn)?;
         if cookie != self.verified || found != KNOWN_SCHEMA_VERSION {
-            verify(&self.conn)?;
+            verify(&self.conn, self.owned)?;
             self.verified = cookie;
         }
         Ok(())
@@ -548,7 +745,7 @@ impl Inner {
 fn open_inner(
     data_dir: &Path,
     flags: OpenFlags,
-    query_only: bool,
+    owned: Option<&'static [(&'static str, Access)]>,
     authorizer: impl FnMut(AuthContext<'_>) -> Authorization + Send + 'static,
 ) -> Result<Inner, StoreError> {
     let path = db_path(data_dir);
@@ -557,7 +754,7 @@ fn open_inner(
     }
     let conn = Connection::open_with_flags(&path, flags)?;
     conn.busy_timeout(BUSY_TIMEOUT)?;
-    if query_only {
+    if owned.is_none() {
         // A second line of defence after the read-only open; set before the authorizer, which
         // refuses every pragma with a value.
         conn.pragma_update(None, "query_only", true)?;
@@ -567,9 +764,13 @@ fn open_inner(
         conn.pragma_update(None, "foreign_keys", true)?;
     }
     conn.authorizer(Some(authorizer))?;
-    verify(&conn)?;
+    verify(&conn, owned)?;
     let verified = schema_cookie(&conn)?;
-    Ok(Inner { conn, verified })
+    Ok(Inner {
+        conn,
+        verified,
+        owned,
+    })
 }
 
 /// `UI_DATA_DIR/cowork.db`.
@@ -590,7 +791,7 @@ impl Store {
         let inner = open_inner(
             data_dir,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-            true,
+            None,
             read_only_authorizer,
         )?;
         Ok(Store {
@@ -803,7 +1004,7 @@ impl Writer {
         let inner = open_inner(
             data_dir,
             OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-            false,
+            Some(owned),
             owned_authorizer(owned, Arc::clone(&settings_open)),
         )?;
         Ok(Writer {

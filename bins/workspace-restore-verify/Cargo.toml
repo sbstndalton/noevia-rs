@@ -1,0 +1,22 @@
+[package]
+name = "workspace-restore-verify-cli"
+version = "0.1.0"
+description = "Workspace ZIP on stdin -> accept <listing sha256> | reject: <code> (Diary, WORKSPACE_RESTORE_VERIFY_IMPL=rust)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "workspace-restore-verify"
+path = "src/main.rs"
+
+[dependencies]
+workspace-restore-verify = { path = "../../crates/workspace-restore-verify" }
+
+[dev-dependencies]
+serde_json = "1"
+base64 = "0.22"

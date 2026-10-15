@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "seq": 207,
+  "request": {
+    "method": "POST",
+    "path": "/api/projects/<id:26>/chats",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "chats": []
+      }
+    }
+  },
+  "response": {
+    "status": 401,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
+      "referrer-policy": "same-origin",
+      "strict-transport-security": "max-age=15552000",
+      "www-authenticate": "Bearer realm=\"cowork\"",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "error": "unauthorized"
+      }
+    }
+  }
+}

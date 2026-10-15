@@ -10,6 +10,7 @@
 use crate::js;
 use crate::store::{self, StoreError};
 use crate::{Body, Ctx, Reply};
+use js_json::wtf16;
 use js_json::JValue;
 use std::path::Path;
 
@@ -22,9 +23,11 @@ pub const MAX_PROJECT_IMAGES: usize = 12;
 /// `Math.ceil(IMAGE_UPLOAD_CAP / 3) * 4 + 512 * 1024`: the body limit of the upload.
 pub const BODY_LIMIT: usize = IMAGE_UPLOAD_CAP.div_ceil(3) * 4 + 512 * 1024;
 
-fn store_failure(e: &StoreError) -> Reply {
+pub(crate) fn store_failure(e: &StoreError) -> Reply {
     match e {
         StoreError::Busy => Reply::error(503, "The project store is busy. Try again shortly."),
+        // workspace.cjs assertActive, through http.cjs errorResponse.
+        StoreError::Gone => Reply::error(410, "account no longer exists"),
         _ => Reply::internal(),
     }
 }
@@ -65,15 +68,27 @@ fn ids(raw_project: &str, raw_asset: &str) -> Option<(String, String)> {
     Some((id, asset))
 }
 
-fn write_asset_file(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+/// Writes the image into `dir` (below `user_dir`), making `dir`'s missing levels (mode 0700) one
+/// at a time below the user's directory but never that directory itself: when the account was
+/// removed meanwhile, the write fails instead of recreating it (sbstndalton/noevia#1425).
+fn write_asset_file(user_dir: &Path, dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+    let below = dir
+        .strip_prefix(user_dir)
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
     let mut builder = std::fs::DirBuilder::new();
-    builder.recursive(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
     }
-    builder.create(dir)?;
+    let mut at = user_dir.to_path_buf();
+    for part in below.components() {
+        at.push(part);
+        match builder.create(&at) {
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && at.is_dir() => {}
+            other => other?,
+        }
+    }
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
@@ -107,7 +122,9 @@ pub fn post(ctx: Ctx<'_>, raw_project: &str, body: &[u8], over: bool) -> Reply {
     if over {
         return Reply::error(413, "That image is larger than the 8 MB limit.");
     }
-    let Ok(body) = js_json::parse(&String::from_utf8_lossy(body)) else {
+    // Lossless (wtf16): Node keeps a lone surrogate that a 200-unit cut of the name leaves behind,
+    // and stores it; a plain String cannot hold one (#1403).
+    let Ok(body) = wtf16::parse(&String::from_utf8_lossy(body)) else {
         return Reply::error(400, "invalid JSON");
     };
     if matches!(body, JValue::Null) {
@@ -116,7 +133,7 @@ pub fn post(ctx: Ctx<'_>, raw_project: &str, body: &[u8], over: bool) -> Reply {
     let Some(name) = string_or_empty(body.get("name")) else {
         return Reply::internal();
     };
-    let name = js_json::js_slice(&name, 200);
+    let name = wtf16::slice(&name, 200);
     let Some(mime) = string_or_empty(body.get("mime")) else {
         return Reply::internal();
     };
@@ -169,8 +186,12 @@ pub fn post(ctx: Ctx<'_>, raw_project: &str, body: &[u8], over: bool) -> Reply {
         js::random36(6)
     );
     let assets_dir = store::asset_dir(&dir, &id);
-    if write_asset_file(&assets_dir, &asset_id, &bytes).is_err() {
-        return Reply::internal();
+    match write_asset_file(&dir, &assets_dir, &asset_id, &bytes) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && !dir.exists() => {
+            return store_failure(&store::StoreError::Gone);
+        }
+        Err(_) => return Reply::internal(),
     }
     let entry = JValue::obj([
         ("id", JValue::Str(asset_id.clone())),
@@ -203,7 +224,7 @@ pub fn post(ctx: Ctx<'_>, raw_project: &str, body: &[u8], over: bool) -> Reply {
         return reply;
     }
     let out = JValue::obj([("asset", entry)]);
-    Reply::json(200, js_json::stringify(&out).unwrap_or_default())
+    Reply::json(200, wtf16::stringify(&out).unwrap_or_default())
 }
 
 /// GET /api/projects/{id}/assets/{assetId}: the image bytes, or Node's 404s.
@@ -443,6 +464,39 @@ mod tests {
         assert_eq!(
             delete(f.ctx(), "proj-1", &id),
             Reply::error(404, "no such image")
+        );
+    }
+
+    #[test]
+    fn a_name_cut_inside_an_emoji_keeps_the_high_half_as_node_does() {
+        // 199 units, then an emoji (two units): the 200-unit cut leaves its high surrogate (#1403).
+        let f = Fixture::new(ONE);
+        let name = format!("{}😀tail", "a".repeat(199));
+        let body =
+            format!("{{\"name\":\"{name}\",\"mime\":\"image/png\",\"dataBase64\":\"{PNG}\"}}");
+        let r = post_json(&f, "proj-1", &body);
+        assert_eq!(r.status, 200, "{r:?}");
+        let Body::Json(text) = &r.body else { panic!() };
+        // JSON.stringify writes the lone high surrogate as an escape, in the reply and in the file.
+        let want = format!("\"name\":\"{}\\ud83d\",\"mime\"", "a".repeat(199));
+        assert!(text.contains(&want), "{text}");
+        let stored = std::fs::read_to_string(f.user().join("projects.json")).unwrap();
+        assert!(
+            stored.contains(&format!("\"name\": \"{}\\ud83d\"", "a".repeat(199))),
+            "{stored}"
+        );
+        // The store must still read back: the lossless reader takes what this wrote.
+        assert!(wtf16::parse(&stored).is_ok(), "{stored}");
+        // A name of exactly 200 units with the emoji fully inside is kept whole.
+        let whole = format!("{}😀", "a".repeat(198));
+        let body =
+            format!("{{\"name\":\"{whole}\",\"mime\":\"image/png\",\"dataBase64\":\"{PNG}\"}}");
+        let r = post_json(&f, "proj-1", &body);
+        assert_eq!(r.status, 200, "{r:?}");
+        let Body::Json(text) = &r.body else { panic!() };
+        assert!(
+            text.contains(&format!("\"name\":\"{whole}\",\"mime\"")),
+            "{text}"
         );
     }
 

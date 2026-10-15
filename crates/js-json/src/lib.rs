@@ -2,15 +2,19 @@
 //! M3): what `JSON.parse` gives a handler, what `JSON.stringify` sends back, and the coercions
 //! handlers apply to body fields (`String(v)`, `!!v`, `typeof`).
 //!
-//! - [`parse`] keeps object keys in insertion order (a later duplicate replaces the value in the
-//!   first one's place, as `JSON.parse` does) and every number as an `f64`. Stricter than
+//! - [`parse`] orders object keys as JS does: array-index keys first, ascending (#1404), the rest in
+//!   insertion order (a later duplicate replaces the value in the first one's place, as
+//!   `JSON.parse` does), and every number as an `f64`. Stricter than
 //!   `JSON.parse`, as refusals: strings with lone surrogate escapes, numbers outside the `f64`
 //!   range (JS: `Infinity`), and nesting deeper than serde_json's 128 levels.
 //! - [`stringify`] is `JSON.stringify(value)` byte for byte, `undefined` included (dropped in
 //!   objects, `null` in arrays, nothing at the top).
 //! - [`to_js_string`] is `String(value)`.
+//! - [`wtf16`]: the lossless variants for data Node wrote: lone surrogates kept, JS key order.
 
 use serde::de::{DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
+
+pub mod wtf16;
 use std::fmt::{self, Write as _};
 
 /// A JavaScript value that came out of `JSON.parse`, or one a handler builds to send.
@@ -207,15 +211,20 @@ impl<'de> Visitor<'de> for Seed {
     }
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<JValue, A::Error> {
         let mut out: Vec<(String, JValue)> = Vec::new();
+        // Key -> index in `out`, so a body with many keys parses in linear time.
+        let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         while let Some(k) = map.next_key::<String>()? {
             let v = map.next_value_seed(Seed)?;
             // JSON.parse: a repeated key keeps its first position and takes the last value.
-            if let Some(slot) = out.iter_mut().find(|(key, _)| *key == k) {
+            if let Some(slot) = index.get(&k).and_then(|&i| out.get_mut(i)) {
                 slot.1 = v;
             } else {
+                index.insert(k.clone(), out.len());
                 out.push((k, v));
             }
         }
+        // JS property order: array-index keys first, ascending, then the rest as they came (#1404).
+        wtf16::order_keys(&mut out);
         Ok(JValue::Obj(out))
     }
 }
@@ -235,8 +244,19 @@ pub fn number_to_string(x: f64) -> String {
 
 /// JSON.stringify's string quoting.
 pub fn quote(s: &str, out: &mut String) {
+    quote_in(s, out, false);
+}
+
+/// [`quote`]; `lossless`: a [`wtf16`] lone surrogate is written as JSON.stringify writes one.
+fn quote_in(s: &str, out: &mut String, lossless: bool) {
     out.push('"');
     for ch in s.chars() {
+        if lossless {
+            if let Some(unit) = wtf16::lone_unit(ch) {
+                let _ = write!(out, "\\u{unit:04x}");
+                continue;
+            }
+        }
         match ch {
             '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
@@ -254,20 +274,20 @@ pub fn quote(s: &str, out: &mut String) {
     out.push('"');
 }
 
-fn emit(v: &JValue, out: &mut String) {
+fn emit(v: &JValue, out: &mut String, lossless: bool) {
     match v {
         JValue::Undefined | JValue::Null => out.push_str("null"),
         JValue::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
         JValue::Num(n) if n.is_finite() => out.push_str(&number_to_string(*n)),
         JValue::Num(_) => out.push_str("null"),
-        JValue::Str(s) => quote(s, out),
+        JValue::Str(s) => quote_in(s, out, lossless),
         JValue::Arr(items) => {
             out.push('[');
             for (i, item) in items.iter().enumerate() {
                 if i > 0 {
                     out.push(',');
                 }
-                emit(item, out);
+                emit(item, out, lossless);
             }
             out.push(']');
         }
@@ -282,9 +302,9 @@ fn emit(v: &JValue, out: &mut String) {
                     out.push(',');
                 }
                 first = false;
-                quote(k, out);
+                quote_in(k, out, lossless);
                 out.push(':');
-                emit(item, out);
+                emit(item, out, lossless);
             }
             out.push('}');
         }
@@ -297,7 +317,7 @@ pub fn stringify(v: &JValue) -> Option<String> {
         return None;
     }
     let mut out = String::new();
-    emit(v, &mut out);
+    emit(v, &mut out, false);
     Some(out)
 }
 
@@ -309,7 +329,7 @@ pub fn stringify_pretty(v: &JValue) -> Option<String> {
         return None;
     }
     let mut out = String::new();
-    emit_pretty(v, &mut out, 0);
+    emit_pretty(v, &mut out, 0, false);
     Some(out)
 }
 
@@ -320,7 +340,7 @@ fn newline(out: &mut String, depth: usize) {
     }
 }
 
-fn emit_pretty(v: &JValue, out: &mut String, depth: usize) {
+fn emit_pretty(v: &JValue, out: &mut String, depth: usize, lossless: bool) {
     match v {
         JValue::Arr(items) if !items.is_empty() => {
             out.push('[');
@@ -329,7 +349,7 @@ fn emit_pretty(v: &JValue, out: &mut String, depth: usize) {
                     out.push(',');
                 }
                 newline(out, depth + 1);
-                emit_pretty(item, out, depth + 1);
+                emit_pretty(item, out, depth + 1, lossless);
             }
             newline(out, depth);
             out.push(']');
@@ -346,15 +366,15 @@ fn emit_pretty(v: &JValue, out: &mut String, depth: usize) {
                 }
                 first = false;
                 newline(out, depth + 1);
-                quote(k, out);
+                quote_in(k, out, lossless);
                 out.push_str(": ");
-                emit_pretty(item, out, depth + 1);
+                emit_pretty(item, out, depth + 1, lossless);
             }
             newline(out, depth);
             out.push('}');
         }
         JValue::Obj(_) => out.push_str("{}"),
-        other => emit(other, out),
+        other => emit(other, out, lossless),
     }
 }
 
@@ -379,9 +399,11 @@ fn coerce(v: &JValue, depth: usize) -> Result<String, CoerceError> {
         JValue::Num(n) => number_to_string(*n),
         JValue::Str(s) => s.clone(),
         JValue::Obj(items) => {
-            if items.iter().any(|(k, _)| k == "toString" || k == "valueOf") {
-                // An own non-callable toString/valueOf: ToPrimitive throws (valueOf alone
-                // still falls through to toString in JS; refusing is the safe side).
+            // ToPrimitive (hint string) tries an own toString first. A JSON value is never callable,
+            // so an own toString is skipped, and then valueOf (inherited, returning the object)
+            // leaves no primitive: TypeError. An own valueOf alone is skipped too, and the inherited
+            // Object.prototype.toString answers "[object Object]" (#1405).
+            if items.iter().any(|(k, _)| k == "toString") {
                 return Err(CoerceError);
             }
             "[object Object]".into()
@@ -506,6 +528,31 @@ mod tests {
         assert_eq!(s("true"), "true");
         assert!(to_js_string(&parse(r#"{"toString":1}"#).unwrap()).is_err());
         assert_eq!(to_js_string(&JValue::Undefined).unwrap(), "undefined");
+        // An own valueOf alone: the inherited Object.prototype.toString answers (#1405).
+        assert_eq!(s(r#"{"valueOf":1}"#), "[object Object]");
+        assert_eq!(s(r#"{"valueOf":{}}"#), "[object Object]");
+        assert_eq!(s(r#"[{"valueOf":null}]"#), "[object Object]");
+        // An own toString (no JSON value is callable): TypeError, with or without valueOf.
+        assert!(to_js_string(&parse(r#"{"toString":null}"#).unwrap()).is_err());
+        assert!(to_js_string(&parse(r#"{"toString":1,"valueOf":2}"#).unwrap()).is_err());
+        assert!(to_js_string(&parse(r#"[1,{"toString":"x"}]"#).unwrap()).is_err());
+    }
+
+    #[test]
+    fn parse_orders_index_keys_first_like_js() {
+        // Node: JSON.stringify(JSON.parse(text)) for the same text (#1404).
+        let v =
+            parse(r#"{"b":1,"2":1,"10":1,"1":1,"01":1,"4294967295":1,"4294967294":1}"#).unwrap();
+        assert_eq!(
+            stringify(&v).unwrap(),
+            r#"{"1":1,"2":1,"10":1,"4294967294":1,"b":1,"01":1,"4294967295":1}"#
+        );
+        // A duplicate keeps the first position (after the index sort) and takes the last value.
+        let v = parse(r#"{"x":1,"5":"a","3":"b","x":2,"5":"c"}"#).unwrap();
+        assert_eq!(stringify(&v).unwrap(), r#"{"3":"b","5":"c","x":2}"#);
+        // Nested objects are ordered at every level; arrays keep their order.
+        let v = parse(r#"[{"z":0,"1":{"y":0,"0":0}}]"#).unwrap();
+        assert_eq!(stringify(&v).unwrap(), r#"[{"1":{"0":0,"y":0},"z":0}]"#);
     }
 
     #[test]

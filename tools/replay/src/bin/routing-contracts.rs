@@ -185,7 +185,7 @@ fn run() -> Result<(), String> {
         for name in ["node", "positive"] {
             let report = read(&out.join(format!("baseline/{name}-report.json")))?;
             let rows = report.as_array().ok_or("prior baseline report missing")?;
-            if rows.len() != 193
+            if rows.len() != 228
                 || rows.iter().any(|row| {
                     at(row, "status") != at(row, "expectedStatus")
                         || !at(row, "error").is_null()
@@ -194,7 +194,7 @@ fn run() -> Result<(), String> {
                             .is_none_or(|diffs| !diffs.is_empty())
                 })
             {
-                return Err("resume requires complete prior193 zero-diff baseline".into());
+                return Err("resume requires complete prior228 zero-diff baseline".into());
             }
         }
         if read(&out.join("baseline/node-state.json"))?
@@ -205,18 +205,18 @@ fn run() -> Result<(), String> {
         let source = read(&out.join("routing-corpus/SOURCE_ORACLE.json"))?;
         if at(&source, "core") != expected
             || at(&source, "captureDomain") != "routing-mode"
-            || at(&source, "exchanges") != 220
+            || at(&source, "exchanges") != 255
             || at(&source, "dropped") != 0
         {
             return Err("resume routing provenance differs".into());
         }
-        println!("explicit routing resume: retained prior193 Node/native zero-diff and equal-state reports; baseline not rerun");
+        println!("explicit routing resume: retained prior228 Node/native zero-diff and equal-state reports; baseline not rerun");
         if resume_node {
             let report = read(&out.join("routing/node-report.json"))?;
             let rows = report
                 .as_array()
                 .ok_or("prior Node routing report missing")?;
-            if rows.len() != 220
+            if rows.len() != 255
                 || rows.iter().any(|row| {
                     at(row, "status") != at(row, "expectedStatus")
                         || !at(row, "error").is_null()
@@ -226,12 +226,12 @@ fn run() -> Result<(), String> {
                 })
             {
                 return Err(
-                    "native resume requires complete prior220 Node zero-diff report".into(),
+                    "native resume requires complete prior255 Node zero-diff report".into(),
                 );
             }
             read(&out.join("routing/node-state.json"))?;
             println!(
-                "explicit native resume: prior220 Node zero-diff report retained; Node not rerun"
+                "explicit native resume: prior255 Node zero-diff report retained; Node not rerun"
             );
         }
     } else {
@@ -253,7 +253,7 @@ fn run() -> Result<(), String> {
             true,
             false,
         )? {
-            return Err("full existing193 Node/native/state replay failed".into());
+            return Err("full existing228 Node/native/state replay failed".into());
         }
         let mut command = Command::new(bin.join("corpus-launcher"));
         command

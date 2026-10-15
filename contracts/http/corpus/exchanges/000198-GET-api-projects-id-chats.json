@@ -1,0 +1,78 @@
+{
+  "v": 1,
+  "seq": 198,
+  "request": {
+    "method": "GET",
+    "path": "/api/projects/<id:26>/chats",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
+      "referrer-policy": "same-origin",
+      "strict-transport-security": "max-age=15552000",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "chats": [
+          {
+            "id": "chat-alpha",
+            "title": "Alpha",
+            "updatedAt": 300,
+            "preview": "First",
+            "pinned": true,
+            "archived": false,
+            "frame": {
+              "projectId": null,
+              "kind": "question",
+              "tags": [
+                "alpha-beta"
+              ],
+              "links": [
+                "chat-beta"
+              ],
+              "confirmed": true,
+              "source": "user"
+            },
+            "forceLocal": true,
+            "createdAt": 100,
+            "mode": "cowork"
+          },
+          {
+            "id": "chat-gamma",
+            "title": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg😀",
+            "updatedAt": 250,
+            "preview": "",
+            "pinned": false,
+            "archived": false
+          },
+          {
+            "id": "chatbetax",
+            "title": "[object Object]",
+            "updatedAt": 200,
+            "preview": "p,,3",
+            "pinned": false,
+            "archived": false
+          }
+        ]
+      }
+    }
+  }
+}

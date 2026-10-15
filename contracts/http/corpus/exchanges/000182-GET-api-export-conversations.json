@@ -19,10 +19,12 @@
     "status": 200,
     "headers": {
       "cache-control": "no-store",
-      "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-11.zip\"",
+      "content-disposition": "attachment; filename=\"noevia-conversations-2026-10-13.zip\"",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       "content-type": "application/zip",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
       "referrer-policy": "same-origin",
+      "strict-transport-security": "max-age=15552000",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
       "x-noevia-api": "1"

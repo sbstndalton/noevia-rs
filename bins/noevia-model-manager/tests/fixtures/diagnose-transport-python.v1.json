@@ -1605,6 +1605,74 @@
       "token": "synthetic-shared-token-00000000000"
     },
     {
+      "body": "{\"failures\":[{\"model\":\"api_key=[redacted]\",\"status\":1,\"cause\":\"kv-cache\",\"title\":\"The KV cache did not fit\",\"advice\":\"Lower the context size or parallel slots, or quantize the cache (cache-type-k/v = q8_0).\",\"evidence\":[\"failed to allocate kv api_key=[redacted]\"]}]}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ],
+        [
+          "get",
+          "synthetic-backend"
+        ],
+        [
+          "logs",
+          {
+            "since": "2026-10-11T00:00:00",
+            "tail": 40000
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "redacted-credential-model-and-evidence-GET",
+      "log": "spawning server instance with name=api_key=synthetic-secret-only on port 18001\n[18001] failed to allocate kv api_key=synthetic-secret-only\ninstance name=api_key=synthetic-secret-only exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic-backend/diagnose",
+      "status": 200,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
+      "body": "{\"failures\":[{\"model\":\"[redacted]\",\"status\":1,\"cause\":\"gpu-memory\",\"title\":\"The GPU ran out of memory\",\"advice\":\"Lower the context size or GPU layers, remove the vision projector if you do not need it, or set fit = on so llama.cpp places layers itself.\",\"evidence\":[\"out of device memory Authorization: [redacted]\"]}]}",
+      "calls": [
+        [
+          "list",
+          {
+            "all": true
+          }
+        ],
+        [
+          "get",
+          "synthetic-backend"
+        ],
+        [
+          "logs",
+          {
+            "since": "2026-10-11T00:00:00",
+            "tail": 40000
+          }
+        ]
+      ],
+      "configured": [
+        "synthetic-backend"
+      ],
+      "headers": {
+        "content-type": "application/json"
+      },
+      "id": "redacted-token-shaped-model-GET",
+      "log": "spawning server instance with name=hf_abcdefghijklmnopqrst on port 18001\n[18001] out of device memory Authorization: Bearer synthetic-secret-only\ninstance name=hf_abcdefghijklmnopqrst exited with status 1",
+      "method": "GET",
+      "path": "/api/v1/backends/synthetic-backend/diagnose",
+      "status": 200,
+      "token": "synthetic-shared-token-00000000000"
+    },
+    {
       "body": "{\"error\":\"unauthorized\"}",
       "calls": [],
       "configured": [
@@ -1621,8 +1689,8 @@
       "token": "wrong"
     }
   ],
-  "generator_sha256": "6ec2eb3a901975f46a1ac6fbf4e852137de52ff2ef9f9799f546dca0c8bb0055",
-  "oracle_ref": "6c233f4a05730ed5dccd7997ae601e9999eaa6d7",
+  "generator_sha256": "8c0dec01613ee491e7b07d426b9f7ef8820e0196f17e71d8088b31416329fd2c",
+  "oracle_ref": "d890ab476d1f1a8b6de799d6428e45b6af42a473",
   "python": "3.12.15 (main, Oct  3 2026, 00:54:33) [Clang 22.1.3 ]",
   "schema": 1,
   "versions": {

@@ -1,8 +1,9 @@
 //! Which recovery copies of `models.ini` a write makes and which old ones it removes
 //! (sbstndalton/noevia#1021). noevia model-manager's `ini.py` keeps two kinds beside the file:
 //!
-//! - rotating copies `<file>.bak-<timestamp>[-n]`: the newest [`KEEP_ROTATING`] by name stay
-//!   (the rule `_prune_backups` has always used: names sorted descending, the rest removed);
+//! - rotating copies `<file>.bak-<YYYYMMDD-HHMMSS>[-n]`: the newest [`KEEP_ROTATING`] by name stay
+//!   (names sorted descending, the rest removed). Only names of exactly that shape are the
+//!   manager's own; any other `<file>.bak-*` is an operator's and is never removed (noevia#1783);
 //! - revision copies `<file>.noevia-backup-<baseRevision>` (64 lowercase hex): the file as it was
 //!   before a compare-and-swap write. These were never removed, and auto-tune writes many; now the
 //!   newest `keepRevisions` by modification time stay (name ascending breaks ties), and the copy
@@ -111,6 +112,20 @@ pub fn is_rotating_copy(file: &str, name: &str) -> bool {
     name.len() > rotating_prefix(file).len() && name.starts_with(&rotating_prefix(file))
 }
 
+/// Whether `name` is a rotating copy this manager made itself: `<file>.bak-<8 digits>-<6 digits>`,
+/// optionally `-<digits>` (ini.py `_backup_current`). Only these are ever pruned (noevia#1783).
+pub fn is_own_rotating_copy(file: &str, name: &str) -> bool {
+    let Some(rest) = name.strip_prefix(&rotating_prefix(file)) else {
+        return false;
+    };
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let mut parts = rest.split('-');
+    let (date, time, n, extra) = (parts.next(), parts.next(), parts.next(), parts.next());
+    matches!((date, time), (Some(d), Some(t)) if d.len() == 8 && digits(d) && t.len() == 6 && digits(t))
+        && n.is_none_or(digits)
+        && extra.is_none()
+}
+
 /// The decision for one write.
 pub fn plan(r: &Request) -> Plan {
     let rotating = r.rotating_name.clone().filter(|_| r.backup);
@@ -125,7 +140,7 @@ pub fn plan(r: &Request) -> Plan {
         .existing
         .iter()
         .map(|l| l.name.as_str())
-        .filter(|n| is_rotating_copy(&r.file, n))
+        .filter(|n| is_own_rotating_copy(&r.file, n))
         .collect();
     if let Some(new) = rotating.as_deref() {
         if !rot.contains(&new) {
@@ -386,13 +401,58 @@ mod tests {
             });
         }
         let p = plan(&req(existing, true));
-        // 12 timestamped + before-d3 + the new one: the 4 oldest timestamps go.
+        // 12 timestamped + the new one: the 3 oldest go; before-d3 is an operator's (#1783).
         assert_eq!(
             p.prune,
-            (0..4)
+            (0..3)
                 .map(|i| format!("models.ini.bak-20260101-0000{i:02}"))
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn operator_bak_files_are_never_pruned() {
+        // noevia#1783: these sort below the manager's timestamps and used to be removed.
+        let operator = [
+            "models.ini.bak-2026-10-15",
+            "models.ini.bak-1731-before-preset-removal",
+            "models.ini.bak-20261015",
+            "models.ini.bak-20261015-1200",
+            "models.ini.bak-20261015-120000-x",
+            "models.ini.bak-0",
+        ];
+        let mut existing: Vec<Listed> = (0..12)
+            .map(|i| Listed {
+                name: format!("models.ini.bak-20260101-0000{i:02}"),
+                mtime_ns: 0,
+            })
+            .collect();
+        existing.extend(operator.iter().map(|n| Listed {
+            name: (*n).into(),
+            mtime_ns: 0,
+        }));
+        let p = plan(&req(existing, true));
+        assert_eq!(
+            p.prune,
+            (0..3)
+                .map(|i| format!("models.ini.bak-20260101-0000{i:02}"))
+                .collect::<Vec<_>>()
+        );
+        for n in operator {
+            assert!(!is_own_rotating_copy("models.ini", n), "{n}");
+        }
+        assert!(is_own_rotating_copy(
+            "models.ini",
+            "models.ini.bak-20261015-120000"
+        ));
+        assert!(is_own_rotating_copy(
+            "models.ini",
+            "models.ini.bak-20261015-120000-3"
+        ));
+        assert!(!is_own_rotating_copy(
+            "models.ini",
+            "other.ini.bak-20261015-120000"
+        ));
     }
 
     #[test]

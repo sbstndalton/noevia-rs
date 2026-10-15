@@ -1,0 +1,63 @@
+{
+  "v": 1,
+  "seq": 194,
+  "request": {
+    "method": "POST",
+    "path": "/api/projects",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "content-type": "application/json",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node",
+      "x-csrf-token": "<secret:4>"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "name": "Synthetic chat list"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
+      "referrer-policy": "same-origin",
+      "strict-transport-security": "max-age=15552000",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "id": "<id:26>",
+        "name": "Synthetic chat list",
+        "goal": "",
+        "instructions": "",
+        "pinned": false,
+        "archived": false,
+        "sourceFolders": [],
+        "memories": [],
+        "files": [],
+        "routing": "auto",
+        "modes": [
+          "chat"
+        ],
+        "toolboxes": [
+          "core"
+        ],
+        "toolsMode": "auto",
+        "chats": [],
+        "createdAt": "<ts>",
+        "updatedAt": "<ts>",
+        "instructionSkills": {}
+      }
+    }
+  }
+}

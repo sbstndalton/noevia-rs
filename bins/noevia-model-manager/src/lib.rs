@@ -3,7 +3,9 @@ pub mod diagnose;
 #[cfg(feature = "native-diagnose")]
 pub mod diagnose_docker;
 pub mod docker;
+pub mod embedding;
 pub mod host;
+pub mod idle_unload;
 #[cfg(feature = "native-prompts")]
 pub mod prompts;
 pub mod sections;
@@ -25,6 +27,7 @@ pub const LOG_CAP: usize = 1024 * 1024;
 const INVENTORY_CAP: usize = 1024;
 const REQUEST_CAP: usize = 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(5);
+pub const LEGACY_BASE: &str = "http://127.0.0.1:8091";
 pub const LEGACY_TIMEOUT: Duration = Duration::from_secs(600);
 pub fn legacy_client() -> Result<reqwest::Client, reqwest::Error> {
     reqwest::Client::builder()
@@ -33,7 +36,7 @@ pub fn legacy_client() -> Result<reqwest::Client, reqwest::Error> {
         .timeout(LEGACY_TIMEOUT)
         .build()
 }
-type Job<'a, T> = Pin<Box<dyn Future<Output = Result<T, &'static str>> + Send + 'a>>;
+pub type Job<'a, T> = Pin<Box<dyn Future<Output = Result<T, &'static str>> + Send + 'a>>;
 
 #[derive(Clone, Debug)]
 pub struct Container {
@@ -54,6 +57,8 @@ pub struct StateData {
     #[cfg(feature = "native-prompts")]
     pub prompts: Option<Arc<prompts::Prompts>>,
     pub sections: Option<Arc<sections::Sections>>,
+    /// #1668: present only when EMBED_CONTAINER names the embedding service.
+    pub embedding: Option<Arc<embedding::EmbeddingService>>,
     pub host: Option<Arc<tokio::sync::Mutex<host::HostHistory>>>,
     pub token: String,
     pub configured: Vec<String>,
@@ -61,6 +66,37 @@ pub struct StateData {
     pub redactor: Redactor,
     pub permits: Semaphore,
     pub legacy: reqwest::Client,
+    /// The legacy child's address (production: LEGACY_BASE); tests use an ephemeral port.
+    pub legacy_base: String,
+    /// #1747: keeps the chat preset's global `sleep-idle-seconds` in line with the setting.
+    pub idle_unload: Option<Arc<idle_unload::Reconciler>>,
+}
+
+/// #1668: what the Python child is told about the guarded embedding service: its container and
+/// address, so it skips only env names that point at it. `None` clears them all.
+pub fn embed_guard_env(service: Option<(&str, &str)>) -> [(&'static str, Option<String>); 3] {
+    [
+        (
+            "NOEVIA_EMBED_SERVICE_GUARDED",
+            service.map(|_| "1".to_owned()),
+        ),
+        (
+            "NOEVIA_EMBED_SERVICE_CONTAINER",
+            service.map(|(c, _)| c.to_owned()),
+        ),
+        (
+            "NOEVIA_EMBED_SERVICE_URL",
+            service.map(|(_, u)| u.to_owned()),
+        ),
+    ]
+}
+
+/// #1668: PUT /api/v1/embedding-service restarts and stops a container, so it is never left open.
+pub fn require_embed_token(container: &str, token: &str) -> Result<(), &'static str> {
+    if !container.is_empty() && token.is_empty() {
+        return Err("EMBED_CONTAINER needs MODEL_LOADER_TOKEN: the embedding service route must not be open");
+    }
+    Ok(())
 }
 
 pub fn validate_token(raw: &str) -> Result<String, &'static str> {
@@ -336,9 +372,8 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     {
         return dispatch(state, req).await;
     }
-    let permit = match state.permits.try_acquire() {
-        Ok(p) => p,
-        Err(_) => return detail(StatusCode::SERVICE_UNAVAILABLE, "service is busy"),
+    let Some(admission) = Admission::try_new(&state) else {
+        return detail(StatusCode::SERVICE_UNAVAILABLE, "service is busy");
     };
     let native = path
         .strip_prefix("/api/v1/backends/")
@@ -350,17 +385,75 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
             && !matches!(prompts::classify(path), prompts::Route::NotOwned));
     let budget = if native || (path == "/api/v1/host" && state.host.is_some()) {
         TIMEOUT
+    } else if path == "/api/v1/embedding-service" && state.embedding.is_some() {
+        // The Docker action is bounded by embedding::ACT_TIMEOUT and runs in its own task.
+        embedding::ACT_TIMEOUT + embedding::LOCK_WAIT + Duration::from_secs(5)
     } else {
         LEGACY_TIMEOUT
     };
-    let result = tokio::time::timeout(budget, dispatch(state.clone(), req)).await;
-    drop(permit);
+    // The dispatch future is dropped inside the scope (also on a timeout), so a Docker driver it
+    // leaves behind is registered with this admission and joined before the permit returns.
+    // (tokio drops a scoped future inside its scope, also when the request itself is dropped.)
+    let result = docker::ORPHANS
+        .scope(
+            admission.orphans.clone(),
+            tokio::time::timeout(budget, dispatch(state.clone(), req)),
+        )
+        .await;
+    admission.release().await;
     match result {
         Ok(r) => r,
         Err(_) => detail(
             StatusCode::GATEWAY_TIMEOUT,
             "model manager request timed out",
         ),
+    }
+}
+
+/// One of the request permits (noevia#1385). The permit is taken out of the semaphore with
+/// `forget` and given back only after every Docker driver the request left behind has been
+/// joined: inline in [`Admission::release`], or, when the request future is dropped (the client
+/// went away), by a task that owns those joins and the permit until they are observed.
+struct Admission {
+    state: Arc<StateData>,
+    orphans: docker::Orphans,
+    held: bool,
+}
+
+impl Admission {
+    fn try_new(state: &Arc<StateData>) -> Option<Self> {
+        state.permits.try_acquire().ok()?.forget();
+        Some(Admission {
+            state: state.clone(),
+            orphans: Default::default(),
+            held: true,
+        })
+    }
+
+    async fn release(mut self) {
+        docker::observe(&self.orphans).await;
+        self.held = false;
+        self.state.permits.add_permits(1);
+    }
+}
+
+impl Drop for Admission {
+    fn drop(&mut self) {
+        if !self.held {
+            return;
+        }
+        self.held = false;
+        let (state, orphans) = (self.state.clone(), self.orphans.clone());
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                runtime.spawn(async move {
+                    docker::observe(&orphans).await;
+                    state.permits.add_permits(1);
+                });
+            }
+            // No runtime left (shutdown): no task can still be running a driver.
+            Err(_) => state.permits.add_permits(1),
+        }
     }
 }
 
@@ -590,6 +683,14 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    if let Some(service) = state.embedding.clone() {
+        if path == "/api/v1/embedding-service" {
+            return native_embedding(&service, req).await;
+        }
+        if path == "/api/v1/models/delete" && req.method() == Method::POST {
+            return guarded_delete(state, service, req).await;
+        }
+    }
     let name = path
         .strip_prefix("/api/v1/backends/")
         .and_then(|p| p.strip_suffix("/logs"))
@@ -600,6 +701,11 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         }
         return native_logs(&state, name, req.uri().query().unwrap_or_default()).await;
     }
+    forward(state, req).await
+}
+
+async fn forward(state: Arc<StateData>, req: Request) -> Response {
+    let path = req.uri().path();
     if !python_owned(req.method().as_str(), path) {
         if ["GET", "POST", "PUT", "DELETE"]
             .iter()
@@ -610,6 +716,7 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         return detail(StatusCode::NOT_FOUND, "Not Found");
     }
     let (parts, body) = req.into_parts();
+    let preset_write = idle_unload::writes_models_ini(parts.method.as_str(), parts.uri.path());
     let bytes = match to_bytes(body, REQUEST_CAP).await {
         Ok(b) => b,
         Err(_) => return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit"),
@@ -621,7 +728,7 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         .unwrap_or("/");
     let mut legacy = state
         .legacy
-        .request(parts.method, format!("http://127.0.0.1:8091{target}"))
+        .request(parts.method, format!("{}{target}", state.legacy_base))
         .body(bytes);
     if let Some(content_type) = parts.headers.get("content-type") {
         legacy = legacy.header("content-type", content_type);
@@ -652,12 +759,92 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         }
         bytes.extend_from_slice(&chunk);
     }
+    if preset_write && status.is_success() {
+        if let Some(reconciler) = &state.idle_unload {
+            bytes = after_preset_write(reconciler, bytes).await;
+        }
+    }
     (
         status,
         [("content-type", "application/json")],
         Body::from(bytes),
     )
         .into_response()
+}
+
+/// #1747: a models.ini save may have dropped the chat preset's global idle key (the raw editor
+/// saves whatever text it was given). Put it back, and report the revision of the file as it now
+/// is, so the editor's next save is not refused as a conflict with our own rewrite. Only the
+/// models.ini save routes get here, and their `revision` is always the models.ini revision.
+async fn after_preset_write(reconciler: &idle_unload::Reconciler, bytes: Vec<u8>) -> Vec<u8> {
+    let Ok(Some(revision)) = reconciler.reconcile().await else {
+        return bytes;
+    };
+    let Ok(serde_json::Value::Object(mut body)) = serde_json::from_slice(&bytes) else {
+        return bytes;
+    };
+    if !matches!(body.get("revision"), Some(serde_json::Value::String(_))) {
+        return bytes;
+    }
+    body.insert("revision".into(), serde_json::Value::String(revision));
+    serde_json::to_vec(&body).unwrap_or(bytes)
+}
+
+async fn native_embedding(service: &Arc<embedding::EmbeddingService>, req: Request) -> Response {
+    match *req.method() {
+        Method::GET => Json(service.status().await).into_response(),
+        Method::PUT => {
+            let Ok(raw) = to_bytes(req.into_body(), 16 * 1024).await else {
+                return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+            };
+            let Ok(desired) = serde_json::from_slice::<embedding::Desired>(&raw) else {
+                return detail(StatusCode::BAD_REQUEST, "invalid embedding service request");
+            };
+            match service.apply(desired).await {
+                Ok(_) => (StatusCode::ACCEPTED, Json(service.status().await)).into_response(),
+                Err(embedding::Refusal::Invalid(text)) => detail(StatusCode::BAD_REQUEST, text),
+                Err(embedding::Refusal::Unavailable(text)) => {
+                    detail(StatusCode::SERVICE_UNAVAILABLE, text)
+                }
+            }
+        }
+        _ => detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed"),
+    }
+}
+
+/// #336/#1668: the embedding router holds its model through the preset, not its command line,
+/// so the legacy holder scan cannot see it. Refuse here, before anything is forwarded.
+async fn guarded_delete(
+    state: Arc<StateData>,
+    service: Arc<embedding::EmbeddingService>,
+    req: Request,
+) -> Response {
+    let (parts, body) = req.into_parts();
+    let Ok(raw) = to_bytes(body, REQUEST_CAP).await else {
+        return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+    };
+    let keys: Vec<String> = serde_json::from_slice::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| v.get("models").and_then(|m| m.as_array()).cloned())
+        .unwrap_or_default()
+        .iter()
+        .map(|k| match k {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        })
+        .collect();
+    // Held across the check and the forward, so a concurrent switch cannot choose a model whose
+    // file this request is deleting.
+    let _held = service.hold().await;
+    for key in &keys {
+        if service.protects(key).await {
+            return detail(
+                StatusCode::CONFLICT,
+                "The embedding service is set to run this model or still has it loaded. Switch embedding to another model or turn embedding off first.",
+            );
+        }
+    }
+    forward(state, Request::from_parts(parts, Body::from(raw))).await
 }
 
 #[cfg(feature = "native-prompts")]

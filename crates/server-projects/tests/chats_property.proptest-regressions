@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 95c691ef41e1e9deea5628d101fb577740353505da810d6c9382cfed38bb8a0f # shrinks to c = Case { projects: "{\n  \"projects\": [\n    {\n      \"chats\": [],\n      \"id\": \"proj-a\",\n      \"instructionSkills\": {},\n      \"modes\": [\n        \"chat\"\n      ],\n      \"name\": \"A\"\n    },\n    {\n      \"chats\": [],\n      \"id\": \"proj-b\",\n      \"instructionSkills\": {},\n      \"modes\": [\n        \"chat\"\n      ],\n      \"name\": \"B\"\n    }\n  ]\n}", free: "[]", tombstones: "[]", body: "{\"chats\":[{\"id\":\"a\",\"pinned\":false,\"title\":\"ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt😀x\"}]}", admin: false }

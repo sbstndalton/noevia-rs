@@ -141,4 +141,5 @@ mod tests {
 }
 
 /// Bounded native conversation Markdown policy (#1317); no HTTP ownership.
+pub mod assemble;
 pub mod markdown;

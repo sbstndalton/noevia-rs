@@ -347,12 +347,14 @@ fn a_cascade_reaches_only_tables_the_writer_owns() {
         "the cascade into an unowned table ran: {res:?}"
     );
     assert_eq!(count(&node, "SELECT count(*) FROM child"), 1);
+    // noevia#1378: a cascade between two tables the writer owns is refused at open unless it is
+    // one of Node's known foreign keys, so nothing can be deleted through it.
     static OWN_BOTH: &[(&str, Access)] = &[("parent", Access::Full), ("child", Access::Full)];
-    let writer = Writer::open_owning(dir.path(), OWN_BOTH).unwrap();
-    writer
-        .write(|w| w.execute("DELETE FROM parent", []))
-        .unwrap();
-    assert_eq!(count(&node, "SELECT count(*) FROM child"), 0);
+    assert!(matches!(
+        Writer::open_owning(dir.path(), OWN_BOTH).err(),
+        Some(StoreError::NotReady(m)) if m.contains("child.parent -> parent(id)")
+    ));
+    assert_eq!(count(&node, "SELECT count(*) FROM child"), 1);
 }
 
 #[test]
@@ -381,4 +383,108 @@ fn a_writer_never_creates_the_file() {
         Some(StoreError::Missing)
     );
     assert!(!db_path(dir.path()).exists());
+}
+
+// noevia#1378: a cascade or trigger inside a table Rust writes could reach another user's rows.
+fn writer_refusal(dir: &std::path::Path) -> Option<String> {
+    match Writer::open(dir, RustAuth::for_tests()) {
+        Ok(_) => None,
+        Err(StoreError::NotReady(m)) => Some(m),
+        Err(e) => panic!("unexpected {e:?}"),
+    }
+}
+
+#[test]
+fn writer_opens_on_nodes_foreign_keys_including_the_tables_the_fixture_lacks() {
+    let (dir, node) = node_db();
+    node.execute_batch(
+        "CREATE TABLE tool_policies(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, tool TEXT NOT NULL, mode TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(user_id, tool));
+         CREATE TABLE dav_settings(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, scope TEXT NOT NULL, acknowledged_at INTEGER, updated_at INTEGER NOT NULL);
+         CREATE TABLE IF NOT EXISTS diary_connectors(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,name TEXT NOT NULL,token_hash TEXT NOT NULL,created_at INTEGER NOT NULL);",
+    )
+    .unwrap();
+    assert_eq!(writer_refusal(dir.path()), None);
+}
+
+#[test]
+fn writer_refuses_a_self_referencing_session_cascade_and_never_deletes_across_users() {
+    let (dir, node) = node_db();
+    node.execute_batch(
+        "ALTER TABLE sessions ADD COLUMN parent_session TEXT REFERENCES sessions(id_hash) ON DELETE CASCADE;",
+    )
+    .unwrap();
+    let m = writer_refusal(dir.path()).expect("refused");
+    assert!(
+        m.contains("sessions.parent_session -> sessions(id_hash)"),
+        "{m}"
+    );
+    // A read-only Store is unaffected: it cannot set anything off.
+    assert!(Store::open(dir.path()).is_ok());
+}
+
+#[test]
+fn writer_refuses_unknown_actions_into_tables_it_writes() {
+    for ddl in [
+        "ALTER TABLE passkeys ADD COLUMN sid TEXT REFERENCES sessions(id_hash) ON DELETE SET NULL",
+        "ALTER TABLE challenges ADD COLUMN uid TEXT REFERENCES users(id) ON DELETE CASCADE",
+        "ALTER TABLE device_tokens ADD COLUMN uid TEXT REFERENCES users(id) ON UPDATE CASCADE",
+    ] {
+        let (dir, node) = node_db();
+        node.execute_batch(ddl).unwrap();
+        assert!(writer_refusal(dir.path()).is_some(), "{ddl}");
+    }
+    // Into a table Rust never writes, the authorizer refuses the action itself; plain references
+    // anywhere are fine.
+    let (dir, node) = node_db();
+    node.execute_batch(
+        "CREATE TABLE a(id TEXT PRIMARY KEY); CREATE TABLE b(aid TEXT REFERENCES a(id));
+         CREATE TABLE notes(sid TEXT REFERENCES sessions(id_hash) ON DELETE CASCADE);",
+    )
+    .unwrap();
+    assert_eq!(writer_refusal(dir.path()), None);
+}
+
+#[test]
+fn a_trigger_can_abort_a_writers_statement_but_never_write_through_it() {
+    let (dir, node) = node_db();
+    node.execute_batch(
+        "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('u2','B','b','B','member','x','w2',1,1);
+         INSERT INTO sessions VALUES('mine','u1','c',1,1,9,'ua','ip'),('theirs','u2','c',1,1,9,'ua','ip');
+         CREATE TRIGGER wipe AFTER DELETE ON sessions BEGIN DELETE FROM sessions; END;",
+    )
+    .unwrap();
+    let writer = Writer::open(dir.path(), RustAuth::for_tests()).unwrap();
+    // Signing out one session would delete every user's sessions through the trigger: refused whole.
+    let res = writer.write(|w| w.execute("DELETE FROM sessions WHERE id_hash='mine'", []));
+    assert!(matches!(res, Err(StoreError::NotOwned(_))), "{res:?}");
+    assert_eq!(count(&node, "SELECT count(*) FROM sessions"), 2);
+    // Added while the writer is open, on another owned table: refused the same way.
+    node.execute_batch(
+        "DROP TRIGGER wipe; CREATE TRIGGER grant AFTER INSERT ON challenges BEGIN UPDATE users SET role='admin'; END;",
+    )
+    .unwrap();
+    let res = writer.write(|w| w.execute("INSERT INTO challenges VALUES('h','u1','k','c',9)", []));
+    assert!(matches!(res, Err(StoreError::NotOwned(_))), "{res:?}");
+    assert_eq!(
+        count(&node, "SELECT count(*) FROM users WHERE role='admin'"),
+        0
+    );
+    // A trigger that only raises still aborts, as the audit-failure tests rely on.
+    node.execute_batch(
+        "DROP TRIGGER grant; CREATE TRIGGER abort_audit BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'synthetic'); END;",
+    )
+    .unwrap();
+    let res = writer.write(|w| {
+        w.execute(
+            "INSERT INTO audit_events(action, created_at) VALUES('x', 1)",
+            [],
+        )
+    });
+    assert!(res.is_err());
+    assert!(!matches!(res, Err(StoreError::NotOwned(_))), "{res:?}");
+    // The plain delete works once the writing trigger is gone.
+    writer
+        .write(|w| w.execute("DELETE FROM sessions WHERE id_hash='mine'", []))
+        .unwrap();
+    assert_eq!(count(&node, "SELECT count(*) FROM sessions"), 1);
 }

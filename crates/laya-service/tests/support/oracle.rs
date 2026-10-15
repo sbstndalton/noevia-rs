@@ -12,8 +12,8 @@ use std::{
     time::Duration,
 };
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
-pub const REF: &str = "4f3cf816225d4ed12db33fd8e4a7e2d7ae946a4b";
-pub const SERVER_HASH: &str = "fa9965aa8d2606699e0cb1a4c16a71106e7fd0762b54e30656dfd224a17383e3";
+pub const REF: &str = "920d57d82d8f4c817760255cff602e15ccc64448";
+pub const SERVER_HASH: &str = "858f39094eb66e99d582a47e62fd4ff380408e0278db592e40e0cd828f30c76d";
 const TORCH: &str = "def set_num_threads(n):pass\ndef set_num_interop_threads(n):pass\n";
 const ENGINE: &str = r#"import os,time,json,subprocess
 class Tok:

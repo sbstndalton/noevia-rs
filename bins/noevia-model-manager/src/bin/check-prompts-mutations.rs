@@ -97,6 +97,12 @@ fn semantic_failure(
         || !stdout.lines().any(|line| line == "running 1 test")
         || !stdout.contains("test result: FAILED. 0 passed; 1 failed;")
         || stdout.matches(" panicked at ").count() != 1
+        || stdout.matches("test result:").count() != 1
+        || stdout
+            .lines()
+            .rev()
+            .find(|line| !line.is_empty())
+            .is_none_or(|line| !line.starts_with("test result: FAILED. 0 passed; 1 failed;"))
         || stderr.lines().any(|line| {
             line.starts_with("error[")
                 || (line.starts_with("error:")
@@ -447,6 +453,14 @@ mod tests {
             "target",
             &expected
         ));
+        // Blank lines after the terminal summary are not records.
+        assert!(semantic_failure(
+            Some(101),
+            &format!("{valid}\n\n"),
+            stderr,
+            "target",
+            &expected
+        ));
         for (code, out, err) in [
             (Some(0), valid.to_owned(), stderr.to_owned()),
             (Some(1), valid.to_owned(), stderr.to_owned()),
@@ -493,6 +507,16 @@ mod tests {
                 Some(101),
                 valid.to_owned(),
                 "error: could not compile synthetic\n".to_owned(),
+            ),
+            (
+                Some(101),
+                format!("{valid}setup failure\n"),
+                stderr.to_owned(),
+            ),
+            (
+                Some(101),
+                format!("{valid}test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out;\n"),
+                stderr.to_owned(),
             ),
             (
                 Some(101),

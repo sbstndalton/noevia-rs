@@ -41,6 +41,15 @@ def is_rot(file: str, name: str) -> bool:
     return name.startswith(p) and len(name) > len(p)
 
 
+OWN_ROT = re.compile(r"\d{8}-\d{6}(-\d+)?")
+
+
+def is_own_rot(file: str, name: str) -> bool:
+    """A rotating copy the manager made itself; only these are pruned (noevia#1783)."""
+    p = file + ".bak-"
+    return name.startswith(p) and OWN_ROT.fullmatch(name[len(p):]) is not None
+
+
 def uint(v):
     return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < 2 ** 128 else None
 
@@ -95,7 +104,7 @@ def ref_plan(text: str) -> dict:
     rotating = rot_name if backup else None
     revision = f"{file}.noevia-backup-{base}" if (backup and base is not None) else None
     prune = set()
-    rot = sorted({n for n in names if is_rot(file, n)} | ({rotating} if rotating else set()), reverse=True)
+    rot = sorted({n for n in names if is_own_rot(file, n)} | ({rotating} if rotating else set()), reverse=True)
     prune |= {n for n in rot[KEEP_ROTATING:] if n != rotating}
     big = 2 ** 128
     revs = {n: mt for n, mt in listed if is_rev(file, n)}
@@ -131,6 +140,10 @@ def main() -> None:
                                                "models.ini.bak-before-d3", "models.ini.bak-", "models.ini.tmp-1-2", "models.ini.noevia-backup-" + "a" * 63]]})
     case("rotating: 12 old + new, keep 10 by name", {"file": "models.ini", "baseRevision": base, "rotatingName": "models.ini.bak-20261007-100000-1", "existing": [
         {"name": f"models.ini.bak-202609{d:02}-000000", "mtimeNs": d} for d in range(1, 13)] + [{"name": "models.ini.bak-20261007-100000", "mtimeNs": 99}]})
+    case("operator .bak copies are never pruned (#1783)", {"file": "models.ini", "baseRevision": base, "rotatingName": "models.ini.bak-20261015-120000", "existing": [
+        {"name": f"models.ini.bak-202609{d:02}-000000", "mtimeNs": d} for d in range(1, 13)] + [
+        {"name": n, "mtimeNs": 1} for n in ["models.ini.bak-2026-10-15", "models.ini.bak-1731-before-preset-removal", "models.ini.bak-20261015",
+                                             "models.ini.bak-20261015-1200", "models.ini.bak-20261015-120000-x", "models.ini.bak-0", "models.ini.bak-operator"]]})
     case("another preset file name", {"file": "presets.ini", "baseRevision": base, "rotatingName": "presets.ini.bak-1", "keepRevisions": 1, "existing": [
         {"name": "presets.ini.noevia-backup-" + "b" * 64, "mtimeNs": 3}, {"name": "models.ini.noevia-backup-" + "c" * 64, "mtimeNs": 1}]})
     case("huge mtimes", {"file": "models.ini", "keepRevisions": 1, "existing": [{"name": "models.ini.noevia-backup-" + "d" * 64, "mtimeNs": 2 ** 127}, {"name": "models.ini.noevia-backup-" + "e" * 64, "mtimeNs": 2 ** 64}]})

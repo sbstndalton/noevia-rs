@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "seq": 222,
+  "request": {
+    "method": "GET",
+    "path": "/api/freechats",
+    "query": [],
+    "headers": {
+      "accept": "application/json, text/event-stream",
+      "cookie": "cowork_session=<secret:3>; cowork_csrf=<secret:4>",
+      "origin": "<origin>",
+      "user-agent": "node"
+    },
+    "body": {
+      "kind": "empty"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "content-type": "application/json",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
+      "referrer-policy": "same-origin",
+      "strict-transport-security": "max-age=15552000",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "x-noevia-api": "1"
+    },
+    "body": {
+      "kind": "json",
+      "json": {
+        "chats": [
+          {
+            "id": "free-beta",
+            "title": "Beta renamed",
+            "updatedAt": 650,
+            "preview": "",
+            "pinned": false,
+            "archived": false,
+            "frame": null,
+            "forceLocal": false,
+            "createdAt": 50
+          },
+          {
+            "id": "freegammax",
+            "title": "[object Object]",
+            "updatedAt": 550,
+            "preview": "p,,3",
+            "pinned": false,
+            "archived": false
+          },
+          {
+            "id": "free-alpha",
+            "title": "New chat",
+            "updatedAt": 6,
+            "preview": "",
+            "pinned": false,
+            "archived": false,
+            "allowCloud": false,
+            "createdAt": 7
+          }
+        ]
+      }
+    }
+  }
+}

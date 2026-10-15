@@ -60,6 +60,7 @@ pub fn state(reader: Arc<dyn DiagnosisRead>, configured: Vec<String>) -> Arc<Sta
         #[cfg(feature = "native-prompts")]
         prompts: None,
         sections: None,
+        embedding: None,
         host: None,
         token: TOKEN.into(),
         configured,
@@ -67,6 +68,8 @@ pub fn state(reader: Arc<dyn DiagnosisRead>, configured: Vec<String>) -> Arc<Sta
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(4),
         legacy: noevia_model_manager::legacy_client().unwrap(),
+        legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
+        idle_unload: None,
     })
 }
 /// A finite Rust-owned synthetic Unix Docker script. The caller observes the daemon join.

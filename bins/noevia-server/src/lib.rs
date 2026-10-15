@@ -12,6 +12,7 @@ pub mod project_routes;
 pub mod reasoning_settings_routes;
 pub mod reply;
 pub mod routes;
+pub mod routing_default_routes;
 pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
 pub mod serve;
@@ -20,6 +21,7 @@ pub mod static_files;
 pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
+pub mod stats_routes;
 pub mod upkeep;
 pub mod usage_routes;
 
@@ -33,13 +35,31 @@ use std::sync::Arc;
 /// `rust-auth`: this build answers sign-in and the account under NOEVIA_RUST_AUTH (M3); the web
 /// supervisor should let Node refuse the account tables only when the front reports it.
 /// `rust-projects`: this build answers a project's image routes under NOEVIA_RUST_PROJECTS (M4)
-/// and writes projects.json under the lock Node shares; the supervisor confirms it to Node the
-/// same way.
+/// and writes projects.json under the lock Node shares; the supervisor confirms it to Node the same
+/// way. `rust-project-chats` (cargo feature of that name): it answers a project's chat list under
+/// the same switch too; the supervisor confirms that slice to Node separately
+/// (NOEVIA_RUST_PROJECT_CHATS_CONFIRMED), so Node refuses the chat-list save only behind a front
+/// that answers it (sbstndalton/noevia#1409). `rust-free-chats` (cargo feature of that name): it
+/// answers the free-chat list (`GET`/`POST /api/freechats`) under the same switch and shares
+/// free-chats.json with Node under its lock; confirmed to Node separately as well
+/// (NOEVIA_RUST_FREE_CHATS_CONFIRMED). `rust-stats` (cargo feature of that name): it answers
+/// `GET /api/stats` under NOEVIA_RUST_STATS (#1650); the supervisor confirms it to Node
+/// (NOEVIA_RUST_STATS_CONFIRMED), which then refuses that GET.
+///
+/// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
+/// own value on what it forwards (#1245). The web supervisor confirms it to Node
+/// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
+/// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "client-address-header",
     "code-net-guard",
     "header-read-timeout",
     "rust-auth",
     "rust-projects",
+    #[cfg(feature = "rust-project-chats")]
+    "rust-project-chats",
+    #[cfg(feature = "rust-free-chats")]
+    "rust-free-chats",
     "rust-usage",
     "rust-sampling-settings",
     #[cfg(feature = "rust-storage-reads")]
@@ -48,6 +68,10 @@ pub const FEATURES: &[&str] = &[
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
     "rust-routing-mode",
+    #[cfg(feature = "rust-routing-default")]
+    "rust-routing-default",
+    #[cfg(feature = "rust-stats")]
+    "rust-stats",
 ];
 
 pub struct App {
@@ -68,6 +92,9 @@ pub struct App {
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
+    pub routing_default: Arc<tokio::sync::Semaphore>,
+    /// GET /api/stats and its shared answer while NOEVIA_RUST_STATS is on (M6, #1650).
+    pub stats: Option<Arc<stats_routes::StatsLayer>>,
     pub routing_files:
         Option<Result<server_routing_mode::storage::Root, server_routing_mode::storage::Fault>>,
 }
@@ -101,6 +128,11 @@ impl App {
             reasoning_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             sampling_settings: Arc::new(tokio::sync::Semaphore::new(4)),
             routing_mode: Arc::new(tokio::sync::Semaphore::new(4)),
+            routing_default: Arc::new(tokio::sync::Semaphore::new(4)),
+            stats: config
+                .rust_stats
+                .as_ref()
+                .map(|engine| Arc::new(stats_routes::StatsLayer::new(Arc::clone(engine)))),
             routing_files,
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
@@ -140,12 +172,14 @@ async fn handle(
                 on_whatwg,
                 Some(
                     routes::Native::Account
-                        | routes::Native::ProjectAssets
+                        | routes::Native::Projects
                         | routes::Native::Usage
                         | routes::Native::SamplingSettings
                         | routes::Native::ReasoningSettings
                         | routes::Native::StorageMetadata
                         | routes::Native::RoutingMode
+                        | routes::Native::RoutingDefault
+                        | routes::Native::Stats
                 )
             ) {
                 native = on_whatwg;
@@ -157,15 +191,21 @@ async fn handle(
         Some(routes::Native::Static) => static_files::canonical(&path),
         Some(
             routes::Native::Account
-            | routes::Native::ProjectAssets
+            | routes::Native::Projects
             | routes::Native::Usage
             | routes::Native::SamplingSettings
             | routes::Native::ReasoningSettings
             | routes::Native::StorageMetadata
-            | routes::Native::RoutingMode,
+            | routes::Native::RoutingMode
+            | routes::Native::RoutingDefault
+            | routes::Native::Stats,
         )
         | None => false,
     };
+    // A model or role write Node's gate lets through drops the shared /api/stats answer first.
+    if let Some(write) = stats_routes::invalidation(&app, &req, whatwg.as_deref()) {
+        write.run(&app).await;
+    }
     if app.writes.switch().is_some() && !served_bundle {
         // Node's gate wrote these on every request it saw; with NOEVIA_RUST_AUTH it no longer can.
         let creds = server_auth::Creds::from_headers(
@@ -226,11 +266,23 @@ async fn handle(
             };
             usage_routes::serve(&app, conn, req, p).await
         }
-        Some(routes::Native::ProjectAssets) => {
+        Some(routes::Native::Projects) => {
             let Some(p) = whatwg else {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             project_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::RoutingDefault) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            routing_default_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::Stats) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            stats_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::Ready) => {
             health::ready(&app.config.upstream, app.version.as_deref()).await

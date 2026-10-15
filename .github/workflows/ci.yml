@@ -27,15 +27,15 @@ jobs:
       - name: Verify merged Docling worker oracle (#1322)
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/b25a677182097c5ed72221e01fee5d5587aa7043
-          echo '8f9f0b11654a2547f1bf99fddc5b31a60341c92355ed4fc86ad0012c807a7e39  /tmp/docling-services.tgz' | sha256sum -c -
+          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/b45a122c04173a14e884fa1aa93a6a101281431d
+          echo '3d69592f2b844b474a9ae0f0a6adb20ffa5be03de21e51039ff85305ebc64cff  /tmp/docling-services.tgz' | sha256sum -c -
           mkdir .ci-docling
           tar -xzf /tmp/docling-services.tgz -C .ci-docling --strip-components=1
       - name: Verify merged Laya worker oracle (#1326)
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/laya-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/4f3cf816225d4ed12db33fd8e4a7e2d7ae946a4b
-          echo '13ba33192b044c91034ba9e9dff3c371e5cf85d197b8467bcae5c151c2294c17  /tmp/laya-services.tgz' | sha256sum -c -
+          curl -fsSL -o /tmp/laya-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/920d57d82d8f4c817760255cff602e15ccc64448
+          echo '540e14cf3e495e74387cb6f39b12395615b31e8737bf304e757a0d3ab8976ffd  /tmp/laya-services.tgz' | sha256sum -c -
           mkdir .ci-laya
           tar -xzf /tmp/laya-services.tgz -C .ci-laya --strip-components=1
       - name: Check if the workspace has any packages
@@ -74,8 +74,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -c 'import sys; assert sys.version_info[:2] == (3, 12)'
-          curl -fsSL -o /tmp/laya-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/4f3cf816225d4ed12db33fd8e4a7e2d7ae946a4b
-          echo '13ba33192b044c91034ba9e9dff3c371e5cf85d197b8467bcae5c151c2294c17  /tmp/laya-services.tgz' | sha256sum -c -
+          curl -fsSL -o /tmp/laya-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/920d57d82d8f4c817760255cff602e15ccc64448
+          echo '540e14cf3e495e74387cb6f39b12395615b31e8737bf304e757a0d3ab8976ffd  /tmp/laya-services.tgz' | sha256sum -c -
           mkdir .ci-laya
           tar -xzf /tmp/laya-services.tgz -C .ci-laya --strip-components=1
       - name: Actual Python HTTP oracle is reproducible
@@ -105,8 +105,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -c 'import sys; assert sys.version_info[:2] == (3, 12)'
-          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/b25a677182097c5ed72221e01fee5d5587aa7043
-          echo '8f9f0b11654a2547f1bf99fddc5b31a60341c92355ed4fc86ad0012c807a7e39  /tmp/docling-services.tgz' | sha256sum -c -
+          curl -fsSL -o /tmp/docling-services.tgz https://codeload.github.com/sbstndalton/noevia-services/tar.gz/b45a122c04173a14e884fa1aa93a6a101281431d
+          echo '3d69592f2b844b474a9ae0f0a6adb20ffa5be03de21e51039ff85305ebc64cff  /tmp/docling-services.tgz' | sha256sum -c -
           mkdir .ci-docling
           tar -xzf /tmp/docling-services.tgz -C .ci-docling --strip-components=1
       - name: Actual Python oracle is reproducible
@@ -383,10 +383,13 @@ jobs:
 
   corpus-replay-front-rust-projects:
     # Full-Rust migration M4: the corpus through the front with NOEVIA_RUST_PROJECTS on top of M3.
-    # The front answers a project's image routes itself (crates/server-projects) and writes
-    # projects.json under the lock Node shares (core server/rust-projects.cjs); Node keeps writing
-    # the same file for the chat routes, merged under that lock. Zero differences and the data
-    # dir a Node-only run leaves.
+    # The front answers a project's image routes and (built with the cargo feature
+    # rust-project-chats) its chat list itself (crates/server-projects) and writes projects.json
+    # under the lock Node shares (core server/rust-projects.cjs); Node keeps writing the same file
+    # for its own project routes, merged under that lock. Built with rust-free-chats as well it
+    # answers GET/POST /api/freechats and writes free-chats.json under that file's lock, which
+    # Node's own free-list writers (a move, a free chat's delete) share. Zero differences and the
+    # data dir a Node-only run leaves, with each slice and without it (sbstndalton/noevia#1409).
     name: Contract corpus replays clean with Rust owning project images (NOEVIA_RUST_PROJECTS=1)
     runs-on: ubuntu-latest
     steps:
@@ -422,10 +425,60 @@ jobs:
           mkdir -p "$RUNNER_TEMP/rs-pin" && tar -xzf "$RUNNER_TEMP/rs.tgz" --strip-components=1 -C "$RUNNER_TEMP/rs-pin"
           "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
           echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
+      - name: The committed chat-list fixture is core.ref's route output (sbstndalton/noevia#1411)
+        run: |
+          set -euo pipefail
+          node tools/gen-project-chats-fixtures.cjs "$GITHUB_WORKSPACE/core" "$RUNNER_TEMP/node-chats.v1.json"
+          cmp crates/server-projects/tests/fixtures/node-chats.v1.json "$RUNNER_TEMP/node-chats.v1.json" \
+            || { echo "::error::regenerate crates/server-projects/tests/fixtures/node-chats.v1.json with tools/gen-project-chats-fixtures.cjs at contracts/http/core.ref"; exit 1; }
+      - name: The committed free-chat fixture is core.ref's route output
+        run: |
+          set -euo pipefail
+          node tools/gen-free-chats-fixtures.cjs "$GITHUB_WORKSPACE/core" "$RUNNER_TEMP/node-free-chats.v1.json"
+          cmp crates/server-projects/tests/fixtures/node-free-chats.v1.json "$RUNNER_TEMP/node-free-chats.v1.json" \
+            || { echo "::error::regenerate crates/server-projects/tests/fixtures/node-free-chats.v1.json with tools/gen-free-chats-fixtures.cjs at contracts/http/core.ref"; exit 1; }
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - run: cargo build --locked -p replay -p noevia-server
-      - name: Node and Rust share the projects.json lock and lose no write (and the blind-save control does)
-        run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock
+      - name: Build a front with the images only (no rust-project-chats), kept aside
+        run: |
+          set -euo pipefail
+          cargo build --locked -p replay -p noevia-server
+          for feature in rust-project-chats rust-free-chats; do
+            if target/debug/noevia-server --features | grep -qx "$feature"; then
+              echo "::error::a build without the cargo feature lists $feature"; exit 1
+            fi
+          done
+          mkdir -p "$RUNNER_TEMP/images-only"
+          cp target/debug/noevia-server target/debug/corpus-launcher "$RUNNER_TEMP/images-only/"
+      - name: Build a front with the project chat list but not the free one, kept aside
+        run: |
+          set -euo pipefail
+          cargo build --locked -p replay -p noevia-server --features rust-project-chats
+          target/debug/noevia-server --features | grep -qx rust-project-chats
+          if target/debug/noevia-server --features | grep -qx rust-free-chats; then
+            echo "::error::a build without the cargo feature lists rust-free-chats"; exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/chats-only"
+          cp target/debug/noevia-server target/debug/corpus-launcher "$RUNNER_TEMP/chats-only/"
+      - name: Build the front with both chat-list slices
+        run: |
+          set -euo pipefail
+          cargo build --locked -p replay -p noevia-server --features rust-project-chats,rust-free-chats
+          target/debug/noevia-server --features | grep -qx rust-project-chats
+          target/debug/noevia-server --features | grep -qx rust-free-chats
+      - name: The chat-list slices' routing and capability tests
+        # The free slice alone first: each `cargo test` rebuilds target/debug/noevia-server with its
+        # features, and the replays below must run the front with both slices.
+        run: |
+          set -euo pipefail
+          cargo clippy --locked -p noevia-server --all-targets --features rust-free-chats -- -D warnings
+          cargo test --locked -p noevia-server --features rust-free-chats
+          cargo clippy --locked -p noevia-server --all-targets --features rust-project-chats,rust-free-chats -- -D warnings
+          cargo test --locked -p noevia-server --features rust-project-chats,rust-free-chats
+          cargo build --locked -p replay -p noevia-server --features rust-project-chats,rust-free-chats
+          target/debug/noevia-server --features | grep -qx rust-project-chats
+          target/debug/noevia-server --features | grep -qx rust-free-chats
+      - name: Node and Rust share the projects.json and free-chats.json locks and lose no write (and the blind-save controls do); generated chat-list saves answer as core's route
+        run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock --test chats_property --test free_chats_property
       - name: Replay against Node directly (reference data dir)
         run: |
           set -euo pipefail
@@ -438,16 +491,44 @@ jobs:
       - name: Replay through the Rust front with NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1
         run: |
           set -euo pipefail
+          features="$(target/debug/noevia-server --features)"
+          grep -qx rust-project-chats <<<"$features" && grep -qx rust-free-chats <<<"$features" \
+            || { echo "::error::the front under test lacks a chat slice"; exit 1; }
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-front" \
             --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/replay-front-report.json" --state-out "$RUNNER_TEMP/rust-projects-state.json" \
-            --state-ignore '*projects.json.lock' \
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"
-      - name: "Negative control: Node told the front owns the image routes refuses their writes"
-        # The same run with the front started without the switch: the image writes reach Node,
-        # which must answer 503 RUST_PROJECTS_OWNED, so the clean replay above was the front's work.
+      - name: "An images-only front (rust-projects without rust-project-chats): Node keeps the chat list, still 0 differences"
+        # sbstndalton/noevia#1409: the supervisor confirms the chat-list slice to Node only for a
+        # front that lists rust-project-chats, so Node answers the saves this front forwards.
+        run: |
+          set -euo pipefail
+          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+            --ignore-body hours --ignore-body peakHour/hour \
+            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-images-only" \
+            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$RUNNER_TEMP/images-only/noevia-server'" \
+            --report "$RUNNER_TEMP/images-only-report.json" \
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
+            --expect-state "$RUNNER_TEMP/node-state.json"
+      - name: "A front without rust-free-chats: Node keeps the free-chat list, still 0 differences"
+        # The supervisor confirms the free-chat slice to Node only for a front that lists
+        # rust-free-chats, so Node answers the free-list saves this front forwards.
+        run: |
+          set -euo pipefail
+          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+            --ignore-body hours --ignore-body peakHour/hour \
+            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-chats-only" \
+            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$RUNNER_TEMP/chats-only/noevia-server'" \
+            --report "$RUNNER_TEMP/chats-only-report.json" \
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
+            --expect-state "$RUNNER_TEMP/node-state.json"
+      - name: "Negative control: Node told the front owns the image and chat-list routes refuses their writes"
+        # The same run with the front started without the switch: the image writes, chat-list
+        # saves and free-chat-list saves reach Node, which must answer 503 RUST_PROJECTS_OWNED, so the clean replay above was
+        # the front's work.
         run: |
           set -uo pipefail
           if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
@@ -455,14 +536,15 @@ jobs:
               --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \
               --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 REPLAY_FRONT_CONTROL_NODE_ONLY_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
               --report "$RUNNER_TEMP/control-report.json"; then
-            echo "::error::the image routes replayed clean through Node: its NOEVIA_RUST_PROJECTS guard did not engage"; exit 1
+            echo "::error::the project routes replayed clean through Node: its NOEVIA_RUST_PROJECTS guard did not engage"; exit 1
           fi
           python3 - "$RUNNER_TEMP/control-report.json" <<'PY'
           import json, re, sys
           rows = json.load(open(sys.argv[1]))
-          up = [r for r in rows if r["method"] == "POST" and re.fullmatch(r"/api/projects/[^/]+/assets", r["path"]) and r["expectedStatus"] == 200]
-          assert up and all(r["status"] == 503 for r in up), up
-          print("negative control: Node refused", len(up), "image uploads with 503")
+          for what, pattern in (("image uploads", r"/api/projects/[^/]+/assets"), ("chat-list saves", r"/api/projects/[^/]+/chats"), ("free-chat-list saves", r"/api/freechats")):
+              up = [r for r in rows if r["method"] == "POST" and re.fullmatch(pattern, r["path"]) and r["expectedStatus"] == 200]
+              assert up and all(r["status"] == 503 for r in up), up
+              print("negative control: Node refused", len(up), what, "with 503")
           PY
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -473,6 +555,10 @@ jobs:
             ${{ runner.temp }}/node-state.json
             ${{ runner.temp }}/rust-projects-state.json
             ${{ runner.temp }}/control-report.json
+            ${{ runner.temp }}/images-only-report.json
+            ${{ runner.temp }}/chats-only-report.json
+            ${{ runner.temp }}/node-chats.v1.json
+            ${{ runner.temp }}/node-free-chats.v1.json
           if-no-files-found: ignore
 
   dav-parse-wasm:
@@ -636,7 +722,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-services
-          ref: 4f3cf816225d4ed12db33fd8e4a7e2d7ae946a4b
+          ref: 65f8b1f6dd8705dd9023ad8efdc4611445c6a73d
           path: legacy-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -795,7 +881,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: sbstndalton/noevia-services
-          ref: 6c233f4a05730ed5dccd7997ae601e9999eaa6d7
+          ref: d890ab476d1f1a8b6de799d6428e45b6af42a473
           path: diagnose-services
       - name: Read unchanged actual core pin
         id: diagnose-core
@@ -849,6 +935,22 @@ jobs:
         run: |
           cargo run --locked -q -p noevia-model-manager --bin generate-diagnose-transport-oracle > "$RUNNER_TEMP/diagnose-sdk.json"
           cargo run --locked -q -p noevia-model-manager --bin generate-diagnose-transport-oracle -- --routes > "$RUNNER_TEMP/diagnose-routes.json"
+      - name: Committed Python diagnosis oracles are exactly what the generators produce
+        env:
+          NOEVIA_DIAGNOSE_SERVICES_SOURCE: ${{ github.workspace }}/diagnose-services
+        run: |
+          set -euo pipefail
+          cargo run --locked -q -p noevia-model-manager --bin generate-diagnose-oracle > "$RUNNER_TEMP/diagnose-pure.json"
+          # Only the interpreter's own patch/build string may differ from the committed bytes.
+          python3 - "$RUNNER_TEMP/diagnose-pure.json" bins/noevia-model-manager/tests/fixtures/diagnose-python.v1.json "$RUNNER_TEMP/diagnose-routes.json" bins/noevia-model-manager/tests/fixtures/diagnose-transport-python.v1.json <<'PYCMP'
+          import json, sys
+          for fresh, committed in [(sys.argv[1], sys.argv[2]), (sys.argv[3], sys.argv[4])]:
+              a = json.load(open(fresh)); b = json.load(open(committed))
+              assert a.get("python", "").startswith("3.12.") and b.get("python", "").startswith("3.12."), committed
+              a.pop("python"); b.pop("python")
+              assert a == b, committed + " is not what its generator produces"
+              print("current:", committed)
+          PYCMP
       - name: New closed native transport, route and retained ownership controls
         env:
           NOEVIA_DIAGNOSE_SDK_ORACLE: ${{ runner.temp }}/diagnose-sdk.json
@@ -907,6 +1009,7 @@ jobs:
           cargo build --locked -p noevia-model-manager --bin noevia-model-manager --features native-diagnose
           cargo build --locked -p noevia-server --bin noevia-server
           cargo clippy --locked -p replay --bin diagnose-contracts -- -D warnings
+          cargo test --locked -p replay --bin diagnose-contracts
           cargo test --locked -p noevia-model-manager --features native-diagnose --bin noevia-model-manager diagnosis_command_tests::native_child_confirmation_semantics -- --exact
           target/debug/corpus-launcher verify "$PWD/diagnose-core"
           target/debug/diagnose-contracts --startup

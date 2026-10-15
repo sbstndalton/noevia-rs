@@ -16,9 +16,9 @@ fn bounded(command: Command) -> Result<process::Output, String> {
 }
 fn capture_domain() -> (&'static str, u64) {
     if std::env::var("NOEVIA_ROUTING_CORPUS").as_deref() == Ok("1") {
-        ("routing-mode", 220)
+        ("routing-mode", 255)
     } else {
-        ("baseline", 193)
+        ("baseline", 228)
     }
 }
 fn validate_capture(
@@ -88,7 +88,7 @@ fn finalize_capture(core: &Path, out: &Path) -> Result<(), String> {
         ))
     };
     let wasm = hash(&core.join("server/wasm/dav-parse.wasm"))?;
-    if wasm != "040738a438de8241bd2cd1558f2b06beaa32c5c9be01c30f09cd87cb2e978575" {
+    if wasm != "c5c300907dba8ed36b38bbfcd92dc33f18be77319712504106abb09d5b8ce05b" {
         return Err("actual core WASM provenance mismatch".into());
     }
     let mut command = Command::new("node");
@@ -443,20 +443,20 @@ mod capture_tests {
     }
     #[test]
     fn exact_domains_counts_and_zero_drops() {
-        let baseline = serde_json::json!({"exchanges":193,"dropped":0,"captureDomain":"baseline"});
+        let baseline = serde_json::json!({"exchanges":228,"dropped":0,"captureDomain":"baseline"});
         let routing =
-            serde_json::json!({"exchanges":220,"dropped":0,"captureDomain":"routing-mode"});
-        assert!(validate_capture(&baseline, "baseline", 193, 193).is_ok());
-        assert!(validate_capture(&routing, "routing-mode", 220, 220).is_ok());
-        assert!(validate_capture(&baseline, "routing-mode", 220, 193).is_err());
-        assert!(validate_capture(&routing, "baseline", 193, 220).is_err());
-        assert!(validate_capture(&routing, "other", 220, 220).is_err());
-        assert!(validate_capture(&routing, "routing-mode", 220, 219).is_err());
+            serde_json::json!({"exchanges":255,"dropped":0,"captureDomain":"routing-mode"});
+        assert!(validate_capture(&baseline, "baseline", 228, 228).is_ok());
+        assert!(validate_capture(&routing, "routing-mode", 255, 255).is_ok());
+        assert!(validate_capture(&baseline, "routing-mode", 255, 228).is_err());
+        assert!(validate_capture(&routing, "baseline", 228, 255).is_err());
+        assert!(validate_capture(&routing, "other", 255, 255).is_err());
+        assert!(validate_capture(&routing, "routing-mode", 255, 254).is_err());
         assert!(validate_capture(
-            &serde_json::json!({"exchanges":220,"dropped":1}),
+            &serde_json::json!({"exchanges":255,"dropped":1}),
             "routing-mode",
-            220,
-            220
+            255,
+            255
         )
         .is_err());
     }

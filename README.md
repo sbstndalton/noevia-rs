@@ -248,6 +248,20 @@ one slice at a time.
   with `python3 -I tools/gen-tenant-assertion.py --diary <noevia-services>/diary --bin target/release/tenant-assertion`;
   copy `crates/tenant-assertion/tests/fixtures/tenant-assertion.v1.json` into noevia-services'
   `diary/tests/fixtures/` when it changes.
+- `crates/workspace-restore-verify` + `bins/workspace-restore-verify`
+  (`WORKSPACE_RESTORE_VERIFY_IMPL`, Diary, sbstndalton/noevia#982): the workspace ZIP gate of
+  noevia-services' `diary/agent/workspace_restore.py` `_verify` (operator restore, its preview and
+  the in-app ZIP import), every check in Python's order with Python's refusal class, plus a
+  stricter container (local headers must agree with the central directory, members tile the file,
+  no comment / prepended data / zip64 / NUL names, exact DEFLATE end and size). The crate docs list
+  every check and every intended difference. `workspace-restore-verify verify < archive.zip`
+  prints `accept <listing sha256>` or `reject: <code>`; no name or byte of the archive is printed.
+  The Diary runs it FIRST, then Python, and requires both listings to hash identically (fails
+  closed). `workspace-restore-verify self-test` is the image smoke test. The differential corpus
+  is regenerated with `python3 -I tools/gen-workspace-restore.py --diary <noevia-services>/diary --bin target/release/workspace-restore-verify`
+  (in a virtualenv with the Diary's requirements); copy
+  `crates/workspace-restore-verify/tests/fixtures/workspace-restore.v1.json` into
+  noevia-services' `diary/tests/fixtures/` when it changes.
 - `crates/dav-parse` + `bins/dav-parse-wasm` (sbstndalton/noevia#967): the storage browser's
   WebDAV PROPFIND (`Depth: 1`) listing parser, a port of noevia-core's `server/dav-listing.cjs`
   `listingRecordsJs` (entity decoding, WHATWG href resolution, `decodeURIComponent`, direct
@@ -450,7 +464,18 @@ one slice at a time.
   (CI regenerates it and requires the committed copy to match).
 - `crates/js-json` (M3): JSON with JavaScript's semantics for ported handlers: `JSON.parse` into
   ordered values (a repeated key keeps its first place), `JSON.stringify` bytes, `String()`,
-  truthiness, UTF-16 lengths and slices.
+  truthiness, UTF-16 lengths and slices. `js_json::wtf16` (M4) is the lossless variant for files
+  Node writes: lone surrogates (a preview cut mid-emoji) kept and written back as `\udxxx`, JS
+  property order for array-index keys; it says whether a refusal is one `JSON.parse` shares.
+- `crates/server-projects` (M4): the project routes the front answers under
+  `NOEVIA_RUST_PROJECTS`: a project's images, and (in a noevia-server built with the cargo feature
+  `rust-project-chats`) its chat list (`GET`/`POST /api/projects/{id}/chats`, with core's
+  getProject heal, instruction-skill reconcile, mergeChats and normalizeFrame). Differential table from core's own route on synthetic workspaces:
+  `node tools/gen-project-chats-fixtures.cjs <noevia-core> crates/server-projects/tests/fixtures/node-chats.v1.json`;
+  `tests/chats_property.rs` also runs generated saves through core when `NOEVIA_CORE_CHECKOUT` is set.
+  With the cargo feature `rust-free-chats` also the free-chat list (`GET`/`POST /api/freechats`;
+  the delete stays Node's): `node tools/gen-free-chats-fixtures.cjs <noevia-core>
+  crates/server-projects/tests/fixtures/node-free-chats.v1.json`, `tests/free_chats_property.rs`.
 - `crates/passkey` (M3): @simplewebauthn/server v14's `verifyRegistrationResponse` and
   `verifyAuthenticationResponse` as core auth.cjs calls them, check for check, so passkeys Node
   stored sign in under Rust: @hexagon/base64's lenient decoding, tiny-cbor's decode/re-encode

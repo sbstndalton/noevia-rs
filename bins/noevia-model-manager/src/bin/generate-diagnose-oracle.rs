@@ -1,4 +1,7 @@
 //! Synthetic fixtures from one immutable pure Python module; no application imports.
+//! Env: PYTHON (Python 3.12 interpreter) and NOEVIA_DIAGNOSE_SERVICES_SOURCE (a services
+//! checkout containing REF). Only the pure `analyse` module and the actual `redact_log_line`
+//! AST of api.py are executed (services #1379 redacts model and evidence after matching).
 #[path = "support/diagnose_process.rs"]
 mod process;
 use serde_json::{json, Value};
@@ -8,8 +11,10 @@ use std::{
     process::Command,
     time::Duration,
 };
-const REF: &str = "6c233f4a05730ed5dccd7997ae601e9999eaa6d7";
+const REF: &str = "d890ab476d1f1a8b6de799d6428e45b6af42a473";
 const BLOB: &str = "17a4670f6189d215189b5a6f321cd82547dfe06e";
+const API_BLOB: &str = "f783b5a8af67865af6975fc7d6f9ef0b6023ea71";
+const API_SHA: &str = "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6";
 const SOURCE_SHA: &str = "87257c86816978b3c4f82eff2765cd5247d13a5340462eb2995180e9a5790520";
 fn command(path: &str) -> Command {
     let mut c = Command::new(path);
@@ -20,14 +25,19 @@ fn command(path: &str) -> Command {
 }
 fn git(args: &[&str]) -> Result<Vec<u8>, String> {
     let mut c = command("/usr/bin/git");
-    c.arg("-C")
-        .arg("/Users/sebastiandalton/noevia-work/s1-prompts-services")
-        .args(args);
+    c.arg("-C").arg(repository()).args(args);
     let o = process::bounded(c, Vec::new(), Duration::from_secs(10))?;
     if !o.status.success() || !o.stderr.is_empty() {
         return Err("immutable git source read failed".into());
     }
     Ok(o.stdout)
+}
+fn repository() -> String {
+    std::env::var("NOEVIA_DIAGNOSE_SERVICES_SOURCE")
+        .unwrap_or_else(|_| "/Users/sebastiandalton/noevia-work/s1-prompts-services".into())
+}
+fn python() -> String {
+    std::env::var("PYTHON").unwrap_or_else(|_| "/tmp/s1-prompts-native-venv/bin/python".into())
 }
 fn failure(lines: &[&str]) -> String {
     format!("spawning server instance with name=synthetic-model on port 18001\n{}\ninstance name=synthetic-model exited with status 1",lines.iter().map(|s|format!("[18001] {s}")).collect::<Vec<_>>().join("\n"))
@@ -195,6 +205,14 @@ fn cases() -> Vec<Value> {
             );
         }
     }
+    // services #1379: the model name is container output too and is redacted like evidence.
+    for (i, secret) in secrets.iter().enumerate().filter(|(_, s)| !s.contains(' ')) {
+        add(
+            format!("model-secret-{i}"),
+            format!("spawning server instance with name={secret} on port 1\n[1] fatal {secret}\ninstance name={secret} exited with status 1"),
+            "redacted-model",
+        );
+    }
     for (id,text) in [("crossline", "spawning server instance with name=A on port 1\n[1] api_key=\nsynthetic-secret-only\n[1] fatal synthetic-secret-only\ninstance name=A exited with status 1"),("crossline-selected", "spawning server instance with name=A on port 1\nAuthorization:\n[1] fatal synthetic-secret-only\ninstance name=A exited with status 1")] { add(id.into(),text.into(),"cross-line-evidence-suppression"); }
     for (i, shape) in [
         "hf_short",
@@ -231,6 +249,20 @@ fn run() -> Result<(), String> {
         return Err("oracle byte identity mismatch".into());
     }
     let source = String::from_utf8(source).map_err(|e| e.to_string())?;
+    let api_spec = format!("{REF}:model-manager/app/api.py");
+    let api_blob = git(&["rev-parse", &api_spec])?;
+    if String::from_utf8(api_blob)
+        .map_err(|e| e.to_string())?
+        .trim()
+        != API_BLOB
+    {
+        return Err("api blob mismatch".into());
+    }
+    let api = git(&["show", &api_spec])?;
+    if api.len() > 128 * 1024 || format!("{:x}", Sha256::digest(&api)) != API_SHA {
+        return Err("api byte identity mismatch".into());
+    }
+    let api = String::from_utf8(api).map_err(|e| e.to_string())?;
     let cases = cases();
     let mut ids = std::collections::BTreeSet::new();
     for c in &cases {
@@ -242,20 +274,30 @@ fn run() -> Result<(), String> {
             return Err("duplicate case ID".into());
         }
     }
-    let input =
-        serde_json::to_vec(&json!({"source":source,"cases":cases})).map_err(|e| e.to_string())?;
+    let input = serde_json::to_vec(&json!({"source":source,"api":api,"cases":cases}))
+        .map_err(|e| e.to_string())?;
     if input.len() > 1024 * 1024 {
         return Err("synthetic oracle input cap".into());
     }
-    let script = r#"import json,sys,types,dataclasses,unicodedata
+    let script = r#"import ast,json,re,sys,types,dataclasses,unicodedata
 assert sys.version_info[:2] == (3,12)
 p=json.load(sys.stdin)
+selected=[n for n in ast.parse(p['api']).body if (isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='_SECRET_PATTERNS' for t in n.targets)) or (isinstance(n,ast.FunctionDef) and n.name=='redact_log_line')]
+assert len(selected)==2
+redaction={'re':re};exec(compile(ast.Module(body=selected,type_ignores=[]),'immutable-redaction.py','exec'),redaction)
+redact=redaction['redact_log_line']
+def redacted(d):
+    # The actual backend_diagnose loop: model and evidence after matching, nothing else.
+    d=dataclasses.asdict(d);d['model']=redact(d['model']);d['evidence']=[redact(line) for line in d['evidence']];return d
 m=types.ModuleType('immutable_diagnose');sys.modules[m.__name__]=m
 exec(compile(p['source'],'immutable-diagnose.py','exec'),m.__dict__)
-for c in p['cases']: c['expected_json']=json.dumps([dataclasses.asdict(d) for d in m.analyse(c['text'])],ensure_ascii=False,allow_nan=False)
+for c in p['cases']:
+    found=m.analyse(c['text'])
+    c['expected_json']=json.dumps([dataclasses.asdict(d) for d in found],ensure_ascii=False,allow_nan=False)
+    c['redacted_json']=json.dumps([redacted(d) for d in found],ensure_ascii=False,allow_nan=False)
 json.dump({'schema':1,'python':sys.version,'unicode':unicodedata.unidata_version,'cases':p['cases']},sys.stdout,ensure_ascii=False,allow_nan=False)
 "#;
-    let mut c = command("/tmp/s1-prompts-native-venv/bin/python");
+    let mut c = command(&python());
     c.args(["-I", "-S", "-c", script]);
     let o = process::bounded(c, input, Duration::from_secs(10))?;
     if !o.status.success() || !o.stderr.is_empty() {
@@ -267,7 +309,7 @@ json.dump({'schema':1,'python':sys.version,'unicode':unicodedata.unidata_version
         .ok_or("oracle did not return an object")?;
     object.insert(
         "oracle".into(),
-        json!({"ref":REF,"blob":BLOB,"sha256":SOURCE_SHA,"physical_lines":112}),
+        json!({"ref":REF,"blob":BLOB,"sha256":SOURCE_SHA,"physical_lines":112,"api_blob":API_BLOB,"api_sha256":API_SHA}),
     );
     object.insert(
         "generator_sha256".into(),

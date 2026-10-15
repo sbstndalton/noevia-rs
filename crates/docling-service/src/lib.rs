@@ -13,9 +13,10 @@ pub const CONNECTION_CAP: usize = 8;
 // Two million Unicode characters can require 24 MB as escaped surrogate pairs.
 // 32 MiB also admits the bounded 300-page envelope; larger engine output is refused.
 pub const FRAME_CAP: usize = 32 * 1024 * 1024;
+// No .md (#1711): the engine image has no Markdown reader and core reads Markdown as text.
 pub const FORMATS: &[&str] = &[
-    ".bmp", ".csv", ".docx", ".epub", ".htm", ".html", ".jpeg", ".jpg", ".md", ".odp", ".ods",
-    ".odt", ".pdf", ".png", ".pptx", ".tif", ".tiff", ".xlsx",
+    ".bmp", ".csv", ".docx", ".epub", ".htm", ".html", ".jpeg", ".jpg", ".odp", ".ods", ".odt",
+    ".pdf", ".png", ".pptx", ".tif", ".tiff", ".xlsx",
 ];
 
 #[derive(Clone, Debug)]
@@ -141,6 +142,17 @@ impl Worker {
         name: &str,
         deadline: Instant,
     ) -> Result<Value, Failure> {
+        self.convert_with(path, name, false, deadline).await
+    }
+    /// `figures` (sbstndalton/noevia#1726, multimodal RAG): ask the engine for the document's
+    /// figures too. Without it the request line is byte-for-byte what it always was.
+    pub async fn convert_with(
+        &mut self,
+        path: &std::path::Path,
+        name: &str,
+        figures: bool,
+        deadline: Instant,
+    ) -> Result<Value, Failure> {
         // Probe idle stdout without waiting or reaping. EOF means the warm worker
         // died; unsolicited bytes violate framing. Cleanup precedes a fresh start.
         // Never try_wait/reap before group cleanup: descendants may still exist.
@@ -164,8 +176,12 @@ impl Worker {
         if self.process.is_none() {
             self.start(deadline).await?;
         }
-        let request = serde_json::to_vec(&json!({"path":path,"name":name}))
-            .map_err(|_| Failure::Conversion)?;
+        let request = if figures {
+            serde_json::to_vec(&json!({"path":path,"name":name,"figures":true}))
+        } else {
+            serde_json::to_vec(&json!({"path":path,"name":name}))
+        }
+        .map_err(|_| Failure::Conversion)?;
         if request.len() > 4096 {
             return Err(Failure::Conversion);
         }
@@ -323,6 +339,8 @@ struct Headers {
     path: String,
     length: Option<String>,
     name: Option<String>,
+    /// #1726: `X-Document-Figures: 1`.
+    figures: bool,
 }
 async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
     // Read only the header, never speculative body bytes before admission. Bounded
@@ -358,6 +376,7 @@ async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
         path,
         length: None,
         name: None,
+        figures: false,
     };
     for (count, line) in lines.filter(|line| !line.is_empty()).enumerate() {
         if count >= 99 {
@@ -369,6 +388,9 @@ async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
         }
         if key.eq_ignore_ascii_case("x-document-name") && result.name.is_none() {
             result.name = Some(value.trim_start_matches([' ', '\t']).to_owned());
+        }
+        if key.eq_ignore_ascii_case("x-document-figures") {
+            result.figures = value.trim() == "1";
         }
         if key.eq_ignore_ascii_case("transfer-encoding") {
             return Err(());
@@ -557,7 +579,7 @@ async fn connection(
     let outcome = tokio::select! {
         biased;
         _ = socket.read(&mut probe) => Err(Failure::Cancelled),
-        result = worker.convert(&path, name, deadline) => result,
+        result = worker.convert_with(&path, name, headers.figures, deadline) => result,
     };
     if outcome == Err(Failure::Cancelled) {
         worker.stop().await;
@@ -616,7 +638,7 @@ mod tests {
     proptest::proptest! {
         #[test]
         fn arbitrary_names_never_escape_input_bounds(name in ".{0,512}", length in 0usize..BODY_CAP+2) {
-            let headers=Headers{method:"POST".into(),path:"/extract".into(),length:Some(length.to_string()),name:Some(name)};
+            let headers=Headers{method:"POST".into(),path:"/extract".into(),length:Some(length.to_string()),name:Some(name),figures:false};
             if let Some((size,name,suffix))=selection(&headers) {
                 proptest::prop_assert!((1..=BODY_CAP).contains(&size));
                 proptest::prop_assert!(!name.is_empty() && name.chars().count()<=200 && !name.contains(['/', '\\']));

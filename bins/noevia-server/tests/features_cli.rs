@@ -17,6 +17,8 @@ fn features_cli_outputs_only_the_compiled_capabilities() {
         .collect::<String>();
     assert_eq!(output.stdout, expected.as_bytes());
     assert!(output.stderr.is_empty());
+    // Always compiled in: the front strips and re-stamps X-Noevia-Client-Ip (#1578).
+    assert!(expected.lines().any(|line| line == "client-address-header"));
     assert_eq!(
         expected.lines().any(|line| line == "rust-storage-reads"),
         cfg!(feature = "rust-storage-reads")
@@ -26,6 +28,14 @@ fn features_cli_outputs_only_the_compiled_capabilities() {
             .lines()
             .any(|line| line == "rust-reasoning-settings"),
         cfg!(feature = "rust-reasoning-settings")
+    );
+    assert_eq!(
+        expected.lines().any(|line| line == "rust-project-chats"),
+        cfg!(feature = "rust-project-chats")
+    );
+    assert_eq!(
+        expected.lines().any(|line| line == "rust-free-chats"),
+        cfg!(feature = "rust-free-chats")
     );
 }
 
@@ -83,6 +93,8 @@ fn featureless_replay_checks_all_switches_from_one_complete_probe() {
     for feature in [
         "rust-auth",
         "rust-projects",
+        "rust-project-chats",
+        "rust-free-chats",
         "rust-usage",
         "rust-sampling-settings",
     ] {

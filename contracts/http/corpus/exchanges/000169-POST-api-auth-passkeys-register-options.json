@@ -24,7 +24,9 @@
       "cache-control": "no-store",
       "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       "content-type": "application/json",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()",
       "referrer-policy": "same-origin",
+      "strict-transport-security": "max-age=15552000",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
       "x-noevia-api": "1"
@@ -39,7 +41,7 @@
             "id": "127.0.0.1"
           },
           "user": {
-            "id": "<id:23>",
+            "id": "<id:25>",
             "name": "synthetic-admin",
             "displayName": "Synthetic Admin Renamed"
           },

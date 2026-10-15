@@ -3,7 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use model_files::backups::{
-    is_revision_copy, is_rotating_copy, plan, plan_json, Listed, Request, KEEP_ROTATING,
+    is_own_rotating_copy, is_revision_copy, plan, plan_json, Listed, Request, KEEP_ROTATING,
 };
 use proptest::prelude::*;
 
@@ -12,6 +12,7 @@ fn name() -> impl Strategy<Value = String> {
         "[0-9a-f]{64}".prop_map(|h| format!("models.ini.noevia-backup-{h}")),
         "[0-9a-f]{2}".prop_map(|h| format!("models.ini.noevia-backup-{}", h.repeat(32))),
         "[0-9a-z-]{1,12}".prop_map(|t| format!("models.ini.bak-{t}")),
+        "[0-9]{8}-[0-9]{6}(-[0-9]{1,2})?".prop_map(|t| format!("models.ini.bak-{t}")),
         "[a-z.]{1,20}",
         Just("models.ini".to_owned()),
     ]
@@ -40,14 +41,15 @@ proptest! {
         let p = plan(&r);
         for n in &p.prune {
             prop_assert!(existing.iter().any(|l| &l.name == n), "pruned a name that was not listed");
-            prop_assert!(is_revision_copy("models.ini", n) || is_rotating_copy("models.ini", n), "pruned a foreign name {}", n);
+            // noevia#1783: never an operator's `.bak-*`, only copies the manager made itself.
+            prop_assert!(is_revision_copy("models.ini", n) || is_own_rotating_copy("models.ini", n), "pruned a foreign name {}", n);
             prop_assert!(Some(n) != p.revision.as_ref() && Some(n) != p.rotating.as_ref());
         }
         if !backup { prop_assert!(p.rotating.is_none() && p.revision.is_none()); }
         let left = |f: fn(&str, &str) -> bool| existing.iter().filter(|l| f("models.ini", &l.name) && !p.prune.contains(&l.name)).count();
         let new_rev = usize::from(p.revision.as_ref().is_some_and(|n| !existing.iter().any(|l| &l.name == n)));
         prop_assert!(left(is_revision_copy) + new_rev <= keep);
-        prop_assert!(left(is_rotating_copy) + usize::from(p.rotating.is_some()) <= KEEP_ROTATING + 1);
+        prop_assert!(left(is_own_rotating_copy) + usize::from(p.rotating.is_some()) <= KEEP_ROTATING + 1);
         // Some revision copy always survives when one existed or is made.
         if existing.iter().any(|l| is_revision_copy("models.ini", &l.name)) || p.revision.is_some() {
             prop_assert!(left(is_revision_copy) + new_rev >= 1);
