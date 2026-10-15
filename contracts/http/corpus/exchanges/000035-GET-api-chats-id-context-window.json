@@ -36,13 +36,13 @@
           "limit": 8192,
           "limitSource": "Conservative fallback; backend limit unavailable",
           "estimated": true,
-          "used": 17380,
+          "used": 5092,
           "reserve": 2048,
           "safety": 1229,
           "parts": [
             {
               "name": "Messages & summary",
-              "tokens": 16501
+              "tokens": 4213
             },
             {
               "name": "Instructions, memory & sources",
