@@ -59,6 +59,8 @@ pub fn state(reader: Arc<dyn DiagnosisRead>, configured: Vec<String>) -> Arc<Sta
         diagnosis: Some(Arc::new(Diagnosis::new(reader).unwrap())),
         #[cfg(feature = "native-prompts")]
         prompts: None,
+        #[cfg(feature = "native-settings")]
+        settings: None,
         sections: None,
         embedding: None,
         host: None,

@@ -463,6 +463,8 @@ fn state_at(service: Arc<EmbeddingService>, legacy_base: &str) -> Arc<StateData>
         diagnosis: None,
         #[cfg(feature = "native-prompts")]
         prompts: None,
+        #[cfg(feature = "native-settings")]
+        settings: None,
         sections: None,
         embedding: Some(service),
         host: None,

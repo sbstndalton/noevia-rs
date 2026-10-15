@@ -12,6 +12,7 @@ native-diagnose = ["native-logs", "dep:chrono"]
 native-host = ["native-logs"]
 native-sections = ["native-logs"]
 native-prompts = ["native-logs", "dep:rusqlite", "dep:model-files"]
+native-settings = ["native-logs", "dep:rusqlite"]
 [lints]
 workspace = true
 [dependencies]

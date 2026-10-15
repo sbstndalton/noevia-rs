@@ -77,6 +77,8 @@ fn state(base: &str, reconciler: Option<Arc<Reconciler>>) -> Arc<StateData> {
         diagnosis: None,
         #[cfg(feature = "native-prompts")]
         prompts: None,
+        #[cfg(feature = "native-settings")]
+        settings: None,
         sections: None,
         embedding: None,
         host: None,

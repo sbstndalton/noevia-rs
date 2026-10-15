@@ -872,6 +872,45 @@ jobs:
             ${{ runner.temp }}/prompts.json
             ${{ runner.temp }}/prompts-publicfront.json
 
+  native-settings:
+    name: Native settings read, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 26b4aa91eb0945602b63ad491668817802574bc4
+          path: settings-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r settings-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Regenerate the actual Python GET /api/v1/settings oracle
+        run: |
+          python3 -I tools/gen-settings-oracle.py settings-services/model-manager/app > "$RUNNER_TEMP/settings.json"
+          cmp bins/noevia-model-manager/tests/fixtures/settings-python.v1.json "$RUNNER_TEMP/settings.json"
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-settings -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-settings -- -D warnings
+      - name: Native settings differential, bounds and route policy
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-settings --test settings --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-settings --lib settings::
+      - name: Combined native features keep every existing test
+        run: cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings --lib --test settings --test lifecycle --test policy
+      - name: Settings capability omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-logs --test lifecycle
+          cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+
   native-diagnose:
     name: Native diagnosis closed transport, actual oracles and ownership
     runs-on: ubuntu-latest

@@ -1,0 +1,363 @@
+{
+ "cases": [
+  {
+   "body": "{\"hasToken\":false,\"tokenHint\":\"\"}",
+   "content_type": "application/json",
+   "id": "no-token-row",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv VALUES('other', 'x')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":false,\"tokenHint\":\"\"}",
+   "content_type": "application/json",
+   "id": "empty-table",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":false,\"tokenHint\":\"\"}",
+   "content_type": "application/json",
+   "id": "empty-token",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', '')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"\"}",
+   "content_type": "application/json",
+   "id": "short-3",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'abc')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"\"}",
+   "content_type": "application/json",
+   "id": "boundary-8",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'abcdefgh')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…fghi\"}",
+   "content_type": "application/json",
+   "id": "boundary-9",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'abcdefghi')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…wxyz\"}",
+   "content_type": "application/json",
+   "id": "long-synthetic",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'hf_SYNTHETICsyntheticSYNTHETIC0000wxyz')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…    \"}",
+   "content_type": "application/json",
+   "id": "whitespace-9",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', '         ')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…é-çà\"}",
+   "content_type": "application/json",
+   "id": "non-ascii",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'tökén-ünïcødé-çà')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"\"}",
+   "content_type": "application/json",
+   "id": "non-ascii-8-codepoints",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'äöüßéèàç')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"\"}",
+   "content_type": "application/json",
+   "id": "emoji-8-codepoints",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', '😀😀😀😀😀😀😀😀')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…😀😁😂😃\"}",
+   "content_type": "application/json",
+   "id": "emoji-9-codepoints",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'a😀😁😂😃😀😁😂😃')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…‍👩‍👧\"}",
+   "content_type": "application/json",
+   "id": "emoji-zwj-tail",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'synthetic-👨‍👩‍👧')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…éé\"}",
+   "content_type": "application/json",
+   "id": "combining-tail",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'synthetic-éé')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…\\t\\u0001 \"}",
+   "content_type": "application/json",
+   "id": "json-escapes",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'synthetic-\"\\\n\t\u0001 ')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…9012\"}",
+   "content_type": "application/json",
+   "id": "integer-affinity",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 123456789012)"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"\"}",
+   "content_type": "application/json",
+   "id": "real-affinity",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 1.5e300)"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…oken\"}",
+   "content_type": "application/json",
+   "id": "rollback-journal-unlocked",
+   "journal": "delete",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'synthetic-rollback-token')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…oken\"}",
+   "content_type": "application/json",
+   "id": "wal-uncommitted-writer",
+   "journal": "wal",
+   "lock": "wal-writer",
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'synthetic-committed-token')"
+   ]
+  },
+  {
+   "body": "Internal Server Error",
+   "content_type": "text/plain; charset=utf-8",
+   "id": "locked-exclusive",
+   "journal": "delete",
+   "lock": "exclusive",
+   "status": 500,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'synthetic-locked-token')"
+   ]
+  },
+  {
+   "body": "Internal Server Error",
+   "content_type": "text/plain; charset=utf-8",
+   "id": "missing-db",
+   "journal": null,
+   "lock": null,
+   "status": 500,
+   "store": null
+  },
+  {
+   "body": "Internal Server Error",
+   "content_type": "text/plain; charset=utf-8",
+   "id": "no-kv-table",
+   "journal": "wal",
+   "lock": null,
+   "status": 500,
+   "store": [
+    "CREATE TABLE other (x)"
+   ]
+  },
+  {
+   "body": "Internal Server Error",
+   "content_type": "text/plain; charset=utf-8",
+   "id": "not-a-database",
+   "journal": null,
+   "lock": null,
+   "status": 500,
+   "store": {
+    "bytes": "73796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f7420612064617461626173652073796e746865746963206e6f74206120646174616261736520"
+   }
+  },
+  {
+   "body": "Internal Server Error",
+   "content_type": "text/plain; charset=utf-8",
+   "id": "corrupt-null-value",
+   "journal": "wal",
+   "lock": null,
+   "status": 500,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT)",
+    "INSERT INTO kv VALUES('hf_token', NULL)"
+   ]
+  },
+  {
+   "body": "Internal Server Error",
+   "content_type": "text/plain; charset=utf-8",
+   "id": "corrupt-invalid-utf8",
+   "journal": "wal",
+   "lock": null,
+   "status": 500,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', CAST(x'73796e746865746963ff' AS TEXT))"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"\"}",
+   "content_type": "application/json",
+   "id": "corrupt-blob-short",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', x'00010203')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…b'blob'\"}",
+   "content_type": "application/json",
+   "id": "corrupt-blob-long",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', x'73796e7468657469632d626c6f62')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…b\\\"\\\\x00'\\\\\\\\\\\\n\\\"\"}",
+   "content_type": "application/json",
+   "id": "corrupt-blob-quote-escapes",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', x'73796e74686574696300275c0a')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":true,\"tokenHint\":\"…b'\\\\'\\\"\\\\xff\\\\t'\"}",
+   "content_type": "application/json",
+   "id": "corrupt-blob-both-quotes",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', x'73796e7468657469632722ff09')"
+   ]
+  },
+  {
+   "body": "{\"hasToken\":false,\"tokenHint\":\"\"}",
+   "content_type": "application/json",
+   "id": "corrupt-blob-empty",
+   "journal": "wal",
+   "lock": null,
+   "status": 200,
+   "store": [
+    "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', x'')"
+   ]
+  }
+ ],
+ "oracle": {
+  "api.py": "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6",
+  "db.py": "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478",
+  "main.py": "6f0af60535cbe505cf301a82ad132ead1378ef9f11deebb1e5dce68c20d1d131"
+ }
+}
