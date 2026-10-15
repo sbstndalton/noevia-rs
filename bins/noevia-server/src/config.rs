@@ -36,6 +36,8 @@ pub struct Config {
     /// M6 requires native identity/upkeep.
     pub rust_usage: bool,
     pub rust_storage_reads: bool,
+    /// NOEVIA_RUST_STORAGE_BROWSE=1: the outbound storage list/read (#1368).
+    pub rust_storage_browse: bool,
     pub rust_reasoning_settings: Option<server_store::RustReasoningSettings>,
     pub rust_routing_mode: Option<server_store::RustRoutingMode>,
     pub routing_feature_env: Option<bool>,
@@ -125,6 +127,7 @@ impl Config {
             rust_projects: self.rust_projects.is_some(),
             rust_usage: self.rust_usage,
             rust_storage_reads: self.rust_storage_reads,
+            rust_storage_browse: self.rust_storage_browse,
             rust_sampling_settings: self.rust_sampling_settings.is_some(),
             rust_reasoning_settings: self.rust_reasoning_settings.is_some(),
             rust_routing_mode: self.rust_routing_mode.is_some(),
@@ -170,6 +173,24 @@ impl Config {
             {
                 return Err(
                     "NOEVIA_RUST_STORAGE_READS=1 needs UI_DATA_DIR and valid native auth".into(),
+                );
+            }
+        }
+        let rust_storage_browse = get("NOEVIA_RUST_STORAGE_BROWSE").as_deref() == Some("1");
+        if rust_storage_browse {
+            if rust_auth.is_none() {
+                return Err("NOEVIA_RUST_STORAGE_BROWSE=1 needs NOEVIA_RUST_AUTH=1".into());
+            }
+            if !cfg!(feature = "rust-storage-browse") {
+                return Err(
+                    "NOEVIA_RUST_STORAGE_BROWSE=1 needs compiled rust-storage-browse".into(),
+                );
+            }
+            if get("UI_DATA_DIR").is_none_or(|v| v.is_empty())
+                || server_auth::AuthConfig::from_lookup(&get).is_err()
+            {
+                return Err(
+                    "NOEVIA_RUST_STORAGE_BROWSE=1 needs UI_DATA_DIR and valid native auth".into(),
                 );
             }
         }
@@ -280,6 +301,7 @@ impl Config {
             rust_projects,
             rust_usage,
             rust_storage_reads,
+            rust_storage_browse,
             rust_sampling_settings,
             rust_reasoning_settings,
             rust_routing_mode,

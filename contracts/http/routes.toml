@@ -381,11 +381,15 @@ switch = "NOEVIA_RUST_STORAGE_READS"
 
 [[route]]
 path = "/api/integrations/storage/file"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
+switch = "NOEVIA_RUST_STORAGE_BROWSE"
 
 [[route]]
 path = "/api/integrations/storage/files{*?}"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+switch = "NOEVIA_RUST_STORAGE_BROWSE"
 
 [[route]]
 path = "/api/integrations/storage/folder"

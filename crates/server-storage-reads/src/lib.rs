@@ -18,6 +18,7 @@ pub mod json;
 pub mod protocol;
 pub mod request_ipc;
 pub mod response_ipc;
+pub mod transport;
 
 pub const LIST_BYTES: usize = 4 * 1024 * 1024;
 pub const TEXT_BYTES: usize = 800_000;

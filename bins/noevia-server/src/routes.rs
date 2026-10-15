@@ -36,6 +36,9 @@ pub struct Switches {
     pub rust_reasoning_settings: bool,
     pub rust_routing_mode: bool,
     pub rust_storage_reads: bool,
+    /// NOEVIA_RUST_STORAGE_BROWSE=1 (M4, #1368, only with rust_auth, config.rs): connected-storage
+    /// list (GET /api/integrations/storage/files[/path]) and text read (POST .../file).
+    pub rust_storage_browse: bool,
     /// NOEVIA_RUST_ROUTING_DEFAULT=1 (M6, only with rust_auth, config.rs): GET /api/routing-default.
     pub rust_routing_default: bool,
     /// NOEVIA_RUST_STATS=1 (M6, #1650, only with rust_auth, config.rs): GET /api/stats.
@@ -55,6 +58,7 @@ impl Switches {
             "NOEVIA_RUST_REASONING_SETTINGS" => self.rust_reasoning_settings,
             "NOEVIA_RUST_ROUTING_MODE" => self.rust_routing_mode,
             "NOEVIA_RUST_STORAGE_READS" => self.rust_storage_reads,
+            "NOEVIA_RUST_STORAGE_BROWSE" => self.rust_storage_browse,
             "NOEVIA_RUST_ROUTING_DEFAULT" => self.rust_routing_default,
             "NOEVIA_RUST_STATS" => self.rust_stats,
             "NOEVIA_RUST_EXPORT" => self.rust_export,
@@ -93,6 +97,9 @@ pub enum Native {
     ReasoningSettings,
     RoutingMode,
     StorageMetadata,
+    /// GET /api/integrations/storage/files[/path], POST /api/integrations/storage/file (M4, #1368,
+    /// NOEVIA_RUST_STORAGE_BROWSE): the outbound list and text read.
+    StorageBrowse,
     /// GET /api/routing-default (M6, NOEVIA_RUST_ROUTING_DEFAULT): crates/server-routing-default.
     RoutingDefault,
     /// GET /api/stats (M6, NOEVIA_RUST_STATS): crates/server-stats.
@@ -139,6 +146,31 @@ const FREE_CHATS: &str = "/api/freechats";
 /// transport adapter is qualified.
 const STORAGE_METADATA: &str = "/api/integrations/storage";
 
+/// The routes [`Native::StorageBrowse`] implements, in a build with the cargo feature
+/// `rust-storage-browse` under NOEVIA_RUST_STORAGE_BROWSE (#1368). Node's handler matches
+/// `^/api/integrations/storage/files(?:/(.*))?$` for GET and `.../file` exactly for POST.
+const STORAGE_FILES: &str = "/api/integrations/storage/files";
+const STORAGE_FILES_ROUTE: &str = "/api/integrations/storage/files{*?}";
+const STORAGE_FILE: &str = "/api/integrations/storage/file";
+
+/// The storage browse decision, before the generic table: the list route takes any suffix, which
+/// the route patterns cannot express. `None` when `path` is not a browse path.
+fn storage_browse(method: &str, path: &str, switches: Switches) -> Option<Option<Native>> {
+    let files = path == STORAGE_FILES
+        || path
+            .strip_prefix(STORAGE_FILES)
+            .is_some_and(|rest| rest.starts_with('/'));
+    let file = path == STORAGE_FILE;
+    if !files && !file {
+        return None;
+    }
+    let owned = switches.rust_auth
+        && switches.rust_storage_browse
+        && cfg!(feature = "rust-storage-browse")
+        && ((files && method == "GET") || (file && method == "POST"));
+    Some(owned.then_some(Native::StorageBrowse))
+}
+
 /// Whether this build answers `route` itself when its switch is on.
 fn compiled(route: &Route) -> bool {
     (route.path != PROJECT_CHATS || cfg!(feature = "rust-project-chats"))
@@ -146,12 +178,17 @@ fn compiled(route: &Route) -> bool {
         && (route.path != ROUTING_DEFAULT || cfg!(feature = "rust-routing-default"))
         && (route.path != STATS || cfg!(feature = "rust-stats"))
         && (route.path != STORAGE_METADATA || cfg!(feature = "rust-storage-reads"))
+        && (![STORAGE_FILE, STORAGE_FILES_ROUTE].contains(&route.path)
+            || cfg!(feature = "rust-storage-browse"))
         && (route.path != EXPORT || cfg!(feature = "rust-export"))
 }
 
 /// The native handler a rust-owned route is implemented by.
 pub fn native_for(route: &Route) -> Option<Native> {
     match (route.path, route.catch_all, route.switch) {
+        (STORAGE_FILE | STORAGE_FILES_ROUTE, false, Some("NOEVIA_RUST_STORAGE_BROWSE")) => {
+            Some(Native::StorageBrowse)
+        }
         (STORAGE_METADATA, false, Some("NOEVIA_RUST_STORAGE_READS")) => {
             Some(Native::StorageMetadata)
         }
@@ -246,6 +283,9 @@ pub fn dispatch(method: &str, path: &str) -> Option<Native> {
 
 /// [`dispatch`] under the deployment switches that are on.
 pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Native> {
+    if let Some(decision) = storage_browse(method, path, switches) {
+        return decision;
+    }
     let route = route_for(path)?;
     if route.switch == Some("NOEVIA_RUST_STORAGE_READS")
         && (path != STORAGE_METADATA || method != "GET" || !switches.rust_auth)
@@ -309,6 +349,7 @@ mod tests {
             rust_reasoning_settings: false,
             rust_routing_mode: false,
             rust_storage_reads: false,
+            rust_storage_browse: false,
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
@@ -325,6 +366,7 @@ mod tests {
             rust_reasoning_settings: false,
             rust_routing_mode: false,
             rust_storage_reads: false,
+            rust_storage_browse: false,
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
@@ -342,6 +384,7 @@ mod tests {
             rust_reasoning_settings: false,
             rust_routing_mode: false,
             rust_storage_reads: false,
+            rust_storage_browse: false,
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,
@@ -354,6 +397,7 @@ mod tests {
             rust_reasoning_settings: false,
             rust_routing_mode: false,
             rust_storage_reads: false,
+            rust_storage_browse: false,
             rust_routing_default: false,
             rust_stats: false,
             rust_export: false,

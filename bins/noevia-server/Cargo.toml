@@ -19,6 +19,8 @@ default = []
 rust-reasoning-settings = []
 rust-routing-mode = []
 rust-storage-reads = ["dep:server-storage-reads", "dep:zeroize"]
+# M4 (#1368): connected-storage list/read under NOEVIA_RUST_STORAGE_BROWSE (src/storage_browse_routes.rs).
+rust-storage-browse = ["rust-storage-reads"]
 # M6 (#1305): GET /api/routing-default under NOEVIA_RUST_ROUTING_DEFAULT (src/routes.rs ROUTING_DEFAULT).
 rust-routing-default = []
 # M6 (#1650): GET /api/stats under NOEVIA_RUST_STATS (src/routes.rs STATS, crates/server-stats).

@@ -1,15 +1,21 @@
 # Private storage reads — noevia#1368
 
-Published for review with the M4 storage-reads branch (noevia-rs `feat/m4-storage-reads`).
-Only `GET /api/integrations/storage` (connection metadata, never the secret) is wired into
-noevia-server, behind the cargo feature `rust-storage-reads` and the default-off deployment
-switch `NOEVIA_RUST_STORAGE_READS` (needs `NOEVIA_RUST_AUTH=1`; routes.toml owner stays Node's
-while the switch is off). `GET /api/integrations/storage/files` and
-`POST /api/integrations/storage/file` stay Node's in every build: the list/read engine below has
-no qualified production transport yet. Historical bases: Rust
-`c665b36106505419d80e01a106b0d402f5d157e2`; actual client oracle core
+The read engine is wired into noevia-server in two default-off slices:
+
+* `GET /api/integrations/storage` (connection metadata, never the secret): cargo feature
+  `rust-storage-reads`, switch `NOEVIA_RUST_STORAGE_READS`;
+* `GET /api/integrations/storage/files[/path]` and `POST /api/integrations/storage/file` (list and
+  text read): cargo feature `rust-storage-browse`, switch `NOEVIA_RUST_STORAGE_BROWSE`. Every
+  outbound attempt runs in a fresh owned child (`noevia-server --storage-request-child`,
+  [`transport`](src/transport.rs)). `bins/noevia-server/tests/storage_browse.rs` compares the
+  native routes with the actual core route and storage client on a synthetic loopback DAV + S3
+  server; CI runs it against the pinned core.
+
+Both need `NOEVIA_RUST_AUTH=1`; with a switch off, `routes.toml` ownership resolves to Node.
+Historical bases: Rust `c665b36106505419d80e01a106b0d402f5d157e2`; actual client oracle core
 `010735c7d86d30269ab3f4a351b2135faea1c8e7`; web predecessor
-`f7d21353dee9f11be663d6a9bf3258144f11c5d5`.
+`f7d21353dee9f11be663d6a9bf3258144f11c5d5`. Transport failures follow the current pinned core
+(`withRetry`/`transportError`), not 010735.
 
 Running the private oracles: `M4_CORE_ORACLE=<synthetic core checkout>` enables the actual-source
 Node oracles (`tests/node_oracle.rs`, `tests/qualification.rs`, `tests/list_limits.rs`) and

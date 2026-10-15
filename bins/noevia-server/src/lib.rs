@@ -19,6 +19,8 @@ pub mod sampling_settings_routes;
 pub mod serve;
 pub mod static_files;
 pub mod stats_routes;
+#[cfg(feature = "rust-storage-browse")]
+pub mod storage_browse_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
@@ -68,6 +70,8 @@ pub const FEATURES: &[&str] = &[
     "rust-sampling-settings",
     #[cfg(feature = "rust-storage-reads")]
     "rust-storage-reads",
+    #[cfg(feature = "rust-storage-browse")]
+    "rust-storage-browse",
     #[cfg(feature = "rust-reasoning-settings")]
     "rust-reasoning-settings",
     #[cfg(feature = "rust-routing-mode")]
@@ -83,6 +87,12 @@ pub const FEATURES: &[&str] = &[
 pub struct App {
     #[cfg(feature = "rust-storage-reads")]
     pub storage_metadata: Arc<storage_metadata_worker::Worker>,
+    /// Storage list/read admission: four at once, one per account (#1368).
+    #[cfg(feature = "rust-storage-browse")]
+    pub storage_browse: server_storage_reads::admission::Admission,
+    /// This binary, run as the owned outbound child (`--storage-request-child`).
+    #[cfg(feature = "rust-storage-browse")]
+    pub storage_child: Option<std::path::PathBuf>,
     pub config: config::Config,
     pub proxy: legacy_proxy::LegacyProxy,
     pub statics: static_files::StaticFiles,
@@ -129,6 +139,10 @@ impl App {
         Arc::new(App {
             #[cfg(feature = "rust-storage-reads")]
             storage_metadata: Arc::new(storage_metadata_worker::Worker::default()),
+            #[cfg(feature = "rust-storage-browse")]
+            storage_browse: server_storage_reads::admission::Admission::default(),
+            #[cfg(feature = "rust-storage-browse")]
+            storage_child: storage_browse_routes::child_command(),
             identity,
             writes,
             accounts,
@@ -186,6 +200,7 @@ async fn handle(
                         | routes::Native::SamplingSettings
                         | routes::Native::ReasoningSettings
                         | routes::Native::StorageMetadata
+                        | routes::Native::StorageBrowse
                         | routes::Native::RoutingMode
                         | routes::Native::RoutingDefault
                         | routes::Native::Stats
@@ -206,6 +221,7 @@ async fn handle(
             | routes::Native::SamplingSettings
             | routes::Native::ReasoningSettings
             | routes::Native::StorageMetadata
+            | routes::Native::StorageBrowse
             | routes::Native::RoutingMode
             | routes::Native::RoutingDefault
             | routes::Native::Stats
@@ -242,6 +258,20 @@ async fn handle(
                 storage_read_routes::serve(&app, conn, req, p).await
             }
             #[cfg(not(feature = "rust-storage-reads"))]
+            {
+                let _ = p;
+                reply::error(StatusCode::SERVICE_UNAVAILABLE, "Storage unavailable", true)
+            }
+        }
+        Some(routes::Native::StorageBrowse) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            #[cfg(feature = "rust-storage-browse")]
+            {
+                storage_browse_routes::serve(&app, conn, req, p).await
+            }
+            #[cfg(not(feature = "rust-storage-browse"))]
             {
                 let _ = p;
                 reply::error(StatusCode::SERVICE_UNAVAILABLE, "Storage unavailable", true)
