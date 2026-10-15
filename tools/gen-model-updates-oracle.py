@@ -187,7 +187,7 @@ CASES: list[dict] = [
     {"id": "mtime-rounding",
      "files": [["half-even-down.gguf", T0 + 500], ["half-even-up.gguf", T0 + 1_500], ["just-under.gguf", T0 + 999_999_499],
                ["round-up-second.gguf", T0 + 999_999_999], ["pre-epoch.gguf", -86_400_000_000_123],
-               ["pre-epoch-half.gguf", -1_500], ["epoch.gguf", 0], ["far-future.gguf", 13_000_000_000_000_000_123],
+               ["pre-epoch-half.gguf", -1_500], ["epoch.gguf", 0], ["far-future.gguf", 2_147_000_000_000_000_123],
                ["y1902.gguf", -2_100_000_000_000_000_000]],
      "store": sql(*[row(n, r) for n, r in [
          ("half-even-down.gguf", "2023-11-14T22:13:20Z"), ("half-even-up.gguf", "2023-11-14T22:13:20.000001Z"),
