@@ -247,6 +247,22 @@ CASES: list[dict] = [
     {"id": "ini-not-utf8-500", "files": files("a.gguf"), "ini": {"hex": "5b615d0a78203d20ff0a"},
      "store": sql(row("a.gguf", "2024-05-01T00:00:00Z"))},
     {"id": "ini-is-directory-500", "files": files("a.gguf"), "ini": "dir", "store": sql(row("a.gguf", "2024-05-01T00:00:00Z"))},
+    # noevia#1873: Python skips an unreadable folder, follows absolute links that stay inside the
+    # models folder, and walks a symlinked models folder.
+    {"id": "unreadable-subfolder-skipped", "dirs": ["open", "locked", "locked-deeper/inner"],
+     "files": files("open/a.gguf", "locked/b.gguf", "locked-deeper/inner/c.gguf", "top.gguf"),
+     "modes": [["locked", 0], ["locked-deeper/inner", 0o300]],
+     "store": sql(*[row(n, "2024-05-01T00:00:00Z") for n in ("a.gguf", "b.gguf", "c.gguf", "top.gguf")])},
+    {"id": "absolute-links-inside", "dirs": ["sub", "subdir-target"],
+     "files": [["sub/x.gguf", T0 + 7], ["sub/old.gguf", T0 - 9]],
+     "abslinks": [["y.gguf", "sub/x.gguf"], ["sub/rel-abs.gguf", "sub/old.gguf"], ["gone.gguf", "sub/nothing.gguf"],
+                  ["dir-link.gguf", "subdir-target"]],
+     "store": sql(*[row(n, "2023-11-14T22:13:20Z") for n in ("x.gguf", "y.gguf", "old.gguf", "rel-abs.gguf",
+                                                             "gone.gguf", "dir-link.gguf")])},
+    {"id": "models-folder-is-a-symlink", "models": "link", "dirs": ["sub"],
+     "files": [["a.gguf", T0], ["sub/b-00001-of-00002.gguf", T0 + 1], ["sub/b-00002-of-00002.gguf", T0 + 2]],
+     "ini": {"text": "[a]\nmodel = a.gguf\n"},
+     "store": sql(row("a.gguf", "2024-05-01T00:00:00Z"), row("b.gguf", "2020-05-01T00:00:00Z"))},
     {"id": "store-rollback-journal", "files": files("a.gguf"),
      "store": {"journal": "delete", "sql": [SCHEMA, row("a.gguf", "2024-05-01T00:00:00Z")]}},
 ]
@@ -259,8 +275,13 @@ def build(root: Path, case: dict) -> tuple[Path, Path, Path]:
     kind = case.get("models", "dir")
     if kind == "file":
         models.write_bytes(b"")
-    elif kind == "dir":
-        models.mkdir()
+    elif kind in ("dir", "link"):
+        if kind == "link":
+            real = root / "real-models"
+            real.mkdir()
+            os.symlink(real, models)
+        else:
+            models.mkdir()
         for d in case.get("dirs", []):
             (models / d).mkdir(parents=True, exist_ok=True)
         for name, _ in case.get("files", []):
@@ -268,6 +289,8 @@ def build(root: Path, case: dict) -> tuple[Path, Path, Path]:
             (models / name).write_bytes(b"")
         for name, target in case.get("links", []):
             os.symlink(target, models / name)
+        for name, target in case.get("abslinks", []):
+            os.symlink(models.resolve() / target, models / name)
         ini = case.get("ini")
         if ini == "dir":
             ini_path.mkdir()
@@ -275,6 +298,8 @@ def build(root: Path, case: dict) -> tuple[Path, Path, Path]:
             ini_path.write_bytes(ini["text"].encode() if "text" in ini else bytes.fromhex(ini["hex"]))
         for name, ns in case.get("files", []):
             os.utime(models / name, ns=(ns, ns))
+        for name, mode in case.get("modes", []):
+            os.chmod(models / name, mode)
     store = case.get("store")
     if store is not None:
         data.mkdir()
@@ -316,6 +341,8 @@ def main() -> int:
             config.settings.data_dir = data
             db._DB_PATH = None
             response = client.get("/api/v1/models/updates")
+            for name, _ in case.get("modes", []):
+                os.chmod(models / name, 0o700)
             out.append({**case, "status": response.status_code,
                         "content_type": response.headers.get("content-type"),
                         "body": response.content.decode("utf-8")})

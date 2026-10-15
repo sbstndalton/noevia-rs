@@ -47,11 +47,16 @@ the wait, or a model mtime past year 9999 when its remote time parsed.
   store is never created and never converted to WAL.
 - Over 65,536 `update_check` rows, a stored value over 64 KiB, or a `models.ini` over 1 MiB
   answers 500 instead of being read.
-- The walk uses the kernel-contained beneath-root opener of the native sections read. Where it
-  cannot follow Python it refuses with `503 {"detail":"Native model update status is unavailable"}`
-  instead of guessing: more than 4096 model files or 16,384 directory entries, a walk over 2 s, a
-  link leaving the models folder, an unreadable folder (Python skips it silently), a non-UTF-8
-  name, or a symlinked models folder.
+- The walk uses the kernel-contained beneath-root opener of the native sections read, and follows
+  Python where it safely can (noevia#1873): an unreadable folder is skipped as `os.walk` skips it;
+  an absolute link whose fully resolved target stays inside the canonical models folder is
+  followed; a symlinked models folder is canonicalised and walked. It refuses with
+  `503 {"detail":"Native model update status is unavailable"}` instead of guessing for more than
+  4096 model files or 16,384 directory entries, a walk over 2 s, a link whose target leaves the
+  models folder, or a non-UTF-8 name.
+- `models.ini` is opened non-blocking and must be a regular file; a FIFO or device answers 500
+  (Python would block on it).
+- A response body over 8 MiB answers 500 instead of being built.
 
 ## Oracle
 

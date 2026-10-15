@@ -1418,6 +1418,140 @@
 }
 },
 {
+"body": "{\"status\":{\"top.gguf\":{\"status\":\"stale\",\"remote\":\"2024-05-01\",\"checked_at\":1700000000.5,\"delta_days\":168},\"a.gguf\":{\"status\":\"stale\",\"remote\":\"2024-05-01\",\"checked_at\":1700000000.5,\"delta_days\":168}}}",
+"content_type": "application/json",
+"dirs": [
+"open",
+"locked",
+"locked-deeper/inner"
+],
+"files": [
+[
+"open/a.gguf",
+1700000000000000000
+],
+[
+"locked/b.gguf",
+1700000000000000000
+],
+[
+"locked-deeper/inner/c.gguf",
+1700000000000000000
+],
+[
+"top.gguf",
+1700000000000000000
+]
+],
+"id": "unreadable-subfolder-skipped",
+"modes": [
+[
+"locked",
+0
+],
+[
+"locked-deeper/inner",
+192
+]
+],
+"status": 200,
+"store": {
+"journal": "wal",
+"sql": [
+"CREATE TABLE update_check (filename TEXT PRIMARY KEY, repo_id TEXT NOT NULL, hf_last_modified TEXT, checked_at REAL NOT NULL)",
+"INSERT INTO update_check VALUES('a.gguf', 'synthetic/repo', '2024-05-01T00:00:00Z', 1700000000.5)",
+"INSERT INTO update_check VALUES('b.gguf', 'synthetic/repo', '2024-05-01T00:00:00Z', 1700000000.5)",
+"INSERT INTO update_check VALUES('c.gguf', 'synthetic/repo', '2024-05-01T00:00:00Z', 1700000000.5)",
+"INSERT INTO update_check VALUES('top.gguf', 'synthetic/repo', '2024-05-01T00:00:00Z', 1700000000.5)"
+]
+}
+},
+{
+"abslinks": [
+[
+"y.gguf",
+"sub/x.gguf"
+],
+[
+"sub/rel-abs.gguf",
+"sub/old.gguf"
+],
+[
+"gone.gguf",
+"sub/nothing.gguf"
+],
+[
+"dir-link.gguf",
+"subdir-target"
+]
+],
+"body": "{\"status\":{\"y.gguf\":{\"status\":\"up-to-date\",\"remote\":\"2023-11-14\",\"checked_at\":1700000000.5,\"delta_days\":0},\"old.gguf\":{\"status\":\"up-to-date\",\"remote\":\"2023-11-14\",\"checked_at\":1700000000.5,\"delta_days\":0},\"rel-abs.gguf\":{\"status\":\"up-to-date\",\"remote\":\"2023-11-14\",\"checked_at\":1700000000.5,\"delta_days\":0},\"x.gguf\":{\"status\":\"up-to-date\",\"remote\":\"2023-11-14\",\"checked_at\":1700000000.5,\"delta_days\":0}}}",
+"content_type": "application/json",
+"dirs": [
+"sub",
+"subdir-target"
+],
+"files": [
+[
+"sub/x.gguf",
+1700000000000000007
+],
+[
+"sub/old.gguf",
+1699999999999999991
+]
+],
+"id": "absolute-links-inside",
+"status": 200,
+"store": {
+"journal": "wal",
+"sql": [
+"CREATE TABLE update_check (filename TEXT PRIMARY KEY, repo_id TEXT NOT NULL, hf_last_modified TEXT, checked_at REAL NOT NULL)",
+"INSERT INTO update_check VALUES('x.gguf', 'synthetic/repo', '2023-11-14T22:13:20Z', 1700000000.5)",
+"INSERT INTO update_check VALUES('y.gguf', 'synthetic/repo', '2023-11-14T22:13:20Z', 1700000000.5)",
+"INSERT INTO update_check VALUES('old.gguf', 'synthetic/repo', '2023-11-14T22:13:20Z', 1700000000.5)",
+"INSERT INTO update_check VALUES('rel-abs.gguf', 'synthetic/repo', '2023-11-14T22:13:20Z', 1700000000.5)",
+"INSERT INTO update_check VALUES('gone.gguf', 'synthetic/repo', '2023-11-14T22:13:20Z', 1700000000.5)",
+"INSERT INTO update_check VALUES('dir-link.gguf', 'synthetic/repo', '2023-11-14T22:13:20Z', 1700000000.5)"
+]
+}
+},
+{
+"body": "{\"status\":{\"a.gguf\":{\"status\":\"stale\",\"remote\":\"2024-05-01\",\"checked_at\":1700000000.5,\"delta_days\":168},\"b.gguf\":{\"status\":\"up-to-date\",\"remote\":\"2020-05-01\",\"checked_at\":1700000000.5,\"delta_days\":-1293}}}",
+"content_type": "application/json",
+"dirs": [
+"sub"
+],
+"files": [
+[
+"a.gguf",
+1700000000000000000
+],
+[
+"sub/b-00001-of-00002.gguf",
+1700000000000000001
+],
+[
+"sub/b-00002-of-00002.gguf",
+1700000000000000002
+]
+],
+"id": "models-folder-is-a-symlink",
+"ini": {
+"text": "[a]\nmodel = a.gguf\n"
+},
+"models": "link",
+"status": 200,
+"store": {
+"journal": "wal",
+"sql": [
+"CREATE TABLE update_check (filename TEXT PRIMARY KEY, repo_id TEXT NOT NULL, hf_last_modified TEXT, checked_at REAL NOT NULL)",
+"INSERT INTO update_check VALUES('a.gguf', 'synthetic/repo', '2024-05-01T00:00:00Z', 1700000000.5)",
+"INSERT INTO update_check VALUES('b.gguf', 'synthetic/repo', '2020-05-01T00:00:00Z', 1700000000.5)"
+]
+}
+},
+{
 "body": "{\"status\":{\"a.gguf\":{\"status\":\"stale\",\"remote\":\"2024-05-01\",\"checked_at\":1700000000.5,\"delta_days\":168}}}",
 "content_type": "application/json",
 "files": [

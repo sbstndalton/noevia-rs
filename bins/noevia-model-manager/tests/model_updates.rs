@@ -174,6 +174,7 @@ async fn actual_python_differential_through_router() {
         let id = case["id"].as_str().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let (models, ini, data) = support::build(dir.path(), case);
+        support::modes(&models, case, false);
         let answer = send(
             state(Some((&models, &ini, &data)), "http://127.0.0.1:9"),
             "GET",
@@ -181,6 +182,7 @@ async fn actual_python_differential_through_router() {
             true,
         )
         .await;
+        support::modes(&models, case, true);
         assert_eq!(
             u64::from(answer.status),
             case["status"].as_u64().unwrap(),
@@ -214,6 +216,23 @@ mod support {
             .collect()
     }
 
+    /// Applies (or, with `restore`, undoes) the case's folder permission modes.
+    pub fn modes(models: &Path, case: &Value, restore: bool) {
+        use std::os::unix::fs::PermissionsExt;
+        for item in case["modes"].as_array().into_iter().flatten() {
+            let mode = if restore {
+                0o700
+            } else {
+                u32::try_from(item[1].as_u64().unwrap()).unwrap()
+            };
+            std::fs::set_permissions(
+                models.join(item[0].as_str().unwrap()),
+                std::fs::Permissions::from_mode(mode),
+            )
+            .unwrap();
+        }
+    }
+
     pub fn build(root: &Path, case: &Value) -> (PathBuf, PathBuf, PathBuf) {
         let models = root.join("models");
         let ini = models.join("models.ini");
@@ -221,8 +240,14 @@ mod support {
         match case["models"].as_str().unwrap_or("dir") {
             "missing" => {}
             "file" => std::fs::write(&models, b"").unwrap(),
-            _ => {
-                std::fs::create_dir(&models).unwrap();
+            kind => {
+                if kind == "link" {
+                    let real = root.join("real-models");
+                    std::fs::create_dir(&real).unwrap();
+                    std::os::unix::fs::symlink(&real, &models).unwrap();
+                } else {
+                    std::fs::create_dir(&models).unwrap();
+                }
                 for dir in case["dirs"].as_array().into_iter().flatten() {
                     std::fs::create_dir_all(models.join(dir.as_str().unwrap())).unwrap();
                 }
@@ -238,6 +263,13 @@ mod support {
                         models.join(link[0].as_str().unwrap()),
                     )
                     .unwrap();
+                }
+                for link in case["abslinks"].as_array().into_iter().flatten() {
+                    let target = std::fs::canonicalize(&models)
+                        .unwrap()
+                        .join(link[1].as_str().unwrap());
+                    std::os::unix::fs::symlink(target, models.join(link[0].as_str().unwrap()))
+                        .unwrap();
                 }
                 match &case["ini"] {
                     Value::Null => {}
