@@ -162,3 +162,71 @@ fn oracle_sources_refuse_symlinks_hardlinks_and_fifos() -> Result<(), String> {
     assert!(start.elapsed() < FINITE, "FIFO open blocked");
     Ok(())
 }
+
+const WASM_BYTES: &[u8] = b"synthetic module bytes";
+fn wasm_sha() -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(WASM_BYTES))
+}
+
+#[test]
+fn missing_or_mismatched_dav_parse_wasm_is_named_up_front() -> Result<(), String> {
+    let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let pinned = wasm_sha();
+    let file = dir.path().join("dav-parse.wasm");
+    // Missing: the file and the pinned hash are in the message.
+    let missing = support::check_dav_parse_wasm(&file, &pinned)
+        .err()
+        .ok_or("missing module accepted")?;
+    assert!(missing.contains("dav-parse.wasm not found"), "{missing}");
+    assert!(missing.contains(&file.display().to_string()), "{missing}");
+    assert!(missing.contains(&pinned), "{missing}");
+    // Mismatched bytes: both hashes and the file are named.
+    std::fs::write(&file, b"another build").map_err(|e| e.to_string())?;
+    let wrong = support::check_dav_parse_wasm(&file, &pinned)
+        .err()
+        .ok_or("mismatched module accepted")?;
+    assert!(
+        wrong.contains("mismatch") && wrong.contains(&pinned),
+        "{wrong}"
+    );
+    assert!(wrong.contains(&file.display().to_string()), "{wrong}");
+    // The pinned bytes pass.
+    std::fs::write(&file, WASM_BYTES).map_err(|e| e.to_string())?;
+    support::check_dav_parse_wasm(&file, &pinned)
+}
+
+#[test]
+fn pinned_hash_comes_from_the_core_lock_and_a_core_without_the_module_is_refused(
+) -> Result<(), String> {
+    let pinned = wasm_sha();
+    let lock = format!("# comment\nNOEVIA_RS_REF=abc\nDAV_PARSE_WASM_SHA256={pinned}\n");
+    assert_eq!(support::pinned_wasm_sha256(&lock)?, pinned);
+    for bad in [
+        "",
+        "DAV_PARSE_WASM_SHA256=short\n",
+        "DAV_PARSE_WASM_SHA256=ZZ\n",
+    ] {
+        assert!(support::pinned_wasm_sha256(bad).is_err(), "{bad:?}");
+    }
+    // A synthetic core checkout with a lock but no server/wasm/dav-parse.wasm.
+    let core = tempfile::tempdir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(core.path().join("server")).map_err(|e| e.to_string())?;
+    std::fs::write(core.path().join("server/dav-parse.lock"), lock).map_err(|e| e.to_string())?;
+    if std::env::var_os("DAV_PARSE_WASM").is_none_or(|v| v.is_empty()) {
+        let error = support::require_dav_parse_wasm(&core.path().display().to_string())
+            .err()
+            .ok_or("core without the module accepted")?;
+        assert!(
+            error.contains("server/wasm/dav-parse.wasm") && error.contains(&pinned),
+            "{error}"
+        );
+    }
+    // No lock at all is its own named refusal, not a parity diff.
+    let empty = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let error = support::require_dav_parse_wasm(&empty.path().display().to_string())
+        .err()
+        .ok_or("core without a lock accepted")?;
+    assert!(error.contains("dav-parse.lock"), "{error}");
+    Ok(())
+}

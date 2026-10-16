@@ -1,0 +1,102 @@
+name: Native project writes
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  project-writes:
+    name: Required native project-writes contracts (sbstndalton/noevia#1264)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read actual merged core pin
+        id: core
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/http/core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core.outputs.sha }}
+          path: core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked -p server-projects -p noevia-server --all-targets --features noevia-server/rust-project-writes -- -D warnings
+      - run: npm ci --no-fund --no-audit
+        working-directory: core/server
+      - name: The committed chat-context fixture is core.ref's route output
+        run: |
+          set -euo pipefail
+          node tools/gen-chat-context-fixtures.cjs "$GITHUB_WORKSPACE/core" "$RUNNER_TEMP/node-chat-context.v1.json"
+          cmp crates/server-projects/tests/fixtures/node-chat-context.v1.json "$RUNNER_TEMP/node-chat-context.v1.json" \
+            || { echo "::error::regenerate crates/server-projects/tests/fixtures/node-chat-context.v1.json with tools/gen-chat-context-fixtures.cjs at contracts/http/core.ref"; exit 1; }
+      - name: Node-differential, lock and concurrency tests of the store
+        run: cargo test --locked -p server-projects
+      - name: Real HTTP gate and switch through the front (off = Node, on = Rust)
+        run: |
+          set -euo pipefail
+          cargo test --locked -p noevia-server --features rust-project-writes
+          cargo test --locked -p noevia-server --features rust-project-writes,rust-project-chats,rust-free-chats
+      - name: Compiled capability and startup refusals
+        run: |
+          set -euo pipefail
+          cargo build --locked --target-dir target/writes-featureless -p noevia-server --no-default-features
+          if target/writes-featureless/debug/noevia-server --features | grep -qx rust-project-writes; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_PROJECT_WRITES=1 target/writes-featureless/debug/noevia-server > "$RUNNER_TEMP/writes-featureless.log" 2>&1; then exit 1; fi
+          grep -q 'needs compiled rust-project-writes' "$RUNNER_TEMP/writes-featureless.log"
+          cargo build --locked -p replay -p noevia-server --features noevia-server/rust-project-writes,noevia-server/rust-project-chats,noevia-server/rust-free-chats
+          target/debug/noevia-server --features | grep -qx rust-project-writes
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECT_WRITES=1 target/debug/noevia-server > "$RUNNER_TEMP/writes-noprojects.log" 2>&1; then exit 1; fi
+          grep -q 'NOEVIA_RUST_PROJECT_WRITES=1 needs NOEVIA_RUST_PROJECTS=1' "$RUNNER_TEMP/writes-noprojects.log"
+      - name: Build dav-parse.wasm at core's pinned noevia-rs ref
+        working-directory: core
+        run: |
+          set -euo pipefail
+          eval "$(grep -E '^(NOEVIA_RS_REF|NOEVIA_RS_SHA256|DAV_PARSE_WASM_SHA256)=[0-9a-f]+$' server/dav-parse.lock)"
+          [[ "$NOEVIA_RS_REF" =~ ^[0-9a-f]{40}$ ]]
+          curl -fsSL "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$NOEVIA_RS_REF" -o "$RUNNER_TEMP/rs.tgz"
+          echo "$NOEVIA_RS_SHA256  $RUNNER_TEMP/rs.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/rs-pin" && tar -xzf "$RUNNER_TEMP/rs.tgz" --strip-components=1 -C "$RUNNER_TEMP/rs-pin"
+          "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
+          echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
+      - name: Replay against Node directly (reference data dir)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/seed"
+          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+            --ignore-body hours --ignore-body peakHour/hour \
+            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
+            --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
+            --state-out "$RUNNER_TEMP/node-state.json"
+      - name: Full replay through the front with NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_PROJECT_WRITES=1
+        # The corpus's GET /api/chats/{id}/context is the front's here; every answer, file and
+        # cowork.db row must still be Node's. The M4 lock files are ignored, as in ci.yml.
+        run: |
+          set -euo pipefail
+          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
+            --ignore-body hours --ignore-body peakHour/hour \
+            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-writes" \
+            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_PROJECT_WRITES=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
+            --report "$RUNNER_TEMP/writes-positive.json" \
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
+            --expect-state "$RUNNER_TEMP/node-state.json"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-project-writes-evidence
+          path: |
+            ${{ runner.temp }}/node-chat-context.v1.json
+            ${{ runner.temp }}/writes-positive.json
+            ${{ runner.temp }}/node-state.json
+          if-no-files-found: ignore

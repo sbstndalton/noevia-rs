@@ -32,6 +32,7 @@ fn list_output_16m_refusal_is_named_legacy_difference() -> Result<(), Box<dyn Er
         return Ok(());
     };
     support::checked_source(&root, "storage-client.cjs")?;
+    support::require_dav_parse_wasm(&root)?;
     let name = format!("{}.txt", "a".repeat(76));
     let body = format!("<response><href>{name}</href></response>").repeat(25000);
     assert!(body.len() < LIST_BYTES);

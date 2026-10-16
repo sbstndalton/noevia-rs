@@ -1,5 +1,5 @@
 {
- "core": "0d40c986acb3898f9ce864038f635a797dcfe622",
+ "core": "965ccec29f47ff954cce616233bafb761afc4146",
  "sources": {
   "server/routes/models.cjs": "0c060c2df25bd19adce15ac3d7bb9be2eba3eaca31565f5118c799862936dc1c",
   "server/model-manager.cjs": "e4039ea8b74d9df28c5eeda3150237fb9c4d3a9dc5bc19d39949d5950c8579b8",

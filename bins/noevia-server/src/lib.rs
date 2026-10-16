@@ -55,7 +55,10 @@ use std::sync::Arc;
 /// (NOEVIA_RUST_EXPORT_CONFIRMED), which then refuses that GET. `rust-chatgpt-status` (cargo
 /// feature of that name): it answers `GET /api/providers/chatgpt` under NOEVIA_RUST_CHATGPT_STATUS
 /// (#1373); the supervisor confirms it to Node (NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED), which then
-/// refuses that GET.
+/// refuses that GET. `rust-project-writes` (cargo feature of that name): it answers the project
+/// writes ported for sbstndalton/noevia#1264 (so far `GET`/`POST /api/chats/{chatId}/context`)
+/// under NOEVIA_RUST_PROJECT_WRITES, with NOEVIA_RUST_PROJECTS; the supervisor confirms it to Node
+/// (NOEVIA_RUST_PROJECT_WRITES_CONFIRMED), which then refuses those writes.
 ///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
@@ -71,6 +74,8 @@ pub const FEATURES: &[&str] = &[
     "rust-project-chats",
     #[cfg(feature = "rust-free-chats")]
     "rust-free-chats",
+    #[cfg(feature = "rust-project-writes")]
+    "rust-project-writes",
     "rust-usage",
     "rust-sampling-settings",
     #[cfg(feature = "rust-storage-reads")]

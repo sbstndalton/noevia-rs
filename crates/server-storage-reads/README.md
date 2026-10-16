@@ -19,7 +19,18 @@ Historical bases: Rust `c665b36106505419d80e01a106b0d402f5d157e2`; actual client
 
 Running the private oracles: `M4_CORE_ORACLE=<synthetic core checkout>` enables the actual-source
 Node oracles (`tests/node_oracle.rs`, `tests/qualification.rs`, `tests/list_limits.rs`) and
-`M4_NODE22_ORACLE=1` the installed Node 22 observations; ordinary `cargo test` skips them. The
+`M4_NODE22_ORACLE=1` the installed Node 22 observations; ordinary `cargo test` skips them.
+
+**Prerequisite: `dav-parse.wasm`.** The actual core parses every DAV listing through
+`server/wasm/dav-parse.wasm` (or the file named by `DAV_PARSE_WASM`), and a clean core checkout does
+not contain it. Without it the Node side answers `502 {"error":"storage listing could not be read"}`
+and `node_oracle`/`list_limits` would look like a parity defect. Both now check it first and fail
+with `M4 oracle prerequisite missing|mismatch: dav-parse.wasm ... pinned sha256 <hash>`. The pinned
+hash is `DAV_PARSE_WASM_SHA256` in the core checkout's `server/dav-parse.lock`; build the module
+with `tools/build-dav-parse-wasm.sh <out>` from noevia-rs at that file's `NOEVIA_RS_REF` (Linux
+x86_64 is the reproducible host; CI does exactly this) and copy it to
+`<core>/server/wasm/dav-parse.wasm`, then `sha256sum` it against the lock. The check itself is
+covered by `tests/oracle_process_controls.rs`, which needs no core checkout. The
 bounded process-seam controls (`tests/oracle_process_controls.rs`, noevia#1371) and the factory
 qualification gates (`tests/storage_factory_qualification.rs`, noevia#1390) always run.
 
