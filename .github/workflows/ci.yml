@@ -724,6 +724,14 @@ jobs:
           repository: sbstndalton/noevia-services
           ref: 65f8b1f6dd8705dd9023ad8efdc4611445c6a73d
           path: legacy-services
+      # noevia#1071: the section oracle is re-recorded at the services commit that removes the Python
+      # health/logs handlers (api.py) and the Python backup path (ini.py); the logs and host oracles
+      # stay on legacy-services, which still has the Python code they were recorded from.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 18912b3cac3170582ade6c90d721052e5d88b220
+          path: sections-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
@@ -743,9 +751,9 @@ jobs:
         run: python3 -m pip install fastapi==0.115.6 httpx==0.28.1
       - name: Regenerate actual section schema and complete response oracle
         run: |
-          cargo run --locked -q -p noevia-model-manager --bin generate-sections-schema -- legacy-services/model-manager/app "$RUNNER_TEMP/sections-schema.json"
+          cargo run --locked -q -p noevia-model-manager --bin generate-sections-schema -- sections-services/model-manager/app "$RUNNER_TEMP/sections-schema.json"
           cmp bins/noevia-model-manager/src/sections/schema.json "$RUNNER_TEMP/sections-schema.json"
-          cargo run --locked -q -p noevia-model-manager --bin generate-sections-oracle -- legacy-services/model-manager/app "$RUNNER_TEMP/sections.json"
+          cargo run --locked -q -p noevia-model-manager --bin generate-sections-oracle -- sections-services/model-manager/app "$RUNNER_TEMP/sections.json"
           cmp bins/noevia-model-manager/tests/fixtures/sections.json "$RUNNER_TEMP/sections.json"
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections -- -D warnings
       - name: Native host differential and synthetic sampler lifecycle
