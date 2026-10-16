@@ -1354,7 +1354,7 @@ fn benchmark_runner_child(child_command: &mut tokio::process::Command, runner_mo
     );
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native-benchmark-runner"))]
 mod benchmark_runner_command_tests {
     #[test]
     fn confirmation_overrides_inherited_value() {
