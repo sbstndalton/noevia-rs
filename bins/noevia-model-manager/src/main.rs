@@ -33,6 +33,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-download-targets") {
                 output.write_all(b"native-download-targets\n")?;
             }
+            if cfg!(feature = "native-badges") {
+                output.write_all(b"native-badges\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -138,6 +141,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None
             }
         }
+    } else {
+        None
+    };
+    let badges_mode = environment("MODEL_MANAGER_BADGES_IMPL", "python")?;
+    if !matches!(badges_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_BADGES_IMPL must be python or rust".into());
+    }
+    if badges_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-badges")) {
+        return Err(
+            "native-badges requires rust model manager and compiled native-badges feature".into(),
+        );
+    }
+    #[cfg(feature = "native-badges")]
+    let badges_root = if badges_mode == "rust" {
+        Some(data_dir()?)
     } else {
         None
     };
@@ -333,6 +351,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
         )
     });
+    #[cfg(feature = "native-badges")]
+    let badges = badges_root.as_deref().map(|root| {
+        Arc::new(noevia_model_manager::badges::Badges::new(
+            std::path::Path::new(root),
+        ))
+    });
     let mut child_command = legacy_command(
         tokio::process::Command::new("uvicorn"),
         &prompts_mode,
@@ -365,6 +389,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &targets_mode,
         #[cfg(feature = "native-download-targets")]
         targets_roots.as_ref(),
+    );
+    badges_child(
+        &mut child_command,
+        &badges_mode,
+        #[cfg(feature = "native-badges")]
+        badges_root.as_deref(),
     );
     // #1668: the native front refuses deletes of the embedding service's models from its router
     // state, so the legacy holder scan must not also pin env names that point at that service
@@ -414,6 +444,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_detail,
         #[cfg(feature = "native-download-targets")]
         download_targets,
+        #[cfg(feature = "native-badges")]
+        badges,
         sections,
         embedding,
         host,
@@ -469,7 +501,11 @@ fn environment(key: &str, default: &str) -> Result<String, &'static str> {
 fn prompt_data_dir() -> Result<String, &'static str> {
     data_dir()
 }
-#[cfg(any(feature = "native-prompts", feature = "native-settings"))]
+#[cfg(any(
+    feature = "native-prompts",
+    feature = "native-settings",
+    feature = "native-badges"
+))]
 fn data_dir() -> Result<String, &'static str> {
     prompt_data_dir_from(std::env::vars_os())
 }
@@ -759,6 +795,45 @@ mod download_targets_command_tests {
                 Some(std::ffi::OsStr::new(expected))
             );
             assert_eq!(get("MODEL_DOWNLOAD_TARGETS").is_some(), mode == "rust");
+        }
+    }
+}
+
+/// noevia#1318: the child refuses `PUT`/`DELETE /api/v1/badges` only when the native writer owns
+/// them, and reads (benchmark runs, the models list) the same `DATA_DIR/model_loader.db`.
+fn badges_child(
+    child_command: &mut tokio::process::Command,
+    badges_mode: &str,
+    #[cfg(feature = "native-badges")] root: Option<&str>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED",
+        if badges_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-badges")]
+    if let Some(root) = root {
+        child_command.env("DATA_DIR", root);
+    }
+}
+
+#[cfg(all(test, feature = "native-badges"))]
+mod badges_command_tests {
+    #[test]
+    fn badges_confirmation_overrides_inherited_value() {
+        for (mode, root, expected) in [
+            ("rust", Some("/synthetic/data"), "1"),
+            ("python", None, "0"),
+        ] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env("NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED", "hostile");
+            super::badges_child(&mut command, mode, root);
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(get("DATA_DIR"), root.map(std::ffi::OsStr::new));
         }
     }
 }

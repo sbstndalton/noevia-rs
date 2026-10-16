@@ -1,6 +1,6 @@
 {
   "hw_sha256": "9f1380cb7f65cfb12521825e21d70f9b671da6d2ddba80c76fd5c0580cfd4f55",
-  "api_sha256": "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6",
+  "api_sha256": "c8cf58e15afb97cc0008c9b11c28b4f4a853a3e59ce8cbbd6ba5336c65cee035",
   "cases": [
     {
       "stat": "cpu 1 2 3 40 5\ncpu0 ignored\n",

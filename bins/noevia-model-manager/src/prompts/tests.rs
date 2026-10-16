@@ -193,6 +193,8 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
         idle_unload: None,
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
+        #[cfg(feature = "native-badges")]
+        badges: None,
     })
 }
 fn root() -> tempfile::TempDir {

@@ -96,6 +96,8 @@ fn state(base: &str, reconciler: Option<Arc<Reconciler>>) -> Arc<StateData> {
         idle_unload: reconciler,
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
+        #[cfg(feature = "native-badges")]
+        badges: None,
     })
 }
 

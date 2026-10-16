@@ -118,6 +118,8 @@ fn state(reader: Arc<dyn Read>) -> Arc<crate::StateData> {
         idle_unload: None,
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
+        #[cfg(feature = "native-badges")]
+        badges: None,
     })
 }
 #[tokio::test]

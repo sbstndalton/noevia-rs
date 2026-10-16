@@ -15,7 +15,7 @@
 //! file is never created or converted to WAL (a read-only connection to a WAL database can
 //! still create its `-shm`/`-wal` side files, as SQLite needs them to read), and a stored value over [`VALUE_CAP`] bytes is refused
 //! instead of being read in full.
-use rusqlite::{types::ValueRef, Connection, OpenFlags, OptionalExtension};
+use rusqlite::{types::ValueRef, OptionalExtension};
 use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -63,6 +63,12 @@ impl Settings {
     }
 }
 
+/// noevia#1922: every store error is logged once (no values), then answered as Python's 500.
+fn unreadable(error: rusqlite::Error) -> Unreadable {
+    crate::sqlite_read::log_once("settings", &error);
+    Unreadable
+}
+
 /// Any reason Python's handler would have raised (or the native bound refused).
 #[derive(Debug, PartialEq, Eq)]
 pub struct Unreadable;
@@ -71,21 +77,21 @@ pub struct Unreadable;
 /// Read-only means no write to the database file itself; on a WAL database SQLite may still
 /// create the `-shm`/`-wal` side files next to it.
 pub fn read(database: &Path, deadline: Instant) -> Result<Option<Stored>, Unreadable> {
-    let db = Connection::open_with_flags(
-        database,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|_| Unreadable)?;
+    // noevia#1922: read-write without CREATE plus query_only (a closed WAL store has no -shm).
+    let db = crate::sqlite_read::open(database, "settings").map_err(unreadable)?;
     db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_LENGTH, VALUE_CAP)
-        .map_err(|_| Unreadable)?;
-    db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_SQL_LENGTH, 1024)
-        .map_err(|_| Unreadable)?;
-    db.busy_timeout(BUSY_WAIT).map_err(|_| Unreadable)?;
+        .map_err(unreadable)?;
+    db.set_limit(
+        rusqlite::limits::Limit::SQLITE_LIMIT_SQL_LENGTH,
+        crate::sqlite_read::SQL_CAP,
+    )
+    .map_err(unreadable)?;
+    db.busy_timeout(BUSY_WAIT).map_err(unreadable)?;
     db.progress_handler(1000, Some(move || Instant::now() >= deadline))
-        .map_err(|_| Unreadable)?;
+        .map_err(unreadable)?;
     let mut statement = db
         .prepare("SELECT value FROM kv WHERE key = ?1")
-        .map_err(|_| Unreadable)?;
+        .map_err(unreadable)?;
     statement
         .query_row(["hf_token"], |row| {
             Ok(match row.get_ref(0)? {
@@ -98,7 +104,7 @@ pub fn read(database: &Path, deadline: Instant) -> Result<Option<Stored>, Unread
             })
         })
         .optional()
-        .map_err(|_| Unreadable)?
+        .map_err(unreadable)?
         .map_or(Ok(None), |value| value.map(Some).ok_or(Unreadable))
 }
 

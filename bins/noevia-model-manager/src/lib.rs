@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+#[cfg(feature = "native-badges")]
+pub mod badges;
 pub mod diagnose;
 #[cfg(feature = "native-diagnose")]
 pub mod diagnose_docker;
@@ -17,6 +19,8 @@ pub mod prompts;
 pub mod sections;
 #[cfg(feature = "native-settings")]
 pub mod settings;
+#[cfg(any(feature = "native-settings", feature = "native-model-updates"))]
+pub mod sqlite_read;
 pub mod validation;
 
 use axum::{
@@ -75,6 +79,9 @@ pub struct StateData {
     /// `fit`) are asked of the Python child, never re-implemented.
     #[cfg(feature = "native-model-detail")]
     pub model_detail: Option<Arc<model_detail::ModelDetail>>,
+    /// noevia#1318: native `PUT`/`DELETE /api/v1/badges`.
+    #[cfg(feature = "native-badges")]
+    pub badges: Option<Arc<badges::Badges>>,
     /// noevia#1318: native read-only `GET /api/v1/download-targets`.
     #[cfg(feature = "native-download-targets")]
     pub download_targets: Option<Arc<download_targets::DownloadTargets>>,
@@ -371,11 +378,21 @@ fn native_download_targets_route(state: &StateData, method: &Method, path: &str)
     state.download_targets.is_some() && *method == Method::GET && path == "/api/v1/download-targets"
 }
 
+/// Only the exact path with PUT or DELETE is native; GET and other methods keep the existing 405
+/// and the slash variant its forward.
+#[cfg(feature = "native-badges")]
+fn native_badges_route(state: &StateData, method: &Method, path: &str) -> bool {
+    state.badges.is_some()
+        && (*method == Method::PUT || *method == Method::DELETE)
+        && path == "/api/v1/badges"
+}
+
 /// FastAPI's answer to an unhandled exception, byte for byte.
 #[cfg(any(
     feature = "native-model-updates",
     feature = "native-model-detail",
-    feature = "native-download-targets"
+    feature = "native-download-targets",
+    feature = "native-badges"
 ))]
 fn internal_error() -> Response {
     (
@@ -457,6 +474,8 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     let native = native || native_model_updates_route(&state, req.method(), path);
     #[cfg(feature = "native-download-targets")]
     let native = native || native_download_targets_route(&state, req.method(), path);
+    #[cfg(feature = "native-badges")]
+    let native = native || native_badges_route(&state, req.method(), path);
     // The detail route waits on the Python child for its live fields: a forwarded route's budget.
     #[cfg(feature = "native-model-detail")]
     let native = native && !native_model_detail_route(&state, req.method(), path);
@@ -780,6 +799,12 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
                     detail(StatusCode::SERVICE_UNAVAILABLE, model_updates::REFUSAL)
                 }
             };
+        }
+    }
+    #[cfg(feature = "native-badges")]
+    if native_badges_route(&state, req.method(), path) {
+        if let Some(badges) = state.badges.clone() {
+            return native_badges(&badges, req).await;
         }
     }
     #[cfg(feature = "native-download-targets")]
@@ -1127,6 +1152,60 @@ async fn guarded_delete(
         }
     }
     forward(state, Request::from_parts(parts, Body::from(raw))).await
+}
+
+/// noevia#1318: `PUT` reads a FastAPI `dict` body exactly as the prompt writer does (same
+/// content-type, encoding, 422 and size rules); `DELETE` reads its two required query values.
+#[cfg(feature = "native-badges")]
+async fn native_badges(badges: &badges::Badges, req: Request) -> Response {
+    let outcome = if req.method() == Method::DELETE {
+        badges.delete(req.uri().query().unwrap_or_default()).await
+    } else {
+        // A missing content type is JSON, as for the prompt writer.
+        let header = req
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .map(|value| value.to_str().ok().filter(|v| v.len() <= 8192));
+        let json_content = if let Some(value) = header {
+            let Some(value) = value else {
+                return prompt_error(prompts::Error::Body);
+            };
+            prompts::json_content_type(Some(value))
+        } else {
+            true
+        };
+        let Ok(bytes) = to_bytes(req.into_body(), REQUEST_CAP).await else {
+            return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+        };
+        if !json_content && !bytes.is_empty() {
+            return match prompts::non_json_validation(&bytes) {
+                Ok(error) => (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response(),
+                Err(e) => prompt_error(e),
+            };
+        }
+        let decoded = match prompts::decode_body(&bytes) {
+            Ok(text) => text,
+            Err(e) => return prompt_error(e),
+        };
+        if let Some(error) = prompts::validation_with_empty(decoded.as_bytes(), bytes.is_empty()) {
+            return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
+        }
+        let body = match prompts::parse_json(&decoded) {
+            Ok(value @ prompts::JsonValue::Obj(_)) => value,
+            Ok(_) => return prompt_error(prompts::Error::Object),
+            Err(e) => return prompt_error(e),
+        };
+        badges.put(&body).await
+    };
+    match outcome {
+        badges::Outcome::Json(status, bytes) => (
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response(),
+        badges::Outcome::Failed => internal_error(),
+    }
 }
 
 #[cfg(feature = "native-prompts")]
