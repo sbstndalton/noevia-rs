@@ -730,7 +730,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-services
-          ref: 18912b3cac3170582ade6c90d721052e5d88b220
+          ref: 7223bb864b82adb81e4470a03b62fabcd66d1448
           path: sections-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
