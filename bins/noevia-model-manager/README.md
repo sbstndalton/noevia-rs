@@ -43,7 +43,7 @@ clamp), with zero mapped to 400; invalid syntax returns a sanitized 422 detail r
 FastAPI's input-echoing validation object.
 
 Qualification uses the actual pinned Python `api.py` SHA
-`800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6` from services
+`c8cf58e15afb97cc0008c9b11c28b4f4a853a3e59ce8cbbd6ba5336c65cee035` from services
 `641c9c342256de69251097d4839d05ee41044fe0`. `generate-oracle` evaluates only the actual
 AST redaction/log functions with synthetic in-memory collaborators, without importing the
 app or invoking startup. CI regenerates its exact fixture. Properties cover secret probes
