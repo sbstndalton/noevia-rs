@@ -41,7 +41,7 @@ fn assertions(
         "cancelled_busy_delete_cannot_commit_after_unlock" => ("prompts/store_tests.rs", &["assert_eq!(\n        listed[\"prompts\"].as_array().unwrap().len(),"]),
         "failed_readback_does_not_undo_committed_post_or_delete" => ("prompts/store_tests.rs", &["assert_eq!(\n        observer\n            .query_row(\"SELECT name FROM prompts WHERE id=1\""]),
         "canonical_root_default_and_alias_policy_is_pure" => ("main.rs", &["assert!(\n                super::prompt_data_dir_from([(alias.into(),"]),
-        "schema_comments_strings_and_quoted_names_cannot_fake_autoincrement" => ("prompts/store_tests.rs", &["assert!(\n            matches!(Store::open(root.path()), Err(Error::Store)),"]),
+        "schema_comments_strings_and_quoted_names_cannot_fake_autoincrement" => ("prompts/store_tests.rs", &["assert!(\n            matches!(open_retrying(root.path()), Err(Error::Store)),"]),
         "prompt_selector_preserves_unrelated_dispatch_and_auth_first" => ("prompts/tests.rs", &["assert_eq!(request(on.clone(), \"GET\", path, \"\", true).await.0, 404);"]),
         "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap" if before == "let mut warned = false;" => ("child_lifecycle.rs", &["assert!(self.lease.upgrade().is_some());\n            self.kills", "assert!(self.lease.upgrade().is_some());\n            match self.waits"]),
         "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap" => ("child_lifecycle.rs", &["assert!(child.waits.is_empty());"]),
