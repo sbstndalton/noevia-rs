@@ -99,6 +99,7 @@ fn command(path: &std::path::Path, marker: &std::path::Path) -> Command {
         .env_remove("MODEL_MANAGER_SETTINGS_IMPL")
         .env_remove("MODEL_MANAGER_MODEL_UPDATES_IMPL")
         .env_remove("MODEL_MANAGER_MODEL_DETAIL_IMPL")
+        .env_remove("MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL")
         .env_remove("MODEL_LOADER_TOKEN")
         .env_remove("LLAMA_CONTAINERS")
         .env_remove("DOCKER_HOST")
@@ -310,6 +311,54 @@ fn model_detail_selector_omission_and_python_confirmation_are_closed_before_chil
         cmd.env("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED", "1");
         if let Some(value) = selected {
             cmd.env("MODEL_MANAGER_MODEL_DETAIL_IMPL", value);
+        }
+        let output = cmd.prompt_output().unwrap();
+        assert_eq!(output.status.code(), Some(42));
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
+        std::fs::remove_file(&marker).unwrap();
+    }
+}
+
+#[test]
+fn download_targets_selector_omission_and_python_confirmation_are_closed_before_child() {
+    let (dir, marker) = owned_uvicorn();
+    for (parent, targets) in [
+        ("python", "rust"),
+        ("rust", "invalid"),
+        ("rust", "Rust"),
+        ("invalid", "rust"),
+    ] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", parent)
+            .env("MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL", targets)
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success(), "{parent}/{targets}");
+        assert!(!marker.exists());
+    }
+    if !cfg!(feature = "native-download-targets") {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", "rust")
+            .env("MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL", "rust")
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("compiled native-download-targets")
+        );
+        assert!(!marker.exists());
+    }
+    // Default python: an inherited confirmation never reaches uvicorn.
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script,"#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    for selected in [None, Some("python")] {
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env(
+            "NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED",
+            "1",
+        );
+        if let Some(value) = selected {
+            cmd.env("MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL", value);
         }
         let output = cmd.prompt_output().unwrap();
         assert_eq!(output.status.code(), Some(42));
@@ -569,6 +618,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         }
         if cfg!(feature = "native-model-detail") {
             expected.push_str("native-model-detail\n");
+        }
+        if cfg!(feature = "native-download-targets") {
+            expected.push_str("native-download-targets\n");
         }
         assert_eq!(output.stdout, expected.as_bytes());
     }

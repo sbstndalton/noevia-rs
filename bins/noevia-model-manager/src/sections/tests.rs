@@ -116,6 +116,8 @@ fn state(reader: Arc<dyn Read>) -> Arc<crate::StateData> {
         legacy: crate::legacy_client().unwrap(),
         legacy_base: crate::LEGACY_BASE.to_owned(),
         idle_unload: None,
+        #[cfg(feature = "native-download-targets")]
+        download_targets: None,
     })
 }
 #[tokio::test]

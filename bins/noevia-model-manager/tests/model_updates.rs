@@ -59,6 +59,8 @@ fn state(roots: Option<(&Path, &Path, &Path)>, legacy_base: &str) -> Arc<StateDa
         legacy: noevia_model_manager::legacy_client().unwrap(),
         legacy_base: legacy_base.into(),
         idle_unload: None,
+        #[cfg(feature = "native-download-targets")]
+        download_targets: None,
     })
 }
 
