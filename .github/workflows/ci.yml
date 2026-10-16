@@ -960,6 +960,54 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-settings --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
 
+  native-model-detail:
+    name: Native model detail read, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 419a72bdb3acc386baad6407ed02a634997d3abf
+          path: model-detail-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r model-detail-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Regenerate the actual Python GET /api/v1/models/detail oracle
+        run: |
+          python3 -I tools/gen-model-detail-oracle.py model-detail-services/model-manager/app > "$RUNNER_TEMP/model-detail.json"
+          cmp bins/noevia-model-manager/tests/fixtures/model-detail-python.v1.json "$RUNNER_TEMP/model-detail.json" || {
+            python3 -c 'import sys; a, b = (open(p, "rb").read() for p in sys.argv[1:]); i = next(i for i in range(min(len(a), len(b)) + 1) if a[i:i + 1] != b[i:i + 1]); print("committed:", a[max(0, i - 160):i + 160]); print("regenerated:", b[max(0, i - 160):i + 160])' bins/noevia-model-manager/tests/fixtures/model-detail-python.v1.json "$RUNNER_TEMP/model-detail.json"
+            exit 1
+          }
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-model-detail -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail -- -D warnings
+      - name: Native model detail differential (lib and Linux router), bounds and route policy
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-model-detail --test model_detail --test model_updates --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-model-detail --lib model_detail::
+          cargo test --locked -p noevia-model-manager --features native-model-detail --lib model_updates::
+      - name: Combined native features keep every existing test
+        # Prompt store tests need the prompt oracle env; the native-prompts job runs them.
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail --test model_detail --test model_updates --test settings --test lifecycle --test policy --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail --lib model_detail::
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail --lib model_updates::
+      - name: Model detail capability omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-model-updates --test lifecycle
+          cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+
   native-diagnose:
     name: Native diagnosis closed transport, actual oracles and ownership
     runs-on: ubuntu-latest

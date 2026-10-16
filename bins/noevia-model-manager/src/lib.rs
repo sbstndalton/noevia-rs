@@ -6,6 +6,8 @@ pub mod docker;
 pub mod embedding;
 pub mod host;
 pub mod idle_unload;
+#[cfg(feature = "native-model-detail")]
+pub mod model_detail;
 #[cfg(feature = "native-model-updates")]
 pub mod model_updates;
 #[cfg(feature = "native-prompts")]
@@ -66,6 +68,10 @@ pub struct StateData {
     /// noevia#1318: native read-only `GET /api/v1/models/updates`; Python keeps every writer.
     #[cfg(feature = "native-model-updates")]
     pub model_updates: Option<Arc<model_updates::ModelUpdates>>,
+    /// noevia#1318: native read-only `GET /api/v1/models/detail`; its live fields (`loadedOn`,
+    /// `fit`) are asked of the Python child, never re-implemented.
+    #[cfg(feature = "native-model-detail")]
+    pub model_detail: Option<Arc<model_detail::ModelDetail>>,
     pub sections: Option<Arc<sections::Sections>>,
     /// #1668: present only when EMBED_CONTAINER names the embedding service.
     pub embedding: Option<Arc<embedding::EmbeddingService>>,
@@ -345,8 +351,15 @@ fn native_model_updates_route(state: &StateData, method: &Method, path: &str) ->
     state.model_updates.is_some() && *method == Method::GET && path == "/api/v1/models/updates"
 }
 
+/// Only the exact GET path is native; other methods and slash variants keep their existing
+/// forward/405/404 handling.
+#[cfg(feature = "native-model-detail")]
+fn native_model_detail_route(state: &StateData, method: &Method, path: &str) -> bool {
+    state.model_detail.is_some() && *method == Method::GET && path == "/api/v1/models/detail"
+}
+
 /// FastAPI's answer to an unhandled exception, byte for byte.
-#[cfg(feature = "native-model-updates")]
+#[cfg(any(feature = "native-model-updates", feature = "native-model-detail"))]
 fn internal_error() -> Response {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -425,6 +438,9 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     let native = native || native_settings_route(&state, req.method(), path);
     #[cfg(feature = "native-model-updates")]
     let native = native || native_model_updates_route(&state, req.method(), path);
+    // The detail route waits on the Python child for its live fields: a forwarded route's budget.
+    #[cfg(feature = "native-model-detail")]
+    let native = native && !native_model_detail_route(&state, req.method(), path);
     let budget = if native || (path == "/api/v1/host" && state.host.is_some()) {
         TIMEOUT
     } else if path == "/api/v1/embedding-service" && state.embedding.is_some() {
@@ -747,6 +763,13 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    #[cfg(feature = "native-model-detail")]
+    if native_model_detail_route(&state, req.method(), path) {
+        if let Some(detail) = state.model_detail.clone() {
+            return native_model_detail(&state, &detail, req.uri().query().unwrap_or_default())
+                .await;
+        }
+    }
     if path == "/api/v1/health" {
         return if req.method() == Method::GET {
             Json(json!({"ok":true})).into_response()
@@ -782,6 +805,80 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         return native_logs(&state, name, req.uri().query().unwrap_or_default()).await;
     }
     forward(state, req).await
+}
+
+/// noevia#1318: the file part natively, then the live fields from the child.
+#[cfg(feature = "native-model-detail")]
+async fn native_model_detail(
+    state: &StateData,
+    detail: &model_detail::ModelDetail,
+    query: &str,
+) -> Response {
+    let outcome = match detail.locate(query).await {
+        model_detail::Step::Done(outcome) => outcome,
+        model_detail::Step::Located(located) => {
+            match model_detail_runtime(state, &model_detail::runtime_query(&located)).await {
+                Ok(body) => model_detail::splice(&located, &body),
+                Err(outcome) => outcome,
+            }
+        }
+    };
+    match outcome {
+        model_detail::Outcome::Json(status, bytes) => (
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response(),
+        model_detail::Outcome::Failed => internal_error(),
+        model_detail::Outcome::Refused => {
+            detail_response(StatusCode::SERVICE_UNAVAILABLE, model_detail::REFUSAL)
+        }
+        model_detail::Outcome::Unavailable => {
+            detail_response(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable")
+        }
+    }
+}
+
+#[cfg(feature = "native-model-detail")]
+fn detail_response(status: StatusCode, text: &'static str) -> Response {
+    detail(status, text)
+}
+
+/// The child's `{"loaded": api._loaded_map(), "fit": services.vram_fit_chips(bytes)}`. Its own
+/// unhandled error is Python's 500; anything else it cannot answer is the forwarded 502.
+#[cfg(feature = "native-model-detail")]
+async fn model_detail_runtime(
+    state: &StateData,
+    query: &str,
+) -> Result<Vec<u8>, model_detail::Outcome> {
+    let mut request = state.legacy.get(format!(
+        "{}{}?{query}",
+        state.legacy_base,
+        model_detail::RUNTIME_PATH
+    ));
+    if !state.token.is_empty() {
+        request = request.header("x-model-loader-token", &state.token);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|_| model_detail::Outcome::Unavailable)?;
+    let status = response.status();
+    let mut chunks = response.bytes_stream();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = chunks.next().await {
+        let chunk = chunk.map_err(|_| model_detail::Outcome::Unavailable)?;
+        if bytes.len().saturating_add(chunk.len()) > model_detail::RUNTIME_CAP {
+            return Err(model_detail::Outcome::Unavailable);
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    match status {
+        StatusCode::OK => Ok(bytes),
+        StatusCode::INTERNAL_SERVER_ERROR => Err(model_detail::Outcome::Failed),
+        _ => Err(model_detail::Outcome::Unavailable),
+    }
 }
 
 async fn forward(state: Arc<StateData>, req: Request) -> Response {
