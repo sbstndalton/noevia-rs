@@ -248,6 +248,21 @@
    ],
    "segment": "7",
    "status": 200
+  },
+  {
+   "body": "{\"run\":{\"id\":8,\"backend\":\"b\",\"status\":\"done\",\"started_at\":1.0,\"finished_at\":null,\"reps\":1,\"max_tokens\":1,\"note\":\"\"},\"variants\":[{\"id\":11,\"run_id\":8,\"alias\":\"m\",\"argv_json\":\"{}\",\"load_ms\":null}],\"results\":[{\"id\":1,\"variant_id\":11,\"prompt_name\":\"p\",\"rep\":0,\"cold\":0,\"ttft_ms\":null,\"ttft_answer_ms\":null,\"truncated\":0,\"total_ms\":1000.5,\"prompt_n\":10,\"prompt_tps\":50.25,\"gen_n\":20,\"gen_tps\":null,\"draft_n\":null,\"draft_acc\":null,\"peak_vram_json\":\"[1e999]\",\"contended\":0,\"err\":\"\",\"response_text\":\"ok\",\"alias\":\"m\"},{\"id\":2,\"variant_id\":11,\"prompt_name\":\"p\",\"rep\":1,\"cold\":0,\"ttft_ms\":2.0,\"ttft_answer_ms\":null,\"truncated\":0,\"total_ms\":1000.5,\"prompt_n\":10,\"prompt_tps\":50.25,\"gen_n\":20,\"gen_tps\":3.0,\"draft_n\":null,\"draft_acc\":null,\"peak_vram_json\":\"[1.0]\",\"contended\":0,\"err\":\"\",\"response_text\":\"ok\",\"alias\":\"m\"}],\"sweeps\":[{\"id\":1,\"run_id\":8,\"alias\":\"m\",\"model_type\":\"synthetic\",\"test\":\"tg\",\"n_prompt\":512,\"n_gen\":128,\"n_depth\":0,\"avg_ts\":null,\"stddev_ts\":0.5,\"n_gpu_layers\":99,\"n_cpu_moe\":0,\"n_ubatch\":512,\"type_k\":\"f16\",\"type_v\":\"f16\",\"flash_attn\":1,\"split_mode\":\"layer\",\"raw_json\":\"{}\"}],\"charts\":{\"capacity_gb\":23.99,\"aliases\":[\"m\"],\"gen\":[{\"label\":\"p\",\"data\":[null]}],\"ttft\":[{\"label\":\"p\",\"data\":[null]}],\"depths\":[0],\"decay\":[{\"label\":\"m tg\",\"data\":[null],\"kind\":\"tg\"}],\"vram_labels\":[\"m\"],\"vram_measured\":[null],\"vram_predicted\":[null]},\"badges\":{\"m\":[]}}",
+   "content_type": "application/json",
+   "id": "infinite-values",
+   "runtime": "{\"capacity_gb\":23.99,\"predicted\":{\"m\":null}}",
+   "seed": [
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(8, 'b', 'done', 1.0, 1e999, 1, 1, '')",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(11, 8, 'm', '{}', -1e999)",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, ttft_ms, ttft_answer_ms, truncated, total_ms, prompt_n, prompt_tps, gen_n, gen_tps, draft_n, draft_acc, peak_vram_json, contended, err, response_text) VALUES(11, 'p', 0, 0, 1e999, NULL, 0, 1000.5, 10, 50.25, 20, 1e999, NULL, NULL, '[1e999]', 0, '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, ttft_ms, ttft_answer_ms, truncated, total_ms, prompt_n, prompt_tps, gen_n, gen_tps, draft_n, draft_acc, peak_vram_json, contended, err, response_text) VALUES(11, 'p', 1, 0, 2.0, NULL, 0, 1000.5, 10, 50.25, 20, 3.0, NULL, NULL, '[1.0]', 0, '', 'ok')",
+    "INSERT INTO bench_sweep(run_id, alias, model_type, test, n_prompt, n_gen, n_depth, avg_ts, stddev_ts, n_gpu_layers, n_cpu_moe, n_ubatch, type_k, type_v, flash_attn, split_mode, raw_json) VALUES(8, 'm', 'synthetic', 'tg', 512, 128, 0, 1e999, 0.5, 99, 0, 512, 'f16', 'f16', 1, 'layer', '{}')"
+   ],
+   "segment": "8",
+   "status": 200
   }
  ],
  "oracle": {

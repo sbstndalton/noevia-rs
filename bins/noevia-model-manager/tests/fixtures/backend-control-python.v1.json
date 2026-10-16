@@ -1,0 +1,1023 @@
+{
+ "cases": [
+  {
+   "answers": [
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"synthetic reply é\",\"completion_tokens\":7,\"prompt_tokens\":3,\"elapsed_s\":0.5,\"tokens_per_s\":14.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 32,
+       "messages": [
+        {
+         "content": "hello",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"synthetic reply é\",\"completion_tokens\":7,\"prompt_tokens\":3,\"elapsed_s\":0.5,\"tokens_per_s\":14.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 4096,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"synthetic reply é\",\"completion_tokens\":7,\"prompt_tokens\":3,\"elapsed_s\":0.5,\"tokens_per_s\":14.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 12,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"synthetic reply é\",\"completion_tokens\":7,\"prompt_tokens\":3,\"elapsed_s\":0.5,\"tokens_per_s\":14.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 2,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"synthetic reply é\",\"completion_tokens\":7,\"prompt_tokens\":3,\"elapsed_s\":0.5,\"tokens_per_s\":14.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"synthetic reply é\",\"completion_tokens\":7,\"prompt_tokens\":3,\"elapsed_s\":0.5,\"tokens_per_s\":14.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 1,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"synthetic reply é\",\"completion_tokens\":7,\"prompt_tokens\":3,\"elapsed_s\":0.5,\"tokens_per_s\":14.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "42",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"prompt is required\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"prompt is required\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"unknown backend\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 404
+    }
+   ],
+   "id": "test-ok-and-forms",
+   "spec": {
+    "cmd": [],
+    "entrypoint": [],
+    "env": [],
+    "ports": {
+     "{PORT}/tcp": null
+    }
+   },
+   "steps": [
+    {
+     "body": "{\"prompt\": \"  hello  \", \"maxTokens\": 32}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\", \"maxTokens\": 99999}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\", \"maxTokens\": \"12\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\", \"maxTokens\": 2.9}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\", \"maxTokens\": 0}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\", \"maxTokens\": true}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": 42}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"  \"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/other/test",
+     "restart_error": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"ok\":false,\"err\":\"HTTP 500\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":false,\"err\":\"invalid response\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":false,\"err\":\"no models configured\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":false,\"err\":\"1 configured, none loaded\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"fixed\",\"reply\":\"synthetic reply é\",\"completion_tokens\":7,\"prompt_tokens\":3,\"elapsed_s\":0.5,\"tokens_per_s\":14.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "fixed",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":false,\"err\":\"no model loaded on this backend\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "Internal Server Error",
+     "chat_requests": [],
+     "content_type": "text/plain; charset=utf-8",
+     "restart_error": null,
+     "status": 500
+    }
+   ],
+   "id": "probe-notes",
+   "spec": {
+    "cmd": [],
+    "entrypoint": [],
+    "env": [],
+    "ports": {
+     "{PORT}/tcp": null
+    }
+   },
+   "steps": [
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       500,
+       "x"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "not json"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": []}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"a\", \"status\": {\"value\": \"x\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"fixed\"}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"\"}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "[1]"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"ok\":false,\"err\":\"HTTPStatusError: Server error '503 Service Unavailable' for url 'http://127.0.0.1:{PORT}/v1/chat/completions'\\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503\",\"model\":\"m-a\"}",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"\",\"completion_tokens\":0,\"prompt_tokens\":0,\"elapsed_s\":0.5,\"tokens_per_s\":null}",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"\",\"completion_tokens\":4,\"prompt_tokens\":0,\"elapsed_s\":0.5,\"tokens_per_s\":8.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"\",\"completion_tokens\":0,\"prompt_tokens\":0,\"elapsed_s\":0.5,\"tokens_per_s\":null}",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":[\"a\"],\"completion_tokens\":0,\"prompt_tokens\":0,\"elapsed_s\":0.5,\"tokens_per_s\":null}",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "Internal Server Error",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "text/plain; charset=utf-8",
+     "restart_error": null,
+     "status": 500
+    },
+    {
+     "body": "Internal Server Error",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "text/plain; charset=utf-8",
+     "restart_error": null,
+     "status": 500
+    },
+    {
+     "body": "Internal Server Error",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "text/plain; charset=utf-8",
+     "restart_error": null,
+     "status": 500
+    }
+   ],
+   "id": "chat-forms",
+   "spec": {
+    "cmd": [],
+    "entrypoint": [],
+    "env": [],
+    "ports": {
+     "{PORT}/tcp": null
+    }
+   },
+   "steps": [
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       503,
+       "busy"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [], \"usage\": {\"completion_tokens\": \"4\"}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [null], \"usage\": {\"completion_tokens\": 0}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": [\"a\"]}}]}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": \"x\"}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"usage\": {\"completion_tokens\": \"x\"}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "[]"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"synthetic reply é\",\"completion_tokens\":7,\"prompt_tokens\":3,\"elapsed_s\":0.5,\"tokens_per_s\":14.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    }
+   ],
+   "id": "ports-from-command-and-env",
+   "spec": {
+    "cmd": [
+     "--port",
+     "{PORT}"
+    ],
+    "entrypoint": [],
+    "env": [],
+    "ports": {
+     "x/tcp": null
+    }
+   },
+   "steps": [
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"ok\":true,\"model\":\"m-a\",\"reply\":\"synthetic reply é\",\"completion_tokens\":7,\"prompt_tokens\":3,\"elapsed_s\":0.5,\"tokens_per_s\":14.0}",
+     "chat_requests": [
+      {
+       "max_tokens": 256,
+       "messages": [
+        {
+         "content": "x",
+         "role": "user"
+        }
+       ],
+       "model": "m-a",
+       "stream": false
+      }
+     ],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    }
+   ],
+   "id": "port-from-env",
+   "spec": {
+    "cmd": [],
+    "entrypoint": [],
+    "env": [
+     "LLAMA_ARG_PORT= {PORT} "
+    ],
+    "ports": {}
+   },
+   "steps": [
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"ok\":false,\"err\":\"container not reachable\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":false,\"message\":\"container not found\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    }
+   ],
+   "id": "not-found-container",
+   "spec": null,
+   "steps": [
+    {
+     "body": "{\"prompt\": \"x\"}",
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/test",
+     "restart_error": null
+    },
+    {
+     "body": null,
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/restart",
+     "restart_error": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"ok\":true,\"message\":\"restart queued\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": null,
+     "status": 200
+    }
+   ],
+   "id": "restart-ok",
+   "spec": {
+    "cmd": [],
+    "entrypoint": [],
+    "env": [],
+    "ports": {
+     "{PORT}/tcp": null
+    }
+   },
+   "steps": [
+    {
+     "body": null,
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/restart",
+     "restart_error": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"ok\":true,\"message\":\"restart queued\"}",
+     "chat_requests": [],
+     "content_type": "application/json",
+     "restart_error": "APIError: Docker refused the restart (HTTP 500)",
+     "status": 200
+    }
+   ],
+   "id": "restart-fails",
+   "spec": {
+    "cmd": [],
+    "entrypoint": [],
+    "env": [],
+    "ports": {
+     "{PORT}/tcp": null
+    }
+   },
+   "steps": [
+    {
+     "body": null,
+     "llama": {
+      "chat": [
+       200,
+       "{\"choices\": [{\"message\": {\"content\": \"synthetic reply \\u00e9\"}}], \"usage\": {\"completion_tokens\": 7, \"prompt_tokens\": 3}}"
+      ],
+      "models": [
+       200,
+       "{\"data\": [{\"id\": \"m-a\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m-b\", \"status\": {\"value\": \"unloaded\"}}]}"
+      ]
+     },
+     "path": "/api/v1/backends/127.0.0.1/restart",
+     "restart_error": "Docker refused the restart"
+    }
+   ]
+  }
+ ],
+ "oracle": {
+  "api.py": "eb8e12f6929baf15d2b1a1998aceff9529fbe48ca8242094ac6b7526c253a91d",
+  "main.py": "4fa741c6b3d084be72c4ad3cb8b0beed775c8e82208df822a98daaeccc126822",
+  "services.py": "aadf227ddc3666cebb1631a0ae543c8090539a382e8ca52710fc7a5458f1d041"
+ }
+}

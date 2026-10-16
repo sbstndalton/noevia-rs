@@ -56,6 +56,14 @@ fn state(root: Option<&Path>, legacy_base: &str) -> Arc<StateData> {
         bench_runs: root.map(|r| Arc::new(BenchRuns::new(r))),
         #[cfg(feature = "native-section-writes")]
         section_writes: None,
+        #[cfg(feature = "native-settings-write")]
+        settings_write: None,
+        #[cfg(feature = "native-benchmark-overview")]
+        benchmark_overview: None,
+        #[cfg(feature = "native-check-updates")]
+        check_updates: None,
+        #[cfg(feature = "native-backend-control")]
+        backends: None,
         sections: None,
         embedding: None,
         host: None,

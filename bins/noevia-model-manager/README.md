@@ -168,4 +168,12 @@ Docker services or production data are used.
 
 `native-section-writes` and `MODEL_MANAGER_SECTION_WRITES_IMPL=rust` make the Rust front the only models.ini writer (section save, rename, delete, safe defaults, the raw editor), default off. Safe-defaults values come from the Python child's private read-only plan call. See [native models.ini writers](docs/native-section-writes.md).
 
+`native-settings-write` and `MODEL_MANAGER_SETTINGS_WRITE_IMPL=rust` serve `PUT /api/v1/settings` (the Hugging Face token), default off; the token test is asked of the Python child's private call. See [native settings write](docs/native-settings-write.md).
+
+`native-backend-control` and `MODEL_MANAGER_BACKEND_CONTROL_IMPL=rust` serve `POST /api/v1/backends/{name}/restart` and `/test`, default off. Restart errors stay recorded in the Python child, which `GET /api/v1/backends` reads. See [native backend restart and test](docs/native-backend-control.md).
+
+`native-benchmark-overview` and `MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL=rust` serve `GET /api/v1/benchmark`, default off. The runner's live `job` is asked of the Python child, and the job controls stay with Python. See [native benchmark overview](docs/native-benchmark-overview.md).
+
+`native-check-updates` and `MODEL_MANAGER_CHECK_UPDATES_IMPL=rust` serve `POST /api/v1/models/check-updates`, default off. The Hub tree listing is fetched and `update_check` is written here. See [native model update check](docs/native-check-updates.md).
+
 `native-diagnose` and `MODEL_MANAGER_DIAGNOSE_IMPL=rust` select the whole internal backend diagnosis GET, default off. Selection requires exact `TZ=UTC` before startup. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.

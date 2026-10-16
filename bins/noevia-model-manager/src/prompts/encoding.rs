@@ -2,7 +2,12 @@
 use super::Error;
 use std::borrow::Cow;
 pub(super) fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
-    if bytes.len() > 1_048_576 {
+    decode_capped(bytes, 1_048_576)
+}
+
+/// [`decode`] for a larger text (the bytes and the decoded text are both held to `cap`).
+pub(super) fn decode_capped(bytes: &[u8], cap: usize) -> Result<Cow<'_, str>, Error> {
+    if bytes.len() > cap {
         return Err(Error::Input);
     }
     enum Encoding {
@@ -42,7 +47,7 @@ pub(super) fn decode(bytes: &[u8]) -> Result<Cow<'_, str>, Error> {
     let mut out = String::new();
     out.try_reserve(bytes.len()).map_err(|_| Error::Limit)?;
     let mut add = |character: char| -> Result<(), Error> {
-        if out.len().saturating_add(character.len_utf8()) > 1_048_576 {
+        if out.len().saturating_add(character.len_utf8()) > cap {
             return Err(Error::Text);
         }
         out.try_reserve(character.len_utf8())

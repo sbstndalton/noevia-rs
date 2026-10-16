@@ -47,7 +47,17 @@ fn round_matches_python() {
         );
     }
     assert_eq!(py_round(Num::Int(5), 2), Some(Num::Int(5)));
-    assert_eq!(py_round(Num::Float(f64::NAN), 1), None);
+    // noevia#1935: `round(nan|inf, n)` is the value itself, and FastAPI writes it as null.
+    assert!(matches!(py_round(Num::Float(f64::NAN), 1), Some(Num::Float(f)) if f.is_nan()));
+    assert_eq!(
+        py_round(Num::Float(f64::INFINITY), 2),
+        Some(Num::Float(f64::INFINITY))
+    );
+    assert_eq!(
+        Num::Float(f64::NEG_INFINITY).render().as_deref(),
+        Some("null")
+    );
+    assert_eq!(Num::Float(f64::NAN).render().as_deref(), Some("null"));
 }
 
 #[test]
