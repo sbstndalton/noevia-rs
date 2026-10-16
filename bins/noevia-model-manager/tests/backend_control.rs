@@ -73,6 +73,8 @@ fn state(docker: FakeDocker, child: &str, backends: Backends) -> Arc<StateData> 
         settings: None,
         #[cfg(feature = "native-settings-write")]
         settings_write: None,
+        #[cfg(feature = "native-benchmark-overview")]
+        benchmark_overview: None,
         backends: Some(Arc::new(backends)),
         #[cfg(feature = "native-model-updates")]
         model_updates: None,

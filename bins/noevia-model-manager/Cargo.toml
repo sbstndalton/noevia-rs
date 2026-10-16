@@ -21,6 +21,7 @@ native-bench-runs = ["native-prompts", "dep:form_urlencoded"]
 native-section-writes = ["native-prompts", "dep:form_urlencoded"]
 native-settings-write = ["native-settings", "native-prompts"]
 native-backend-control = ["native-logs", "native-prompts"]
+native-benchmark-overview = ["native-bench-runs", "native-section-writes"]
 [lints]
 workspace = true
 [dependencies]

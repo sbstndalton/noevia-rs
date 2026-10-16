@@ -702,6 +702,8 @@ mod tests {
             section_writes: None,
             #[cfg(feature = "native-settings-write")]
             settings_write: None,
+            #[cfg(feature = "native-benchmark-overview")]
+            benchmark_overview: None,
             #[cfg(feature = "native-backend-control")]
             backends: None,
         })

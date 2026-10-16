@@ -61,6 +61,8 @@ fn state(writes: SectionWrites, legacy_base: &str) -> Arc<StateData> {
         section_writes: Some(Arc::new(writes)),
         #[cfg(feature = "native-settings-write")]
         settings_write: None,
+        #[cfg(feature = "native-benchmark-overview")]
+        benchmark_overview: None,
         #[cfg(feature = "native-backend-control")]
         backends: None,
         sections: None,

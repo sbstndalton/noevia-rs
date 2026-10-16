@@ -48,6 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-backend-control") {
                 output.write_all(b"native-backend-control\n")?;
             }
+            if cfg!(feature = "native-benchmark-overview") {
+                output.write_all(b"native-benchmark-overview\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -230,6 +233,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let mut overview_mode = environment("MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL", "python")?;
+    if !matches!(overview_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL must be python or rust".into());
+    }
+    if overview_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-benchmark-overview")) {
+        return Err(
+            "native-benchmark-overview requires rust model manager and compiled native-benchmark-overview feature"
+                .into(),
+        );
+    }
+    #[cfg(feature = "native-benchmark-overview")]
+    let overview_roots = if overview_mode == "rust" {
+        match overview_ini(std::env::vars_os().collect()) {
+            Ok(ini) => Some((data_dir()?, ini)),
+            Err(reason) => {
+                eprintln!("native-benchmark-overview: {reason}; GET /benchmark stays with python");
+                overview_mode = "python".to_owned();
+                None
+            }
+        }
+    } else {
+        None
+    };
     let bench_mode = environment("MODEL_MANAGER_BENCH_RUNS_IMPL", "python")?;
     if !matches!(bench_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_BENCH_RUNS_IMPL must be python or rust".into());
@@ -307,6 +333,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -478,6 +505,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    #[cfg(feature = "native-benchmark-overview")]
+    let benchmark_overview = overview_roots.as_ref().map(|(data, ini)| {
+        Arc::new(
+            noevia_model_manager::benchmark_overview::BenchmarkOverview::new(
+                std::path::Path::new(data),
+                std::path::Path::new(ini),
+            ),
+        )
+    });
     #[cfg(feature = "native-settings-write")]
     let settings_write = settings_write_root.as_deref().map(|root| {
         Arc::new(noevia_model_manager::settings_write::SettingsWrite::new(
@@ -530,6 +566,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &targets_mode,
         #[cfg(feature = "native-download-targets")]
         targets_roots.as_ref(),
+    );
+    benchmark_overview_child(
+        &mut child_command,
+        &overview_mode,
+        #[cfg(feature = "native-benchmark-overview")]
+        overview_roots.as_ref(),
     );
     child_command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED",
@@ -617,6 +659,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         settings_write,
         #[cfg(feature = "native-backend-control")]
         backends,
+        #[cfg(feature = "native-benchmark-overview")]
+        benchmark_overview,
         sections,
         embedding,
         host,
@@ -672,7 +716,8 @@ fn prompt_data_dir() -> Result<String, &'static str> {
     feature = "native-settings",
     feature = "native-badges",
     feature = "native-bench-runs",
-    feature = "native-settings-write"
+    feature = "native-settings-write",
+    feature = "native-benchmark-overview"
 ))]
 fn data_dir() -> Result<String, &'static str> {
     prompt_data_dir_from(std::env::vars_os())
@@ -1089,6 +1134,120 @@ fn section_writes_roots(
         cache: (cap, hard),
         rust_backups,
     })
+}
+
+/// noevia#1318: the native overview reads the same models.ini as the child, so its path must
+/// have one spelling (pydantic reads the variable case-insensitively) and be absolute and normal.
+fn overview_ini(
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<String, &'static str> {
+    let name = "MODELS_INI_PATH";
+    let mut found = None;
+    for (key, value) in &values {
+        if key
+            .to_str()
+            .is_some_and(|key| key != name && key.eq_ignore_ascii_case(name))
+        {
+            return Err("MODELS_INI_PATH needs canonical environment spelling");
+        }
+        if key == name {
+            found = Some(
+                value
+                    .to_str()
+                    .ok_or("environment setting must be UTF-8")?
+                    .to_owned(),
+            );
+        }
+    }
+    let ini = found.unwrap_or_else(|| "/models/models.ini".into());
+    let normal = ini.starts_with('/')
+        && !ini.ends_with('/')
+        && ini.len() <= 4096
+        && ini
+            .split('/')
+            .skip(1)
+            .all(|segment| !matches!(segment, "" | "." | ".."));
+    if !normal {
+        return Err("MODELS_INI_PATH is not an absolute, normalised path");
+    }
+    Ok(ini)
+}
+
+/// noevia#1318: the child refuses `GET /api/v1/benchmark` and serves the private job read only
+/// when the native overview owns it, and then reads the same store and models.ini.
+fn benchmark_overview_child(
+    child_command: &mut tokio::process::Command,
+    overview_mode: &str,
+    #[cfg(feature = "native-benchmark-overview")] roots: Option<&(String, String)>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED",
+        if overview_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-benchmark-overview")]
+    if let Some((data, ini)) = roots {
+        child_command
+            .env("DATA_DIR", data)
+            .env("MODELS_INI_PATH", ini);
+    }
+}
+
+#[cfg(all(test, feature = "native-benchmark-overview"))]
+mod benchmark_overview_command_tests {
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        for (mode, roots, expected) in [
+            (
+                "rust",
+                Some((
+                    "/synthetic/data".to_owned(),
+                    "/synthetic/models.ini".to_owned(),
+                )),
+                "1",
+            ),
+            ("python", None, "0"),
+        ] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED",
+                "hostile",
+            );
+            super::benchmark_overview_child(&mut command, mode, roots.as_ref());
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(
+                get("MODELS_INI_PATH"),
+                roots
+                    .as_ref()
+                    .map(|(_, i)| std::ffi::OsStr::new(i.as_str()))
+            );
+        }
+    }
+
+    #[test]
+    fn ini_path_needs_one_normal_spelling() {
+        let env = |pairs: &[(&str, &str)]| -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect()
+        };
+        assert_eq!(
+            super::overview_ini(env(&[])).as_deref(),
+            Ok("/models/models.ini")
+        );
+        assert_eq!(
+            super::overview_ini(env(&[("MODELS_INI_PATH", "/m/x.ini")])).as_deref(),
+            Ok("/m/x.ini")
+        );
+        assert!(super::overview_ini(env(&[("models_ini_path", "/m/x.ini")])).is_err());
+        assert!(super::overview_ini(env(&[("MODELS_INI_PATH", "/m/../x.ini")])).is_err());
+        assert!(super::overview_ini(env(&[("MODELS_INI_PATH", "m.ini")])).is_err());
+    }
 }
 
 /// noevia#1318: the child refuses the five models.ini writers and serves the private
