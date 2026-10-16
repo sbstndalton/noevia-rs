@@ -1158,16 +1158,21 @@ async fn native_badges(badges: &badges::Badges, req: Request) -> Response {
     let outcome = if req.method() == Method::DELETE {
         badges.delete(req.uri().query().unwrap_or_default()).await
     } else {
-        let json_content = match req.headers().get(axum::http::header::CONTENT_TYPE) {
-            Some(value) => match value.to_str() {
-                Ok(value) if value.len() <= 8192 => prompts::json_content_type(Some(value)),
-                _ => return prompt_error(prompts::Error::Body),
-            },
-            None => true,
+        // A missing content type is JSON, as for the prompt writer.
+        let header = req
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .map(|value| value.to_str().ok().filter(|v| v.len() <= 8192));
+        let json_content = if let Some(value) = header {
+            let Some(value) = value else {
+                return prompt_error(prompts::Error::Body);
+            };
+            prompts::json_content_type(Some(value))
+        } else {
+            true
         };
-        let bytes = match to_bytes(req.into_body(), REQUEST_CAP).await {
-            Ok(b) => b,
-            Err(_) => return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit"),
+        let Ok(bytes) = to_bytes(req.into_body(), REQUEST_CAP).await else {
+            return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
         };
         if !json_content && !bytes.is_empty() {
             return match prompts::non_json_validation(&bytes) {
