@@ -38,6 +38,7 @@ pub mod js;
 pub mod lock;
 pub mod skills;
 pub mod store;
+pub mod store_api;
 
 /// A handler's answer: Node's `json(res, status, body)` or a binary body with its headers.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -12,6 +12,7 @@ pub mod health;
 pub mod identity;
 pub mod legacy_proxy;
 pub mod project_routes;
+pub mod project_store;
 pub mod reasoning_settings_routes;
 pub mod reply;
 pub mod routes;
@@ -60,6 +61,10 @@ use std::sync::Arc;
 /// under NOEVIA_RUST_PROJECT_WRITES, with NOEVIA_RUST_PROJECTS; the supervisor confirms it to Node
 /// (NOEVIA_RUST_PROJECT_WRITES_CONFIRMED), which then refuses those writes.
 ///
+/// `project-store`: this build serves the internal project store Node writes projects.json and
+/// free-chats.json through under NOEVIA_RUST_PROJECT_STORE=1 (src/project_store.rs, #1264); the
+/// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
+///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
@@ -68,6 +73,7 @@ pub const FEATURES: &[&str] = &[
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
+    "project-store",
     "rust-auth",
     "rust-projects",
     #[cfg(feature = "rust-project-chats")]
