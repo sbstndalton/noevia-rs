@@ -1,4 +1,4 @@
-//! GET /api/export/conversations through the front (#1315, NOEVIA_RUST_EXPORT=1): Node's gate
+//! GET /api/export/conversations through the front (#1315, permanent under NOEVIA_RUST_PROJECTS=1 since #1071): Node's gate
 //! first, the signed-in user's own files only, the audit row before the download, Node's headers,
 //! Node's 413 and a 500 when the audit cannot be written. The ZIP's bytes are
 //! `server_export::route::export`'s, which crates/server-export/tests/route.rs holds to Node's own
@@ -99,7 +99,6 @@ async fn front() -> Front {
     env.insert("PUBLIC_ORIGIN", ORIGIN.into());
     env.insert("NOEVIA_RUST_AUTH", "1".into());
     env.insert("NOEVIA_RUST_PROJECTS", "1".into());
-    env.insert("NOEVIA_RUST_EXPORT", "1".into());
     let app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

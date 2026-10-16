@@ -17,6 +17,10 @@
 # M3: `switch = "NOEVIA_RUST_AUTH"` makes an owner = "rust" flip take effect only while the
 # deployment sets NOEVIA_RUST_AUTH=1 (sign-in and the account, crates/server-account); without it
 # the route is Node's. `methods` lists what Rust answers; other methods stay Node's.
+# sbstndalton/noevia#1071: the front read routes (usage, sampling/reasoning settings, routing
+# mode/default, stats, ChatGPT status, storage metadata/list/read) are permanent under
+# NOEVIA_RUST_AUTH, and the conversation export under NOEVIA_RUST_PROJECTS; Node no longer has
+# them, and their old switches are retired.
 
 [[route]]
 path = "/api/account/instructions"
@@ -351,7 +355,7 @@ owner = "node"
 path = "/api/export/conversations"
 owner = "rust"
 methods = ["GET"]
-switch = "NOEVIA_RUST_EXPORT"
+switch = "NOEVIA_RUST_PROJECTS"
 
 [[route]]
 path = "/api/features"
@@ -379,19 +383,19 @@ owner = "node"
 path = "/api/integrations/storage"
 owner = "rust"
 methods = ["GET"]
-switch = "NOEVIA_RUST_STORAGE_READS"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/integrations/storage/file"
 owner = "rust"
 methods = ["POST"]
-switch = "NOEVIA_RUST_STORAGE_BROWSE"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/integrations/storage/files{*?}"
 owner = "rust"
 methods = ["GET"]
-switch = "NOEVIA_RUST_STORAGE_BROWSE"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/integrations/storage/folder"
@@ -662,7 +666,7 @@ owner = "node"
 path = "/api/providers/chatgpt"
 owner = "rust"
 methods = ["GET"]
-switch = "NOEVIA_RUST_CHATGPT_STATUS"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/providers/chatgpt/device"
@@ -702,29 +706,29 @@ methods = ["GET"]
 path = "/api/reasoning-settings"
 owner = "rust"
 methods = ["PUT"]
-switch = "NOEVIA_RUST_REASONING_SETTINGS"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 # M6 (#1305): GET only; PUT and every other method stay Node-owned (preferences and projects writes).
 path = "/api/routing-default"
 owner = "rust"
 methods = ["GET"]
-switch = "NOEVIA_RUST_ROUTING_DEFAULT"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/routing-mode"
 owner = "rust"
-switch = "NOEVIA_RUST_ROUTING_MODE"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/routing-mode/allowed"
 owner = "rust"
-switch = "NOEVIA_RUST_ROUTING_MODE"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/sampling-settings"
 owner = "rust"
-switch = "NOEVIA_RUST_SAMPLING_SETTINGS"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/setup/complete"
@@ -744,7 +748,7 @@ methods = ["GET"]
 path = "/api/stats"
 owner = "rust"
 methods = ["GET"]
-switch = "NOEVIA_RUST_STATS"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/tool-approvals/{approvalId}"
@@ -761,12 +765,12 @@ owner = "node"
 [[route]]
 path = "/api/usage"
 owner = "rust"
-switch = "NOEVIA_RUST_USAGE"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/usage/aggregate"
 owner = "rust"
-switch = "NOEVIA_RUST_USAGE"
+switch = "NOEVIA_RUST_AUTH"
 
 [[route]]
 path = "/api/workspace"

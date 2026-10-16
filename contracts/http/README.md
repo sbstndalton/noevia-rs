@@ -132,6 +132,22 @@ with 503.
 `core.ref` (metadata; existing replay CI consumes the single SHA in `core.ref`).
 The core#61 landing provides the required native OCR front acceptance gate (#1271).
 
+## sbstndalton/noevia#1071: the front read routes are permanent
+
+The usage, sampling and reasoning settings, routing mode and routing default, engine statistics,
+ChatGPT status and connected-storage metadata/list/read routes below are Rust's whenever the front
+runs with `NOEVIA_RUST_AUTH=1` (routes.toml `switch = "NOEVIA_RUST_AUTH"`), and the conversation
+export whenever it runs with `NOEVIA_RUST_PROJECTS=1`. Their own switches (`NOEVIA_RUST_USAGE`,
+`_SAMPLING_SETTINGS`, `_REASONING_SETTINGS`, `_ROUTING_MODE`, `_ROUTING_DEFAULT`, `_STATS`,
+`_CHATGPT_STATUS`, `_STORAGE_READS`, `_STORAGE_BROWSE`, `_EXPORT`) are retired: a leftover value
+only earns a startup warning. Core no longer has the Node handlers, so with `NOEVIA_RUST_AUTH=1` the
+front refuses to start without every cargo feature they need (the default features), `UI_DATA_DIR`,
+a valid auth environment or a stats engine it can read; the web supervisor checks the same features
+in `--features` before starting either process. The sections below describe each slice as it was
+introduced; their Node oracles and fixtures stay pinned at `core.ref` and are not regenerated, and
+the "negative control" replays (front started without a switch, confirmed Node refuses) left with
+the switches: core's own tests now prove Node refuses these routes unconditionally.
+
 ## M6: engine statistics (`NOEVIA_RUST_STATS`, sbstndalton/noevia#1650)
 
 `GET /api/stats` (every open page polls it) is Rust's under `NOEVIA_RUST_STATS=1` in a build with

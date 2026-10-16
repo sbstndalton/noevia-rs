@@ -60,60 +60,26 @@ if [ "${NOEVIA_RUST_PROJECTS:-}" = 1 ]; then
   # Likewise the free-chat slice.
   if has_feature rust-free-chats; then free_chats_confirmed=1; fi
 fi
-if [ "${NOEVIA_RUST_USAGE:-}" = 1 ]; then
-  [ -n "$confirmed" ] || { echo "replay-front: usage needs native auth" >&2; exit 2; }
-  has_feature rust-usage || { echo "replay-front: no rust-usage" >&2; exit 2; }
+# sbstndalton/noevia#1071: the front read routes have no switch of their own any more. Like
+# build/web-supervisor.sh, a front with native auth must list every one of them (else this harness
+# refuses before starting either process), and the core.ref oracle is told the front owns them.
+# The export follows the projects switch (it reads the free-chat list from disk).
+if [ -n "$confirmed" ]; then
+  for f in rust-usage rust-sampling-settings rust-reasoning-settings rust-routing-mode rust-routing-default rust-stats rust-storage-reads rust-storage-browse rust-chatgpt-status; do
+    has_feature "$f" || { echo "replay-front: NOEVIA_RUST_AUTH=1 needs a front with $f" >&2; exit 2; }
+  done
   usage_confirmed=1
-fi
-if [ "${NOEVIA_RUST_SAMPLING_SETTINGS:-}" = 1 ]; then
-  [ -n "$confirmed" ] || { echo "replay-front: sampling settings need native auth" >&2; exit 2; }
-  has_feature rust-sampling-settings || { echo "replay-front: no rust-sampling-settings" >&2; exit 2; }
   sampling_confirmed=1
-fi
-if [ "${NOEVIA_RUST_REASONING_SETTINGS:-}" = 1 ]; then
-  [ -n "$confirmed" ] || { echo "replay-front: reasoning default needs native auth" >&2; exit 2; }
-  has_feature rust-reasoning-settings || { echo "replay-front: no rust-reasoning-settings" >&2; exit 2; }
   reasoning_confirmed=1
-fi
-if [ "${NOEVIA_RUST_ROUTING_MODE:-}" = 1 ]; then
-  [ -n "$confirmed" ] || { echo "replay-front: routing settings need native auth" >&2; exit 2; }
-  has_feature rust-routing-mode || { echo "replay-front: no rust-routing-mode" >&2; exit 2; }
   routing_confirmed=1
-fi
-# M6 (#1650): GET /api/stats; Node refuses it (core routes/models.cjs statsRustOwned) only once the
-# front lists rust-stats.
-if [ "${NOEVIA_RUST_STATS:-}" = 1 ]; then
-  [ -n "$confirmed" ] || { echo "replay-front: engine statistics need native auth" >&2; exit 2; }
-  has_feature rust-stats || { echo "replay-front: no rust-stats" >&2; exit 2; }
   stats_confirmed=1
-fi
-# M4 (#1368): GET /api/integrations/storage; Node refuses it (core features.cjs
-# rustStorageReadsOwned) only once the front lists rust-storage-reads.
-if [ "${NOEVIA_RUST_STORAGE_READS:-}" = 1 ]; then
-  [ -n "$confirmed" ] || { echo "replay-front: storage reads need native auth" >&2; exit 2; }
-  has_feature rust-storage-reads || { echo "replay-front: no rust-storage-reads" >&2; exit 2; }
   storage_reads_confirmed=1
-fi
-# M4 (#1368): the connected-storage list and read; Node refuses them (core features.cjs
-# rustStorageBrowseOwned) only once the front lists rust-storage-browse.
-if [ "${NOEVIA_RUST_STORAGE_BROWSE:-}" = 1 ]; then
-  [ -n "$confirmed" ] || { echo "replay-front: storage browse needs native auth" >&2; exit 2; }
-  has_feature rust-storage-browse || { echo "replay-front: no rust-storage-browse" >&2; exit 2; }
   storage_browse_confirmed=1
-fi
-# M4 (#1315): GET /api/export/conversations; Node refuses it (core routes/export.cjs
-# exportRustOwned) only once the front lists rust-export, over confirmed projects and free chats.
-if [ "${NOEVIA_RUST_EXPORT:-}" = 1 ]; then
-  [ -n "$projects_confirmed" ] && [ -n "$free_chats_confirmed" ] || { echo "replay-front: export needs NOEVIA_RUST_PROJECTS=1 and rust-free-chats" >&2; exit 2; }
-  has_feature rust-export || { echo "replay-front: no rust-export" >&2; exit 2; }
-  export_confirmed=1
-fi
-# M6 (#1373): GET /api/providers/chatgpt; Node refuses it (core features.cjs rustChatgptStatusOwned)
-# only once the front lists rust-chatgpt-status, over confirmed native auth.
-if [ "${NOEVIA_RUST_CHATGPT_STATUS:-}" = 1 ]; then
-  [ -n "$confirmed" ] || { echo "replay-front: chatgpt status needs NOEVIA_RUST_AUTH=1" >&2; exit 2; }
-  has_feature rust-chatgpt-status || { echo "replay-front: no rust-chatgpt-status" >&2; exit 2; }
   chatgpt_status_confirmed=1
+fi
+if [ -n "$projects_confirmed" ]; then
+  { [ -n "$free_chats_confirmed" ] && has_feature rust-export; } || { echo "replay-front: NOEVIA_RUST_PROJECTS=1 needs a front with rust-export and rust-free-chats" >&2; exit 2; }
+  export_confirmed=1
 fi
 # sbstndalton/noevia#1264: the project writes ported so far; Node refuses them (core
 # rust-projects.cjs projectWritesEnabledFrom) only once the front lists rust-project-writes, over
@@ -131,34 +97,7 @@ UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed
 node_pid=$!
 # CI's M4 negative control only: Node is told the front owns the project image routes, the front is
 # started without the switch, so those writes must reach Node and be refused.
-if [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_ROUTING_MODE:-}" = 1 ]; then
-  # Valid native auth continues while confirmed Node refuses every routing configuration method.
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_ROUTING_MODE "$front" &
-elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_REASONING_SETTINGS:-}" = 1 ]; then
-  # Valid native identity remains; Node is still confirmed and must refuse the owned PUT.
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_REASONING_SETTINGS "$front" &
-elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_SAMPLING_SETTINGS:-}" = 1 ]; then
-  # Test-only omission: valid native auth continues; confirmed Node sampling must refuse.
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_SAMPLING_SETTINGS "$front" &
-elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_CHATGPT_STATUS:-}" = 1 ]; then
-  # Test-only omission: native auth continues; confirmed Node must refuse the ChatGPT status GET.
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_CHATGPT_STATUS "$front" &
-elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_STORAGE_READS:-}" = 1 ]; then
-  # Test-only omission: native auth continues; confirmed Node must refuse the storage metadata GET.
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_STORAGE_READS "$front" &
-elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_STORAGE_BROWSE:-}" = 1 ]; then
-  # Test-only omission: native auth continues; confirmed Node must refuse the storage list/read.
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_STORAGE_BROWSE "$front" &
-elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_EXPORT:-}" = 1 ]; then
-  # Test-only omission: native projects continue; confirmed Node must refuse the export GET.
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_EXPORT "$front" &
-elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_STATS:-}" = 1 ]; then
-  # Test-only omission: native auth continues; confirmed Node must refuse GET /api/stats.
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_STATS "$front" &
-elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_USAGE:-}" = 1 ]; then
-  # Test-only omission: Node reporting stays confirmed/refused, auth remains native.
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_USAGE "$front" &
-elif [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_PROJECTS:-}" = 1 ]; then
+if [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_PROJECTS:-}" = 1 ]; then
   PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_PROJECTS "$front" &
 else
   PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" "$front" &

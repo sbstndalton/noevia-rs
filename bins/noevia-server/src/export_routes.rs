@@ -1,4 +1,4 @@
-//! M4 (NOEVIA_RUST_EXPORT=1, with NOEVIA_RUST_PROJECTS=1 and NOEVIA_RUST_AUTH=1,
+//! M4 (permanent under NOEVIA_RUST_PROJECTS=1 and NOEVIA_RUST_AUTH=1 since #1071,
 //! sbstndalton/noevia#1315): the front answers `GET /api/export/conversations` itself, as core
 //! routes/export.cjs does:
 //!

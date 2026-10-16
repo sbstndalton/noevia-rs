@@ -84,7 +84,6 @@ async fn usage_auth_admin_tenant_methods_and_omission() {
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", d.path().display().to_string()),
         ("NOEVIA_RUST_AUTH", "1".into()),
-        ("NOEVIA_RUST_USAGE", "1".into()),
         ("PUBLIC_ORIGIN", origin.clone()),
         ("TZ", "UTC".into()),
         ("LANG", "en_US.UTF-8".into()),
@@ -153,7 +152,8 @@ async fn usage_auth_admin_tenant_methods_and_omission() {
     assert_eq!(call(addr, "GET", "/api/usage", member, "").await.0, 200);
     tx.send(()).unwrap();
     task.await.unwrap();
-    // Omission control must reach the unavailable legacy upstream with valid identity.
+    // sbstndalton/noevia#1071: the retired switch set to "0" keeps the route native (the dead
+    // legacy upstream would answer 502).
     let mut env = env;
     env.insert("NOEVIA_RUST_USAGE", "0".into());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -167,7 +167,7 @@ async fn usage_auth_admin_tenant_methods_and_omission() {
             let _ = rx.await;
         },
     ));
-    assert_eq!(call(addr, "GET", "/api/usage", member, "").await.0, 502);
+    assert_eq!(call(addr, "GET", "/api/usage", member, "").await.0, 200);
     tx.send(()).unwrap();
     task.await.unwrap();
 }

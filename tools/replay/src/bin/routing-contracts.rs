@@ -1,4 +1,6 @@
-//! Required complete actual-core replay, exact routing file bytes and valid-auth omission.
+//! Required complete actual-core replay and exact routing file bytes. (The valid-auth omission
+//! control left with the routing switch, sbstndalton/noevia#1071: the front can no longer omit the
+//! routes, and core's own tests prove Node refuses them.)
 use serde_json::Value;
 use std::{
     path::{Path, PathBuf},
@@ -20,14 +22,7 @@ fn read(path: &Path) -> Result<Value, String> {
     serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())
 }
-fn replay(
-    core: &Path,
-    corpus: &Path,
-    out: &Path,
-    name: &str,
-    front: bool,
-    omission: bool,
-) -> Result<bool, String> {
+fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Result<bool, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let bin = exe.parent().ok_or("binary directory missing")?;
     let report = out.join(format!("{name}-report.json"));
@@ -35,12 +30,7 @@ fn replay(
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let command = if front {
         format!(
-            "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_ROUTING_MODE=1 {} sh {} {} {}",
-            if omission {
-                "REPLAY_FRONT_CONTROL_NODE_ONLY_ROUTING_MODE=1"
-            } else {
-                ""
-            },
+            "exec env NOEVIA_RUST_AUTH=1 sh {} {} {}",
             quote(&root.join("tools/front/replay-front.sh").to_string_lossy()),
             quote(&core.to_string_lossy()),
             quote(&bin.join("noevia-server").to_string_lossy())
@@ -76,64 +66,13 @@ fn replay(
         .arg(&report)
         .arg("--state-out")
         .arg(&state);
-    if front && !omission {
+    if front {
         c.arg("--expect-state").arg(out.join("node-state.json"));
     }
     let output = bounded(c)?;
     print!("{}", String::from_utf8_lossy(&output.stdout));
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
     Ok(output.status.success())
-}
-fn omission(out: &Path) -> Result<(), String> {
-    let report = read(&out.join("omission-report.json"))?;
-    let rows = report.as_array().ok_or("omission report rows missing")?;
-    let routing = rows
-        .iter()
-        .filter(|r| {
-            at(r, "path")
-                .as_str()
-                .is_some_and(|p| p == "/api/routing-mode" || p == "/api/routing-mode/allowed")
-                && at(r, "expectedStatus") != 401
-        })
-        .collect::<Vec<_>>();
-    let sessions = rows
-        .iter()
-        .filter(|r| {
-            at(r, "method") == "GET"
-                && at(r, "path") == "/api/auth/session"
-                && at(r, "expectedStatus") == 200
-        })
-        .collect::<Vec<_>>();
-    if routing.len() < 20
-        || routing.iter().any(|r| at(r, "status") != 503)
-        || sessions.len() != 3
-        || sessions.iter().any(|r| at(r, "status") != 200)
-    {
-        return Err("valid-identity omission must refuse all routing methods503 and keep3 unrelated sessions200".into());
-    }
-    let state = read(&out.join("omission-state.json"))?;
-    let db = at(&state, "db");
-    if at(db, "settings")
-        .as_array()
-        .ok_or("omission settings missing")?
-        .iter()
-        .any(|r| at(r, "key") == "routing_modes_allowed")
-        || at(db, "audit_events")
-            .as_array()
-            .ok_or("omission audit missing")?
-            .iter()
-            .any(|r| at(r, "action") == "routing.allowed")
-        || at(&state, "routingModeFiles")
-            .as_object()
-            .is_none_or(|m| !m.is_empty())
-    {
-        return Err("omission unexpectedly mutated routing state".into());
-    }
-    println!(
-        "valid omission routing503 count={} unrelated sessions200=3 no setting/file/audit writes",
-        routing.len()
-    );
-    Ok(())
 }
 fn run() -> Result<(), String> {
     let mut a = std::env::args().skip(1);
@@ -238,21 +177,9 @@ fn run() -> Result<(), String> {
         std::fs::create_dir_all(out.join("baseline/seed")).map_err(|e| e.to_string())?;
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let baseline = root.join("contracts/http/corpus");
-        if !replay(
-            &core,
-            &baseline,
-            &out.join("baseline"),
-            "node",
-            false,
-            false,
-        )? || !replay(
-            &core,
-            &baseline,
-            &out.join("baseline"),
-            "positive",
-            true,
-            false,
-        )? {
+        if !replay(&core, &baseline, &out.join("baseline"), "node", false)?
+            || !replay(&core, &baseline, &out.join("baseline"), "positive", true)?
+        {
             return Err("full existing228 Node/native/state replay failed".into());
         }
         let mut command = Command::new(bin.join("corpus-launcher"));
@@ -281,7 +208,6 @@ fn run() -> Result<(), String> {
             &out.join("routing"),
             "node",
             false,
-            false,
         )?)
         || !replay(
             &core,
@@ -289,22 +215,10 @@ fn run() -> Result<(), String> {
             &out.join("routing"),
             "positive",
             true,
-            false,
         )?
     {
         return Err("new routing Node/native/state replay failed".into());
     }
-    if replay(
-        &core,
-        &out.join("routing-corpus"),
-        &out.join("routing"),
-        "omission",
-        true,
-        true,
-    )? {
-        return Err("omission unexpectedly passed".into());
-    }
-    omission(&out.join("routing"))?;
     Ok(())
 }
 fn main() -> ExitCode {

@@ -76,6 +76,11 @@ async fn server_main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    for name in &config.retired {
+        eprintln!(
+            "noevia-server: warning: {name} is retired (sbstndalton/noevia#1071) and ignored; its routes are the front's under NOEVIA_RUST_AUTH=1"
+        );
+    }
     let listener = match tokio::net::TcpListener::bind((config.host.as_str(), config.port)).await {
         Ok(l) => l,
         Err(e) => {

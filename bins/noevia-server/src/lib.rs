@@ -103,7 +103,7 @@ pub const FEATURES: &[&str] = &[
 ];
 
 pub struct App {
-    /// GET /api/providers/chatgpt while NOEVIA_RUST_CHATGPT_STATUS is on (M6, #1373).
+    /// GET /api/providers/chatgpt under NOEVIA_RUST_AUTH (M6, #1373; permanent since #1071).
     #[cfg(feature = "rust-chatgpt-status")]
     pub chatgpt_status: Option<Arc<chatgpt_status_routes::StatusLayer>>,
     #[cfg(feature = "rust-storage-reads")]
@@ -130,7 +130,7 @@ pub struct App {
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
     pub routing_default: Arc<tokio::sync::Semaphore>,
-    /// GET /api/stats and its shared answer while NOEVIA_RUST_STATS is on (M6, #1650).
+    /// GET /api/stats and its shared answer under NOEVIA_RUST_AUTH (M6, #1650; permanent since #1071).
     pub stats: Option<Arc<stats_routes::StatsLayer>>,
     /// GET /api/export/conversations runs one export at a time (#1315; export_routes.rs).
     pub export: Arc<tokio::sync::Semaphore>,

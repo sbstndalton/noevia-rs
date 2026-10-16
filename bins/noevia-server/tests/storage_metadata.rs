@@ -10,10 +10,10 @@ use noevia_server::{
     routes::{dispatch_under, Native, Switches},
 };
 #[test]
-fn exact_get_default_off_and_selector_refusals() {
+fn exact_get_is_the_fronts_whenever_native_auth_is_on() {
+    // sbstndalton/noevia#1071: no switch of its own; NOEVIA_RUST_AUTH=1 alone moves it.
     let on = Switches {
         rust_auth: true,
-        rust_storage_reads: true,
         ..Default::default()
     };
     for method in ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"] {
@@ -33,12 +33,12 @@ fn exact_get_default_off_and_selector_refusals() {
     }
     for path in [
         "/api/integrations/storage/",
-        "/api/integrations/storage/file",
-        "/api/integrations/storage/files",
+        "/api/integrations/storage/folder",
     ] {
         assert_eq!(dispatch_under("GET", path, on), None);
     }
-    for value in [None, Some("0"), Some("true"), Some(" 1")] {
+    // A leftover old switch value changes nothing, on or off.
+    for value in [None, Some("0"), Some("1")] {
         let c = Config::from_lookup(|k| match k {
             "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
             "NOEVIA_RUST_STORAGE_READS" => value.map(str::to_owned),
@@ -47,15 +47,10 @@ fn exact_get_default_off_and_selector_refusals() {
         .unwrap();
         assert!(!c.rust_storage_reads);
     }
+    // Native auth without a data directory refuses to start rather than leave it unanswered.
     assert!(Config::from_lookup(|k| match k {
         "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
-        "NOEVIA_RUST_STORAGE_READS" => Some("1".into()),
-        _ => None,
-    })
-    .is_err());
-    assert!(Config::from_lookup(|k| match k {
-        "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
-        "NOEVIA_RUST_STORAGE_READS" | "NOEVIA_RUST_AUTH" => Some("1".into()),
+        "NOEVIA_RUST_AUTH" => Some("1".into()),
         _ => None,
     })
     .is_err());
@@ -97,7 +92,7 @@ async fn real_headers_owner_projection_omission_and_gate_before_keys() {
     .unwrap();
     let config = Config::from_lookup(|k| match k {
         "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
-        "NOEVIA_RUST_AUTH" | "NOEVIA_RUST_STORAGE_READS" => Some("1".into()),
+        "NOEVIA_RUST_AUTH" => Some("1".into()),
         "UI_DATA_DIR" => Some(d.path().display().to_string()),
         "PUBLIC_ORIGIN" => Some("http://127.0.0.1:8021".into()),
         _ => None,
@@ -223,7 +218,7 @@ mod pool {
         App::new(
             Config::from_lookup(|k| match k {
                 "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
-                "NOEVIA_RUST_AUTH" | "NOEVIA_RUST_STORAGE_READS" => Some("1".into()),
+                "NOEVIA_RUST_AUTH" => Some("1".into()),
                 "UI_DATA_DIR" => Some(dir.clone()),
                 "PUBLIC_ORIGIN" => Some("http://127.0.0.1:8021".into()),
                 _ => None,
