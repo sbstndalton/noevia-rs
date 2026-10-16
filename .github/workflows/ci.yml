@@ -1047,8 +1047,8 @@ jobs:
       - name: Combined native features keep every existing test
         # Prompt store tests need the prompt oracle env; the native-prompts job runs them.
         run: |
-          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets --test download_targets --test model_detail --test model_updates --test settings --test lifecycle --test policy --bin noevia-model-manager
-          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets --lib download_targets::
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets --test download_targets --test model_detail --test model_updates --test settings --test lifecycle --test policy --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets --lib download_targets::
       - name: Download targets capability omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-model-detail --test lifecycle
