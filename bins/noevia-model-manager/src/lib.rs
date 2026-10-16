@@ -7,6 +7,8 @@ pub mod badges;
 pub mod bench_runs;
 #[cfg(feature = "native-benchmark-overview")]
 pub mod benchmark_overview;
+#[cfg(feature = "native-check-updates")]
+pub mod check_updates;
 pub mod diagnose;
 #[cfg(feature = "native-diagnose")]
 pub mod diagnose_docker;
@@ -105,6 +107,9 @@ pub struct StateData {
     /// noevia#1318: native backend restart and test prompt; restart errors stay in the child.
     #[cfg(feature = "native-backend-control")]
     pub backends: Option<Arc<backends::Backends>>,
+    /// noevia#1318: native `POST /api/v1/models/check-updates` (asks the Hub, writes update_check).
+    #[cfg(feature = "native-check-updates")]
+    pub check_updates: Option<Arc<check_updates::CheckUpdates>>,
     /// noevia#1318: native `GET /api/v1/benchmark`; its live `job` is asked of the child.
     #[cfg(feature = "native-benchmark-overview")]
     pub benchmark_overview: Option<Arc<benchmark_overview::BenchmarkOverview>>,
@@ -920,6 +925,22 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
                     .into_response(),
                 model_updates::Outcome::Failed => internal_error(),
                 model_updates::Outcome::Refused => {
+                    detail(StatusCode::SERVICE_UNAVAILABLE, model_updates::REFUSAL)
+                }
+            };
+        }
+    }
+    #[cfg(feature = "native-check-updates")]
+    if *req.method() == Method::POST && path == "/api/v1/models/check-updates" {
+        if let Some(check) = state.check_updates.clone() {
+            return match check.post().await {
+                check_updates::Outcome::Json(bytes) => (
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    bytes,
+                )
+                    .into_response(),
+                check_updates::Outcome::Failed => internal_error(),
+                check_updates::Outcome::Refused => {
                     detail(StatusCode::SERVICE_UNAVAILABLE, model_updates::REFUSAL)
                 }
             };

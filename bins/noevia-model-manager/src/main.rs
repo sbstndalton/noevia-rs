@@ -51,6 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-benchmark-overview") {
                 output.write_all(b"native-benchmark-overview\n")?;
             }
+            if cfg!(feature = "native-check-updates") {
+                output.write_all(b"native-check-updates\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -233,6 +236,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let check_mode = environment("MODEL_MANAGER_CHECK_UPDATES_IMPL", "python")?;
+    if !matches!(check_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_CHECK_UPDATES_IMPL must be python or rust".into());
+    }
+    if check_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-check-updates")) {
+        return Err(
+            "native-check-updates requires rust model manager and compiled native-check-updates feature"
+                .into(),
+        );
+    }
+    #[cfg(feature = "native-check-updates")]
+    let check_roots = if check_mode == "rust" {
+        Some(model_updates_roots(std::env::vars_os().collect())?)
+    } else {
+        None
+    };
     #[cfg_attr(not(feature = "native-benchmark-overview"), allow(unused_mut))]
     let mut overview_mode = environment("MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL", "python")?;
     if !matches!(overview_mode.as_str(), "python" | "rust") {
@@ -335,6 +354,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -506,6 +526,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    #[cfg(feature = "native-check-updates")]
+    let check_updates = match check_roots.as_ref() {
+        Some(roots) => Some(Arc::new(
+            noevia_model_manager::check_updates::CheckUpdates::new(
+                std::path::Path::new(&roots.models),
+                std::path::Path::new(&roots.ini),
+                std::path::Path::new(&roots.data),
+            )?,
+        )),
+        None => None,
+    };
     #[cfg(feature = "native-benchmark-overview")]
     let benchmark_overview = overview_roots.as_ref().map(|(data, ini)| {
         Arc::new(
@@ -567,6 +598,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &targets_mode,
         #[cfg(feature = "native-download-targets")]
         targets_roots.as_ref(),
+    );
+    model_updates_child_as(
+        &mut child_command,
+        "NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED",
+        &check_mode,
+        #[cfg(feature = "native-check-updates")]
+        check_roots.as_ref(),
     );
     benchmark_overview_child(
         &mut child_command,
@@ -662,6 +700,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         backends,
         #[cfg(feature = "native-benchmark-overview")]
         benchmark_overview,
+        #[cfg(feature = "native-check-updates")]
+        check_updates,
         sections,
         embedding,
         host,
@@ -819,6 +859,59 @@ fn model_updates_child(
             .env("MODELS_DIR", &roots.models)
             .env("MODELS_INI_PATH", &roots.ini)
             .env("DATA_DIR", &roots.data);
+    }
+}
+
+/// noevia#1318: the child refuses `POST /api/v1/models/check-updates` only when the native writer
+/// owns it, and is handed the same three roots (the status map reads the same models folder).
+fn model_updates_child_as(
+    child_command: &mut tokio::process::Command,
+    confirmation: &str,
+    mode: &str,
+    #[cfg(feature = "native-check-updates")] roots: Option<&UpdatesRoots>,
+) {
+    child_command.env(confirmation, if mode == "rust" { "1" } else { "0" });
+    #[cfg(feature = "native-check-updates")]
+    if let Some(roots) = roots {
+        child_command
+            .env("MODELS_DIR", &roots.models)
+            .env("MODELS_INI_PATH", &roots.ini)
+            .env("DATA_DIR", &roots.data);
+    }
+}
+
+#[cfg(all(test, feature = "native-check-updates"))]
+mod check_updates_command_tests {
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        let roots = super::UpdatesRoots {
+            models: "/synthetic/models".into(),
+            ini: "/synthetic/models.ini".into(),
+            data: "/synthetic/data".into(),
+        };
+        for (mode, roots, expected) in [("rust", Some(&roots), "1"), ("python", None, "0")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED",
+                "hostile",
+            );
+            super::model_updates_child_as(
+                &mut command,
+                "NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED",
+                mode,
+                roots,
+            );
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(
+                get("MODELS_DIR"),
+                roots.map(|r| std::ffi::OsStr::new(r.models.as_str()))
+            );
+        }
     }
 }
 

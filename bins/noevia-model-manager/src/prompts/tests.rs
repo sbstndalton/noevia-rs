@@ -203,6 +203,8 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
         settings_write: None,
         #[cfg(feature = "native-benchmark-overview")]
         benchmark_overview: None,
+        #[cfg(feature = "native-check-updates")]
+        check_updates: None,
         #[cfg(feature = "native-backend-control")]
         backends: None,
     })

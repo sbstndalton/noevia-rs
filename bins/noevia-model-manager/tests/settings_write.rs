@@ -47,6 +47,8 @@ fn state(root: &std::path::Path, legacy_base: &str) -> Arc<StateData> {
         settings_write: Some(Arc::new(SettingsWrite::new(root))),
         #[cfg(feature = "native-benchmark-overview")]
         benchmark_overview: None,
+        #[cfg(feature = "native-check-updates")]
+        check_updates: None,
         #[cfg(feature = "native-backend-control")]
         backends: None,
         #[cfg(feature = "native-model-updates")]
