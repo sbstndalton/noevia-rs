@@ -21,7 +21,11 @@ pub mod prompts;
 pub mod sections;
 #[cfg(feature = "native-settings")]
 pub mod settings;
-#[cfg(any(feature = "native-settings", feature = "native-model-updates"))]
+#[cfg(any(
+    feature = "native-settings",
+    feature = "native-model-updates",
+    feature = "native-bench-runs"
+))]
 pub mod sqlite_read;
 pub mod validation;
 
