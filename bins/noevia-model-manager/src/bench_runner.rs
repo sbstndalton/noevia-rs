@@ -223,6 +223,92 @@ impl Default for Observed {
 pub type Observer =
     Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = Option<Observed>> + Send>> + Send + Sync>;
 
+/// noevia#1943: holds a claimed job slot while `start` still runs inside the request future.
+/// If that future is dropped (client gone, request budget spent) before the worker owns the
+/// job, the slot goes back to idle and a `bench_run` row already written is finished as an
+/// error, as `_abort_start` would. The row id is shared with the blocking insert under a lock,
+/// so a drop while the insert is still running is seen by whichever side finishes second.
+pub(crate) struct StartGuard<'a> {
+    runner: &'a Runner,
+    slot: Arc<Mutex<StartSlot>>,
+    armed: bool,
+}
+
+#[derive(Default)]
+pub(crate) struct StartSlot {
+    abandoned: bool,
+    run_id: i64,
+}
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+const DROPPED_NOTE: &str = "could not start: the request was dropped";
+
+impl<'a> StartGuard<'a> {
+    pub(crate) fn new(runner: &'a Runner) -> Self {
+        Self {
+            runner,
+            slot: Arc::new(Mutex::new(StartSlot::default())),
+            armed: true,
+        }
+    }
+
+    pub(crate) fn disarm(&mut self) {
+        self.armed = false;
+    }
+
+    /// `create_run` for the blocking pool: records the id for the guard, or finishes the row
+    /// at once when the request was dropped while the insert ran.
+    pub(crate) fn create_run(
+        &self,
+        backend: String,
+        reps: i64,
+        max_tokens: i64,
+        started: f64,
+    ) -> impl FnOnce() -> Result<i64, Raised> + Send + 'static {
+        let slot = self.slot.clone();
+        let database = self.runner.database.clone();
+        let clock = self.runner.clock;
+        move || {
+            let run_id = create_run(&database, &backend, reps, max_tokens, started)?;
+            let mut slot = lock(&slot);
+            if slot.abandoned {
+                let _ = finish_run(&database, run_id, "error", (clock.time)(), DROPPED_NOTE);
+            } else {
+                slot.run_id = run_id;
+            }
+            Ok(run_id)
+        }
+    }
+}
+
+impl Drop for StartGuard<'_> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.runner.with(|s| *s = JobState::default());
+        let run_id = {
+            let mut slot = lock(&self.slot);
+            slot.abandoned = true;
+            std::mem::take(&mut slot.run_id)
+        };
+        if run_id != 0 {
+            let database = self.runner.database.clone();
+            let finished = (self.runner.clock.time)();
+            let job = move || {
+                let _ = finish_run(&database, run_id, "error", finished, DROPPED_NOTE);
+            };
+            match tokio::runtime::Handle::try_current() {
+                Ok(handle) => drop(handle.spawn_blocking(job)),
+                Err(_) => job(),
+            }
+        }
+    }
+}
+
 /// The backend's docker-network address, as `bench._resolve_endpoint` derives it.
 pub type Resolver = Arc<
     dyn Fn(String) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>> + Send + Sync,
@@ -340,6 +426,9 @@ impl Runner {
             if s.active() {
                 return false;
             }
+            // noevia#1948: reset the flag inside the claim, not after it (Python clears
+            // `_CANCEL` after resolving), so a cancel arriving while "starting" is kept.
+            self.cancel.store(false, Ordering::SeqCst);
             #[allow(clippy::cast_possible_wrap)]
             let total = (aliases.len() as i64)
                 .saturating_mul(prompts.len() as i64)
@@ -356,28 +445,32 @@ impl Runner {
         if !claimed {
             return Ok(Err("a benchmark is already running".into()));
         }
+        // noevia#1943: from here until the worker exists, a dropped request must release the slot.
+        let mut guard = StartGuard::new(self);
         let base_url = match (self.resolve)(req.backend.clone()).await {
             Ok(url) => url,
             Err(e) => {
+                guard.disarm();
                 self.with(|s| *s = JobState::default());
                 return Ok(Err(e));
             }
         };
-        self.cancel.store(false, Ordering::SeqCst);
-        let database = self.database.clone();
-        let backend = req.backend.clone();
-        let run_id = match blocking(move || {
-            create_run(&database, &backend, reps, max_tokens, started)
-        })
-        .await
-        {
+        let insert = guard.create_run(req.backend.clone(), reps, max_tokens, started);
+        let run_id = match blocking(insert).await {
             Ok(id) => id,
-            Err(e) => return Ok(Err(self.abort_start(0, &e).await)),
+            Err(e) => {
+                guard.disarm();
+                return Ok(Err(self.abort_start(0, &e).await));
+            }
         };
         self.with(|s| {
             s.run_id = run_id;
-            s.status = "running".into();
+            // A cancel during "starting" left "cancelling"; keep it so the worker unwinds.
+            if s.status == "starting" {
+                s.status = "running".into();
+            }
         });
+        guard.disarm();
         let me = self.clone();
         let backend = req.backend;
         (self.spawn)(Box::pin(async move {

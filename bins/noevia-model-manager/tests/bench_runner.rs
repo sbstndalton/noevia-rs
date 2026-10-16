@@ -397,3 +397,121 @@ async fn actual_python_differential() {
         assert_eq!(tables(dir.path()), case["tables"], "{id}: store");
     }
 }
+
+/// These tests leave `PERF`/`WALL` to the differential test, which runs alongside.
+fn fixed() -> f64 {
+    1_700_000_000.0
+}
+
+/// A runner over the first fixture case's store whose resolver is `resolve`, with workers held.
+fn held_runner(
+    root: &Path,
+    resolve: noevia_model_manager::bench_runner::Resolver,
+) -> (Arc<Runner>, Arc<Mutex<Vec<Task>>>) {
+    build(root, &fixture()["cases"][0]);
+    let held: Arc<Mutex<Vec<Task>>> = Arc::new(Mutex::new(Vec::new()));
+    let hold = held.clone();
+    let runner = Runner::new(
+        root,
+        Clock {
+            perf_counter: fixed,
+            time: fixed,
+        },
+        Arc::new(move |task| hold.lock().unwrap().push(task)),
+        Arc::new(|_query: String| Box::pin(async { None })),
+        resolve,
+    )
+    .unwrap();
+    (runner, held)
+}
+
+fn suite_request() -> noevia_model_manager::bench_runner::StartRequest {
+    noevia_model_manager::bench_runner::StartRequest {
+        backend: "synthetic-backend".into(),
+        aliases: vec!["m1".into()],
+        prompt_ids: vec![1],
+        reps: 1,
+        max_tokens: 16,
+    }
+}
+
+fn run_rows(root: &Path) -> Vec<(String, String)> {
+    let c = Connection::open(root.join("model_loader.db")).unwrap();
+    let mut s = c
+        .prepare("SELECT status, coalesce(note, '') FROM bench_run ORDER BY id")
+        .unwrap();
+    s.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+/// noevia#1943: a start whose request future is dropped while the backend lookup hangs gives
+/// the slot back; the next start is not refused with 409's "already running".
+#[tokio::test]
+async fn dropped_start_releases_the_slot() {
+    let dir = tempfile::tempdir().unwrap();
+    let calls = Arc::new(AtomicU64::new(0));
+    let count = calls.clone();
+    let (runner, held) = held_runner(
+        dir.path(),
+        Arc::new(move |_backend: String| {
+            let first = count.fetch_add(1, Ordering::SeqCst) == 0;
+            Box::pin(async move {
+                if first {
+                    std::future::pending::<()>().await;
+                }
+                Err("synthetic: no such backend".to_owned())
+            })
+        }),
+    );
+    let dropped = tokio::time::timeout(
+        std::time::Duration::from_millis(50),
+        runner.start(suite_request()),
+    )
+    .await;
+    assert!(dropped.is_err(), "the never-returning resolver must hang");
+    assert_eq!(runner.snapshot().status, "idle");
+    assert_eq!(
+        runner.start(suite_request()).await,
+        Ok(Err("synthetic: no such backend".to_owned()))
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert!(held.lock().unwrap().is_empty());
+    assert!(run_rows(dir.path()).is_empty());
+}
+
+/// noevia#1948: a cancel while the job is "starting" is not lost when the worker takes over.
+#[tokio::test]
+async fn cancel_while_starting_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let open = gate.clone();
+    let (runner, held) = held_runner(
+        dir.path(),
+        Arc::new(move |_backend: String| {
+            let open = open.clone();
+            Box::pin(async move {
+                open.notified().await;
+                Ok("http://127.0.0.1:9".to_owned())
+            })
+        }),
+    );
+    let starting = tokio::spawn({
+        let runner = runner.clone();
+        async move { runner.start(suite_request()).await }
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while runner.snapshot().status != "starting" {
+        assert!(std::time::Instant::now() < deadline, "start never claimed");
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    assert!(runner.cancel());
+    gate.notify_one();
+    assert_eq!(starting.await.unwrap(), Ok(Ok(())));
+    assert_eq!(runner.snapshot().status, "cancelling");
+    let task = held.lock().unwrap().pop().unwrap();
+    task.await;
+    assert_eq!(runner.snapshot().status, "cancelled");
+    assert_eq!(run_rows(dir.path())[0].0, "cancelled");
+}
