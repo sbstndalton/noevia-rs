@@ -861,14 +861,16 @@ fn native_parent_with_prompts_off_replaces_inherited_confirmation_without_databa
     let (dir, marker) = owned_uvicorn();
     let database = dir.path().join("absent");
     std::fs::write(dir.path().join("uvicorn"),"#!/bin/sh\nprintf '%s' \"$NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
-    let output = command(dir.path(), &marker)
-        .env("MODEL_MANAGER_IMPL", "rust")
+    // Linux ETXTBSY: the script was just rewritten, so the spawn is retried like the others.
+    let mut cmd = command(dir.path(), &marker);
+    cmd.env("MODEL_MANAGER_IMPL", "rust")
         .env("DATA_DIR", &database)
-        .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "1")
-        .prompt_output()
-        .unwrap();
+        .env("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED", "1");
+    let output = busy_retry(&mut cmd);
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited")
+        String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(std::fs::read(marker).unwrap(), b"0");
     assert!(!database.exists());
