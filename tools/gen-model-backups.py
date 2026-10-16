@@ -3,7 +3,7 @@
 
 `model-files backups` decides which recovery copies of models.ini a write makes and which old
 ones it removes (crates/model-files/src/backups.rs). There is no Python implementation in
-noevia-services to compare with (its fallback keeps the old behaviour), so `ref_plan` below is an
+noevia-services to compare with (its old fallback was removed in noevia#1071), so `ref_plan` below is an
 independent reference written from the specification, used only to produce expectations:
 
     python3 tools/gen-model-backups.py > crates/model-files/tests/fixtures/model-backups.v1.json
