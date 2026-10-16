@@ -107,7 +107,7 @@ fn remove(o: &mut JValue, key: &str) {
 }
 
 /// `PROJECTS.find((p) => p.id === id)`: `Err` where JS throws (a `null` entry before the match).
-fn locate(projects: &[JValue], id: &str) -> Result<Option<usize>, ()> {
+pub(crate) fn locate(projects: &[JValue], id: &str) -> Result<Option<usize>, ()> {
     for (i, p) in projects.iter().enumerate() {
         if p.is_nullish() {
             return Err(());
@@ -120,15 +120,15 @@ fn locate(projects: &[JValue], id: &str) -> Result<Option<usize>, ()> {
 }
 
 /// What `getProject` does to the project it returns.
-struct Effects {
+pub(crate) struct Effects {
     /// The project as Node holds it afterwards (reconcile always assigns `instructionSkills`).
-    memory: JValue,
+    pub(crate) memory: JValue,
     /// What Node saved, if it saved: after the heal, then again after reconcile when that changed
     /// something. (An unchanged reconcile is not saved, though Node keeps its assignment.)
-    saved: Option<JValue>,
+    pub(crate) saved: Option<JValue>,
 }
 
-fn get_project_effects(project: &JValue) -> Result<Effects, skills::Unsupported> {
+pub(crate) fn get_project_effects(project: &JValue) -> Result<Effects, skills::Unsupported> {
     let mut memory = project.clone();
     let mut saved = None;
     let heal = !memory.get("routingChosen").truthy()

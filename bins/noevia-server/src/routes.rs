@@ -49,6 +49,9 @@ pub struct Switches {
     /// NOEVIA_RUST_CHATGPT_STATUS=1 (M6, #1373, only with rust_auth, config.rs):
     /// GET /api/providers/chatgpt.
     pub rust_chatgpt_status: bool,
+    /// NOEVIA_RUST_PROJECT_WRITES=1 (#1264, only with rust_projects, config.rs): the project
+    /// writes ported from Node so far ([`PROJECT_WRITES`]).
+    pub rust_project_writes: bool,
 }
 
 impl Switches {
@@ -66,6 +69,7 @@ impl Switches {
             "NOEVIA_RUST_STATS" => self.rust_stats,
             "NOEVIA_RUST_EXPORT" => self.rust_export,
             "NOEVIA_RUST_CHATGPT_STATUS" => self.rust_chatgpt_status,
+            "NOEVIA_RUST_PROJECT_WRITES" => self.rust_project_writes,
             _ => false,
         }
     }
@@ -151,6 +155,14 @@ const PROJECT_CHATS: &str = "/api/projects/{projectId}/chats";
 /// `DELETE /api/freechats/{chatId}` is Node's in every build (routes.toml).
 const FREE_CHATS: &str = "/api/freechats";
 
+/// The project writes ported from Node for sbstndalton/noevia#1264 ([`Native::Projects`] too),
+/// under their own switch NOEVIA_RUST_PROJECT_WRITES (off by default, so turning
+/// NOEVIA_RUST_PROJECTS on never moves them) and answered only in a build with the cargo feature
+/// `rust-project-writes` (listed by `--features`; the supervisor confirms it to Node,
+/// NOEVIA_RUST_PROJECT_WRITES_CONFIRMED). Slice 1: a free chat's attachments project.
+const PROJECT_WRITES: &[&str] = &[CHAT_CONTEXT];
+const CHAT_CONTEXT: &str = "/api/chats/{chatId}/context";
+
 /// The route [`Native::StorageMetadata`] implements (GET only; routes.toml), answered only in a
 /// build with the cargo feature `rust-storage-reads` under NOEVIA_RUST_STORAGE_READS (#1368). The
 /// list (`/files`) and text read (`/file`) routes stay Node's in every build until a bounded
@@ -186,6 +198,7 @@ fn storage_browse(method: &str, path: &str, switches: Switches) -> Option<Option
 fn compiled(route: &Route) -> bool {
     (route.path != PROJECT_CHATS || cfg!(feature = "rust-project-chats"))
         && (route.path != FREE_CHATS || cfg!(feature = "rust-free-chats"))
+        && (!PROJECT_WRITES.contains(&route.path) || cfg!(feature = "rust-project-writes"))
         && (route.path != ROUTING_DEFAULT || cfg!(feature = "rust-routing-default"))
         && (route.path != STATS || cfg!(feature = "rust-stats"))
         && (route.path != STORAGE_METADATA || cfg!(feature = "rust-storage-reads"))
@@ -215,6 +228,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
             Some(Native::Account)
         }
         (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ROUTES.contains(&p) => {
+            Some(Native::Projects)
+        }
+        (p, false, Some("NOEVIA_RUST_PROJECT_WRITES")) if PROJECT_WRITES.contains(&p) => {
             Some(Native::Projects)
         }
         (ROUTING_DEFAULT, false, Some("NOEVIA_RUST_ROUTING_DEFAULT")) => {
@@ -367,6 +383,7 @@ mod tests {
             rust_stats: false,
             rust_export: false,
             rust_chatgpt_status: false,
+            rust_project_writes: false,
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -385,6 +402,7 @@ mod tests {
             rust_stats: false,
             rust_export: false,
             rust_chatgpt_status: false,
+            rust_project_writes: false,
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -404,6 +422,7 @@ mod tests {
             rust_stats: false,
             rust_export: false,
             rust_chatgpt_status: false,
+            rust_project_writes: false,
         };
         let both = Switches {
             rust_auth: true,
@@ -418,6 +437,7 @@ mod tests {
             rust_stats: false,
             rust_export: false,
             rust_chatgpt_status: false,
+            rust_project_writes: false,
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
@@ -576,6 +596,44 @@ mod tests {
             dispatch_under("PUT", "/api/reasoning-settings", on),
             Some(Native::ReasoningSettings)
         );
+    }
+
+    // #1264: the ported project writes are Node's under NOEVIA_RUST_PROJECTS alone (live today);
+    // only NOEVIA_RUST_PROJECT_WRITES, in a build with the slice, moves them to Rust.
+    #[test]
+    fn project_writes_are_rusts_only_under_their_own_switch() {
+        let projects = Switches {
+            rust_auth: true,
+            rust_projects: true,
+            ..Default::default()
+        };
+        let on = Switches {
+            rust_project_writes: true,
+            ..projects
+        };
+        let answered = cfg!(feature = "rust-project-writes").then_some(Native::Projects);
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-project-writes"),
+            answered.is_some()
+        );
+        for m in ["GET", "POST"] {
+            let p = "/api/chats/c1/context";
+            assert_eq!(dispatch(m, p), None, "{m}");
+            assert_eq!(dispatch_under(m, p, projects), None, "{m}: off = Node");
+            assert_eq!(dispatch_under(m, p, on), answered, "{m}: on = Rust");
+        }
+        for (m, p) in [
+            ("PUT", "/api/chats/c1/context"),
+            ("DELETE", "/api/chats/c1/context"),
+            ("GET", "/api/chats/c1/context-window"),
+            ("GET", "/api/chats/c1/history"),
+            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/diary/context"),
+        ] {
+            assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
+        }
+        assert!(on.on("NOEVIA_RUST_PROJECT_WRITES"));
+        assert!(!projects.on("NOEVIA_RUST_PROJECT_WRITES"));
     }
 
     #[test]

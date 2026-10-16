@@ -58,6 +58,11 @@ pub struct Config {
     /// one Node re-reads from disk, the owner's 2026-10-12 condition) and without UI_DATA_DIR; any
     /// other value is off.
     pub rust_export: bool,
+    /// NOEVIA_RUST_PROJECT_WRITES=1 (sbstndalton/noevia#1264): the project writes ported from
+    /// Node so far. Refused without NOEVIA_RUST_PROJECTS=1 (they share its projects.json lock and
+    /// write switch), without the compiled rust-project-writes feature and without UI_DATA_DIR;
+    /// any other value is off.
+    pub rust_project_writes: bool,
     /// NOEVIA_RUST_CHATGPT_STATUS=1 (M6, sbstndalton/noevia#1373): GET /api/providers/chatgpt.
     /// Refused without NOEVIA_RUST_AUTH=1, the compiled rust-chatgpt-status feature, UI_DATA_DIR
     /// and valid native auth, or with an invalid NOEVIA_FEATURE_CHATGPT_OAUTH (Node does not start
@@ -163,6 +168,7 @@ impl Config {
             rust_routing_default: self.rust_routing_default,
             rust_stats: self.rust_stats.is_some(),
             rust_export: self.rust_export,
+            rust_project_writes: self.rust_project_writes,
             rust_chatgpt_status: self.rust_chatgpt_status.is_some(),
         }
     }
@@ -301,6 +307,22 @@ impl Config {
         } else {
             false
         };
+        let rust_project_writes = if get("NOEVIA_RUST_PROJECT_WRITES").as_deref() == Some("1") {
+            if rust_projects.is_none() {
+                return Err("NOEVIA_RUST_PROJECT_WRITES=1 needs NOEVIA_RUST_PROJECTS=1".into());
+            }
+            if !cfg!(feature = "rust-project-writes") {
+                return Err(
+                    "NOEVIA_RUST_PROJECT_WRITES=1 needs compiled rust-project-writes".into(),
+                );
+            }
+            if get("UI_DATA_DIR").filter(|d| !d.is_empty()).is_none() {
+                return Err("NOEVIA_RUST_PROJECT_WRITES=1 needs UI_DATA_DIR".into());
+            }
+            true
+        } else {
+            false
+        };
         let rust_chatgpt_status = if get("NOEVIA_RUST_CHATGPT_STATUS").as_deref() == Some("1") {
             if rust_auth.is_none() {
                 return Err("NOEVIA_RUST_CHATGPT_STATUS=1 needs NOEVIA_RUST_AUTH=1".into());
@@ -365,6 +387,7 @@ impl Config {
             rust_routing_default,
             rust_stats,
             rust_export,
+            rust_project_writes,
             rust_chatgpt_status,
             usage_clock: server_usage::summary::Clock::system(&get),
         })
@@ -810,6 +833,54 @@ mod export_tests {
         let c = enabled.unwrap();
         assert!(c.rust_export && c.switches().on("NOEVIA_RUST_EXPORT"));
         let err = lookup(&[UP, AUTH, PROJECTS, ON]).unwrap_err();
+        assert!(err.contains("UI_DATA_DIR"), "{err}");
+    }
+
+    const WRITES: (&str, &str) = ("NOEVIA_RUST_PROJECT_WRITES", "1");
+
+    // #1264: NOEVIA_RUST_PROJECTS=1 (live) never moves the ported writes; only this switch does.
+    #[test]
+    fn project_writes_switch_is_exact_default_off_and_separate_from_projects() {
+        for value in [
+            None,
+            Some("0"),
+            Some("true"),
+            Some(" 1"),
+            Some("1 "),
+            Some(""),
+        ] {
+            let mut pairs = vec![UP, AUTH, PROJECTS, DATA];
+            if let Some(v) = value {
+                pairs.push(("NOEVIA_RUST_PROJECT_WRITES", v));
+            }
+            let c = lookup(&pairs).unwrap();
+            assert!(c.switches().rust_projects);
+            assert!(!c.rust_project_writes);
+            assert!(!c.switches().on("NOEVIA_RUST_PROJECT_WRITES"));
+        }
+        assert!(!lookup(&[UP]).unwrap().rust_project_writes);
+    }
+
+    #[test]
+    fn project_writes_need_projects_the_compiled_slice_and_a_data_dir() {
+        let err = lookup(&[UP, WRITES, DATA]).unwrap_err();
+        assert!(err.contains("NOEVIA_RUST_PROJECTS=1"), "{err}");
+        let err = lookup(&[UP, AUTH, WRITES, DATA]).unwrap_err();
+        assert!(err.contains("NOEVIA_RUST_PROJECTS=1"), "{err}");
+        let enabled = lookup(&[UP, AUTH, PROJECTS, WRITES, DATA]);
+        assert_eq!(
+            crate::FEATURES.contains(&"rust-project-writes"),
+            cfg!(feature = "rust-project-writes")
+        );
+        if !cfg!(feature = "rust-project-writes") {
+            assert!(enabled
+                .unwrap_err()
+                .contains("compiled rust-project-writes"));
+            return;
+        }
+        let c = enabled.unwrap();
+        assert!(c.rust_project_writes && c.switches().on("NOEVIA_RUST_PROJECT_WRITES"));
+        let err = lookup(&[UP, AUTH, PROJECTS, WRITES]).unwrap_err();
         assert!(err.contains("UI_DATA_DIR"), "{err}");
     }
 }
