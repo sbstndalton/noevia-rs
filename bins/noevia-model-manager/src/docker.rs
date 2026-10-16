@@ -643,6 +643,8 @@ mod tests {
             download_targets: None,
             #[cfg(feature = "native-badges")]
             badges: None,
+            #[cfg(feature = "native-bench-runs")]
+            bench_runs: None,
         })
     }
 

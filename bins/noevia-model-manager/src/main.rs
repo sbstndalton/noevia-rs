@@ -36,6 +36,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-badges") {
                 output.write_all(b"native-badges\n")?;
             }
+            if cfg!(feature = "native-bench-runs") {
+                output.write_all(b"native-bench-runs\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -151,6 +154,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let bench_mode = environment("MODEL_MANAGER_BENCH_RUNS_IMPL", "python")?;
+    if !matches!(bench_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_BENCH_RUNS_IMPL must be python or rust".into());
+    }
+    if bench_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-bench-runs")) {
+        return Err(
+            "native-bench-runs requires rust model manager and compiled native-bench-runs feature"
+                .into(),
+        );
+    }
+    #[cfg(feature = "native-bench-runs")]
+    let bench_root = if bench_mode == "rust" {
+        Some(data_dir()?)
+    } else {
+        None
+    };
     if !matches!(diagnose_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_DIAGNOSE_IMPL must be python or rust".into());
     }
@@ -208,6 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -371,6 +391,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::Path::new(root),
         ))
     });
+    #[cfg(feature = "native-bench-runs")]
+    let bench_runs = bench_root.as_deref().map(|root| {
+        Arc::new(noevia_model_manager::bench_runs::BenchRuns::new(
+            std::path::Path::new(root),
+        ))
+    });
     let mut child_command = legacy_command(
         tokio::process::Command::new("uvicorn"),
         &prompts_mode,
@@ -403,6 +429,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &targets_mode,
         #[cfg(feature = "native-download-targets")]
         targets_roots.as_ref(),
+    );
+    bench_runs_child(
+        &mut child_command,
+        &bench_mode,
+        #[cfg(feature = "native-bench-runs")]
+        bench_root.as_deref(),
     );
     badges_child(
         &mut child_command,
@@ -460,6 +492,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         download_targets,
         #[cfg(feature = "native-badges")]
         badges,
+        #[cfg(feature = "native-bench-runs")]
+        bench_runs,
         sections,
         embedding,
         host,
@@ -513,7 +547,8 @@ fn prompt_data_dir() -> Result<String, &'static str> {
 #[cfg(any(
     feature = "native-prompts",
     feature = "native-settings",
-    feature = "native-badges"
+    feature = "native-badges",
+    feature = "native-bench-runs"
 ))]
 fn data_dir() -> Result<String, &'static str> {
     prompt_data_dir_from(std::env::vars_os())
@@ -810,6 +845,48 @@ mod download_targets_command_tests {
 
 /// noevia#1318: the child refuses `PUT`/`DELETE /api/v1/badges` only when the native writer owns
 /// them, and reads (benchmark runs, the models list) the same `DATA_DIR/model_loader.db`.
+/// noevia#1318: the child refuses canonical `GET /api/v1/benchmark/runs/{id}` and serves the
+/// private runtime call only when the native reader owns the route, on the same `DATA_DIR`.
+fn bench_runs_child(
+    child_command: &mut tokio::process::Command,
+    bench_mode: &str,
+    #[cfg(feature = "native-bench-runs")] root: Option<&str>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED",
+        if bench_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-bench-runs")]
+    if let Some(root) = root {
+        child_command.env("DATA_DIR", root);
+    }
+}
+
+#[cfg(all(test, feature = "native-bench-runs"))]
+mod bench_runs_command_tests {
+    #[test]
+    fn bench_runs_confirmation_overrides_inherited_value() {
+        for (mode, root, expected) in [
+            ("rust", Some("/synthetic/data"), "1"),
+            ("python", None, "0"),
+        ] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED",
+                "hostile",
+            );
+            super::bench_runs_child(&mut command, mode, root);
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(get("DATA_DIR"), root.map(std::ffi::OsStr::new));
+        }
+    }
+}
+
 fn badges_child(
     child_command: &mut tokio::process::Command,
     badges_mode: &str,

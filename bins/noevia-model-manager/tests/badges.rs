@@ -75,6 +75,8 @@ fn state(badges: Option<Badges>, legacy_base: &str) -> Arc<StateData> {
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
         badges: badges.map(Arc::new),
+        #[cfg(feature = "native-bench-runs")]
+        bench_runs: None,
         sections: None,
         embedding: None,
         host: None,
