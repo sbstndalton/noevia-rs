@@ -39,6 +39,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-bench-runs") {
                 output.write_all(b"native-bench-runs\n")?;
             }
+            if cfg!(feature = "native-section-writes") {
+                output.write_all(b"native-section-writes\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -154,6 +157,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    #[cfg_attr(not(feature = "native-section-writes"), allow(unused_mut))]
+    let mut writes_mode = environment("MODEL_MANAGER_SECTION_WRITES_IMPL", "python")?;
+    if !matches!(writes_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_SECTION_WRITES_IMPL must be python or rust".into());
+    }
+    if writes_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-section-writes")) {
+        return Err(
+            "native-section-writes requires rust model manager and compiled native-section-writes feature"
+                .into(),
+        );
+    }
+    // Like #1889: settings the native writer cannot read exactly as Python does keep Python
+    // writing models.ini (all five routes together), with one log line.
+    #[cfg(feature = "native-section-writes")]
+    let writes_roots = if writes_mode == "rust" {
+        match section_writes_roots(&environment("TZ", "")?, std::env::vars_os().collect()) {
+            Ok(roots) => Some(roots),
+            Err(reason) => {
+                eprintln!("native-section-writes: {reason}; models.ini writes stay with python");
+                writes_mode = "python".to_owned();
+                None
+            }
+        }
+    } else {
+        None
+    };
     let bench_mode = environment("MODEL_MANAGER_BENCH_RUNS_IMPL", "python")?;
     if !matches!(bench_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_BENCH_RUNS_IMPL must be python or rust".into());
@@ -228,6 +257,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -391,6 +421,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::Path::new(root),
         ))
     });
+    #[cfg(feature = "native-section-writes")]
+    let section_writes = writes_roots.as_ref().map(|roots| {
+        Arc::new(noevia_model_manager::section_writes::SectionWrites::new(
+            std::path::Path::new(&roots.ini),
+            roots.cache,
+            roots.rust_backups,
+        ))
+    });
     #[cfg(feature = "native-bench-runs")]
     let bench_runs = bench_root.as_deref().map(|root| {
         Arc::new(noevia_model_manager::bench_runs::BenchRuns::new(
@@ -429,6 +467,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &targets_mode,
         #[cfg(feature = "native-download-targets")]
         targets_roots.as_ref(),
+    );
+    section_writes_child(
+        &mut child_command,
+        &writes_mode,
+        #[cfg(feature = "native-section-writes")]
+        writes_roots.as_ref(),
     );
     bench_runs_child(
         &mut child_command,
@@ -494,6 +538,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         badges,
         #[cfg(feature = "native-bench-runs")]
         bench_runs,
+        #[cfg(feature = "native-section-writes")]
+        section_writes,
         sections,
         embedding,
         host,
@@ -847,6 +893,168 @@ mod download_targets_command_tests {
 /// them, and reads (benchmark runs, the models list) the same `DATA_DIR/model_loader.db`.
 /// noevia#1318: the child refuses canonical `GET /api/v1/benchmark/runs/{id}` and serves the
 /// private runtime call only when the native reader owns the route, on the same `DATA_DIR`.
+/// noevia#1318: what the native models.ini writer reads, named exactly as the Python child's
+/// settings read them (they fold names, so case-folded aliases keep Python writing).
+#[cfg(feature = "native-section-writes")]
+#[derive(Debug, PartialEq, Eq)]
+struct WritesRoots {
+    ini: String,
+    cache: (i64, i64),
+    rust_backups: bool,
+}
+
+#[cfg(feature = "native-section-writes")]
+fn section_writes_roots(
+    tz: &str,
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<WritesRoots, &'static str> {
+    if !(tz.is_empty() || tz == "UTC") {
+        return Err("TZ is set to a zone other than UTC (backup names use local time)");
+    }
+    let canonical = |name: &str| -> Result<Option<String>, &'static str> {
+        let mut found = None;
+        for (key, value) in &values {
+            if key
+                .to_str()
+                .is_some_and(|key| key != name && key.eq_ignore_ascii_case(name))
+            {
+                return Err("models.ini writer settings need canonical environment spelling");
+            }
+            if key == name {
+                found = Some(
+                    value
+                        .to_str()
+                        .ok_or("environment setting must be UTF-8")?
+                        .to_owned(),
+                );
+            }
+        }
+        Ok(found)
+    };
+    let ini = canonical("MODELS_INI_PATH")?.unwrap_or_else(|| "/models/models.ini".into());
+    let normal = ini.starts_with('/')
+        && !ini.ends_with('/')
+        && ini.len() <= 4096
+        && ini
+            .split('/')
+            .skip(1)
+            .all(|segment| !matches!(segment, "" | "." | ".."));
+    if !normal {
+        return Err("MODELS_INI_PATH is not an absolute, normalised path");
+    }
+    let int = |name: &str, default: i64| -> Result<i64, &'static str> {
+        match canonical(name)? {
+            None => Ok(default),
+            Some(v) => {
+                let digits = v.strip_prefix('-').unwrap_or(&v);
+                if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err("cache-ram limits must be plain integers");
+                }
+                v.parse()
+                    .map_err(|_| "cache-ram limits must be plain integers")
+            }
+        }
+    };
+    let hard = int("LLAMACPP_CACHE_RAM_HARD_MAX_MIB", 2048)?.max(0);
+    let cap = int("LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB", 1024)?
+        .max(0)
+        .min(hard);
+    let impl_raw = canonical("MODEL_FILES_IMPL")?;
+    let rust_backups = impl_raw
+        .as_deref()
+        .map(|v| v.trim().to_lowercase())
+        .is_some_and(|v| v == "rust");
+    Ok(WritesRoots {
+        ini,
+        cache: (cap, hard),
+        rust_backups,
+    })
+}
+
+/// noevia#1318: the child refuses the five models.ini writers and serves the private
+/// safe-defaults plan only when the native writer owns them; it then runs in UTC and reads the
+/// same models.ini.
+fn section_writes_child(
+    child_command: &mut tokio::process::Command,
+    writes_mode: &str,
+    #[cfg(feature = "native-section-writes")] roots: Option<&WritesRoots>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED",
+        if writes_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-section-writes")]
+    if let Some(roots) = roots {
+        child_command
+            .env("TZ", "UTC")
+            .env("MODELS_INI_PATH", &roots.ini);
+    }
+}
+
+#[cfg(all(test, feature = "native-section-writes"))]
+#[allow(clippy::unwrap_used)]
+mod section_writes_command_tests {
+    fn roots(tz: &str, pairs: &[(&str, &str)]) -> Result<super::WritesRoots, &'static str> {
+        super::section_writes_roots(
+            tz,
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn roots_defaults_limits_and_fallbacks() {
+        let r = roots("", &[]).unwrap();
+        assert_eq!(
+            (r.ini.as_str(), r.cache, r.rust_backups),
+            ("/models/models.ini", (1024, 2048), false)
+        );
+        let r = roots(
+            "UTC",
+            &[
+                ("LLAMACPP_CACHE_RAM_HARD_MAX_MIB", "512"),
+                ("MODEL_FILES_IMPL", " Rust "),
+            ],
+        )
+        .unwrap();
+        assert_eq!((r.cache, r.rust_backups), ((512, 512), true));
+        assert_eq!(
+            roots("", &[("LLAMACPP_CACHE_RAM_HARD_MAX_MIB", "-5")])
+                .unwrap()
+                .cache,
+            (0, 0)
+        );
+        assert!(roots("Europe/Berlin", &[]).is_err());
+        for bad in ["models.ini", "/m/", "/m//x.ini", "/m/../x.ini"] {
+            assert!(roots("", &[("MODELS_INI_PATH", bad)]).is_err(), "{bad}");
+        }
+        assert!(roots("", &[("models_ini_path", "/x.ini")]).is_err());
+        assert!(roots("", &[("LLAMACPP_CACHE_RAM_HARD_MAX_MIB", "1_000")]).is_err());
+    }
+
+    #[test]
+    fn child_confirmation_overrides_inherited_value() {
+        for (mode, expected) in [("rust", "1"), ("python", "0")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED",
+                "hostile",
+            );
+            let r = roots("", &[]).unwrap();
+            super::section_writes_child(&mut command, mode, (mode == "rust").then_some(&r));
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(get("TZ").is_some(), mode == "rust");
+        }
+    }
+}
+
 fn bench_runs_child(
     child_command: &mut tokio::process::Command,
     bench_mode: &str,

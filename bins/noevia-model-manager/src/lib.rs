@@ -18,6 +18,8 @@ pub mod model_detail;
 pub mod model_updates;
 #[cfg(feature = "native-prompts")]
 pub mod prompts;
+#[cfg(feature = "native-section-writes")]
+pub mod section_writes;
 pub mod sections;
 #[cfg(feature = "native-settings")]
 pub mod settings;
@@ -82,6 +84,10 @@ pub struct StateData {
     /// (`capacity_gb`, `vram_predicted`) are asked of the Python child.
     #[cfg(feature = "native-bench-runs")]
     pub bench_runs: Option<Arc<bench_runs::BenchRuns>>,
+    /// noevia#1318: native models.ini writers (section save/rename/delete, safe defaults, the
+    /// raw editor); safe defaults ask the child for their values.
+    #[cfg(feature = "native-section-writes")]
+    pub section_writes: Option<Arc<section_writes::SectionWrites>>,
     /// noevia#1318: native `PUT`/`DELETE /api/v1/badges`.
     #[cfg(feature = "native-badges")]
     pub badges: Option<Arc<badges::Badges>>,
@@ -401,13 +407,71 @@ fn native_bench_run_id(state: &StateData, method: &Method, path: &str) -> Option
         .and_then(bench_runs::canonical_id)
 }
 
+#[cfg(feature = "native-section-writes")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SectionWrite {
+    Save(String),
+    Delete(String),
+    Rename(String),
+    SafeDefaults(String),
+    ModelsIni,
+}
+
+/// The native models.ini writers: exact paths and methods only; a name segment is
+/// percent-decoded and must not contain `/` (FastAPI would not match it either).
+#[cfg(feature = "native-section-writes")]
+pub fn section_write_route(method: &Method, path: &str) -> Option<SectionWrite> {
+    if path == "/api/v1/models-ini" {
+        return (*method == Method::PUT).then_some(SectionWrite::ModelsIni);
+    }
+    let rest = path.strip_prefix("/api/v1/sections/")?;
+    let mut parts = rest.split('/');
+    let (seg, tail, extra) = (parts.next()?, parts.next(), parts.next());
+    if seg.is_empty() || extra.is_some() {
+        return None;
+    }
+    // uvicorn's `unquote`: invalid escapes stay literal, invalid UTF-8 becomes U+FFFD.
+    let name = lossy_unquote(seg);
+    if name.contains('/') {
+        return None;
+    }
+    match (method, tail) {
+        (&Method::PUT, None) => Some(SectionWrite::Save(name)),
+        (&Method::DELETE, None) => Some(SectionWrite::Delete(name)),
+        (&Method::POST, Some("rename")) => Some(SectionWrite::Rename(name)),
+        (&Method::POST, Some("safe-defaults")) => Some(SectionWrite::SafeDefaults(name)),
+        _ => None,
+    }
+}
+
+#[cfg(feature = "native-section-writes")]
+fn lossy_unquote(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while let Some(&byte) = bytes.get(i) {
+        let hex = |b: Option<&u8>| b.and_then(|b| char::from(*b).to_digit(16));
+        if byte == b'%' {
+            if let (Some(a), Some(b)) = (hex(bytes.get(i + 1)), hex(bytes.get(i + 2))) {
+                out.push(u8::try_from(a * 16 + b).unwrap_or(0));
+                i += 3;
+                continue;
+            }
+        }
+        out.push(byte);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// FastAPI's answer to an unhandled exception, byte for byte.
 #[cfg(any(
     feature = "native-model-updates",
     feature = "native-model-detail",
     feature = "native-download-targets",
     feature = "native-badges",
-    feature = "native-bench-runs"
+    feature = "native-bench-runs",
+    feature = "native-section-writes"
 ))]
 fn internal_error() -> Response {
     (
@@ -818,6 +882,12 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    #[cfg(feature = "native-section-writes")]
+    if let Some(writes) = state.section_writes.clone() {
+        if let Some(route) = section_write_route(req.method(), path) {
+            return native_section_write(&state, writes, route, req).await;
+        }
+    }
     #[cfg(feature = "native-bench-runs")]
     if let Some(run_id) = native_bench_run_id(&state, req.method(), path) {
         if let Some(runs) = state.bench_runs.clone() {
@@ -1005,9 +1075,199 @@ async fn native_bench_run(
     }
 }
 
+/// Set once the child has answered its health check: its startup (which may migrate models.ini
+/// cache-ram values) is over, so this side is the only models.ini writer from then on.
+#[cfg(feature = "native-section-writes")]
+static CHILD_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(feature = "native-section-writes")]
+async fn child_started(state: &StateData) -> bool {
+    use std::sync::atomic::Ordering;
+    if CHILD_STARTED.load(Ordering::Acquire) {
+        return true;
+    }
+    let ok = child_runtime(state, "/api/v1/health", "", 4096)
+        .await
+        .is_ok();
+    if ok {
+        CHILD_STARTED.store(true, Ordering::Release);
+    }
+    ok
+}
+
+/// noevia#1318: the models.ini writers. Body and name checks run first (FastAPI's 422s, then
+/// the handlers' 400s), then everything else under the one write lock; the store work runs on a
+/// blocking thread that owns the lock guard, so a dropped request still finishes before the next.
+#[cfg(feature = "native-section-writes")]
+async fn native_section_write(
+    state: &StateData,
+    writes: Arc<section_writes::SectionWrites>,
+    route: SectionWrite,
+    req: Request,
+) -> Response {
+    use section_writes::Outcome;
+    let unavailable = || {
+        detail(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Native models.ini writes are unavailable",
+        )
+    };
+    let query = req.uri().query().unwrap_or_default().to_owned();
+    // Python reads the body only where the handler has one.
+    let body = match route {
+        SectionWrite::ModelsIni => {
+            // A body this large can only carry a text over the editor limit (or be malformed,
+            // which Python would answer with a 422 first; see the docs).
+            let over: fn() -> Response = || {
+                detail(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "models.ini exceeds the editor limit",
+                )
+            };
+            match fastapi_dict_body_capped(
+                req,
+                8 * REQUEST_CAP,
+                Some((section_writes::MODELS_INI_MAX_BYTES, over)),
+            )
+            .await
+            {
+                Ok(body) => Some(body),
+                Err(response) => return response,
+            }
+        }
+        SectionWrite::Save(_) | SectionWrite::Rename(_) => match fastapi_dict_body(req).await {
+            Ok(body) => Some(body),
+            Err(response) => return response,
+        },
+        _ => None,
+    };
+    let early = match (&route, &body) {
+        (SectionWrite::Save(name), Some(body)) => {
+            section_writes::section_body(name, body).map(|b| Some((Some(b), None, None)))
+        }
+        (SectionWrite::ModelsIni, Some(body)) => {
+            section_writes::models_ini_body(body).map(|t| Some((None, Some(t), None)))
+        }
+        (SectionWrite::Rename(_), Some(body)) => {
+            section_writes::rename_body(body).map(|n| Some((None, None, Some(n))))
+        }
+        (SectionWrite::SafeDefaults(name), _) => {
+            section_writes::safe_defaults_name(name).map(|()| None)
+        }
+        _ => Ok(None),
+    };
+    let early = match early {
+        Ok(e) => e,
+        Err(outcome) => return section_outcome(outcome),
+    };
+    if !child_started(state).await {
+        return unavailable();
+    }
+    let guard = writes.lock().await;
+    let plan = if let SectionWrite::SafeDefaults(name) = &route {
+        let query: String = form_urlencoded::Serializer::new(String::new())
+            .append_pair("name", name)
+            .finish();
+        match child_runtime(state, section_writes::PLAN_PATH, &query, 1024 * 1024).await {
+            Ok(bytes) => match section_writes::parse_plan(&bytes) {
+                Some(plan) => Some(plan),
+                None => return unavailable(),
+            },
+            Err(true) => return internal_error(),
+            Err(false) => return unavailable(),
+        }
+    } else {
+        None
+    };
+    let job = {
+        let writes = writes.clone();
+        let route = route.clone();
+        move || -> Outcome {
+            let _guard = guard;
+            let (section, ini, new) = early.unwrap_or((None, None, None));
+            match route {
+                SectionWrite::Save(name) => match (body.as_ref(), section) {
+                    (Some(body), Some(parsed)) => writes.save_section(&name, body, &parsed),
+                    _ => Outcome::Failed,
+                },
+                SectionWrite::ModelsIni => match (body.as_ref(), ini) {
+                    (Some(body), Some((text, backup))) => {
+                        writes.replace_models_ini(&text, body.get("baseRevision"), backup)
+                    }
+                    _ => Outcome::Failed,
+                },
+                SectionWrite::Rename(old) => match (body.as_ref(), new) {
+                    (Some(body), Some(new)) => writes.rename(&old, &new, body.get("baseRevision")),
+                    _ => Outcome::Failed,
+                },
+                SectionWrite::Delete(name) => {
+                    let base = form_urlencoded::parse(query.as_bytes())
+                        .filter(|(k, _)| k == "baseRevision")
+                        .last()
+                        .map(|(_, v)| v.into_owned())
+                        .unwrap_or_default();
+                    writes.delete(&name, &base)
+                }
+                SectionWrite::SafeDefaults(name) => match plan {
+                    Some(plan) => writes.safe_defaults(&name, plan),
+                    None => Outcome::Failed,
+                },
+            }
+        }
+    };
+    let outcome = tokio::task::spawn_blocking(job)
+        .await
+        .unwrap_or(section_writes::Outcome::Failed);
+    // #1747: a saved preset may have lost the chat preset's idle key; the answer reports the
+    // revision of the file as it is after that is put back, as for the forwarded writers.
+    let outcome = match (outcome, state.idle_unload.as_ref()) {
+        (Outcome::Json(200, bytes), Some(reconciler)) => {
+            Outcome::Json(200, after_native_preset_write(reconciler, bytes).await)
+        }
+        (other, _) => other,
+    };
+    section_outcome(outcome)
+}
+
+/// Replace the `"revision"` value of a native writer's answer after the idle-unload reconcile,
+/// keeping every other byte (its key order included).
+#[cfg(feature = "native-section-writes")]
+async fn after_native_preset_write(
+    reconciler: &idle_unload::Reconciler,
+    bytes: Vec<u8>,
+) -> Vec<u8> {
+    let Ok(Some(revision)) = reconciler.reconcile().await else {
+        return bytes;
+    };
+    let Ok(text) = String::from_utf8(bytes.clone()) else {
+        return bytes;
+    };
+    let Some(start) = text.find("\"revision\":\"") else {
+        return bytes;
+    };
+    let from = start + "\"revision\":\"".len();
+    let Some(len) = text[from..].find('"') else {
+        return bytes;
+    };
+    format!("{}{revision}{}", &text[..from], &text[from + len..]).into_bytes()
+}
+
+#[cfg(feature = "native-section-writes")]
+fn section_outcome(outcome: section_writes::Outcome) -> Response {
+    match outcome {
+        section_writes::Outcome::Json(status, bytes) => (
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response(),
+        section_writes::Outcome::Failed => internal_error(),
+    }
+}
+
 /// A private GET to the Python child, bounded by `cap`. `Err(true)` is the child's 500 (Python
 /// raised), `Err(false)` anything else that leaves no usable answer.
-#[cfg(feature = "native-bench-runs")]
+#[cfg(any(feature = "native-bench-runs", feature = "native-section-writes"))]
 async fn child_runtime(
     state: &StateData,
     path: &str,
@@ -1017,10 +1277,12 @@ async fn child_runtime(
     if query.len() > 256 * 1024 {
         return Err(true);
     }
-    let mut request = state
-        .legacy
-        .get(format!("{}{path}?{query}", state.legacy_base))
-        .timeout(Duration::from_secs(60));
+    let url = if query.is_empty() {
+        format!("{}{path}", state.legacy_base)
+    } else {
+        format!("{}{path}?{query}", state.legacy_base)
+    };
+    let mut request = state.legacy.get(url).timeout(Duration::from_secs(60));
     if !state.token.is_empty() {
         request = request.header("x-model-loader-token", &state.token);
     }
@@ -1253,6 +1515,64 @@ async fn guarded_delete(
     forward(state, Request::from_parts(parts, Body::from(raw))).await
 }
 
+/// A FastAPI `dict` body read exactly as the prompt writer reads it (content type, CPython JSON
+/// encodings, the 1 MiB cap and the same 422 bodies).
+#[cfg(any(feature = "native-badges", feature = "native-section-writes"))]
+#[allow(clippy::result_large_err)]
+async fn fastapi_dict_body(req: Request) -> Result<prompts::JsonValue, Response> {
+    fastapi_dict_body_capped(req, REQUEST_CAP, None).await
+}
+
+/// [`fastapi_dict_body`] with a larger read cap; a body over `over.0` bytes answers `over.1`
+/// (the route's own size refusal) before it is parsed.
+#[cfg(any(feature = "native-badges", feature = "native-section-writes"))]
+#[allow(clippy::result_large_err)]
+async fn fastapi_dict_body_capped(
+    req: Request,
+    cap: usize,
+    over: Option<(usize, fn() -> Response)>,
+) -> Result<prompts::JsonValue, Response> {
+    // A missing content type is JSON, as for the prompt writer.
+    let header = req
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .map(|value| value.to_str().ok().filter(|v| v.len() <= 8192));
+    let json_content = if let Some(value) = header {
+        let Some(value) = value else {
+            return Err(prompt_error(prompts::Error::Body));
+        };
+        prompts::json_content_type(Some(value))
+    } else {
+        true
+    };
+    let Ok(bytes) = to_bytes(req.into_body(), cap).await else {
+        return Err(detail(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "request body exceeded limit",
+        ));
+    };
+    if let Some((limit, answer)) = over {
+        if bytes.len() > limit {
+            return Err(answer());
+        }
+    }
+    if !json_content && !bytes.is_empty() {
+        return Err(match prompts::non_json_validation(&bytes) {
+            Ok(error) => (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response(),
+            Err(e) => prompt_error(e),
+        });
+    }
+    let decoded = prompts::decode_body(&bytes).map_err(prompt_error)?;
+    if let Some(error) = prompts::validation_with_empty(decoded.as_bytes(), bytes.is_empty()) {
+        return Err((StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response());
+    }
+    match prompts::parse_json(&decoded) {
+        Ok(value @ prompts::JsonValue::Obj(_)) => Ok(value),
+        Ok(_) => Err(prompt_error(prompts::Error::Object)),
+        Err(e) => Err(prompt_error(e)),
+    }
+}
+
 /// noevia#1318: `PUT` reads a FastAPI `dict` body exactly as the prompt writer does (same
 /// content-type, encoding, 422 and size rules); `DELETE` reads its two required query values.
 #[cfg(feature = "native-badges")]
@@ -1260,39 +1580,9 @@ async fn native_badges(badges: &badges::Badges, req: Request) -> Response {
     let outcome = if req.method() == Method::DELETE {
         badges.delete(req.uri().query().unwrap_or_default()).await
     } else {
-        // A missing content type is JSON, as for the prompt writer.
-        let header = req
-            .headers()
-            .get(axum::http::header::CONTENT_TYPE)
-            .map(|value| value.to_str().ok().filter(|v| v.len() <= 8192));
-        let json_content = if let Some(value) = header {
-            let Some(value) = value else {
-                return prompt_error(prompts::Error::Body);
-            };
-            prompts::json_content_type(Some(value))
-        } else {
-            true
-        };
-        let Ok(bytes) = to_bytes(req.into_body(), REQUEST_CAP).await else {
-            return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
-        };
-        if !json_content && !bytes.is_empty() {
-            return match prompts::non_json_validation(&bytes) {
-                Ok(error) => (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response(),
-                Err(e) => prompt_error(e),
-            };
-        }
-        let decoded = match prompts::decode_body(&bytes) {
-            Ok(text) => text,
-            Err(e) => return prompt_error(e),
-        };
-        if let Some(error) = prompts::validation_with_empty(decoded.as_bytes(), bytes.is_empty()) {
-            return (StatusCode::UNPROCESSABLE_ENTITY, Json(error)).into_response();
-        }
-        let body = match prompts::parse_json(&decoded) {
-            Ok(value @ prompts::JsonValue::Obj(_)) => value,
-            Ok(_) => return prompt_error(prompts::Error::Object),
-            Err(e) => return prompt_error(e),
+        let body = match fastapi_dict_body(req).await {
+            Ok(body) => body,
+            Err(response) => return response,
         };
         badges.put(&body).await
     };

@@ -69,6 +69,8 @@ fn state(root: Option<&Path>, legacy_base: &str) -> Arc<StateData> {
         badges: None,
         #[cfg(feature = "native-bench-runs")]
         bench_runs: None,
+        #[cfg(feature = "native-section-writes")]
+        section_writes: None,
     })
 }
 

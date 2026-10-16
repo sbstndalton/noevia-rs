@@ -54,6 +54,8 @@ fn state(root: Option<&Path>, legacy_base: &str) -> Arc<StateData> {
         #[cfg(feature = "native-badges")]
         badges: None,
         bench_runs: root.map(|r| Arc::new(BenchRuns::new(r))),
+        #[cfg(feature = "native-section-writes")]
+        section_writes: None,
         sections: None,
         embedding: None,
         host: None,
@@ -192,7 +194,7 @@ async fn actual_python_differential() {
             // The private call carries the token and only the vram_labels, in order.
             let line = seen.lines().next().unwrap().to_owned();
             assert!(
-                line.starts_with("GET /api/v1/internal/bench-run-runtime?"),
+                line.starts_with("GET /api/v1/internal/bench-run-runtime"),
                 "{id}: {line}"
             );
             assert!(seen
@@ -210,8 +212,7 @@ async fn actual_python_differential() {
                 .nth(1)
                 .unwrap()
                 .split_once('?')
-                .unwrap()
-                .1;
+                .map_or("", |(_, q)| q);
             let sent: Vec<String> = form_pairs(query);
             assert_eq!(sent, labels, "{id}");
         }

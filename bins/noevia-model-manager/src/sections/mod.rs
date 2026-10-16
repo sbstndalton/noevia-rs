@@ -109,6 +109,24 @@ fn kind(key: &str) -> Option<&'static str> {
         .get("kind")?
         .as_str()
 }
+/// `ini.ALL_FIELDS` as (key, kind), in schema order (the schema is generated from it).
+pub fn field_kinds() -> Vec<(&'static str, &'static str)> {
+    let Ok(schema) = schema() else {
+        return Vec::new();
+    };
+    schema
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|tier| {
+            tier.get("fields")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+        })
+        .filter_map(|f| Some((f.get("key")?.as_str()?, f.get("kind")?.as_str()?)))
+        .collect()
+}
 #[derive(Clone, Debug)]
 pub struct Model {
     pub relative: String,

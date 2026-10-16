@@ -486,6 +486,8 @@ fn state_at(service: Arc<EmbeddingService>, legacy_base: &str) -> Arc<StateData>
         badges: None,
         #[cfg(feature = "native-bench-runs")]
         bench_runs: None,
+        #[cfg(feature = "native-section-writes")]
+        section_writes: None,
     })
 }
 
