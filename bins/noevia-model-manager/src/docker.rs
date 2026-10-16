@@ -832,9 +832,46 @@ pub mod sweep {
     use serde::{Deserialize, Serialize};
     use std::{
         collections::{BTreeMap, HashSet},
+        future::Future,
         path::PathBuf,
-        sync::Mutex,
+        pin::Pin,
+        sync::{Arc, Mutex},
+        time::Duration,
     };
+
+    /// noevia#1944: the most one sweep Docker call may take (docker-py's default is 60 s).
+    pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+    /// The answer when a name is not one of the effective backends (`services` wording).
+    pub const NOT_BACKEND: &str = "container not in configured list";
+
+    /// The effective backend names (configured plus discovered llama.cpp containers), read
+    /// fresh for every check.
+    pub type BackendNames =
+        Arc<dyn Fn() -> Pin<Box<dyn Future<Output = Vec<String>> + Send>> + Send + Sync>;
+
+    /// A device node the backend was given (`HostConfig.Devices`), as Docker reports it.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+    #[serde(rename_all = "PascalCase")]
+    pub struct DeviceMapping {
+        #[serde(default, deserialize_with = "nullable")]
+        pub path_on_host: String,
+        #[serde(default, deserialize_with = "nullable")]
+        pub path_in_container: String,
+        #[serde(default, deserialize_with = "nullable")]
+        pub cgroup_permissions: String,
+    }
+
+    /// Only device nodes are ever passed through: both paths under `/dev/`, no `..`.
+    fn device_node(path: &str) -> bool {
+        path.starts_with("/dev/") && !path.split('/').any(|p| p == ".." || p == ".")
+    }
+
+    /// `sha256:` and 64 lowercase hex digits: an image id, never a tag.
+    pub fn image_id(image: &str) -> bool {
+        image.strip_prefix("sha256:").is_some_and(|h| {
+            h.len() == 64 && h.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+        })
+    }
 
     /// `bench.SWEEP_LABEL`, stamped `"1"` on every sweep container.
     pub const SWEEP_LABEL: &str = "noevia.model-manager.bench";
@@ -874,11 +911,16 @@ pub mod sweep {
     /// What a sweep mirrors from the backend container, read live by inspect.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct BackendRuntime {
-        /// `c.image.tags[0]`.
+        /// The backend container's image id (`sha256:…`), so a re-pulled tag cannot change what
+        /// a sweep runs (noevia#1948). Python uses `c.image.tags[0]`.
         pub image: String,
         /// `(Source, Destination)` of each mount with both.
         pub mounts: Vec<(String, String)>,
         pub device_requests: Vec<DeviceRequest>,
+        /// noevia#1947: the backend's own device nodes (an iGPU's `/dev/dri/*`) and the extra
+        /// groups it runs with, copied exactly; Python copies neither.
+        pub devices: Vec<DeviceMapping>,
+        pub group_add: Vec<String>,
         /// `Config.WorkingDir` ("/" when unset), where a relative model path resolves.
         pub working_dir: String,
         /// The models directory (`MODELS_DIR`): the only place a sweep may mount from.
@@ -891,11 +933,13 @@ pub mod sweep {
         pub binds: Vec<String>,
         pub network_mode: String,
         pub device_requests: Vec<DeviceRequest>,
+        pub devices: Vec<DeviceMapping>,
+        pub group_add: Vec<String>,
     }
 
     /// The whole `POST /containers/create` body. Its fields are the only ones a sweep sets:
-    /// no env, ports, privileges, capabilities, devices, namespaces or security options exist
-    /// to be set.
+    /// no env, ports, privileges, capabilities, namespaces or security options exist to be set,
+    /// and devices and groups can only be the backend's own.
     #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
     #[serde(rename_all = "PascalCase")]
     pub struct CreateBody {
@@ -963,6 +1007,8 @@ pub mod sweep {
                     .collect(),
                 network_mode: "none".to_owned(),
                 device_requests: runtime.device_requests.clone(),
+                devices: runtime.devices.clone(),
+                group_add: runtime.group_add.clone(),
             },
         }
     }
@@ -972,8 +1018,8 @@ pub mod sweep {
         if body.labels.len() != 1 || body.labels.get(SWEEP_LABEL).map(String::as_str) != Some("1") {
             return Err("sweep container must carry exactly the sweep label");
         }
-        if body.image.is_empty() || body.image != runtime.image {
-            return Err("sweep image must be the backend's image");
+        if !image_id(&body.image) || body.image != runtime.image {
+            return Err("sweep image must be the backend's image id");
         }
         if body.entrypoint != [ENTRYPOINT] {
             return Err("sweep entrypoint refused");
@@ -983,6 +1029,18 @@ pub mod sweep {
         }
         if body.host_config.device_requests != runtime.device_requests {
             return Err("sweep GPU request must be the backend's");
+        }
+        if body.host_config.devices != runtime.devices
+            || body
+                .host_config
+                .devices
+                .iter()
+                .any(|d| !device_node(&d.path_on_host) || !device_node(&d.path_in_container))
+        {
+            return Err("sweep devices must be the backend's device nodes");
+        }
+        if body.host_config.group_add != runtime.group_add {
+            return Err("sweep groups must be the backend's");
         }
         for bind in &body.host_config.binds {
             let Some(spec) = bind.strip_suffix(":ro") else {
@@ -1050,14 +1108,64 @@ pub mod sweep {
         pub socket: PathBuf,
         models_dir: String,
         known: Mutex<HashSet<String>>,
+        backends: BackendNames,
+        timeout: Duration,
+    }
+
+    /// What a call that outlived [`CALL_TIMEOUT`] reports.
+    fn timed_out(timeout: Duration) -> String {
+        format!(
+            "ReadTimeout: Docker did not answer within {}s",
+            timeout.as_secs_f64()
+        )
     }
 
     impl UnixSweepDocker {
-        pub fn new(socket: PathBuf, models_dir: &str) -> Self {
+        /// `backends` gives the effective backend names; `runtime` and `endpoint` inspect only
+        /// those.
+        pub fn new(socket: PathBuf, models_dir: &str, backends: BackendNames) -> Self {
             Self {
                 socket,
                 models_dir: models_dir.to_owned(),
                 known: Mutex::new(HashSet::new()),
+                backends,
+                timeout: CALL_TIMEOUT,
+            }
+        }
+
+        /// The same transport with a shorter per-call deadline (tests).
+        #[must_use]
+        pub fn with_timeout(mut self, timeout: Duration) -> Self {
+            self.timeout = timeout;
+            self
+        }
+
+        /// noevia#1945: a backend name is inspected only when it is one of the effective
+        /// backends, by name, never an all-hex string Docker would take as an id prefix.
+        async fn backend<'n>(&self, name: &'n str) -> Result<&'n str, String> {
+            let Ok(name) = segment(name) else {
+                return Err(format!("NotFound: No such container: {name}"));
+            };
+            if name.bytes().all(|c| c.is_ascii_hexdigit()) {
+                return Err(NOT_BACKEND.into());
+            }
+            let names = tokio::time::timeout(self.timeout, (self.backends)())
+                .await
+                .map_err(|_| timed_out(self.timeout))?;
+            if names.iter().any(|n| n == name) {
+                Ok(name)
+            } else {
+                Err(NOT_BACKEND.into())
+            }
+        }
+
+        async fn bounded<F>(&self, call: F) -> Result<(StatusCode, Vec<u8>), String>
+        where
+            F: Future<Output = Result<(StatusCode, Vec<u8>), &'static str>>,
+        {
+            match tokio::time::timeout(self.timeout, call).await {
+                Ok(r) => r.map_err(str::to_owned),
+                Err(_) => Err(timed_out(self.timeout)),
             }
         }
 
@@ -1075,16 +1183,14 @@ pub mod sweep {
             if !allowed_sweep(method, path, &self.known()) {
                 return Err("Docker operation refused".into());
             }
-            send(&self.socket, method, path)
-                .await
-                .map_err(str::to_owned)
+            self.bounded(send(&self.socket, method, path)).await
         }
 
         async fn read(&self, path: &str) -> Result<(StatusCode, Vec<u8>), String> {
             if !allowed_read(path) {
                 return Err("Docker operation refused".into());
             }
-            send(&self.socket, "GET", path).await.map_err(str::to_owned)
+            self.bounded(send(&self.socket, "GET", path)).await
         }
     }
 
@@ -1093,9 +1199,7 @@ pub mod sweep {
         /// port `services._extract_ports` picks (the last published key whose number parses, in
         /// Docker's order), or Python's error text.
         pub async fn endpoint(&self, container: &str) -> Result<String, String> {
-            let Ok(name) = segment(container) else {
-                return Err(format!("NotFound: No such container: {container}"));
-            };
+            let name = self.backend(container).await?;
             let (status, raw) = self.read(&format!("/containers/{name}/json")).await?;
             if status != StatusCode::OK {
                 return Err(docker_error(status, &raw));
@@ -1157,6 +1261,10 @@ pub mod sweep {
     struct Host {
         #[serde(default)]
         device_requests: Option<Vec<DeviceRequest>>,
+        #[serde(default)]
+        devices: Option<Vec<DeviceMapping>>,
+        #[serde(default)]
+        group_add: Option<Vec<String>>,
     }
     #[derive(Deserialize)]
     #[serde(rename_all = "PascalCase")]
@@ -1192,8 +1300,9 @@ pub mod sweep {
     impl crate::bench_runner::SweepDocker for UnixSweepDocker {
         fn runtime<'a>(&'a self, backend: &'a str) -> Job<'a, Result<BackendRuntime, String>> {
             Box::pin(async move {
-                let Ok(name) = segment(backend) else {
-                    return Ok(Err(format!("NotFound: No such container: {backend}")));
+                let name = match self.backend(backend).await {
+                    Ok(name) => name,
+                    Err(e) => return Ok(Err(e)),
                 };
                 let (status, raw) = match self.read(&format!("/containers/{name}/json")).await {
                     Ok(r) => r,
@@ -1205,18 +1314,34 @@ pub mod sweep {
                 let Ok(inspect) = serde_json::from_slice::<Inspect>(&raw) else {
                     return Ok(Err("APIError: Docker inspect response refused".into()));
                 };
-                let image = match inspect.image.as_deref().map(segment) {
-                    Some(Ok(id)) => match self.read(&format!("/images/{id}/json")).await {
+                let host = inspect.host_config.unwrap_or(Host {
+                    device_requests: None,
+                    devices: None,
+                    group_add: None,
+                });
+                let devices = host.devices.unwrap_or_default();
+                if devices
+                    .iter()
+                    .any(|d| !device_node(&d.path_on_host) || !device_node(&d.path_in_container))
+                {
+                    return Ok(Err("backend devices are not device nodes".into()));
+                }
+                // The container's image id is what the sweep runs (noevia#1948). Python's
+                // refusal of an untagged image is kept: the tag is still read, never used.
+                let image = inspect
+                    .image
+                    .clone()
+                    .filter(|i| image_id(i))
+                    .unwrap_or_default();
+                let tagged = !image.is_empty()
+                    && match self.read(&format!("/images/{image}/json")).await {
                         Ok((StatusCode::OK, raw)) => serde_json::from_slice::<Image>(&raw)
                             .ok()
                             .and_then(|i| i.repo_tags)
-                            .and_then(|t| t.into_iter().next())
-                            .unwrap_or_default(),
-                        _ => String::new(),
-                    },
-                    _ => String::new(),
-                };
-                if image.is_empty() {
+                            .is_some_and(|t| t.first().is_some_and(|t| !t.is_empty())),
+                        _ => false,
+                    };
+                if !tagged {
                     return Ok(Err("cannot determine backend image".into()));
                 }
                 let mounts = inspect
@@ -1236,10 +1361,9 @@ pub mod sweep {
                 Ok(Ok(BackendRuntime {
                     image,
                     mounts,
-                    device_requests: inspect
-                        .host_config
-                        .and_then(|h| h.device_requests)
-                        .unwrap_or_default(),
+                    device_requests: host.device_requests.unwrap_or_default(),
+                    devices,
+                    group_add: host.group_add.unwrap_or_default(),
                     working_dir,
                     models_dir: self.models_dir.clone(),
                 }))
@@ -1261,10 +1385,12 @@ pub mod sweep {
                 if !allowed_sweep("POST", "/containers/create", &self.known()) {
                     return Ok(Err("Docker operation refused".into()));
                 }
-                let (status, raw) = match send_json(&self.socket, "/containers/create", json).await
+                let (status, raw) = match self
+                    .bounded(send_json(&self.socket, "/containers/create", json))
+                    .await
                 {
                     Ok(r) => r,
-                    Err(e) => return Ok(Err(e.to_owned())),
+                    Err(e) => return Ok(Err(e)),
                 };
                 if status != StatusCode::CREATED {
                     return Ok(Err(docker_error(status, &raw)));
@@ -1274,6 +1400,11 @@ pub mod sweep {
                     .map(|c| c.id)
                     .filter(|id| full_id(id))
                 else {
+                    // The container may exist; it carries the sweep label, so the next startup
+                    // cleanup removes it. Say so (noevia#1948).
+                    eprintln!(
+                        "llama-bench create answered without a usable id; a labelled container may be left for the startup cleanup"
+                    );
                     return Ok(Err("APIError: Docker create response refused".into()));
                 };
                 self.known().insert(id.clone());
@@ -1399,7 +1530,7 @@ pub mod sweep {
 
         fn runtime() -> BackendRuntime {
             BackendRuntime {
-                image: "ghcr.io/example/llama:full".into(),
+                image: format!("sha256:{}", "ab".repeat(32)),
                 mounts: vec![
                     ("/mnt/models".into(), "/models".into()),
                     ("/mnt/cache".into(), "/root/.cache".into()),
@@ -1411,6 +1542,12 @@ pub mod sweep {
                     capabilities: vec![vec!["gpu".into()]],
                     ..DeviceRequest::default()
                 }],
+                devices: vec![DeviceMapping {
+                    path_on_host: "/dev/dri/renderD128".into(),
+                    path_in_container: "/dev/dri/renderD128".into(),
+                    cgroup_permissions: "rwm".into(),
+                }],
+                group_add: vec!["44".into()],
                 working_dir: "/app".into(),
                 models_dir: "/models".into(),
             }
@@ -1424,7 +1561,23 @@ pub mod sweep {
             let keys: Vec<&String> = json.as_object().unwrap().keys().collect();
             assert_eq!(keys, ["Cmd", "Entrypoint", "HostConfig", "Image", "Labels"]);
             let host: Vec<&String> = json["HostConfig"].as_object().unwrap().keys().collect();
-            assert_eq!(host, ["Binds", "DeviceRequests", "NetworkMode"]);
+            assert_eq!(
+                host,
+                [
+                    "Binds",
+                    "DeviceRequests",
+                    "Devices",
+                    "GroupAdd",
+                    "NetworkMode"
+                ]
+            );
+            assert_eq!(
+                json["HostConfig"]["Devices"],
+                serde_json::json!([{"PathOnHost": "/dev/dri/renderD128",
+                    "PathInContainer": "/dev/dri/renderD128", "CgroupPermissions": "rwm"}])
+            );
+            assert_eq!(json["HostConfig"]["GroupAdd"], serde_json::json!(["44"]));
+            assert_eq!(json["Image"], serde_json::json!(runtime().image));
             assert_eq!(
                 json["HostConfig"]["Binds"],
                 serde_json::json!(["/mnt/models:/models:ro"])
@@ -1467,6 +1620,9 @@ pub mod sweep {
             }));
             assert!(refused(&|b| b.image = "busybox".into()));
             assert!(refused(&|b| b.image = String::new()));
+            // A tag, even the backend's own, is not its image id (noevia#1948).
+            assert!(refused(&|b| b.image = "ghcr.io/example/llama:full".into()));
+            assert!(refused(&|b| b.image = format!("sha256:{}", "cd".repeat(32))));
             assert!(refused(&|b| b.entrypoint = vec!["/bin/sh".into()]));
             assert!(refused(&|b| b.host_config.network_mode = "host".into()));
             assert!(refused(&|b| b.host_config.network_mode = "bridge".into()));
@@ -1487,6 +1643,45 @@ pub mod sweep {
             assert!(refused(
                 &|b| b.host_config.device_requests[0].device_ids = vec!["0".into()]
             ));
+            // noevia#1947: devices and groups are exactly the backend's, never more or other.
+            let device = |path: &str| DeviceMapping {
+                path_on_host: path.into(),
+                path_in_container: path.into(),
+                cgroup_permissions: "rwm".into(),
+            };
+            assert!(refused(&|b| b
+                .host_config
+                .devices
+                .push(device("/dev/dri/card0"))));
+            assert!(refused(&|b| b.host_config.devices = vec![]));
+            assert!(refused(
+                &|b| b.host_config.devices[0].cgroup_permissions = "rwmx".into()
+            ));
+            assert!(refused(
+                &|b| b.host_config.devices[0].path_in_container = "/dev/sda".into()
+            ));
+            assert!(refused(
+                &|b| b.host_config.devices = vec![device("/dev/kfd")]
+            ));
+            assert!(refused(&|b| b.host_config.group_add.push("0".into())));
+            assert!(refused(&|b| b.host_config.group_add = vec![]));
+            assert!(refused(&|b| b.host_config.group_add = vec!["docker".into()]));
+            // A backend "device" that is not a device node is refused even when copied.
+            let mut odd = runtime();
+            odd.devices = vec![device("/var/run/docker.sock")];
+            assert!(check_create(&create_body(&odd, "/models/x", vec![]), &odd).is_err());
+            let mut climbing = runtime();
+            climbing.devices = vec![device("/dev/../var/run/docker.sock")];
+            assert!(check_create(&create_body(&climbing, "/models/x", vec![]), &climbing).is_err());
+            // Without devices or groups on the backend, none may be added.
+            let mut plain = runtime();
+            plain.devices = vec![];
+            plain.group_add = vec![];
+            let body = create_body(&plain, "/models/x", vec![]);
+            check_create(&body, &plain).unwrap();
+            let mut added = body.clone();
+            added.host_config.devices = vec![device("/dev/dri/renderD128")];
+            assert!(check_create(&added, &plain).is_err());
             let mut empty = runtime();
             empty.image = String::new();
             assert!(check_create(&create_body(&empty, "/models/x", vec![]), &empty).is_err());

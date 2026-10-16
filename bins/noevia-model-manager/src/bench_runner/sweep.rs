@@ -5,7 +5,7 @@
 //! `docker::sweep::allowed_sweep`.
 use super::{
     blocking, count, create_run, finish_run, get, loaded_aliases, open, py_int, py_str_value,
-    raised, raw, sql, Bind, JobState, Raised, Runner,
+    raised, raw, sql, Bind, JobState, Raised, Runner, StartGuard,
 };
 use crate::docker::sweep::{create_body, BackendRuntime, CreateBody};
 use crate::section_writes::cfg;
@@ -406,6 +406,8 @@ impl Runner {
             if s.active() {
                 return false;
             }
+            // noevia#1948: reset inside the claim so a cancel while "starting" is kept.
+            self.cancel.store(false, Ordering::SeqCst);
             *s = JobState {
                 status: "starting".into(),
                 backend: req.backend.clone(),
@@ -417,36 +419,46 @@ impl Runner {
         if !claimed {
             return Ok(Err("a benchmark is already running".into()));
         }
+        // noevia#1943: a dropped request releases the slot until the worker owns the job.
+        let mut guard = StartGuard::new(self);
         let ini = sweeps.ini.clone();
         let names = aliases.clone();
         let targets = match blocking(move || targets(&ini, &names)).await {
             Ok(Ok(t)) => t,
             Ok(Err(refusal)) => {
+                guard.disarm();
                 self.with(|s| *s = JobState::default());
                 return Ok(Err(refusal));
             }
-            Err(e) => return Ok(Err(self.abort_start(0, &e).await)),
+            Err(e) => {
+                guard.disarm();
+                return Ok(Err(self.abort_start(0, &e).await));
+            }
         };
-        self.cancel.store(false, Ordering::SeqCst);
-        let database = self.database.clone();
         let backend = req.backend.clone();
         let (reps, n_gen) = (req.reps.clone(), req.n_gen.clone());
-        let run_id = match blocking(move || {
-            create_run(&database, &backend, reps.bind()?, n_gen.bind()?, started)
-        })
-        .await
-        {
+        let insert = guard.track(move |database| {
+            create_run(database, &backend, reps.bind()?, n_gen.bind()?, started)
+        });
+        let run_id = match blocking(insert).await {
             Ok(id) => id,
-            Err(e) => return Ok(Err(self.abort_start(0, &e).await)),
+            Err(e) => {
+                guard.disarm();
+                return Ok(Err(self.abort_start(0, &e).await));
+            }
         };
         #[allow(clippy::cast_possible_wrap)]
         let total = targets.len() as i64;
         self.with(|s| {
             s.run_id = run_id;
-            s.status = "running".into();
+            // A cancel during "starting" left "cancelling"; keep it so the worker unwinds.
+            if s.status == "starting" {
+                s.status = "running".into();
+            }
             s.total = total;
             s.unit = "models".into();
         });
+        guard.disarm();
         let me = self.clone();
         (self.spawn)(Box::pin(async move {
             me.run_sweep(
@@ -671,6 +683,12 @@ impl Runner {
         loop {
             let status = match docker.status(id).await {
                 Ok(Ok(s)) => s,
+                // noevia#1944: every call is bounded; a cancel that arrived while Docker stalled
+                // still ends the job as cancelled (the remove in `run_sweep_once` follows).
+                Ok(Err(_)) | Err(_) if self.cancelled() => {
+                    let _ = docker.kill(id).await;
+                    return Ok((Vec::new(), "cancelled".into()));
+                }
                 Ok(Err(e)) => return Err(Raised(e)),
                 Err(e) => return Err(Raised(e.to_owned())),
             };

@@ -264,20 +264,20 @@ impl<'a> StartGuard<'a> {
         self.armed = false;
     }
 
-    /// `create_run` for the blocking pool: records the id for the guard, or finishes the row
-    /// at once when the request was dropped while the insert ran.
-    pub(crate) fn create_run(
+    /// A `bench_run` insert for the blocking pool: records the id for the guard, or finishes
+    /// the row at once when the request was dropped while the insert ran.
+    pub(crate) fn track<F>(
         &self,
-        backend: String,
-        reps: i64,
-        max_tokens: i64,
-        started: f64,
-    ) -> impl FnOnce() -> Result<i64, Raised> + Send + 'static {
+        insert: F,
+    ) -> impl FnOnce() -> Result<i64, Raised> + Send + 'static
+    where
+        F: FnOnce(&Path) -> Result<i64, Raised> + Send + 'static,
+    {
         let slot = self.slot.clone();
         let database = self.runner.database.clone();
         let clock = self.runner.clock;
         move || {
-            let run_id = create_run(&database, &backend, reps, max_tokens, started)?;
+            let run_id = insert(&database)?;
             let mut slot = lock(&slot);
             if slot.abandoned {
                 let _ = finish_run(&database, run_id, "error", (clock.time)(), DROPPED_NOTE);
@@ -474,7 +474,9 @@ impl Runner {
                 return Ok(Err(e));
             }
         };
-        let insert = guard.create_run(req.backend.clone(), reps, max_tokens, started);
+        let backend = req.backend.clone();
+        let insert =
+            guard.track(move |database| create_run(database, &backend, reps, max_tokens, started));
         let run_id = match blocking(insert).await {
             Ok(id) => id,
             Err(e) => {
@@ -1505,6 +1507,9 @@ pub fn start_request(body: &Json) -> Result<StartRequest, Raised> {
     })
 }
 
+/// The bound on one backend restart (`t=15` plus the start), noevia#1944.
+pub const RESTART_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Where the production runner reaches everything it does not own.
 pub struct Production {
     pub data: PathBuf,
@@ -1523,9 +1528,29 @@ pub struct Production {
 /// backends resolved and sweep containers handled through the sweep allowlist, and backend
 /// restarts limited to the effective backends.
 pub fn production(p: Production) -> Result<Arc<Runner>, &'static str> {
+    use crate::docker::sweep::{BackendNames, CALL_TIMEOUT};
+    // The effective backends, as `services.restart_llama_backend` reads them: the configured
+    // names, plus discovered llama.cpp containers when the inventory answers in time.
+    let effective = {
+        let (docker, configured) = (p.docker.clone(), p.configured.clone());
+        move || {
+            let (docker, configured) = (docker.clone(), configured.clone());
+            async move {
+                let inventory = tokio::time::timeout(CALL_TIMEOUT, docker.containers())
+                    .await
+                    .ok()
+                    .and_then(Result::ok)
+                    .unwrap_or_default();
+                crate::effective_names(&configured, &inventory).unwrap_or_default()
+            }
+        }
+    };
+    let names = effective.clone();
+    let backends: BackendNames = Arc::new(move || Box::pin(names()));
     let sweep_docker = Arc::new(crate::docker::sweep::UnixSweepDocker::new(
         p.socket,
         &p.models_dir,
+        backends,
     ));
     let resolver_docker = sweep_docker.clone();
     let (legacy, base, token) = (p.legacy, p.legacy_base, p.token);
@@ -1560,17 +1585,19 @@ pub fn production(p: Production) -> Result<Arc<Runner>, &'static str> {
         let docker = resolver_docker.clone();
         Box::pin(async move { docker.endpoint(&backend).await })
     });
-    let (docker, configured) = (p.docker, p.configured);
+    let docker = p.docker;
     let restart: Restarter = Arc::new(move |name: String| {
-        let (docker, configured) = (docker.clone(), configured.clone());
+        let (docker, effective) = (docker.clone(), effective.clone());
         Box::pin(async move {
             // services.restart_llama_backend: only an effective backend, by name.
-            let inventory = docker.containers().await.unwrap_or_default();
-            let names = crate::effective_names(&configured, &inventory).unwrap_or_default();
-            if !names.contains(&name) {
+            if !effective().await.contains(&name) {
                 return Err("container not in configured list".to_owned());
             }
-            docker.restart_backend(&name).await.map_err(str::to_owned)
+            // noevia#1944: `restart?t=15` waits up to 15 s for the stop; bound the whole call.
+            tokio::time::timeout(RESTART_TIMEOUT, docker.restart_backend(&name))
+                .await
+                .map_err(|_| "ReadTimeout: Docker did not answer the restart in time".to_owned())?
+                .map_err(str::to_owned)
         })
     });
     Runner::with_sweeps(
