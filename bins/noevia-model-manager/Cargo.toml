@@ -19,6 +19,7 @@ native-download-targets = ["native-logs"]
 native-badges = ["native-prompts", "dep:form_urlencoded"]
 native-bench-runs = ["native-prompts", "dep:form_urlencoded"]
 native-section-writes = ["native-prompts", "dep:form_urlencoded"]
+native-settings-write = ["native-settings", "native-prompts"]
 [lints]
 workspace = true
 [dependencies]

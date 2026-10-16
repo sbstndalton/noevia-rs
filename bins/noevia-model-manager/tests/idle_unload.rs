@@ -102,6 +102,8 @@ fn state(base: &str, reconciler: Option<Arc<Reconciler>>) -> Arc<StateData> {
         bench_runs: None,
         #[cfg(feature = "native-section-writes")]
         section_writes: None,
+        #[cfg(feature = "native-settings-write")]
+        settings_write: None,
     })
 }
 

@@ -118,6 +118,7 @@ fn command(path: &std::path::Path, marker: &std::path::Path) -> Command {
         .env_remove("MODEL_MANAGER_BADGES_IMPL")
         .env_remove("MODEL_MANAGER_BENCH_RUNS_IMPL")
         .env_remove("MODEL_MANAGER_SECTION_WRITES_IMPL")
+        .env_remove("MODEL_MANAGER_SETTINGS_WRITE_IMPL")
         .env_remove("MODEL_LOADER_TOKEN")
         .env_remove("LLAMA_CONTAINERS")
         .env_remove("DOCKER_HOST")
@@ -514,6 +515,49 @@ fn section_writes_selector_omission_and_python_confirmation_are_closed_before_ch
     }
 }
 
+#[test]
+fn settings_write_selector_omission_and_python_confirmation_are_closed_before_child() {
+    let (dir, marker) = owned_uvicorn();
+    for (parent, targets) in [
+        ("python", "rust"),
+        ("rust", "invalid"),
+        ("rust", "Rust"),
+        ("invalid", "rust"),
+    ] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", parent)
+            .env("MODEL_MANAGER_SETTINGS_WRITE_IMPL", targets)
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success(), "{parent}/{targets}");
+        assert!(!marker.exists());
+    }
+    if !cfg!(feature = "native-settings-write") {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", "rust")
+            .env("MODEL_MANAGER_SETTINGS_WRITE_IMPL", "rust")
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("compiled native-settings-write"));
+        assert!(!marker.exists());
+    }
+    // Default python: an inherited confirmation never reaches uvicorn.
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script,"#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    for selected in [None, Some("python")] {
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED", "1");
+        if let Some(value) = selected {
+            cmd.env("MODEL_MANAGER_SETTINGS_WRITE_IMPL", value);
+        }
+        let output = busy_retry(&mut cmd);
+        assert_eq!(output.status.code(), Some(42));
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
+        std::fs::remove_file(&marker).unwrap();
+    }
+}
+
 #[cfg(feature = "native-model-detail")]
 #[test]
 fn native_model_detail_never_refuses_startup_over_zone_or_roots() {
@@ -777,6 +821,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         }
         if cfg!(feature = "native-section-writes") {
             expected.push_str("native-section-writes\n");
+        }
+        if cfg!(feature = "native-settings-write") {
+            expected.push_str("native-settings-write\n");
         }
         // noevia#1925: the production image also advertises native-diagnose (printed last).
         if cfg!(feature = "native-diagnose") {
