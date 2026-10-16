@@ -158,4 +158,6 @@ Docker services or production data are used.
 
 `native-model-detail` and `MODEL_MANAGER_MODEL_DETAIL_IMPL=rust` serve the read-only `GET /api/v1/models/detail`, default off. The file fields are native; the live `loadedOn` and `fit` fields are asked of the Python child through a private call, never re-implemented. A `TZ` other than unset or `UTC` keeps Python serving it, with one log line. See [native model detail](docs/native-model-detail.md).
 
+`native-download-targets` and `MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL=rust` serve the read-only `GET /api/v1/download-targets`, default off. `POST /api/v1/downloads` stays Python and checks its target against the same settings. See [native download targets](docs/native-download-targets.md).
+
 `native-diagnose` and `MODEL_MANAGER_DIAGNOSE_IMPL=rust` select the whole internal backend diagnosis GET, default off. Selection requires exact `TZ=UTC` before startup. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.

@@ -1,0 +1,444 @@
+{
+ "cases": [
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [],
+   "id": "empty-no-table",
+   "mountinfo": null,
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "a"
+    ]
+   ],
+   "id": "empty-table",
+   "mountinfo": "",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"a\",\"label\":\"a\",\"path\":\"{ROOT}/a\"},{\"id\":\"b\",\"label\":\"b\",\"path\":\"{ROOT}/b\"}]}",
+   "content_type": "application/json",
+   "declared": "a, b ,,c",
+   "entries": [
+    [
+     "d",
+     "a"
+    ],
+    [
+     "d",
+     "b"
+    ]
+   ],
+   "id": "declared-basic",
+   "mountinfo": null,
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"Alpha\",\"label\":\"Alpha\",\"path\":\"{ROOT}/Alpha\"},{\"id\":\"beta\",\"label\":\"beta\",\"path\":\"{ROOT}/beta\"},{\"id\":\"zeta\",\"label\":\"zeta\",\"path\":\"{ROOT}/zeta\"}]}",
+   "content_type": "application/json",
+   "declared": "zeta,beta,Alpha,beta",
+   "entries": [
+    [
+     "d",
+     "zeta"
+    ],
+    [
+     "d",
+     "Alpha"
+    ],
+    [
+     "d",
+     "beta"
+    ]
+   ],
+   "id": "declared-dedupe-sorted",
+   "mountinfo": "",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"real\",\"label\":\"real\",\"path\":\"{ROOT}/real\"}]}",
+   "content_type": "application/json",
+   "declared": ".hidden,x/y,file,link,missing,real",
+   "entries": [
+    [
+     "d",
+     ".hidden"
+    ],
+    [
+     "d",
+     "x"
+    ],
+    [
+     "f",
+     "file"
+    ],
+    [
+     "d",
+     "real"
+    ],
+    [
+     "l",
+     "link",
+     "real"
+    ]
+   ],
+   "id": "declared-filtered",
+   "mountinfo": null,
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"d\",\"label\":\"d\",\"path\":\"{ROOT}/d\"},{\"id\":\"e\",\"label\":\"e\",\"path\":\"{ROOT}/e\"},{\"id\":\"f g\",\"label\":\"f g\",\"path\":\"{ROOT}/f g\"}]}",
+   "content_type": "application/json",
+   "declared": " d ,\u001fe\u001f,\tf g\n, ,\u001c",
+   "entries": [
+    [
+     "d",
+     "d"
+    ],
+    [
+     "d",
+     "e"
+    ],
+    [
+     "d",
+     "f g"
+    ]
+   ],
+   "id": "declared-whitespace",
+   "mountinfo": null,
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"}]}",
+   "content_type": "application/json",
+   "declared": ",,, ,",
+   "entries": [
+    [
+     "d",
+     "a"
+    ]
+   ],
+   "id": "declared-only-commas",
+   "mountinfo": null,
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"m1\",\"label\":\"m1\",\"path\":\"{ROOT}/m1\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "m1"
+    ],
+    [
+     "f",
+     "m2"
+    ],
+    [
+     "d",
+     ".m3"
+    ],
+    [
+     "d",
+     "plain"
+    ]
+   ],
+   "id": "mount-listed",
+   "mountinfo": "36 25 0:32 / {ROOT}/m1 rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT}/m2 rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT}/.m3 rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / / rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT} rw,relatime shared:1 - ext4 /dev/synthetic rw",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"tab\\there\",\"label\":\"tab\\there\",\"path\":\"{ROOT}/tab\\there\"},{\"id\":\"with space\",\"label\":\"with space\",\"path\":\"{ROOT}/with space\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "with space"
+    ],
+    [
+     "d",
+     "tab\there"
+    ]
+   ],
+   "id": "mount-escaped-space",
+   "mountinfo": "36 25 0:32 / {ROOT}/with\\040space rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT}/tab\\011here rw,relatime shared:1 - ext4 /dev/synthetic rw",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"m1\",\"label\":\"m1\",\"path\":\"{ROOT}/m1\"},{\"id\":\"m2\",\"label\":\"m2\",\"path\":\"{ROOT}/m2\"},{\"id\":\"m3\",\"label\":\"m3\",\"path\":\"{ROOT}/m3\"},{\"id\":\"m4\",\"label\":\"m4\",\"path\":\"{ROOT}/m4\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "m1"
+    ],
+    [
+     "d",
+     "m2"
+    ],
+    [
+     "d",
+     "m3"
+    ],
+    [
+     "d",
+     "m4"
+    ]
+   ],
+   "id": "mount-normpath",
+   "mountinfo": "36 25 0:32 / {ROOT}/m1/ rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT}/./m2 rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT}/x/../m3 rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT}//m4 rw,relatime shared:1 - ext4 /dev/synthetic rw",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"a\",\"label\":\"a\",\"path\":\"{ROOT}/a\"},{\"id\":\"b\",\"label\":\"b\",\"path\":\"{ROOT}/b\"},{\"id\":\"c\",\"label\":\"c\",\"path\":\"{ROOT}/c\"},{\"id\":\"d\",\"label\":\"d\",\"path\":\"{ROOT}/d\"},{\"id\":\"e\",\"label\":\"e\",\"path\":\"{ROOT}/e\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "a"
+    ],
+    [
+     "d",
+     "b"
+    ],
+    [
+     "d",
+     "c"
+    ],
+    [
+     "d",
+     "d"
+    ],
+    [
+     "d",
+     "e"
+    ]
+   ],
+   "id": "mount-line-separators",
+   "mountinfo": "36 25 0:32 / {ROOT}/a rw,relatime shared:1 - ext4 /dev/synthetic rw\r\n36 25 0:32 / {ROOT}/b rw,relatime shared:1 - ext4 /dev/synthetic rw36 25 0:32 / {ROOT}/c rw,relatime shared:1 - ext4 /dev/synthetic rw 36 25 0:32 / {ROOT}/d rw,relatime shared:1 - ext4 /dev/synthetic rw\u000b36 25 0:32 / {ROOT}/e rw,relatime shared:1 - ext4 /dev/synthetic rw",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"a\",\"label\":\"a\",\"path\":\"{ROOT}/a\"},{\"id\":\"b\",\"label\":\"b\",\"path\":\"{ROOT}/b\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "a"
+    ],
+    [
+     "d",
+     "b"
+    ]
+   ],
+   "id": "mount-short-lines",
+   "mountinfo": "36 25 0:32 /\nx x x x {ROOT}/a\nonly four fields here\na  b c {ROOT}/b",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"back\\\\slash\",\"label\":\"back\\\\slash\",\"path\":\"{ROOT}/back\\\\slash\"},{\"id\":\"ǿ\",\"label\":\"ǿ\",\"path\":\"{ROOT}/ǿ\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "ǿ"
+    ],
+    [
+     "d",
+     "q8"
+    ],
+    [
+     "d",
+     "back\\slash"
+    ]
+   ],
+   "id": "mount-odd-escapes",
+   "mountinfo": "36 25 0:32 / {ROOT}/\\777 rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT}/q\\8 rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT}/back\\134slash rw,relatime shared:1 - ext4 /dev/synthetic rw",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"Ã¤\",\"label\":\"Ã¤\",\"path\":\"{ROOT}/Ã¤\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "ä"
+    ],
+    [
+     "d",
+     "Ã¤"
+    ]
+   ],
+   "id": "mount-bytes-are-code-points",
+   "mountinfo": "36 25 0:32 / {ROOT}/\\303\\244 rw,relatime shared:1 - ext4 /dev/synthetic rw",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"a\",\"label\":\"a\",\"path\":\"{ROOT}/a\"},{\"id\":\"b\",\"label\":\"b\",\"path\":\"{ROOT}/b\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "a"
+    ],
+    [
+     "d",
+     "b"
+    ]
+   ],
+   "id": "mount-invalid-utf8-table",
+   "mountinfo": {
+    "hex": "333620323520303a3332202f207b524f4f547d2f612072772c72656c6174696d65207368617265643a31202d2065787434202f6465762f73796e7468657469632072770afffe0a333620323520303a3332202f207b524f4f547d2f622072772c72656c6174696d65207368617265643a31202d2065787434202f6465762f73796e746865746963207277"
+   },
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"real\",\"label\":\"real\",\"path\":\"{ROOT}/real\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "real"
+    ],
+    [
+     "l",
+     "link",
+     "real"
+    ]
+   ],
+   "id": "mount-symlinked-folder",
+   "mountinfo": "36 25 0:32 / {ROOT}/link rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT}/real rw,relatime shared:1 - ext4 /dev/synthetic rw",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"both\",\"label\":\"both\",\"path\":\"{ROOT}/both\"},{\"id\":\"only-decl\",\"label\":\"only-decl\",\"path\":\"{ROOT}/only-decl\"},{\"id\":\"only-mount\",\"label\":\"only-mount\",\"path\":\"{ROOT}/only-mount\"}]}",
+   "content_type": "application/json",
+   "declared": "both,only-decl",
+   "entries": [
+    [
+     "d",
+     "both"
+    ],
+    [
+     "d",
+     "only-mount"
+    ],
+    [
+     "d",
+     "only-decl"
+    ]
+   ],
+   "id": "mount-and-declared",
+   "mountinfo": "36 25 0:32 / {ROOT}/both rw,relatime shared:1 - ext4 /dev/synthetic rw\n36 25 0:32 / {ROOT}/only-mount rw,relatime shared:1 - ext4 /dev/synthetic rw",
+   "root": "plain",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"m1\",\"label\":\"m1\",\"path\":\"{ROOT}/m1\"}]}",
+   "content_type": "application/json",
+   "declared": "",
+   "entries": [
+    [
+     "d",
+     "m1"
+    ],
+    [
+     "d",
+     "m2"
+    ]
+   ],
+   "id": "realpath-root",
+   "mountinfo": "36 25 0:32 / {REAL}/m1 rw,relatime shared:1 - ext4 /dev/synthetic rw",
+   "root": "symlink",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"}]}",
+   "content_type": "application/json",
+   "declared": "a,b",
+   "entries": [],
+   "id": "missing-root",
+   "mountinfo": "36 25 0:32 / {ROOT}/a rw,relatime shared:1 - ext4 /dev/synthetic rw",
+   "root": "missing",
+   "status": 200
+  },
+  {
+   "body": "{\"targets\":[{\"id\":\"\",\"label\":\"Models folder\",\"path\":\"{ROOT}\"},{\"id\":\"Zed\",\"label\":\"Zed\",\"path\":\"{ROOT}/Zed\"},{\"id\":\"ctl\\u0001x\",\"label\":\"ctl\\u0001x\",\"path\":\"{ROOT}/ctl\\u0001x\"},{\"id\":\"del\",\"label\":\"del\",\"path\":\"{ROOT}/del\"},{\"id\":\"q\\\"b\\\\\",\"label\":\"q\\\"b\\\\\",\"path\":\"{ROOT}/q\\\"b\\\\\"},{\"id\":\"ßx\",\"label\":\"ßx\",\"path\":\"{ROOT}/ßx\"},{\"id\":\"été\",\"label\":\"été\",\"path\":\"{ROOT}/été\"},{\"id\":\"😀\",\"label\":\"😀\",\"path\":\"{ROOT}/😀\"}]}",
+   "content_type": "application/json",
+   "declared": "été,Zed,ßx,q\"b\\,ctl\u0001x,😀,del",
+   "entries": [
+    [
+     "d",
+     "été"
+    ],
+    [
+     "d",
+     "Zed"
+    ],
+    [
+     "d",
+     "ßx"
+    ],
+    [
+     "d",
+     "q\"b\\"
+    ],
+    [
+     "d",
+     "ctl\u0001x"
+    ],
+    [
+     "d",
+     "😀"
+    ],
+    [
+     "d",
+     "del"
+    ]
+   ],
+   "id": "unicode-sort-and-escapes",
+   "mountinfo": null,
+   "root": "plain",
+   "status": 200
+  }
+ ],
+ "oracle": {
+  "api.py": "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6",
+  "config.py": "ab6e348127b65f224d58fa2f805fefdfc7a472e14eb9e9ff540120e51f21f57f",
+  "main.py": "87eeac941fa5c0687160f315517b60c02b29324266d780851c547f6a1d749ee2",
+  "services.py": "aadf227ddc3666cebb1631a0ae543c8090539a382e8ca52710fc7a5458f1d041"
+ }
+}

@@ -30,6 +30,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-model-detail") {
                 output.write_all(b"native-model-detail\n")?;
             }
+            if cfg!(feature = "native-download-targets") {
+                output.write_all(b"native-download-targets\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -103,6 +106,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    #[cfg_attr(not(feature = "native-download-targets"), allow(unused_mut))]
+    let mut targets_mode = environment("MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL", "python")?;
+    if !matches!(targets_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL must be python or rust".into());
+    }
+    if targets_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-download-targets")) {
+        return Err(
+            "native-download-targets requires rust model manager and compiled native-download-targets feature"
+                .into(),
+        );
+    }
+    // Like #1889: roots the native read cannot name exactly as Python does keep Python serving it.
+    #[cfg(feature = "native-download-targets")]
+    let targets_roots = if targets_mode == "rust" {
+        match download_targets_roots(std::env::vars_os().collect()) {
+            Ok(roots) => Some(roots),
+            Err(reason) => {
+                eprintln!(
+                    "native-download-targets: {reason}; GET /api/v1/download-targets stays with python"
+                );
+                targets_mode = "python".to_owned();
+                None
+            }
+        }
+    } else {
+        None
+    };
     if !matches!(diagnose_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_DIAGNOSE_IMPL must be python or rust".into());
     }
@@ -158,6 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -305,6 +336,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::Path::new(&roots.ini),
         ))
     });
+    #[cfg(feature = "native-download-targets")]
+    let download_targets = targets_roots.as_ref().map(|roots| {
+        Arc::new(
+            noevia_model_manager::download_targets::DownloadTargets::new(
+                &roots.models,
+                &roots.declared,
+                std::path::Path::new(noevia_model_manager::download_targets::MOUNTINFO),
+            ),
+        )
+    });
     let mut child_command = legacy_command(
         tokio::process::Command::new("uvicorn"),
         &prompts_mode,
@@ -331,6 +372,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &detail_mode,
         #[cfg(feature = "native-model-detail")]
         detail_roots.as_ref(),
+    );
+    download_targets_child(
+        &mut child_command,
+        &targets_mode,
+        #[cfg(feature = "native-download-targets")]
+        targets_roots.as_ref(),
     );
     // #1668: the native front refuses deletes of the embedding service's models from its router
     // state, so the legacy holder scan must not also pin env names that point at that service
@@ -378,6 +425,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_updates,
         #[cfg(feature = "native-model-detail")]
         model_detail,
+        #[cfg(feature = "native-download-targets")]
+        download_targets,
         sections,
         embedding,
         host,
@@ -584,6 +633,141 @@ fn model_detail_child(
             .env("TZ", "UTC")
             .env("MODELS_DIR", &roots.models)
             .env("MODELS_INI_PATH", &roots.ini);
+    }
+}
+
+/// noevia#1318: what `GET /api/v1/download-targets` reads, named exactly as the Python child's
+/// settings read them (they fold names, so case-folded aliases are refused).
+#[cfg(feature = "native-download-targets")]
+#[derive(Debug, PartialEq, Eq)]
+struct TargetsRoots {
+    models: String,
+    declared: String,
+}
+
+#[cfg(feature = "native-download-targets")]
+fn download_targets_roots(
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<TargetsRoots, &'static str> {
+    let canonical = |name: &str, default: &str| -> Result<String, &'static str> {
+        let mut found = None;
+        for (key, value) in &values {
+            if key
+                .to_str()
+                .is_some_and(|key| key != name && key.eq_ignore_ascii_case(name))
+            {
+                return Err(
+                    "MODELS_DIR and MODEL_DOWNLOAD_TARGETS need canonical environment spelling",
+                );
+            }
+            if key == name {
+                found = Some(
+                    value
+                        .to_str()
+                        .ok_or("environment setting must be UTF-8")?
+                        .to_owned(),
+                );
+            }
+        }
+        let found = found.unwrap_or_else(|| default.to_owned());
+        if found.len() > 65536 {
+            return Err("download target settings exceeded limit");
+        }
+        Ok(found)
+    };
+    let models = canonical("MODELS_DIR", "/models")?;
+    if models.len() > 4096 || !noevia_model_manager::download_targets::normal_root(&models) {
+        return Err("MODELS_DIR is not an absolute, normalised path");
+    }
+    let declared = canonical("MODEL_DOWNLOAD_TARGETS", "")?;
+    if noevia_model_manager::download_targets::declared_names(&declared).is_none() {
+        return Err("MODEL_DOWNLOAD_TARGETS names too many folders");
+    }
+    Ok(TargetsRoots { models, declared })
+}
+
+/// noevia#1318: the child refuses `GET /api/v1/download-targets` only when the native reader owns
+/// it, and validates `POST /api/v1/downloads` targets against the same two settings.
+fn download_targets_child(
+    child_command: &mut tokio::process::Command,
+    targets_mode: &str,
+    #[cfg(feature = "native-download-targets")] roots: Option<&TargetsRoots>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED",
+        if targets_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-download-targets")]
+    if let Some(roots) = roots {
+        child_command
+            .env("MODELS_DIR", &roots.models)
+            .env("MODEL_DOWNLOAD_TARGETS", &roots.declared);
+    }
+}
+
+#[cfg(all(test, feature = "native-download-targets"))]
+#[allow(clippy::unwrap_used)]
+mod download_targets_command_tests {
+    fn roots(pairs: &[(&str, &str)]) -> Result<super::TargetsRoots, &'static str> {
+        super::download_targets_roots(
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn roots_default_canonical_and_fallback_reasons() {
+        assert_eq!(
+            roots(&[]),
+            Ok(super::TargetsRoots {
+                models: "/models".into(),
+                declared: String::new()
+            })
+        );
+        assert_eq!(
+            roots(&[("MODELS_DIR", "/srv/m"), ("MODEL_DOWNLOAD_TARGETS", "a, b")])
+                .unwrap()
+                .declared,
+            "a, b"
+        );
+        for bad in [
+            "models", "/models/", "//models", "/a/./b", "/a/../b", "/a//b", "",
+        ] {
+            assert!(roots(&[("MODELS_DIR", bad)]).is_err(), "{bad:?}");
+        }
+        for alias in [("models_dir", "/m"), ("Model_Download_Targets", "x")] {
+            assert!(roots(&[alias]).is_err());
+        }
+        let many = (0..1025)
+            .map(|i| format!("n{i}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        assert!(roots(&[("MODEL_DOWNLOAD_TARGETS", &many)]).is_err());
+    }
+
+    #[test]
+    fn child_confirmation_overrides_inherited_value_and_carries_roots() {
+        for (mode, expected) in [("rust", "1"), ("python", "0")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED",
+                "hostile",
+            );
+            let roots = super::TargetsRoots {
+                models: "/synthetic/models".into(),
+                declared: "extra".into(),
+            };
+            super::download_targets_child(&mut command, mode, (mode == "rust").then_some(&roots));
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(get("MODEL_DOWNLOAD_TARGETS").is_some(), mode == "rust");
+        }
     }
 }
 

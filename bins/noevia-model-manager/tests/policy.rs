@@ -68,6 +68,8 @@ fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
         legacy: noevia_model_manager::legacy_client().unwrap(),
         legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
         idle_unload: None,
+        #[cfg(feature = "native-download-targets")]
+        download_targets: None,
     })
 }
 fn fake() -> Arc<Fake> {

@@ -3,6 +3,8 @@ pub mod diagnose;
 #[cfg(feature = "native-diagnose")]
 pub mod diagnose_docker;
 pub mod docker;
+#[cfg(feature = "native-download-targets")]
+pub mod download_targets;
 pub mod embedding;
 pub mod host;
 pub mod idle_unload;
@@ -72,6 +74,9 @@ pub struct StateData {
     /// `fit`) are asked of the Python child, never re-implemented.
     #[cfg(feature = "native-model-detail")]
     pub model_detail: Option<Arc<model_detail::ModelDetail>>,
+    /// noevia#1318: native read-only `GET /api/v1/download-targets`.
+    #[cfg(feature = "native-download-targets")]
+    pub download_targets: Option<Arc<download_targets::DownloadTargets>>,
     pub sections: Option<Arc<sections::Sections>>,
     /// #1668: present only when EMBED_CONTAINER names the embedding service.
     pub embedding: Option<Arc<embedding::EmbeddingService>>,
@@ -358,8 +363,19 @@ fn native_model_detail_route(state: &StateData, method: &Method, path: &str) -> 
     state.model_detail.is_some() && *method == Method::GET && path == "/api/v1/models/detail"
 }
 
+/// Only the exact GET path is native; `POST /api/v1/downloads` (which validates its `target`
+/// against the same list) and other methods keep their existing forward/405/404 handling.
+#[cfg(feature = "native-download-targets")]
+fn native_download_targets_route(state: &StateData, method: &Method, path: &str) -> bool {
+    state.download_targets.is_some() && *method == Method::GET && path == "/api/v1/download-targets"
+}
+
 /// FastAPI's answer to an unhandled exception, byte for byte.
-#[cfg(any(feature = "native-model-updates", feature = "native-model-detail"))]
+#[cfg(any(
+    feature = "native-model-updates",
+    feature = "native-model-detail",
+    feature = "native-download-targets"
+))]
 fn internal_error() -> Response {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -438,6 +454,8 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     let native = native || native_settings_route(&state, req.method(), path);
     #[cfg(feature = "native-model-updates")]
     let native = native || native_model_updates_route(&state, req.method(), path);
+    #[cfg(feature = "native-download-targets")]
+    let native = native || native_download_targets_route(&state, req.method(), path);
     // The detail route waits on the Python child for its live fields: a forwarded route's budget.
     #[cfg(feature = "native-model-detail")]
     let native = native && !native_model_detail_route(&state, req.method(), path);
@@ -760,6 +778,19 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
                 model_updates::Outcome::Refused => {
                     detail(StatusCode::SERVICE_UNAVAILABLE, model_updates::REFUSAL)
                 }
+            };
+        }
+    }
+    #[cfg(feature = "native-download-targets")]
+    if native_download_targets_route(&state, req.method(), path) {
+        if let Some(targets) = &state.download_targets {
+            return match targets.response().await {
+                download_targets::Outcome::Json(bytes) => (
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    bytes,
+                )
+                    .into_response(),
+                download_targets::Outcome::Failed => internal_error(),
             };
         }
     }

@@ -15,6 +15,7 @@ native-prompts = ["native-logs", "dep:rusqlite", "dep:model-files"]
 native-settings = ["native-logs", "dep:rusqlite"]
 native-model-updates = ["native-logs", "dep:rusqlite"]
 native-model-detail = ["native-model-updates", "dep:form_urlencoded"]
+native-download-targets = ["native-logs"]
 [lints]
 workspace = true
 [dependencies]
