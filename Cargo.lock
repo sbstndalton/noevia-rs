@@ -2524,6 +2524,7 @@ dependencies = [
  "rand_core 0.6.4",
  "serde_json",
  "server-store",
+ "sha2",
  "tempfile",
 ]
 

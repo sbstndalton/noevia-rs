@@ -77,42 +77,112 @@ pub fn json_content_type(value: Option<&str>) -> bool {
         })
     })
 }
-pub fn non_json_validation(bytes: &[u8]) -> Result<serde_json::Value, Error> {
+pub fn non_json_validation(bytes: &[u8]) -> Result<Box<serde_json::value::RawValue>, Error> {
     let input = std::str::from_utf8(bytes).map_err(|_| Error::Body)?;
-    Ok(
-        serde_json::json!({"detail":[{"type":"dict_type","loc":["body"],"msg":"Input should be a valid dictionary","input":input}]}),
-    )
+    Ok(dict_type(&crate::validation::string(input)))
 }
-pub fn validation(bytes: &[u8]) -> Option<serde_json::Value> {
+pub fn validation(bytes: &[u8]) -> Option<Box<serde_json::value::RawValue>> {
     validation_with_empty(bytes, bytes.is_empty())
 }
-pub fn validation_with_empty(bytes: &[u8], empty_body: bool) -> Option<serde_json::Value> {
-    use serde_json::json;
+fn body_loc() -> Vec<String> {
+    vec![crate::validation::key("body")]
+}
+fn dict_type(input: &str) -> Box<serde_json::value::RawValue> {
+    crate::validation::body(&[crate::validation::error(
+        "dict_type",
+        &body_loc(),
+        "Input should be a valid dictionary",
+        input,
+        None,
+    )])
+}
+/// FastAPI's 422 for a `dict` body, keys in FastAPI's order (noevia#1908).
+pub fn validation_with_empty(
+    bytes: &[u8],
+    empty_body: bool,
+) -> Option<Box<serde_json::value::RawValue>> {
+    let missing = || crate::validation::body(&[crate::validation::missing(&body_loc())]);
     if (bytes.is_empty() && empty_body) || bytes == b"null" {
-        return Some(
-            json!({"detail":[{"type":"missing","loc":["body"],"msg":"Field required","input":null}]}),
-        );
+        return Some(missing());
     }
     let raw = std::str::from_utf8(bytes).ok()?;
-    match model_files::json::parse_diagnostics(raw,text::LIMITS) {
-        Ok(model_files::json::Value::Null)=>Some(json!({"detail":[{"type":"missing","loc":["body"],"msg":"Field required","input":null}]})),
-        Ok(model_files::json::Value::Obj(_))=>None,
-        Ok(_)=>serde_json::from_slice::<serde_json::Value>(bytes).ok().map(|input|json!({"detail":[{"type":"dict_type","loc":["body"],"msg":"Input should be a valid dictionary","input":input}]})),
-        Err((model_files::Error::Json(message),position))=>{
-            let error=match message {
-                "expected a string key"=>"Expecting property name enclosed in double quotes",
-                "expected ':'"=>"Expecting ':' delimiter",
-                "expected ',' or '}'"|"expected ',' or ']'"=>"Expecting ',' delimiter",
-                "extra data after the value"=>"Extra data",
-                "unterminated string"=>"Unterminated string starting at",
-                "control character in string"=>"Invalid control character at",
-                "bad escape"=>"Invalid \\escape",
-                "short \\u escape"|"bad \\u escape"=>"Invalid \\uXXXX escape",
-                _=>"Expecting value",
+    match model_files::json::parse_diagnostics(raw, text::LIMITS) {
+        Ok(model_files::json::Value::Null) => Some(missing()),
+        Ok(model_files::json::Value::Obj(_)) => None,
+        // A non-finite number keeps the prompt writer's 400 (Python answers 500 for it).
+        Ok(value) if has_nonfinite(&value) => None,
+        Ok(value) => Some(dict_type(&py_json(&value))),
+        Err((model_files::Error::Json(message), position)) => {
+            let error = match message {
+                "expected a string key" => "Expecting property name enclosed in double quotes",
+                "expected ':'" => "Expecting ':' delimiter",
+                "expected ',' or '}'" | "expected ',' or ']'" => "Expecting ',' delimiter",
+                "extra data after the value" => "Extra data",
+                "unterminated string" => "Unterminated string starting at",
+                "control character in string" => "Invalid control character at",
+                "bad escape" => "Invalid \\escape",
+                "short \\u escape" | "bad \\u escape" => "Invalid \\uXXXX escape",
+                _ => "Expecting value",
             };
-            Some(json!({"detail":[{"type":"json_invalid","loc":["body",position],"msg":"JSON decode error","input":{},"ctx":{"error":error}}]}))
-        },
-        Err(_)=>None,
+            Some(crate::validation::body(&[crate::validation::error(
+                "json_invalid",
+                &[crate::validation::key("body"), position.to_string()],
+                "JSON decode error",
+                "{}",
+                Some(error),
+            )]))
+        }
+        Err(_) => None,
+    }
+}
+fn has_nonfinite(value: &model_files::json::Value) -> bool {
+    use model_files::json::Value;
+    match value {
+        Value::Float(f) => !f.is_finite(),
+        Value::Arr(items) => items.iter().any(has_nonfinite),
+        Value::Obj(pairs) => pairs.iter().any(|(_, v)| has_nonfinite(v)),
+        _ => false,
+    }
+}
+/// `json.dumps(value, ensure_ascii=False)` of what `json.loads` returned: objects keep their
+/// first-seen key order with the last value (a dict), floats as `repr`, non-finite as
+/// `NaN`/`Infinity`.
+pub fn py_json(value: &model_files::json::Value) -> String {
+    use model_files::json::Value;
+    match value {
+        Value::Null => "null".into(),
+        Value::Bool(b) => if *b { "true" } else { "false" }.into(),
+        Value::Int(n) => n.to_string(),
+        Value::Float(f) if f.is_nan() => "NaN".into(),
+        Value::Float(f) if f.is_infinite() => {
+            if *f > 0.0 { "Infinity" } else { "-Infinity" }.into()
+        }
+        Value::Float(f) => gguf::py_float_repr(*f),
+        Value::Str(s) => crate::validation::string(s),
+        Value::Arr(items) => format!(
+            "[{}]",
+            items.iter().map(py_json).collect::<Vec<_>>().join(",")
+        ),
+        Value::Obj(pairs) => {
+            let mut keys: Vec<&str> = Vec::new();
+            for (k, _) in pairs {
+                if !keys.contains(&k.as_str()) {
+                    keys.push(k);
+                }
+            }
+            let fields: Vec<String> = keys
+                .iter()
+                .map(|k| {
+                    let v = pairs.iter().rev().find(|(key, _)| key == k).map(|(_, v)| v);
+                    format!(
+                        "{}:{}",
+                        crate::validation::string(k),
+                        v.map_or_else(|| "null".to_owned(), py_json)
+                    )
+                })
+                .collect();
+            format!("{{{}}}", fields.join(","))
+        }
     }
 }
 #[derive(Debug, PartialEq, Eq)]

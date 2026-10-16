@@ -98,7 +98,19 @@ def main() -> int:
     digest = {name: hashlib.sha256((app_dir / name).read_bytes()).hexdigest()
               for name in ("api.py", "db.py", "main.py")}
     out = []
-    for case_id, journal, store, lock in CASES:
+    # noevia#1922: one store with Python's own `db.init()` schema (its CREATE TABLE statements,
+    # comments included, are longer than 1 KiB), in WAL with every connection closed.
+    with tempfile.TemporaryDirectory() as root:
+        config.settings.data_dir = Path(root)
+        db._DB_PATH = None
+        db.init()
+        c = sqlite3.connect(Path(root) / "model_loader.db")
+        schema = [r[0] for r in c.execute(
+            "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid")]
+        c.close()
+    cases = CASES + [("python-init-schema-wal", "wal",
+                      schema + ["INSERT INTO kv(key, value) VALUES('hf_token', 'hf_SYNTHETICinitSchema9876')"], None)]
+    for case_id, journal, store, lock in cases:
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "model_loader.db"
             build(path, journal, store)
