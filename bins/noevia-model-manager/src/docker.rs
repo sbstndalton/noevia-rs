@@ -706,6 +706,8 @@ mod tests {
             benchmark_overview: None,
             #[cfg(feature = "native-check-updates")]
             check_updates: None,
+            #[cfg(feature = "native-benchmark-runner")]
+            bench_runner: None,
             #[cfg(feature = "native-backend-control")]
             backends: None,
         })

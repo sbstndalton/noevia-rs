@@ -3,6 +3,8 @@
 pub mod backends;
 #[cfg(feature = "native-badges")]
 pub mod badges;
+#[cfg(feature = "native-benchmark-runner")]
+pub mod bench_runner;
 #[cfg(feature = "native-bench-runs")]
 pub mod bench_runs;
 #[cfg(feature = "native-benchmark-overview")]
@@ -110,6 +112,9 @@ pub struct StateData {
     /// noevia#1318: native `POST /api/v1/models/check-updates` (asks the Hub, writes update_check).
     #[cfg(feature = "native-check-updates")]
     pub check_updates: Option<Arc<check_updates::CheckUpdates>>,
+    /// noevia#1318: the native benchmark runner (the one job slot): start, progress, cancel.
+    #[cfg(feature = "native-benchmark-runner")]
+    pub bench_runner: Option<Arc<bench_runner::Runner>>,
     /// noevia#1318: native `GET /api/v1/benchmark`; its live `job` is asked of the child.
     #[cfg(feature = "native-benchmark-overview")]
     pub benchmark_overview: Option<Arc<benchmark_overview::BenchmarkOverview>>,
@@ -928,6 +933,12 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
                     detail(StatusCode::SERVICE_UNAVAILABLE, model_updates::REFUSAL)
                 }
             };
+        }
+    }
+    #[cfg(feature = "native-benchmark-runner")]
+    if let Some(runner) = state.bench_runner.clone() {
+        if let Some(route) = bench_runner_route(req.method(), path) {
+            return native_bench_runner(&runner, route, req).await;
         }
     }
     #[cfg(feature = "native-check-updates")]
@@ -1842,6 +1853,66 @@ async fn guarded_delete(
     forward(state, Request::from_parts(parts, Body::from(raw))).await
 }
 
+/// noevia#1318: the routes the native benchmark runner answers.
+#[cfg(feature = "native-benchmark-runner")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BenchRoute {
+    Start,
+    Progress,
+    Cancel,
+}
+
+#[cfg(feature = "native-benchmark-runner")]
+pub fn bench_runner_route(method: &Method, path: &str) -> Option<BenchRoute> {
+    match (method.as_str(), path) {
+        ("POST", "/api/v1/benchmark/start") => Some(BenchRoute::Start),
+        ("GET", "/api/v1/benchmark/progress") => Some(BenchRoute::Progress),
+        ("POST", "/api/v1/benchmark/cancel") => Some(BenchRoute::Cancel),
+        _ => None,
+    }
+}
+
+/// `{"job": _bench_job()}`.
+#[cfg(feature = "native-benchmark-runner")]
+fn job_response(runner: &bench_runner::Runner) -> Response {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        format!("{{\"job\":{}}}", runner.job()),
+    )
+        .into_response()
+}
+
+#[cfg(feature = "native-benchmark-runner")]
+async fn native_bench_runner(
+    runner: &Arc<bench_runner::Runner>,
+    route: BenchRoute,
+    req: Request,
+) -> Response {
+    match route {
+        BenchRoute::Progress => job_response(runner),
+        BenchRoute::Cancel => {
+            runner.cancel();
+            job_response(runner)
+        }
+        BenchRoute::Start => {
+            let body = match fastapi_dict_body(req).await {
+                Ok(b) => b,
+                Err(response) => return response,
+            };
+            let Ok(request) = bench_runner::start_request(&body) else {
+                return internal_error();
+            };
+            match runner.start(request).await {
+                Ok(Ok(())) => job_response(runner),
+                Ok(Err(message)) => {
+                    (StatusCode::CONFLICT, Json(json!({"detail": message}))).into_response()
+                }
+                Err(_) => internal_error(),
+            }
+        }
+    }
+}
+
 /// noevia#1318: `GET /api/v1/benchmark`: the store, models.ini and Docker reads natively, then
 /// the runner's live `job` from the child (which owns the runner thread).
 #[cfg(feature = "native-benchmark-overview")]
@@ -1857,6 +1928,18 @@ async fn native_benchmark_overview(
     let Ok(backends) = effective_names(&state.configured, &inventory) else {
         return internal_error();
     };
+    #[cfg(feature = "native-benchmark-runner")]
+    if let Some(runner) = &state.bench_runner {
+        let job = runner.job().into_bytes();
+        return match benchmark_overview::render(&local, &backends, &job) {
+            Some(bytes) => (
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                bytes,
+            )
+                .into_response(),
+            None => internal_error(),
+        };
+    }
     let job = match child_runtime(
         state,
         benchmark_overview::JOB_PATH,
@@ -1885,7 +1968,8 @@ async fn native_benchmark_overview(
     feature = "native-badges",
     feature = "native-section-writes",
     feature = "native-settings-write",
-    feature = "native-backend-control"
+    feature = "native-backend-control",
+    feature = "native-benchmark-runner"
 ))]
 #[allow(clippy::result_large_err)]
 async fn fastapi_dict_body(req: Request) -> Result<prompts::JsonValue, Response> {
