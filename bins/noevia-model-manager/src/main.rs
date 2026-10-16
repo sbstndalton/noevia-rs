@@ -233,6 +233,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    #[cfg_attr(not(feature = "native-benchmark-overview"), allow(unused_mut))]
     let mut overview_mode = environment("MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL", "python")?;
     if !matches!(overview_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL must be python or rust".into());
@@ -1138,6 +1139,7 @@ fn section_writes_roots(
 
 /// noevia#1318: the native overview reads the same models.ini as the child, so its path must
 /// have one spelling (pydantic reads the variable case-insensitively) and be absolute and normal.
+#[cfg(feature = "native-benchmark-overview")]
 fn overview_ini(
     values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<String, &'static str> {
