@@ -1,4 +1,4 @@
-//! M3 (NOEVIA_RUST_AUTH=1): the front answers sign-in and the account routes itself
+//! M3 (permanent since sbstndalton/noevia#1071): the front answers sign-in and the account routes itself
 //! (crates/server-account) instead of proxying them. What the route module would hand on to a
 //! later Node module ([`server_account::Outcome::Pass`]) still goes to Node, with the body the
 //! front already read.
@@ -41,7 +41,7 @@ impl AccountLayer {
         let (settings, auth, switch) = (
             self.settings.clone()?,
             self.auth.clone()?,
-            app.writes.switch()?,
+            app.writes.switch(),
         );
         let writer = app.writes.writer().ok()?;
         let a = Arc::new(Account::new(

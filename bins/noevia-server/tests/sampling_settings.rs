@@ -101,7 +101,6 @@ async fn sampling_identity_admin_methods_audit_caps_and_omission() {
     let env = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", d.path().display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
         ("PUBLIC_ORIGIN", origin.clone()),
     ]);
     let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
@@ -323,7 +322,6 @@ async fn actual_node_matrix_through_native_http_with_dead_legacy() {
     let env = HashMap::from([
         ("UI_DATA_DIR", d.path().display().to_string()),
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
         ("PUBLIC_ORIGIN", origin.clone()),
     ]);
     let (tx, rx) = oneshot::channel();

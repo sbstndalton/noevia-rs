@@ -122,7 +122,6 @@ async fn start_app(
     let mut env: HashMap<&str, String> = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", dir.display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
         ("TRUST_PROXY", "true".into()),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "1".into()),
         ("PUBLIC_ORIGIN", origin),
@@ -143,7 +142,7 @@ async fn start_app(
     (addr, stop, app)
 }
 
-/// Nothing to switch on any more (sbstndalton/noevia#1071): NOEVIA_RUST_AUTH=1 owns the route.
+/// Nothing to switch on any more (sbstndalton/noevia#1071): the front always owns the route.
 const ON: [(&str, &str); 0] = [];
 fn on() -> Vec<(&'static str, String)> {
     ON.iter().map(|(k, v)| (*k, v.to_string())).collect()

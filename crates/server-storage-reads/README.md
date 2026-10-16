@@ -11,7 +11,7 @@ The read engine is wired into noevia-server in two default-off slices:
   native routes with the actual core route and storage client on a synthetic loopback DAV + S3
   server; CI runs it against the pinned core.
 
-Both need `NOEVIA_RUST_AUTH=1`; with a switch off, `routes.toml` ownership resolves to Node.
+Both are always the front's (no switch since sbstndalton/noevia#1071).
 Historical bases: Rust `c665b36106505419d80e01a106b0d402f5d157e2`; actual client oracle core
 `010735c7d86d30269ab3f4a351b2135faea1c8e7`; web predecessor
 `f7d21353dee9f11be663d6a9bf3258144f11c5d5`. Transport failures follow the current pinned core

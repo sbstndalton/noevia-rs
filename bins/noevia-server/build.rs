@@ -23,18 +23,15 @@ struct Entry {
     #[serde(default = "yes")]
     client: bool,
     /// A deployment switch the owner flip depends on: `owner = "rust"` takes effect only while
-    /// the named environment variable is on (M3: NOEVIA_RUST_AUTH, M4: NOEVIA_RUST_PROJECTS). Off,
-    /// the route is Node's.
+    /// the named environment variable is on (M4: NOEVIA_RUST_PROJECTS, NOEVIA_RUST_PROJECT_WRITES).
+    /// Off, the route is Node's. NOEVIA_RUST_AUTH is retired (sbstndalton/noevia#1071): naming it
+    /// fails the build.
     #[serde(default)]
     switch: Option<String>,
 }
 
 /// The switches a route may name (bins/noevia-server src/routes.rs `Switches`).
-const SWITCHES: &[&str] = &[
-    "NOEVIA_RUST_AUTH",
-    "NOEVIA_RUST_PROJECTS",
-    "NOEVIA_RUST_PROJECT_WRITES",
-];
+const SWITCHES: &[&str] = &["NOEVIA_RUST_PROJECTS", "NOEVIA_RUST_PROJECT_WRITES"];
 
 fn yes() -> bool {
     true
