@@ -54,7 +54,7 @@ jobs:
           set -euo pipefail
           cargo build --locked --target-dir target/export-featureless -p noevia-server --no-default-features
           if target/export-featureless/debug/noevia-server --features | grep -qx rust-export; then exit 1; fi
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_PROJECTS=1 target/export-featureless/debug/noevia-server > "$RUNNER_TEMP/export-featureless.log" 2>&1; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp target/export-featureless/debug/noevia-server > "$RUNNER_TEMP/export-featureless.log" 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-export' "$RUNNER_TEMP/export-featureless.log"
           cargo build --locked -p replay -p noevia-server --features noevia-server/rust-export,noevia-server/rust-free-chats,noevia-server/rust-project-chats
           target/debug/noevia-server --features | grep -qx rust-export
@@ -80,7 +80,7 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
             --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --state-out "$RUNNER_TEMP/node-state.json"
-      - name: Full replay through the front with NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1
+      - name: Full replay through the front
         # The M4 lock files the shared projects.json / free-chats.json writers leave are ignored, as
         # in ci.yml's projects replay; every other file and every cowork.db row must be Node's.
         run: |
@@ -88,7 +88,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-export" \
-            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
+            --server-cmd "exec sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/export-positive.json" \
             --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"

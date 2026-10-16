@@ -1,7 +1,7 @@
 //! sbstndalton/noevia#1264 slice 1: `GET`/`POST /api/chats/{chatId}/context` through the whole
-//! front. With NOEVIA_RUST_PROJECT_WRITES=1 (and NOEVIA_RUST_PROJECTS=1) the front answers them and
-//! writes projects.json itself; with NOEVIA_RUST_PROJECTS=1 alone (live today) they go to Node,
-//! which is not running here, so nothing is written. Synthetic data only.
+//! front. With NOEVIA_RUST_PROJECT_WRITES=1 the front answers them and writes projects.json
+//! itself; without it (live today) they go to Node, which is not running here, so nothing is
+//! written. Synthetic data only.
 #![cfg(feature = "rust-project-writes")]
 #![allow(
     clippy::unwrap_used,
@@ -82,7 +82,6 @@ async fn front(writes: bool) -> Front {
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
     env.insert("PUBLIC_ORIGIN", ORIGIN.into());
-    env.insert("NOEVIA_RUST_PROJECTS", "1".into());
     if writes {
         env.insert("NOEVIA_RUST_PROJECT_WRITES", "1".into());
     }

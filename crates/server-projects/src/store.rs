@@ -223,7 +223,7 @@ mod tests {
     use super::*;
 
     fn on() -> RustProjects {
-        RustProjects::from_env_value(Some("1")).unwrap()
+        RustProjects::owned()
     }
 
     #[test]
@@ -343,7 +343,7 @@ mod free_tests {
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join("users").join("u");
         std::fs::create_dir_all(&dir).unwrap();
-        let on = RustProjects::from_env_value(Some("1")).unwrap();
+        let on = RustProjects::owned();
         let seen = update_free(&dir, on, |stored| (stored, None)).unwrap();
         assert_eq!(seen, None, "missing: readJson's fallback");
         assert!(!dir.join("free-chats.json").exists(), "nothing written");
@@ -382,7 +382,7 @@ mod free_tests {
             js_json::wtf16::stringify(&JValue::Arr(projects)).unwrap(),
             r#"[{"id":"p1","files":[{"name":"a.md","content":"x"}]},{"id":"p2","files":"abc"},null,{"id":"p3"}]"#
         );
-        let on = RustProjects::from_env_value(Some("1")).unwrap();
+        let on = RustProjects::owned();
         update(dir, on, |_| ((), true)).unwrap();
         let text = std::fs::read_to_string(dir.join(PROJECTS_FILE)).unwrap();
         let saved = js_json::wtf16::parse(&text).unwrap();
@@ -403,7 +403,7 @@ mod free_tests {
     fn a_missing_user_dir_is_gone_and_stays_gone() {
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join("users").join("u");
-        let on = RustProjects::from_env_value(Some("1")).unwrap();
+        let on = RustProjects::owned();
         let mut ran = false;
         let r = update_free(&dir, on, |_| {
             ran = true;

@@ -1,4 +1,4 @@
-//! GET /api/export/conversations through the front (#1315, permanent under NOEVIA_RUST_PROJECTS=1 since #1071): Node's gate
+//! GET /api/export/conversations through the front (#1315, permanent since #1071): Node's gate
 //! first, the signed-in user's own files only, the audit row before the download, Node's headers,
 //! Node's 413 and a 500 when the audit cannot be written. The ZIP's bytes are
 //! `server_export::route::export`'s, which crates/server-export/tests/route.rs holds to Node's own
@@ -97,7 +97,9 @@ async fn front() -> Front {
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
     env.insert("PUBLIC_ORIGIN", ORIGIN.into());
-    env.insert("NOEVIA_RUST_PROJECTS", "1".into());
+    // #1071: the retired switch, left over with an "off" value, changes nothing: the export is
+    // still the front's (every test below is answered natively; Node is not running).
+    env.insert("NOEVIA_RUST_PROJECTS", "0".into());
     let app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

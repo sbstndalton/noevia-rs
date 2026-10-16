@@ -619,7 +619,7 @@ mod tests {
         Ctx {
             data_dir: root,
             user_id: USER,
-            switch: server_store::RustProjects::from_env_value(Some("1")).unwrap(),
+            switch: server_store::RustProjects::owned(),
             now_ms: 1_700_000_000_000,
         }
     }

@@ -63,7 +63,7 @@ pub fn run_case(c: &Value, user: &str) -> (u16, String, Option<String>) {
     let ctx = Ctx {
         data_dir: root.path(),
         user_id: user,
-        switch: RustProjects::from_env_value(Some("1")).unwrap(),
+        switch: RustProjects::owned(),
         now_ms: c["now"].as_i64().unwrap(),
     };
     let reply = match c["method"].as_str().unwrap() {

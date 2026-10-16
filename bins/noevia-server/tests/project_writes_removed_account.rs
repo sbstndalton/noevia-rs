@@ -143,7 +143,6 @@ async fn front() -> Front {
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
     env.insert("PUBLIC_ORIGIN", ORIGIN.into());
-    env.insert("NOEVIA_RUST_PROJECTS", "1".into());
     let app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

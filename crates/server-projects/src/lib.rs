@@ -1,6 +1,7 @@
 //! M4 of the full-Rust migration (docs/adr-0001-rust-and-repo-split.md "Amendment 2026-10-10" in
 //! sbstndalton/noevia): the project routes the Rust front takes over from noevia-core, slice by
-//! slice, behind the deployment switch `NOEVIA_RUST_PROJECTS=1` ([`server_store::RustProjects`]).
+//! slice, permanent since sbstndalton/noevia#1071 ([`server_store::RustProjects`]; the deployment
+//! switch `NOEVIA_RUST_PROJECTS` is retired).
 //!
 //! - [`lock`] and [`store`]: `UI_DATA_DIR/users/<id>/projects.json`, which Node still writes too
 //!   (the chat routes keep chat metas in it). Rust reads it fresh under the shared lock for every

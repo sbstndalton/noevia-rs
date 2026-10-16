@@ -138,24 +138,18 @@ impl RustAuth {
     }
 }
 
-/// The deployment switch for M4 (Rust owns project routes, slice by slice): `NOEVIA_RUST_PROJECTS=1`
-/// (exactly). Without it Rust writes no project file ([`json::write_shared_projects`] and the
-/// project assets need it). The front honours it only together with [`RustAuth`] (it gates the
-/// routes it owns itself). Removed once Rust owns every projects.json writer.
+/// Rust's ownership of the project routes it serves (M4: a project's images, its chat list, the
+/// free-chat list) and of projects.json and free-chats.json, which Rust alone writes (Node saves
+/// through the project store, sbstndalton/noevia#1264). It was the deployment switch
+/// `NOEVIA_RUST_PROJECTS=1`; since sbstndalton/noevia#1071 it is permanent (Node's copies of the
+/// routes are gone and Node always refuses them), so the token is simply [`RustProjects::owned`].
+/// It still marks every path that writes a shared project file ([`json::write_shared_projects`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RustProjects(());
 
 impl RustProjects {
-    /// The environment variable.
-    pub const ENV: &'static str = "NOEVIA_RUST_PROJECTS";
-
-    /// `Some` only for the exact value `1`.
-    pub fn from_env_value(value: Option<&str>) -> Option<Self> {
-        (value == Some("1")).then_some(RustProjects(()))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn for_tests() -> Self {
+    /// The ownership token: Rust always owns the project routes it serves.
+    pub const fn owned() -> Self {
         RustProjects(())
     }
 }
@@ -191,8 +185,9 @@ impl RustRoutingMode {
     }
 }
 
-/// The per-user files M4 shares with Node (core `server/rust-projects.cjs`): written by both, each
-/// only under its shared lock (crates/server-projects `lock`) and never from a stale copy.
+/// The per-user files of M4 (core `server/rust-projects.cjs`): Rust is their only writer, under
+/// each file's lock (crates/server-projects `lock`) and never from a stale copy; Node saves its
+/// changes through the project store (sbstndalton/noevia#1264).
 /// free-chats.json is the free-chat slice's (crates/server-projects `free_chats`).
 pub const SHARED_PROJECT_FILES: &[&str] = &["projects.json", "free-chats.json"];
 
