@@ -1555,6 +1555,7 @@ dependencies = [
  "bollard",
  "bytes",
  "chrono",
+ "form_urlencoded",
  "futures-util",
  "gguf",
  "http-body-util",

@@ -63,6 +63,8 @@ pub fn state(reader: Arc<dyn DiagnosisRead>, configured: Vec<String>) -> Arc<Sta
         settings: None,
         #[cfg(feature = "native-model-updates")]
         model_updates: None,
+        #[cfg(feature = "native-model-detail")]
+        model_detail: None,
         sections: None,
         embedding: None,
         host: None,

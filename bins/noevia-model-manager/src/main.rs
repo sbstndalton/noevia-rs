@@ -27,6 +27,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-model-updates") {
                 output.write_all(b"native-model-updates\n")?;
             }
+            if cfg!(feature = "native-model-detail") {
+                output.write_all(b"native-model-detail\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -69,6 +72,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "native-model-updates")]
     let updates_roots = if updates_mode == "rust" {
         Some(model_updates_roots(std::env::vars_os().collect())?)
+    } else {
+        None
+    };
+    let detail_mode = environment("MODEL_MANAGER_MODEL_DETAIL_IMPL", "python")?;
+    if !matches!(detail_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_MODEL_DETAIL_IMPL must be python or rust".into());
+    }
+    if detail_mode == "rust" {
+        if mode != "rust" || !cfg!(feature = "native-model-detail") {
+            return Err(
+                "native-model-detail requires rust model manager and compiled native-model-detail feature"
+                    .into(),
+            );
+        }
+        // `modified` is local time in Python; the child is given the same zone.
+        if environment("TZ", "")? != "UTC" {
+            return Err("native-model-detail requires exact TZ=UTC".into());
+        }
+    }
+    #[cfg(feature = "native-model-detail")]
+    let detail_roots = if detail_mode == "rust" {
+        Some(model_detail_roots(std::env::vars_os().collect())?)
     } else {
         None
     };
@@ -126,6 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -266,6 +292,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::Path::new(&roots.data),
         ))
     });
+    #[cfg(feature = "native-model-detail")]
+    let model_detail = detail_roots.as_ref().map(|roots| {
+        Arc::new(noevia_model_manager::model_detail::ModelDetail::new(
+            std::path::Path::new(&roots.models),
+            std::path::Path::new(&roots.ini),
+        ))
+    });
     let mut child_command = legacy_command(
         tokio::process::Command::new("uvicorn"),
         &prompts_mode,
@@ -286,6 +319,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &updates_mode,
         #[cfg(feature = "native-model-updates")]
         updates_roots.as_ref(),
+    );
+    model_detail_child(
+        &mut child_command,
+        &detail_mode,
+        #[cfg(feature = "native-model-detail")]
+        detail_roots.as_ref(),
     );
     // #1668: the native front refuses deletes of the embedding service's models from its router
     // state, so the legacy holder scan must not also pin env names that point at that service
@@ -326,6 +365,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         settings,
         #[cfg(feature = "native-model-updates")]
         model_updates,
+        #[cfg(feature = "native-model-detail")]
+        model_detail,
         sections,
         embedding,
         host,
@@ -476,6 +517,48 @@ fn model_updates_child(
             .env("MODELS_DIR", &roots.models)
             .env("MODELS_INI_PATH", &roots.ini)
             .env("DATA_DIR", &roots.data);
+    }
+}
+
+/// noevia#1318: the roots `GET /api/v1/models/detail` reads. Python joins `MODELS_DIR` with each
+/// file for `path`, so the configured folder must already be in pathlib's normal form.
+#[cfg(feature = "native-model-detail")]
+fn model_detail_roots(
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<UpdatesRoots, &'static str> {
+    let roots = model_updates_roots(values)
+        .map_err(|_| "native model detail requires canonical MODELS_DIR, MODELS_INI_PATH and DATA_DIR environment spelling within limits")?;
+    let models = roots.models.as_str();
+    let normal = models.starts_with('/')
+        && (models == "/"
+            || (!models.ends_with('/')
+                && models
+                    .split('/')
+                    .skip(1)
+                    .all(|segment| !matches!(segment, "" | "." | ".."))));
+    if !normal {
+        return Err("native model detail requires an absolute, normalised MODELS_DIR");
+    }
+    Ok(roots)
+}
+
+/// noevia#1318: the child refuses `GET /api/v1/models/detail` and serves the private runtime call
+/// only when the native reader owns the route; it then runs in UTC and reads the same roots.
+fn model_detail_child(
+    child_command: &mut tokio::process::Command,
+    detail_mode: &str,
+    #[cfg(feature = "native-model-detail")] roots: Option<&UpdatesRoots>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED",
+        if detail_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-model-detail")]
+    if let Some(roots) = roots {
+        child_command
+            .env("TZ", "UTC")
+            .env("MODELS_DIR", &roots.models)
+            .env("MODELS_INI_PATH", &roots.ini);
     }
 }
 
@@ -731,6 +814,79 @@ mod model_updates_command_tests {
                 expected("/synthetic/models/models.ini")
             );
             assert_eq!(get("DATA_DIR"), expected("/synthetic/data"));
+        }
+    }
+}
+
+// Compiled with the feature only, so other features' exact test inventories stay unchanged.
+#[cfg(all(test, feature = "native-model-detail"))]
+#[allow(clippy::unwrap_used)]
+mod model_detail_command_tests {
+    use std::ffi::{OsStr, OsString};
+
+    fn vars(pairs: &[(&str, &str)]) -> Vec<(OsString, OsString)> {
+        pairs
+            .iter()
+            .map(|(k, v)| (OsString::from(k), OsString::from(v)))
+            .collect()
+    }
+
+    #[test]
+    fn roots_must_be_canonical_and_normal() {
+        assert_eq!(
+            super::model_detail_roots(vars(&[])).unwrap().models,
+            "/models"
+        );
+        assert_eq!(
+            super::model_detail_roots(vars(&[("MODELS_DIR", "/")]))
+                .unwrap()
+                .models,
+            "/"
+        );
+        assert_eq!(
+            super::model_detail_roots(vars(&[("MODELS_DIR", "/synthetic/models")]))
+                .unwrap()
+                .models,
+            "/synthetic/models"
+        );
+        for models in [
+            "models", "/models/", "//models", "/a//b", "/a/./b", "/a/../b", "/a/.",
+        ] {
+            assert!(
+                super::model_detail_roots(vars(&[("MODELS_DIR", models)])).is_err(),
+                "{models}"
+            );
+        }
+        assert!(super::model_detail_roots(vars(&[("models_dir", "/x")])).is_err());
+    }
+
+    #[test]
+    fn confirmation_zone_and_roots_reach_child_only_in_native_mode() {
+        let roots = super::UpdatesRoots {
+            models: "/synthetic/models".into(),
+            ini: "/synthetic/models/models.ini".into(),
+            data: "/synthetic/data".into(),
+        };
+        for (mode, marker) in [("python", "0"), ("rust", "1")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED",
+                "hostile",
+            );
+            super::model_detail_child(&mut command, mode, (mode == "rust").then_some(&roots));
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |key: &str| envs.get(OsStr::new(key)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED"),
+                Some(OsStr::new(marker))
+            );
+            let expected = |value: &'static str| (mode == "rust").then_some(OsStr::new(value));
+            assert_eq!(get("TZ"), expected("UTC"));
+            assert_eq!(get("MODELS_DIR"), expected("/synthetic/models"));
+            assert_eq!(
+                get("MODELS_INI_PATH"),
+                expected("/synthetic/models/models.ini")
+            );
         }
     }
 }

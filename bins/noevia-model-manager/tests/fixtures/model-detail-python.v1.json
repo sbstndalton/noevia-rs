@@ -1,0 +1,1472 @@
+{
+"cases": [
+{
+"files": [
+{
+"hex": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d610c0000000000000067656e6572616c2e6e616d65080000000f0000000000000053796e746865746963204c6c616d61110000000000000067656e6572616c2e66696c655f74797065040000000f00000014000000000000006c6c616d612e636f6e746578745f6c656e677468040000000020000011000000000000006c6c616d612e626c6f636b5f636f756e74040000000400000016000000000000006c6c616d612e656d62656464696e675f6c656e67746804000000000100001a000000000000006c6c616d612e617474656e74696f6e2e686561645f636f756e74040000000800000014000000000000006c6c616d612e726f70652e667265715f626173650600000000401c461400000000000000746f6b656e697a65722e67676d6c2e6d6f64656c080000000400000000000000677074321500000000000000746f6b656e697a65722e67676d6c2e746f6b656e7309000000080000000c0000000000000002000000000000007430020000000000000074310200000000000000743202000000000000007433020000000000000074340200000000000000743502000000000000007436020000000000000074370200000000000000743802000000000000007439030000000000000074313003000000000000007431311700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000038000000000000007b2520696620656e61626c655f7468696e6b696e6720257d3c7468696e6b3e7b2520656e64696620257d7b7b206d65737361676573207d7d",
+"mtime": 1700000000000000000,
+"name": "llama-flat.gguf",
+"size": 1280
+},
+{
+"hex": "474755460300000000000000000000000600000000000000140000000000000067656e6572616c2e6172636869746563747572650800000008000000000000007177656e336d6f650c0000000000000067656e6572616c2e6e616d65080000000d0000000000000053796e746865746963204d6f4515000000000000007177656e336d6f652e6578706572745f636f756e7404000000800000001a000000000000007177656e336d6f652e6578706572745f757365645f636f756e74040000000800000014000000000000007177656e336d6f652e626c6f636b5f636f756e740400000002000000110000000000000067656e6572616c2e66696c655f747970650400000007000000",
+"mtime": 1700000059999999500,
+"name": "moe-Q4.gguf",
+"size": 5368709127
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e6172636869746563747572650800000007000000000000006d69787472616c14000000000000006d69787472616c2e6578706572745f636f756e740a0000001000000000000000",
+"mtime": 1699913599999999877,
+"name": "moe-no-used.gguf",
+"size": 1792
+},
+{
+"hex": "4747554603000000000000000000000001000000000000000c0000000000000067656e6572616c2e6e616d65080000000f000000000000006e6f20617263686974656374757265",
+"mtime": 0,
+"name": "no-arch.gguf",
+"size": 1023
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": -2000000000,
+"name": "UPPER.GGUF",
+"size": 1024
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 2147000000000000123,
+"name": "tera.gguf",
+"size": 1649267441664
+}
+],
+"id": "flat-models-and-key-validation",
+"requests": [
+"key=llama-flat.gguf",
+"key=moe-Q4.gguf",
+"key=moe-no-used.gguf",
+"key=no-arch.gguf",
+"key=UPPER.GGUF",
+"key=tera.gguf",
+"",
+"other=1",
+"key",
+"key=",
+"key=missing.gguf",
+"key=..%2Fx.gguf",
+"key=a..b.gguf",
+"key=%2Fllama-flat.gguf",
+"key=/llama-flat.gguf",
+"key=a/b/c/d/e/f.gguf",
+"key=a/b/c/d/e.gguf",
+"key=llama-flat.gguf&key=moe-Q4.gguf",
+"key=moe-Q4.gguf&key=",
+"key=llama%2Dflat.gguf",
+"key=llama-flat.gguf&extra=%ff",
+"key=upper.gguf",
+"key=+llama-flat.gguf",
+"key=llama-flat.gguf;x=1"
+],
+"results": [
+{
+"body": "{\"key\":\"llama-flat.gguf\",\"name\":\"llama-flat.gguf\",\"stem\":\"llama-flat\",\"subdir\":\"\",\"bytes\":1280,\"size\":\"1.2 KB\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"llama-flat\",\"file\":\"llama-flat.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[\"llama-a\"],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/llama-flat.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":\"Synthetic Llama\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q4_K_M\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":11,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":8192,\"embedding_length\":256,\"block_count\":4,\"feed_forward_length\":null,\"attention_head_count\":8,\"attention_head_count_kv\":null,\"rope_freq_base\":10000.0,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":12,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":\"gpt2\",\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{\"accepts_enable_thinking\":true,\"accepts_reasoning_effort\":false,\"accepts_preserve_thinking\":false,\"uses_think_tags\":true,\"uses_channel_thought\":false}}}",
+"content_type": "application/json",
+"query": "key=llama-flat.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 1280,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"moe-Q4.gguf\",\"name\":\"moe-Q4.gguf\",\"stem\":\"moe-Q4\",\"subdir\":\"\",\"bytes\":5368709127,\"size\":\"5.0 GB\",\"modified\":\"2023-11-14 22:14\",\"mtime\":1700000059.9999995,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"moe-Q4\",\"file\":\"moe-Q4.gguf\",\"shape\":{\"arch\":\"qwen3moe\",\"moe\":true,\"experts\":128,\"active\":8,\"label\":\"MoE 128x8\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":21},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true}],\"badges\":[],\"path\":\"@MODELS@/moe-Q4.gguf\",\"summary\":{\"arch\":\"qwen3moe\",\"general\":{\"name\":\"Synthetic MoE\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q8_0\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":6,\"header_error\":null},\"model\":{\"arch\":\"qwen3moe\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":128,\"nextn_predict_layers\":null,\"expert_used_count\":8,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=moe-Q4.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":21},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true}]}",
+"bytes": 5368709127,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"moe-no-used.gguf\",\"name\":\"moe-no-used.gguf\",\"stem\":\"moe-no-used\",\"subdir\":\"\",\"bytes\":1792,\"size\":\"1.8 KB\",\"modified\":\"2023-11-13 22:13\",\"mtime\":1699913599.9999998,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"moe-no-used\",\"file\":\"moe-no-used.gguf\",\"shape\":{\"arch\":\"mixtral\",\"moe\":true,\"experts\":16,\"active\":0,\"label\":\"MoE 16\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/moe-no-used.gguf\",\"summary\":{\"arch\":\"mixtral\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"mixtral\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":16,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=moe-no-used.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 1792,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"no-arch.gguf\",\"name\":\"no-arch.gguf\",\"stem\":\"no-arch\",\"subdir\":\"\",\"bytes\":1023,\"size\":\"1023 B\",\"modified\":\"1970-01-01 00:00\",\"mtime\":0.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"no-arch\",\"file\":\"no-arch.gguf\",\"shape\":null,\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/no-arch.gguf\",\"summary\":{\"arch\":\"\",\"general\":{\"name\":\"no architecture\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":1,\"header_error\":null},\"model\":{\"arch\":\"\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=no-arch.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 1023,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"UPPER.GGUF\",\"name\":\"UPPER.GGUF\",\"stem\":\"UPPER\",\"subdir\":\"\",\"bytes\":1024,\"size\":\"1.0 KB\",\"modified\":\"1969-12-31 23:59\",\"mtime\":-2.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"UPPER\",\"file\":\"UPPER.GGUF\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/UPPER.GGUF\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=UPPER.GGUF",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 1024,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"tera.gguf\",\"name\":\"tera.gguf\",\"stem\":\"tera\",\"subdir\":\"\",\"bytes\":1649267441664,\"size\":\"1.5 TB\",\"modified\":\"2038-01-13 12:53\",\"mtime\":2147000000.0000002,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"tera\",\"file\":\"tera.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"oom\",\"ratio_pct\":6536},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true}],\"badges\":[],\"path\":\"@MODELS@/tera.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=tera.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"oom\",\"ratio_pct\":6536},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true}]}",
+"bytes": 1649267441664,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"query\",\"key\"],\"msg\":\"Field required\",\"input\":null}]}",
+"content_type": "application/json",
+"query": "",
+"runtime": null,
+"status": 422
+},
+{
+"body": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"query\",\"key\"],\"msg\":\"Field required\",\"input\":null}]}",
+"content_type": "application/json",
+"query": "other=1",
+"runtime": null,
+"status": 422
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=missing.gguf",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"detail\":\"bad model key\"}",
+"content_type": "application/json",
+"query": "key=..%2Fx.gguf",
+"runtime": null,
+"status": 400
+},
+{
+"body": "{\"detail\":\"bad model key\"}",
+"content_type": "application/json",
+"query": "key=a..b.gguf",
+"runtime": null,
+"status": 400
+},
+{
+"body": "{\"detail\":\"bad model key\"}",
+"content_type": "application/json",
+"query": "key=%2Fllama-flat.gguf",
+"runtime": null,
+"status": 400
+},
+{
+"body": "{\"detail\":\"bad model key\"}",
+"content_type": "application/json",
+"query": "key=/llama-flat.gguf",
+"runtime": null,
+"status": 400
+},
+{
+"body": "{\"detail\":\"bad model key\"}",
+"content_type": "application/json",
+"query": "key=a/b/c/d/e/f.gguf",
+"runtime": null,
+"status": 400
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=a/b/c/d/e.gguf",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"key\":\"moe-Q4.gguf\",\"name\":\"moe-Q4.gguf\",\"stem\":\"moe-Q4\",\"subdir\":\"\",\"bytes\":5368709127,\"size\":\"5.0 GB\",\"modified\":\"2023-11-14 22:14\",\"mtime\":1700000059.9999995,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"moe-Q4\",\"file\":\"moe-Q4.gguf\",\"shape\":{\"arch\":\"qwen3moe\",\"moe\":true,\"experts\":128,\"active\":8,\"label\":\"MoE 128x8\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":21},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true}],\"badges\":[],\"path\":\"@MODELS@/moe-Q4.gguf\",\"summary\":{\"arch\":\"qwen3moe\",\"general\":{\"name\":\"Synthetic MoE\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q8_0\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":6,\"header_error\":null},\"model\":{\"arch\":\"qwen3moe\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":128,\"nextn_predict_layers\":null,\"expert_used_count\":8,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=llama-flat.gguf&key=moe-Q4.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":21},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true}]}",
+"bytes": 5368709127,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=moe-Q4.gguf&key=",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"key\":\"llama-flat.gguf\",\"name\":\"llama-flat.gguf\",\"stem\":\"llama-flat\",\"subdir\":\"\",\"bytes\":1280,\"size\":\"1.2 KB\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"llama-flat\",\"file\":\"llama-flat.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[\"llama-a\"],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/llama-flat.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":\"Synthetic Llama\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q4_K_M\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":11,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":8192,\"embedding_length\":256,\"block_count\":4,\"feed_forward_length\":null,\"attention_head_count\":8,\"attention_head_count_kv\":null,\"rope_freq_base\":10000.0,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":12,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":\"gpt2\",\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{\"accepts_enable_thinking\":true,\"accepts_reasoning_effort\":false,\"accepts_preserve_thinking\":false,\"uses_think_tags\":true,\"uses_channel_thought\":false}}}",
+"content_type": "application/json",
+"query": "key=llama%2Dflat.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 1280,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"llama-flat.gguf\",\"name\":\"llama-flat.gguf\",\"stem\":\"llama-flat\",\"subdir\":\"\",\"bytes\":1280,\"size\":\"1.2 KB\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"llama-flat\",\"file\":\"llama-flat.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[\"llama-a\"],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/llama-flat.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":\"Synthetic Llama\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q4_K_M\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":11,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":8192,\"embedding_length\":256,\"block_count\":4,\"feed_forward_length\":null,\"attention_head_count\":8,\"attention_head_count_kv\":null,\"rope_freq_base\":10000.0,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":12,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":\"gpt2\",\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{\"accepts_enable_thinking\":true,\"accepts_reasoning_effort\":false,\"accepts_preserve_thinking\":false,\"uses_think_tags\":true,\"uses_channel_thought\":false}}}",
+"content_type": "application/json",
+"query": "key=llama-flat.gguf&extra=%ff",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 1280,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=upper.gguf",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=+llama-flat.gguf",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=llama-flat.gguf;x=1",
+"runtime": null,
+"status": 404
+}
+]
+},
+{
+"dirs": [
+"sub",
+"solo",
+"deep/a/b/c",
+"models--org--repo/snapshots/rev1",
+"models--org--repo/blobs"
+],
+"files": [
+{
+"hex": "474755460300000000000000000000000600000000000000140000000000000067656e6572616c2e6172636869746563747572650800000008000000000000007177656e336d6f650c0000000000000067656e6572616c2e6e616d65080000000d0000000000000053796e746865746963204d6f4515000000000000007177656e336d6f652e6578706572745f636f756e7404000000800000001a000000000000007177656e336d6f652e6578706572745f757365645f636f756e74040000000800000014000000000000007177656e336d6f652e626c6f636b5f636f756e740400000002000000110000000000000067656e6572616c2e66696c655f747970650400000007000000",
+"mtime": 1700000001000000000,
+"name": "sub/big-00001-of-00003.gguf",
+"size": 2147483648
+},
+{
+"hex": "00",
+"mtime": 1700000003000000000,
+"name": "sub/big-00003-of-00003.gguf",
+"size": 1073741824
+},
+{
+"hex": "00",
+"mtime": 1700000002000000000,
+"name": "sub/big-00002-of-00003.gguf",
+"size": 1073741824
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "sub/mmproj-big-BF16.gguf",
+"size": 700
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "sub/mmproj-big-F32.gguf",
+"size": 1300
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "sub/big-draft-Q4.gguf",
+"size": 300
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000013,
+"name": "solo/mmproj-orphan.gguf"
+},
+{
+"hex": "",
+"mtime": 1700000000000000014,
+"name": "solo/model.imatrix.gguf"
+},
+{
+"hex": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d610c0000000000000067656e6572616c2e6e616d65080000000f0000000000000053796e746865746963204c6c616d61110000000000000067656e6572616c2e66696c655f74797065040000000f00000014000000000000006c6c616d612e636f6e746578745f6c656e677468040000000020000011000000000000006c6c616d612e626c6f636b5f636f756e74040000000400000016000000000000006c6c616d612e656d62656464696e675f6c656e67746804000000000100001a000000000000006c6c616d612e617474656e74696f6e2e686561645f636f756e74040000000800000014000000000000006c6c616d612e726f70652e667265715f626173650600000000401c461400000000000000746f6b656e697a65722e67676d6c2e6d6f64656c080000000400000000000000677074321500000000000000746f6b656e697a65722e67676d6c2e746f6b656e7309000000080000000c0000000000000002000000000000007430020000000000000074310200000000000000743202000000000000007433020000000000000074340200000000000000743502000000000000007436020000000000000074370200000000000000743802000000000000007439030000000000000074313003000000000000007431311700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000038000000000000007b2520696620656e61626c655f7468696e6b696e6720257d3c7468696e6b3e7b2520656e64696620257d7b7b206d65737361676573207d7d",
+"mtime": 1700000000000000011,
+"name": "deep/a/b/c/depth-four.gguf"
+},
+{
+"hex": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d610c0000000000000067656e6572616c2e6e616d65080000000f0000000000000053796e746865746963204c6c616d61110000000000000067656e6572616c2e66696c655f74797065040000000f00000014000000000000006c6c616d612e636f6e746578745f6c656e677468040000000020000011000000000000006c6c616d612e626c6f636b5f636f756e74040000000400000016000000000000006c6c616d612e656d62656464696e675f6c656e67746804000000000100001a000000000000006c6c616d612e617474656e74696f6e2e686561645f636f756e74040000000800000014000000000000006c6c616d612e726f70652e667265715f626173650600000000401c461400000000000000746f6b656e697a65722e67676d6c2e6d6f64656c080000000400000000000000677074321500000000000000746f6b656e697a65722e67676d6c2e746f6b656e7309000000080000000c0000000000000002000000000000007430020000000000000074310200000000000000743202000000000000007433020000000000000074340200000000000000743502000000000000007436020000000000000074370200000000000000743802000000000000007439030000000000000074313003000000000000007431311700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000038000000000000007b2520696620656e61626c655f7468696e6b696e6720257d3c7468696e6b3e7b2520656e64696620257d7b7b206d65737361676573207d7d",
+"mtime": 1700000000000000015,
+"name": "models--org--repo/blobs/0123abcd"
+}
+],
+"id": "subfolders-shards-companions",
+"links": [
+[
+"models--org--repo/snapshots/rev1/hf-model-Q4.gguf",
+"../../blobs/0123abcd"
+],
+[
+"linked-file.gguf",
+"sub/mmproj-big-BF16.gguf"
+]
+],
+"requests": [
+"key=sub/big.gguf",
+"key=big.gguf",
+"key=sub/big-00001-of-00003.gguf",
+"key=sub/mmproj-big-BF16.gguf",
+"key=sub/big-draft-Q4.gguf",
+"key=solo/mmproj-orphan.gguf",
+"key=solo/model.imatrix.gguf",
+"key=deep/a/b/c/depth-four.gguf",
+"key=models--org--repo/snapshots/rev1/hf-model-Q4.gguf",
+"key=linked-file.gguf"
+],
+"results": [
+{
+"body": "{\"key\":\"sub/big.gguf\",\"name\":\"big.gguf\",\"stem\":\"big\",\"subdir\":\"sub\",\"bytes\":4294967296,\"size\":\"4.0 GB\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000003.0,\"sharded\":true,\"parts\":3,\"companion\":false,\"projector\":{\"name\":\"big-draft-Q4.gguf, mmproj-big-BF16.gguf, mmproj-big-F32.gguf\",\"bytes\":2300},\"sections\":[],\"modelId\":\"big\",\"file\":\"sub/big-00001-of-00003.gguf\",\"shape\":{\"arch\":\"qwen3moe\",\"moe\":true,\"experts\":128,\"active\":8,\"label\":\"MoE 128x8\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":17},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true}],\"badges\":[],\"path\":\"@MODELS@/sub/big-00001-of-00003.gguf\",\"summary\":{\"arch\":\"qwen3moe\",\"general\":{\"name\":\"Synthetic MoE\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q8_0\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":6,\"header_error\":null},\"model\":{\"arch\":\"qwen3moe\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":128,\"nextn_predict_layers\":null,\"expert_used_count\":8,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=sub/big.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":17},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true}]}",
+"bytes": 4294967296,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=big.gguf",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=sub/big-00001-of-00003.gguf",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=sub/mmproj-big-BF16.gguf",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=sub/big-draft-Q4.gguf",
+"runtime": null,
+"status": 404
+},
+{
+"body": "{\"key\":\"solo/mmproj-orphan.gguf\",\"name\":\"mmproj-orphan.gguf\",\"stem\":\"mmproj-orphan\",\"subdir\":\"solo\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":true,\"projector\":null,\"sections\":[],\"modelId\":\"mmproj-orphan\",\"file\":\"solo/mmproj-orphan.gguf\",\"shape\":null,\"loadedOn\":[],\"fit\":[],\"badges\":[],\"path\":\"@MODELS@/solo/mmproj-orphan.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=solo/mmproj-orphan.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[]}",
+"bytes": 104,
+"fit": false
+},
+"status": 200
+},
+{
+"body": "{\"detail\":\"Could not read the model file: not a GGUF file (magic=b'')\"}",
+"content_type": "application/json",
+"query": "key=solo/model.imatrix.gguf",
+"runtime": null,
+"status": 422
+},
+{
+"body": "{\"key\":\"deep/a/b/c/depth-four.gguf\",\"name\":\"depth-four.gguf\",\"stem\":\"depth-four\",\"subdir\":\"deep/a/b/c\",\"bytes\":644,\"size\":\"644 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"depth-four\",\"file\":\"deep/a/b/c/depth-four.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/deep/a/b/c/depth-four.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":\"Synthetic Llama\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q4_K_M\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":11,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":8192,\"embedding_length\":256,\"block_count\":4,\"feed_forward_length\":null,\"attention_head_count\":8,\"attention_head_count_kv\":null,\"rope_freq_base\":10000.0,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":12,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":\"gpt2\",\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{\"accepts_enable_thinking\":true,\"accepts_reasoning_effort\":false,\"accepts_preserve_thinking\":false,\"uses_think_tags\":true,\"uses_channel_thought\":false}}}",
+"content_type": "application/json",
+"query": "key=deep/a/b/c/depth-four.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 644,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"models--org--repo/snapshots/rev1/hf-model-Q4.gguf\",\"name\":\"hf-model-Q4.gguf\",\"stem\":\"hf-model-Q4\",\"subdir\":\"models--org--repo/snapshots/rev1\",\"bytes\":644,\"size\":\"644 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"hf-model-Q4\",\"file\":\"models--org--repo/snapshots/rev1/hf-model-Q4.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/models--org--repo/snapshots/rev1/hf-model-Q4.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":\"Synthetic Llama\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q4_K_M\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":11,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":8192,\"embedding_length\":256,\"block_count\":4,\"feed_forward_length\":null,\"attention_head_count\":8,\"attention_head_count_kv\":null,\"rope_freq_base\":10000.0,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":12,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":\"gpt2\",\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{\"accepts_enable_thinking\":true,\"accepts_reasoning_effort\":false,\"accepts_preserve_thinking\":false,\"uses_think_tags\":true,\"uses_channel_thought\":false}}}",
+"content_type": "application/json",
+"query": "key=models--org--repo/snapshots/rev1/hf-model-Q4.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 644,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"linked-file.gguf\",\"name\":\"linked-file.gguf\",\"stem\":\"linked-file\",\"subdir\":\"\",\"bytes\":700,\"size\":\"700 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"linked-file\",\"file\":\"linked-file.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/linked-file.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=linked-file.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 700,
+"fit": true
+},
+"status": 200
+}
+]
+},
+{
+"dirs": [
+"sub"
+],
+"files": [
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "alpha-Q8_0.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "beta.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "gamma.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "sub/delta.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "eps.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "zeta.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "theta.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "mmproj-iota.gguf"
+}
+],
+"id": "ini-aliases-and-model-ids",
+"ini": {
+"text": "version = 1\n[DEFAULT]\nctx-size = 1\n[short-id]\nmodel = /models/alpha-Q8_0.gguf\n[alpha-Q8_0]\nctx-size = 4096\n[persona]\nmodel = alpha-Q8_0.gguf\n[beta-renamed]\nmodel = /beta.gguf\n[gamma]\nmodel = missing.gguf\n[delta-id]\nmodel =   sub/delta.gguf  \n[eps]\nctx-size = 2\n[zeta-a]\nmodel = /models//zeta.gguf\n[mmproj-iota]\nctx-size = 3\n"
+},
+"requests": [
+"key=alpha-Q8_0.gguf",
+"key=beta.gguf",
+"key=gamma.gguf",
+"key=sub/delta.gguf",
+"key=eps.gguf",
+"key=zeta.gguf",
+"key=theta.gguf",
+"key=mmproj-iota.gguf"
+],
+"results": [
+{
+"body": "{\"key\":\"alpha-Q8_0.gguf\",\"name\":\"alpha-Q8_0.gguf\",\"stem\":\"alpha-Q8_0\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"short-id\",\"alpha-Q8_0\",\"persona\"],\"modelId\":\"alpha-Q8_0\",\"file\":\"alpha-Q8_0.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/alpha-Q8_0.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=alpha-Q8_0.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"beta.gguf\",\"name\":\"beta.gguf\",\"stem\":\"beta\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"beta-renamed\"],\"modelId\":\"beta-renamed\",\"file\":\"beta.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/beta.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=beta.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"gamma.gguf\",\"name\":\"gamma.gguf\",\"stem\":\"gamma\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"gamma\"],\"modelId\":\"gamma\",\"file\":\"gamma.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/gamma.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=gamma.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"sub/delta.gguf\",\"name\":\"delta.gguf\",\"stem\":\"delta\",\"subdir\":\"sub\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"delta-id\"],\"modelId\":\"delta-id\",\"file\":\"sub/delta.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/sub/delta.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=sub/delta.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"eps.gguf\",\"name\":\"eps.gguf\",\"stem\":\"eps\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"eps\"],\"modelId\":\"eps\",\"file\":\"eps.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/eps.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=eps.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"zeta.gguf\",\"name\":\"zeta.gguf\",\"stem\":\"zeta\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"zeta-a\"],\"modelId\":\"zeta-a\",\"file\":\"zeta.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/zeta.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=zeta.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"theta.gguf\",\"name\":\"theta.gguf\",\"stem\":\"theta\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"theta\",\"file\":\"theta.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/theta.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=theta.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"mmproj-iota.gguf\",\"name\":\"mmproj-iota.gguf\",\"stem\":\"mmproj-iota\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":true,\"projector\":null,\"sections\":[\"mmproj-iota\"],\"modelId\":\"mmproj-iota\",\"file\":\"mmproj-iota.gguf\",\"shape\":null,\"loadedOn\":[],\"fit\":[],\"badges\":[],\"path\":\"@MODELS@/mmproj-iota.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=mmproj-iota.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[]}",
+"bytes": 104,
+"fit": false
+},
+"status": 200
+}
+]
+},
+{
+"files": [
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "one.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "two.gguf"
+}
+],
+"id": "ini-default-model-and-duplicates",
+"ini": {
+"text": "[DEFAULT]\nmodel = two.gguf\n[one]\nctx-size = 1\n[two-a]\nx = 1\n[two-a]\ny = 2\n[one]\nz = 3\n"
+},
+"requests": [
+"key=one.gguf",
+"key=two.gguf"
+],
+"results": [
+{
+"body": "{\"key\":\"one.gguf\",\"name\":\"one.gguf\",\"stem\":\"one\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"one\",\"file\":\"one.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/one.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=one.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"two.gguf\",\"name\":\"two.gguf\",\"stem\":\"two\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"one\",\"two-a\"],\"modelId\":\"one\",\"file\":\"two.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/two.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=two.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+}
+]
+},
+{
+"files": [
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "a.gguf"
+}
+],
+"id": "ini-crlf",
+"ini": {
+"text": "version = 1\r\n[a-id]\r\nmodel = a.gguf\r\n"
+},
+"requests": [
+"key=a.gguf"
+],
+"results": [
+{
+"body": "{\"key\":\"a.gguf\",\"name\":\"a.gguf\",\"stem\":\"a\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"a-id\"],\"modelId\":\"a-id\",\"file\":\"a.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/a.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=a.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+}
+]
+},
+{
+"files": [
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "a.gguf"
+}
+],
+"id": "ini-parse-error-500",
+"ini": {
+"text": "[a]\nno delimiter here\n"
+},
+"requests": [
+"key=a.gguf",
+"key=missing.gguf",
+"key=../x"
+],
+"results": [
+{
+"body": "Internal Server Error",
+"content_type": "text/plain; charset=utf-8",
+"query": "key=a.gguf",
+"runtime": null,
+"status": 500
+},
+{
+"body": "Internal Server Error",
+"content_type": "text/plain; charset=utf-8",
+"query": "key=missing.gguf",
+"runtime": null,
+"status": 500
+},
+{
+"body": "{\"detail\":\"bad model key\"}",
+"content_type": "application/json",
+"query": "key=../x",
+"runtime": null,
+"status": 400
+}
+]
+},
+{
+"files": [
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "a.gguf"
+}
+],
+"id": "ini-not-utf8-500",
+"ini": {
+"hex": "5b615d0a78203d20ff0a"
+},
+"requests": [
+"key=a.gguf"
+],
+"results": [
+{
+"body": "Internal Server Error",
+"content_type": "text/plain; charset=utf-8",
+"query": "key=a.gguf",
+"runtime": null,
+"status": 500
+}
+]
+},
+{
+"files": [
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "a.gguf"
+}
+],
+"id": "ini-is-directory-500",
+"ini": "dir",
+"requests": [
+"key=a.gguf"
+],
+"results": [
+{
+"body": "Internal Server Error",
+"content_type": "text/plain; charset=utf-8",
+"query": "key=a.gguf",
+"runtime": null,
+"status": 500
+}
+]
+},
+{
+"id": "models-missing",
+"models": "missing",
+"requests": [
+"key=a.gguf"
+],
+"results": [
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=a.gguf",
+"runtime": null,
+"status": 404
+}
+]
+},
+{
+"id": "models-path-is-file",
+"models": "file",
+"requests": [
+"key=a.gguf"
+],
+"results": [
+{
+"body": "{\"detail\":\"model not found\"}",
+"content_type": "application/json",
+"query": "key=a.gguf",
+"runtime": null,
+"status": 404
+}
+]
+},
+{
+"dirs": [
+"sub"
+],
+"files": [
+{
+"hex": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d610c0000000000000067656e6572616c2e6e616d65080000000f0000000000000053796e746865746963204c6c616d61110000000000000067656e6572616c2e66696c655f74797065040000000f00000014000000000000006c6c616d612e636f6e746578745f6c656e677468040000000020000011000000000000006c6c616d612e626c6f636b5f636f756e74040000000400000016000000000000006c6c616d612e656d62656464696e675f6c656e67746804000000000100001a000000000000006c6c616d612e617474656e74696f6e2e686561645f636f756e74040000000800000014000000000000006c6c616d612e726f70652e667265715f626173650600000000401c461400000000000000746f6b656e697a65722e67676d6c2e6d6f64656c080000000400000000000000677074321500000000000000746f6b656e697a65722e67676d6c2e746f6b656e7309000000080000000c0000000000000002000000000000007430020000000000000074310200000000000000743202000000000000007433020000000000000074340200000000000000743502000000000000007436020000000000000074370200000000000000743802000000000000007439030000000000000074313003000000000000007431311700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000038000000000000007b2520696620656e61626c655f7468696e6b696e6720257d3c7468696e6b3e7b2520656e64696620257d7b7b206d65737361676573207d7d",
+"mtime": 1700000000000000000,
+"name": "a.gguf"
+},
+{
+"hex": "474755460300000000000000000000000600000000000000140000000000000067656e6572616c2e6172636869746563747572650800000008000000000000007177656e336d6f650c0000000000000067656e6572616c2e6e616d65080000000d0000000000000053796e746865746963204d6f4515000000000000007177656e336d6f652e6578706572745f636f756e7404000000800000001a000000000000007177656e336d6f652e6578706572745f757365645f636f756e74040000000800000014000000000000007177656e336d6f652e626c6f636b5f636f756e740400000002000000110000000000000067656e6572616c2e66696c655f747970650400000007000000",
+"mtime": 1700000000000000001,
+"name": "sub/b-00001-of-00002.gguf"
+},
+{
+"hex": "",
+"mtime": 1700000000000000002,
+"name": "sub/b-00002-of-00002.gguf"
+}
+],
+"id": "models-folder-is-a-symlink",
+"ini": {
+"text": "[a]\nmodel = a.gguf\n"
+},
+"models": "link",
+"requests": [
+"key=a.gguf",
+"key=sub/b.gguf"
+],
+"results": [
+{
+"body": "{\"key\":\"a.gguf\",\"name\":\"a.gguf\",\"stem\":\"a\",\"subdir\":\"\",\"bytes\":644,\"size\":\"644 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"a\"],\"modelId\":\"a\",\"file\":\"a.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/a.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":\"Synthetic Llama\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q4_K_M\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":11,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":8192,\"embedding_length\":256,\"block_count\":4,\"feed_forward_length\":null,\"attention_head_count\":8,\"attention_head_count_kv\":null,\"rope_freq_base\":10000.0,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":12,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":\"gpt2\",\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{\"accepts_enable_thinking\":true,\"accepts_reasoning_effort\":false,\"accepts_preserve_thinking\":false,\"uses_think_tags\":true,\"uses_channel_thought\":false}}}",
+"content_type": "application/json",
+"query": "key=a.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 644,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"sub/b.gguf\",\"name\":\"b.gguf\",\"stem\":\"b\",\"subdir\":\"sub\",\"bytes\":265,\"size\":\"265 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":true,\"parts\":2,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"b\",\"file\":\"sub/b-00001-of-00002.gguf\",\"shape\":{\"arch\":\"qwen3moe\",\"moe\":true,\"experts\":128,\"active\":8,\"label\":\"MoE 128x8\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/sub/b-00001-of-00002.gguf\",\"summary\":{\"arch\":\"qwen3moe\",\"general\":{\"name\":\"Synthetic MoE\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q8_0\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":6,\"header_error\":null},\"model\":{\"arch\":\"qwen3moe\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":128,\"nextn_predict_layers\":null,\"expert_used_count\":8,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=sub/b.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 265,
+"fit": true
+},
+"status": 200
+}
+]
+},
+{
+"abslinks": [
+[
+"y.gguf",
+"sub/x.gguf"
+]
+],
+"dirs": [
+"sub"
+],
+"files": [
+{
+"hex": "474755460300000000000000000000000600000000000000140000000000000067656e6572616c2e6172636869746563747572650800000008000000000000007177656e336d6f650c0000000000000067656e6572616c2e6e616d65080000000d0000000000000053796e746865746963204d6f4515000000000000007177656e336d6f652e6578706572745f636f756e7404000000800000001a000000000000007177656e336d6f652e6578706572745f757365645f636f756e74040000000800000014000000000000007177656e336d6f652e626c6f636b5f636f756e740400000002000000110000000000000067656e6572616c2e66696c655f747970650400000007000000",
+"mtime": 1700000000000000007,
+"name": "sub/x.gguf"
+}
+],
+"id": "absolute-links-inside",
+"requests": [
+"key=y.gguf",
+"key=sub/x.gguf"
+],
+"results": [
+{
+"body": "{\"key\":\"y.gguf\",\"name\":\"y.gguf\",\"stem\":\"y\",\"subdir\":\"\",\"bytes\":265,\"size\":\"265 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"y\",\"file\":\"y.gguf\",\"shape\":{\"arch\":\"qwen3moe\",\"moe\":true,\"experts\":128,\"active\":8,\"label\":\"MoE 128x8\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/y.gguf\",\"summary\":{\"arch\":\"qwen3moe\",\"general\":{\"name\":\"Synthetic MoE\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q8_0\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":6,\"header_error\":null},\"model\":{\"arch\":\"qwen3moe\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":128,\"nextn_predict_layers\":null,\"expert_used_count\":8,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=y.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 265,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"sub/x.gguf\",\"name\":\"x.gguf\",\"stem\":\"x\",\"subdir\":\"sub\",\"bytes\":265,\"size\":\"265 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"x\",\"file\":\"sub/x.gguf\",\"shape\":{\"arch\":\"qwen3moe\",\"moe\":true,\"experts\":128,\"active\":8,\"label\":\"MoE 128x8\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/sub/x.gguf\",\"summary\":{\"arch\":\"qwen3moe\",\"general\":{\"name\":\"Synthetic MoE\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q8_0\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":6,\"header_error\":null},\"model\":{\"arch\":\"qwen3moe\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":128,\"nextn_predict_layers\":null,\"expert_used_count\":8,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=sub/x.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 265,
+"fit": true
+},
+"status": 200
+}
+]
+},
+{
+"files": [
+{
+"hex": "4e4f50450300000000000000",
+"mtime": 1700000000000000000,
+"name": "bad-magic.gguf"
+},
+{
+"hex": "",
+"mtime": 1700000000000000000,
+"name": "empty.gguf"
+},
+{
+"hex": "472722460000000000000000000000000000000000000000",
+"mtime": 1700000000000000000,
+"name": "quote-magic.gguf"
+},
+{
+"hex": "474755460300000000",
+"mtime": 1700000000000000000,
+"name": "truncated-fixed.gguf"
+},
+{
+"hex": "474755460300000000000000000000000100000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c",
+"mtime": 1700000000000000000,
+"name": "truncated-kv.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d61110000000000000067656e6572616c2e66696c655f74797065090000000400000002000000000000000100000002000000",
+"mtime": 1700000000000000000,
+"name": "summary-raises.gguf"
+}
+],
+"id": "header-errors",
+"requests": [
+"key=bad-magic.gguf",
+"key=empty.gguf",
+"key=quote-magic.gguf",
+"key=truncated-fixed.gguf",
+"key=truncated-kv.gguf",
+"key=summary-raises.gguf"
+],
+"results": [
+{
+"body": "{\"detail\":\"Could not read the model file: not a GGUF file (magic=b'NOPE')\"}",
+"content_type": "application/json",
+"query": "key=bad-magic.gguf",
+"runtime": null,
+"status": 422
+},
+{
+"body": "{\"detail\":\"Could not read the model file: not a GGUF file (magic=b'')\"}",
+"content_type": "application/json",
+"query": "key=empty.gguf",
+"runtime": null,
+"status": 422
+},
+{
+"body": "{\"detail\":\"Could not read the model file: not a GGUF file (magic=b'G\\\\'\\\"F')\"}",
+"content_type": "application/json",
+"query": "key=quote-magic.gguf",
+"runtime": null,
+"status": 422
+},
+{
+"body": "{\"detail\":\"Could not read the model file: header is truncated or declares a length past the end of the data\"}",
+"content_type": "application/json",
+"query": "key=truncated-fixed.gguf",
+"runtime": null,
+"status": 422
+},
+{
+"body": "{\"key\":\"truncated-kv.gguf\",\"name\":\"truncated-kv.gguf\",\"stem\":\"truncated-kv\",\"subdir\":\"\",\"bytes\":66,\"size\":\"66 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"truncated-kv\",\"file\":\"truncated-kv.gguf\",\"shape\":null,\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/truncated-kv.gguf\",\"summary\":{\"arch\":\"\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":1,\"header_error\":\"stopped at KV read: string length 5 runs past the end of the data\"},\"model\":{\"arch\":\"\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=truncated-kv.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 66,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "Internal Server Error",
+"content_type": "text/plain; charset=utf-8",
+"query": "key=summary-raises.gguf",
+"runtime": null,
+"status": 500
+}
+]
+},
+{
+"files": [
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d6112000000000000006c6c616d612e6578706572745f636f756e740800000004000000000000002031322017000000000000006c6c616d612e6578706572745f757365645f636f756e740800000004000000000000002b305f34",
+"mtime": 1700000000000000000,
+"name": "shape-str-count.gguf"
+},
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d6112000000000000006c6c616d612e6578706572745f636f756e74080000000400000000000000315f5f3217000000000000006c6c616d612e6578706572745f757365645f636f756e7408000000010000000000000078",
+"mtime": 1700000000000000000,
+"name": "shape-str-bad.gguf"
+},
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d6112000000000000006c6c616d612e6578706572745f636f756e740c0000009a99999999991f4017000000000000006c6c616d612e6578706572745f757365645f636f756e7406000000000020c0",
+"mtime": 1700000000000000000,
+"name": "shape-float-count.gguf"
+},
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d6112000000000000006c6c616d612e6578706572745f636f756e74070000000117000000000000006c6c616d612e6578706572745f757365645f636f756e740700000000",
+"mtime": 1700000000000000000,
+"name": "shape-bool-count.gguf"
+},
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d6112000000000000006c6c616d612e6578706572745f636f756e7405000000fdffffff17000000000000006c6c616d612e6578706572745f757365645f636f756e740b0000000200000000000000",
+"mtime": 1700000000000000000,
+"name": "shape-negative.gguf"
+},
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d6112000000000000006c6c616d612e6578706572745f636f756e7409000000040000000200000000000000040000000400000017000000000000006c6c616d612e6578706572745f757365645f636f756e7409000000040000000900000000000000000000000100000002000000030000000400000005000000060000000700000008000000",
+"mtime": 1700000000000000000,
+"name": "shape-list-count.gguf"
+},
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d6112000000000000006c6c616d612e6578706572745f636f756e740c0000003029881a5643304417000000000000006c6c616d612e6578706572745f757365645f636f756e740a0000000500000000000080",
+"mtime": 1700000000000000000,
+"name": "shape-big-float.gguf"
+},
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e61726368697465637475726504000000070000000e00000000000000372e6578706572745f636f756e7404000000040000001300000000000000372e6578706572745f757365645f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "shape-arch-int.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726504000000000000000e00000000000000302e6578706572745f636f756e740400000004000000",
+"mtime": 1700000000000000000,
+"name": "shape-arch-zero.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e6172636869746563747572650c000000000000000000f83f1000000000000000312e352e6578706572745f636f756e740400000003000000",
+"mtime": 1700000000000000000,
+"name": "shape-arch-float.gguf"
+},
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e61726368697465637475726507000000011100000000000000547275652e6578706572745f636f756e7404000000050000001600000000000000547275652e6578706572745f757365645f636f756e740400000001000000",
+"mtime": 1700000000000000000,
+"name": "shape-arch-bool.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e6172636869746563747572650700000000120000000000000046616c73652e6578706572745f636f756e740400000005000000",
+"mtime": 1700000000000000000,
+"name": "shape-arch-false.gguf"
+},
+{
+"hex": "474755460300000000000000000000000100000000000000140000000000000067656e6572616c2e617263686974656374757265080000000000000000000000",
+"mtime": 1700000000000000000,
+"name": "shape-arch-empty.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e6172636869746563747572650900000008000000020000000000000001000000000000006101000000000000006217000000000000005b2761272c202762275d2e6578706572745f636f756e740400000006000000",
+"mtime": 1700000000000000000,
+"name": "shape-arch-list.gguf"
+},
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d6112000000000000006c6c616d612e6578706572745f636f756e74040000000800000002000000000000006b7609000000040000000a0000000000000000000000010000000200000003000000040000000500000006000000070000000800000009000000",
+"mtime": 1700000000000000000,
+"name": "shape-kv-key.gguf"
+},
+{
+"hex": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d6112000000000000006c6c616d612e6578706572745f636f756e74040000000800000002000000000000006b76090000000400000002000000000000000100000002000000",
+"mtime": 1700000000000000000,
+"name": "shape-kv-small.gguf"
+},
+{
+"hex": "474755460300000000000000000000000400000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d6114000000000000006c6c616d612e726f70652e667265715f62617365060000000000c07f12000000000000006c6c616d612e6578706572745f636f756e740c000000000000000000f07f17000000000000006c6c616d612e6578706572745f757365645f636f756e74060000000000c07f",
+"mtime": 1700000000000000000,
+"name": "shape-nonfinite.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e617263686974656374757265080000000600000000000000e383a9e3839e1300000000000000e383a9e3839e2e6578706572745f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "shape-unicode-arch.gguf"
+}
+],
+"id": "shapes",
+"requests": [
+"key=shape-str-count.gguf",
+"key=shape-str-bad.gguf",
+"key=shape-float-count.gguf",
+"key=shape-bool-count.gguf",
+"key=shape-negative.gguf",
+"key=shape-list-count.gguf",
+"key=shape-big-float.gguf",
+"key=shape-arch-int.gguf",
+"key=shape-arch-zero.gguf",
+"key=shape-arch-float.gguf",
+"key=shape-arch-bool.gguf",
+"key=shape-arch-false.gguf",
+"key=shape-arch-empty.gguf",
+"key=shape-arch-list.gguf",
+"key=shape-kv-key.gguf",
+"key=shape-kv-small.gguf",
+"key=shape-nonfinite.gguf",
+"key=shape-unicode-arch.gguf"
+],
+"results": [
+{
+"body": "{\"key\":\"shape-str-count.gguf\",\"name\":\"shape-str-count.gguf\",\"stem\":\"shape-str-count\",\"subdir\":\"\",\"bytes\":158,\"size\":\"158 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-str-count\",\"file\":\"shape-str-count.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":true,\"experts\":12,\"active\":4,\"label\":\"MoE 12x4\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-str-count.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-str-count.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 158,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-str-bad.gguf\",\"name\":\"shape-str-bad.gguf\",\"stem\":\"shape-str-bad\",\"subdir\":\"\",\"bytes\":155,\"size\":\"155 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-str-bad\",\"file\":\"shape-str-bad.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-str-bad.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-str-bad.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 155,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-float-count.gguf\",\"name\":\"shape-float-count.gguf\",\"stem\":\"shape-float-count\",\"subdir\":\"\",\"bytes\":146,\"size\":\"146 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-float-count\",\"file\":\"shape-float-count.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":true,\"experts\":7,\"active\":-2,\"label\":\"MoE 7x-2\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-float-count.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":7,\"nextn_predict_layers\":null,\"expert_used_count\":-2,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-float-count.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 146,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-bool-count.gguf\",\"name\":\"shape-bool-count.gguf\",\"stem\":\"shape-bool-count\",\"subdir\":\"\",\"bytes\":136,\"size\":\"136 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-bool-count\",\"file\":\"shape-bool-count.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":true,\"experts\":1,\"active\":0,\"label\":\"MoE 1\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-bool-count.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":1,\"nextn_predict_layers\":null,\"expert_used_count\":0,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-bool-count.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 136,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-negative.gguf\",\"name\":\"shape-negative.gguf\",\"stem\":\"shape-negative\",\"subdir\":\"\",\"bytes\":146,\"size\":\"146 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-negative\",\"file\":\"shape-negative.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":-3,\"active\":2,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-negative.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":-3,\"nextn_predict_layers\":null,\"expert_used_count\":2,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-negative.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 146,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-list-count.gguf\",\"name\":\"shape-list-count.gguf\",\"stem\":\"shape-list-count\",\"subdir\":\"\",\"bytes\":202,\"size\":\"202 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-list-count\",\"file\":\"shape-list-count.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-list-count.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":4,\"nextn_predict_layers\":null,\"expert_used_count\":0,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-list-count.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 202,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-big-float.gguf\",\"name\":\"shape-big-float.gguf\",\"stem\":\"shape-big-float\",\"subdir\":\"\",\"bytes\":150,\"size\":\"150 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-big-float\",\"file\":\"shape-big-float.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":true,\"experts\":300000000000000000000,\"active\":9223372036854775813,\"label\":\"MoE 300000000000000000000x9223372036854775813\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-big-float.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":300000000000000000000,\"nextn_predict_layers\":null,\"expert_used_count\":9223372036854775813,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-big-float.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 150,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-arch-int.gguf\",\"name\":\"shape-arch-int.gguf\",\"stem\":\"shape-arch-int\",\"subdir\":\"\",\"bytes\":125,\"size\":\"125 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-arch-int\",\"file\":\"shape-arch-int.gguf\",\"shape\":{\"arch\":\"7\",\"moe\":true,\"experts\":4,\"active\":2,\"label\":\"MoE 4x2\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-arch-int.gguf\",\"summary\":{\"arch\":7,\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":7,\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":4,\"nextn_predict_layers\":null,\"expert_used_count\":2,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-arch-int.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 125,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-arch-zero.gguf\",\"name\":\"shape-arch-zero.gguf\",\"stem\":\"shape-arch-zero\",\"subdir\":\"\",\"bytes\":90,\"size\":\"90 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-arch-zero\",\"file\":\"shape-arch-zero.gguf\",\"shape\":null,\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-arch-zero.gguf\",\"summary\":{\"arch\":\"\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-arch-zero.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 90,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-arch-float.gguf\",\"name\":\"shape-arch-float.gguf\",\"stem\":\"shape-arch-float\",\"subdir\":\"\",\"bytes\":96,\"size\":\"96 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-arch-float\",\"file\":\"shape-arch-float.gguf\",\"shape\":{\"arch\":\"1.5\",\"moe\":true,\"experts\":3,\"active\":0,\"label\":\"MoE 3\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-arch-float.gguf\",\"summary\":{\"arch\":1.5,\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":1.5,\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":3,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-arch-float.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 96,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-arch-bool.gguf\",\"name\":\"shape-arch-bool.gguf\",\"stem\":\"shape-arch-bool\",\"subdir\":\"\",\"bytes\":128,\"size\":\"128 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-arch-bool\",\"file\":\"shape-arch-bool.gguf\",\"shape\":{\"arch\":\"True\",\"moe\":true,\"experts\":5,\"active\":1,\"label\":\"MoE 5x1\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-arch-bool.gguf\",\"summary\":{\"arch\":true,\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":true,\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":5,\"nextn_predict_layers\":null,\"expert_used_count\":1,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-arch-bool.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 128,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-arch-false.gguf\",\"name\":\"shape-arch-false.gguf\",\"stem\":\"shape-arch-false\",\"subdir\":\"\",\"bytes\":91,\"size\":\"91 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-arch-false\",\"file\":\"shape-arch-false.gguf\",\"shape\":null,\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-arch-false.gguf\",\"summary\":{\"arch\":\"\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-arch-false.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 91,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-arch-empty.gguf\",\"name\":\"shape-arch-empty.gguf\",\"stem\":\"shape-arch-empty\",\"subdir\":\"\",\"bytes\":64,\"size\":\"64 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-arch-empty\",\"file\":\"shape-arch-empty.gguf\",\"shape\":null,\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-arch-empty.gguf\",\"summary\":{\"arch\":\"\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":1,\"header_error\":null},\"model\":{\"arch\":\"\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-arch-empty.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 64,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-arch-list.gguf\",\"name\":\"shape-arch-list.gguf\",\"stem\":\"shape-arch-list\",\"subdir\":\"\",\"bytes\":125,\"size\":\"125 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-arch-list\",\"file\":\"shape-arch-list.gguf\",\"shape\":{\"arch\":\"['a', 'b']\",\"moe\":true,\"experts\":6,\"active\":0,\"label\":\"MoE 6\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-arch-list.gguf\",\"summary\":{\"arch\":[\"a\",\"b\"],\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":[\"a\",\"b\"],\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":6,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-arch-list.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 125,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-kv-key.gguf\",\"name\":\"shape-kv-key.gguf\",\"stem\":\"shape-kv-key\",\"subdir\":\"\",\"bytes\":169,\"size\":\"169 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-kv-key\",\"file\":\"shape-kv-key.gguf\",\"shape\":null,\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-kv-key.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":8,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-kv-key.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 169,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-kv-small.gguf\",\"name\":\"shape-kv-small.gguf\",\"stem\":\"shape-kv-small\",\"subdir\":\"\",\"bytes\":137,\"size\":\"137 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-kv-small\",\"file\":\"shape-kv-small.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":true,\"experts\":8,\"active\":0,\"label\":\"MoE 8\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-kv-small.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":3,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":8,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-kv-small.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 137,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-nonfinite.gguf\",\"name\":\"shape-nonfinite.gguf\",\"stem\":\"shape-nonfinite\",\"subdir\":\"\",\"bytes\":182,\"size\":\"182 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-nonfinite\",\"file\":\"shape-nonfinite.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-nonfinite.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":4,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-nonfinite.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 182,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"shape-unicode-arch.gguf\",\"name\":\"shape-unicode-arch.gguf\",\"stem\":\"shape-unicode-arch\",\"subdir\":\"\",\"bytes\":105,\"size\":\"105 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"shape-unicode-arch\",\"file\":\"shape-unicode-arch.gguf\",\"shape\":{\"arch\":\"\u30e9\u30de\",\"moe\":true,\"experts\":2,\"active\":0,\"label\":\"MoE 2\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/shape-unicode-arch.gguf\",\"summary\":{\"arch\":\"\u30e9\u30de\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"\u30e9\u30de\",\"context_length\":null,\"embedding_length\":null,\"block_count\":null,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":2,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=shape-unicode-arch.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 105,
+"fit": true
+},
+"status": 200
+}
+]
+},
+{
+"backends": [
+[
+"llama-a",
+"llama-flat, short-id"
+],
+[
+"llama-b",
+"short-id,,other "
+],
+[
+"idle",
+null
+],
+[
+"llama-c",
+"  "
+],
+[
+"llama-d",
+"Synth\u00e9tique-Q4"
+],
+[
+"llama-a",
+"llama-flat"
+]
+],
+"files": [
+{
+"hex": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d610c0000000000000067656e6572616c2e6e616d65080000000f0000000000000053796e746865746963204c6c616d61110000000000000067656e6572616c2e66696c655f74797065040000000f00000014000000000000006c6c616d612e636f6e746578745f6c656e677468040000000020000011000000000000006c6c616d612e626c6f636b5f636f756e74040000000400000016000000000000006c6c616d612e656d62656464696e675f6c656e67746804000000000100001a000000000000006c6c616d612e617474656e74696f6e2e686561645f636f756e74040000000800000014000000000000006c6c616d612e726f70652e667265715f626173650600000000401c461400000000000000746f6b656e697a65722e67676d6c2e6d6f64656c080000000400000000000000677074321500000000000000746f6b656e697a65722e67676d6c2e746f6b656e7309000000080000000c0000000000000002000000000000007430020000000000000074310200000000000000743202000000000000007433020000000000000074340200000000000000743502000000000000007436020000000000000074370200000000000000743802000000000000007439030000000000000074313003000000000000007431311700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000038000000000000007b2520696620656e61626c655f7468696e6b696e6720257d3c7468696e6b3e7b2520656e64696620257d7b7b206d65737361676573207d7d",
+"mtime": 1700000000000000000,
+"name": "llama-flat.gguf"
+},
+{
+"hex": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d610c0000000000000067656e6572616c2e6e616d65080000000f0000000000000053796e746865746963204c6c616d61110000000000000067656e6572616c2e66696c655f74797065040000000f00000014000000000000006c6c616d612e636f6e746578745f6c656e677468040000000020000011000000000000006c6c616d612e626c6f636b5f636f756e74040000000400000016000000000000006c6c616d612e656d62656464696e675f6c656e67746804000000000100001a000000000000006c6c616d612e617474656e74696f6e2e686561645f636f756e74040000000800000014000000000000006c6c616d612e726f70652e667265715f626173650600000000401c461400000000000000746f6b656e697a65722e67676d6c2e6d6f64656c080000000400000000000000677074321500000000000000746f6b656e697a65722e67676d6c2e746f6b656e7309000000080000000c0000000000000002000000000000007430020000000000000074310200000000000000743202000000000000007433020000000000000074340200000000000000743502000000000000007436020000000000000074370200000000000000743802000000000000007439030000000000000074313003000000000000007431311700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000038000000000000007b2520696620656e61626c655f7468696e6b696e6720257d3c7468696e6b3e7b2520656e64696620257d7b7b206d65737361676573207d7d",
+"mtime": 1700000000000000000,
+"name": "other.gguf"
+},
+{
+"hex": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d610c0000000000000067656e6572616c2e6e616d65080000000f0000000000000053796e746865746963204c6c616d61110000000000000067656e6572616c2e66696c655f74797065040000000f00000014000000000000006c6c616d612e636f6e746578745f6c656e677468040000000020000011000000000000006c6c616d612e626c6f636b5f636f756e74040000000400000016000000000000006c6c616d612e656d62656464696e675f6c656e67746804000000000100001a000000000000006c6c616d612e617474656e74696f6e2e686561645f636f756e74040000000800000014000000000000006c6c616d612e726f70652e667265715f626173650600000000401c461400000000000000746f6b656e697a65722e67676d6c2e6d6f64656c080000000400000000000000677074321500000000000000746f6b656e697a65722e67676d6c2e746f6b656e7309000000080000000c0000000000000002000000000000007430020000000000000074310200000000000000743202000000000000007433020000000000000074340200000000000000743502000000000000007436020000000000000074370200000000000000743802000000000000007439030000000000000074313003000000000000007431311700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000038000000000000007b2520696620656e61626c655f7468696e6b696e6720257d3c7468696e6b3e7b2520656e64696620257d7b7b206d65737361676573207d7d",
+"mtime": 1700000000000000000,
+"name": "Synth\u00e9tique-Q4.gguf"
+},
+{
+"hex": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d610c0000000000000067656e6572616c2e6e616d65080000000f0000000000000053796e746865746963204c6c616d61110000000000000067656e6572616c2e66696c655f74797065040000000f00000014000000000000006c6c616d612e636f6e746578745f6c656e677468040000000020000011000000000000006c6c616d612e626c6f636b5f636f756e74040000000400000016000000000000006c6c616d612e656d62656464696e675f6c656e67746804000000000100001a000000000000006c6c616d612e617474656e74696f6e2e686561645f636f756e74040000000800000014000000000000006c6c616d612e726f70652e667265715f626173650600000000401c461400000000000000746f6b656e697a65722e67676d6c2e6d6f64656c080000000400000000000000677074321500000000000000746f6b656e697a65722e67676d6c2e746f6b656e7309000000080000000c0000000000000002000000000000007430020000000000000074310200000000000000743202000000000000007433020000000000000074340200000000000000743502000000000000007436020000000000000074370200000000000000743802000000000000007439030000000000000074313003000000000000007431311700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000038000000000000007b2520696620656e61626c655f7468696e6b696e6720257d3c7468696e6b3e7b2520656e64696620257d7b7b206d65737361676573207d7d",
+"mtime": 1700000000000000000,
+"name": "zero.gguf"
+},
+{
+"hex": "",
+"mtime": 1700000000000000000,
+"name": "empty-size.gguf"
+}
+],
+"id": "loaded-on-and-fit",
+"ini": {
+"text": "[short-id]\nmodel = other.gguf\n"
+},
+"requests": [
+"key=llama-flat.gguf",
+"key=other.gguf",
+"key=Synth%C3%A9tique-Q4.gguf",
+"key=zero.gguf",
+"key=empty-size.gguf"
+],
+"results": [
+{
+"body": "{\"key\":\"llama-flat.gguf\",\"name\":\"llama-flat.gguf\",\"stem\":\"llama-flat\",\"subdir\":\"\",\"bytes\":644,\"size\":\"644 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"llama-flat\",\"file\":\"llama-flat.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[\"llama-a\",\"llama-a\"],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/llama-flat.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":\"Synthetic Llama\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q4_K_M\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":11,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":8192,\"embedding_length\":256,\"block_count\":4,\"feed_forward_length\":null,\"attention_head_count\":8,\"attention_head_count_kv\":null,\"rope_freq_base\":10000.0,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":12,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":\"gpt2\",\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{\"accepts_enable_thinking\":true,\"accepts_reasoning_effort\":false,\"accepts_preserve_thinking\":false,\"uses_think_tags\":true,\"uses_channel_thought\":false}}}",
+"content_type": "application/json",
+"query": "key=llama-flat.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\",\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 644,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"other.gguf\",\"name\":\"other.gguf\",\"stem\":\"other\",\"subdir\":\"\",\"bytes\":644,\"size\":\"644 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"short-id\"],\"modelId\":\"short-id\",\"file\":\"other.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[\"llama-a\",\"llama-b\"],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/other.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":\"Synthetic Llama\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q4_K_M\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":11,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":8192,\"embedding_length\":256,\"block_count\":4,\"feed_forward_length\":null,\"attention_head_count\":8,\"attention_head_count_kv\":null,\"rope_freq_base\":10000.0,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":12,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":\"gpt2\",\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{\"accepts_enable_thinking\":true,\"accepts_reasoning_effort\":false,\"accepts_preserve_thinking\":false,\"uses_think_tags\":true,\"uses_channel_thought\":false}}}",
+"content_type": "application/json",
+"query": "key=other.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\",\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 644,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"Synth\u00e9tique-Q4.gguf\",\"name\":\"Synth\u00e9tique-Q4.gguf\",\"stem\":\"Synth\u00e9tique-Q4\",\"subdir\":\"\",\"bytes\":644,\"size\":\"644 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"Synth\u00e9tique-Q4\",\"file\":\"Synth\u00e9tique-Q4.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[\"llama-d\"],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/Synth\u00e9tique-Q4.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":\"Synthetic Llama\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q4_K_M\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":11,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":8192,\"embedding_length\":256,\"block_count\":4,\"feed_forward_length\":null,\"attention_head_count\":8,\"attention_head_count_kv\":null,\"rope_freq_base\":10000.0,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":12,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":\"gpt2\",\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{\"accepts_enable_thinking\":true,\"accepts_reasoning_effort\":false,\"accepts_preserve_thinking\":false,\"uses_think_tags\":true,\"uses_channel_thought\":false}}}",
+"content_type": "application/json",
+"query": "key=Synth%C3%A9tique-Q4.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\",\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 644,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"key\":\"zero.gguf\",\"name\":\"zero.gguf\",\"stem\":\"zero\",\"subdir\":\"\",\"bytes\":644,\"size\":\"644 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"zero\",\"file\":\"zero.gguf\",\"shape\":{\"arch\":\"llama\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/zero.gguf\",\"summary\":{\"arch\":\"llama\",\"general\":{\"name\":\"Synthetic Llama\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q4_K_M\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":11,\"header_error\":null},\"model\":{\"arch\":\"llama\",\"context_length\":8192,\"embedding_length\":256,\"block_count\":4,\"feed_forward_length\":null,\"attention_head_count\":8,\"attention_head_count_kv\":null,\"rope_freq_base\":10000.0,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":12,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":\"gpt2\",\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{\"accepts_enable_thinking\":true,\"accepts_reasoning_effort\":false,\"accepts_preserve_thinking\":false,\"uses_think_tags\":true,\"uses_channel_thought\":false}}}",
+"content_type": "application/json",
+"query": "key=zero.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\",\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 644,
+"fit": true
+},
+"status": 200
+},
+{
+"body": "{\"detail\":\"Could not read the model file: not a GGUF file (magic=b'')\"}",
+"content_type": "application/json",
+"query": "key=empty-size.gguf",
+"runtime": null,
+"status": 422
+}
+]
+},
+{
+"backends": [],
+"files": [
+{
+"hex": "474755460300000000000000000000000600000000000000140000000000000067656e6572616c2e6172636869746563747572650800000008000000000000007177656e336d6f650c0000000000000067656e6572616c2e6e616d65080000000d0000000000000053796e746865746963204d6f4515000000000000007177656e336d6f652e6578706572745f636f756e7404000000800000001a000000000000007177656e336d6f652e6578706572745f757365645f636f756e74040000000800000014000000000000007177656e336d6f652e626c6f636b5f636f756e740400000002000000110000000000000067656e6572616c2e66696c655f747970650400000007000000",
+"mtime": 1700000000000000000,
+"name": "solo.gguf"
+}
+],
+"id": "no-backends",
+"requests": [
+"key=solo.gguf"
+],
+"results": [
+{
+"body": "{\"key\":\"solo.gguf\",\"name\":\"solo.gguf\",\"stem\":\"solo\",\"subdir\":\"\",\"bytes\":265,\"size\":\"265 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[],\"modelId\":\"solo\",\"file\":\"solo.gguf\",\"shape\":{\"arch\":\"qwen3moe\",\"moe\":true,\"experts\":128,\"active\":8,\"label\":\"MoE 128x8\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/solo.gguf\",\"summary\":{\"arch\":\"qwen3moe\",\"general\":{\"name\":\"Synthetic MoE\",\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":\"Q8_0\",\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":6,\"header_error\":null},\"model\":{\"arch\":\"qwen3moe\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":128,\"nextn_predict_layers\":null,\"expert_used_count\":8,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=solo.gguf",
+"runtime": {
+"body": "{\"loaded\":{},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 265,
+"fit": true
+},
+"status": 200
+}
+]
+}
+],
+"oracle": {
+"api.py": "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6",
+"autoconfig.py": "15cc464f19cb43a68752572f6fa91046fe34c37296decef348a84dcbe75dc1c6",
+"autoconfig_core.py": "d9da1c88fe6ef8db5a0f3784ca5e024436c110d338deed9ea04bffb7870e15ac",
+"config.py": "ab6e348127b65f224d58fa2f805fefdfc7a472e14eb9e9ff540120e51f21f57f",
+"discover.py": "f92603267381ea40976fb9642034d18ee24048769f1dc2ab7e68aeac9d97b725",
+"gguf_meta.py": "8ac984794fb9087fcd774cfe1a4e83eac847c1675224c8c09029fb9dcbd43b0a",
+"ini.py": "0c674795902c74b5d1511363b08cf8dd69fe470152f0b6b847668a270076dda4",
+"main.py": "cc01b06acd695c6de26d751414ac963da3c473c8a44aaa60af952a20f1a245da",
+"services.py": "aadf227ddc3666cebb1631a0ae543c8090539a382e8ca52710fc7a5458f1d041",
+"utils.py": "3f56fb6b04094ec19c09c191a0d4267e2d233e3461884be0648e4875e6ef6426"
+}
+}

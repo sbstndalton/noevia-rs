@@ -87,7 +87,7 @@ impl ModelUpdates {
     }
 }
 
-enum Stop {
+pub(crate) enum Stop {
     Failed,
     Refused,
 }
@@ -136,7 +136,7 @@ fn answer(
 }
 
 /// `Path.exists()` (Python 3.12): `Some(is_dir)`, `None` when missing, 500 when stat raises.
-fn exists(path: &Path) -> Result<Option<bool>, Stop> {
+pub(crate) fn exists(path: &Path) -> Result<Option<bool>, Stop> {
     match std::fs::metadata(path) {
         Ok(meta) => Ok(Some(meta.is_dir())),
         Err(e) if ignorable(&e) => Ok(None),
@@ -162,8 +162,14 @@ fn ignorable(error: &std::io::Error) -> bool {
 /// matter to this route: unreadable, not UTF-8 or not parseable raises (500). Over `INI_CAP` also
 /// answers 500 (deliberate bound).
 fn check_ini(path: &Path) -> Result<(), Stop> {
+    read_ini(path).map(|_| ())
+}
+
+/// `models.ini` as Python reads it (`Path.read_text`, universal newlines), after checking that
+/// it parses; `None` when it does not exist. Every failure is Python's 500.
+pub(crate) fn read_ini(path: &Path) -> Result<Option<(String, Ini)>, Stop> {
     if exists(path)?.is_none() {
-        return Ok(());
+        return Ok(None);
     }
     // Non-blocking open and a regular-file check: a FIFO or device answers 500 instead of
     // parking a blocking thread (Python would hang on it).
@@ -191,8 +197,8 @@ fn check_ini(path: &Path) -> Result<(), Stop> {
     let text = std::str::from_utf8(&bytes).map_err(|_| Stop::Failed)?;
     // Path.read_text decodes universal newlines before configparser sees the text.
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
-    Ini::parse(&text, &mut Budget::default()).map_err(|_| Stop::Failed)?;
-    Ok(())
+    let parsed = Ini::parse(&text, &mut Budget::default()).map_err(|_| Stop::Failed)?;
+    Ok(Some((text, parsed)))
 }
 
 /// One snapshot row this route uses: `display_name` and the newest part's `st_mtime`.
@@ -202,10 +208,13 @@ pub(crate) struct Entry {
     pub mtime: f64,
 }
 
-struct Found {
-    subdir: String,
-    name: String,
-    mtime: f64,
+/// One file `utils.iter_gguf` yields: its folder (`""` at the top), name, `st_size`, `st_mtime`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Found {
+    pub subdir: String,
+    pub name: String,
+    pub size: u64,
+    pub mtime: f64,
 }
 
 fn join(relative: &str, name: &str) -> String {
@@ -218,7 +227,7 @@ fn join(relative: &str, name: &str) -> String {
 
 /// Metadata of `base/relative` after resolving every link, if the result is inside `base`
 /// (canonical). `None` when it does not exist (a dangling link: `is_file()` is False).
-fn inside(base: &Path, relative: &str) -> Result<Option<std::fs::Metadata>, Stop> {
+pub(crate) fn inside(base: &Path, relative: &str) -> Result<Option<std::fs::Metadata>, Stop> {
     let target = match std::fs::canonicalize(base.join(relative)) {
         Ok(target) => target,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -278,6 +287,7 @@ fn walk(
                 relative.to_owned()
             },
             name: entry.name.clone(),
+            size: meta.len(),
             // CPython's st_mtime: `sec + nsec * 1e-9` in double precision.
             mtime: meta.mtime() as f64 + meta.mtime_nsec() as f64 * 1e-9,
         });
@@ -332,7 +342,7 @@ pub(crate) fn companion(filename: &str) -> bool {
 }
 
 /// `re.compile("imatrix", re.I).search(low)`: under IGNORECASE `i` also matches the dotless `ı`.
-fn imatrix(low: &str) -> bool {
+pub(crate) fn imatrix(low: &str) -> bool {
     let chars: Vec<char> = low.chars().collect();
     let pattern: Vec<char> = "imatrix".chars().collect();
     chars.windows(pattern.len()).any(|window| {
@@ -343,52 +353,119 @@ fn imatrix(low: &str) -> bool {
     })
 }
 
-/// `services.snapshot_models_dir().ggufs`, reduced to what the update map reads.
-fn snapshot(root: &Root, base: &Path) -> Result<Vec<Entry>, Stop> {
+/// One file of a snapshot row: its name, `st_size` and `st_mtime`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Part {
+    pub name: String,
+    pub size: u64,
+    pub mtime: f64,
+}
+
+/// One `services.GgufEntry` of the models-folder snapshot, before aliases are attached.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Model {
+    /// `display_name`: the file name with any shard suffix removed.
+    pub base: String,
+    pub subdir: String,
+    /// Sorted by name, as Python sorts them.
+    pub parts: Vec<Part>,
+    pub total: u128,
+    pub mtime: f64,
+    pub companion: bool,
+    pub companion_name: String,
+    pub companion_bytes: u128,
+}
+
+/// `services.snapshot_models_dir().ggufs`: the walk, shard grouping, companion folding and order.
+pub(crate) fn models(root: &Root, base: &Path) -> Result<Vec<Model>, Stop> {
+    group(listing(root, base)?)
+}
+
+/// `utils.iter_gguf(models_dir)`, in its order.
+pub(crate) fn listing(root: &Root, base: &Path) -> Result<Vec<Found>, Stop> {
     let mut budget = Budget::default();
     let mut found = Vec::new();
     walk(root, base, ".", 0, &mut found, &mut budget)?;
-    struct Group {
-        subdir: String,
-        base: String,
-        mtime: f64,
-        companion: bool,
-    }
-    let mut groups: Vec<Group> = Vec::new();
+    Ok(found)
+}
+
+/// The snapshot's grouping of an `iter_gguf` listing.
+pub(crate) fn group(found: Vec<Found>) -> Result<Vec<Model>, Stop> {
+    let mut groups: Vec<Model> = Vec::new();
     let mut index: HashMap<(String, String), usize> = HashMap::new();
     for file in found {
         let base = shard_base(&file.name)?;
         let key = (file.subdir.clone(), base.clone());
+        let part = Part {
+            name: file.name,
+            size: file.size,
+            mtime: file.mtime,
+        };
         match index.get(&key) {
-            Some(&i) => {
-                let group = groups.get_mut(i).ok_or(Stop::Failed)?;
-                if file.mtime > group.mtime {
-                    group.mtime = file.mtime;
-                }
-            }
+            Some(&i) => groups.get_mut(i).ok_or(Stop::Failed)?.parts.push(part),
             None => {
                 index.insert(key, groups.len());
-                groups.push(Group {
+                groups.push(Model {
                     companion: companion(&base),
                     subdir: file.subdir,
                     base,
-                    mtime: file.mtime,
+                    parts: vec![part],
+                    total: 0,
+                    mtime: 0.0,
+                    companion_name: String::new(),
+                    companion_bytes: 0,
                 });
             }
         }
     }
-    // A companion inside a folder that holds a model is folded into that model's row.
-    let with_model: std::collections::HashSet<&str> = groups
-        .iter()
-        .filter(|g| !g.companion && !g.subdir.is_empty())
-        .map(|g| g.subdir.as_str())
-        .collect();
-    let mut surviving: Vec<(String, bool, String, &Group)> = groups
-        .iter()
-        .filter(|g| {
-            !(g.companion && !g.subdir.is_empty() && with_model.contains(g.subdir.as_str()))
-        })
-        .map(|g| {
+    for group in &mut groups {
+        group.parts.sort_by(|a, b| a.name.cmp(&b.name));
+        group.total = group.parts.iter().map(|p| u128::from(p.size)).sum();
+        // max(): the first of equal values, which no observer can tell apart.
+        group.mtime = group
+            .parts
+            .iter()
+            .map(|p| p.mtime)
+            .fold(f64::NEG_INFINITY, |a, b| if b > a { b } else { a });
+    }
+    // `{e.subdir: e for e in entries if not e.is_companion and e.subdir}`: the LAST model of a
+    // folder receives that folder's companions.
+    let mut main_by_subdir: HashMap<String, usize> = HashMap::new();
+    for (i, group) in groups.iter().enumerate() {
+        if !group.companion && !group.subdir.is_empty() {
+            main_by_subdir.insert(group.subdir.clone(), i);
+        }
+    }
+    let mut folded = vec![false; groups.len()];
+    for i in 0..groups.len() {
+        let (companion, subdir) = {
+            let g = groups.get(i).ok_or(Stop::Failed)?;
+            (g.companion, g.subdir.clone())
+        };
+        if !(companion && !subdir.is_empty()) {
+            continue;
+        }
+        let Some(&main) = main_by_subdir.get(&subdir) else {
+            continue;
+        };
+        let (name, bytes) = {
+            let g = groups.get(i).ok_or(Stop::Failed)?;
+            (g.base.clone(), g.total)
+        };
+        let target = groups.get_mut(main).ok_or(Stop::Failed)?;
+        if target.companion_name.is_empty() {
+            target.companion_name = name;
+        } else {
+            target.companion_name = format!("{}, {name}", target.companion_name);
+        }
+        target.companion_bytes += bytes;
+        *folded.get_mut(i).ok_or(Stop::Failed)? = true;
+    }
+    let mut surviving: Vec<(String, bool, String, Model)> = groups
+        .into_iter()
+        .zip(folded)
+        .filter(|(_, folded)| !folded)
+        .map(|(g, _)| {
             (
                 g.subdir.to_lowercase(),
                 g.companion,
@@ -399,10 +476,15 @@ fn snapshot(root: &Root, base: &Path) -> Result<Vec<Entry>, Stop> {
         .collect();
     // Stable, like list.sort: ties keep first-seen order.
     surviving.sort_by(|a, b| (&a.0, a.1, &a.2).cmp(&(&b.0, b.1, &b.2)));
-    Ok(surviving
+    Ok(surviving.into_iter().map(|(_, _, _, g)| g).collect())
+}
+
+/// `services.snapshot_models_dir().ggufs`, reduced to what the update map reads.
+fn snapshot(root: &Root, base: &Path) -> Result<Vec<Entry>, Stop> {
+    Ok(models(root, base)?
         .into_iter()
-        .map(|(_, _, _, g)| Entry {
-            name: g.base.clone(),
+        .map(|g| Entry {
+            name: g.base,
             mtime: g.mtime,
         })
         .collect())
@@ -518,7 +600,7 @@ fn render(entries: &[Entry], checks: &HashMap<String, (Stored, Stored)>) -> Resu
     Ok(out.into_bytes())
 }
 
-fn json_string(text: &str) -> String {
+pub(crate) fn json_string(text: &str) -> String {
     // serde_json escapes exactly what json.dumps(ensure_ascii=False) escapes.
     serde_json::to_string(text).unwrap_or_default()
 }
@@ -662,7 +744,7 @@ fn round_half_even(x: f64) -> f64 {
 }
 
 /// Days since 1970-01-01 to (year, month, day), proleptic Gregorian.
-fn civil(days: i64) -> (i64, i64, i64) {
+pub(crate) fn civil(days: i64) -> (i64, i64, i64) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);

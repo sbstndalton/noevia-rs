@@ -103,6 +103,8 @@ fn state(reader: Arc<dyn Read>) -> Arc<crate::StateData> {
         settings: None,
         #[cfg(feature = "native-model-updates")]
         model_updates: None,
+        #[cfg(feature = "native-model-detail")]
+        model_detail: None,
         sections: Some(Arc::new(Sections::new(reader))),
         embedding: None,
         host: None,
