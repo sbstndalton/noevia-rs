@@ -15,8 +15,27 @@ fn root() -> tempfile::TempDir {
         .unwrap_or_else(|| std::env::current_dir().unwrap());
     tempfile::tempdir_in(path).unwrap()
 }
+/// `Store::open` takes a non-blocking flock on `model_loader.db.prompts.lock`. The lock belongs to
+/// the open file description, so while another test thread in this binary is between `fork` and
+/// `exec` of a spawned process (`prompts_process::bounded`), that child still holds a copy of a
+/// just-dropped store's lock descriptor and the next open answers `Busy` for a few microseconds
+/// (noevia#1939). Retry only that transient answer, with a bound, so a store that is genuinely
+/// held (the lock tests open it directly) still fails.
+fn open_retrying(root: &Path) -> Result<Store> {
+    const MAX_ATTEMPTS: u32 = 200;
+    let mut attempts = 0;
+    loop {
+        attempts += 1;
+        match Store::open(root) {
+            Err(Error::Busy) if attempts < MAX_ATTEMPTS => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            other => return other,
+        }
+    }
+}
 fn open(root: &Path) -> Store {
-    let mut s = Store::open(root).unwrap();
+    let mut s = open_retrying(root).unwrap();
     s.clock = || Ok(1_700_000_000.125);
     s
 }
@@ -68,6 +87,21 @@ fn differential_seed_crud_sequence_order_and_ids() {
     assert_eq!(run(&mut s, Operation::Delete(1)), Err(Error::NotFound));
     let added = run(&mut s, Operation::Add("same".into(), "x".into())).unwrap();
     assert_eq!(added["id"], last_id + 1);
+}
+#[test]
+fn open_retrying_waits_out_a_transient_lock_holder_but_not_a_real_one() {
+    let root = root();
+    let held = open(root.path());
+    // Released after a short delay, like a forked child finishing its exec: the retry succeeds.
+    let releaser = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(100));
+        drop(held);
+    });
+    assert!(open_retrying(root.path()).is_ok());
+    releaser.join().unwrap();
+    // Still held: `Store::open` itself keeps answering Busy (the lock tests rely on it).
+    let _held = open(root.path());
+    assert!(matches!(Store::open(root.path()), Err(Error::Busy)));
 }
 #[test]
 fn independent_seed_commits_restart_and_deleted_seed_retention() {
@@ -170,7 +204,7 @@ fn schema_comments_strings_and_quoted_names_cannot_fake_autoincrement() {
         db.execute_batch(&format!("CREATE TABLE prompts(id INTEGER PRIMARY KEY,name TEXT NOT NULL,body TEXT NOT NULL,created_at REAL NOT NULL {extra});")).unwrap();
         drop(db);
         assert!(
-            matches!(Store::open(root.path()), Err(Error::Store)),
+            matches!(open_retrying(root.path()), Err(Error::Store)),
             "PROMPTS_ASSERT:schema-autoincrement {extra}"
         );
     }
@@ -178,7 +212,7 @@ fn schema_comments_strings_and_quoted_names_cannot_fake_autoincrement() {
     let db = Connection::open(root.path().join("model_loader.db")).unwrap();
     db.execute_batch("CREATE TABLE prompts(id INTEGER PRIMARY KEY /* ignored */ AUTOINCREMENT,name TEXT NOT NULL,body TEXT NOT NULL,created_at REAL NOT NULL,extra TEXT DEFAULT 'AUTOINCREMENT')").unwrap();
     drop(db);
-    assert!(Store::open(root.path()).is_ok());
+    assert!(open_retrying(root.path()).is_ok());
 }
 #[test]
 fn failed_flag_commit_keeps_independent_rows_and_restart_fills_only_missing() {
@@ -260,7 +294,7 @@ fn lock_symlink_writable_special_and_replacement_fail_closed() {
     drop(s);
     let bad = root.path().join("alias");
     std::os::unix::fs::symlink(root.path(), &bad).unwrap();
-    assert!(matches!(Store::open(&bad), Err(Error::Store)));
+    assert!(matches!(open_retrying(&bad), Err(Error::Store)));
     let mut s = open(root.path());
     std::fs::rename(
         root.path().join("model_loader.db.prompts.lock"),
@@ -514,14 +548,14 @@ fn final_files_and_directory_modes_reject_unsafe_roots() {
             root.path().join(format!("model_loader.db{suffix}")),
         )
         .unwrap();
-        assert!(matches!(Store::open(root.path()), Err(Error::Store)));
+        assert!(matches!(open_retrying(root.path()), Err(Error::Store)));
     }
     let root = root();
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o777)).unwrap();
-    assert!(matches!(Store::open(root.path()), Err(Error::Store)));
+    assert!(matches!(open_retrying(root.path()), Err(Error::Store)));
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     std::fs::create_dir(root.path().join("model_loader.db")).unwrap();
-    assert!(matches!(Store::open(root.path()), Err(Error::Store)));
+    assert!(matches!(open_retrying(root.path()), Err(Error::Store)));
 }
 
 #[tokio::test]
@@ -890,7 +924,7 @@ fn sticky_temporary_parent_requires_private_owned_prompt_root() {
     );
     // Explicit permissions make the negative independent of ambient umask.
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(matches!(Store::open(root.path()), Err(Error::Store)));
+    assert!(matches!(open_retrying(root.path()), Err(Error::Store)));
     assert!(!root.path().join("model_loader.db").exists());
     assert!(!root.path().join("model_loader.db.prompts.lock").exists());
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
