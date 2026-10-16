@@ -104,6 +104,8 @@ fn state(base: &str, reconciler: Option<Arc<Reconciler>>) -> Arc<StateData> {
         section_writes: None,
         #[cfg(feature = "native-settings-write")]
         settings_write: None,
+        #[cfg(feature = "native-backend-control")]
+        backends: None,
     })
 }
 

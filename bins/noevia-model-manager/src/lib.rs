@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+#[cfg(feature = "native-backend-control")]
+pub mod backends;
 #[cfg(feature = "native-badges")]
 pub mod badges;
 #[cfg(feature = "native-bench-runs")]
@@ -72,6 +74,25 @@ pub struct Container {
 pub trait DockerRead: Send + Sync {
     fn containers(&self) -> Job<'_, Vec<Container>>;
     fn logs<'a>(&'a self, name: &'a str, tail: usize) -> Job<'a, Vec<u8>>;
+    /// noevia#1318: what the backend test needs from `docker inspect` (`Ok(None)`: not found).
+    fn backend_spec<'a>(&'a self, _name: &'a str) -> Job<'a, Option<BackendSpec>> {
+        Box::pin(async { Err("docker unreachable") })
+    }
+    /// noevia#1318: `POST /containers/{name}/restart?t=15` for one llama.cpp backend.
+    fn restart_backend<'a>(&'a self, _name: &'a str) -> Job<'a, ()> {
+        Box::pin(async { Err("docker unreachable") })
+    }
+}
+
+/// The parts of `docker inspect` a backend's port is resolved from (services
+/// `_resolve_internal_port`): published ports (`"8080/tcp"` with their host ports), Cmd,
+/// Entrypoint and Env.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BackendSpec {
+    pub ports: Vec<(String, Vec<String>)>,
+    pub cmd: Vec<String>,
+    pub entrypoint: Vec<String>,
+    pub env: Vec<String>,
 }
 
 pub struct StateData {
@@ -79,6 +100,9 @@ pub struct StateData {
     pub diagnosis: Option<Arc<diagnose_docker::Diagnosis>>,
     #[cfg(feature = "native-prompts")]
     pub prompts: Option<Arc<prompts::Prompts>>,
+    /// noevia#1318: native backend restart and test prompt; restart errors stay in the child.
+    #[cfg(feature = "native-backend-control")]
+    pub backends: Option<Arc<backends::Backends>>,
     /// noevia#1318: native `PUT /api/v1/settings`; the token test is asked of the child.
     #[cfg(feature = "native-settings-write")]
     pub settings_write: Option<Arc<settings_write::SettingsWrite>>,
@@ -484,7 +508,8 @@ fn lossy_unquote(raw: &str) -> String {
     feature = "native-badges",
     feature = "native-bench-runs",
     feature = "native-section-writes",
-    feature = "native-settings-write"
+    feature = "native-settings-write",
+    feature = "native-backend-control"
 ))]
 fn internal_error() -> Response {
     (
@@ -895,6 +920,12 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    #[cfg(feature = "native-backend-control")]
+    if let Some(control) = state.backends.clone() {
+        if let Some((name, action)) = backend_control_route(req.method(), path) {
+            return native_backend_control(state.clone(), control, name, action, req).await;
+        }
+    }
     #[cfg(feature = "native-settings-write")]
     if *req.method() == Method::PUT && path == "/api/v1/settings" {
         if let Some(writer) = state.settings_write.clone() {
@@ -1284,6 +1315,211 @@ fn section_outcome(outcome: section_writes::Outcome) -> Response {
     }
 }
 
+/// `POST /api/v1/backends/{name}/restart|test` with a plain name (no escapes); anything else keeps
+/// its existing handling (forwarded).
+#[cfg(feature = "native-backend-control")]
+pub fn backend_control_route(method: &Method, path: &str) -> Option<(String, &'static str)> {
+    if *method != Method::POST {
+        return None;
+    }
+    let rest = path.strip_prefix("/api/v1/backends/")?;
+    let (name, action) = rest.split_once('/')?;
+    let action = match action {
+        "restart" => "restart",
+        "test" => "test",
+        _ => return None,
+    };
+    (!name.is_empty() && name.len() <= 256 && name.is_ascii() && !name.contains(['%', '/']))
+        .then(|| (name.to_owned(), action))
+}
+
+/// `int(body.get("maxTokens") or 256)` clamped to 1..=4096; `None` where Python's int() raises
+/// (noevia#1928: a 500 there, a 400 here).
+#[cfg(feature = "native-backend-control")]
+pub fn max_tokens(value: Option<&prompts::JsonValue>) -> Option<i64> {
+    use prompts::JsonValue as J;
+    let n: i64 = match value {
+        None => 256,
+        Some(v) if !v.truthy() => 256,
+        Some(J::Bool(_)) => 1,
+        Some(J::Int(n)) => {
+            let text = n.to_string();
+            text.parse().unwrap_or(if text.starts_with('-') {
+                i64::MIN
+            } else {
+                i64::MAX
+            })
+        }
+        Some(J::Float(f)) if f.is_finite() => {
+            let t = f.trunc();
+            #[allow(clippy::cast_possible_truncation)]
+            if t >= 9.2e18 {
+                i64::MAX
+            } else if t <= -9.2e18 {
+                i64::MIN
+            } else {
+                t as i64
+            }
+        }
+        Some(J::Str(s)) => {
+            let t = model_autoconfig::pyval::py_strip(s);
+            let (neg, d) = match t.as_bytes().first() {
+                Some(b'-') => (true, &t[1..]),
+                Some(b'+') => (false, &t[1..]),
+                _ => (false, t),
+            };
+            if d.is_empty()
+                || d.starts_with('_')
+                || d.ends_with('_')
+                || d.contains("__")
+                || !d.bytes().all(|b| b.is_ascii_digit() || b == b'_')
+            {
+                return None;
+            }
+            let digits: String = d.chars().filter(char::is_ascii_digit).collect();
+            let v: i64 = digits.parse().unwrap_or(i64::MAX);
+            if neg {
+                -v
+            } else {
+                v
+            }
+        }
+        _ => return None,
+    };
+    Some(n.clamp(1, 4096))
+}
+
+/// noevia#1318: the child keeps `last_restart_error`; set (`Some`) or clear (`None`) it.
+#[cfg(feature = "native-backend-control")]
+async fn set_restart_error(
+    legacy: &reqwest::Client,
+    base: &str,
+    token: &str,
+    name: &str,
+    error: Option<&str>,
+) {
+    let body = serde_json::json!({"name": name, "error": error}).to_string();
+    let mut request = legacy
+        .put(format!("{base}{}", backends::RESTART_ERROR_PATH))
+        .header("content-type", "application/json")
+        .timeout(Duration::from_secs(10))
+        .body(body);
+    if !token.is_empty() {
+        request = request.header("x-model-loader-token", token);
+    }
+    if request
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
+    {
+        return;
+    }
+    eprintln!(
+        "model-manager backend restart: the child did not record the restart state for a backend"
+    );
+}
+
+#[cfg(feature = "native-backend-control")]
+async fn native_backend_control(
+    state: Arc<StateData>,
+    control: Arc<backends::Backends>,
+    name: String,
+    action: &'static str,
+    req: Request,
+) -> Response {
+    let json = |status: StatusCode, body: String| {
+        (
+            status,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            body,
+        )
+            .into_response()
+    };
+    let body = if action == "test" {
+        match fastapi_dict_body(req).await {
+            Ok(b) => Some(b),
+            Err(response) => return response,
+        }
+    } else {
+        None
+    };
+    let (inventory, reachable) = match state.docker.containers().await {
+        Ok(i) => (i, true),
+        Err("docker unreachable") => (Vec::new(), false),
+        Err(_) => (Vec::new(), true),
+    };
+    let names = match effective_names(&state.configured, &inventory) {
+        Ok(n) => n,
+        Err(e) => return detail(StatusCode::BAD_GATEWAY, e),
+    };
+    if !names.contains(&name) {
+        return detail(StatusCode::NOT_FOUND, "unknown backend");
+    }
+    let answer = |ok: bool, message: &str| {
+        json(
+            StatusCode::OK,
+            format!(
+                "{{\"ok\":{ok},\"message\":{}}}",
+                serde_json::to_string(message).unwrap_or_default()
+            ),
+        )
+    };
+    if action == "restart" {
+        if !reachable {
+            return answer(false, "docker unreachable");
+        }
+        match state.docker.backend_spec(&name).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return answer(false, "container not found"),
+            Err(e) => return answer(false, &format!("docker error: {e}")),
+        }
+        set_restart_error(&state.legacy, &state.legacy_base, &state.token, &name, None).await;
+        let task_state = state.clone();
+        tokio::spawn(async move {
+            let outcome = tokio::time::timeout(
+                Duration::from_secs(60),
+                task_state.docker.restart_backend(&name),
+            )
+            .await;
+            let error = match outcome {
+                Ok(Ok(())) => return,
+                Ok(Err(e)) => format!("APIError: {e}"),
+                Err(_) => "APIError: the restart did not finish in time".to_owned(),
+            };
+            set_restart_error(
+                &task_state.legacy,
+                &task_state.legacy_base,
+                &task_state.token,
+                &name,
+                Some(&error),
+            )
+            .await;
+        });
+        return answer(true, "restart queued");
+    }
+    let Some(body) = body else {
+        return internal_error();
+    };
+    let prompt = match prompts::py_str(body.get("prompt")) {
+        Ok(p) => model_autoconfig::pyval::py_strip(&p).to_owned(),
+        Err(_) => return internal_error(),
+    };
+    if prompt.is_empty() {
+        return detail(StatusCode::BAD_REQUEST, "prompt is required");
+    }
+    let Some(max) = max_tokens(body.get("maxTokens")) else {
+        return detail(StatusCode::BAD_REQUEST, "maxTokens must be a number");
+    };
+    match control
+        .test(state.docker.as_ref(), &name, &prompt, max)
+        .await
+    {
+        Ok(body) => json(StatusCode::OK, body),
+        Err(backends::Raised) => internal_error(),
+    }
+}
+
 /// noevia#1318: native `PUT /api/v1/settings`.
 #[cfg(feature = "native-settings-write")]
 async fn native_settings_write(
@@ -1579,7 +1815,8 @@ async fn guarded_delete(
 #[cfg(any(
     feature = "native-badges",
     feature = "native-section-writes",
-    feature = "native-settings-write"
+    feature = "native-settings-write",
+    feature = "native-backend-control"
 ))]
 #[allow(clippy::result_large_err)]
 async fn fastapi_dict_body(req: Request) -> Result<prompts::JsonValue, Response> {
@@ -1591,7 +1828,8 @@ async fn fastapi_dict_body(req: Request) -> Result<prompts::JsonValue, Response>
 #[cfg(any(
     feature = "native-badges",
     feature = "native-section-writes",
-    feature = "native-settings-write"
+    feature = "native-settings-write",
+    feature = "native-backend-control"
 ))]
 #[allow(clippy::result_large_err)]
 async fn fastapi_dict_body_capped(

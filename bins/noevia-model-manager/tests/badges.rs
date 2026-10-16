@@ -81,6 +81,8 @@ fn state(badges: Option<Badges>, legacy_base: &str) -> Arc<StateData> {
         section_writes: None,
         #[cfg(feature = "native-settings-write")]
         settings_write: None,
+        #[cfg(feature = "native-backend-control")]
+        backends: None,
         sections: None,
         embedding: None,
         host: None,

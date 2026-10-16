@@ -69,6 +69,8 @@ fn state(roots: Option<(&Path, &Path)>, legacy_base: &str) -> Arc<StateData> {
         section_writes: None,
         #[cfg(feature = "native-settings-write")]
         settings_write: None,
+        #[cfg(feature = "native-backend-control")]
+        backends: None,
     })
 }
 

@@ -45,6 +45,8 @@ fn state(root: &std::path::Path, legacy_base: &str) -> Arc<StateData> {
         prompts: None,
         settings: Some(Arc::new(Settings::new(root))),
         settings_write: Some(Arc::new(SettingsWrite::new(root))),
+        #[cfg(feature = "native-backend-control")]
+        backends: None,
         #[cfg(feature = "native-model-updates")]
         model_updates: None,
         #[cfg(feature = "native-model-detail")]
