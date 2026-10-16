@@ -528,8 +528,11 @@ fn read_checks(
     let db = crate::sqlite_read::open(database, "model_updates").map_err(failed)?;
     db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_LENGTH, VALUE_CAP)
         .map_err(failed)?;
-    db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_SQL_LENGTH, 1024)
-        .map_err(failed)?;
+    db.set_limit(
+        rusqlite::limits::Limit::SQLITE_LIMIT_SQL_LENGTH,
+        crate::sqlite_read::SQL_CAP,
+    )
+    .map_err(failed)?;
     db.busy_timeout(BUSY_WAIT).map_err(failed)?;
     db.progress_handler(1000, Some(move || Instant::now() >= deadline))
         .map_err(failed)?;

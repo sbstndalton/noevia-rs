@@ -420,7 +420,8 @@ fn total_output_is_capped() {
     assert!(render(&entries, &checks).is_err());
 }
 
-/// noevia#1922: the update store as Python leaves it, WAL with no -wal/-shm, reads (and stays WAL).
+/// noevia#1922: the update store as Python leaves it: WAL with no -wal/-shm, and a schema with a
+/// CREATE TABLE longer than 1 KiB (Python's bench_result is ~1.5 KiB). It reads, and stays WAL.
 #[test]
 fn closed_wal_store_is_read() {
     let dir = tempfile::tempdir().unwrap();
@@ -430,8 +431,9 @@ fn closed_wal_store_is_read() {
         .query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))
         .unwrap();
     c.execute_batch(
-        "CREATE TABLE update_check (filename TEXT PRIMARY KEY, repo_id TEXT NOT NULL, hf_last_modified TEXT, checked_at REAL NOT NULL);
-         INSERT INTO update_check VALUES('a.gguf', 'synthetic/repo', NULL, 1.0);",
+        &(format!("CREATE TABLE long_schema (x TEXT -- {}\n);", "c".repeat(2048))
+            + "CREATE TABLE update_check (filename TEXT PRIMARY KEY, repo_id TEXT NOT NULL, hf_last_modified TEXT, checked_at REAL NOT NULL);
+         INSERT INTO update_check VALUES('a.gguf', 'synthetic/repo', NULL, 1.0);"),
     )
     .unwrap();
     drop(c);

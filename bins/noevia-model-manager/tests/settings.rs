@@ -356,10 +356,13 @@ async fn closed_wal_store_and_read_only_file_are_read() {
         let _: String = c
             .query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))
             .unwrap();
-        c.execute_batch(
-            "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        // A CREATE TABLE longer than 1 KiB, as Python's real schema has (noevia#1922).
+        c.execute_batch(&format!(
+            "CREATE TABLE long_schema (x TEXT -- {}\n);
+             CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
              INSERT INTO kv VALUES('hf_token', 'synthetic-wal-token-1234');",
-        )
+            "c".repeat(2048)
+        ))
         .unwrap();
         drop(c);
         assert!(!dir.path().join("model_loader.db-shm").exists());

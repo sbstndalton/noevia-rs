@@ -81,8 +81,11 @@ pub fn read(database: &Path, deadline: Instant) -> Result<Option<Stored>, Unread
     let db = crate::sqlite_read::open(database, "settings").map_err(unreadable)?;
     db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_LENGTH, VALUE_CAP)
         .map_err(unreadable)?;
-    db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_SQL_LENGTH, 1024)
-        .map_err(unreadable)?;
+    db.set_limit(
+        rusqlite::limits::Limit::SQLITE_LIMIT_SQL_LENGTH,
+        crate::sqlite_read::SQL_CAP,
+    )
+    .map_err(unreadable)?;
     db.busy_timeout(BUSY_WAIT).map_err(unreadable)?;
     db.progress_handler(1000, Some(move || Instant::now() >= deadline))
         .map_err(unreadable)?;

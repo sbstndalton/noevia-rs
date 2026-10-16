@@ -5,6 +5,11 @@
 //! open a WAL database with `SQLITE_OPEN_READ_ONLY` unless it can find or create `-shm`
 //! (SQLITE_CANTOPEN). Every native read then answered a bare 500.
 //!
+//! **Root cause (confirmed):** the readers set `SQLITE_LIMIT_SQL_LENGTH` to 1 KiB, and SQLite
+//! parses the stored schema under that limit; Python's real schema has a 1.5 KiB `CREATE TABLE`,
+//! so every read failed as a "malformed database schema". [`SQL_CAP`] fixes that. The open mode
+//! below is a second hardening, not the cause.
+//!
 //! Readers therefore open read-write **without** `SQLITE_OPEN_CREATE` (a missing store is still
 //! an error, never created), as Python's own connection does, and set `PRAGMA query_only` so the
 //! connection cannot write. The journal mode is never changed. Only when the read-write open is
@@ -12,6 +17,12 @@
 //! rollback-journal store or a WAL store whose `-shm` exists. The SQLite error of a failed open is
 //! logged once per reader, so a refusal is never a silent 500.
 use rusqlite::{Connection, OpenFlags};
+
+/// `SQLITE_LIMIT_SQL_LENGTH` for every native connection to the store. SQLite parses the stored
+/// schema under this limit too, and Python's `db.init()` schema has `CREATE TABLE` statements of
+/// about 1.5 KiB (comments included): the earlier 1 KiB limit made every read fail with
+/// "malformed database schema (bench_result) - string or blob too big" (noevia#1922).
+pub const SQL_CAP: i32 = 1_048_576;
 use std::{collections::HashSet, path::Path, sync::Mutex};
 
 static LOGGED: Mutex<Option<HashSet<&'static str>>> = Mutex::new(None);
