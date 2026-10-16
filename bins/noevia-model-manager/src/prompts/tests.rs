@@ -197,6 +197,8 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
         badges: None,
         #[cfg(feature = "native-bench-runs")]
         bench_runs: None,
+        #[cfg(feature = "native-section-writes")]
+        section_writes: None,
     })
 }
 fn root() -> tempfile::TempDir {

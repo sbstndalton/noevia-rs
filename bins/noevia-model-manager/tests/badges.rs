@@ -77,6 +77,8 @@ fn state(badges: Option<Badges>, legacy_base: &str) -> Arc<StateData> {
         badges: badges.map(Arc::new),
         #[cfg(feature = "native-bench-runs")]
         bench_runs: None,
+        #[cfg(feature = "native-section-writes")]
+        section_writes: None,
         sections: None,
         embedding: None,
         host: None,

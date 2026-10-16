@@ -722,7 +722,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-services
-          ref: 641c9c342256de69251097d4839d05ee41044fe0
+          ref: ff8f314d7496e83d3b2d229089f8aabb4ddf67f9
           path: legacy-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -1126,7 +1126,7 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges --lib badges::
       - name: Production feature set advertises and selects exactly (#1925)
         # The model-manager image's --features list; lifecycle checks --features output and every selector.
-        run: cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs --test lifecycle
+        run: cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes --test lifecycle
       - name: Badges capability omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-download-targets --test lifecycle
@@ -1176,6 +1176,53 @@ jobs:
       - name: Benchmark run capability omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-badges --test lifecycle
+          cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+
+  native-section-writes:
+    name: Native models.ini writers, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: ff8f314d7496e83d3b2d229089f8aabb4ddf67f9
+          path: section-writes-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r section-writes-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Regenerate the actual Python models.ini writers oracle
+        run: |
+          cargo build --locked --release -p model-files-cli
+          MODEL_FILES_BIN="$PWD/target/release/model-files" python3 -I tools/gen-section-writes-oracle.py section-writes-services/model-manager/app > "$RUNNER_TEMP/section-writes.json"
+          cmp bins/noevia-model-manager/tests/fixtures/section-writes-python.v1.json "$RUNNER_TEMP/section-writes.json" || {
+            diff bins/noevia-model-manager/tests/fixtures/section-writes-python.v1.json "$RUNNER_TEMP/section-writes.json" | head -40
+            exit 1
+          }
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-section-writes -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes -- -D warnings
+      - name: Native models.ini writers differential, bounds and route policy
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-section-writes --test section_writes --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-section-writes --lib section_writes::
+      - name: Combined native features keep every existing test
+        # Prompt store tests need the prompt oracle env; the native-prompts job runs them.
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes --test section_writes --test bench_runs --test badges --test download_targets --test model_detail --test model_updates --test settings --test lifecycle --test policy --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes --lib section_writes::
+      - name: Section writes capability omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-bench-runs --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
 
   native-diagnose:
