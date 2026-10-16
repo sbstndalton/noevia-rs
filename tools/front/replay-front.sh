@@ -20,8 +20,9 @@ origin="${PUBLIC_ORIGIN:-http://127.0.0.1:$port}"
 # (M3), and its projects.json coordination only by one that lists rust-projects (M4, which needs M3);
 # its chat-list refusal only by one that also lists rust-project-chats (sbstndalton/noevia#1409),
 # and its free-chat coordination and refusal only by one that lists rust-free-chats.
-unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_PROJECT_CHATS_CONFIRMED NOEVIA_RUST_FREE_CHATS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED NOEVIA_RUST_STATS_CONFIRMED NOEVIA_RUST_EXPORT_CONFIRMED NOEVIA_RUST_STORAGE_READS_CONFIRMED NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED NOEVIA_RUST_PROJECT_WRITES_CONFIRMED
+unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_PROJECT_CHATS_CONFIRMED NOEVIA_RUST_FREE_CHATS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED NOEVIA_RUST_STATS_CONFIRMED NOEVIA_RUST_EXPORT_CONFIRMED NOEVIA_RUST_STORAGE_READS_CONFIRMED NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED NOEVIA_RUST_PROJECT_WRITES_CONFIRMED NOEVIA_RUST_PROJECT_STORE_CONFIRMED NOEVIA_PROJECT_STORE_PORT NOEVIA_PROJECT_STORE_TOKEN
 confirmed=""
+store_confirmed=""
 projects_confirmed=""
 project_chats_confirmed=""
 free_chats_confirmed=""
@@ -81,6 +82,17 @@ if [ -n "$projects_confirmed" ]; then
   { [ -n "$free_chats_confirmed" ] && has_feature rust-export; } || { echo "replay-front: NOEVIA_RUST_PROJECTS=1 needs a front with rust-export and rust-free-chats" >&2; exit 2; }
   export_confirmed=1
 fi
+# sbstndalton/noevia#1264, permanent like build/web-supervisor.sh: with projects confirmed Node writes
+# projects.json and free-chats.json only through the front's loopback store, so both processes get
+# UI_PORT+2000 and a secret made here for this run (never inherited).
+store_port="" store_token=""
+if [ -n "$projects_confirmed" ]; then
+  has_feature project-store || { echo "replay-front: NOEVIA_RUST_PROJECTS=1 needs a front with project-store" >&2; exit 2; }
+  store_port=$((port + 2000))
+  store_token="$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"
+  [ "${#store_token}" -eq 64 ] || { echo "replay-front: could not make the project store secret" >&2; exit 2; }
+  store_confirmed=1
+fi
 # sbstndalton/noevia#1264: the project writes ported so far; Node refuses them (core
 # rust-projects.cjs projectWritesEnabledFrom) only once the front lists rust-project-writes, over
 # confirmed projects.
@@ -93,14 +105,15 @@ UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed
   NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_PROJECT_CHATS_CONFIRMED="$project_chats_confirmed" NOEVIA_RUST_FREE_CHATS_CONFIRMED="$free_chats_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$reasoning_confirmed" \
   NOEVIA_RUST_ROUTING_MODE_CONFIRMED="$routing_confirmed" NOEVIA_RUST_STATS_CONFIRMED="$stats_confirmed" NOEVIA_RUST_EXPORT_CONFIRMED="$export_confirmed" \
   NOEVIA_RUST_STORAGE_READS_CONFIRMED="$storage_reads_confirmed" NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED="$storage_browse_confirmed" NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED="$chatgpt_status_confirmed" NOEVIA_RUST_PROJECT_WRITES_CONFIRMED="$project_writes_confirmed" \
+  NOEVIA_RUST_PROJECT_STORE_CONFIRMED="$store_confirmed" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" \
   "$(dirname "$front")/corpus-launcher" serve "$core" &
 node_pid=$!
 # CI's M4 negative control only: Node is told the front owns the project image routes, the front is
 # started without the switch, so those writes must reach Node and be refused.
 if [ "${REPLAY_FRONT_CONTROL_NODE_ONLY_PROJECTS:-}" = 1 ]; then
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_PROJECTS "$front" &
+  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" env -u NOEVIA_RUST_PROJECTS -u NOEVIA_PROJECT_STORE_PORT -u NOEVIA_PROJECT_STORE_TOKEN "$front" &
 else
-  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" "$front" &
+  PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" "$front" &
 fi
 front_pid=$!
 trap 'kill "$node_pid" "$front_pid" 2>/dev/null || true' INT TERM EXIT
