@@ -1095,6 +1095,9 @@ jobs:
         run: |
           cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges --test badges --test download_targets --test model_detail --test model_updates --test settings --test lifecycle --test policy --bin noevia-model-manager
           cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges --lib badges::
+      - name: Production feature set advertises and selects exactly (#1925)
+        # The model-manager image's --features list; lifecycle checks --features output and every selector.
+        run: cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes --test lifecycle
       - name: Badges capability omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-download-targets --test lifecycle

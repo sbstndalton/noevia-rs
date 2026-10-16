@@ -77,6 +77,21 @@ fn child_port_guard_excludes_second_fixed_port_owner() {
     ));
 }
 
+/// Run a command whose fake `uvicorn` script a test has just (re)written. On Linux a parallel
+/// test's fork can briefly hold the new script open for writing, so exec fails with ETXTBSY and
+/// the manager exits 1 before the script runs; that is retried, never a real refusal.
+fn busy_retry(cmd: &mut Command) -> prompts_process::Output {
+    for _ in 0..20 {
+        let output = cmd.prompt_output().unwrap();
+        let busy = output.status.code() == Some(1)
+            && String::from_utf8_lossy(&output.stderr).contains("ExecutableFileBusy");
+        if !busy {
+            return output;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    cmd.prompt_output().unwrap()
+}
 fn owned_uvicorn() -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("spawned");
@@ -220,7 +235,7 @@ fn settings_selector_omission_and_python_confirmation_are_closed_before_db_or_ch
         if let Some(value) = selected {
             cmd.env("MODEL_MANAGER_SETTINGS_IMPL", value);
         }
-        let output = cmd.prompt_output().unwrap();
+        let output = busy_retry(&mut cmd);
         assert_eq!(output.status.code(), Some(42));
         assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
         std::fs::remove_file(&marker).unwrap();
@@ -268,7 +283,7 @@ fn model_updates_selector_omission_and_python_confirmation_are_closed_before_db_
         if let Some(value) = selected {
             cmd.env("MODEL_MANAGER_MODEL_UPDATES_IMPL", value);
         }
-        let output = cmd.prompt_output().unwrap();
+        let output = busy_retry(&mut cmd);
         assert_eq!(output.status.code(), Some(42));
         assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
         std::fs::remove_file(&marker).unwrap();
@@ -315,7 +330,7 @@ fn model_detail_selector_omission_and_python_confirmation_are_closed_before_chil
         if let Some(value) = selected {
             cmd.env("MODEL_MANAGER_MODEL_DETAIL_IMPL", value);
         }
-        let output = cmd.prompt_output().unwrap();
+        let output = busy_retry(&mut cmd);
         assert_eq!(output.status.code(), Some(42));
         assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
         std::fs::remove_file(&marker).unwrap();
@@ -363,7 +378,7 @@ fn download_targets_selector_omission_and_python_confirmation_are_closed_before_
         if let Some(value) = selected {
             cmd.env("MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL", value);
         }
-        let output = cmd.prompt_output().unwrap();
+        let output = busy_retry(&mut cmd);
         assert_eq!(output.status.code(), Some(42));
         assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
         std::fs::remove_file(&marker).unwrap();
@@ -406,7 +421,7 @@ fn badges_selector_omission_and_python_confirmation_are_closed_before_child() {
         if let Some(value) = selected {
             cmd.env("MODEL_MANAGER_BADGES_IMPL", value);
         }
-        let output = cmd.prompt_output().unwrap();
+        let output = busy_retry(&mut cmd);
         assert_eq!(output.status.code(), Some(42));
         assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
         std::fs::remove_file(&marker).unwrap();
@@ -449,7 +464,7 @@ fn bench_runs_selector_omission_and_python_confirmation_are_closed_before_child(
         if let Some(value) = selected {
             cmd.env("MODEL_MANAGER_BENCH_RUNS_IMPL", value);
         }
-        let output = cmd.prompt_output().unwrap();
+        let output = busy_retry(&mut cmd);
         assert_eq!(output.status.code(), Some(42));
         assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
         std::fs::remove_file(&marker).unwrap();
@@ -492,7 +507,7 @@ fn section_writes_selector_omission_and_python_confirmation_are_closed_before_ch
         if let Some(value) = selected {
             cmd.env("MODEL_MANAGER_SECTION_WRITES_IMPL", value);
         }
-        let output = cmd.prompt_output().unwrap();
+        let output = busy_retry(&mut cmd);
         assert_eq!(output.status.code(), Some(42));
         assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
         std::fs::remove_file(&marker).unwrap();
@@ -522,7 +537,7 @@ fn native_model_detail_never_refuses_startup_over_zone_or_roots() {
         for (key, value) in extra {
             cmd.env(key, value);
         }
-        let output = cmd.prompt_output().unwrap();
+        let output = busy_retry(&mut cmd);
         assert!(!marker.exists());
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         assert!(stderr.contains("MODEL_LOADER_TOKEN"), "{stderr}");
@@ -616,7 +631,7 @@ fn native_prompts_reject_case_folded_data_dir_aliases_before_side_effects() {
             if canonical {
                 cmd.env("DATA_DIR", dir.path().join("canonical"));
             }
-            let output = cmd.prompt_output().unwrap();
+            let output = busy_retry(&mut cmd);
             assert!(!output.status.success());
             assert!(String::from_utf8_lossy(&output.stderr).contains("canonical DATA_DIR"));
             assert!(!database.exists());
@@ -762,6 +777,10 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         }
         if cfg!(feature = "native-section-writes") {
             expected.push_str("native-section-writes\n");
+        }
+        // noevia#1925: the production image also advertises native-diagnose (printed last).
+        if cfg!(feature = "native-diagnose") {
+            expected.push_str("native-diagnose\n");
         }
         assert_eq!(output.stdout, expected.as_bytes());
     }
