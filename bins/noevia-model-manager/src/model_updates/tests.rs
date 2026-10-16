@@ -9,6 +9,7 @@
     clippy::indexing_slicing
 )]
 use super::*;
+use rusqlite::Connection;
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -417,4 +418,34 @@ fn total_output_is_capped() {
     }
     assert!(render(&entries[..100], &checks).is_ok());
     assert!(render(&entries, &checks).is_err());
+}
+
+/// noevia#1922: the update store as Python leaves it, WAL with no -wal/-shm, reads (and stays WAL).
+#[test]
+fn closed_wal_store_is_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("model_loader.db");
+    let c = Connection::open(&path).unwrap();
+    let _: String = c
+        .query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))
+        .unwrap();
+    c.execute_batch(
+        "CREATE TABLE update_check (filename TEXT PRIMARY KEY, repo_id TEXT NOT NULL, hf_last_modified TEXT, checked_at REAL NOT NULL);
+         INSERT INTO update_check VALUES('a.gguf', 'synthetic/repo', NULL, 1.0);",
+    )
+    .unwrap();
+    drop(c);
+    assert!(!dir.path().join("model_loader.db-shm").exists());
+    let Ok(checks) = read_checks(
+        &path,
+        std::time::Instant::now() + std::time::Duration::from_secs(4),
+    ) else {
+        panic!("closed WAL store was not read");
+    };
+    assert_eq!(checks.len(), 1);
+    let mode: String = Connection::open(&path)
+        .unwrap()
+        .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(mode, "wal");
 }
