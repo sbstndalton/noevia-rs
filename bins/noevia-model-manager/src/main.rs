@@ -42,6 +42,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-section-writes") {
                 output.write_all(b"native-section-writes\n")?;
             }
+            if cfg!(feature = "native-settings-write") {
+                output.write_all(b"native-settings-write\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -157,6 +160,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let settings_write_mode = environment("MODEL_MANAGER_SETTINGS_WRITE_IMPL", "python")?;
+    if !matches!(settings_write_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_SETTINGS_WRITE_IMPL must be python or rust".into());
+    }
+    if settings_write_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-settings-write"))
+    {
+        return Err(
+            "native-settings-write requires rust model manager and compiled native-settings-write feature"
+                .into(),
+        );
+    }
+    #[cfg(feature = "native-settings-write")]
+    let settings_write_root = if settings_write_mode == "rust" {
+        Some(data_dir()?)
+    } else {
+        None
+    };
     #[cfg_attr(not(feature = "native-section-writes"), allow(unused_mut))]
     let mut writes_mode = environment("MODEL_MANAGER_SECTION_WRITES_IMPL", "python")?;
     if !matches!(writes_mode.as_str(), "python" | "rust") {
@@ -258,6 +278,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -421,6 +442,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::Path::new(root),
         ))
     });
+    #[cfg(feature = "native-settings-write")]
+    let settings_write = settings_write_root.as_deref().map(|root| {
+        Arc::new(noevia_model_manager::settings_write::SettingsWrite::new(
+            std::path::Path::new(root),
+        ))
+    });
     #[cfg(feature = "native-section-writes")]
     let section_writes = writes_roots.as_ref().map(|roots| {
         Arc::new(noevia_model_manager::section_writes::SectionWrites::new(
@@ -467,6 +494,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &targets_mode,
         #[cfg(feature = "native-download-targets")]
         targets_roots.as_ref(),
+    );
+    settings_write_child(
+        &mut child_command,
+        &settings_write_mode,
+        #[cfg(feature = "native-settings-write")]
+        settings_write_root.as_deref(),
     );
     section_writes_child(
         &mut child_command,
@@ -540,6 +573,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         bench_runs,
         #[cfg(feature = "native-section-writes")]
         section_writes,
+        #[cfg(feature = "native-settings-write")]
+        settings_write,
         sections,
         embedding,
         host,
@@ -594,7 +629,8 @@ fn prompt_data_dir() -> Result<String, &'static str> {
     feature = "native-prompts",
     feature = "native-settings",
     feature = "native-badges",
-    feature = "native-bench-runs"
+    feature = "native-bench-runs",
+    feature = "native-settings-write"
 ))]
 fn data_dir() -> Result<String, &'static str> {
     prompt_data_dir_from(std::env::vars_os())
@@ -893,6 +929,48 @@ mod download_targets_command_tests {
 /// them, and reads (benchmark runs, the models list) the same `DATA_DIR/model_loader.db`.
 /// noevia#1318: the child refuses canonical `GET /api/v1/benchmark/runs/{id}` and serves the
 /// private runtime call only when the native reader owns the route, on the same `DATA_DIR`.
+/// noevia#1318: the child refuses `PUT /api/v1/settings` and serves the private token test only
+/// when the native writer owns it, on the same `DATA_DIR`.
+fn settings_write_child(
+    child_command: &mut tokio::process::Command,
+    mode: &str,
+    #[cfg(feature = "native-settings-write")] root: Option<&str>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED",
+        if mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-settings-write")]
+    if let Some(root) = root {
+        child_command.env("DATA_DIR", root);
+    }
+}
+
+#[cfg(all(test, feature = "native-settings-write"))]
+mod settings_write_command_tests {
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        for (mode, root, expected) in [
+            ("rust", Some("/synthetic/data"), "1"),
+            ("python", None, "0"),
+        ] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED",
+                "hostile",
+            );
+            super::settings_write_child(&mut command, mode, root);
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(get("DATA_DIR"), root.map(std::ffi::OsStr::new));
+        }
+    }
+}
+
 /// noevia#1318: what the native models.ini writer reads, named exactly as the Python child's
 /// settings read them (they fold names, so case-folded aliases keep Python writing).
 #[cfg(feature = "native-section-writes")]

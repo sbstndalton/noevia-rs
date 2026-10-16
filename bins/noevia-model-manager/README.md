@@ -166,4 +166,6 @@ Docker services or production data are used.
 
 `native-section-writes` and `MODEL_MANAGER_SECTION_WRITES_IMPL=rust` make the Rust front the only models.ini writer (section save, rename, delete, safe defaults, the raw editor), default off. Safe-defaults values come from the Python child's private read-only plan call. See [native models.ini writers](docs/native-section-writes.md).
 
+`native-settings-write` and `MODEL_MANAGER_SETTINGS_WRITE_IMPL=rust` serve `PUT /api/v1/settings` (the Hugging Face token), default off; the token test is asked of the Python child's private call. See [native settings write](docs/native-settings-write.md).
+
 `native-diagnose` and `MODEL_MANAGER_DIAGNOSE_IMPL=rust` select the whole internal backend diagnosis GET, default off. Selection requires exact `TZ=UTC` before startup. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.

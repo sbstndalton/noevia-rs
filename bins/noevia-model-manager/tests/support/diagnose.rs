@@ -84,6 +84,8 @@ pub fn state(reader: Arc<dyn DiagnosisRead>, configured: Vec<String>) -> Arc<Sta
         bench_runs: None,
         #[cfg(feature = "native-section-writes")]
         section_writes: None,
+        #[cfg(feature = "native-settings-write")]
+        settings_write: None,
     })
 }
 /// A finite Rust-owned synthetic Unix Docker script. The caller observes the daemon join.

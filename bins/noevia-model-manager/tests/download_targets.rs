@@ -58,6 +58,8 @@ fn state(targets: Option<DownloadTargets>, legacy_base: &str) -> Arc<StateData> 
         bench_runs: None,
         #[cfg(feature = "native-section-writes")]
         section_writes: None,
+        #[cfg(feature = "native-settings-write")]
+        settings_write: None,
         sections: None,
         embedding: None,
         host: None,

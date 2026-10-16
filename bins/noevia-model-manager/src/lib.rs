@@ -23,6 +23,8 @@ pub mod section_writes;
 pub mod sections;
 #[cfg(feature = "native-settings")]
 pub mod settings;
+#[cfg(feature = "native-settings-write")]
+pub mod settings_write;
 #[cfg(any(
     feature = "native-settings",
     feature = "native-model-updates",
@@ -77,6 +79,9 @@ pub struct StateData {
     pub diagnosis: Option<Arc<diagnose_docker::Diagnosis>>,
     #[cfg(feature = "native-prompts")]
     pub prompts: Option<Arc<prompts::Prompts>>,
+    /// noevia#1318: native `PUT /api/v1/settings`; the token test is asked of the child.
+    #[cfg(feature = "native-settings-write")]
+    pub settings_write: Option<Arc<settings_write::SettingsWrite>>,
     /// noevia#1318: native read-only `GET /api/v1/settings`; PUT stays with Python.
     #[cfg(feature = "native-settings")]
     pub settings: Option<Arc<settings::Settings>>,
@@ -478,7 +483,8 @@ fn lossy_unquote(raw: &str) -> String {
     feature = "native-download-targets",
     feature = "native-badges",
     feature = "native-bench-runs",
-    feature = "native-section-writes"
+    feature = "native-section-writes",
+    feature = "native-settings-write"
 ))]
 fn internal_error() -> Response {
     (
@@ -889,6 +895,12 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    #[cfg(feature = "native-settings-write")]
+    if *req.method() == Method::PUT && path == "/api/v1/settings" {
+        if let Some(writer) = state.settings_write.clone() {
+            return native_settings_write(&state, &writer, req).await;
+        }
+    }
     #[cfg(feature = "native-section-writes")]
     if let Some(writes) = state.section_writes.clone() {
         if let Some(route) = section_write_route(req.method(), path) {
@@ -1272,9 +1284,49 @@ fn section_outcome(outcome: section_writes::Outcome) -> Response {
     }
 }
 
+/// noevia#1318: native `PUT /api/v1/settings`.
+#[cfg(feature = "native-settings-write")]
+async fn native_settings_write(
+    state: &StateData,
+    writer: &settings_write::SettingsWrite,
+    req: Request,
+) -> Response {
+    let body = match fastapi_dict_body(req).await {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let json = |status: StatusCode, bytes: Vec<u8>| {
+        (
+            status,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response()
+    };
+    match writer.put(&body).await {
+        settings_write::Outcome::Saved(bytes, false) => json(StatusCode::OK, bytes),
+        settings_write::Outcome::Saved(bytes, true) => {
+            let test = match child_runtime(state, settings_write::TEST_PATH, "", 64 * 1024).await {
+                Ok(t) if settings_write::valid_test(&t) => t,
+                _ => settings_write::TEST_UNAVAILABLE.as_bytes().to_vec(),
+            };
+            json(StatusCode::OK, settings_write::with_test(&bytes, &test))
+        }
+        settings_write::Outcome::Json(status, bytes) => json(
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            bytes,
+        ),
+        settings_write::Outcome::Failed => internal_error(),
+    }
+}
+
 /// A private GET to the Python child, bounded by `cap`. `Err(true)` is the child's 500 (Python
 /// raised), `Err(false)` anything else that leaves no usable answer.
-#[cfg(any(feature = "native-bench-runs", feature = "native-section-writes"))]
+#[cfg(any(
+    feature = "native-bench-runs",
+    feature = "native-section-writes",
+    feature = "native-settings-write"
+))]
 async fn child_runtime(
     state: &StateData,
     path: &str,
@@ -1524,7 +1576,11 @@ async fn guarded_delete(
 
 /// A FastAPI `dict` body read exactly as the prompt writer reads it (content type, CPython JSON
 /// encodings, the 1 MiB cap and the same 422 bodies).
-#[cfg(any(feature = "native-badges", feature = "native-section-writes"))]
+#[cfg(any(
+    feature = "native-badges",
+    feature = "native-section-writes",
+    feature = "native-settings-write"
+))]
 #[allow(clippy::result_large_err)]
 async fn fastapi_dict_body(req: Request) -> Result<prompts::JsonValue, Response> {
     fastapi_dict_body_capped(req, REQUEST_CAP, None).await
@@ -1532,7 +1588,11 @@ async fn fastapi_dict_body(req: Request) -> Result<prompts::JsonValue, Response>
 
 /// [`fastapi_dict_body`] with a larger read cap; a body over `over.0` bytes answers `over.1`
 /// (the route's own size refusal) before it is parsed.
-#[cfg(any(feature = "native-badges", feature = "native-section-writes"))]
+#[cfg(any(
+    feature = "native-badges",
+    feature = "native-section-writes",
+    feature = "native-settings-write"
+))]
 #[allow(clippy::result_large_err)]
 async fn fastapi_dict_body_capped(
     req: Request,

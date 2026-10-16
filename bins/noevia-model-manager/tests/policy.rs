@@ -76,6 +76,8 @@ fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
         bench_runs: None,
         #[cfg(feature = "native-section-writes")]
         section_writes: None,
+        #[cfg(feature = "native-settings-write")]
+        settings_write: None,
     })
 }
 fn fake() -> Arc<Fake> {
