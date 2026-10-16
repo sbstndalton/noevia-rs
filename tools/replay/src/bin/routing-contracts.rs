@@ -55,6 +55,12 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
             "peakHour/hour",
             "--state-ignore",
             "*routing-mode.lock",
+            // sbstndalton/noevia#1071: the front always serves the project lists
+            // through its store, which takes these locks; Node's oracle does not.
+            "--state-ignore",
+            "*projects.json.lock",
+            "--state-ignore",
+            "*free-chats.json.lock",
         ])
         .arg("--seed")
         .arg(out.join("seed"))
