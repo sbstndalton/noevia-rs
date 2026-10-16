@@ -17,6 +17,8 @@ native-model-updates = ["native-logs", "dep:rusqlite"]
 native-model-detail = ["native-model-updates", "dep:form_urlencoded"]
 native-download-targets = ["native-logs"]
 native-badges = ["native-prompts", "dep:form_urlencoded"]
+native-bench-runs = ["native-prompts", "dep:form_urlencoded"]
+native-section-writes = ["native-prompts", "dep:form_urlencoded"]
 [lints]
 workspace = true
 [dependencies]

@@ -54,13 +54,10 @@ jobs:
           set -euo pipefail
           cargo build --locked --target-dir target/export-featureless -p noevia-server --no-default-features
           if target/export-featureless/debug/noevia-server --features | grep -qx rust-export; then exit 1; fi
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_EXPORT=1 target/export-featureless/debug/noevia-server > "$RUNNER_TEMP/export-featureless.log" 2>&1; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_PROJECTS=1 target/export-featureless/debug/noevia-server > "$RUNNER_TEMP/export-featureless.log" 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-export' "$RUNNER_TEMP/export-featureless.log"
           cargo build --locked -p replay -p noevia-server --features noevia-server/rust-export,noevia-server/rust-free-chats,noevia-server/rust-project-chats
           target/debug/noevia-server --features | grep -qx rust-export
-          # Without the M4 projects switch the export switch is a startup refusal.
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_AUTH=1 NOEVIA_RUST_EXPORT=1 target/debug/noevia-server > "$RUNNER_TEMP/export-noprojects.log" 2>&1; then exit 1; fi
-          grep -q 'NOEVIA_RUST_EXPORT=1 needs NOEVIA_RUST_PROJECTS=1' "$RUNNER_TEMP/export-noprojects.log"
       - run: npm ci --no-fund --no-audit
         working-directory: core/server
       - name: Build dav-parse.wasm at core's pinned noevia-rs ref
@@ -83,7 +80,7 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
             --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --state-out "$RUNNER_TEMP/node-state.json"
-      - name: Full replay through the front with NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_EXPORT=1
+      - name: Full replay through the front with NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1
         # The M4 lock files the shared projects.json / free-chats.json writers leave are ignored, as
         # in ci.yml's projects replay; every other file and every cowork.db row must be Node's.
         run: |
@@ -91,31 +88,10 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-export" \
-            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_EXPORT=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
+            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/export-positive.json" \
             --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"
-      - name: "Negative control: a confirmed Node refuses the export the front no longer answers"
-        # core.ref refuses a confirmed export (noevia-core#132 exportRustOwned) and its corpus
-        # launcher passes the switch through; a core without either fails here, never skips.
-        run: |
-          set -uo pipefail
-          grep -q exportRustOwned core/server/routes/export.cjs || { echo "::error::core.ref has no exportRustOwned"; exit 1; }
-          grep -q NOEVIA_RUST_EXPORT_CONFIRMED core/tools/contract-corpus/serve.cjs || { echo "::error::core.ref's corpus launcher does not pass NOEVIA_RUST_EXPORT through"; exit 1; }
-          if target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
-              --ignore-body hours --ignore-body peakHour/hour \
-              --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-control" \
-              --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_EXPORT=1 REPLAY_FRONT_CONTROL_NODE_ONLY_EXPORT=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
-              --report "$RUNNER_TEMP/export-control.json"; then
-            echo "::error::Node answered the export although the front was confirmed to own it"; exit 1
-          fi
-          python3 - "$RUNNER_TEMP/export-control.json" <<'PY'
-          import json, sys
-          rows = json.load(open(sys.argv[1]))
-          bad = [r for r in rows if r['diffs'] or r['error'] or r['status'] != r['expectedStatus']]
-          assert bad and all(r['method'] == 'GET' and r['path'] == '/api/export/conversations' and r['status'] == 503 for r in bad), [(r['method'], r['path'], r['status']) for r in bad]
-          print('only GET /api/export/conversations differs (Node refused it):', len(bad))
-          PY
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -123,6 +99,5 @@ jobs:
           path: |
             ${{ runner.temp }}/node-export-route.json
             ${{ runner.temp }}/export-positive.json
-            ${{ runner.temp }}/export-control.json
             ${{ runner.temp }}/node-state.json
           if-no-files-found: ignore

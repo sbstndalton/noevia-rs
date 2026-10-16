@@ -1,6 +1,6 @@
 //! The writes core's request gate makes as a side effect of `requestAuth.authenticate(req)`
 //! (device-auth.cjs createRequestAuth over auth.cjs `authenticate` and device-auth.cjs
-//! `authenticate`), for when Rust owns `sessions` and `device_grants` (M3, `NOEVIA_RUST_AUTH=1`):
+//! `authenticate`), for when Rust owns `sessions` and `device_grants` (M3, permanent since sbstndalton/noevia#1071):
 //!
 //! - a `cowork_session` cookie whose row is live: `UPDATE sessions SET last_seen_at=now`
 //!   (`row && !row.disabled_at && row.expires_at > now && row.last_seen_at + IDLE_MS > now`);
@@ -178,11 +178,7 @@ mod tests {
             recent = NOW - GRANT_TOUCH_MS + 1,
         ))
         .unwrap();
-        let writer = Writer::open(
-            dir.path(),
-            server_store::RustAuth::from_env_value(Some("1")).unwrap(),
-        )
-        .unwrap();
+        let writer = Writer::open(dir.path(), server_store::RustAuth::owned()).unwrap();
         let auth = Authenticator::new(AuthConfig {
             public_origin: String::new(),
             additional_origins: vec![],

@@ -460,7 +460,7 @@ fn upkeep_writes_agree_with_node() {
         out
     }
     let f = fixtures();
-    let switch = server_store::RustAuth::from_env_value(Some("1")).unwrap();
+    let switch = server_store::RustAuth::owned();
     let (mut total, mut wrote, mut bad) = (0usize, 0usize, Vec::new());
     for sc in f["scenarios"].as_array().unwrap() {
         let built = build(sc);

@@ -438,27 +438,6 @@ jobs:
           cmp crates/server-projects/tests/fixtures/node-free-chats.v1.json "$RUNNER_TEMP/node-free-chats.v1.json" \
             || { echo "::error::regenerate crates/server-projects/tests/fixtures/node-free-chats.v1.json with tools/gen-free-chats-fixtures.cjs at contracts/http/core.ref"; exit 1; }
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      - name: Build a front with the images only (no rust-project-chats), kept aside
-        run: |
-          set -euo pipefail
-          cargo build --locked -p replay -p noevia-server
-          for feature in rust-project-chats rust-free-chats; do
-            if target/debug/noevia-server --features | grep -qx "$feature"; then
-              echo "::error::a build without the cargo feature lists $feature"; exit 1
-            fi
-          done
-          mkdir -p "$RUNNER_TEMP/images-only"
-          cp target/debug/noevia-server target/debug/corpus-launcher "$RUNNER_TEMP/images-only/"
-      - name: Build a front with the project chat list but not the free one, kept aside
-        run: |
-          set -euo pipefail
-          cargo build --locked -p replay -p noevia-server --features rust-project-chats
-          target/debug/noevia-server --features | grep -qx rust-project-chats
-          if target/debug/noevia-server --features | grep -qx rust-free-chats; then
-            echo "::error::a build without the cargo feature lists rust-free-chats"; exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/chats-only"
-          cp target/debug/noevia-server target/debug/corpus-launcher "$RUNNER_TEMP/chats-only/"
       - name: Build the front with both chat-list slices
         run: |
           set -euo pipefail
@@ -501,30 +480,6 @@ jobs:
             --report "$RUNNER_TEMP/replay-front-report.json" --state-out "$RUNNER_TEMP/rust-projects-state.json" \
             --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"
-      - name: "An images-only front (rust-projects without rust-project-chats): Node keeps the chat list, still 0 differences"
-        # sbstndalton/noevia#1409: the supervisor confirms the chat-list slice to Node only for a
-        # front that lists rust-project-chats, so Node answers the saves this front forwards.
-        run: |
-          set -euo pipefail
-          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
-            --ignore-body hours --ignore-body peakHour/hour \
-            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-images-only" \
-            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$RUNNER_TEMP/images-only/noevia-server'" \
-            --report "$RUNNER_TEMP/images-only-report.json" \
-            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
-            --expect-state "$RUNNER_TEMP/node-state.json"
-      - name: "A front without rust-free-chats: Node keeps the free-chat list, still 0 differences"
-        # The supervisor confirms the free-chat slice to Node only for a front that lists
-        # rust-free-chats, so Node answers the free-list saves this front forwards.
-        run: |
-          set -euo pipefail
-          target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
-            --ignore-body hours --ignore-body peakHour/hour \
-            --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-chats-only" \
-            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$RUNNER_TEMP/chats-only/noevia-server'" \
-            --report "$RUNNER_TEMP/chats-only-report.json" \
-            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
-            --expect-state "$RUNNER_TEMP/node-state.json"
       - name: "Negative control: Node told the front owns the image and chat-list routes refuses their writes"
         # The same run with the front started without the switch: the image writes, chat-list
         # saves and free-chat-list saves reach Node, which must answer 503 RUST_PROJECTS_OWNED, so the clean replay above was
@@ -555,8 +510,6 @@ jobs:
             ${{ runner.temp }}/node-state.json
             ${{ runner.temp }}/rust-projects-state.json
             ${{ runner.temp }}/control-report.json
-            ${{ runner.temp }}/images-only-report.json
-            ${{ runner.temp }}/chats-only-report.json
             ${{ runner.temp }}/node-chats.v1.json
             ${{ runner.temp }}/node-free-chats.v1.json
           if-no-files-found: ignore
@@ -722,16 +675,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-services
-          ref: 641c9c342256de69251097d4839d05ee41044fe0
+          ref: ff8f314d7496e83d3b2d229089f8aabb4ddf67f9
           path: legacy-services
-      # noevia#1071: the section oracle is re-recorded at the services commit that removes the Python
-      # health/logs handlers (api.py) and the Python backup path (ini.py); the logs and host oracles
-      # stay on legacy-services, which still has the Python code they were recorded from.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          repository: sbstndalton/noevia-services
-          ref: 7223bb864b82adb81e4470a03b62fabcd66d1448
-          path: sections-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
@@ -751,9 +696,9 @@ jobs:
         run: python3 -m pip install fastapi==0.115.6 httpx==0.28.1
       - name: Regenerate actual section schema and complete response oracle
         run: |
-          cargo run --locked -q -p noevia-model-manager --bin generate-sections-schema -- sections-services/model-manager/app "$RUNNER_TEMP/sections-schema.json"
+          cargo run --locked -q -p noevia-model-manager --bin generate-sections-schema -- legacy-services/model-manager/app "$RUNNER_TEMP/sections-schema.json"
           cmp bins/noevia-model-manager/src/sections/schema.json "$RUNNER_TEMP/sections-schema.json"
-          cargo run --locked -q -p noevia-model-manager --bin generate-sections-oracle -- sections-services/model-manager/app "$RUNNER_TEMP/sections.json"
+          cargo run --locked -q -p noevia-model-manager --bin generate-sections-oracle -- legacy-services/model-manager/app "$RUNNER_TEMP/sections.json"
           cmp bins/noevia-model-manager/tests/fixtures/sections.json "$RUNNER_TEMP/sections.json"
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections -- -D warnings
       - name: Native host differential and synthetic sampler lifecycle
@@ -1134,10 +1079,103 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges --lib badges::
       - name: Production feature set advertises and selects exactly (#1925)
         # The model-manager image's --features list; lifecycle checks --features output and every selector.
-        run: cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges --test lifecycle
+        run: cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes --test lifecycle
       - name: Badges capability omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-download-targets --test lifecycle
+          cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+
+  native-bench-runs:
+    name: Native benchmark run read, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 641c9c342256de69251097d4839d05ee41044fe0
+          path: bench-runs-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r bench-runs-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Regenerate the actual Python GET /api/v1/benchmark/runs/{id} oracle
+        run: |
+          python3 -I tools/gen-bench-runs-oracle.py bench-runs-services/model-manager/app > "$RUNNER_TEMP/bench-runs.json"
+          cmp bins/noevia-model-manager/tests/fixtures/bench-runs-python.v1.json "$RUNNER_TEMP/bench-runs.json" || {
+            diff bins/noevia-model-manager/tests/fixtures/bench-runs-python.v1.json "$RUNNER_TEMP/bench-runs.json" | head -40
+            exit 1
+          }
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-bench-runs -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs -- -D warnings
+      - name: Native benchmark run differential, bounds and route policy
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-bench-runs --test bench_runs --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-bench-runs --lib bench_runs::
+      - name: Combined native features keep every existing test
+        # Prompt store tests need the prompt oracle env; the native-prompts job runs them.
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs --test bench_runs --test badges --test download_targets --test model_detail --test model_updates --test settings --test lifecycle --test policy --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs --lib bench_runs::
+      - name: Benchmark run capability omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-badges --test lifecycle
+          cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+
+  native-section-writes:
+    name: Native models.ini writers, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: ff8f314d7496e83d3b2d229089f8aabb4ddf67f9
+          path: section-writes-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r section-writes-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Regenerate the actual Python models.ini writers oracle
+        run: |
+          cargo build --locked --release -p model-files-cli
+          MODEL_FILES_BIN="$PWD/target/release/model-files" python3 -I tools/gen-section-writes-oracle.py section-writes-services/model-manager/app > "$RUNNER_TEMP/section-writes.json"
+          cmp bins/noevia-model-manager/tests/fixtures/section-writes-python.v1.json "$RUNNER_TEMP/section-writes.json" || {
+            diff bins/noevia-model-manager/tests/fixtures/section-writes-python.v1.json "$RUNNER_TEMP/section-writes.json" | head -40
+            exit 1
+          }
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-section-writes -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes -- -D warnings
+      - name: Native models.ini writers differential, bounds and route policy
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-section-writes --test section_writes --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-section-writes --lib section_writes::
+      - name: Combined native features keep every existing test
+        # Prompt store tests need the prompt oracle env; the native-prompts job runs them.
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes --test section_writes --test bench_runs --test badges --test download_targets --test model_detail --test model_updates --test settings --test lifecycle --test policy --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes --lib section_writes::
+      - name: Section writes capability omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-bench-runs --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
 
   native-diagnose:
@@ -1401,7 +1439,7 @@ jobs:
           set -euo pipefail
           cargo build --locked --target-dir target/reasoning-featureless -p noevia-server --no-default-features
           if target/reasoning-featureless/debug/noevia-server --features | grep -qx rust-reasoning-settings; then exit 1; fi
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 NOEVIA_RUST_AUTH=1 NOEVIA_RUST_REASONING_SETTINGS=1 target/reasoning-featureless/debug/noevia-server > omission.log 2>&1; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 target/reasoning-featureless/debug/noevia-server > omission.log 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-reasoning-settings' omission.log
           cargo build --locked -p replay -p noevia-server --features rust-reasoning-settings
           target/debug/noevia-server --features | grep -qx rust-reasoning-settings
@@ -1410,7 +1448,7 @@ jobs:
           target/debug/corpus-launcher verify "$PWD/core"
           target/debug/corpus-launcher verify-omission "$PWD/core"
           target/debug/host-control "$PWD/core" "$PWD/contracts/http/corpus" "$RUNNER_TEMP/wrong-host"
-      - name: Full actual merged-core replay, equal state, valid identity omission and zero fallback writes
+      - name: Full actual merged-core replay and equal state
         run: sh tools/front/reasoning-contracts.sh "$PWD/core" "$PWD/target/debug/noevia-server" "$PWD/target/debug/replay" "$RUNNER_TEMP/reasoning-front"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

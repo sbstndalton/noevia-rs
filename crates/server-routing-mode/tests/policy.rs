@@ -100,7 +100,7 @@ fn dedicated_sql_capability_and_audit_partial_commit() {
     ))
     .unwrap();
     db.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('synthetic','s','s','Synthetic','admin','x','w',1,1)",[]).unwrap();
-    let auth = RustAuth::from_env_value(Some("1")).unwrap();
+    let auth = RustAuth::owned();
     let cap = RustRoutingMode::from_env_value(Some("1"), auth).unwrap();
     let writer = Writer::open(d.path(), auth).unwrap();
     assert!(writer.write(|tx| tx.set_setting(rm::KEY, "[]")).is_err());

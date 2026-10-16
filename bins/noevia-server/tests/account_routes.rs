@@ -1,7 +1,7 @@
-//! M3: with NOEVIA_RUST_AUTH=1 the front answers sign-in and the account itself: the switched
-//! routes never reach Node, what the route module hands on still does (with its body), a
-//! dot-segment path is routed on its WHATWG pathname like Node, and without the switch every one
-//! of them is Node's. Synthetic data only.
+//! M3: the front answers sign-in and the account itself: those routes never reach Node, what the
+//! route module hands on still does (with its body), and a dot-segment path is routed on its
+//! WHATWG pathname like Node. Permanent since sbstndalton/noevia#1071: a leftover value of the
+//! retired NOEVIA_RUST_AUTH switch hands none of them back to Node. Synthetic data only.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -72,15 +72,15 @@ fn seed(dir: &Path) {
     .unwrap();
 }
 
-async fn front(up: SocketAddr, data: &Path, rust_auth: bool) -> SocketAddr {
+async fn front(up: SocketAddr, data: &Path, extra: &[(&'static str, &str)]) -> SocketAddr {
     let mut env: HashMap<&str, String> = HashMap::new();
     env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{up}"));
     env.insert("UI_PORT", "1".into());
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
     env.insert("PUBLIC_ORIGIN", "http://127.0.0.1:18021".into());
-    if rust_auth {
-        env.insert("NOEVIA_RUST_AUTH", "1".into());
+    for (k, v) in extra {
+        env.insert(k, (*v).to_string());
     }
     let app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -138,7 +138,7 @@ async fn switched_routes_are_answered_by_the_front() {
     let data = tempfile::tempdir().unwrap();
     seed(data.path());
     let (up, hits) = upstream().await;
-    let addr = front(up, data.path(), true).await;
+    let addr = front(up, data.path(), &[]).await;
     let origin = ("origin", "http://127.0.0.1:18021");
 
     let (s, h, body) = call(addr, "GET", "/api/setup/status", &[], "").await;
@@ -248,21 +248,23 @@ async fn switched_routes_are_answered_by_the_front() {
 }
 
 #[tokio::test]
-async fn without_the_switch_node_answers_all_of_them() {
-    let data = tempfile::tempdir().unwrap();
-    seed(data.path());
-    let (up, hits) = upstream().await;
-    let addr = front(up, data.path(), false).await;
-    for (m, p) in [
-        ("GET", "/api/setup/status"),
-        ("POST", "/api/setup/complete"),
-        ("POST", "/api/auth/login/password"),
-        ("GET", "/api/auth/session"),
-        ("POST", "/api/auth/device/token"),
-        ("GET", "/api/account/memory"),
-    ] {
-        let (_, h, _) = call(addr, m, p, &[], "").await;
-        assert_eq!(h["x-upstream"], vec!["1"], "{m} {p}");
+async fn a_leftover_retired_switch_never_hands_them_back_to_node() {
+    for value in ["0", "", "true", "1"] {
+        let data = tempfile::tempdir().unwrap();
+        seed(data.path());
+        let (up, hits) = upstream().await;
+        let addr = front(up, data.path(), &[("NOEVIA_RUST_AUTH", value)]).await;
+        for (m, p) in [
+            ("GET", "/api/setup/status"),
+            ("POST", "/api/setup/complete"),
+            ("POST", "/api/auth/login/password"),
+            ("GET", "/api/auth/session"),
+            ("POST", "/api/auth/device/token"),
+            ("GET", "/api/account/memory"),
+        ] {
+            let (_, h, _) = call(addr, m, p, &[], "").await;
+            assert!(!h.contains_key("x-upstream"), "{value:?}: {m} {p}");
+        }
+        assert!(hits.lock().unwrap().is_empty(), "{value:?}");
     }
-    assert_eq!(hits.lock().unwrap().len(), 6);
 }

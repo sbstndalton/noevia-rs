@@ -64,7 +64,7 @@ fn key_grant_is_exact_and_setting_plus_audit_roll_back() {
         [],
     )
     .unwrap();
-    let auth = RustAuth::from_env_value(Some("1")).unwrap();
+    let auth = RustAuth::owned();
     let capability = RustReasoningSettings::from_env_value(Some("1"), auth).unwrap();
     let writer = Writer::open(d.path(), auth).unwrap();
     for sql in [
@@ -149,7 +149,7 @@ fn persisted_settings_triggers_cannot_widen_any_fixed_key_grant() {
         ))
         .unwrap();
         db.execute_batch(&format!("CREATE TRIGGER cross_key AFTER INSERT ON settings WHEN NEW.key='{key}' BEGIN INSERT OR REPLACE INTO settings VALUES('unrelated_setting','synthetic-write'); END;")).unwrap();
-        let auth = RustAuth::from_env_value(Some("1")).unwrap();
+        let auth = RustAuth::owned();
         let capability = RustReasoningSettings::from_env_value(Some("1"), auth).unwrap();
         let sampling = RustSamplingSettings::from_env_value(Some("1"), auth).unwrap();
         let writer = Writer::open(d.path(), auth).unwrap();

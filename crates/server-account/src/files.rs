@@ -1,4 +1,4 @@
-//! routes/account.cjs for the per-user JSON records Rust owns under NOEVIA_RUST_AUTH: custom
+//! routes/account.cjs for the per-user JSON records Rust owns (M3, permanent): custom
 //! instructions (account-instructions.cjs), memory (account-memory.cjs) and interface
 //! preferences (account-preferences.cjs), in `UI_DATA_DIR/users/<id>/`. Retention stays Node's (it
 //! deletes chats). Reads and validation are the JS modules' own, including how they coerce odd

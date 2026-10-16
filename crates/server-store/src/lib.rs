@@ -18,13 +18,12 @@
 //!   authorizer denies every other write and all DDL. M3 (Rust owns sign-in and the account):
 //!   the list is the auth tables, each with the statements Rust may run on it ([`Access`]), and
 //!   `settings` rows only for the keys in [`OWNED_SETTING_KEYS`], through
-//!   [`WriteTx::set_setting`] and friends. A [`Writer`] opens only with the deployment switch
-//!   ([`RustAuth`], `NOEVIA_RUST_AUTH=1`); without it Rust writes nothing in `cowork.db`, as in
-//!   M2. Node refuses the same writes while the switch is on (core `server/rust-auth.cjs`), so
-//!   each owned row has one writer.
+//!   [`WriteTx::set_setting`] and friends. A [`Writer`] opens with the ownership token
+//!   ([`RustAuth`], permanent since sbstndalton/noevia#1071). Node always refuses the same writes
+//!   (core `server/rust-auth.cjs`), so each owned row has one writer.
 //!
 //! [`json`] has Node's `atomicJson` (core `server/workspace.cjs`) write-then-rename, gated the
-//! same way by [`OWNED_JSON_FILES`] and the switch.
+//! same way by [`OWNED_JSON_FILES`] and the ownership token.
 
 pub mod json;
 
@@ -76,7 +75,7 @@ impl Access {
     }
 }
 
-/// What Rust writes once it owns sign-in and the account (M3, `NOEVIA_RUST_AUTH=1`): the tables
+/// What Rust writes once it owns sign-in and the account (M3, permanent since #1071): the tables
 /// core auth.cjs, device-auth.cjs and app-passwords.cjs write from the routes Rust now serves.
 /// Node's guard (core `server/rust-auth.cjs`) refuses the same set; the few Node writers that
 /// stay are listed there (account deletion, Settings → Web address, the DAV listener's
@@ -120,19 +119,17 @@ pub const OWNED_JSON_FILES: &[&str] = &[
     "account-preferences.json",
 ];
 
-/// The deployment switch for M3: `NOEVIA_RUST_AUTH=1` (exactly). Without it no [`Writer`] opens
-/// and no owned JSON file is written, so merging M3 changes nothing until the switch is set.
-/// Removed once Rust-owned sign-in is proven, together with Node's copies.
+/// Rust's ownership of sign-in and the account (M3): the tables and files Rust writes. It was the
+/// deployment switch `NOEVIA_RUST_AUTH=1`; since sbstndalton/noevia#1071 it is permanent (Node's
+/// copies of the routes are gone and Node always refuses these writes), so the token is simply
+/// [`RustAuth::owned`]. It still marks every write path that needs the ownership.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RustAuth(());
 
 impl RustAuth {
-    /// The environment variable.
-    pub const ENV: &'static str = "NOEVIA_RUST_AUTH";
-
-    /// `Some` only for the exact value `1`.
-    pub fn from_env_value(value: Option<&str>) -> Option<Self> {
-        (value == Some("1")).then_some(RustAuth(()))
+    /// The ownership token: Rust always owns sign-in and the account.
+    pub const fn owned() -> Self {
+        RustAuth(())
     }
 
     #[cfg(test)]

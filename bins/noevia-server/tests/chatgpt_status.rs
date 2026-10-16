@@ -122,7 +122,6 @@ async fn start_app(
     let mut env: HashMap<&str, String> = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", dir.display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
         ("TRUST_PROXY", "true".into()),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "1".into()),
         ("PUBLIC_ORIGIN", origin),
@@ -143,7 +142,8 @@ async fn start_app(
     (addr, stop, app)
 }
 
-const ON: [(&str, &str); 1] = [("NOEVIA_RUST_CHATGPT_STATUS", "1")];
+/// Nothing to switch on any more (sbstndalton/noevia#1071): the front always owns the route.
+const ON: [(&str, &str); 0] = [];
 fn on() -> Vec<(&'static str, String)> {
     ON.iter().map(|(k, v)| (*k, v.to_string())).collect()
 }
@@ -245,7 +245,7 @@ async fn gate_flag_tenant_and_node_answers_through_the_front() {
 }
 
 #[tokio::test]
-async fn switch_off_is_node_and_a_late_key_is_loaded_once() {
+async fn a_retired_switch_value_keeps_it_native_and_a_late_key_is_loaded_once() {
     let d = tempfile::tempdir().unwrap();
     let db = seed_database(d.path());
     db.execute(
@@ -253,9 +253,11 @@ async fn switch_off_is_node_and_a_late_key_is_loaded_once() {
         [],
     )
     .unwrap();
-    let (addr, stop) = start(d.path(), &[]).await;
-    let (s, _, _) = call(addr, "GET", PATH, MEMBER, None).await;
-    assert_eq!(s, 502, "switch off: proxied to Node");
+    // sbstndalton/noevia#1071: the old switch is retired; even "0" leaves the route native (the
+    // proxy to the dead upstream would be a 502).
+    let (addr, stop) = start(d.path(), &[("NOEVIA_RUST_CHATGPT_STATUS", "0".into())]).await;
+    let (s, _, b) = call(addr, "GET", PATH, MEMBER, None).await;
+    assert_eq!(s, 200, "native without a switch: {b}");
     let _ = stop.send(());
     // No key at startup (Node has not created it yet): rows that need it are 502 until it exists.
     db.execute(

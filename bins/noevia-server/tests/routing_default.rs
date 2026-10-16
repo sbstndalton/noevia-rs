@@ -99,7 +99,6 @@ async fn start(dir: &Path, extra: &[(&str, &str)]) -> (std::net::SocketAddr, one
     let mut env: HashMap<&str, String> = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", dir.display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
         ("TRUST_PROXY", "true".into()),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "1".into()),
         ("PUBLIC_ORIGIN", origin),
@@ -125,7 +124,7 @@ async fn native_get_answers_the_signed_in_tenant_and_nothing_else() {
     let d = tempfile::tempdir().unwrap();
     seed_database(d.path());
     tenant_file(d.path(), A, br#"{"defaultRouting":"manual"}"#);
-    let (addr, stop) = start(d.path(), &[("NOEVIA_RUST_ROUTING_DEFAULT", "1")]).await;
+    let (addr, stop) = start(d.path(), &[]).await;
     let admin = "cowork_session=admin-token; cowork_csrf=csrf";
     let member = "cowork_session=member-token; cowork_csrf=csrf";
     let path = "/api/routing-default";
@@ -168,15 +167,16 @@ async fn native_get_answers_the_signed_in_tenant_and_nothing_else() {
 }
 
 #[tokio::test]
-async fn switch_off_keeps_the_route_on_node() {
+async fn a_retired_switch_value_never_hands_the_route_back_to_node() {
+    // sbstndalton/noevia#1071: NOEVIA_RUST_ROUTING_DEFAULT is retired; "0" changes nothing.
     let d = tempfile::tempdir().unwrap();
     seed_database(d.path());
     tenant_file(d.path(), A, br#"{"defaultRouting":"manual"}"#);
-    let (addr, stop) = start(d.path(), &[]).await;
+    let (addr, stop) = start(d.path(), &[("NOEVIA_RUST_ROUTING_DEFAULT", "0")]).await;
     let admin = "cowork_session=admin-token; cowork_csrf=csrf";
     assert_eq!(
         call(addr, "GET", "/api/routing-default", admin).await.0,
-        502
+        200
     );
     let _ = stop.send(());
 }

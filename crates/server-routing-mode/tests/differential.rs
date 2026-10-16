@@ -122,7 +122,7 @@ fn actual_node_configuration_file_sql_and_audit_matrix() {
         if c["auditAbort"] == true {
             db.execute_batch("CREATE TRIGGER routing_audit_abort BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'synthetic audit refusal'); END;").unwrap();
         }
-        let auth = RustAuth::from_env_value(Some("1")).unwrap();
+        let auth = RustAuth::owned();
         let cap = RustRoutingMode::from_env_value(Some("1"), auth).unwrap();
         let store = Store::open(d.path()).unwrap();
         let writer = Writer::open(d.path(), auth).unwrap();
