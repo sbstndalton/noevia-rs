@@ -14,6 +14,16 @@ fn splitlines_matches_python() {
 }
 
 #[test]
+fn section_names_reject_a_trailing_newline() {
+    // noevia#1934: Python's `$` accepted one trailing newline, which wrote an unparseable file.
+    assert!(!valid_section_name("foo\n"));
+    assert!(!valid_section_name("\n"));
+    assert!(!valid_section_name("foo\n\n"));
+    assert!(!valid_section_name(""));
+    assert!(valid_section_name("foo-1.2_b+c"));
+}
+
+#[test]
 fn headers_and_duplicates() {
     assert_eq!(header_match("  [a] ; c"), Some((3, 4)));
     assert_eq!(header_match("[a] junk"), None);

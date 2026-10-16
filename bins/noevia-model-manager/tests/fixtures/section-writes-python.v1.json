@@ -259,6 +259,50 @@
   {
    "answers": [
     {
+     "body": "{\"detail\":\"invalid section name\"}",
+     "content_type": "application/json",
+     "plan": null,
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"invalid section name\"}",
+     "content_type": "application/json",
+     "plan": null,
+     "status": 400
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "version = 1\n\n# top comment\n[*]\ncache-ram = 512\n\n[a]\n; note about a\nmodel = /models/a.gguf\nctx-size = 2048\ntemp = 0.7\n\n[b]\nmodel = /models/b.gguf\nmulti = one\n  two\n\n",
+    "listing": [
+     "models.ini"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "save-name-trailing-newline",
+   "impl": "python",
+   "ini": "version = 1\n\n# top comment\n[*]\ncache-ram = 512\n\n[a]\n; note about a\nmodel = /models/a.gguf\nctx-size = 2048\ntemp = 0.7\n\n[b]\nmodel = /models/b.gguf\nmulti = one\n  two\n\n",
+   "roles": null,
+   "steps": [
+    {
+     "body": "{\"baseRevision\": \"{REV}\", \"values\": {\"model\": \"/models/foo.gguf\"}}",
+     "content_type": "application/json",
+     "method": "PUT",
+     "path": "/api/v1/sections/foo%0A"
+    },
+    {
+     "body": "{\"baseRevision\": \"{REV}\", \"values\": {}}",
+     "content_type": "application/json",
+     "method": "PUT",
+     "path": "/api/v1/sections/a%0A"
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
      "body": "{\"ok\":true,\"revision\":\"93826e78f0e997fcd98a478cac7fbc7adc4537b82aca351e021e99782aefb6aa\",\"section\":{\"model\":\"/models/e.gguf\",\"cache-ram\":\"0\"}}",
      "content_type": "application/json",
      "plan": null,
@@ -1488,7 +1532,7 @@
  "oracle": {
   "api.py": "eb8e12f6929baf15d2b1a1998aceff9529fbe48ca8242094ac6b7526c253a91d",
   "helpers.py": "fcf2ccb14e5e068f97bb7a4b7985ab7f4f4855b940eb6d9e3838f239ad97918d",
-  "ini.py": "fe53d48b5fdc20507a8507d74e6dbce29c5e89f487913c2bec0ce6d54744c688",
+  "ini.py": "450a042cbecc36ea7ab68d6e08a10ffa2400c35721f78e62fe592d2a67e41ef0",
   "main.py": "fcd84c9d7396b2851cabd2077072ac392b5dae0b272149efec616eebdb8e4899"
  },
  "stamp": "20261016-120000"
