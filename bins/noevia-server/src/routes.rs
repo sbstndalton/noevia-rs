@@ -346,7 +346,8 @@ mod tests {
                     account += 1;
                 }
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
-                None => panic!(
+                other @ None => assert!(
+                    other.is_some(),
                     "{} is owner = rust with no switch but has no handler",
                     r.path
                 ),
