@@ -345,3 +345,49 @@ async fn native_route_keeps_auth_and_non_get_policy() {
     .await;
     assert_eq!(slash.status, 404);
 }
+
+/// noevia#1922: the live store as Python leaves it, WAL with every connection closed (no -wal or
+/// -shm), and the same store with a read-only file. Both must read, and stay WAL.
+#[tokio::test]
+async fn closed_wal_store_and_read_only_file_are_read() {
+    use std::os::unix::fs::PermissionsExt;
+    for read_only_file in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("model_loader.db");
+        let c = Connection::open(&db).unwrap();
+        let _: String = c
+            .query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))
+            .unwrap();
+        // A CREATE TABLE longer than 1 KiB, as Python's real schema has (noevia#1922).
+        c.execute_batch(&format!(
+            "CREATE TABLE long_schema (x TEXT -- {}\n);
+             CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO kv VALUES('hf_token', 'synthetic-wal-token-1234');",
+            "c".repeat(2048)
+        ))
+        .unwrap();
+        drop(c);
+        assert!(!dir.path().join("model_loader.db-shm").exists());
+        if read_only_file {
+            std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o444)).unwrap();
+        }
+        let answer = send(
+            state(Some(dir.path()), "http://127.0.0.1:9"),
+            "GET",
+            "/api/v1/settings",
+            true,
+        )
+        .await;
+        std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(answer.status, 200, "read_only_file={read_only_file}");
+        assert_eq!(
+            answer.body,
+            "{\"hasToken\":true,\"tokenHint\":\"…1234\"}".as_bytes()
+        );
+        let mode: String = Connection::open(&db)
+            .unwrap()
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, "wal");
+    }
+}

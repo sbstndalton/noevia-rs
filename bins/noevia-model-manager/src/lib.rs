@@ -19,6 +19,8 @@ pub mod prompts;
 pub mod sections;
 #[cfg(feature = "native-settings")]
 pub mod settings;
+#[cfg(any(feature = "native-settings", feature = "native-model-updates"))]
+pub mod sqlite_read;
 pub mod validation;
 
 use axum::{
