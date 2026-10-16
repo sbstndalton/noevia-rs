@@ -3,7 +3,8 @@
 //! everything else goes to Node through the legacy proxy. A route with a `switch` is Rust's only
 //! while that deployment switch is on (M3: NOEVIA_RUST_AUTH, M4: NOEVIA_RUST_PROJECTS, see
 //! [`Switches`]); off, it is Node's, so merging a flip changes nothing until the deployment sets
-//! the switch.
+//! the switch. The front read routes retired their own switches (sbstndalton/noevia#1071): they
+//! are Rust's under NOEVIA_RUST_AUTH, and Node no longer answers them.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Owner {
@@ -23,32 +24,16 @@ pub struct Route {
     pub switch: Option<&'static str>,
 }
 
-/// The deployment switches that are on in this process.
+/// The deployment switches that are on in this process. The front read routes have none of their
+/// own any more (sbstndalton/noevia#1071): they are Rust's under NOEVIA_RUST_AUTH, the export
+/// under NOEVIA_RUST_PROJECTS.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Switches {
-    /// NOEVIA_RUST_AUTH=1: Rust owns sign-in and the account (M3).
+    /// NOEVIA_RUST_AUTH=1: Rust owns sign-in and the account (M3) and the front read routes.
     pub rust_auth: bool,
     /// NOEVIA_RUST_PROJECTS=1 (only with rust_auth, config.rs): Rust owns the project routes
-    /// ported so far (M4).
+    /// ported so far (M4) and the conversation export.
     pub rust_projects: bool,
-    pub rust_usage: bool,
-    pub rust_sampling_settings: bool,
-    pub rust_reasoning_settings: bool,
-    pub rust_routing_mode: bool,
-    pub rust_storage_reads: bool,
-    /// NOEVIA_RUST_STORAGE_BROWSE=1 (M4, #1368, only with rust_auth, config.rs): connected-storage
-    /// list (GET /api/integrations/storage/files[/path]) and text read (POST .../file).
-    pub rust_storage_browse: bool,
-    /// NOEVIA_RUST_ROUTING_DEFAULT=1 (M6, only with rust_auth, config.rs): GET /api/routing-default.
-    pub rust_routing_default: bool,
-    /// NOEVIA_RUST_STATS=1 (M6, #1650, only with rust_auth, config.rs): GET /api/stats.
-    pub rust_stats: bool,
-    /// NOEVIA_RUST_EXPORT=1 (M4, #1315, only with rust_projects, config.rs):
-    /// GET /api/export/conversations.
-    pub rust_export: bool,
-    /// NOEVIA_RUST_CHATGPT_STATUS=1 (M6, #1373, only with rust_auth, config.rs):
-    /// GET /api/providers/chatgpt.
-    pub rust_chatgpt_status: bool,
     /// NOEVIA_RUST_PROJECT_WRITES=1 (#1264, only with rust_projects, config.rs): the project
     /// writes ported from Node so far ([`PROJECT_WRITES`]).
     pub rust_project_writes: bool,
@@ -59,16 +44,6 @@ impl Switches {
         match name {
             "NOEVIA_RUST_AUTH" => self.rust_auth,
             "NOEVIA_RUST_PROJECTS" => self.rust_projects,
-            "NOEVIA_RUST_USAGE" => self.rust_usage,
-            "NOEVIA_RUST_SAMPLING_SETTINGS" => self.rust_sampling_settings,
-            "NOEVIA_RUST_REASONING_SETTINGS" => self.rust_reasoning_settings,
-            "NOEVIA_RUST_ROUTING_MODE" => self.rust_routing_mode,
-            "NOEVIA_RUST_STORAGE_READS" => self.rust_storage_reads,
-            "NOEVIA_RUST_STORAGE_BROWSE" => self.rust_storage_browse,
-            "NOEVIA_RUST_ROUTING_DEFAULT" => self.rust_routing_default,
-            "NOEVIA_RUST_STATS" => self.rust_stats,
-            "NOEVIA_RUST_EXPORT" => self.rust_export,
-            "NOEVIA_RUST_CHATGPT_STATUS" => self.rust_chatgpt_status,
             "NOEVIA_RUST_PROJECT_WRITES" => self.rust_project_writes,
             _ => false,
         }
@@ -188,7 +163,6 @@ fn storage_browse(method: &str, path: &str, switches: Switches) -> Option<Option
         return None;
     }
     let owned = switches.rust_auth
-        && switches.rust_storage_browse
         && cfg!(feature = "rust-storage-browse")
         && ((files && method == "GET") || (file && method == "POST"));
     Some(owned.then_some(Native::StorageBrowse))
@@ -208,45 +182,35 @@ fn compiled(route: &Route) -> bool {
         && (route.path != CHATGPT_STATUS || cfg!(feature = "rust-chatgpt-status"))
 }
 
-/// The native handler a rust-owned route is implemented by.
+/// The native handler a rust-owned route is implemented by. The front read routes are matched
+/// on their path first: they share NOEVIA_RUST_AUTH (and the export NOEVIA_RUST_PROJECTS) with
+/// the account and project routes (#1071).
 pub fn native_for(route: &Route) -> Option<Native> {
-    match (route.path, route.catch_all, route.switch) {
-        (STORAGE_FILE | STORAGE_FILES_ROUTE, false, Some("NOEVIA_RUST_STORAGE_BROWSE")) => {
-            Some(Native::StorageBrowse)
+    if route.catch_all {
+        return (route.switch.is_none()).then_some(Native::Static);
+    }
+    let auth = route.switch == Some("NOEVIA_RUST_AUTH");
+    match route.path {
+        STORAGE_FILE | STORAGE_FILES_ROUTE if auth => return Some(Native::StorageBrowse),
+        STORAGE_METADATA if auth => return Some(Native::StorageMetadata),
+        "/api/routing-mode" | "/api/routing-mode/allowed" if auth => {
+            return Some(Native::RoutingMode)
         }
-        (STORAGE_METADATA, false, Some("NOEVIA_RUST_STORAGE_READS")) => {
-            Some(Native::StorageMetadata)
-        }
-        (
-            "/api/routing-mode" | "/api/routing-mode/allowed",
-            false,
-            Some("NOEVIA_RUST_ROUTING_MODE"),
-        ) => Some(Native::RoutingMode),
-        ("/api/ready", false, None) => Some(Native::Ready),
-        (_, true, None) => Some(Native::Static),
-        (_, false, Some("NOEVIA_RUST_AUTH")) if route.path.starts_with("/api/") => {
-            Some(Native::Account)
-        }
-        (p, false, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ROUTES.contains(&p) => {
+        ROUTING_DEFAULT if auth => return Some(Native::RoutingDefault),
+        STATS if auth => return Some(Native::Stats),
+        CHATGPT_STATUS if auth => return Some(Native::ChatgptStatus),
+        "/api/reasoning-settings" if auth => return Some(Native::ReasoningSettings),
+        "/api/sampling-settings" if auth => return Some(Native::SamplingSettings),
+        "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
+        EXPORT if route.switch == Some("NOEVIA_RUST_PROJECTS") => return Some(Native::Export),
+        _ => {}
+    }
+    match (route.path, route.switch) {
+        ("/api/ready", None) => Some(Native::Ready),
+        (_, Some("NOEVIA_RUST_AUTH")) if route.path.starts_with("/api/") => Some(Native::Account),
+        (p, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ROUTES.contains(&p) => Some(Native::Projects),
+        (p, Some("NOEVIA_RUST_PROJECT_WRITES")) if PROJECT_WRITES.contains(&p) => {
             Some(Native::Projects)
-        }
-        (p, false, Some("NOEVIA_RUST_PROJECT_WRITES")) if PROJECT_WRITES.contains(&p) => {
-            Some(Native::Projects)
-        }
-        (ROUTING_DEFAULT, false, Some("NOEVIA_RUST_ROUTING_DEFAULT")) => {
-            Some(Native::RoutingDefault)
-        }
-        (STATS, false, Some("NOEVIA_RUST_STATS")) => Some(Native::Stats),
-        (EXPORT, false, Some("NOEVIA_RUST_EXPORT")) => Some(Native::Export),
-        (CHATGPT_STATUS, false, Some("NOEVIA_RUST_CHATGPT_STATUS")) => Some(Native::ChatgptStatus),
-        ("/api/reasoning-settings", false, Some("NOEVIA_RUST_REASONING_SETTINGS")) => {
-            Some(Native::ReasoningSettings)
-        }
-        ("/api/sampling-settings", false, Some("NOEVIA_RUST_SAMPLING_SETTINGS")) => {
-            Some(Native::SamplingSettings)
-        }
-        ("/api/usage" | "/api/usage/aggregate", false, Some("NOEVIA_RUST_USAGE")) => {
-            Some(Native::Usage)
         }
         _ => None,
     }
@@ -316,7 +280,7 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
         return decision;
     }
     let route = route_for(path)?;
-    if route.switch == Some("NOEVIA_RUST_STORAGE_READS")
+    if route.path == STORAGE_METADATA
         && (path != STORAGE_METADATA || method != "GET" || !switches.rust_auth)
     {
         return None;
@@ -373,17 +337,7 @@ mod tests {
         let on = Switches {
             rust_auth: true,
             rust_projects: false,
-            rust_usage: false,
-            rust_sampling_settings: false,
-            rust_reasoning_settings: false,
-            rust_routing_mode: false,
-            rust_storage_reads: false,
-            rust_storage_browse: false,
-            rust_routing_default: false,
-            rust_stats: false,
-            rust_export: false,
-            rust_chatgpt_status: false,
-            rust_project_writes: false,
+            ..Default::default()
         };
         assert!(on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
@@ -392,17 +346,7 @@ mod tests {
         let both = Switches {
             rust_auth: true,
             rust_projects: true,
-            rust_usage: false,
-            rust_sampling_settings: false,
-            rust_reasoning_settings: false,
-            rust_routing_mode: false,
-            rust_storage_reads: false,
-            rust_storage_browse: false,
-            rust_routing_default: false,
-            rust_stats: false,
-            rust_export: false,
-            rust_chatgpt_status: false,
-            rust_project_writes: false,
+            ..Default::default()
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
     }
@@ -412,32 +356,12 @@ mod tests {
         let auth = Switches {
             rust_auth: true,
             rust_projects: false,
-            rust_usage: false,
-            rust_sampling_settings: false,
-            rust_reasoning_settings: false,
-            rust_routing_mode: false,
-            rust_storage_reads: false,
-            rust_storage_browse: false,
-            rust_routing_default: false,
-            rust_stats: false,
-            rust_export: false,
-            rust_chatgpt_status: false,
-            rust_project_writes: false,
+            ..Default::default()
         };
         let both = Switches {
             rust_auth: true,
             rust_projects: true,
-            rust_usage: false,
-            rust_sampling_settings: false,
-            rust_reasoning_settings: false,
-            rust_routing_mode: false,
-            rust_storage_reads: false,
-            rust_storage_browse: false,
-            rust_routing_default: false,
-            rust_stats: false,
-            rust_export: false,
-            rust_chatgpt_status: false,
-            rust_project_writes: false,
+            ..Default::default()
         };
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
@@ -535,17 +459,9 @@ mod tests {
         assert_eq!(pattern_matches("/api/m{*?}", "/api/m"), Some(3));
     }
     #[test]
-    fn usage_owns_all_methods_only_when_switched_on() {
+    fn usage_owns_all_methods_whenever_native_auth_is_on() {
         let on = Switches {
             rust_auth: true,
-            rust_usage: true,
-            rust_sampling_settings: false,
-            rust_reasoning_settings: false,
-            rust_routing_mode: false,
-            rust_routing_default: false,
-            rust_stats: false,
-            rust_export: false,
-            rust_chatgpt_status: false,
             ..Default::default()
         };
         for p in ["/api/usage", "/api/usage/aggregate"] {
@@ -556,10 +472,9 @@ mod tests {
         }
     }
     #[test]
-    fn sampling_owns_all_methods_only_when_switched_on() {
+    fn sampling_owns_all_methods_whenever_native_auth_is_on() {
         let on = Switches {
             rust_auth: true,
-            rust_sampling_settings: true,
             ..Default::default()
         };
         for m in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
@@ -571,27 +486,15 @@ mod tests {
         }
     }
     #[test]
-    fn reasoning_owns_only_put_with_dedicated_selector() {
+    fn reasoning_owns_only_put_whenever_native_auth_is_on() {
         let on = Switches {
             rust_auth: true,
-            rust_reasoning_settings: true,
             ..Default::default()
         };
         for m in ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"] {
             assert_eq!(dispatch_under(m, "/api/reasoning-settings", on), None);
         }
         assert_eq!(dispatch("PUT", "/api/reasoning-settings"), None);
-        assert_eq!(
-            dispatch_under(
-                "PUT",
-                "/api/reasoning-settings",
-                Switches {
-                    rust_auth: true,
-                    ..Default::default()
-                }
-            ),
-            None
-        );
         assert_eq!(
             dispatch_under("PUT", "/api/reasoning-settings", on),
             Some(Native::ReasoningSettings)
@@ -680,20 +583,14 @@ mod tests {
     }
 
     #[test]
-    fn stats_owns_only_get_under_its_switch_in_a_build_with_the_slice() {
-        let auth = Switches {
-            rust_auth: true,
-            ..Default::default()
-        };
+    fn stats_owns_only_get_whenever_native_auth_is_on_in_a_build_with_the_slice() {
         let on = Switches {
             rust_auth: true,
-            rust_stats: true,
             ..Default::default()
         };
         let answered = cfg!(feature = "rust-stats").then_some(Native::Stats);
         assert_eq!(crate::FEATURES.contains(&"rust-stats"), answered.is_some());
         assert_eq!(dispatch("GET", "/api/stats"), None);
-        assert_eq!(dispatch_under("GET", "/api/stats", auth), None);
         assert_eq!(dispatch_under("GET", "/api/stats", on), answered);
         // Node keeps every other method (it answers them all) and the paths around it.
         for (m, p) in [
@@ -709,26 +606,25 @@ mod tests {
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
         }
-        assert!(on.on("NOEVIA_RUST_STATS"));
-        assert!(!auth.on("NOEVIA_RUST_STATS"));
+        // The retired switch name means nothing (#1071).
+        assert!(!on.on("NOEVIA_RUST_STATS"));
     }
 
     #[test]
-    fn export_owns_only_get_under_its_switch_in_a_build_with_the_slice() {
-        let projects = Switches {
+    fn export_owns_only_get_whenever_projects_is_on_in_a_build_with_the_slice() {
+        let auth = Switches {
             rust_auth: true,
-            rust_projects: true,
             ..Default::default()
         };
         let on = Switches {
-            rust_export: true,
-            ..projects
+            rust_projects: true,
+            ..auth
         };
         let answered = cfg!(feature = "rust-export").then_some(Native::Export);
         assert_eq!(crate::FEATURES.contains(&"rust-export"), answered.is_some());
         assert_eq!(dispatch("GET", "/api/export/conversations"), None);
         assert_eq!(
-            dispatch_under("GET", "/api/export/conversations", projects),
+            dispatch_under("GET", "/api/export/conversations", auth),
             None
         );
         assert_eq!(
@@ -749,19 +645,14 @@ mod tests {
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
         }
-        assert!(on.on("NOEVIA_RUST_EXPORT"));
-        assert!(!projects.on("NOEVIA_RUST_EXPORT"));
+        assert!(!on.on("NOEVIA_RUST_EXPORT"));
     }
 
     #[test]
-    fn chatgpt_status_owns_only_the_exact_get_under_its_switch_in_a_build_with_the_slice() {
-        let auth = Switches {
+    fn chatgpt_status_owns_only_the_exact_get_whenever_native_auth_is_on() {
+        let on = Switches {
             rust_auth: true,
             ..Default::default()
-        };
-        let on = Switches {
-            rust_chatgpt_status: true,
-            ..auth
         };
         let answered = cfg!(feature = "rust-chatgpt-status").then_some(Native::ChatgptStatus);
         assert_eq!(
@@ -769,7 +660,6 @@ mod tests {
             answered.is_some()
         );
         assert_eq!(dispatch("GET", "/api/providers/chatgpt"), None);
-        assert_eq!(dispatch_under("GET", "/api/providers/chatgpt", auth), None);
         assert_eq!(
             dispatch_under("GET", "/api/providers/chatgpt", on),
             answered
@@ -791,7 +681,65 @@ mod tests {
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
         }
-        assert!(on.on("NOEVIA_RUST_CHATGPT_STATUS"));
-        assert!(!auth.on("NOEVIA_RUST_CHATGPT_STATUS"));
+        assert!(!on.on("NOEVIA_RUST_CHATGPT_STATUS"));
+    }
+
+    // #1071: the front read routes are Rust's whenever NOEVIA_RUST_AUTH is on, with no switch of
+    // their own; no route names a retired switch.
+    #[test]
+    fn front_read_routes_are_unconditional_under_native_auth() {
+        let auth = Switches {
+            rust_auth: true,
+            ..Default::default()
+        };
+        for r in ROUTES.iter() {
+            if let Some(sw) = r.switch {
+                assert!(
+                    !crate::config::RETIRED_SWITCHES.contains(&sw),
+                    "{} names retired {sw}",
+                    r.path
+                );
+            }
+        }
+        for (m, p, native) in [
+            ("GET", "/api/usage", Native::Usage),
+            ("GET", "/api/usage/aggregate", Native::Usage),
+            ("GET", "/api/sampling-settings", Native::SamplingSettings),
+            ("PUT", "/api/reasoning-settings", Native::ReasoningSettings),
+            ("GET", "/api/routing-mode", Native::RoutingMode),
+            ("GET", "/api/routing-mode/allowed", Native::RoutingMode),
+            ("GET", "/api/routing-default", Native::RoutingDefault),
+            ("GET", "/api/stats", Native::Stats),
+            ("GET", "/api/providers/chatgpt", Native::ChatgptStatus),
+            ("GET", "/api/integrations/storage", Native::StorageMetadata),
+            (
+                "GET",
+                "/api/integrations/storage/files",
+                Native::StorageBrowse,
+            ),
+            (
+                "GET",
+                "/api/integrations/storage/files/a/b",
+                Native::StorageBrowse,
+            ),
+            (
+                "POST",
+                "/api/integrations/storage/file",
+                Native::StorageBrowse,
+            ),
+        ] {
+            // The default build carries every slice (Cargo.toml default features).
+            if crate::config::FRONT_ROUTE_FEATURES
+                .iter()
+                .all(|(_, on)| *on)
+            {
+                assert_eq!(dispatch_under(m, p, auth), Some(native), "{m} {p}");
+            }
+            assert_eq!(
+                dispatch(m, p),
+                None,
+                "{m} {p}: without native auth the front proxies"
+            );
+        }
     }
 }

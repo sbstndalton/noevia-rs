@@ -2,8 +2,8 @@
 //! polls (crates/server-stats). Node's session gate first (signed out 401; any signed-in member or
 //! admin is answered, as in Node), then the shared answer: concurrent polls share one engine read,
 //! and it is kept for 2 s after it lands (routes/models.cjs `statsRead`). Only GET is owned
-//! (routes.toml); every other method, a trailing-slash path and every request while
-//! NOEVIA_RUST_STATS is off go to Node.
+//! (routes.toml); every other method, a trailing-slash path and every request without
+//! NOEVIA_RUST_AUTH=1 go to Node (its old switch NOEVIA_RUST_STATS is retired, #1071).
 //!
 //! A write Node would let through to its model routes (any method but GET/HEAD under
 //! `/api/models`, `/api/model-manager`, `/api/auto-roles`, past the session and CSRF gate) drops

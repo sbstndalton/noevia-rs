@@ -1,5 +1,5 @@
-//! Connected-storage list and text read (M4, sbstndalton/noevia#1368), behind
-//! NOEVIA_RUST_STORAGE_BROWSE:
+//! Connected-storage list and text read (M4, sbstndalton/noevia#1368), permanent
+//! under NOEVIA_RUST_AUTH (its own switch is retired, #1071):
 //!
 //! * `GET /api/integrations/storage/files[/<path>]` answers `{"entries":[...]}`;
 //! * `POST /api/integrations/storage/file` with `{"path":...}` answers the capped text preview.
