@@ -61,7 +61,7 @@ fn as_list(stored: Option<JValue>) -> Vec<JValue> {
 /// sbstndalton/noevia#1806: a file holding `null` or a `projects` that is not an array loads as an
 /// empty list), then its `provider` and `modes` loops), or the 500 Node answers when that load
 /// throws: an entry that is `null` or a primitive (`project.modes = [...]` throws in strict mode).
-fn workspace_projects(dir: &std::path::Path) -> Result<Vec<JValue>, Reply> {
+pub(crate) fn workspace_projects(dir: &std::path::Path) -> Result<Vec<JValue>, Reply> {
     let stored =
         store::read_json(&dir.join(store::PROJECTS_FILE)).map_err(|e| chats::store_failure(&e))?;
     let projects = match stored {

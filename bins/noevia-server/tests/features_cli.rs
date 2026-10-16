@@ -37,6 +37,10 @@ fn features_cli_outputs_only_the_compiled_capabilities() {
         expected.lines().any(|line| line == "rust-free-chats"),
         cfg!(feature = "rust-free-chats")
     );
+    assert_eq!(
+        expected.lines().any(|line| line == "rust-project-writes"),
+        cfg!(feature = "rust-project-writes")
+    );
 }
 
 #[cfg(unix)]

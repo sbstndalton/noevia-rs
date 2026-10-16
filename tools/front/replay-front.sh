@@ -20,7 +20,7 @@ origin="${PUBLIC_ORIGIN:-http://127.0.0.1:$port}"
 # (M3), and its projects.json coordination only by one that lists rust-projects (M4, which needs M3);
 # its chat-list refusal only by one that also lists rust-project-chats (sbstndalton/noevia#1409),
 # and its free-chat coordination and refusal only by one that lists rust-free-chats.
-unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_PROJECT_CHATS_CONFIRMED NOEVIA_RUST_FREE_CHATS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED NOEVIA_RUST_STATS_CONFIRMED NOEVIA_RUST_EXPORT_CONFIRMED NOEVIA_RUST_STORAGE_READS_CONFIRMED NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED
+unset NOEVIA_RUST_AUTH_CONFIRMED NOEVIA_RUST_PROJECTS_CONFIRMED NOEVIA_RUST_PROJECT_CHATS_CONFIRMED NOEVIA_RUST_FREE_CHATS_CONFIRMED NOEVIA_RUST_USAGE_CONFIRMED NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED NOEVIA_RUST_ROUTING_MODE_CONFIRMED NOEVIA_RUST_STATS_CONFIRMED NOEVIA_RUST_EXPORT_CONFIRMED NOEVIA_RUST_STORAGE_READS_CONFIRMED NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED NOEVIA_RUST_PROJECT_WRITES_CONFIRMED
 confirmed=""
 projects_confirmed=""
 project_chats_confirmed=""
@@ -34,6 +34,7 @@ storage_reads_confirmed=""
 storage_browse_confirmed=""
 export_confirmed=""
 chatgpt_status_confirmed=""
+project_writes_confirmed=""
 # Capture once on the first needed check, before confirming ownership.
 features=""
 features_loaded=""
@@ -114,10 +115,18 @@ if [ "${NOEVIA_RUST_CHATGPT_STATUS:-}" = 1 ]; then
   has_feature rust-chatgpt-status || { echo "replay-front: no rust-chatgpt-status" >&2; exit 2; }
   chatgpt_status_confirmed=1
 fi
+# sbstndalton/noevia#1264: the project writes ported so far; Node refuses them (core
+# rust-projects.cjs projectWritesEnabledFrom) only once the front lists rust-project-writes, over
+# confirmed projects.
+if [ "${NOEVIA_RUST_PROJECT_WRITES:-}" = 1 ]; then
+  [ -n "$projects_confirmed" ] || { echo "replay-front: project writes need NOEVIA_RUST_PROJECTS=1" >&2; exit 2; }
+  has_feature rust-project-writes || { echo "replay-front: no rust-project-writes" >&2; exit 2; }
+  project_writes_confirmed=1
+fi
 UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" \
   NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_PROJECT_CHATS_CONFIRMED="$project_chats_confirmed" NOEVIA_RUST_FREE_CHATS_CONFIRMED="$free_chats_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$reasoning_confirmed" \
   NOEVIA_RUST_ROUTING_MODE_CONFIRMED="$routing_confirmed" NOEVIA_RUST_STATS_CONFIRMED="$stats_confirmed" NOEVIA_RUST_EXPORT_CONFIRMED="$export_confirmed" \
-  NOEVIA_RUST_STORAGE_READS_CONFIRMED="$storage_reads_confirmed" NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED="$storage_browse_confirmed" NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED="$chatgpt_status_confirmed" \
+  NOEVIA_RUST_STORAGE_READS_CONFIRMED="$storage_reads_confirmed" NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED="$storage_browse_confirmed" NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED="$chatgpt_status_confirmed" NOEVIA_RUST_PROJECT_WRITES_CONFIRMED="$project_writes_confirmed" \
   "$(dirname "$front")/corpus-launcher" serve "$core" &
 node_pid=$!
 # CI's M4 negative control only: Node is told the front owns the project image routes, the front is
