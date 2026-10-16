@@ -3,8 +3,10 @@
 The optional `native-model-detail` Cargo feature (it includes `native-model-updates`, whose
 models-folder walk it reuses) serves `GET /api/v1/models/detail` from Rust.
 `MODEL_MANAGER_MODEL_DETAIL_IMPL` defaults to `python`. Selecting `rust` requires the compiled
-feature, `MODEL_MANAGER_IMPL=rust`, exact `TZ=UTC` and an absolute, normalised `MODELS_DIR`; any
-other value refuses before the legacy child starts. This document does not authorize activation.
+feature and `MODEL_MANAGER_IMPL=rust` (otherwise startup refuses, as for every switch). It never
+refuses startup over the zone or roots (noevia#1889): with `TZ` unset or `UTC` and an absolute,
+normalised `MODELS_DIR` the native read is used; any other zone, or roots it cannot use, keeps
+Python serving the read and logs one line. This document does not authorize activation.
 
 ## Ownership
 
@@ -15,7 +17,7 @@ other value refuses before the legacy child starts. This document does not autho
   refuses `GET /api/v1/models/detail` with 503, so the route is never served twice, and the
   private `GET /api/v1/internal/model-detail-runtime` call is served (it is 404 otherwise). The
   native front never forwards that path, so it is reachable only from the parent.
-- In native mode the child is given `TZ=UTC` and the same `MODELS_DIR` and `MODELS_INI_PATH`.
+- In native mode the child is given `TZ=UTC` (the native route formats UTC) and the same `MODELS_DIR` and `MODELS_INI_PATH`.
 
 ## Which fields are native and which are delegated
 
@@ -42,11 +44,13 @@ malformed or oversized (over 1 MiB) answer is the forwarded route's
 
 The walk and its refusals are the native model update read's (`docs/native-model-updates.md`). In
 addition the route answers `503 {"detail":"Native model detail is unavailable"}` instead of
-guessing for: an I/O error opening or reading the model file (Python's text names an errno), a
-file that vanished after the walk, a header read past the reader's 256 MiB bound, a `model =` path
-with a `..` segment or a link leaving the models folder, an expert count Python would print past
+guessing for: a section whose `model =` path has a `..` segment or leaves through a link, but
+only when that section could configure the requested file (it falls back to that file's stem);
+every other model is still answered (noevia#1889). Also for: an I/O error opening or reading the model file (Python's text names an errno), a
+file that vanished after the walk, a header read past the reader's 256 MiB bound, an expert count Python would print past
 128 bits or written in non-ASCII digits, an architecture value the bounded formatter cannot print,
-or the file part running past 4.5 s. The detail route waits for the child under the forwarded
+or the file part (including waiting for one of the two concurrent read slots, since each may hold
+a header of up to 256 MiB) running past 4.5 s. The detail route waits for the child under the forwarded
 routes' budget, not the 5 s native budget.
 
 ## Oracle

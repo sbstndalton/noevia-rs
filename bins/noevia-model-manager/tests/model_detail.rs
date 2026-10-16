@@ -240,6 +240,9 @@ mod linux {
     fn build(root: &Path, case: &Value) -> (std::path::PathBuf, std::path::PathBuf) {
         let models = root.join("models");
         let ini = models.join("models.ini");
+        for name in case["outside"].as_array().into_iter().flatten() {
+            std::fs::write(root.join(name.as_str().unwrap()), b"GGUF").unwrap();
+        }
         match case["models"].as_str().unwrap_or("dir") {
             "missing" => {}
             "file" => std::fs::write(&models, b"").unwrap(),

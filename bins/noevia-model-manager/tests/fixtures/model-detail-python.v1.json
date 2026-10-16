@@ -771,6 +771,43 @@
 ]
 },
 {
+"files": [
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "a.gguf"
+},
+{
+"hex": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000060000000000000067656d6d6133120000000000000067656d6d61332e626c6f636b5f636f756e740400000002000000",
+"mtime": 1700000000000000000,
+"name": "b.gguf"
+}
+],
+"id": "section-path-leaving-the-folder",
+"ini": {
+"text": "[b]\nmodel = ../outside.gguf\n[c-id]\nmodel = /models/../missing.gguf\n[a-id]\nmodel = a.gguf\n"
+},
+"outside": [
+"outside.gguf"
+],
+"requests": [
+"key=a.gguf"
+],
+"results": [
+{
+"body": "{\"key\":\"a.gguf\",\"name\":\"a.gguf\",\"stem\":\"a\",\"subdir\":\"\",\"bytes\":104,\"size\":\"104 B\",\"modified\":\"2023-11-14 22:13\",\"mtime\":1700000000.0,\"sharded\":false,\"parts\":1,\"companion\":false,\"projector\":null,\"sections\":[\"a-id\"],\"modelId\":\"a-id\",\"file\":\"a.gguf\",\"shape\":{\"arch\":\"gemma3\",\"moe\":false,\"experts\":0,\"active\":0,\"label\":\"dense\"},\"loadedOn\":[],\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}],\"badges\":[],\"path\":\"@MODELS@/a.gguf\",\"summary\":{\"arch\":\"gemma3\",\"general\":{\"name\":null,\"description\":null,\"author\":null,\"license\":null,\"url\":null,\"quant\":null,\"quant_version\":null,\"params\":null,\"params_raw\":null,\"gguf_version\":3,\"tensor_count\":0,\"kv_count\":2,\"header_error\":null},\"model\":{\"arch\":\"gemma3\",\"context_length\":null,\"embedding_length\":null,\"block_count\":2,\"feed_forward_length\":null,\"attention_head_count\":null,\"attention_head_count_kv\":null,\"rope_freq_base\":null,\"rope_scaling_type\":null,\"rope_scaling_factor\":null,\"rope_scaling_original_context\":null,\"vocab_size\":null,\"expert_count\":null,\"nextn_predict_layers\":null,\"expert_used_count\":null,\"key_length\":null,\"value_length\":null,\"full_attention_interval\":null,\"sliding_window\":null,\"key_length_swa\":null,\"value_length_swa\":null,\"shared_kv_layers\":null,\"sliding_window_pattern\":null,\"ssm_state_size\":null,\"ssm_inner_size\":null,\"ssm_conv_kernel\":null,\"ssm_group_count\":null},\"tokenizer\":{\"model\":null,\"pre\":null,\"bos_token_id\":null,\"eos_token_id\":null,\"unknown_token_id\":null,\"padding_token_id\":null,\"add_bos_token\":null,\"add_eos_token\":null},\"chat_template_features\":{}}}",
+"content_type": "application/json",
+"query": "key=a.gguf",
+"runtime": {
+"body": "{\"loaded\":{\"llama-flat\":[\"llama-a\"],\"short-id\":[\"llama-a\",\"llama-b\"],\"other\":[\"llama-b\"],\"Synth\u00e9tique-Q4\":[\"llama-d\"]},\"fit\":[{\"name\":\"synthetic-gpu\",\"vram_gb\":23.5,\"verdict\":\"fits\",\"ratio_pct\":0},{\"name\":\"synthetic-cpu\",\"vram_gb\":0.30000000000000004,\"verdict\":\"slow\",\"ratio_pct\":0,\"is_cpu\":true},{\"name\":\"edge\",\"vram_gb\":1e+16,\"verdict\":\"fits\",\"ratio_pct\":0,\"host_ram_gb\":1e-05}]}",
+"bytes": 104,
+"fit": true
+},
+"status": 200
+}
+]
+},
+{
 "id": "models-missing",
 "models": "missing",
 "requests": [

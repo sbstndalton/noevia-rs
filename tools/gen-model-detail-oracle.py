@@ -235,6 +235,10 @@ CASES: list[dict] = [
     {"id": "ini-not-utf8-500", "files": files("a.gguf"), "ini": {"hex": "5b615d0a78203d20ff0a"},
      "requests": ["key=a.gguf"]},
     {"id": "ini-is-directory-500", "files": files("a.gguf"), "ini": "dir", "requests": ["key=a.gguf"]},
+    # noevia#1889: a section whose `model =` path leaves the folder decides only that section.
+    {"id": "section-path-leaving-the-folder", "files": files("a.gguf", "b.gguf"), "outside": ["outside.gguf"],
+     "ini": {"text": "[b]\nmodel = ../outside.gguf\n[c-id]\nmodel = /models/../missing.gguf\n[a-id]\nmodel = a.gguf\n"},
+     "requests": ["key=a.gguf"]},
     {"id": "models-missing", "models": "missing", "requests": ["key=a.gguf"]},
     {"id": "models-path-is-file", "models": "file", "requests": ["key=a.gguf"]},
     {"id": "models-folder-is-a-symlink", "models": "link", "dirs": ["sub"],
@@ -270,6 +274,8 @@ def build(root: Path, case: dict) -> tuple[Path, Path]:
     models = root / "models"
     ini_path = models / "models.ini"
     kind = case.get("models", "dir")
+    for name in case.get("outside", []):
+        (root / name).write_bytes(bytes.fromhex(PLAIN))
     if kind == "file":
         models.write_bytes(b"")
     elif kind in ("dir", "link"):
