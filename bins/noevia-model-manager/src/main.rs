@@ -45,6 +45,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-settings-write") {
                 output.write_all(b"native-settings-write\n")?;
             }
+            if cfg!(feature = "native-backend-control") {
+                output.write_all(b"native-backend-control\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -157,6 +160,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "native-badges")]
     let badges_root = if badges_mode == "rust" {
         Some(data_dir()?)
+    } else {
+        None
+    };
+    let control_mode = environment("MODEL_MANAGER_BACKEND_CONTROL_IMPL", "python")?;
+    if !matches!(control_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_BACKEND_CONTROL_IMPL must be python or rust".into());
+    }
+    if control_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-backend-control")) {
+        return Err(
+            "native-backend-control requires rust model manager and compiled native-backend-control feature"
+                .into(),
+        );
+    }
+    // LLAMA_DEFAULT_PORT as Python's settings read it (0 means none).
+    #[cfg(feature = "native-backend-control")]
+    let default_port: Option<u16> = if control_mode == "rust" {
+        match environment("LLAMA_DEFAULT_PORT", "8080")?
+            .trim()
+            .parse::<u16>()
+        {
+            Ok(0) => None,
+            Ok(p) => Some(p),
+            Err(_) => return Err("LLAMA_DEFAULT_PORT must be a port number".into()),
+        }
     } else {
         None
     };
@@ -279,6 +306,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -442,6 +470,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::Path::new(root),
         ))
     });
+    #[cfg(feature = "native-backend-control")]
+    let backends = if control_mode == "rust" {
+        Some(Arc::new(noevia_model_manager::backends::Backends::new(
+            default_port,
+        )?))
+    } else {
+        None
+    };
     #[cfg(feature = "native-settings-write")]
     let settings_write = settings_write_root.as_deref().map(|root| {
         Arc::new(noevia_model_manager::settings_write::SettingsWrite::new(
@@ -494,6 +530,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &targets_mode,
         #[cfg(feature = "native-download-targets")]
         targets_roots.as_ref(),
+    );
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED",
+        if control_mode == "rust" { "1" } else { "0" },
     );
     settings_write_child(
         &mut child_command,
@@ -575,6 +615,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         section_writes,
         #[cfg(feature = "native-settings-write")]
         settings_write,
+        #[cfg(feature = "native-backend-control")]
+        backends,
         sections,
         embedding,
         host,

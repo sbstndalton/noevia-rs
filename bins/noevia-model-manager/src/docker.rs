@@ -312,6 +312,14 @@ impl crate::embedding::ServiceControl for ScopedControl {
     }
 }
 
+/// noevia#1318: the backend restart route may restart a llama.cpp backend (the caller has
+/// checked it is one of the effective backends): exactly `restart?t=15`, by name, never an id.
+pub fn allowed_backend_restart(path: &str, container: &str) -> bool {
+    segment(container).is_ok()
+        && !container.bytes().all(|c| c.is_ascii_hexdigit())
+        && path == format!("/containers/{container}/restart?t=15")
+}
+
 fn allowed_read(path: &str) -> bool {
     if path == "/containers/json?all=true&limit=1025&size=false" {
         return true;
@@ -331,6 +339,51 @@ fn allowed_read(path: &str) -> bool {
     }
 }
 impl DockerRead for UnixDocker {
+    fn backend_spec<'a>(&'a self, name: &'a str) -> Job<'a, Option<crate::BackendSpec>> {
+        Box::pin(async move {
+            let inspect = match self.inspect(name).await {
+                Ok(i) => i,
+                Err("container not found") => return Ok(None),
+                Err(e) => return Err(e),
+            };
+            let mut ports: Vec<(String, Vec<String>)> = inspect
+                .network_settings
+                .and_then(|n| n.ports)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(port, bindings)| {
+                    let hosts = bindings
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|b| b.host_port.filter(|h| !h.is_empty()))
+                        .collect();
+                    (port, hosts)
+                })
+                .collect();
+            ports.sort();
+            let config = inspect.config.unwrap_or_default();
+            Ok(Some(crate::BackendSpec {
+                ports,
+                cmd: config.cmd.unwrap_or_default(),
+                entrypoint: config.entrypoint.unwrap_or_default(),
+                env: config.env.unwrap_or_default(),
+            }))
+        })
+    }
+    fn restart_backend<'a>(&'a self, name: &'a str) -> Job<'a, ()> {
+        Box::pin(async move {
+            let path = format!("/containers/{name}/restart?t=15");
+            if !allowed_backend_restart(&path, name) {
+                return Err("Docker operation refused");
+            }
+            let (status, _) = send(&self.socket, "POST", &path).await?;
+            match status.as_u16() {
+                204 => Ok(()),
+                404 => Err("container not found"),
+                _ => Err("Docker refused the restart"),
+            }
+        })
+    }
     fn containers(&self) -> Job<'_, Vec<Container>> {
         Box::pin(async move {
             // The explicit query mirrors Bollard ListContainersOptions, with a sentinel extra
@@ -649,6 +702,8 @@ mod tests {
             section_writes: None,
             #[cfg(feature = "native-settings-write")]
             settings_write: None,
+            #[cfg(feature = "native-backend-control")]
+            backends: None,
         })
     }
 
