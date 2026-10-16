@@ -62,7 +62,7 @@ fn actual_node_catalogue_defaults_and_put_matrix() {
         if case["input"]["auditAbort"] == true {
             db.execute_batch("CREATE TRIGGER sampling_audit_abort BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT,'synthetic audit refusal'); END;").unwrap();
         }
-        let auth = RustAuth::from_env_value(Some("1")).unwrap();
+        let auth = RustAuth::owned();
         let token = RustSamplingSettings::from_env_value(Some("1"), auth).unwrap();
         let writer = Writer::open(dir.path(), auth).unwrap();
         let store = Store::open(dir.path()).unwrap();

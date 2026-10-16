@@ -13,8 +13,9 @@ front="${2:?usage: replay-front.sh <noevia-core dir> <noevia-server binary>}"
 port="${UI_PORT:?UI_PORT is required}"
 legacy=$((port + 1000))
 # Node must see the origin the browser (here: the replayer) uses, which is the front's; so must the
-# front, which answers sign-in itself with NOEVIA_RUST_AUTH=1 (M3; serve.cjs then runs Node as
-# behind that front: read-only for the account tables).
+# front, which always answers sign-in itself (M3, permanent since sbstndalton/noevia#1071; the
+# core.ref oracle is told so through NOEVIA_RUST_AUTH=1 and its confirmation, and serve.cjs then
+# runs Node as behind that front: read-only for the account tables).
 origin="${PUBLIC_ORIGIN:-http://127.0.0.1:$port}"
 # Like build/web-supervisor.sh: Node's write guard is confirmed only by a front that lists rust-auth
 # (M3), and its projects.json coordination only by one that lists rust-projects (M4, which needs M3);
@@ -47,12 +48,10 @@ has_feature() {
 $features
 EOF
 }
-if [ "${NOEVIA_RUST_AUTH:-}" = 1 ]; then
-  has_feature rust-auth || { echo "replay-front: $front has no rust-auth" >&2; exit 2; }
-  confirmed=1
-fi
+# The front always owns sign-in (#1071): one without rust-auth is refused, whatever the caller set.
+has_feature rust-auth || { echo "replay-front: $front has no rust-auth" >&2; exit 2; }
+confirmed=1
 if [ "${NOEVIA_RUST_PROJECTS:-}" = 1 ]; then
-  [ -n "$confirmed" ] || { echo "replay-front: NOEVIA_RUST_PROJECTS=1 needs NOEVIA_RUST_AUTH=1" >&2; exit 2; }
   has_feature rust-projects || { echo "replay-front: $front has no rust-projects" >&2; exit 2; }
   projects_confirmed=1
   # A front without the chat-list slice is a supported pairing: Node keeps that route.
@@ -61,12 +60,12 @@ if [ "${NOEVIA_RUST_PROJECTS:-}" = 1 ]; then
   if has_feature rust-free-chats; then free_chats_confirmed=1; fi
 fi
 # sbstndalton/noevia#1071: the front read routes have no switch of their own any more. Like
-# build/web-supervisor.sh, a front with native auth must list every one of them (else this harness
+# build/web-supervisor.sh, the front must list every one of them (else this harness
 # refuses before starting either process), and the core.ref oracle is told the front owns them.
 # The export follows the projects switch (it reads the free-chat list from disk).
 if [ -n "$confirmed" ]; then
   for f in rust-usage rust-sampling-settings rust-reasoning-settings rust-routing-mode rust-routing-default rust-stats rust-storage-reads rust-storage-browse rust-chatgpt-status; do
-    has_feature "$f" || { echo "replay-front: NOEVIA_RUST_AUTH=1 needs a front with $f" >&2; exit 2; }
+    has_feature "$f" || { echo "replay-front: $front has no $f" >&2; exit 2; }
   done
   usage_confirmed=1
   sampling_confirmed=1
@@ -89,7 +88,7 @@ if [ "${NOEVIA_RUST_PROJECT_WRITES:-}" = 1 ]; then
   has_feature rust-project-writes || { echo "replay-front: no rust-project-writes" >&2; exit 2; }
   project_writes_confirmed=1
 fi
-UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" \
+UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" \
   NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_PROJECT_CHATS_CONFIRMED="$project_chats_confirmed" NOEVIA_RUST_FREE_CHATS_CONFIRMED="$free_chats_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$reasoning_confirmed" \
   NOEVIA_RUST_ROUTING_MODE_CONFIRMED="$routing_confirmed" NOEVIA_RUST_STATS_CONFIRMED="$stats_confirmed" NOEVIA_RUST_EXPORT_CONFIRMED="$export_confirmed" \
   NOEVIA_RUST_STORAGE_READS_CONFIRMED="$storage_reads_confirmed" NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED="$storage_browse_confirmed" NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED="$chatgpt_status_confirmed" NOEVIA_RUST_PROJECT_WRITES_CONFIRMED="$project_writes_confirmed" \

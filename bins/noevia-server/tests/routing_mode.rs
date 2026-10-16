@@ -104,7 +104,6 @@ async fn native_configuration_identity_device_csrf_tenants_dynamic_feature_and_f
     let env = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", d.path().display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
         ("TRUST_PROXY", "true".into()),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "1".into()),
         ("PUBLIC_ORIGIN", origin.clone()),

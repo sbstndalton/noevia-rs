@@ -10,7 +10,7 @@
 //!
 //! Everything reads `cowork.db` through server-store's read-only [`server_store::Store`]. The one
 //! writer is [`upkeep`] (M3): the session and device-grant writes Node's gate makes on every
-//! request, for when Rust owns those tables (`NOEVIA_RUST_AUTH=1`, server-store's [`server_store::Writer`]). Token, CSRF and legacy-token comparisons are constant-time
+//! request, now that Rust owns those tables (M3, permanent since #1071; server-store's [`server_store::Writer`]). Token, CSRF and legacy-token comparisons are constant-time
 //! ([`js::ct_eq`]), and a missing app password costs one Argon2 verification like a wrong one.
 //! `tests/differential.rs` checks every verdict against Node's own code
 //! (tools/gen-auth-fixtures.cjs) and that Rust never accepts what Node rejects.

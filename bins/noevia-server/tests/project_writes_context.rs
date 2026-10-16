@@ -82,7 +82,6 @@ async fn front(writes: bool) -> Front {
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
     env.insert("PUBLIC_ORIGIN", ORIGIN.into());
-    env.insert("NOEVIA_RUST_AUTH", "1".into());
     env.insert("NOEVIA_RUST_PROJECTS", "1".into());
     if writes {
         env.insert("NOEVIA_RUST_PROJECT_WRITES", "1".into());

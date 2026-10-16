@@ -83,7 +83,6 @@ async fn usage_auth_admin_tenant_methods_and_omission() {
     let env = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", d.path().display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
         ("PUBLIC_ORIGIN", origin.clone()),
         ("TZ", "UTC".into()),
         ("LANG", "en_US.UTF-8".into()),

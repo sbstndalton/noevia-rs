@@ -67,12 +67,12 @@ jobs:
           set -euo pipefail
           cargo build --locked --target-dir target/storage-featureless -p noevia-server --no-default-features
           if target/storage-featureless/debug/noevia-server --features | grep -qx rust-storage-reads; then exit 1; fi
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 NOEVIA_RUST_AUTH=1 target/storage-featureless/debug/noevia-server > "$RUNNER_TEMP/storage-featureless.log" 2>&1; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 target/storage-featureless/debug/noevia-server > "$RUNNER_TEMP/storage-featureless.log" 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-storage-reads' "$RUNNER_TEMP/storage-featureless.log"
           cargo build --locked -p replay -p noevia-server --no-default-features --features noevia-server/rust-storage-reads
           target/debug/noevia-server --features | grep -qx rust-storage-reads
           if target/debug/noevia-server --features | grep -qx rust-storage-browse; then exit 1; fi
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 NOEVIA_RUST_AUTH=1 target/debug/noevia-server > "$RUNNER_TEMP/browse-featureless.log" 2>&1; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 target/debug/noevia-server > "$RUNNER_TEMP/browse-featureless.log" 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-storage-browse' "$RUNNER_TEMP/browse-featureless.log"
           cargo build --locked -p replay -p noevia-server --features noevia-server/rust-storage-browse
           target/debug/noevia-server --features | grep -qx rust-storage-browse

@@ -53,11 +53,11 @@ jobs:
           set -euo pipefail
           cargo build --locked --target-dir target/writes-featureless -p noevia-server --no-default-features
           if target/writes-featureless/debug/noevia-server --features | grep -qx rust-project-writes; then exit 1; fi
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_PROJECT_WRITES=1 target/writes-featureless/debug/noevia-server > "$RUNNER_TEMP/writes-featureless.log" 2>&1; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_PROJECT_WRITES=1 target/writes-featureless/debug/noevia-server > "$RUNNER_TEMP/writes-featureless.log" 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-project-writes' "$RUNNER_TEMP/writes-featureless.log"
           cargo build --locked -p replay -p noevia-server --features noevia-server/rust-project-writes,noevia-server/rust-project-chats,noevia-server/rust-free-chats
           target/debug/noevia-server --features | grep -qx rust-project-writes
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECT_WRITES=1 target/debug/noevia-server > "$RUNNER_TEMP/writes-noprojects.log" 2>&1; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_PROJECT_WRITES=1 target/debug/noevia-server > "$RUNNER_TEMP/writes-noprojects.log" 2>&1; then exit 1; fi
           grep -q 'NOEVIA_RUST_PROJECT_WRITES=1 needs NOEVIA_RUST_PROJECTS=1' "$RUNNER_TEMP/writes-noprojects.log"
       - name: Build dav-parse.wasm at core's pinned noevia-rs ref
         working-directory: core

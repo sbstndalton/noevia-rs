@@ -1,10 +1,10 @@
 //! Route ownership, from contracts/http/routes.toml (compiled in by build.rs). One owner per
 //! route: a request whose route is owner = "rust" (for one of its methods) is answered natively,
 //! everything else goes to Node through the legacy proxy. A route with a `switch` is Rust's only
-//! while that deployment switch is on (M3: NOEVIA_RUST_AUTH, M4: NOEVIA_RUST_PROJECTS, see
-//! [`Switches`]); off, it is Node's, so merging a flip changes nothing until the deployment sets
-//! the switch. The front read routes retired their own switches (sbstndalton/noevia#1071): they
-//! are Rust's under NOEVIA_RUST_AUTH, and Node no longer answers them.
+//! while that deployment switch is on (M4: NOEVIA_RUST_PROJECTS, NOEVIA_RUST_PROJECT_WRITES, see
+//! [`Switches`]); off, it is Node's. Sign-in and the account (M3) and the front read routes have
+//! no switch any more (sbstndalton/noevia#1071): they are always Rust's, and Node no longer
+//! answers them.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Owner {
@@ -24,15 +24,13 @@ pub struct Route {
     pub switch: Option<&'static str>,
 }
 
-/// The deployment switches that are on in this process. The front read routes have none of their
-/// own any more (sbstndalton/noevia#1071): they are Rust's under NOEVIA_RUST_AUTH, the export
+/// The deployment switches that are on in this process. Sign-in, the account and the front read
+/// routes have none (sbstndalton/noevia#1071): they are always Rust's; the export is Rust's
 /// under NOEVIA_RUST_PROJECTS.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Switches {
-    /// NOEVIA_RUST_AUTH=1: Rust owns sign-in and the account (M3) and the front read routes.
-    pub rust_auth: bool,
-    /// NOEVIA_RUST_PROJECTS=1 (only with rust_auth, config.rs): Rust owns the project routes
-    /// ported so far (M4) and the conversation export.
+    /// NOEVIA_RUST_PROJECTS=1: Rust owns the project routes ported so far (M4) and the
+    /// conversation export.
     pub rust_projects: bool,
     /// NOEVIA_RUST_PROJECT_WRITES=1 (#1264, only with rust_projects, config.rs): the project
     /// writes ported from Node so far ([`PROJECT_WRITES`]).
@@ -42,7 +40,6 @@ pub struct Switches {
 impl Switches {
     pub fn on(&self, name: &str) -> bool {
         match name {
-            "NOEVIA_RUST_AUTH" => self.rust_auth,
             "NOEVIA_RUST_PROJECTS" => self.rust_projects,
             "NOEVIA_RUST_PROJECT_WRITES" => self.rust_project_writes,
             _ => false,
@@ -70,7 +67,7 @@ pub enum Native {
     Ready,
     /// The web bundle with SPA fallback (core static-files.cjs + spa-routes.cjs).
     Static,
-    /// Sign-in and the account (M3, NOEVIA_RUST_AUTH): crates/server-account.
+    /// Sign-in and the account (M3, permanent since #1071): crates/server-account.
     Account,
     /// The project routes ported so far (M4, NOEVIA_RUST_PROJECTS): crates/server-projects
     /// `assets` (a project's images), `chats` (its chat list) and `free_chats` (the free-chat list).
@@ -153,7 +150,7 @@ const STORAGE_FILE: &str = "/api/integrations/storage/file";
 
 /// The storage browse decision, before the generic table: the list route takes any suffix, which
 /// the route patterns cannot express. `None` when `path` is not a browse path.
-fn storage_browse(method: &str, path: &str, switches: Switches) -> Option<Option<Native>> {
+fn storage_browse(method: &str, path: &str) -> Option<Option<Native>> {
     let files = path == STORAGE_FILES
         || path
             .strip_prefix(STORAGE_FILES)
@@ -162,13 +159,12 @@ fn storage_browse(method: &str, path: &str, switches: Switches) -> Option<Option
     if !files && !file {
         return None;
     }
-    let owned = switches.rust_auth
-        && cfg!(feature = "rust-storage-browse")
+    let owned = cfg!(feature = "rust-storage-browse")
         && ((files && method == "GET") || (file && method == "POST"));
     Some(owned.then_some(Native::StorageBrowse))
 }
 
-/// Whether this build answers `route` itself when its switch is on.
+/// Whether this build answers `route` itself (when its switch, if any, is on).
 fn compiled(route: &Route) -> bool {
     (route.path != PROJECT_CHATS || cfg!(feature = "rust-project-chats"))
         && (route.path != FREE_CHATS || cfg!(feature = "rust-free-chats"))
@@ -183,13 +179,13 @@ fn compiled(route: &Route) -> bool {
 }
 
 /// The native handler a rust-owned route is implemented by. The front read routes are matched
-/// on their path first: they share NOEVIA_RUST_AUTH (and the export NOEVIA_RUST_PROJECTS) with
-/// the account and project routes (#1071).
+/// on their path first: like the account routes they have no switch (#1071), and the export
+/// shares NOEVIA_RUST_PROJECTS with the project routes.
 pub fn native_for(route: &Route) -> Option<Native> {
     if route.catch_all {
         return (route.switch.is_none()).then_some(Native::Static);
     }
-    let auth = route.switch == Some("NOEVIA_RUST_AUTH");
+    let auth = route.switch.is_none();
     match route.path {
         STORAGE_FILE | STORAGE_FILES_ROUTE if auth => return Some(Native::StorageBrowse),
         STORAGE_METADATA if auth => return Some(Native::StorageMetadata),
@@ -207,13 +203,31 @@ pub fn native_for(route: &Route) -> Option<Native> {
     }
     match (route.path, route.switch) {
         ("/api/ready", None) => Some(Native::Ready),
-        (_, Some("NOEVIA_RUST_AUTH")) if route.path.starts_with("/api/") => Some(Native::Account),
+        (p, None) if is_account_path(p) => Some(Native::Account),
         (p, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ROUTES.contains(&p) => Some(Native::Projects),
         (p, Some("NOEVIA_RUST_PROJECT_WRITES")) if PROJECT_WRITES.contains(&p) => {
             Some(Native::Projects)
         }
         _ => None,
     }
+}
+
+/// The unswitched API routes crates/server-account answers (sign-in, setup, profile, account files
+/// and admin). An unswitched Rust route outside these prefixes must be mapped explicitly above, so a
+/// new one never falls through to the account handler (sbstndalton/noevia#1932).
+const ACCOUNT_PREFIXES: &[&str] = &[
+    "/api/auth/",
+    "/api/account/",
+    "/api/admin/",
+    "/api/setup/",
+    "/api/profile",
+];
+
+fn is_account_path(path: &str) -> bool {
+    ACCOUNT_PREFIXES.iter().any(|p| {
+        path.strip_prefix(p)
+            .is_some_and(|rest| p.ends_with('/') || rest.is_empty() || rest.starts_with('/'))
+    })
 }
 
 fn is_api(path: &str) -> bool {
@@ -268,21 +282,19 @@ pub fn route_for(path: &str) -> Option<&'static Route> {
     ROUTES.iter().find(|r| r.catch_all)
 }
 
-/// What answers `method path` with every switch off: a native handler, or `None` for the
-/// legacy proxy.
+/// What answers `method path` with every deployment switch off (sign-in, the account and the
+/// front read routes are Rust's regardless): a native handler, or `None` for the legacy proxy.
 pub fn dispatch(method: &str, path: &str) -> Option<Native> {
     dispatch_under(method, path, Switches::default())
 }
 
 /// [`dispatch`] under the deployment switches that are on.
 pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Native> {
-    if let Some(decision) = storage_browse(method, path, switches) {
+    if let Some(decision) = storage_browse(method, path) {
         return decision;
     }
     let route = route_for(path)?;
-    if route.path == STORAGE_METADATA
-        && (path != STORAGE_METADATA || method != "GET" || !switches.rust_auth)
-    {
+    if route.path == STORAGE_METADATA && (path != STORAGE_METADATA || method != "GET") {
         return None;
     }
     if route.owner_under(switches) != Owner::Rust {
@@ -313,6 +325,39 @@ mod tests {
         assert!(ROUTES.iter().any(|r| r.catch_all && r.owner == Owner::Rust));
     }
 
+    /// sbstndalton/noevia#1932: every unswitched Rust-owned /api/ route is either an account route
+    /// (served by the account handler) or mapped to its own handler, never the account fallback.
+    #[test]
+    fn unswitched_rust_api_routes_are_account_or_explicitly_mapped() {
+        let mut account = 0;
+        for r in ROUTES.iter().filter(|r| {
+            r.owner == Owner::Rust
+                && r.switch.is_none()
+                && !r.catch_all
+                && r.path.starts_with("/api/")
+        }) {
+            match native_for(r) {
+                Some(Native::Account) => {
+                    assert!(
+                        is_account_path(r.path),
+                        "{} falls through to Native::Account",
+                        r.path
+                    );
+                    account += 1;
+                }
+                Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
+                other @ None => assert!(
+                    other.is_some(),
+                    "{} is owner = rust with no switch but has no handler",
+                    r.path
+                ),
+            }
+        }
+        assert!(account > 0);
+        assert!(!is_account_path("/api/profiles"));
+        assert!(!is_account_path("/api/accounting"));
+    }
+
     #[test]
     fn node_routes_have_no_native_handler() {
         for r in ROUTES.iter().filter(|r| r.owner == Owner::Node) {
@@ -334,32 +379,26 @@ mod tests {
 
     #[test]
     fn switches_by_name() {
-        let on = Switches {
-            rust_auth: true,
-            rust_projects: false,
-            ..Default::default()
-        };
-        assert!(on.on("NOEVIA_RUST_AUTH"));
+        let on = Switches::default();
         assert!(!on.on("NOEVIA_RUST_PROJECTS"));
-        assert!(!Switches::default().on("NOEVIA_RUST_AUTH"));
+        // Retired (#1071): the name means nothing, sign-in is Rust's regardless.
+        assert!(!on.on("NOEVIA_RUST_AUTH"));
         assert!(!on.on("NOEVIA_SOMETHING_ELSE"));
         let both = Switches {
-            rust_auth: true,
             rust_projects: true,
             ..Default::default()
         };
         assert!(both.on("NOEVIA_RUST_PROJECTS"));
+        assert!(!both.on("NOEVIA_RUST_AUTH"));
     }
 
     #[test]
     fn project_images_are_rusts_only_under_their_switch_and_methods() {
         let auth = Switches {
-            rust_auth: true,
             rust_projects: false,
             ..Default::default()
         };
         let both = Switches {
-            rust_auth: true,
             rust_projects: true,
             ..Default::default()
         };
@@ -390,12 +429,8 @@ mod tests {
 
     #[test]
     fn a_projects_chat_list_is_rusts_only_under_the_switch_for_get_and_post() {
-        let auth = Switches {
-            rust_auth: true,
-            ..Default::default()
-        };
+        let auth = Switches::default();
         let both = Switches {
-            rust_auth: true,
             rust_projects: true,
             ..Default::default()
         };
@@ -451,6 +486,59 @@ mod tests {
         assert_eq!(dispatch("GET", "/api/projects/p1/chats"), None);
     }
 
+    // #1071: sign-in and the account are always Rust's for their listed methods, with no switch;
+    // a retired NOEVIA_RUST_AUTH value is never consulted, and the methods Rust does not list
+    // (and account deletion) stay Node's.
+    #[test]
+    fn account_routes_are_unconditional() {
+        for r in ROUTES.iter() {
+            assert_ne!(r.switch, Some("NOEVIA_RUST_AUTH"), "{}", r.path);
+        }
+        for (m, p) in [
+            ("GET", "/api/setup/status"),
+            ("POST", "/api/setup/complete"),
+            ("POST", "/api/auth/login/password"),
+            ("POST", "/api/auth/login/passkey/options"),
+            ("POST", "/api/auth/logout"),
+            ("GET", "/api/auth/session"),
+            ("DELETE", "/api/auth/sessions/s1"),
+            ("PATCH", "/api/auth/passkeys/k1"),
+            ("POST", "/api/auth/device/token"),
+            ("GET", "/api/auth/devices"),
+            ("POST", "/api/auth/invitations/accept"),
+            ("POST", "/api/auth/recovery/complete"),
+            ("GET", "/api/profile"),
+            ("PATCH", "/api/profile"),
+            ("POST", "/api/profile/app-passwords"),
+            (
+                "DELETE",
+                "/api/profile/app-passwords/0123456789abcdef0123456789abcdef",
+            ),
+            ("PUT", "/api/profile/appearance"),
+            ("PUT", "/api/profile/features"),
+            ("POST", "/api/profile/onboarding"),
+            ("GET", "/api/account/memory"),
+            ("PUT", "/api/account/preferences"),
+            ("GET", "/api/admin/users"),
+            ("POST", "/api/admin/invitations"),
+            ("PUT", "/api/admin/users/u1/disabled"),
+            ("POST", "/api/admin/users/u1/recovery"),
+        ] {
+            assert_eq!(dispatch(m, p), Some(Native::Account), "{m} {p}");
+        }
+        for (m, p) in [
+            ("DELETE", "/api/admin/users/u1"),
+            ("GET", "/api/admin/web-address"),
+            ("GET", "/api/profile/sharing"),
+            ("GET", "/api/account/retention"),
+            ("HEAD", "/api/auth/session"),
+            ("GET", "/api/auth/login/password"),
+            ("GET", "/api/profile/features"),
+        ] {
+            assert_eq!(dispatch(m, p), None, "{m} {p}");
+        }
+    }
+
     #[test]
     fn most_specific_pattern_wins() {
         assert_eq!(pattern_matches("/api/x/{id}", "/api/x/1"), Some(3));
@@ -459,26 +547,18 @@ mod tests {
         assert_eq!(pattern_matches("/api/m{*?}", "/api/m"), Some(3));
     }
     #[test]
-    fn usage_owns_all_methods_whenever_native_auth_is_on() {
-        let on = Switches {
-            rust_auth: true,
-            ..Default::default()
-        };
+    fn usage_owns_all_methods_always() {
+        let on = Switches::default();
         for p in ["/api/usage", "/api/usage/aggregate"] {
             for m in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
-                assert_eq!(dispatch(m, p), None);
                 assert_eq!(dispatch_under(m, p, on), Some(Native::Usage));
             }
         }
     }
     #[test]
-    fn sampling_owns_all_methods_whenever_native_auth_is_on() {
-        let on = Switches {
-            rust_auth: true,
-            ..Default::default()
-        };
+    fn sampling_owns_all_methods_always() {
+        let on = Switches::default();
         for m in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
-            assert_eq!(dispatch(m, "/api/sampling-settings"), None);
             assert_eq!(
                 dispatch_under(m, "/api/sampling-settings", on),
                 Some(Native::SamplingSettings)
@@ -486,15 +566,11 @@ mod tests {
         }
     }
     #[test]
-    fn reasoning_owns_only_put_whenever_native_auth_is_on() {
-        let on = Switches {
-            rust_auth: true,
-            ..Default::default()
-        };
+    fn reasoning_owns_only_put_always() {
+        let on = Switches::default();
         for m in ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"] {
             assert_eq!(dispatch_under(m, "/api/reasoning-settings", on), None);
         }
-        assert_eq!(dispatch("PUT", "/api/reasoning-settings"), None);
         assert_eq!(
             dispatch_under("PUT", "/api/reasoning-settings", on),
             Some(Native::ReasoningSettings)
@@ -506,7 +582,6 @@ mod tests {
     #[test]
     fn project_writes_are_rusts_only_under_their_own_switch() {
         let projects = Switches {
-            rust_auth: true,
             rust_projects: true,
             ..Default::default()
         };
@@ -541,12 +616,8 @@ mod tests {
 
     #[test]
     fn the_free_chat_list_is_rusts_only_under_the_switch_for_get_and_post() {
-        let auth = Switches {
-            rust_auth: true,
-            ..Default::default()
-        };
+        let auth = Switches::default();
         let both = Switches {
-            rust_auth: true,
             rust_projects: true,
             ..Default::default()
         };
@@ -583,14 +654,10 @@ mod tests {
     }
 
     #[test]
-    fn stats_owns_only_get_whenever_native_auth_is_on_in_a_build_with_the_slice() {
-        let on = Switches {
-            rust_auth: true,
-            ..Default::default()
-        };
+    fn stats_owns_only_get_always_in_a_build_with_the_slice() {
+        let on = Switches::default();
         let answered = cfg!(feature = "rust-stats").then_some(Native::Stats);
         assert_eq!(crate::FEATURES.contains(&"rust-stats"), answered.is_some());
-        assert_eq!(dispatch("GET", "/api/stats"), None);
         assert_eq!(dispatch_under("GET", "/api/stats", on), answered);
         // Node keeps every other method (it answers them all) and the paths around it.
         for (m, p) in [
@@ -612,10 +679,7 @@ mod tests {
 
     #[test]
     fn export_owns_only_get_whenever_projects_is_on_in_a_build_with_the_slice() {
-        let auth = Switches {
-            rust_auth: true,
-            ..Default::default()
-        };
+        let auth = Switches::default();
         let on = Switches {
             rust_projects: true,
             ..auth
@@ -649,17 +713,13 @@ mod tests {
     }
 
     #[test]
-    fn chatgpt_status_owns_only_the_exact_get_whenever_native_auth_is_on() {
-        let on = Switches {
-            rust_auth: true,
-            ..Default::default()
-        };
+    fn chatgpt_status_owns_only_the_exact_get_always() {
+        let on = Switches::default();
         let answered = cfg!(feature = "rust-chatgpt-status").then_some(Native::ChatgptStatus);
         assert_eq!(
             crate::FEATURES.contains(&"rust-chatgpt-status"),
             answered.is_some()
         );
-        assert_eq!(dispatch("GET", "/api/providers/chatgpt"), None);
         assert_eq!(
             dispatch_under("GET", "/api/providers/chatgpt", on),
             answered
@@ -684,14 +744,11 @@ mod tests {
         assert!(!on.on("NOEVIA_RUST_CHATGPT_STATUS"));
     }
 
-    // #1071: the front read routes are Rust's whenever NOEVIA_RUST_AUTH is on, with no switch of
-    // their own; no route names a retired switch.
+    // #1071: the front read routes are always Rust's, with no switch at all; no route names a
+    // retired switch.
     #[test]
-    fn front_read_routes_are_unconditional_under_native_auth() {
-        let auth = Switches {
-            rust_auth: true,
-            ..Default::default()
-        };
+    fn front_read_routes_are_unconditional() {
+        let auth = Switches::default();
         for r in ROUTES.iter() {
             if let Some(sw) = r.switch {
                 assert!(
@@ -735,11 +792,12 @@ mod tests {
             {
                 assert_eq!(dispatch_under(m, p, auth), Some(native), "{m} {p}");
             }
-            assert_eq!(
-                dispatch(m, p),
-                None,
-                "{m} {p}: without native auth the front proxies"
-            );
+            if crate::config::FRONT_ROUTE_FEATURES
+                .iter()
+                .all(|(_, on)| *on)
+            {
+                assert_eq!(dispatch(m, p), Some(native), "{m} {p}: no switch at all");
+            }
         }
     }
 }

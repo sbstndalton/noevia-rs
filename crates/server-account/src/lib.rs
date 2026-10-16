@@ -1,6 +1,6 @@
 //! noevia-core's sign-in and account routes in Rust (full-Rust migration M3,
 //! docs/adr-0001-rust-and-repo-split.md "Amendment 2026-10-10" in sbstndalton/noevia), for when
-//! the deployment switch NOEVIA_RUST_AUTH=1 hands them to the Rust front.
+//! the Rust front owns them (always, since sbstndalton/noevia#1071; the switch NOEVIA_RUST_AUTH is retired).
 //!
 //! [`Account::handle`] runs core index.cjs handleRequestScoped's order for the paths Rust owns:
 //! routes/device-auth.cjs `open` (the feature switch, ambiguous credentials, the RFC 8628 code

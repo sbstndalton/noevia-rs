@@ -45,29 +45,30 @@ with zero differences and the same final data dir as a Node-direct run.
 Follow-up once the front is live: delete core's `static-files.cjs`, `spa-routes.cjs` and
 `createReadyRoutes` (Node then answers neither), not before.
 
-## M3: Rust owns sign-in and the account (`NOEVIA_RUST_AUTH`)
+## M3: Rust owns sign-in and the account (permanent)
 
-A route may name a deployment `switch`. `owner = "rust"` with `switch = "NOEVIA_RUST_AUTH"`
-takes effect only while the deployment sets `NOEVIA_RUST_AUTH=1`; without it the route is Node's,
-so merging a flip changes nothing live. The switch also:
+Since sbstndalton/noevia#1071 the sign-in and account routes are `owner = "rust"` with no switch:
+the deployment switch `NOEVIA_RUST_AUTH` is retired (a leftover value only earns a startup
+warning), core no longer has the Node handlers, and the front refuses to start without
+`UI_DATA_DIR` or with an invalid auth environment. Rust's ownership (`RustAuth::owned`):
 
 - opens server-store's `Writer` (crates/server-store `OWNED_TABLES`, `OWNED_SETTING_KEYS`,
   `OWNED_JSON_FILES`): the auth tables, with per-table access, and nothing else;
 - makes the front write what Node's request gate wrote on every request (server-auth `upkeep`:
   `sessions.last_seen_at`, rejected sessions, `device_grants.last_used_at`) before it proxies;
-- with `NOEVIA_FRONT=rust`, makes Node refuse to write the same tables (noevia-core
-  `server/rust-auth.cjs`), so each row has one writer, and re-read the public address from
+- is matched by Node always refusing to write the same tables (noevia-core
+  `server/rust-auth.cjs`), so each row has one writer, and re-reading the public address from
   settings on every use.
 
-`noevia-server --features` lists `rust-auth`: the build answers the switched routes (the web
-supervisor should check it before letting Node refuse the account tables). The switch is removed, with Node's copies of the routes, once Rust-owned sign-in
-is proven live.
+`noevia-server --features` lists `rust-auth`; the web supervisor refuses to start without it.
+The corpus oracle at `core.ref` predates the removal: tools/front/replay-front.sh always tells it
+the front owns sign-in (`NOEVIA_RUST_AUTH=1` with its confirmation, on the Node side only).
 
 ## M4: Rust owns project routes, slice by slice (`NOEVIA_RUST_PROJECTS`)
 
 `switch = "NOEVIA_RUST_PROJECTS"` routes are Rust's only while the deployment sets
-`NOEVIA_RUST_PROJECTS=1`, and the front refuses to start with it unless `NOEVIA_RUST_AUTH=1` too
-(the front gates the routes it owns itself, and writes the session upkeep Node's gate wrote). The
+`NOEVIA_RUST_PROJECTS=1` (the front gates the routes it owns itself, and writes the session
+upkeep Node's gate wrote; before #1071 this also needed `NOEVIA_RUST_AUTH=1`). The
 first slice is a project's images: `POST /api/projects/{id}/assets`, `GET` and `DELETE
 /api/projects/{id}/assets/{assetId}` (crates/server-projects `assets`). The second is a project's
 chat list: `GET` and `POST /api/projects/{id}/chats` (crates/server-projects `chats`: core's
@@ -90,7 +91,7 @@ move or delete still change it), so while the switch is on both processes write 
 `projects.json.lock`, crates/server-projects `lock` = core `server/rust-projects.cjs`): Rust re-reads it for every change
 and writes Node's exact `atomicJson` bytes; Node re-reads it when it changed and saves by a
 per-project, per-field three-way merge (`assets`, `retiredAssets` and `chats` per item), so neither
-drops the other's change. With `NOEVIA_FRONT=rust`, `NOEVIA_RUST_AUTH_CONFIRMED=1` and
+drops the other's change. With `NOEVIA_FRONT=rust` and
 `NOEVIA_RUST_PROJECTS_CONFIRMED=1` (the supervisor sets the last once `--features` lists
 `rust-projects`), Node's copies of the image writes answer 503 `RUST_PROJECTS_OWNED`; its
 chat-list save does so only with `NOEVIA_RUST_PROJECT_CHATS_CONFIRMED=1` as well, which the
@@ -135,13 +136,12 @@ The core#61 landing provides the required native OCR front acceptance gate (#127
 ## sbstndalton/noevia#1071: the front read routes are permanent
 
 The usage, sampling and reasoning settings, routing mode and routing default, engine statistics,
-ChatGPT status and connected-storage metadata/list/read routes below are Rust's whenever the front
-runs with `NOEVIA_RUST_AUTH=1` (routes.toml `switch = "NOEVIA_RUST_AUTH"`), and the conversation
+ChatGPT status and connected-storage metadata/list/read routes below are always Rust's (no
+routes.toml `switch`; `NOEVIA_RUST_AUTH` itself is retired as well), and the conversation
 export whenever it runs with `NOEVIA_RUST_PROJECTS=1`. Their own switches (`NOEVIA_RUST_USAGE`,
 `_SAMPLING_SETTINGS`, `_REASONING_SETTINGS`, `_ROUTING_MODE`, `_ROUTING_DEFAULT`, `_STATS`,
 `_CHATGPT_STATUS`, `_STORAGE_READS`, `_STORAGE_BROWSE`, `_EXPORT`) are retired: a leftover value
-only earns a startup warning. Core no longer has the Node handlers, so with `NOEVIA_RUST_AUTH=1` the
-front refuses to start without every cargo feature they need (the default features), `UI_DATA_DIR`,
+only earns a startup warning. Core no longer has the Node handlers, so the front refuses to start without every cargo feature they need (the default features), `UI_DATA_DIR`,
 a valid auth environment or a stats engine it can read; the web supervisor checks the same features
 in `--features` before starting either process. The sections below describe each slice as it was
 introduced; their Node oracles and fixtures stay pinned at `core.ref` and are not regenerated, and
