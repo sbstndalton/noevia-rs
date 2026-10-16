@@ -68,6 +68,8 @@ fn actual_client_deterministic_domain_zero_diff() -> Result<(), Box<dyn Error>> 
     ] {
         support::checked_source(&root, file)?;
     }
+    // Without the pinned dav-parse.wasm the Node side answers 502 for every listing (#1898).
+    support::require_dav_parse_wasm(&root)?;
     let dav = "<multistatus><response><href>/dav/docs/Z.txt</href><getcontentlength>007</getcontentlength></response><response><href>/dav/docs/a.md</href><getcontentlength>9007199254740993</getcontentlength></response><response><href>https://elsewhere.invalid/dav/docs/skip.txt</href></response></multistatus>";
     let s3 = "<ListBucketResult><CommonPrefixes><Prefix>diary/docs/sub/</Prefix></CommonPrefixes><Contents><Key>diary/docs/z.txt</Key><Size>3</Size></Contents></ListBucketResult>";
     let mut cases = Vec::new();
