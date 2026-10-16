@@ -24,7 +24,7 @@
 //! kernel-contained walker cannot follow Python (a symlink leaving the models folder, an
 //! unreadable folder, a non-UTF-8 name) instead of guessing.
 use crate::sections::{access::Root, ini::Ini, Budget, Error as WalkError, INI_CAP};
-use rusqlite::{types::ValueRef, Connection, OpenFlags};
+use rusqlite::types::ValueRef;
 use std::{
     collections::HashMap,
     io::Read,
@@ -520,16 +520,19 @@ fn read_checks(
     database: &Path,
     deadline: Instant,
 ) -> Result<HashMap<String, (Stored, Stored)>, Stop> {
-    let failed = |_| Stop::Failed;
-    let db = Connection::open_with_flags(
-        database,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(failed)?;
+    let failed = |error: rusqlite::Error| {
+        crate::sqlite_read::log_once("model_updates", &error);
+        Stop::Failed
+    };
+    // noevia#1922: read-write without CREATE plus query_only (a closed WAL store has no -shm).
+    let db = crate::sqlite_read::open(database, "model_updates").map_err(failed)?;
     db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_LENGTH, VALUE_CAP)
         .map_err(failed)?;
-    db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_SQL_LENGTH, 1024)
-        .map_err(failed)?;
+    db.set_limit(
+        rusqlite::limits::Limit::SQLITE_LIMIT_SQL_LENGTH,
+        crate::sqlite_read::SQL_CAP,
+    )
+    .map_err(failed)?;
     db.busy_timeout(BUSY_WAIT).map_err(failed)?;
     db.progress_handler(1000, Some(move || Instant::now() >= deadline))
         .map_err(failed)?;

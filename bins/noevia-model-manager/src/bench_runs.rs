@@ -20,7 +20,7 @@
 //! Only a canonical id (`-?[0-9]+` inside i64) is native; any other spelling is forwarded and
 //! Python answers it (422, or its 500 for an id past SQLite's range).
 use model_files::json::Value as Json;
-use rusqlite::{types::ValueRef, Connection, OpenFlags};
+use rusqlite::{types::ValueRef, Connection};
 use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -291,13 +291,12 @@ fn rows(db: &Connection, sql: &str, param: rusqlite::types::Value) -> Result<Vec
 
 /// The store reads, in Python's order. `Ok(None)` is "run not found".
 pub(crate) fn read(database: &Path, run_id: i64, deadline: Instant) -> Result<Option<Stored>, ()> {
-    let db = Connection::open_with_flags(
-        database,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|_| ())?;
+    // noevia#1922: opened as Python opens it (read-write without CREATE, query_only); the open
+    // and every later store error are logged once.
+    let logged = |e: rusqlite::Error| crate::sqlite_read::log_once("bench_runs", &e);
+    let db = crate::sqlite_read::open(database, "bench_runs").map_err(|_| ())?;
     db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_LENGTH, VALUE_CAP)
-        .map_err(|_| ())?;
+        .map_err(logged)?;
     db.busy_timeout(BUSY_WAIT).map_err(|_| ())?;
     db.progress_handler(1000, Some(move || Instant::now() >= deadline))
         .map_err(|_| ())?;

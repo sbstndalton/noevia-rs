@@ -1,0 +1,205 @@
+{
+ "cases": [
+  {
+   "answer": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\"],\"msg\":\"Field required\",\"input\":null}]}",
+   "body": "",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\"],\"msg\":\"Field required\",\"input\":null}]}",
+   "body": "null",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":[]}]}",
+   "body": "[]",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":[1,2.5,1e+300,-0.0,100000000000000000000000]}]}",
+   "body": "[1, 2.5, 1e300, -0.0, 100000000000000000000000]",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":\"text\"}]}",
+   "body": "\"text\"",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":true}]}",
+   "body": "true",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":3}]}",
+   "body": "3",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "Internal Server Error",
+   "body": "NaN",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 500
+  },
+  {
+   "answer": "Internal Server Error",
+   "body": "[Infinity, -Infinity]",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 500
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":[{\"b\":3,\"a\":2}]}]}",
+   "body": "[{\"b\": 1, \"a\": 2, \"b\": 3}]",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":[{\"z\":{\"y\":1,\"x\":[true,null]}}]}]}",
+   "body": "[{\"z\": {\"y\": 1, \"x\": [true, null]}}]",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":[\"é😀\",\"q\\\"\\\\\\n\\t\\u0001\"]}]}",
+   "body": "[\"é😀\", \"q\\\"\\\\\\n\\t\\u0001\"]",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",1],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting property name enclosed in double quotes\"}}]}",
+   "body": "{not json",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",5],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting ':' delimiter\"}}]}",
+   "body": "{\"a\" 1}",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",8],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting property name enclosed in double quotes\"}}]}",
+   "body": "{\"a\": 1,}",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",5],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting ',' delimiter\"}}]}",
+   "body": "[1, 2",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",9],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Extra data\"}}]}",
+   "body": "{\"a\": 1} x",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",0],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Unterminated string starting at\"}}]}",
+   "body": "\"unterminated",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",5],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Invalid \\\\escape\"}}]}",
+   "body": "\"bad \\q\"",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",2],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Invalid \\\\uXXXX escape\"}}]}",
+   "body": "\"\\u12\"",
+   "content_type": "application/json",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\"],\"msg\":\"Field required\",\"input\":null}]}",
+   "body": "",
+   "content_type": null,
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":\"{\\\"name\\\": \\\"n\\\", \\\"body\\\": \\\"b\\\"}\"}]}",
+   "body": "{\"name\": \"n\", \"body\": \"b\"}",
+   "content_type": "text/plain",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":\"plain text é\"}]}",
+   "body": "plain text é",
+   "content_type": "text/plain",
+   "kind": "body",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"pid\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"abc\"}]}",
+   "kind": "pid",
+   "raw": "abc",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"pid\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\"1.5\"}]}",
+   "kind": "pid",
+   "raw": "1.5",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"pid\"],\"msg\":\"Input should be a valid integer, unable to parse string as an integer\",\"input\":\" \"}]}",
+   "kind": "pid",
+   "raw": "%20",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"bool_parsing\",\"loc\":[\"query\",\"defaults\"],\"msg\":\"Input should be a valid boolean, unable to interpret input\",\"input\":\"maybe\"}]}",
+   "kind": "defaults",
+   "raw": "maybe",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"bool_parsing\",\"loc\":[\"query\",\"defaults\"],\"msg\":\"Input should be a valid boolean, unable to interpret input\",\"input\":\"\"}]}",
+   "kind": "defaults",
+   "raw": "",
+   "status": 422
+  },
+  {
+   "answer": "{\"detail\":[{\"type\":\"bool_parsing\",\"loc\":[\"query\",\"defaults\"],\"msg\":\"Input should be a valid boolean, unable to interpret input\",\"input\":\"2\"}]}",
+   "kind": "defaults",
+   "raw": "2",
+   "status": 422
+  }
+ ],
+ "oracle": {
+  "api.py": "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6",
+  "main.py": "87eeac941fa5c0687160f315517b60c02b29324266d780851c547f6a1d749ee2"
+ }
+}

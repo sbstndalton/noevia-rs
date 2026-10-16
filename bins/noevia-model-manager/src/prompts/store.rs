@@ -373,7 +373,7 @@ impl Store {
                 | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         ))?;
         sql(db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_LENGTH, 1_048_576))?;
-        sql(db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_SQL_LENGTH, 8192))?;
+        sql(db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_SQL_LENGTH, 1_048_576))?;
         sql(db.busy_timeout(Duration::from_millis(250)))?;
         let mut store = Self {
             db,

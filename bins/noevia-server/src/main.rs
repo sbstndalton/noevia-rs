@@ -147,6 +147,40 @@ async fn server_main() -> ExitCode {
     }
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let mut stop_wait = stop_rx.clone();
+    // sbstndalton/noevia#1264: Node's projects.json / free-chats.json writes, loopback only.
+    if let (Some(cfg), Some(switch), Some(data_dir)) = (
+        app.config.project_store.clone(),
+        app.config.rust_projects,
+        app.config.data_dir.clone(),
+    ) {
+        let listener = match tokio::net::TcpListener::bind(("127.0.0.1", cfg.port)).await {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!(
+                    "noevia-server: cannot listen on 127.0.0.1:{} for the project store: {e}",
+                    cfg.port
+                );
+                return ExitCode::from(1);
+            }
+        };
+        println!(
+            "noevia-server: NOEVIA_RUST_PROJECT_STORE=1, project store on 127.0.0.1:{}",
+            cfg.port
+        );
+        let store = noevia_server::project_store::Store {
+            data_dir,
+            token: cfg.token.into(),
+            switch,
+        };
+        let mut rx = stop_rx.clone();
+        tokio::spawn(noevia_server::project_store::serve(
+            listener,
+            store,
+            async move {
+                let _ = rx.wait_for(|s| *s).await;
+            },
+        ));
+    }
     #[cfg(feature = "rust-storage-reads")]
     let storage_metadata = std::sync::Arc::clone(&app.storage_metadata);
     let server = serve::serve(listener, app, serve::Limits::default(), async move {
