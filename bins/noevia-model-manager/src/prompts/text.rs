@@ -172,3 +172,31 @@ fn repr(value: &Value, out: &mut Text) -> Result<(), Error> {
         }
     }
 }
+
+/// `str(value or "")` (not stripped), for other native routes that read a FastAPI `dict` body
+/// the same way (noevia#1318 badges). Bounded like the prompt fields.
+pub fn py_str(value: Option<&Value>) -> Result<String, Error> {
+    let Some(value) = value.filter(|v| v.truthy()) else {
+        return Ok(String::new());
+    };
+    let mut out = Text {
+        text: String::new(),
+        cap: 1_048_576,
+    };
+    if let Value::Str(s) = value {
+        out.add(s)?;
+    } else {
+        repr(value, &mut out)?;
+    }
+    Ok(out.text)
+}
+
+/// Python's `repr(text)` for a str, e.g. for `f"... {category!r}"` messages.
+pub fn py_repr_str(text: &str) -> Result<String, Error> {
+    let mut out = Text {
+        text: String::new(),
+        cap: 1_048_576,
+    };
+    string(text, &mut out)?;
+    Ok(out.text)
+}

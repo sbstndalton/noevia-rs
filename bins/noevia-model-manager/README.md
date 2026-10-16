@@ -43,8 +43,8 @@ clamp), with zero mapped to 400; invalid syntax returns a sanitized 422 detail r
 FastAPI's input-echoing validation object.
 
 Qualification uses the actual pinned Python `api.py` SHA
-`800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6` from services
-`65f8b1f6dd8705dd9023ad8efdc4611445c6a73d`. `generate-oracle` evaluates only the actual
+`c8cf58e15afb97cc0008c9b11c28b4f4a853a3e59ce8cbbd6ba5336c65cee035` from services
+`641c9c342256de69251097d4839d05ee41044fe0`. `generate-oracle` evaluates only the actual
 AST redaction/log functions with synthetic in-memory collaborators, without importing the
 app or invoking startup. CI regenerates its exact fixture. Properties cover secret probes
 and hostile frames; tests use only owned Unix fake peers and a test-only uvicorn executable.
@@ -159,5 +159,7 @@ Docker services or production data are used.
 `native-model-detail` and `MODEL_MANAGER_MODEL_DETAIL_IMPL=rust` serve the read-only `GET /api/v1/models/detail`, default off. The file fields are native; the live `loadedOn` and `fit` fields are asked of the Python child through a private call, never re-implemented. A `TZ` other than unset or `UTC` keeps Python serving it, with one log line. See [native model detail](docs/native-model-detail.md).
 
 `native-download-targets` and `MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL=rust` serve the read-only `GET /api/v1/download-targets`, default off. `POST /api/v1/downloads` stays Python and checks its target against the same settings. See [native download targets](docs/native-download-targets.md).
+
+`native-badges` and `MODEL_MANAGER_BADGES_IMPL=rust` serve `PUT` and `DELETE /api/v1/badges`, default off, with the noevia#1905 fixes (a non-integer rating or run id answers 400, and padded aliases are stripped once). See [native badge writes](docs/native-badges.md).
 
 `native-diagnose` and `MODEL_MANAGER_DIAGNOSE_IMPL=rust` select the whole internal backend diagnosis GET, default off. Selection requires exact `TZ=UTC` before startup. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.

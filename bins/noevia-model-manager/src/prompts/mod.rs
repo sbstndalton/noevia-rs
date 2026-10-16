@@ -6,7 +6,14 @@ mod encoding;
 mod literals;
 mod store;
 mod text;
+/// The bounded JSON value a FastAPI `dict` body parses to.
+pub use model_files::json::Value as JsonValue;
 pub use store::Prompts;
+pub use text::{py_repr_str, py_str};
+/// Parse a body already accepted by [`validation_with_empty`] into a value.
+pub fn parse_json(text: &str) -> Result<JsonValue, Error> {
+    text::parse(text.as_bytes())
+}
 pub const NAME_CAP: usize = 4096;
 pub const BODY_CAP: usize = 262_144;
 pub const ROW_CAP: usize = 4096;
