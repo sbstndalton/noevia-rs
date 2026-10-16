@@ -95,6 +95,10 @@ CASES = [
         put("/api/v1/sections/a", {"baseRevision": R, "values": {"ctx-size": 12, "temp": 1.5, "model": None, "top-k": False,
                                                                 "min-p": [1, "x"], "seed": {"k": "v"}}}),
     ], ini=BASE),
+    case("save-name-trailing-newline", [
+        put("/api/v1/sections/foo%0A", {"baseRevision": R, "values": {"model": "/models/foo.gguf"}}),
+        put("/api/v1/sections/a%0A", {"baseRevision": R, "values": {}}),
+    ], ini=BASE),
     case("save-cache-ram", [
         put("/api/v1/sections/my-embed", {"baseRevision": R, "values": {"model": "/models/e.gguf"}}),
         put("/api/v1/sections/flagged", {"baseRevision": R, "values": {"model": "/models/f.gguf"}, "extras": "reranking = ON"}),

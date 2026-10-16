@@ -94,9 +94,8 @@ fn or_empty(body: &Json, key: &str) -> Option<String> {
     crate::prompts::py_str(body.get(key)).ok()
 }
 
-/// `^[A-Za-z0-9._\-+]+$` (`$` also before one trailing newline).
+/// `re.fullmatch(r"[A-Za-z0-9._\-+]+", name)`: no trailing newline (noevia#1934).
 pub fn valid_section_name(name: &str) -> bool {
-    let name = name.strip_suffix('\n').unwrap_or(name);
     !name.is_empty()
         && name
             .bytes()

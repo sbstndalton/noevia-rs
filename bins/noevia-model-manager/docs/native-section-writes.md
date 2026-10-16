@@ -38,7 +38,7 @@ These need the GGUF hints, the draft-head search beside the weights and the buil
 - **Known gaps (approximate, not byte-tested):** cache-ram values with non-ASCII digits are treated as text. A 422 body's key order follows the shared validator (see noevia#1908).
 
 ## Differential evidence
-`tools/gen-section-writes-oracle.py` runs the actual services app (pinned `f34f008`, services#67) step by step on synthetic models folders. `time.strftime` is pinned to one UTC instant, and `MODEL_FILES_IMPL=rust` cases use the real `model-files` binary.
+`tools/gen-section-writes-oracle.py` runs the actual services app (pinned `ff8f314`, services#67) step by step on synthetic models folders. `time.strftime` is pinned to one UTC instant, and `MODEL_FILES_IMPL=rust` cases use the real `model-files` binary.
 
 It records every answer, the plan the child gives for each safe-defaults step, and the final models.ini, roles file and directory listing. The cases cover new files, preserving edits, every error path, cache-ram rules, a `[DEFAULT]` section, duplicates, unparseable files, odd headers (full render), CRLF and missing final newlines, the raw editor (backups, `backup: false`, size, parse errors), Rust and Python backup policies with pruning, rename (roles, fallback, header comments), delete (roles, trailing blanks, a middle section) and safe defaults (flat file, folder with a draft head, refusals).
 
