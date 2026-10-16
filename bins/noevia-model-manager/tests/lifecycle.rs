@@ -320,29 +320,40 @@ fn model_detail_selector_omission_and_python_confirmation_are_closed_before_chil
 
 #[cfg(feature = "native-model-detail")]
 #[test]
-fn native_model_detail_requires_utc_and_normal_canonical_roots_before_child() {
+fn native_model_detail_never_refuses_startup_over_zone_or_roots() {
+    // noevia#1889: a zone other than UTC, or roots the native read cannot use, keep Python serving
+    // the detail read with one log line; startup goes on (here it stops at the invalid token, a
+    // later guard, so no listener or child is started).
     let (dir, marker) = owned_uvicorn();
-    for tz in [
-        None,
-        Some(""),
-        Some("Europe/Berlin"),
-        Some("utc"),
-        Some("UTC0"),
-    ] {
+    let fallback = "GET /api/v1/models/detail stays with python";
+    let run = |tz: Option<&str>, extra: &[(&str, &str)], remove: &[&str]| {
         let mut cmd = command(dir.path(), &marker);
         cmd.env("MODEL_MANAGER_IMPL", "rust")
-            .env("MODEL_MANAGER_MODEL_DETAIL_IMPL", "rust");
+            .env("MODEL_MANAGER_MODEL_DETAIL_IMPL", "rust")
+            .env("MODEL_LOADER_TOKEN", " ");
         match tz {
             Some(value) => cmd.env("TZ", value),
             None => cmd.env_remove("TZ"),
         };
+        for key in remove {
+            cmd.env_remove(key);
+        }
+        for (key, value) in extra {
+            cmd.env(key, value);
+        }
         let output = cmd.prompt_output().unwrap();
-        assert!(!output.status.success(), "{tz:?}");
-        assert!(
-            String::from_utf8_lossy(&output.stderr).contains("exact TZ=UTC"),
-            "{tz:?}"
-        );
         assert!(!marker.exists());
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        assert!(stderr.contains("MODEL_LOADER_TOKEN"), "{stderr}");
+        assert!(!stderr.contains("requires exact TZ"), "{stderr}");
+        stderr
+    };
+    for tz in [None, Some(""), Some("UTC")] {
+        assert!(!run(tz, &[], &[]).contains(fallback), "{tz:?}");
+    }
+    for tz in ["Europe/Berlin", "utc", "UTC0"] {
+        let stderr = run(Some(tz), &[], &[]);
+        assert_eq!(stderr.matches(fallback).count(), 1, "{tz}: {stderr}");
     }
     for models in [
         "models",
@@ -352,37 +363,19 @@ fn native_model_detail_requires_utc_and_normal_canonical_roots_before_child() {
         "/models/../x",
         "",
     ] {
-        let output = command(dir.path(), &marker)
-            .env("MODEL_MANAGER_IMPL", "rust")
-            .env("MODEL_MANAGER_MODEL_DETAIL_IMPL", "rust")
-            .env("TZ", "UTC")
-            .env("MODELS_DIR", models)
-            .prompt_output()
-            .unwrap();
-        assert!(!output.status.success(), "{models}");
         assert!(
-            String::from_utf8_lossy(&output.stderr).contains("MODELS_DIR"),
+            run(Some("UTC"), &[("MODELS_DIR", models)], &[]).contains(fallback),
             "{models}"
         );
-        assert!(!marker.exists());
     }
     for alias in ["models_dir", "Models_Ini_Path", "data_dir"] {
-        let output = command(dir.path(), &marker)
-            .env("MODEL_MANAGER_IMPL", "rust")
-            .env("MODEL_MANAGER_MODEL_DETAIL_IMPL", "rust")
-            .env("TZ", "UTC")
-            .env_remove("DATA_DIR")
-            .env_remove("MODELS_DIR")
-            .env_remove("MODELS_INI_PATH")
-            .env(alias, dir.path().join("alias"))
-            .prompt_output()
-            .unwrap();
-        assert!(!output.status.success(), "{alias}");
-        assert!(
-            String::from_utf8_lossy(&output.stderr).contains("canonical"),
-            "{alias}"
+        let path = dir.path().join("alias");
+        let stderr = run(
+            Some("UTC"),
+            &[(alias, path.to_str().unwrap())],
+            &["DATA_DIR", "MODELS_DIR", "MODELS_INI_PATH"],
         );
-        assert!(!marker.exists());
+        assert!(stderr.contains(fallback), "{alias}");
     }
 }
 

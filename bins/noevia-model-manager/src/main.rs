@@ -75,25 +75,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
-    let detail_mode = environment("MODEL_MANAGER_MODEL_DETAIL_IMPL", "python")?;
+    #[cfg_attr(not(feature = "native-model-detail"), allow(unused_mut))]
+    let mut detail_mode = environment("MODEL_MANAGER_MODEL_DETAIL_IMPL", "python")?;
     if !matches!(detail_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_MODEL_DETAIL_IMPL must be python or rust".into());
     }
-    if detail_mode == "rust" {
-        if mode != "rust" || !cfg!(feature = "native-model-detail") {
-            return Err(
-                "native-model-detail requires rust model manager and compiled native-model-detail feature"
-                    .into(),
-            );
-        }
-        // `modified` is local time in Python; the child is given the same zone.
-        if environment("TZ", "")? != "UTC" {
-            return Err("native-model-detail requires exact TZ=UTC".into());
-        }
+    if detail_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-model-detail")) {
+        return Err(
+            "native-model-detail requires rust model manager and compiled native-model-detail feature"
+                .into(),
+        );
     }
+    // noevia#1889: never refuse to start over this read. The native route formats UTC and gives
+    // the child TZ=UTC; a zone the operator chose (or roots it cannot use) keeps Python serving it.
     #[cfg(feature = "native-model-detail")]
     let detail_roots = if detail_mode == "rust" {
-        Some(model_detail_roots(std::env::vars_os().collect())?)
+        match detail_fallback(&environment("TZ", "")?, std::env::vars_os().collect()) {
+            Ok(roots) => Some(roots),
+            Err(reason) => {
+                eprintln!(
+                    "native-model-detail: {reason}; GET /api/v1/models/detail stays with python"
+                );
+                detail_mode = "python".to_owned();
+                None
+            }
+        }
     } else {
         None
     };
@@ -542,6 +548,20 @@ fn model_detail_roots(
     Ok(roots)
 }
 
+/// noevia#1889: the roots for the native detail read, or why it falls back to python. `TZ` unset
+/// or `UTC` is accepted (the child is given UTC either way); any other zone keeps Python's
+/// local-time answers unchanged.
+#[cfg(feature = "native-model-detail")]
+fn detail_fallback(
+    tz: &str,
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<UpdatesRoots, &'static str> {
+    if !(tz.is_empty() || tz == "UTC") {
+        return Err("TZ is set to a zone other than UTC");
+    }
+    model_detail_roots(values)
+}
+
 /// noevia#1318: the child refuses `GET /api/v1/models/detail` and serves the private runtime call
 /// only when the native reader owns the route; it then runs in UTC and reads the same roots.
 fn model_detail_child(
@@ -888,5 +908,21 @@ mod model_detail_command_tests {
                 expected("/synthetic/models/models.ini")
             );
         }
+    }
+}
+
+#[cfg(all(test, feature = "native-model-detail"))]
+mod detail_fallback_tests {
+    #[test]
+    fn only_unset_or_utc_zone_and_usable_roots_select_native() {
+        for tz in ["", "UTC"] {
+            assert!(super::detail_fallback(tz, Vec::new()).is_ok(), "{tz:?}");
+        }
+        for tz in ["utc", "Europe/Berlin", "UTC0", " UTC"] {
+            assert!(super::detail_fallback(tz, Vec::new()).is_err(), "{tz:?}");
+        }
+        assert!(
+            super::detail_fallback("UTC", vec![("MODELS_DIR".into(), "/models/".into())]).is_err()
+        );
     }
 }

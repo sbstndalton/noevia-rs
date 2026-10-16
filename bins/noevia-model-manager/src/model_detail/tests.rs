@@ -83,6 +83,9 @@ fn time(ns: i128) -> SystemTime {
 pub(crate) fn build(root: &Path, case: &Value) -> (PathBuf, PathBuf) {
     let models = root.join("models");
     let ini = models.join("models.ini");
+    for name in case["outside"].as_array().into_iter().flatten() {
+        std::fs::write(root.join(name.as_str().unwrap()), b"GGUF").unwrap();
+    }
     match case["models"].as_str().unwrap_or("dir") {
         "missing" => {}
         "file" => std::fs::write(&models, b"").unwrap(),
@@ -335,23 +338,25 @@ fn duplicate_section_headers_follow_python_regex() {
 }
 
 #[test]
-fn model_paths_with_parent_segments_are_refused_not_guessed() {
+fn model_paths_with_parent_segments_decide_only_their_own_section() {
     let tmp = tempfile::tempdir().unwrap();
     let models = tmp.path().join("models");
     std::fs::create_dir(&models).unwrap();
     std::fs::write(models.join("a.gguf"), hex(EMPTY_HEADER)).unwrap();
     let ini = models.join("models.ini");
     std::fs::write(&ini, "[a-id]\nmodel = sub/../a.gguf\n").unwrap();
-    assert!(matches!(
-        locate(
-            &models,
-            &ini,
-            "key=a.gguf",
-            Instant::now() + DEADLINE,
-            Root::synthetic
-        ),
-        Step::Done(Outcome::Refused)
-    ));
+    // noevia#1889: whatever Python's is_file() says, `[a-id]` names no listed file and has no
+    // stem file, so a.gguf is answered (its id stays its stem).
+    match locate(
+        &models,
+        &ini,
+        "key=a.gguf",
+        Instant::now() + DEADLINE,
+        Root::synthetic,
+    ) {
+        Step::Located(found) => assert_eq!(found.model_id, "a"),
+        Step::Done(outcome) => panic!("{outcome:?}"),
+    }
     // `.` and empty segments are pathlib-normalised, as Python's is_file() sees them.
     std::fs::write(&ini, "[a-id]\nmodel = .//a.gguf/\n").unwrap();
     let step = locate(
@@ -386,4 +391,41 @@ fn an_expired_deadline_refuses() {
         ),
         Step::Done(Outcome::Refused)
     ));
+}
+
+#[test]
+fn an_unknowable_section_refuses_only_the_model_it_may_configure() {
+    // noevia#1889: `[b] model = ../outside.gguf` cannot be checked; Python maps [b] either to that
+    // path (no listed file) or to b.gguf. Only b.gguf's answer depends on it.
+    let tmp = tempfile::tempdir().unwrap();
+    let models = tmp.path().join("models");
+    std::fs::create_dir(&models).unwrap();
+    for name in ["a.gguf", "b.gguf"] {
+        std::fs::write(models.join(name), hex(EMPTY_HEADER)).unwrap();
+    }
+    let ini = models.join("models.ini");
+    std::fs::write(
+        &ini,
+        "[b]\nmodel = ../outside.gguf\n[gone]\nmodel = x/../../y.gguf\n[a-id]\nmodel = a.gguf\n",
+    )
+    .unwrap();
+    let run = |query: &str| {
+        locate(
+            &models,
+            &ini,
+            query,
+            Instant::now() + DEADLINE,
+            Root::synthetic,
+        )
+    };
+    match run("key=a.gguf") {
+        Step::Located(found) => assert_eq!(found.model_id, "a-id"),
+        Step::Done(outcome) => panic!("a.gguf: {outcome:?}"),
+    }
+    assert!(matches!(run("key=b.gguf"), Step::Done(Outcome::Refused)));
+}
+
+#[test]
+fn detail_reads_are_bounded() {
+    assert_eq!(CONCURRENT_READS, 2);
 }

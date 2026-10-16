@@ -33,6 +33,7 @@ use std::{
     collections::HashMap,
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -79,9 +80,13 @@ pub enum Step {
     Located(Box<Located>),
 }
 
+/// Concurrent file parts (noevia#1889): each may hold a header of up to 256 MiB while parsing.
+pub const CONCURRENT_READS: usize = 2;
+
 pub struct ModelDetail {
     models: PathBuf,
     ini: PathBuf,
+    reads: Arc<tokio::sync::Semaphore>,
 }
 
 impl ModelDetail {
@@ -90,16 +95,27 @@ impl ModelDetail {
         Self {
             models: models.to_owned(),
             ini: ini.to_owned(),
+            reads: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_READS)),
         }
     }
 
     /// The file part, off the async runtime.
     pub async fn locate(&self, query: &str) -> Step {
         let (models, ini, query) = (self.models.clone(), self.ini.clone(), query.to_owned());
+        // Waiting for a slot counts against the same budget; the permit lives as long as the
+        // blocking read, also when this request is dropped.
         let deadline = Instant::now() + DEADLINE;
-        tokio::task::spawn_blocking(move || locate(&models, &ini, &query, deadline, Root::new))
-            .await
-            .unwrap_or(Step::Done(Outcome::Failed))
+        let Ok(Ok(permit)) =
+            tokio::time::timeout(DEADLINE, self.reads.clone().acquire_owned()).await
+        else {
+            return Step::Done(Outcome::Refused);
+        };
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            locate(&models, &ini, &query, deadline, Root::new)
+        })
+        .await
+        .unwrap_or(Step::Done(Outcome::Failed))
     }
 }
 
@@ -258,9 +274,9 @@ fn find(
     let base = std::fs::canonicalize(models).map_err(|_| Stop::Refused)?;
     let root = open(&base).map_err(|_| Stop::Refused)?;
     let found = listing(&root, &base)?;
-    let by_file = match &ini {
+    let (by_file, unknown) = match &ini {
         Some((_, parsed)) => sections_by_file(parsed, &root, &base, &found)?,
-        None => HashMap::new(),
+        None => (HashMap::new(), Vec::new()),
     };
     let aliases: Vec<String> = match &ini {
         Some((text, parsed)) if !has_duplicate_sections(text) => {
@@ -282,6 +298,10 @@ fn find(
         };
         if route_key != key {
             continue;
+        }
+        // A section whose `model =` path could not be checked may configure this file.
+        if unknown.contains(&rel) {
+            return Err(Stop::Refused);
         }
         let matched = match by_file.get(&rel) {
             Some(names) if !names.is_empty() => names.clone(),
@@ -375,38 +395,44 @@ fn shard_base(name: &str) -> Result<String, Stop> {
 }
 
 /// `(settings.models_dir / rel).is_file()` for a section's `model =` path. pathlib drops empty
-/// and `.` segments; a `..` segment could leave the folder, which the contained reader refuses.
-fn is_file(root: &Root, base: &Path, rel: &str) -> Result<bool, Stop> {
+/// and `.` segments. `None` when the contained reader cannot tell: a `..` segment, or a link
+/// leaving the folder (noevia#1889: that decides only this section, never the whole route).
+fn is_file(root: &Root, base: &Path, rel: &str) -> Option<bool> {
     let mut segments = Vec::new();
     for segment in rel.split('/') {
         match segment {
             "" | "." => {}
-            ".." => return Err(Stop::Refused),
+            ".." => return None,
             other => segments.push(other),
         }
     }
     if segments.is_empty() {
-        return Ok(false); // the models folder itself
+        return Some(false); // the models folder itself
     }
     let normal = segments.join("/");
     let mut budget = Budget::default();
     let meta = match root.stat(&normal, &mut budget) {
         Ok(meta) => meta,
         // An absolute link is followed only when its target stays inside the models folder.
-        Err(_) => inside(base, &normal)?,
+        Err(_) => inside(base, &normal).ok()?,
     };
-    Ok(meta.is_some_and(|m| m.is_file()))
+    Some(meta.is_some_and(|m| m.is_file()))
 }
 
 /// `ini.sections_by_file()`: relative file -> the sections that configure it, in file order.
+/// The second value lists the files a section might configure when its `model =` path could not
+/// be checked: Python maps such a section either to that path (which names no listed file) or,
+/// when it is not a file, to its stem's file. Only an entry among those is unknowable.
+type ByFile = (HashMap<String, Vec<String>>, Vec<String>);
 fn sections_by_file(
     parsed: &ini::Ini,
     root: &Root,
     base: &Path,
     found: &[Found],
-) -> Result<HashMap<String, Vec<String>>, Stop> {
+) -> Result<ByFile, Stop> {
     let mut stems: Option<HashMap<String, String>> = None;
     let mut out: HashMap<String, Vec<String>> = HashMap::new();
+    let mut unknown = Vec::new();
     let mut budget = Budget::default();
     for name in parsed.names() {
         let items = parsed
@@ -423,8 +449,18 @@ fn sections_by_file(
         if !model.is_empty() {
             let candidate = model.replacen("/models/", "", 1);
             let candidate = candidate.trim_start_matches('/');
-            if is_file(root, base, candidate)? {
-                rel = Some(candidate.to_owned());
+            match is_file(root, base, candidate) {
+                Some(true) => rel = Some(candidate.to_owned()),
+                Some(false) => {}
+                None => {
+                    if stems.is_none() {
+                        stems = Some(stems_present(found)?);
+                    }
+                    if let Some(stem_rel) = stems.as_ref().and_then(|s| s.get(name)) {
+                        unknown.push(stem_rel.clone());
+                    }
+                    continue;
+                }
             }
         }
         if rel.is_none() {
@@ -437,7 +473,7 @@ fn sections_by_file(
             out.entry(rel).or_default().push(name.to_owned());
         }
     }
-    Ok(out)
+    Ok((out, unknown))
 }
 
 /// A reader that remembers whether the file itself failed (Python's `OSError`, whose text names
