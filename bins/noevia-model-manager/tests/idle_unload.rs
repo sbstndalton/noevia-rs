@@ -98,6 +98,8 @@ fn state(base: &str, reconciler: Option<Arc<Reconciler>>) -> Arc<StateData> {
         download_targets: None,
         #[cfg(feature = "native-badges")]
         badges: None,
+        #[cfg(feature = "native-bench-runs")]
+        bench_runs: None,
     })
 }
 

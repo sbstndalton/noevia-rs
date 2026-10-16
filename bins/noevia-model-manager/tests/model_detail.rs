@@ -63,6 +63,8 @@ fn state(roots: Option<(&Path, &Path)>, legacy_base: &str) -> Arc<StateData> {
         download_targets: None,
         #[cfg(feature = "native-badges")]
         badges: None,
+        #[cfg(feature = "native-bench-runs")]
+        bench_runs: None,
     })
 }
 

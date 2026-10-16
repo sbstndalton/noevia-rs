@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 #[cfg(feature = "native-badges")]
 pub mod badges;
+#[cfg(feature = "native-bench-runs")]
+pub mod bench_runs;
 pub mod diagnose;
 #[cfg(feature = "native-diagnose")]
 pub mod diagnose_docker;
@@ -76,6 +78,10 @@ pub struct StateData {
     /// `fit`) are asked of the Python child, never re-implemented.
     #[cfg(feature = "native-model-detail")]
     pub model_detail: Option<Arc<model_detail::ModelDetail>>,
+    /// noevia#1318: native read-only `GET /api/v1/benchmark/runs/{id}`; its live chart values
+    /// (`capacity_gb`, `vram_predicted`) are asked of the Python child.
+    #[cfg(feature = "native-bench-runs")]
+    pub bench_runs: Option<Arc<bench_runs::BenchRuns>>,
     /// noevia#1318: native `PUT`/`DELETE /api/v1/badges`.
     #[cfg(feature = "native-badges")]
     pub badges: Option<Arc<badges::Badges>>,
@@ -384,12 +390,24 @@ fn native_badges_route(state: &StateData, method: &Method, path: &str) -> bool {
         && path == "/api/v1/badges"
 }
 
+/// Only GET of a canonical id (`-?[0-9]+` inside i64) is native; other spellings, methods and
+/// the slash variant keep their existing forward/405/404 handling.
+#[cfg(feature = "native-bench-runs")]
+fn native_bench_run_id(state: &StateData, method: &Method, path: &str) -> Option<i64> {
+    if state.bench_runs.is_none() || *method != Method::GET {
+        return None;
+    }
+    path.strip_prefix("/api/v1/benchmark/runs/")
+        .and_then(bench_runs::canonical_id)
+}
+
 /// FastAPI's answer to an unhandled exception, byte for byte.
 #[cfg(any(
     feature = "native-model-updates",
     feature = "native-model-detail",
     feature = "native-download-targets",
-    feature = "native-badges"
+    feature = "native-badges",
+    feature = "native-bench-runs"
 ))]
 fn internal_error() -> Response {
     (
@@ -473,6 +491,8 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     let native = native || native_download_targets_route(&state, req.method(), path);
     #[cfg(feature = "native-badges")]
     let native = native || native_badges_route(&state, req.method(), path);
+    // A benchmark run also waits on the child for its live values: a forwarded route's budget,
+    // like model detail (no change to `native` here).
     // The detail route waits on the Python child for its live fields: a forwarded route's budget.
     #[cfg(feature = "native-model-detail")]
     let native = native && !native_model_detail_route(&state, req.method(), path);
@@ -798,6 +818,12 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    #[cfg(feature = "native-bench-runs")]
+    if let Some(run_id) = native_bench_run_id(&state, req.method(), path) {
+        if let Some(runs) = state.bench_runs.clone() {
+            return native_bench_run(&state, &runs, run_id).await;
+        }
+    }
     #[cfg(feature = "native-badges")]
     if native_badges_route(&state, req.method(), path) {
         if let Some(badges) = state.badges.clone() {
@@ -937,6 +963,82 @@ async fn model_detail_runtime(
         StatusCode::OK => Ok(bytes),
         StatusCode::INTERNAL_SERVER_ERROR => Err(model_detail::Outcome::Failed),
         _ => Err(model_detail::Outcome::Unavailable),
+    }
+}
+
+/// noevia#1318: the store part natively, then the live chart values from the child.
+#[cfg(feature = "native-bench-runs")]
+async fn native_bench_run(
+    state: &StateData,
+    runs: &bench_runs::BenchRuns,
+    run_id: i64,
+) -> Response {
+    let outcome = match runs.locate(run_id).await {
+        bench_runs::Step::Done(outcome) => outcome,
+        bench_runs::Step::Located(located) => {
+            let query = bench_runs::runtime_query(&located);
+            match child_runtime(
+                state,
+                bench_runs::RUNTIME_PATH,
+                &query,
+                bench_runs::RUNTIME_CAP,
+            )
+            .await
+            {
+                Ok(body) => bench_runs::splice(&located, &body),
+                Err(true) => bench_runs::Outcome::Failed,
+                Err(false) => bench_runs::Outcome::Unavailable,
+            }
+        }
+    };
+    match outcome {
+        bench_runs::Outcome::Json(status, bytes) => (
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response(),
+        bench_runs::Outcome::Failed => internal_error(),
+        bench_runs::Outcome::Unavailable => {
+            detail(StatusCode::SERVICE_UNAVAILABLE, bench_runs::REFUSAL)
+        }
+    }
+}
+
+/// A private GET to the Python child, bounded by `cap`. `Err(true)` is the child's 500 (Python
+/// raised), `Err(false)` anything else that leaves no usable answer.
+#[cfg(feature = "native-bench-runs")]
+async fn child_runtime(
+    state: &StateData,
+    path: &str,
+    query: &str,
+    cap: usize,
+) -> Result<Vec<u8>, bool> {
+    if query.len() > 256 * 1024 {
+        return Err(true);
+    }
+    let mut request = state
+        .legacy
+        .get(format!("{}{path}?{query}", state.legacy_base))
+        .timeout(Duration::from_secs(60));
+    if !state.token.is_empty() {
+        request = request.header("x-model-loader-token", &state.token);
+    }
+    let response = request.send().await.map_err(|_| false)?;
+    let status = response.status();
+    let mut chunks = response.bytes_stream();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = chunks.next().await {
+        let chunk = chunk.map_err(|_| false)?;
+        if bytes.len().saturating_add(chunk.len()) > cap {
+            return Err(false);
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    match status {
+        StatusCode::OK => Ok(bytes),
+        StatusCode::INTERNAL_SERVER_ERROR => Err(true),
+        _ => Err(false),
     }
 }
 
