@@ -64,11 +64,13 @@ pub struct Config {
     /// write switch), without the compiled rust-project-writes feature and without UI_DATA_DIR;
     /// any other value is off.
     pub rust_project_writes: bool,
-    /// NOEVIA_RUST_PROJECT_STORE=1 (sbstndalton/noevia#1264): the internal store Node writes
-    /// projects.json and free-chats.json through (src/project_store.rs), on 127.0.0.1 at
-    /// NOEVIA_PROJECT_STORE_PORT with the secret NOEVIA_PROJECT_STORE_TOKEN (at least 32 bytes).
-    /// Refused without NOEVIA_RUST_PROJECTS=1, UI_DATA_DIR, the port or the secret; any other
-    /// value is off.
+    /// The internal store Node writes projects.json and free-chats.json through
+    /// (src/project_store.rs, sbstndalton/noevia#1264), on 127.0.0.1 at NOEVIA_PROJECT_STORE_PORT
+    /// with the secret NOEVIA_PROJECT_STORE_TOKEN (at least 32 bytes). Permanent: the
+    /// NOEVIA_RUST_PROJECT_STORE switch is retired and not read; the store runs whenever the
+    /// supervisor hands over a port (it does whenever NOEVIA_RUST_PROJECTS is on, and Node refuses
+    /// to start projects without it). Refused without NOEVIA_RUST_PROJECTS=1, UI_DATA_DIR or the
+    /// secret.
     pub project_store: Option<ProjectStoreConfig>,
     /// GET /api/providers/chatgpt (M6, sbstndalton/noevia#1373). An invalid
     /// NOEVIA_FEATURE_CHATGPT_OAUTH refuses startup (Node does not start with one either).
@@ -250,20 +252,25 @@ impl Config {
         } else {
             false
         };
-        let project_store = if get("NOEVIA_RUST_PROJECT_STORE").as_deref() == Some("1") {
+        let project_store = if get("NOEVIA_PROJECT_STORE_PORT").is_some_and(|p| !p.is_empty()) {
             if rust_projects.is_none() {
-                return Err("NOEVIA_RUST_PROJECT_STORE=1 needs NOEVIA_RUST_PROJECTS=1".into());
+                return Err(
+                    "NOEVIA_PROJECT_STORE_PORT (the project store) needs NOEVIA_RUST_PROJECTS=1"
+                        .into(),
+                );
             }
             if get("UI_DATA_DIR").filter(|d| !d.is_empty()).is_none() {
-                return Err("NOEVIA_RUST_PROJECT_STORE=1 needs UI_DATA_DIR".into());
+                return Err(
+                    "NOEVIA_PROJECT_STORE_PORT (the project store) needs UI_DATA_DIR".into(),
+                );
             }
             let port = get("NOEVIA_PROJECT_STORE_PORT")
                 .and_then(|p| p.parse::<u16>().ok())
                 .filter(|p| *p > 0)
-                .ok_or("NOEVIA_RUST_PROJECT_STORE=1 needs NOEVIA_PROJECT_STORE_PORT (1-65535)")?;
+                .ok_or("the project store needs NOEVIA_PROJECT_STORE_PORT (1-65535)")?;
             let token = get("NOEVIA_PROJECT_STORE_TOKEN")
                 .filter(|t| t.len() >= crate::project_store::TOKEN_MIN && t.bytes().all(|b| b.is_ascii_graphic()))
-                .ok_or("NOEVIA_RUST_PROJECT_STORE=1 needs NOEVIA_PROJECT_STORE_TOKEN (at least 32 visible ASCII characters)")?;
+                .ok_or("the project store needs NOEVIA_PROJECT_STORE_TOKEN (at least 32 visible ASCII characters)")?;
             Some(ProjectStoreConfig { port, token })
         } else {
             None
@@ -731,7 +738,6 @@ mod export_tests {
     const AUTH: (&str, &str) = ("NOEVIA_RUST_AUTH", "1");
     const PROJECTS: (&str, &str) = ("NOEVIA_RUST_PROJECTS", "1");
     const DATA: (&str, &str) = ("UI_DATA_DIR", "/data");
-    const STORE: (&str, &str) = ("NOEVIA_RUST_PROJECT_STORE", "1");
     const STORE_PORT: (&str, &str) = ("NOEVIA_PROJECT_STORE_PORT", "19021");
     const STORE_TOKEN: (&str, &str) = (
         "NOEVIA_PROJECT_STORE_TOKEN",
@@ -739,36 +745,48 @@ mod export_tests {
     );
 
     #[test]
-    fn project_store_is_exact_default_off_and_needs_projects_port_and_secret() {
-        for v in [None, Some("0"), Some("true"), Some(" 1"), Some("")] {
-            let mut pairs = vec![UP, AUTH, PROJECTS, DATA, STORE_PORT, STORE_TOKEN];
+    fn project_store_runs_with_a_port_and_never_reads_the_retired_switch() {
+        // No port: no store, whatever the retired switch says.
+        for v in [None, Some("1"), Some("0")] {
+            let mut pairs = vec![UP, AUTH, PROJECTS, DATA, STORE_TOKEN];
             if let Some(v) = v {
                 pairs.push(("NOEVIA_RUST_PROJECT_STORE", v));
             }
             assert!(lookup(&pairs).unwrap().project_store.is_none(), "{v:?}");
         }
-        let c = lookup(&[UP, AUTH, PROJECTS, DATA, STORE, STORE_PORT, STORE_TOKEN]).unwrap();
-        assert_eq!(c.project_store.as_ref().unwrap().port, 19021);
-        assert!(
-            !format!("{:?}", c.project_store).contains("synthetic-store-token"),
-            "the secret is never printed"
-        );
+        for extra in [None, Some(("NOEVIA_RUST_PROJECT_STORE", "0"))] {
+            let mut pairs = vec![UP, AUTH, PROJECTS, DATA, STORE_PORT, STORE_TOKEN];
+            pairs.extend(extra);
+            let c = lookup(&pairs).unwrap();
+            assert_eq!(c.project_store.as_ref().unwrap().port, 19021);
+            assert!(
+                !format!("{:?}", c.project_store).contains("synthetic-store-token"),
+                "the secret is never printed"
+            );
+        }
         for (missing, pairs) in [
             (
                 "NOEVIA_RUST_PROJECTS=1",
-                vec![UP, AUTH, DATA, STORE, STORE_PORT, STORE_TOKEN],
+                vec![UP, AUTH, DATA, STORE_PORT, STORE_TOKEN],
             ),
             (
                 "UI_DATA_DIR",
-                vec![UP, AUTH, PROJECTS, STORE, STORE_PORT, STORE_TOKEN],
+                vec![UP, AUTH, PROJECTS, STORE_PORT, STORE_TOKEN],
             ),
             (
                 "NOEVIA_PROJECT_STORE_PORT",
-                vec![UP, AUTH, PROJECTS, DATA, STORE, STORE_TOKEN],
+                vec![
+                    UP,
+                    AUTH,
+                    PROJECTS,
+                    DATA,
+                    STORE_TOKEN,
+                    ("NOEVIA_PROJECT_STORE_PORT", "0"),
+                ],
             ),
             (
                 "NOEVIA_PROJECT_STORE_TOKEN",
-                vec![UP, AUTH, PROJECTS, DATA, STORE, STORE_PORT],
+                vec![UP, AUTH, PROJECTS, DATA, STORE_PORT],
             ),
             (
                 "NOEVIA_PROJECT_STORE_TOKEN",
@@ -777,7 +795,6 @@ mod export_tests {
                     AUTH,
                     PROJECTS,
                     DATA,
-                    STORE,
                     STORE_PORT,
                     ("NOEVIA_PROJECT_STORE_TOKEN", "short"),
                 ],

@@ -1,5 +1,5 @@
 //! The project store Node writes `projects.json` and `free-chats.json` through
-//! (sbstndalton/noevia#1264; crates/server-projects `store_api`), behind NOEVIA_RUST_PROJECT_STORE=1.
+//! (sbstndalton/noevia#1264; crates/server-projects `store_api`); permanent (the NOEVIA_RUST_PROJECT_STORE switch is retired).
 //!
 //! Internal only: its own listener on 127.0.0.1 (NOEVIA_PROJECT_STORE_PORT), never the public
 //! front's router, so nothing proxied from outside reaches it. Every request carries the per-start

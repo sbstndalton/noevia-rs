@@ -1,5 +1,5 @@
 //! The project store Node writes through (sbstndalton/noevia#1264, option 2 of the lead's
-//! 2026-10-16 decision): with NOEVIA_RUST_PROJECT_STORE=1 Node no longer writes `projects.json` or
+//! 2026-10-16 decision): Node no longer writes `projects.json` or
 //! `free-chats.json` itself, and no longer takes their flock with a blocking `spawnSync(flock)`.
 //! It reads the file and its version here, merges its own changes into it as before (core
 //! rust-projects.cjs `merge` / `mergeFreeChats`), and asks this module to write the result only if

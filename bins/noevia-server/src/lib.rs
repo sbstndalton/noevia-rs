@@ -62,7 +62,7 @@ use std::sync::Arc;
 /// (NOEVIA_RUST_PROJECT_WRITES_CONFIRMED), which then refuses those writes.
 ///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
-/// free-chats.json through under NOEVIA_RUST_PROJECT_STORE=1 (src/project_store.rs, #1264); the
+/// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
 ///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
