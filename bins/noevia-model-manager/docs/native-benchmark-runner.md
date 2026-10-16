@@ -1,51 +1,71 @@
-# Native benchmark runner (#1318, slice 9a)
+# Native benchmark runner (#1318, slices 9a and 9b)
 
-`native-benchmark-runner` ports `bench.start`, `bench._run`, `bench.measure` and the routes
-`POST /api/v1/benchmark/start`, `GET /api/v1/benchmark/progress` and
-`POST /api/v1/benchmark/cancel` (prompt suite only).
+`native-benchmark-runner` with `MODEL_MANAGER_BENCHMARK_RUNNER_IMPL=rust` takes over the one benchmark job slot. It serves `POST /api/v1/benchmark/start`, `POST /api/v1/benchmark/sweep`, `GET /api/v1/benchmark/progress` and `POST /api/v1/benchmark/cancel`, and runs the startup cleanup of leftover sweep containers. The switch is off by default.
 
-## Status
+It also needs `MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL=rust`, because the overview then reads `job` from the runner. Without that, the runner stays with Python and one line is logged.
 
-The runner is compiled and checked against the actual Python app, but `main` does not build it yet
-(`bench_runner: None`). The job slot is shared by prompt runs and llama-bench sweeps, so it can have
-only one owner. Slice 9b adds the sweeps, GPU release, the startup cleanup of stale sweep
-containers, the `MODEL_MANAGER_BENCHMARK_RUNNER_IMPL` switch and the Python guard. Then all four
-routes move together.
+With the switch on, the parent sets exact `NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED=1`. The child then refuses the four routes, skips `reap_orphans`, and serves the private observation route. Only one owner of the slot exists either way.
 
 ## What stays in Python
 
-The GPU sampler and backend log parsing stay in the child. For each request, the runner asks the
-private `GET /api/v1/internal/bench-observe` (`backend`, `alias`, `aliases`, `since`, `cold`) for the
-peak VRAM list, the contention flag and the cold load time. The front never forwards that path.
-If the child can't answer, the runner records `[]`, not contended, and no load time.
+The GPU sampler and backend log parsing stay in the child. For each prompt-suite request, the runner asks the private `GET /api/v1/internal/bench-observe` (`backend`, `alias`, `aliases`, `since`, `cold`) for:
 
-The backend address comes from an injected resolver, which matches `_resolve_endpoint`, including
-its `"{type}: {message}"` and `no internal port exposed` refusals.
+- the peak VRAM list,
+- the contention flag,
+- the cold load time.
 
-## Differential
+The front never forwards that path. If the child cannot answer, the runner records `[]`, not contended, and no load time.
 
-`tools/gen-bench-runner-oracle.py <services>/model-manager/app` drives the real routes against:
+## Docker
 
-- a fake llama-server
-- fake Docker
-- fixed observations
-- fixed-step `perf_counter` / `time` clocks
-- workers held until a scripted `run` step
+Sweeps go through `docker::sweep::allowed_sweep`, a named allowlist that sits next to the existing read allowlist:
 
-`tests/bench_runner.rs` replays the 14 cases and requires the native runner to produce the same:
+- **Create:** only `POST /containers/create`, with a body built from the typed `CreateBody`. That type has only these fields: `Image`, `Cmd`, `Entrypoint`, `Labels`, `HostConfig.Binds`, `HostConfig.NetworkMode` and `HostConfig.DeviceRequests`. There is no env, and no ports, privileges, capabilities, devices, namespaces, security options or volumes-from.
+- **Checks before every create (`check_create`):**
+  - exactly the sweep label;
+  - the backend's image tag, read live by inspect;
+  - entrypoint `/app/llama`;
+  - network `none`;
+  - the backend's GPU request, copied;
+  - only backend mounts inside `MODELS_DIR` that hold the model, all `:ro`.
+- **start / kill / inspect / logs / `DELETE ?force=true`:** only for a full 64-hex id that this process created, or saw in the label-filtered list (with the label checked again). Never a name, prefix or wildcard.
+- **List:** only with the sweep label filter, capped at 64.
+- **Backend reads:** `_sweep_runtime` and `_resolve_endpoint` use the existing read allowlist. The GPU-freeing restart uses the existing backend restart, limited to effective backends.
 
-- answer bytes
-- llama-server request bodies
-- observation calls
-- quoted `bench_run` / `bench_variant` / `bench_result` rows
+## Startup cleanup
 
-Python exceptions inside the worker are reproduced as `"{type}: {message}"` in the right order. They
-include binding errors for list values, SQLite integer overflow, `int()` and `str.join` failures, and
-non-object chunks.
+At startup, the runner lists containers by label and force-removes each one. A container that is already gone counts as removed. This step is bounded at 60 s.
 
-One difference is intentional. The native runner asks for the cold load time in the same read-only
-observation call, while Python asks after the insert. Whether the load time is used shows up in
-`bench_variant.load_ms`, which the store comparison checks.
+A container that can't be removed keeps the job `running`/`models`, as Python does. A watcher retries every 5 s. Unlike Python, it gives up after 720 tries (one hour) and reports an error.
 
-CI regenerates the fixture from pinned services and compares it byte for byte. No test runs a real
-benchmark, loads a model or touches a container.
+## Differences from Python, on purpose
+
+- A sweep mounts only the models mounts that hold the model. Python mounts every backend mount read-only.
+- The backend's GPU request is copied. Python asks for all GPUs whenever the backend has any request.
+- `_free_gpu` waits for the backend restart before polling `/v1/models`, and reports a refused restart instead of polling past it (noevia#1940).
+- Docker error texts are `"{NotFound|APIError}: {Docker's message}"`. They don't include docker-py's URL prefix.
+- The cold load time is asked for in the same read-only observation call as the other observations.
+
+## Differentials
+
+Two generator scripts run the real Python routes against the same fakes as the Rust tests:
+
+- `tools/gen-bench-runner-oracle.py` covers the prompt suite (14 cases). `tests/bench_runner.rs` replays them.
+- `tools/gen-bench-sweep-oracle.py` covers sweeps and startup cleanup (10 cases). It runs against a scripted fake Docker client, a fake llama-server and a fixed-step clock. `tests/bench_sweep.rs` replays the cases through the real `UnixSweepDocker`, served by a fake Docker daemon on a Unix socket.
+
+The replays require the same:
+
+- answers;
+- llama-server requests;
+- backend restarts;
+- containers created, killed and removed;
+- stored rows.
+
+The cases include refusals, conversions, sqlite binding errors, timeouts, create and start failures, and cancel. Further tests cover:
+
+- a cancel while llama-bench is running (kill, then remove);
+- a refused restart;
+- the bounded watcher;
+- that every verb on a container that isn't ours is refused before it reaches Docker.
+
+No test runs a real benchmark, loads a model or touches a real container.

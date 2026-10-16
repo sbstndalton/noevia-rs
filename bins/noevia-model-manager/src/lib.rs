@@ -1858,6 +1858,7 @@ async fn guarded_delete(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BenchRoute {
     Start,
+    Sweep,
     Progress,
     Cancel,
 }
@@ -1866,6 +1867,7 @@ pub enum BenchRoute {
 pub fn bench_runner_route(method: &Method, path: &str) -> Option<BenchRoute> {
     match (method.as_str(), path) {
         ("POST", "/api/v1/benchmark/start") => Some(BenchRoute::Start),
+        ("POST", "/api/v1/benchmark/sweep") => Some(BenchRoute::Sweep),
         ("GET", "/api/v1/benchmark/progress") => Some(BenchRoute::Progress),
         ("POST", "/api/v1/benchmark/cancel") => Some(BenchRoute::Cancel),
         _ => None,
@@ -1903,6 +1905,22 @@ async fn native_bench_runner(
                 return internal_error();
             };
             match runner.start(request).await {
+                Ok(Ok(())) => job_response(runner),
+                Ok(Err(message)) => {
+                    (StatusCode::CONFLICT, Json(json!({"detail": message}))).into_response()
+                }
+                Err(_) => internal_error(),
+            }
+        }
+        BenchRoute::Sweep => {
+            let body = match fastapi_dict_body(req).await {
+                Ok(b) => b,
+                Err(response) => return response,
+            };
+            let Ok(request) = bench_runner::sweep_request(&body) else {
+                return internal_error();
+            };
+            match runner.start_sweep(request).await {
                 Ok(Ok(())) => job_response(runner),
                 Ok(Err(message)) => {
                     (StatusCode::CONFLICT, Json(json!({"detail": message}))).into_response()

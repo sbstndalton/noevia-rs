@@ -11,6 +11,7 @@
 //!
 //! Every place `bench.py` reads the clock, this reads the injected [`Clock`] in the same order,
 //! so the differential test can pin both clocks exactly as the Python oracle does.
+mod sweep;
 use crate::bench_runs::json_string;
 use gguf::py_float_repr;
 use model_files::json::Value as Json;
@@ -24,6 +25,10 @@ use std::{
         Arc, Mutex,
     },
     time::Duration,
+};
+pub use sweep::{
+    py_dumps, sweep_request, PyInt, Restarter, Sleeper, SweepDocker, SweepRequest, Sweeps,
+    ORPHAN_ATTEMPTS, ORPHAN_RETRY, SWEEP_TIMEOUT_S,
 };
 
 /// `bench.DEFAULT_MAX_TOKENS` / `bench.MAX_TOKENS_CEILING`.
@@ -237,6 +242,7 @@ pub struct Runner {
     spawn: Spawner,
     observe: Observer,
     resolve: Resolver,
+    sweeps: Option<Sweeps>,
 }
 
 /// A Python exception escaping `_run` / `start`: `"{type}: {message}"`.
@@ -255,6 +261,18 @@ impl Runner {
         observe: Observer,
         resolve: Resolver,
     ) -> Result<Arc<Self>, &'static str> {
+        Self::with_sweeps(data, clock, spawn, observe, resolve, None)
+    }
+
+    /// The runner owning the job slot for prompt runs and llama-bench sweeps alike.
+    pub fn with_sweeps(
+        data: &Path,
+        clock: Clock,
+        spawn: Spawner,
+        observe: Observer,
+        resolve: Resolver,
+        sweeps: Option<Sweeps>,
+    ) -> Result<Arc<Self>, &'static str> {
         let http = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
             .read_timeout(READ_TIMEOUT)
@@ -269,6 +287,7 @@ impl Runner {
             spawn,
             observe,
             resolve,
+            sweeps,
         }))
     }
 
@@ -1391,6 +1410,91 @@ pub fn start_request(body: &Json) -> Result<StartRequest, Raised> {
         reps: int_or("reps", 3)?,
         max_tokens: int_or("maxTokens", DEFAULT_MAX_TOKENS)?,
     })
+}
+
+/// Where the production runner reaches everything it does not own.
+pub struct Production {
+    pub data: PathBuf,
+    pub ini: PathBuf,
+    /// `MODELS_DIR`: sweeps mount backend mounts from here only.
+    pub models_dir: String,
+    pub socket: PathBuf,
+    pub docker: Arc<dyn crate::DockerRead>,
+    pub configured: Vec<String>,
+    pub legacy: reqwest::Client,
+    pub legacy_base: String,
+    pub token: String,
+}
+
+/// The runner `main` builds: workers on tokio, observations from the child's private route,
+/// backends resolved and sweep containers handled through the sweep allowlist, and backend
+/// restarts limited to the effective backends.
+pub fn production(p: Production) -> Result<Arc<Runner>, &'static str> {
+    let sweep_docker = Arc::new(crate::docker::sweep::UnixSweepDocker::new(
+        p.socket,
+        &p.models_dir,
+    ));
+    let resolver_docker = sweep_docker.clone();
+    let (legacy, base, token) = (p.legacy, p.legacy_base, p.token);
+    let observe: Observer = Arc::new(move |query: String| {
+        let request = legacy
+            .get(format!("{base}{OBSERVE_PATH}?{query}"))
+            .timeout(Duration::from_secs(10));
+        let request = if token.is_empty() {
+            request
+        } else {
+            request.header("x-model-loader-token", token.clone())
+        };
+        Box::pin(async move {
+            use futures_util::StreamExt;
+            let response = request.send().await.ok()?;
+            if response.status() != reqwest::StatusCode::OK {
+                return None;
+            }
+            let mut stream = response.bytes_stream();
+            let mut body = Vec::new();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.ok()?;
+                if body.len().saturating_add(chunk.len()) > OBSERVE_CAP {
+                    return None;
+                }
+                body.extend_from_slice(&chunk);
+            }
+            parse_observed(&body)
+        })
+    });
+    let resolve: Resolver = Arc::new(move |backend: String| {
+        let docker = resolver_docker.clone();
+        Box::pin(async move { docker.endpoint(&backend).await })
+    });
+    let (docker, configured) = (p.docker, p.configured);
+    let restart: Restarter = Arc::new(move |name: String| {
+        let (docker, configured) = (docker.clone(), configured.clone());
+        Box::pin(async move {
+            // services.restart_llama_backend: only an effective backend, by name.
+            let inventory = docker.containers().await.unwrap_or_default();
+            let names = crate::effective_names(&configured, &inventory).unwrap_or_default();
+            if !names.contains(&name) {
+                return Err("container not in configured list".to_owned());
+            }
+            docker.restart_backend(&name).await.map_err(str::to_owned)
+        })
+    });
+    Runner::with_sweeps(
+        &p.data,
+        Clock::default(),
+        Arc::new(|task| {
+            tokio::spawn(task);
+        }),
+        observe,
+        resolve,
+        Some(Sweeps {
+            docker: sweep_docker,
+            ini: p.ini,
+            restart,
+            sleep: Sweeps::tokio_sleep(),
+        }),
+    )
 }
 
 #[cfg(test)]
