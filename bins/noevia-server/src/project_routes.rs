@@ -17,7 +17,7 @@ use crate::App;
 use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
-use server_projects::{assets, chats, free_chats, Ctx, Reply};
+use server_projects::{assets, chats, context, free_chats, Ctx, Reply};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +34,8 @@ pub enum Route {
     FreeChats,
     /// POST /api/freechats
     SaveFreeChats,
+    /// GET (`create: false`) or POST /api/chats/{chatId}/context (#1264, NOEVIA_RUST_PROJECT_WRITES)
+    Context { chat: String, create: bool },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -44,6 +46,16 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
         return match method {
             "GET" => Some(Route::FreeChats),
             "POST" => Some(Route::SaveFreeChats),
+            _ => None,
+        };
+    }
+    // routes/projects.cjs `/^\/api\/chats\/([^/]+)\/context$/` for GET and POST.
+    if let Some(rest) = path.strip_prefix("/api/chats/") {
+        return match (method, rest.split('/').collect::<Vec<_>>().as_slice()) {
+            ("GET" | "POST", [chat, "context"]) if !chat.is_empty() => Some(Route::Context {
+                chat: (*chat).to_string(),
+                create: method == "POST",
+            }),
             _ => None,
         };
     }
@@ -129,7 +141,7 @@ pub async fn serve(
     let limit = match &route {
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
-        Route::One { .. } | Route::Chats { .. } | Route::FreeChats => None,
+        Route::One { .. } | Route::Chats { .. } | Route::FreeChats | Route::Context { .. } => None,
     };
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
@@ -142,9 +154,13 @@ pub async fn serve(
     // routes/projects.cjs: `authn?.user?.role === 'admin'` (a device token acts as a member).
     let admin = authn.user.role == server_auth::Role::Admin;
     let user = authn.user.id;
+    // The context GET writes too (getProject's self-heal), so it is re-gated as well.
     let writes = matches!(
         route,
-        Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats
+        Route::Upload { .. }
+            | Route::SaveChats { .. }
+            | Route::SaveFreeChats
+            | Route::Context { .. }
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
         if writes {
@@ -168,6 +184,14 @@ pub async fn serve(
             }
             (Route::FreeChats, _) => free_chats::get(ctx),
             (Route::SaveFreeChats, Some(b)) => free_chats::post(ctx, &b.bytes, b.over, admin),
+            (Route::Context { chat, create: true }, _) => context::post(ctx, &chat),
+            (
+                Route::Context {
+                    chat,
+                    create: false,
+                },
+                _,
+            ) => context::get(ctx, &chat),
             (Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats, None) => {
                 Reply::internal()
             }
@@ -237,6 +261,34 @@ mod tests {
             ("GET", "/api/freechats/"),
             ("DELETE", "/api/freechats/c1"),
             ("GET", "/api/freechatsx"),
+        ] {
+            assert_eq!(route(m, p), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn chat_context_matchers() {
+        assert_eq!(
+            route("GET", "/api/chats/c%201/context"),
+            Some(Route::Context {
+                chat: "c%201".into(),
+                create: false
+            })
+        );
+        assert_eq!(
+            route("POST", "/api/chats/c1/context"),
+            Some(Route::Context {
+                chat: "c1".into(),
+                create: true
+            })
+        );
+        for (m, p) in [
+            ("PUT", "/api/chats/c1/context"),
+            ("DELETE", "/api/chats/c1/context"),
+            ("GET", "/api/chats//context"),
+            ("GET", "/api/chats/c1/context/"),
+            ("GET", "/api/chats/a/b/context"),
+            ("GET", "/api/chats/c1/context-window"),
         ] {
             assert_eq!(route(m, p), None, "{m} {p}");
         }

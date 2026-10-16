@@ -156,6 +156,9 @@ pub fn plan(project: &JValue) -> Result<Plan, Unsupported> {
     let skills: &Vec<(String, JValue)> = match current {
         JValue::Obj(items) => items,
         v if !v.truthy() => &empty,
+        // An empty array has no own keys for `owns(...)` to find: Node replaces it with `{}`.
+        // (A non-empty one would answer index-named files; Node never writes either.)
+        JValue::Arr(items) if items.is_empty() => &empty,
         _ => return Err(Unsupported),
     };
     let files: &[JValue] = match get("files") {
@@ -201,7 +204,7 @@ pub fn plan(project: &JValue) -> Result<Plan, Unsupported> {
     js_json::wtf16::order_keys(&mut next);
     // JSON.stringify(project.instructionSkills || {}) against JSON.stringify(next).
     let before = match current {
-        JValue::Obj(_) => js_json::wtf16::stringify(current),
+        JValue::Obj(_) | JValue::Arr(_) => js_json::wtf16::stringify(current),
         _ => Some("{}".to_string()),
     };
     let value = JValue::Obj(next);
@@ -288,7 +291,6 @@ mod tests {
             r#"{"files":"abc"}"#,
             r#"{"files":[null]}"#,
             r#"{"files":[{"name":1}]}"#,
-            r#"{"instructionSkills":[]}"#,
         ] {
             assert_eq!(
                 reconcile(&mut js_json::wtf16::parse(bad).unwrap()),
@@ -299,6 +301,17 @@ mod tests {
         assert_eq!(
             reconcile(&mut js_json::wtf16::parse("[]").unwrap()),
             Ok(false)
+        );
+        // An empty array is replaced by `{}`, a change (JSON `[]` is not `{}`).
+        let mut arr = js_json::wtf16::parse(r#"{"instructionSkills":[]}"#).unwrap();
+        assert_eq!(reconcile(&mut arr), Ok(true));
+        assert_eq!(
+            js_json::wtf16::stringify(&arr).unwrap(),
+            r#"{"instructionSkills":{}}"#
+        );
+        assert_eq!(
+            reconcile(&mut js_json::wtf16::parse(r#"{"instructionSkills":[1]}"#).unwrap()),
+            Err(Unsupported)
         );
     }
 }

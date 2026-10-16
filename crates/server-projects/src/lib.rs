@@ -20,6 +20,9 @@
 //!   `POST /api/freechats`), over `free-chats.json`, which Node's own writers (a chat's move, a free
 //!   chat's delete, the routing flags) still write: changed only under `free-chats.json.lock`
 //!   ([`store::update_free`]), which Node shares while the slice is on.
+//! - [`context`]: the first project-writes slice of sbstndalton/noevia#1264, a free chat's
+//!   attachments project (core routes/projects.cjs `GET` and `POST /api/chats/{chatId}/context`),
+//!   behind its own switch NOEVIA_RUST_PROJECT_WRITES (cargo feature `rust-project-writes`).
 //! - [`js`]: the JavaScript built-ins those handlers rely on.
 //!
 //! The caller (bins/noevia-server) has already run Node's request gate (session, origin, CSRF);
@@ -28,6 +31,7 @@
 
 pub mod assets;
 pub mod chats;
+pub mod context;
 pub mod frame;
 pub mod free_chats;
 pub mod js;

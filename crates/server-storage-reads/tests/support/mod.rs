@@ -3,7 +3,7 @@
 #[allow(dead_code)]
 #[path = "../../../../tools/qualification/process.rs"]
 pub mod process;
-use std::{io::Read, process::Command, time::Duration};
+use std::{io::Read, path::Path, process::Command, time::Duration};
 
 pub fn run(command: Command, input: Vec<u8>) -> Result<process::Output, String> {
     run_within(command, input, Duration::from_secs(30))
@@ -73,4 +73,52 @@ pub fn checked_source(root: &str, file: &str) -> Result<(), String> {
         return Err("oracle source drift or size refusal".into());
     }
     Ok(())
+}
+
+/// The sha256 the pinned core demands of `dav-parse.wasm`: `DAV_PARSE_WASM_SHA256=` in its
+/// `server/dav-parse.lock`.
+#[allow(dead_code)]
+pub fn pinned_wasm_sha256(lock_text: &str) -> Result<String, String> {
+    lock_text
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("DAV_PARSE_WASM_SHA256="))
+        .map(|h| h.trim().to_string())
+        .filter(|h| h.len() == 64 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+        .ok_or_else(|| "dav-parse.lock has no DAV_PARSE_WASM_SHA256 (is M4_CORE_ORACLE a noevia-core checkout?)".into())
+}
+/// Pure check behind [`require_dav_parse_wasm`]: the module at `file` must exist and hash to
+/// `pinned`. The message names the file and the pinned hash (#1898).
+#[allow(dead_code)]
+pub fn check_dav_parse_wasm(file: &Path, pinned: &str) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let hint = "build it with tools/build-dav-parse-wasm.sh at the NOEVIA_RS_REF in dav-parse.lock, or point DAV_PARSE_WASM at a copy; see crates/server-storage-reads/README.md";
+    let bytes = std::fs::read(file).map_err(|_| {
+        format!(
+            "M4 oracle prerequisite missing: dav-parse.wasm not found at {} (pinned sha256 {pinned}); {hint}",
+            file.display()
+        )
+    })?;
+    let actual = format!("{:x}", Sha256::digest(&bytes));
+    if actual != pinned {
+        return Err(format!(
+            "M4 oracle prerequisite mismatch: dav-parse.wasm at {} has sha256 {actual}, pinned {pinned}; {hint}",
+            file.display()
+        ));
+    }
+    Ok(())
+}
+/// The actual core parses every DAV listing through `dav-parse.wasm`; without the pinned module
+/// the Node side answers 502 and the diff looks like a parity defect. Check it up front and fail
+/// naming the file and hash instead (#1898). Honors `DAV_PARSE_WASM` like core's loader.
+#[allow(dead_code)]
+pub fn require_dav_parse_wasm(root: &str) -> Result<(), String> {
+    let lock = std::fs::read_to_string(format!("{root}/server/dav-parse.lock")).map_err(|_| {
+        format!("M4 oracle prerequisite missing: {root}/server/dav-parse.lock is unreadable")
+    })?;
+    let pinned = pinned_wasm_sha256(&lock)?;
+    let file = std::env::var_os("DAV_PARSE_WASM")
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| Path::new(root).join("server/wasm/dav-parse.wasm"));
+    check_dav_parse_wasm(&file, &pinned)
 }
