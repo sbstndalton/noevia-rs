@@ -128,6 +128,8 @@ fn state(reader: Arc<dyn Read>) -> Arc<crate::StateData> {
         settings_write: None,
         #[cfg(feature = "native-benchmark-overview")]
         benchmark_overview: None,
+        #[cfg(feature = "native-check-updates")]
+        check_updates: None,
         #[cfg(feature = "native-backend-control")]
         backends: None,
     })

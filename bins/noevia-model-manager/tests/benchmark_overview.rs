@@ -70,6 +70,8 @@ fn state(
         settings_write: None,
         benchmark_overview: root
             .map(|r| Arc::new(BenchmarkOverview::new(r, &r.join("models.ini")))),
+        #[cfg(feature = "native-check-updates")]
+        check_updates: None,
         #[cfg(feature = "native-backend-control")]
         backends: None,
         sections: None,
