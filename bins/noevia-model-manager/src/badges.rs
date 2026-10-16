@@ -65,7 +65,9 @@ pub struct Badges {
     database: PathBuf,
     clock: Clock,
     /// Python serialises its own writes with a process lock; so does this side.
-    lock: tokio::sync::Mutex<()>,
+    /// Owned guards travel into the blocking job (noevia#1909), so a write whose request was
+    /// dropped (the front's 504) still finishes before the next one starts.
+    lock: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 /// A validated `PUT` body.
@@ -88,20 +90,23 @@ impl Badges {
         Self {
             database: root.join("model_loader.db"),
             clock,
-            lock: tokio::sync::Mutex::new(()),
+            lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
     pub async fn put(&self, body: &JsonValue) -> Outcome {
+        let deadline = Instant::now() + DEADLINE;
         let rating = match validate(body) {
             Ok(rating) => rating,
             Err(message) => return detail(400, &message),
         };
-        let _guard = self.lock.lock().await;
+        let Some(guard) = self.acquire(deadline).await else {
+            return busy();
+        };
         let database = self.database.clone();
         let created = (self.clock)();
-        let deadline = Instant::now() + DEADLINE;
         run(move || {
+            let _guard = guard;
             let db = open(&database, deadline)?;
             db.execute(
                 "INSERT INTO model_badge(alias, category, rating, note, run_id, created_at) \
@@ -126,15 +131,18 @@ impl Badges {
 
     /// `query` is the raw query string.
     pub async fn delete(&self, query: &str) -> Outcome {
+        let deadline = Instant::now() + DEADLINE;
         let (alias, category) = match delete_query(query) {
             Ok(fields) => fields,
             Err(body) => return Outcome::Json(422, body),
         };
         let alias = py_strip(&alias).to_owned();
-        let _guard = self.lock.lock().await;
+        let Some(guard) = self.acquire(deadline).await else {
+            return busy();
+        };
         let database = self.database.clone();
-        let deadline = Instant::now() + DEADLINE;
         run(move || {
+            let _guard = guard;
             let db = open(&database, deadline)?;
             db.execute(
                 "DELETE FROM model_badge WHERE alias = ? AND category = ?",
@@ -145,6 +153,20 @@ impl Badges {
         })
         .await
     }
+}
+
+impl Badges {
+    /// The write lock, waited for only until the request's own deadline (noevia#1909).
+    async fn acquire(&self, deadline: Instant) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+        tokio::time::timeout_at(deadline.into(), self.lock.clone().lock_owned())
+            .await
+            .ok()
+    }
+}
+
+/// The prompt writer's answer when its write lock is not free in time.
+fn busy() -> Outcome {
+    detail(503, "service is busy")
 }
 
 async fn run(job: impl FnOnce() -> Result<Vec<u8>, ()> + Send + 'static) -> Outcome {
@@ -182,8 +204,9 @@ pub fn route_int(value: Option<&JsonValue>) -> Result<i64, NotInt> {
     match value {
         JsonValue::Int(n) => n.to_string().parse::<i64>().map_err(|_| NotInt::Big),
         JsonValue::Float(f) if f.is_finite() && f.fract() == 0.0 => {
-            if f.abs() < 9.2e18 {
-                // Exact: an integral float below 2^63 converts without rounding.
+            // i64's range exactly, as Python's `-2**63 <= int(value) < 2**63` (noevia#1910).
+            if (-9_223_372_036_854_775_808.0..9_223_372_036_854_775_808.0).contains(f) {
+                // Exact: an integral float inside i64 converts without rounding.
                 #[allow(clippy::cast_possible_truncation)]
                 Ok(*f as i64)
             } else {
@@ -211,14 +234,22 @@ fn int_text(text: &str) -> Result<i64, NotInt> {
     {
         return Err(NotInt::Other);
     }
+    // Accumulated with the sign applied, so i64::MIN itself fits (noevia#1910).
     let mut value: i64 = 0;
     for b in digits.bytes().filter(u8::is_ascii_digit) {
+        let digit = i64::from(b - b'0');
         value = value
             .checked_mul(10)
-            .and_then(|v| v.checked_add(i64::from(b - b'0')))
+            .and_then(|v| {
+                if negative {
+                    v.checked_sub(digit)
+                } else {
+                    v.checked_add(digit)
+                }
+            })
             .ok_or(NotInt::Big)?;
     }
-    Ok(if negative { -value } else { value })
+    Ok(value)
 }
 
 /// The whole `PUT` validation, in Python's order (the route's conversions, then `badge_set`).
@@ -286,7 +317,8 @@ fn open(database: &Path, deadline: Instant) -> Result<Connection, ()> {
     .map_err(|_| ())?;
     db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_LENGTH, VALUE_CAP)
         .map_err(|_| ())?;
-    db.busy_timeout(BUSY_WAIT).map_err(|_| ())?;
+    db.busy_timeout(BUSY_WAIT.min(deadline.saturating_duration_since(Instant::now())))
+        .map_err(|_| ())?;
     db.progress_handler(1000, Some(move || Instant::now() >= deadline))
         .map_err(|_| ())?;
     Ok(db)

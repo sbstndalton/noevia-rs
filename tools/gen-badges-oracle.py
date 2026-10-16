@@ -12,8 +12,8 @@ Every alias, note and row is synthetic. `time.time()` inside `db` is replaced by
 (1700000000.25 + 1.5 per call) so `created_at` is reproducible; the Rust test uses the same
 clock. Each case starts from a fresh store made by `db.init()` (or none / a broken one) and
 runs its steps in order. CI re-runs this against the pinned services ref and requires a
-byte-identical fixture. Answers the native side deliberately fixes (noevia#1905) are listed
-in the Rust test, not here: this file is only what Python does.
+byte-identical fixture. The pinned services ref carries the noevia#1905 fix, so every answer
+here, including the `fixed-1905` and `integer-boundaries` cases, is what both sides must give.
 """
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ CASES = [
         "INSERT INTO model_badge(alias, category, rating, note, run_id, created_at) VALUES('m','zz',9,'',5,123456789012345680.0)",
         "INSERT INTO model_badge(alias, category, rating, note, run_id, created_at) VALUES('m','aa',2,'',NULL,0.0001)",
     ], [delete("alias=m&category=none")]),
-    # Python answers the native side fixes (noevia#1905); tests/badges.rs states the fixed answers.
+    # noevia#1905 forms (answered 500 or truncated before the fix).
     ("fixed-1905", "init", [], [
         put(ok(rating="abc")),
         put(ok(rating=True)),
@@ -119,6 +119,25 @@ CASES = [
         put(ok(alias=" p ")),
         delete("alias=%20p%20&category=coding"),
         delete("alias=p&category=none"),
+    ]),
+    # noevia#1910: i64's edges as integers, strings and floats, for rating and runId.
+    ("integer-boundaries", "init", [], [
+        put(None, raw='{"alias":"m","category":"coding","rating":3,"runId":9223372036854775807}'),
+        put(None, raw='{"alias":"m","category":"coding","rating":3,"runId":-9223372036854775808}'),
+        put(None, raw='{"alias":"m","category":"coding","rating":3,"runId":9223372036854775808}'),
+        put(None, raw='{"alias":"m","category":"coding","rating":3,"runId":-9223372036854775809}'),
+        put(ok(runId="-9223372036854775808")),
+        put(ok(runId="9223372036854775807")),
+        put(ok(runId="9223372036854775808")),
+        put(ok(runId="-9223372036854775809")),
+        put(None, raw='{"alias":"m","category":"coding","rating":3,"runId":9.2e18}'),
+        put(None, raw='{"alias":"m","category":"coding","rating":3,"runId":9223372036854774784.0}'),
+        put(None, raw='{"alias":"m","category":"coding","rating":3,"runId":9223372036854775808.0}'),
+        put(None, raw='{"alias":"m","category":"coding","rating":3,"runId":-9223372036854775808.0}'),
+        put(None, raw='{"alias":"m","category":"coding","rating":3,"runId":-9.3e18}'),
+        put(None, raw='{"alias":"m","category":"coding","rating":-9223372036854775809}'),
+        put(ok(rating="-9223372036854775808")),
+        put(None, raw='{"alias":"m","category":"coding","rating":5.0,"runId":-0.0}'),
     ]),
     ("missing-store", "missing", [], [put(ok())]),
     ("no-table", "no-table", [], [put(ok()), delete("alias=m&category=coding")]),

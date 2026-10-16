@@ -640,34 +640,39 @@
   {
    "answers": [
     {
-     "body": "Internal Server Error",
-     "content_type": "text/plain; charset=utf-8",
-     "status": 500
+     "body": "{\"detail\":\"rating must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
     },
     {
-     "body": "{\"badges\":[{\"id\":1,\"alias\":\"m\",\"category\":\"coding\",\"rating\":1,\"note\":\"\",\"run_id\":null,\"created_at\":1700000001.75}]}",
+     "body": "{\"detail\":\"rating must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"rating must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"rating must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"runId must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"runId must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"badges\":[{\"id\":1,\"alias\":\"p\",\"category\":\"coding\",\"rating\":3,\"note\":\"\",\"run_id\":null,\"created_at\":1700000001.75}]}",
      "content_type": "application/json",
      "status": 200
-    },
-    {
-     "body": "{\"badges\":[{\"id\":1,\"alias\":\"m\",\"category\":\"coding\",\"rating\":1,\"note\":\"\",\"run_id\":null,\"created_at\":1700000001.75},{\"id\":2,\"alias\":\"m\",\"category\":\"tools\",\"rating\":2,\"note\":\"\",\"run_id\":null,\"created_at\":1700000003.25}]}",
-     "content_type": "application/json",
-     "status": 200
-    },
-    {
-     "body": "Internal Server Error",
-     "content_type": "text/plain; charset=utf-8",
-     "status": 500
-    },
-    {
-     "body": "Internal Server Error",
-     "content_type": "text/plain; charset=utf-8",
-     "status": 500
-    },
-    {
-     "body": "Internal Server Error",
-     "content_type": "text/plain; charset=utf-8",
-     "status": 500
     },
     {
      "body": "{\"badges\":[]}",
@@ -676,11 +681,6 @@
     },
     {
      "body": "{\"badges\":[]}",
-     "content_type": "application/json",
-     "status": 200
-    },
-    {
-     "body": "{\"badges\":[{\"id\":3,\"alias\":\"p\",\"category\":\"coding\",\"rating\":3,\"note\":\"\",\"run_id\":null,\"created_at\":1700000006.25}]}",
      "content_type": "application/json",
      "status": 200
     }
@@ -730,6 +730,175 @@
     {
      "method": "DELETE",
      "query": "alias=p&category=none"
+    }
+   ],
+   "store": "init"
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"badges\":[{\"id\":1,\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"note\":\"\",\"run_id\":9223372036854775807,\"created_at\":1700000001.75}]}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"badges\":[{\"id\":1,\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"note\":\"\",\"run_id\":-9223372036854775808,\"created_at\":1700000003.25}]}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"runId must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"runId must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"badges\":[{\"id\":1,\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"note\":\"\",\"run_id\":-9223372036854775808,\"created_at\":1700000004.75}]}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"badges\":[{\"id\":1,\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"note\":\"\",\"run_id\":9223372036854775807,\"created_at\":1700000006.25}]}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"runId must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"runId must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"badges\":[{\"id\":1,\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"note\":\"\",\"run_id\":9200000000000000000,\"created_at\":1700000007.75}]}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"badges\":[{\"id\":1,\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"note\":\"\",\"run_id\":9223372036854774784,\"created_at\":1700000009.25}]}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"runId must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"badges\":[{\"id\":1,\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"note\":\"\",\"run_id\":-9223372036854775808,\"created_at\":1700000010.75}]}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"runId must be a number\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"rating must be 1-5\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"detail\":\"rating must be 1-5\"}",
+     "content_type": "application/json",
+     "status": 400
+    },
+    {
+     "body": "{\"badges\":[{\"id\":1,\"alias\":\"m\",\"category\":\"coding\",\"rating\":5,\"note\":\"\",\"run_id\":null,\"created_at\":1700000012.25}]}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "id": "integer-boundaries",
+   "seed": [],
+   "steps": [
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"runId\":9223372036854775807}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"runId\":-9223372036854775808}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"runId\":9223372036854775808}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"runId\":-9223372036854775809}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\": \"m\", \"category\": \"coding\", \"rating\": 3, \"runId\": \"-9223372036854775808\"}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\": \"m\", \"category\": \"coding\", \"rating\": 3, \"runId\": \"9223372036854775807\"}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\": \"m\", \"category\": \"coding\", \"rating\": 3, \"runId\": \"9223372036854775808\"}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\": \"m\", \"category\": \"coding\", \"rating\": 3, \"runId\": \"-9223372036854775809\"}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"runId\":9.2e18}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"runId\":9223372036854774784.0}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"runId\":9223372036854775808.0}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"runId\":-9223372036854775808.0}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":3,\"runId\":-9.3e18}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":-9223372036854775809}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\": \"m\", \"category\": \"coding\", \"rating\": \"-9223372036854775808\"}",
+     "content_type": "application/json",
+     "method": "PUT"
+    },
+    {
+     "body": "{\"alias\":\"m\",\"category\":\"coding\",\"rating\":5.0,\"runId\":-0.0}",
+     "content_type": "application/json",
+     "method": "PUT"
     }
    ],
    "store": "init"
@@ -802,8 +971,8 @@
   }
  ],
  "oracle": {
-  "api.py": "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6",
+  "api.py": "c8cf58e15afb97cc0008c9b11c28b4f4a853a3e59ce8cbbd6ba5336c65cee035",
   "db.py": "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478",
-  "main.py": "87eeac941fa5c0687160f315517b60c02b29324266d780851c547f6a1d749ee2"
+  "main.py": "597baa16769063bb66bde46f38c4404443f0ef486b92f6548c0e5e37e8c7a2f5"
  }
 }

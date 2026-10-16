@@ -3,8 +3,8 @@
 //! `fixtures/badges-python.v1.json` is produced by `tools/gen-badges-oracle.py`, which runs the
 //! real services FastAPI app step by step on synthetic stores with a fixed clock; CI regenerates
 //! it from the pinned services ref and requires identical bytes. Each case's store is rebuilt
-//! here and its steps replayed against the native router. The one case where the native side
-//! deliberately differs (`fixed-1905`, the bugs filed as noevia#1905) states its answers below.
+//! here and its steps replayed against the native router. The pinned services ref carries the
+//! noevia#1905 fix, so every case, `fixed-1905` included, must match (noevia#1910).
 #![cfg(feature = "native-badges")]
 #![allow(
     clippy::unwrap_used,
@@ -29,10 +29,11 @@ use std::{
 };
 use tower::ServiceExt;
 
-/// sha256 of the services files the fixture was generated from (noevia-services 1d44f5e).
-const API_SHA: &str = "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6";
+/// sha256 of the services files the fixture was generated from (noevia-services 641c9c3,
+/// services#64 with the noevia#1905 fix).
+const API_SHA: &str = "c8cf58e15afb97cc0008c9b11c28b4f4a853a3e59ce8cbbd6ba5336c65cee035";
 const DB_SHA: &str = "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478";
-const MAIN_SHA: &str = "87eeac941fa5c0687160f315517b60c02b29324266d780851c547f6a1d749ee2";
+const MAIN_SHA: &str = "597baa16769063bb66bde46f38c4404443f0ef486b92f6548c0e5e37e8c7a2f5";
 const TOKEN: &str = "synthetic-model-loader-token-0123456789abcdef";
 const PATH: &str = "/api/v1/badges";
 /// `db.init()`'s badge table, verbatim.
@@ -200,42 +201,6 @@ fn build(root: &Path, case: &Value) -> Option<Connection> {
     }
 }
 
-fn answer(status: u16, body: &str) -> Answer {
-    Answer {
-        status,
-        content_type: Some(
-            if status == 500 {
-                "text/plain; charset=utf-8"
-            } else {
-                "application/json"
-            }
-            .into(),
-        ),
-        body: body.into(),
-    }
-}
-
-/// noevia#1905: what the native routes answer where Python answered 500, truncated a rating,
-/// read `true` as 1, or ignored a padded alias.
-fn fixed_1905() -> Vec<Answer> {
-    let number = r#"{"detail":"rating must be a number"}"#;
-    let run = r#"{"detail":"runId must be a number"}"#;
-    vec![
-        answer(400, number),
-        answer(400, number),
-        answer(400, number),
-        answer(400, number),
-        answer(400, run),
-        answer(400, run),
-        answer(
-            200,
-            r#"{"badges":[{"id":1,"alias":"p","category":"coding","rating":3,"note":"","run_id":null,"created_at":1700000001.75}]}"#,
-        ),
-        answer(200, r#"{"badges":[]}"#),
-        answer(200, r#"{"badges":[]}"#),
-    ]
-}
-
 #[test]
 fn fixture_provenance_is_the_pinned_services_source() {
     let oracle = &fixture()["oracle"];
@@ -253,20 +218,16 @@ async fn actual_python_differential() {
         let dir = tempfile::tempdir().unwrap();
         let holder = build(dir.path(), &case);
         let state = state(Some(clocked(dir.path())), "http://127.0.0.1:9");
-        let expected: Vec<Answer> = if id == "fixed-1905" {
-            fixed_1905()
-        } else {
-            case["answers"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|a| Answer {
-                    status: u16::try_from(a["status"].as_u64().unwrap()).unwrap(),
-                    content_type: a["content_type"].as_str().map(str::to_owned),
-                    body: a["body"].as_str().unwrap().to_owned(),
-                })
-                .collect()
-        };
+        let expected: Vec<Answer> = case["answers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| Answer {
+                status: u16::try_from(a["status"].as_u64().unwrap()).unwrap(),
+                content_type: a["content_type"].as_str().map(str::to_owned),
+                body: a["body"].as_str().unwrap().to_owned(),
+            })
+            .collect();
         let steps = case["steps"].as_array().unwrap();
         assert_eq!(steps.len(), expected.len(), "{id}");
         for (i, (s, want)) in steps.iter().zip(expected).enumerate() {
@@ -388,4 +349,108 @@ async fn oversized_body_is_refused_before_the_store() {
     let answer = send(state, "PUT", PATH, Some("application/json"), body).await;
     assert_eq!(answer.status, 413);
     assert!(!dir.path().join("model_loader.db").exists());
+}
+
+/// noevia#1909: a write whose request was dropped (the front's 504) still finishes before a later
+/// write starts, and the later write answers inside its own 5 s budget and is what stays stored.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dropped_write_cannot_land_after_a_newer_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("model_loader.db");
+    let c = Connection::open(&path).unwrap();
+    let _: String = c
+        .query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))
+        .unwrap();
+    c.execute_batch(SCHEMA).unwrap();
+    // A slow first job: another connection holds the write lock for 2 s.
+    let holder = Connection::open(&path).unwrap();
+    holder.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(2000));
+        holder.execute_batch("ROLLBACK").unwrap();
+    });
+    let state = state(Some(clocked(dir.path())), "http://127.0.0.1:9");
+    let put = |rating: u8| {
+        let state = state.clone();
+        async move {
+            send(
+                state,
+                "PUT",
+                PATH,
+                Some("application/json"),
+                format!(r#"{{"alias":"m","category":"coding","rating":{rating}}}"#).into_bytes(),
+            )
+            .await
+        }
+    };
+    // The first request is abandoned while its write waits on the store.
+    let first = tokio::time::timeout(Duration::from_millis(200), put(2)).await;
+    assert!(first.is_err());
+    let started = Instant::now();
+    let second = put(4).await;
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(second.status, 200, "{second:?}");
+    release.join().unwrap();
+    let rating: i64 = c
+        .query_row("SELECT rating FROM model_badge WHERE alias='m'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(rating, 4);
+}
+
+/// noevia#1909: a write still waiting at the request's own deadline answers inside the budget
+/// (503 busy or the store's 500), never the front's 504, and never writes later.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn lock_wait_is_bounded_by_the_request_deadline() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("model_loader.db");
+    let c = Connection::open(&path).unwrap();
+    let _: String = c
+        .query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))
+        .unwrap();
+    c.execute_batch(SCHEMA).unwrap();
+    let holder = Connection::open(&path).unwrap();
+    holder.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let state = state(Some(clocked(dir.path())), "http://127.0.0.1:9");
+    let body = |r: u8| format!(r#"{{"alias":"m","category":"coding","rating":{r}}}"#).into_bytes();
+    let (a, b) = tokio::join!(
+        send(
+            state.clone(),
+            "PUT",
+            PATH,
+            Some("application/json"),
+            body(2)
+        ),
+        async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let started = Instant::now();
+            let b = send(
+                state.clone(),
+                "PUT",
+                PATH,
+                Some("application/json"),
+                body(4),
+            )
+            .await;
+            (b, started.elapsed())
+        }
+    );
+    let (b, waited) = b;
+    assert_eq!(a.status, 500, "{a:?}");
+    // B either never gets the lock (503 busy) or gets it with no time left for the store (500).
+    assert!(
+        (b.status == 503 && b.body == r#"{"detail":"service is busy"}"#) || b.status == 500,
+        "{b:?}"
+    );
+    assert!(waited < Duration::from_secs(5), "{waited:?}");
+    holder.execute_batch("ROLLBACK").unwrap();
+    let rows: i64 = c
+        .query_row("SELECT COUNT(*) FROM model_badge", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 0);
 }
