@@ -82,6 +82,13 @@ TIES = [
     res(10, 'q', 0, 3.5, 0.35, "'[0.375]'"),
     res(10, 'q', 1, 4.5, 0.45, "'[2.675]'"),
 ]
+INFINITE = [
+    f"{RUN}(8, 'b', 'done', 1.0, 1e999, 1, 1, '')",
+    f"{VAR}(11, 8, 'm', '{{}}', -1e999)",
+    res(11, 'p', 0, '1e999', '1e999', "'[1e999]'"),
+    res(11, 'p', 1, 2.0, 3.0, "'[1.0]'"),
+    swp(8, 'm', 128, 0, '1e999'),
+]
 
 # id, seed, path segment, backends ("ok" | "empty" | "raises"), predictions
 CASES = [
@@ -94,6 +101,7 @@ CASES = [
     ("empty-run", EMPTY, "5", "ok", {}),
     ("all-cold", ALL_COLD, "6", "ok", {}),
     ("rounding-ties", TIES, "7", "ok", {"m": 7.125}),
+    ("infinite-values", INFINITE, "8", "ok", {"m": None}),
 ]
 
 

@@ -5,6 +5,8 @@ pub mod backends;
 pub mod badges;
 #[cfg(feature = "native-bench-runs")]
 pub mod bench_runs;
+#[cfg(feature = "native-benchmark-overview")]
+pub mod benchmark_overview;
 pub mod diagnose;
 #[cfg(feature = "native-diagnose")]
 pub mod diagnose_docker;
@@ -103,6 +105,9 @@ pub struct StateData {
     /// noevia#1318: native backend restart and test prompt; restart errors stay in the child.
     #[cfg(feature = "native-backend-control")]
     pub backends: Option<Arc<backends::Backends>>,
+    /// noevia#1318: native `GET /api/v1/benchmark`; its live `job` is asked of the child.
+    #[cfg(feature = "native-benchmark-overview")]
+    pub benchmark_overview: Option<Arc<benchmark_overview::BenchmarkOverview>>,
     /// noevia#1318: native `PUT /api/v1/settings`; the token test is asked of the child.
     #[cfg(feature = "native-settings-write")]
     pub settings_write: Option<Arc<settings_write::SettingsWrite>>,
@@ -918,6 +923,12 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
                     detail(StatusCode::SERVICE_UNAVAILABLE, model_updates::REFUSAL)
                 }
             };
+        }
+    }
+    #[cfg(feature = "native-benchmark-overview")]
+    if *req.method() == Method::GET && path == "/api/v1/benchmark" {
+        if let Some(overview) = state.benchmark_overview.clone() {
+            return native_benchmark_overview(&state, &overview).await;
         }
     }
     #[cfg(feature = "native-backend-control")]
@@ -1808,6 +1819,43 @@ async fn guarded_delete(
         }
     }
     forward(state, Request::from_parts(parts, Body::from(raw))).await
+}
+
+/// noevia#1318: `GET /api/v1/benchmark`: the store, models.ini and Docker reads natively, then
+/// the runner's live `job` from the child (which owns the runner thread).
+#[cfg(feature = "native-benchmark-overview")]
+async fn native_benchmark_overview(
+    state: &StateData,
+    overview: &benchmark_overview::BenchmarkOverview,
+) -> Response {
+    let Ok(local) = overview.local().await else {
+        return internal_error();
+    };
+    // `discover_llama_containers` answers [] for any Docker failure.
+    let inventory = state.docker.containers().await.unwrap_or_default();
+    let Ok(backends) = effective_names(&state.configured, &inventory) else {
+        return internal_error();
+    };
+    let job = match child_runtime(
+        state,
+        benchmark_overview::JOB_PATH,
+        "",
+        benchmark_overview::JOB_CAP,
+    )
+    .await
+    {
+        Ok(job) if benchmark_overview::job_object(&job) => job,
+        Ok(_) | Err(true) => return internal_error(),
+        Err(false) => return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable"),
+    };
+    match benchmark_overview::render(&local, &backends, &job) {
+        Some(bytes) => (
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response(),
+        None => internal_error(),
+    }
 }
 
 /// A FastAPI `dict` body read exactly as the prompt writer reads it (content type, CPython JSON

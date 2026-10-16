@@ -170,4 +170,6 @@ Docker services or production data are used.
 
 `native-backend-control` and `MODEL_MANAGER_BACKEND_CONTROL_IMPL=rust` serve `POST /api/v1/backends/{name}/restart` and `/test`, default off. Restart errors stay recorded in the Python child, which `GET /api/v1/backends` reads. See [native backend restart and test](docs/native-backend-control.md).
 
+`native-benchmark-overview` and `MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL=rust` serve `GET /api/v1/benchmark`, default off. The runner's live `job` is asked of the Python child, and the job controls stay with Python. See [native benchmark overview](docs/native-benchmark-overview.md).
+
 `native-diagnose` and `MODEL_MANAGER_DIAGNOSE_IMPL=rust` select the whole internal backend diagnosis GET, default off. Selection requires exact `TZ=UTC` before startup. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.
