@@ -21,7 +21,8 @@
 //!   (its `provider` loop throws), so does this port.
 //!
 //! Every change is made under the projects.json lock shared with Node, on the file as it is then
-//! ([`store::update`]); the project is looked up again there, so two concurrent creates make one.
+//! ([`store::update`]); the project is looked up again there, so two concurrent creates make one,
+//! and the tombstones are read there too (#1906).
 //!
 //! Fixed against Node (sbstndalton/noevia#1902): a malformed percent escape in the chat id is 400
 //! `Invalid chat identifier`, not Node's 500 (its `decodeURIComponent` throws there).
@@ -178,10 +179,6 @@ fn serve(ctx: Ctx<'_>, raw_chat: &str, post: bool) -> Reply {
         None if !post => return project_reply(JValue::Null),
         None => {}
     }
-    let tombstoned = match chats::read_tombstones(&dir) {
-        Ok(t) => t.contains(&chat),
-        Err(_) => return Reply::internal(),
-    };
     let done = store::update(&dir, ctx.switch, |projects| {
         if !loadable(projects) {
             return (Outcome::Fail, false);
@@ -190,10 +187,15 @@ fn serve(ctx: Ctx<'_>, raw_chat: &str, post: bool) -> Reply {
             Err(()) => (Outcome::Fail, false),
             Ok(Some(at)) => heal(projects, at),
             Ok(None) if !post => (Outcome::Missing, false),
-            Ok(None) if tombstoned => (Outcome::Deleted, false),
-            Ok(None) => match create(projects, new_project(&id, raw_chat, ctx.now_ms)) {
-                Some(project) => (Outcome::Project(project), true),
-                None => (Outcome::Fail, false),
+            // #1906: the tombstones are read under the lock, on the create path only, so a chat
+            // deleted while this request waited for it is not given its attachments back.
+            Ok(None) => match chats::read_tombstones(&dir) {
+                Err(_) => (Outcome::Fail, false),
+                Ok(t) if t.contains(&chat) => (Outcome::Deleted, false),
+                Ok(_) => match create(projects, new_project(&id, raw_chat, ctx.now_ms)) {
+                    Some(project) => (Outcome::Project(project), true),
+                    None => (Outcome::Fail, false),
+                },
             },
         }
     });
@@ -231,6 +233,34 @@ mod tests {
         for bad in ["", "a.b", "a b", "a/b", "é", "a\u{0}", &"x".repeat(101)] {
             assert_eq!(chat_project_id(bad), None, "{bad:?}");
         }
+    }
+
+    /// sbstndalton/noevia#1906: a chat deleted after the request started but before it took the
+    /// lock (Node tombstones it, then removes the attachments project) is not given one back.
+    #[test]
+    fn a_tombstone_written_before_the_lock_is_seen_by_the_create() {
+        let root = tempfile::tempdir().unwrap();
+        let user = "11111111-2222-4333-8444-555555555555";
+        let dir = root.path().join("users").join(user);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(store::PROJECTS_FILE), "{\n  \"projects\": []\n}").unwrap();
+        let ctx = Ctx {
+            data_dir: root.path(),
+            user_id: user,
+            switch: server_store::RustProjects::from_env_value(Some("1")).unwrap(),
+            now_ms: 5,
+        };
+        // Hold the lock so the request has done its unlocked reads and waits for it.
+        let held = crate::lock::acquire(&dir.join(store::PROJECTS_FILE)).unwrap();
+        let reply = std::thread::scope(|s| {
+            let request = s.spawn(|| post(ctx, "gone"));
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            std::fs::write(dir.join(chats::TOMBSTONES_FILE), "[\"gone\"]").unwrap();
+            drop(held);
+            request.join().unwrap()
+        });
+        assert_eq!(reply, Reply::error(410, "This chat was deleted."));
+        assert!(store::read(&dir).unwrap().is_empty(), "nothing created");
     }
 
     #[test]
