@@ -679,7 +679,30 @@ fn idle_unload_startup_paths() {
     );
     assert_eq!(
         std::fs::read_to_string(&ini).unwrap(),
-        "[*]\nsleep-idle-seconds = 900\n\n[chat]\nmodel = synthetic.gguf\n"
+        "[*]\nsleep-idle-seconds = 1800\n\n[chat]\nmodel = synthetic.gguf\n"
+    );
+
+    // noevia#1863: an admin's stored choice in DATA_DIR wins over the env seed at startup.
+    std::fs::remove_file(&marker).unwrap();
+    let data = tempfile::tempdir().unwrap();
+    std::fs::write(
+        data.path().join("chat-idle-unload.json"),
+        r#"{"seconds":7200}"#,
+    )
+    .unwrap();
+    let output = command(dir.path(), &marker)
+        .env("MODEL_MANAGER_IMPL", "rust")
+        .env("MODELS_INI_PATH", &ini)
+        .env("DATA_DIR", data.path())
+        .env("CHAT_MODEL_IDLE_UNLOAD_SECONDS", "900")
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Python-owned endpoint process exited")
+    );
+    assert_eq!(
+        std::fs::read_to_string(&ini).unwrap(),
+        "[*]\nsleep-idle-seconds = 7200\n\n[chat]\nmodel = synthetic.gguf\n"
     );
 
     std::fs::remove_file(&marker).unwrap();

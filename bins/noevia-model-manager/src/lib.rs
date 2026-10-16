@@ -786,6 +786,11 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    if path == IDLE_UNLOAD_ROUTE {
+        if let Some(reconciler) = state.idle_unload.clone() {
+            return native_idle_unload(&reconciler, req).await;
+        }
+    }
     if let Some(service) = state.embedding.clone() {
         if path == "/api/v1/embedding-service" {
             return native_embedding(&service, req).await;
@@ -965,6 +970,74 @@ async fn after_preset_write(reconciler: &idle_unload::Reconciler, bytes: Vec<u8>
     }
     body.insert("revision".into(), serde_json::Value::String(revision));
     serde_json::to_vec(&body).unwrap_or(bytes)
+}
+
+/// noevia#1863: the chat-model idle unload setting. Native only: the Python child never owned it.
+pub const IDLE_UNLOAD_ROUTE: &str = "/api/v1/idle-unload";
+
+/// `GET` reports the effective timeout; `PUT {"seconds": n}` saves an admin choice (0 is
+/// "Never", otherwise 300..=86400) and `PUT {"seconds": null}` clears it, back to the env seed.
+/// The chat preset's `[*]` key is rewritten before the answer; the caller reloads the router.
+async fn native_idle_unload(reconciler: &idle_unload::Reconciler, req: Request) -> Response {
+    match *req.method() {
+        Method::GET => Json(reconciler.view().json()).into_response(),
+        Method::PUT => {
+            if !reconciler.writable() {
+                return detail(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "the idle unload setting cannot be saved here",
+                );
+            }
+            let Ok(raw) = to_bytes(req.into_body(), 4096).await else {
+                return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+            };
+            let Ok(serde_json::Value::Object(body)) = serde_json::from_slice(&raw) else {
+                return detail(StatusCode::BAD_REQUEST, "invalid idle unload request");
+            };
+            let value = match body.get("seconds") {
+                Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::Number(n)) => {
+                    match n.as_u64().and_then(idle_unload::admin_value) {
+                        Some(v) => Some(v),
+                        None => {
+                            return detail(
+                                StatusCode::BAD_REQUEST,
+                                "seconds must be 0 (never) or 300 to 86400",
+                            )
+                        }
+                    }
+                }
+                _ => {
+                    return detail(
+                        StatusCode::BAD_REQUEST,
+                        "seconds must be 0 (never), 300 to 86400, or null",
+                    )
+                }
+            };
+            match reconciler.update(value).await {
+                Ok((view, preset)) => {
+                    let mut out = view.json();
+                    let (state, error) = match preset {
+                        idle_unload::Preset::Written => ("written", None),
+                        idle_unload::Preset::Unchanged => ("unchanged", None),
+                        idle_unload::Preset::Failed(e) => ("failed", Some(e)),
+                    };
+                    if let serde_json::Value::Object(map) = &mut out {
+                        map.insert("preset".into(), json!(state));
+                        if let Some(e) = error {
+                            map.insert("presetError".into(), json!(e));
+                        }
+                    }
+                    Json(out).into_response()
+                }
+                Err(_) => detail(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "the idle unload setting could not be saved",
+                ),
+            }
+        }
+        _ => detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed"),
+    }
 }
 
 async fn native_embedding(service: &Arc<embedding::EmbeddingService>, req: Request) -> Response {

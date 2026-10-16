@@ -13,12 +13,24 @@
 //! A busy model is never put to sleep by llama.cpp itself: while any slot is generating, the
 //! server posts a `NEXT_RESPONSE` task every loop, which resets the idle timer, and it only
 //! checks for sleep when its task queue is empty. The manager never calls unload or reload.
+//!
+//! noevia#1863: the timeout is an admin setting. `GET/PUT /api/v1/idle-unload` reads and changes
+//! it at runtime ([`Reconciler::update`]); the admin's choice is kept in `DATA_DIR`
+//! ([`STORE_FILE`]) and wins over the environment, which only seeds it. llama.cpp reads the key
+//! when the router (re)reads its presets, so noevia asks the router to reload after a change.
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
-/// The setting. Empty or unset means [`DEFAULT_SECONDS`]; `0` disables idle unload.
+/// The deployment seed. Empty or unset means [`DEFAULT_SECONDS`]; `0` disables idle unload.
 pub const ENV: &str = "CHAT_MODEL_IDLE_UNLOAD_SECONDS";
-pub const DEFAULT_SECONDS: u32 = 900;
+/// noevia#1863: 30 minutes (was 15, #1747).
+pub const DEFAULT_SECONDS: u32 = 1800;
+/// noevia#1863: the range an admin may choose (5 min to 24 h), plus 0 for "Never".
+pub const SETTING_MIN_SECONDS: u32 = 5 * 60;
+pub const SETTING_MAX_SECONDS: u32 = 24 * 60 * 60;
+/// The admin's choice, in `DATA_DIR`. Absent means the environment (or the default) applies.
+pub const STORE_FILE: &str = "chat-idle-unload.json";
+const STORE_CAP: u64 = 4096;
 /// One week. llama.cpp takes an `int`; anything longer is a typo, not a policy.
 pub const MAX_SECONDS: u32 = 7 * 24 * 60 * 60;
 /// llama.cpp's own preset key for `--sleep-idle-seconds` (it rejects 0, so 0 removes the key).
@@ -130,30 +142,246 @@ pub fn writes_models_ini(method: &str, path: &str) -> bool {
     }
 }
 
+/// Where the effective timeout came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Source {
+    /// An admin chose it (`PUT /api/v1/idle-unload`).
+    Setting,
+    /// `CHAT_MODEL_IDLE_UNLOAD_SECONDS`.
+    Env,
+    /// Neither: [`DEFAULT_SECONDS`].
+    Default,
+}
+
+impl Source {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Source::Setting => "setting",
+            Source::Env => "env",
+            Source::Default => "default",
+        }
+    }
+}
+
+/// [`parse`] plus where the value came from (blank is the default, anything else the env).
+pub fn parse_env(raw: Option<&str>) -> Result<(Option<u32>, Source), &'static str> {
+    let blank = raw.map(str::trim).unwrap_or_default().is_empty();
+    Ok((
+        parse(raw)?,
+        if blank { Source::Default } else { Source::Env },
+    ))
+}
+
+/// An admin value: `Some(None)` is "Never", `Some(Some(n))` unloads after n seconds, `None` is
+/// out of range. Only 0 and [`SETTING_MIN_SECONDS`]..=[`SETTING_MAX_SECONDS`] are accepted.
+pub fn admin_value(seconds: u64) -> Option<Option<u32>> {
+    match u32::try_from(seconds).ok()? {
+        0 => Some(None),
+        n if (SETTING_MIN_SECONDS..=SETTING_MAX_SECONDS).contains(&n) => Some(Some(n)),
+        _ => None,
+    }
+}
+
+/// Reads the stored admin choice. `Ok(None)`: nothing stored. A file that is unreadable or not a
+/// valid choice is an `Err`; the caller logs it and falls back to the environment.
+pub fn read_store(path: &Path) -> Result<Option<Option<u32>>, &'static str> {
+    use std::io::Read;
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err("idle unload setting unreadable"),
+    };
+    let mut bytes = Vec::new();
+    file.take(STORE_CAP + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "idle unload setting unreadable")?;
+    if bytes.len() as u64 > STORE_CAP {
+        return Err("idle unload setting exceeded limit");
+    }
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| "idle unload setting is not valid JSON")?;
+    value
+        .get("seconds")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(admin_value)
+        .map(Some)
+        .ok_or("idle unload setting is out of range")
+}
+
+/// Writes (or, for `None`, removes) the stored admin choice atomically.
+fn write_store(path: &Path, value: Option<Option<u32>>) -> Result<(), &'static str> {
+    let dir = path
+        .parent()
+        .ok_or("idle unload setting has no directory")?;
+    let Some(value) = value else {
+        return match std::fs::remove_file(path) {
+            Ok(()) => {
+                sync_dir(dir);
+                Ok(())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(_) => Err("idle unload setting could not be cleared"),
+        };
+    };
+    let body = serde_json::json!({ "seconds": value.unwrap_or(0) }).to_string();
+    let mut tmp =
+        tempfile::NamedTempFile::new_in(dir).map_err(|_| "idle unload setting write failed")?;
+    std::io::Write::write_all(&mut tmp, body.as_bytes())
+        .map_err(|_| "idle unload setting write failed")?;
+    tmp.as_file()
+        .sync_all()
+        .map_err(|_| "idle unload setting write failed")?;
+    tmp.persist(path)
+        .map_err(|_| "idle unload setting write failed")?;
+    sync_dir(dir);
+    Ok(())
+}
+
+/// What `GET/PUT /api/v1/idle-unload` reports. `seconds` 0 means "Never".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct View {
+    pub setting: Option<u32>,
+    pub source: Source,
+    /// What clearing the admin choice falls back to (the environment or the default).
+    pub fallback: Option<u32>,
+    pub fallback_source: Source,
+}
+
+impl View {
+    pub fn json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "seconds": self.setting.unwrap_or(0),
+            "source": self.source.as_str(),
+            "fallbackSeconds": self.fallback.unwrap_or(0),
+            "fallbackSource": self.fallback_source.as_str(),
+            "defaultSeconds": DEFAULT_SECONDS,
+            "minSeconds": SETTING_MIN_SECONDS,
+            "maxSeconds": SETTING_MAX_SECONDS,
+        })
+    }
+}
+
+/// How a change reached the chat preset.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Preset {
+    /// The key was rewritten.
+    Written,
+    /// Already right, or no chat preset exists yet.
+    Unchanged,
+    /// The setting is saved but the preset could not be rewritten now; the next preset save or
+    /// restart retries.
+    Failed(&'static str),
+}
+
+#[derive(Clone, Copy)]
+struct Current {
+    setting: Option<u32>,
+    source: Source,
+}
+
 /// Keeps the chat preset's global idle key in line with the setting.
 pub struct Reconciler {
     path: PathBuf,
-    setting: Option<u32>,
+    fallback: Current,
+    store: Option<PathBuf>,
+    current: std::sync::Mutex<Current>,
     lock: tokio::sync::Mutex<()>,
 }
 
 impl Reconciler {
+    /// A fixed setting with no admin store (as before #1863).
     pub fn new(path: PathBuf, setting: Option<u32>) -> Self {
+        Self::with_store(path, (setting, Source::Env), None)
+    }
+    /// `env`: [`parse_env`]'s answer. `store`: the admin choice's file; a stored choice wins.
+    /// A store that cannot be read is reported and ignored (the environment applies).
+    pub fn with_store(path: PathBuf, env: (Option<u32>, Source), store: Option<PathBuf>) -> Self {
+        let fallback = Current {
+            setting: env.0,
+            source: env.1,
+        };
+        let current = match store.as_deref().map(read_store) {
+            Some(Ok(Some(setting))) => Current {
+                setting,
+                source: Source::Setting,
+            },
+            Some(Err(error)) => {
+                eprintln!("WARN idle unload: {error}; using {}", ENV);
+                fallback
+            }
+            _ => fallback,
+        };
         Self {
             path,
-            setting,
+            fallback,
+            store,
+            current: std::sync::Mutex::new(current),
             lock: tokio::sync::Mutex::new(()),
         }
     }
+    fn now(&self) -> Current {
+        *self
+            .current
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
     pub fn setting(&self) -> Option<u32> {
-        self.setting
+        self.now().setting
+    }
+    pub fn view(&self) -> View {
+        let now = self.now();
+        View {
+            setting: now.setting,
+            source: now.source,
+            fallback: self.fallback.setting,
+            fallback_source: self.fallback.source,
+        }
+    }
+    /// Whether an admin choice can be saved (there is a store).
+    pub fn writable(&self) -> bool {
+        self.store.is_some()
+    }
+    /// noevia#1863: saves an admin choice (`Some`) or clears it (`None`, back to the
+    /// environment), then rewrites the chat preset. Nothing changes when the save fails.
+    pub async fn update(&self, value: Option<Option<u32>>) -> Result<(View, Preset), &'static str> {
+        let _guard = self.lock.lock().await;
+        let store = self
+            .store
+            .clone()
+            .ok_or("idle unload setting has no store")?;
+        tokio::task::spawn_blocking(move || write_store(&store, value))
+            .await
+            .map_err(|_| "idle unload setting write failed")??;
+        let next = match value {
+            Some(setting) => Current {
+                setting,
+                source: Source::Setting,
+            },
+            None => self.fallback,
+        };
+        *self
+            .current
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = next;
+        let preset = match self.reconcile_locked().await {
+            Ok(Some(_)) => Preset::Written,
+            Ok(None) => Preset::Unchanged,
+            Err(error) => {
+                eprintln!("WARN idle unload: {error}");
+                Preset::Failed(error)
+            }
+        };
+        Ok((self.view(), preset))
     }
     /// `Ok(Some(revision))` when the file was rewritten (sha256 hex of the new bytes, the same
     /// revision the Python editor reports), `Ok(None)` when nothing changed or no preset exists.
     pub async fn reconcile(&self) -> Result<Option<String>, &'static str> {
         let _guard = self.lock.lock().await;
+        self.reconcile_locked().await
+    }
+    async fn reconcile_locked(&self) -> Result<Option<String>, &'static str> {
         let path = self.path.clone();
-        let setting = self.setting;
+        let setting = self.setting();
         tokio::task::spawn_blocking(move || reconcile_file(&path, setting))
             .await
             .map_err(|_| "idle unload reconcile failed")?
@@ -365,11 +593,51 @@ mod tests {
     }
 
     #[test]
-    fn default_is_fifteen_minutes() {
-        assert_eq!(DEFAULT_SECONDS, 900);
-        assert_eq!(parse(None), Ok(Some(900)));
-        assert_eq!(parse(Some("")), Ok(Some(900)));
-        assert_eq!(parse(Some("  ")), Ok(Some(900)));
+    fn default_is_thirty_minutes() {
+        assert_eq!(DEFAULT_SECONDS, 1800);
+        assert_eq!(parse(None), Ok(Some(1800)));
+        assert_eq!(parse(Some("")), Ok(Some(1800)));
+        assert_eq!(parse(Some("  ")), Ok(Some(1800)));
+        assert_eq!(parse_env(Some(" ")), Ok((Some(1800), Source::Default)));
+        assert_eq!(parse_env(None), Ok((Some(1800), Source::Default)));
+        assert_eq!(parse_env(Some("900")), Ok((Some(900), Source::Env)));
+        assert_eq!(parse_env(Some("0")), Ok((None, Source::Env)));
+    }
+
+    #[test]
+    fn admin_range_is_five_minutes_to_a_day_or_never() {
+        assert_eq!(admin_value(0), Some(None));
+        assert_eq!(admin_value(300), Some(Some(300)));
+        assert_eq!(admin_value(86_400), Some(Some(86_400)));
+        for bad in [1, 60, 299, 86_401, 604_800, u64::from(u32::MAX) + 1] {
+            assert_eq!(admin_value(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn store_round_trip_and_bad_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(STORE_FILE);
+        assert_eq!(read_store(&path), Ok(None));
+        write_store(&path, Some(Some(3600))).unwrap();
+        assert_eq!(read_store(&path), Ok(Some(Some(3600))));
+        write_store(&path, Some(None)).unwrap();
+        assert_eq!(read_store(&path), Ok(Some(None)));
+        write_store(&path, None).unwrap();
+        assert!(!path.exists());
+        write_store(&path, None).unwrap();
+        for bad in [
+            &b"{"[..],
+            b"{\"seconds\":60}",
+            b"{\"seconds\":\"600\"}",
+            b"[]",
+        ] {
+            std::fs::write(&path, bad).unwrap();
+            assert!(read_store(&path).is_err());
+        }
+        std::fs::write(&path, vec![b' '; 5000]).unwrap();
+        assert_eq!(read_store(&path), Err("idle unload setting exceeded limit"));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     #[test]

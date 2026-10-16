@@ -348,12 +348,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     // #1747: idle chat models unload themselves (llama.cpp `sleep-idle-seconds` in the chat
     // preset's `[*]` section). A bad value stops startup; a preset that cannot be rewritten does not.
-    let idle_unload = Arc::new(noevia_model_manager::idle_unload::Reconciler::new(
+    // noevia#1863: an admin's choice, kept in DATA_DIR, wins over the env seed.
+    let idle_unload = Arc::new(noevia_model_manager::idle_unload::Reconciler::with_store(
         environment("MODELS_INI_PATH", "/models/models.ini")?.into(),
-        noevia_model_manager::idle_unload::parse(Some(&environment(
+        noevia_model_manager::idle_unload::parse_env(Some(&environment(
             noevia_model_manager::idle_unload::ENV,
             "",
         )?))?,
+        Some(
+            std::path::Path::new(&environment("DATA_DIR", "/data")?)
+                .join(noevia_model_manager::idle_unload::STORE_FILE),
+        ),
     ));
     if let Err(error) = idle_unload.reconcile().await {
         eprintln!("idle unload: {error}");
