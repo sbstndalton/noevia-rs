@@ -78,6 +78,8 @@ pub fn state(reader: Arc<dyn DiagnosisRead>, configured: Vec<String>) -> Arc<Sta
         idle_unload: None,
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
+        #[cfg(feature = "native-badges")]
+        badges: None,
     })
 }
 /// A finite Rust-owned synthetic Unix Docker script. The caller observes the daemon join.

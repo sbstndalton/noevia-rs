@@ -160,4 +160,6 @@ Docker services or production data are used.
 
 `native-download-targets` and `MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL=rust` serve the read-only `GET /api/v1/download-targets`, default off. `POST /api/v1/downloads` stays Python and checks its target against the same settings. See [native download targets](docs/native-download-targets.md).
 
+`native-badges` and `MODEL_MANAGER_BADGES_IMPL=rust` serve `PUT` and `DELETE /api/v1/badges`, default off, with the noevia#1905 fixes (a non-integer rating or run id answers 400, and padded aliases are stripped once). See [native badge writes](docs/native-badges.md).
+
 `native-diagnose` and `MODEL_MANAGER_DIAGNOSE_IMPL=rust` select the whole internal backend diagnosis GET, default off. Selection requires exact `TZ=UTC` before startup. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.

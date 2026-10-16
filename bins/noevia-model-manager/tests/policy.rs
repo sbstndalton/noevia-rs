@@ -70,6 +70,8 @@ fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
         idle_unload: None,
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
+        #[cfg(feature = "native-badges")]
+        badges: None,
     })
 }
 fn fake() -> Arc<Fake> {
