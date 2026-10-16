@@ -203,13 +203,31 @@ pub fn native_for(route: &Route) -> Option<Native> {
     }
     match (route.path, route.switch) {
         ("/api/ready", None) => Some(Native::Ready),
-        (_, None) if route.path.starts_with("/api/") => Some(Native::Account),
+        (p, None) if is_account_path(p) => Some(Native::Account),
         (p, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ROUTES.contains(&p) => Some(Native::Projects),
         (p, Some("NOEVIA_RUST_PROJECT_WRITES")) if PROJECT_WRITES.contains(&p) => {
             Some(Native::Projects)
         }
         _ => None,
     }
+}
+
+/// The unswitched API routes crates/server-account answers (sign-in, setup, profile, account files
+/// and admin). An unswitched Rust route outside these prefixes must be mapped explicitly above, so a
+/// new one never falls through to the account handler (sbstndalton/noevia#1932).
+const ACCOUNT_PREFIXES: &[&str] = &[
+    "/api/auth/",
+    "/api/account/",
+    "/api/admin/",
+    "/api/setup/",
+    "/api/profile",
+];
+
+fn is_account_path(path: &str) -> bool {
+    ACCOUNT_PREFIXES.iter().any(|p| {
+        path.strip_prefix(p)
+            .is_some_and(|rest| p.ends_with('/') || rest.is_empty() || rest.starts_with('/'))
+    })
 }
 
 fn is_api(path: &str) -> bool {
@@ -305,6 +323,38 @@ mod tests {
             );
         }
         assert!(ROUTES.iter().any(|r| r.catch_all && r.owner == Owner::Rust));
+    }
+
+    /// sbstndalton/noevia#1932: every unswitched Rust-owned /api/ route is either an account route
+    /// (served by the account handler) or mapped to its own handler, never the account fallback.
+    #[test]
+    fn unswitched_rust_api_routes_are_account_or_explicitly_mapped() {
+        let mut account = 0;
+        for r in ROUTES.iter().filter(|r| {
+            r.owner == Owner::Rust
+                && r.switch.is_none()
+                && !r.catch_all
+                && r.path.starts_with("/api/")
+        }) {
+            match native_for(r) {
+                Some(Native::Account) => {
+                    assert!(
+                        is_account_path(r.path),
+                        "{} falls through to Native::Account",
+                        r.path
+                    );
+                    account += 1;
+                }
+                Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
+                None => panic!(
+                    "{} is owner = rust with no switch but has no handler",
+                    r.path
+                ),
+            }
+        }
+        assert!(account > 0);
+        assert!(!is_account_path("/api/profiles"));
+        assert!(!is_account_path("/api/accounting"));
     }
 
     #[test]
