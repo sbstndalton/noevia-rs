@@ -44,7 +44,7 @@ FastAPI's input-echoing validation object.
 
 Qualification uses the actual pinned Python `api.py` SHA
 `eb8e12f6929baf15d2b1a1998aceff9529fbe48ca8242094ac6b7526c253a91d` from services
-`f34f008bb38de97f2a3c4323b3d2378fff146dd5`. `generate-oracle` evaluates only the actual
+`ff8f314d7496e83d3b2d229089f8aabb4ddf67f9`. `generate-oracle` evaluates only the actual
 AST redaction/log functions with synthetic in-memory collaborators, without importing the
 app or invoking startup. CI regenerates its exact fixture. Properties cover secret probes
 and hostile frames; tests use only owned Unix fake peers and a test-only uvicorn executable.
