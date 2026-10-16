@@ -43,8 +43,13 @@ impl Front {
     }
 }
 
-/// One HTTP/1.1 exchange over a raw socket: the headers and `head` of the body, then `between`
-/// (the gate has run by then), then the rest of the body; the status and body text.
+/// One HTTP/1.1 exchange over a raw socket, with `between` run once the front has gated the
+/// request: the headers go out with `Expect: 100-continue` and no body, and the front answers
+/// `100 Continue` only when it starts reading the body, which it does after the gate
+/// (project_routes.rs `serve`). Then `between`, then the body; the status and body text.
+/// sbstndalton/noevia#1942: this used to send half the body and sleep 300 ms, assuming the gate
+/// had run by then. On a loaded runner it sometimes had not, so `between` revoked the session
+/// before the gate and the front rightly answered 401 instead of the 410 under test.
 async fn call_slow(
     addr: SocketAddr,
     method: &str,
@@ -55,21 +60,35 @@ async fn call_slow(
 ) -> (u16, String) {
     let mut s = TcpStream::connect(addr).await.unwrap();
     let mut head = format!(
-        "{method} {path} HTTP/1.1\r\nhost: front.test\r\nconnection: close\r\ncontent-length: {}\r\n",
+        "{method} {path} HTTP/1.1\r\nhost: front.test\r\nconnection: close\r\nexpect: 100-continue\r\ncontent-length: {}\r\n",
         body.len()
     );
     for (k, v) in headers {
         head.push_str(&format!("{k}: {v}\r\n"));
     }
     head.push_str("\r\n");
-    let (first, rest) = body.split_at(body.len() / 2);
     s.write_all(head.as_bytes()).await.unwrap();
-    s.write_all(first.as_bytes()).await.unwrap();
     s.flush().await.unwrap();
-    // The front gates on the headers, then waits for the body.
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // The interim answer, read byte by byte so nothing of the final reply is consumed. Bounded:
+    // a front that never asks for the body fails here instead of hanging the suite.
+    let interim = tokio::time::timeout(Duration::from_secs(30), async {
+        let mut got = Vec::new();
+        let mut byte = [0u8; 1];
+        while !got.ends_with(b"\r\n\r\n") {
+            assert_eq!(
+                s.read(&mut byte).await.unwrap(),
+                1,
+                "closed before 100 Continue: {got:?}"
+            );
+            got.push(byte[0]);
+        }
+        String::from_utf8(got).unwrap()
+    })
+    .await
+    .expect("the front never asked for the body (no 100 Continue)");
+    assert!(interim.starts_with("HTTP/1.1 100 "), "{interim}");
     between();
-    s.write_all(rest.as_bytes()).await.unwrap();
+    s.write_all(body.as_bytes()).await.unwrap();
     let mut out = Vec::new();
     s.read_to_end(&mut out).await.unwrap();
     let text = String::from_utf8(out).unwrap();
