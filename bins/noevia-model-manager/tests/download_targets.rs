@@ -52,6 +52,8 @@ fn state(targets: Option<DownloadTargets>, legacy_base: &str) -> Arc<StateData> 
         #[cfg(feature = "native-model-detail")]
         model_detail: None,
         download_targets: targets.map(Arc::new),
+        #[cfg(feature = "native-badges")]
+        badges: None,
         sections: None,
         embedding: None,
         host: None,
