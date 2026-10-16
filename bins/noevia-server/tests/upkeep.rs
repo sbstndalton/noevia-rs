@@ -1,6 +1,7 @@
-//! M3 session upkeep in the front (NOEVIA_RUST_AUTH=1): every request the front proxies to Node
-//! moves a live session's `last_seen_at` and deletes a rejected session row, as Node's gate did;
-//! the bundle served by the front is left alone; with the switch off nothing is written.
+//! M3 session upkeep in the front (permanent since sbstndalton/noevia#1071): every request the
+//! front proxies to Node moves a live session's `last_seen_at` and deletes a rejected session row,
+//! as Node's gate did; the bundle served by the front is left alone; a leftover value of the
+//! retired NOEVIA_RUST_AUTH switch changes nothing.
 //! Synthetic data only.
 #![allow(
     clippy::unwrap_used,
@@ -85,14 +86,19 @@ async fn upstream() -> SocketAddr {
     addr
 }
 
-async fn front(up: SocketAddr, data: &Path, dist: &Path, rust_auth: bool) -> SocketAddr {
+async fn front(
+    up: SocketAddr,
+    data: &Path,
+    dist: &Path,
+    extra: &[(&'static str, &str)],
+) -> SocketAddr {
     let mut env: HashMap<&str, String> = HashMap::new();
     env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{up}"));
     env.insert("UI_PORT", "1".into());
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", dist.display().to_string());
-    if rust_auth {
-        env.insert("NOEVIA_RUST_AUTH", "1".into());
+    for (k, v) in extra {
+        env.insert(k, (*v).to_string());
     }
     let config = Config::from_lookup(|k| env.get(k).cloned()).unwrap();
     let app = noevia_server::App::new(config);
@@ -137,7 +143,7 @@ async fn the_front_keeps_sessions_alive_like_node() {
     let data = tempfile::tempdir().unwrap();
     let node = seed(data.path());
     let before = last_seen(&node, "live").unwrap();
-    let addr = front(upstream().await, data.path(), &dist(data.path()), true).await;
+    let addr = front(upstream().await, data.path(), &dist(data.path()), &[]).await;
 
     // The bundle is the front's own: no upkeep, as since M1.
     let res = get(addr, "/", "cowork_session=live").await;
@@ -159,19 +165,22 @@ async fn the_front_keeps_sessions_alive_like_node() {
 }
 
 #[tokio::test]
-async fn without_the_switch_nothing_is_written() {
-    let data = tempfile::tempdir().unwrap();
-    let node = seed(data.path());
-    let before = last_seen(&node, "live").unwrap();
-    let addr = front(upstream().await, data.path(), &dist(data.path()), false).await;
-    for (path, cookie) in [
-        ("/api/projects", "cowork_session=live"),
-        ("/api/projects", "cowork_session=idle"),
-    ] {
-        let res = get(addr, path, cookie).await;
-        assert!(res.headers().get("x-upstream").is_some());
-        let _ = res.into_body().collect().await;
+async fn a_leftover_retired_switch_still_keeps_sessions_alive() {
+    for value in ["0", ""] {
+        let data = tempfile::tempdir().unwrap();
+        let node = seed(data.path());
+        let before = last_seen(&node, "live").unwrap();
+        let extra = [("NOEVIA_RUST_AUTH", value)];
+        let addr = front(upstream().await, data.path(), &dist(data.path()), &extra).await;
+        for (path, cookie) in [
+            ("/api/projects", "cowork_session=live"),
+            ("/api/projects", "cowork_session=idle"),
+        ] {
+            let res = get(addr, path, cookie).await;
+            assert!(res.headers().get("x-upstream").is_some());
+            let _ = res.into_body().collect().await;
+        }
+        assert!(last_seen(&node, "live").unwrap() > before, "{value:?}");
+        assert_eq!(last_seen(&node, "idle"), None, "{value:?}");
     }
-    assert_eq!(last_seen(&node, "live"), Some(before));
-    assert!(last_seen(&node, "idle").is_some());
 }

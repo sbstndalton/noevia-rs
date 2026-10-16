@@ -5,12 +5,11 @@
 //! is /app/dist in the web image, the directory Node serves). COWORK_CODE_NET_ADDR as in core
 //! code-net-guard.cjs (see code_net.rs; a malformed value stops startup). UI_DATA_DIR and the auth
 //! keys (PUBLIC_ORIGIN, ADDITIONAL_TRUSTED_ORIGINS, UI_AUTH_TOKEN, LEGACY_AUTH_COMPAT,
-//! NOEVIA_FEATURE_NATIVE_CLIENT_AUTH) as core index.cjs reads them, for identity.rs; without
-//! NOEVIA_RUST_AUTH an invalid auth value never stops the front (see identity.rs).
-//! NOEVIA_RUST_AUTH=1 (exactly) is the M3 deployment switch: Rust owns sign-in and the account and
-//! the tables they write (Node refuses those writes with the same switch and NOEVIA_FRONT=rust),
-//! and the permanent front read routes (sbstndalton/noevia#1071), so it needs UI_DATA_DIR and a
-//! valid auth environment; any other value is off.
+//! NOEVIA_FEATURE_NATIVE_CLIENT_AUTH) as core index.cjs reads them, for identity.rs.
+//! Rust always owns sign-in and the account and the tables they write (M3; Node always refuses
+//! those writes), and the front read routes (sbstndalton/noevia#1071): their old deployment
+//! switch NOEVIA_RUST_AUTH is retired, so UI_DATA_DIR and a valid auth environment are startup
+//! requirements, and a leftover NOEVIA_RUST_AUTH value only earns a warning.
 
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -30,15 +29,14 @@ pub struct Config {
     pub data_dir: Option<PathBuf>,
     /// The auth environment, or why it is invalid.
     pub auth: Result<server_auth::AuthConfig, String>,
-    /// NOEVIA_RUST_AUTH=1.
-    pub rust_auth: Option<server_store::RustAuth>,
-    /// NOEVIA_RUST_PROJECTS=1 (M4); refused without NOEVIA_RUST_AUTH=1, because the front gates the
-    /// routes it owns itself and Node's request gate no longer writes session upkeep then.
+    /// Rust's ownership of sign-in and the account (M3), permanent since sbstndalton/noevia#1071.
+    pub rust_auth: server_store::RustAuth,
+    /// NOEVIA_RUST_PROJECTS=1 (M4).
     pub rust_projects: Option<server_store::RustProjects>,
-    /// The permanent front read routes (sbstndalton/noevia#1071): each is on exactly when
-    /// NOEVIA_RUST_AUTH=1 (export: NOEVIA_RUST_PROJECTS=1), and every prerequisite (UI_DATA_DIR,
-    /// valid native auth, the compiled feature, a stats engine the front can read) is a startup
-    /// requirement then. Their old switches (RETIRED_SWITCHES) are not read.
+    /// The permanent front read routes (sbstndalton/noevia#1071): always on (export: with
+    /// NOEVIA_RUST_PROJECTS=1), and every prerequisite (UI_DATA_DIR, valid native auth, the
+    /// compiled feature, a stats engine the front can read) is a startup requirement. Their old
+    /// switches (RETIRED_SWITCHES) are not read.
     pub rust_usage: bool,
     pub rust_storage_reads: bool,
     /// The outbound storage list/read (#1368).
@@ -181,7 +179,6 @@ impl Config {
     /// The deployment switches that are on.
     pub fn switches(&self) -> crate::routes::Switches {
         crate::routes::Switches {
-            rust_auth: self.rust_auth.is_some(),
             rust_projects: self.rust_projects.is_some(),
             rust_project_writes: self.rust_project_writes,
         }
@@ -198,40 +195,30 @@ impl Config {
         if (upstream.port == port) && is_loopback_or_any(&host) {
             return Err("NOEVIA_LEGACY_UPSTREAM must not be this server's own port".into());
         }
-        let rust_auth =
-            server_store::RustAuth::from_env_value(get(server_store::RustAuth::ENV).as_deref());
+        // sbstndalton/noevia#1071: sign-in, the account and the front read routes are permanent.
+        // The front always owns them (Node no longer has them), so everything they need is a
+        // startup requirement: a build without one of them, or an environment they cannot serve
+        // from, refuses to start instead of leaving the route unanswered.
+        let rust_auth = server_store::RustAuth::owned();
         let rust_projects = server_store::RustProjects::from_env_value(
             get(server_store::RustProjects::ENV).as_deref(),
         );
-        if rust_projects.is_some() && rust_auth.is_none() {
-            return Err("NOEVIA_RUST_PROJECTS=1 needs NOEVIA_RUST_AUTH=1".into());
-        }
-        // sbstndalton/noevia#1071: the front read routes are permanent. Whenever the front runs
-        // with NOEVIA_RUST_AUTH=1 it owns them (Node no longer has them), so everything they need
-        // is a startup requirement: a build without one of them, or an environment they cannot
-        // serve from, refuses to start instead of leaving the route unanswered.
         let retired = retired_flags(&get);
-        let front_routes = rust_auth.is_some();
-        let rust_usage = front_routes;
-        let rust_storage_reads = front_routes;
-        let rust_storage_browse = front_routes;
-        let rust_sampling_settings = rust_auth
-            .and_then(|auth| server_store::RustSamplingSettings::from_env_value(Some("1"), auth));
-        let rust_reasoning_settings = rust_auth
-            .and_then(|auth| server_store::RustReasoningSettings::from_env_value(Some("1"), auth));
-        let rust_routing_mode = rust_auth
-            .and_then(|auth| server_store::RustRoutingMode::from_env_value(Some("1"), auth));
-        let rust_routing_default = front_routes;
-        let rust_stats = if front_routes {
-            let engine = server_stats::Engine::from_lookup(&get)
-                .map_err(|e| format!("NOEVIA_RUST_AUTH=1 (GET /api/stats): {e}"))?;
-            if engine.kind() == server_stats::Kind::Lemonade {
-                return Err("NOEVIA_RUST_AUTH=1: GET /api/stats is not available with the Lemonade model manager (its MTP last-response fallback was recorded in Node)".into());
-            }
-            Some(std::sync::Arc::new(engine))
-        } else {
-            None
-        };
+        let rust_usage = true;
+        let rust_storage_reads = true;
+        let rust_storage_browse = true;
+        let rust_sampling_settings =
+            server_store::RustSamplingSettings::from_env_value(Some("1"), rust_auth);
+        let rust_reasoning_settings =
+            server_store::RustReasoningSettings::from_env_value(Some("1"), rust_auth);
+        let rust_routing_mode = server_store::RustRoutingMode::from_env_value(Some("1"), rust_auth);
+        let rust_routing_default = true;
+        let engine =
+            server_stats::Engine::from_lookup(&get).map_err(|e| format!("GET /api/stats: {e}"))?;
+        if engine.kind() == server_stats::Kind::Lemonade {
+            return Err("GET /api/stats is not available with the Lemonade model manager (its MTP last-response fallback was recorded in Node)".into());
+        }
+        let rust_stats = Some(std::sync::Arc::new(engine));
         // GET /api/export/conversations reads the free-chat list from disk, which is only the
         // list Node re-reads under NOEVIA_RUST_PROJECTS (the owner's 2026-10-12 condition): it is
         // the front's whenever that switch is on (the web supervisor requires it).
@@ -276,32 +263,30 @@ impl Config {
             None
         };
         // Checked after the project switches so their own refusals come first.
-        if front_routes {
-            let missing: Vec<String> = FRONT_ROUTE_FEATURES
-                .iter()
-                .filter(|(_, compiled)| !compiled)
-                .map(|(name, _)| format!("NOEVIA_RUST_AUTH=1 needs compiled {name}"))
-                .collect();
-            if !missing.is_empty() {
-                return Err(missing.join("\n"));
-            }
-            if get("UI_DATA_DIR").is_none_or(|v| v.is_empty())
-                || server_auth::AuthConfig::from_lookup(&get).is_err()
-            {
-                return Err("NOEVIA_RUST_AUTH=1 needs UI_DATA_DIR and valid native auth (the front owns the storage, ChatGPT status and export reads)".into());
-            }
+        let missing: Vec<String> = FRONT_ROUTE_FEATURES
+            .iter()
+            .filter(|(_, compiled)| !compiled)
+            .map(|(name, _)| format!("the front needs compiled {name}"))
+            .collect();
+        if !missing.is_empty() {
+            return Err(missing.join("\n"));
         }
-        let rust_chatgpt_status = if front_routes {
-            let feature_env =
-                server_routing_mode::feature_env(get("NOEVIA_FEATURE_CHATGPT_OAUTH").as_deref())
-                    .map_err(|e| format!("NOEVIA_FEATURE_CHATGPT_OAUTH: {}", e.message))?;
-            Some(ChatgptStatus {
-                feature_env,
-                previous_key_env: RedactedEnv(get("SECRETS_KEY_PREVIOUS")),
-            })
-        } else {
-            None
-        };
+        if get("UI_DATA_DIR").is_none_or(|v| v.is_empty()) {
+            return Err("UI_DATA_DIR is required: the front owns sign-in, the account and the front read routes (#1071)".into());
+        }
+        let auth = server_auth::AuthConfig::from_lookup(&get);
+        if let Err(e) = &auth {
+            return Err(format!(
+                "invalid native auth environment (the front owns sign-in, #1071): {e}"
+            ));
+        }
+        let feature_env =
+            server_routing_mode::feature_env(get("NOEVIA_FEATURE_CHATGPT_OAUTH").as_deref())
+                .map_err(|e| format!("NOEVIA_FEATURE_CHATGPT_OAUTH: {}", e.message))?;
+        let rust_chatgpt_status = Some(ChatgptStatus {
+            feature_env,
+            previous_key_env: RedactedEnv(get("SECRETS_KEY_PREVIOUS")),
+        });
         let routing_feature_env = if rust_routing_mode.is_some() {
             server_routing_mode::feature_env(get("NOEVIA_FEATURE_ROUTING_MODES").as_deref())
                 .map_err(|e| e.message)?
@@ -327,7 +312,7 @@ impl Config {
             account: get("UI_DATA_DIR")
                 .filter(|d| !d.is_empty())
                 .map(|d| server_account::Settings::from_lookup(&get, PathBuf::from(d))),
-            auth: server_auth::AuthConfig::from_lookup(&get),
+            auth,
             rust_auth,
             rust_projects,
             rust_usage,
@@ -349,9 +334,10 @@ impl Config {
     }
 }
 
-/// The deployment switches retired by sbstndalton/noevia#1071: the routes they moved are the
-/// front's whenever it runs with NOEVIA_RUST_AUTH=1. A leftover value only earns a warning.
+/// The deployment switches retired by sbstndalton/noevia#1071: the routes they moved are always
+/// the front's. A leftover value only earns a warning.
 pub const RETIRED_SWITCHES: &[&str] = &[
+    "NOEVIA_RUST_AUTH",
     "NOEVIA_RUST_CHATGPT_STATUS",
     "NOEVIA_RUST_STORAGE_READS",
     "NOEVIA_RUST_STORAGE_BROWSE",
@@ -413,9 +399,11 @@ mod tests {
         Config::from_lookup(|k| m.get(k).cloned())
     }
 
+    const DATA: (&str, &str) = ("UI_DATA_DIR", "/data");
+
     #[test]
     fn node_defaults_and_names() {
-        let c = cfg(&[("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021")]).unwrap();
+        let c = cfg(&[("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021"), DATA]).unwrap();
         assert_eq!(
             (c.host.as_str(), c.port, c.trust_proxy),
             ("0.0.0.0", 8021, false)
@@ -425,6 +413,7 @@ mod tests {
             ("UI_HOST", "127.0.0.1"),
             ("UI_PORT", "18021"),
             ("TRUST_PROXY", "true"),
+            DATA,
         ])
         .unwrap();
         assert_eq!(
@@ -435,52 +424,58 @@ mod tests {
         let c = cfg(&[
             ("NOEVIA_LEGACY_UPSTREAM", "http://[::1]:9021"),
             ("TRUST_PROXY", "TRUE"),
+            DATA,
         ])
         .unwrap();
         assert!(!c.trust_proxy);
         assert_eq!(c.upstream.authority(), "[::1]:9021");
-        assert!(c.rust_auth.is_none());
-        for (v, on) in [
-            ("1", true),
-            ("true", false),
-            ("0", false),
-            ("", false),
-            (" 1", false),
-        ] {
-            let c = cfg(&[
-                ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021"),
-                ("NOEVIA_RUST_AUTH", v),
-                ("UI_DATA_DIR", "/data"),
-            ])
-            .unwrap();
-            assert_eq!(c.rust_auth.is_some(), on, "{v:?}");
-            assert_eq!(c.switches().rust_auth, on);
+    }
+
+    /// sbstndalton/noevia#1071: Rust always owns sign-in and the account. NOEVIA_RUST_AUTH is
+    /// retired: whatever it says (or when it is unset) the ownership is the same, and a leftover
+    /// value is only reported.
+    #[test]
+    fn rust_auth_is_unconditional_and_its_old_switch_is_retired() {
+        for v in [None, Some("1"), Some("0"), Some(""), Some("true")] {
+            let mut pairs = vec![("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021"), DATA];
+            if let Some(v) = v {
+                pairs.push(("NOEVIA_RUST_AUTH", v));
+            }
+            let c = cfg(&pairs).unwrap();
+            assert_eq!(c.rust_auth, server_store::RustAuth::owned(), "{v:?}");
+            assert!(c.auth.is_ok());
+            assert_eq!(
+                c.retired.contains(&"NOEVIA_RUST_AUTH"),
+                v.is_some(),
+                "{v:?}"
+            );
+            assert!(crate::FEATURES.contains(&"rust-auth"));
         }
     }
 
     #[test]
-    fn rust_projects_needs_rust_auth() {
+    fn rust_auth_refuses_to_start_without_a_data_dir_or_valid_auth() {
         let up = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021");
-        let data = ("UI_DATA_DIR", "/data");
-        let c = cfg(&[
-            up,
-            data,
-            ("NOEVIA_RUST_AUTH", "1"),
-            ("NOEVIA_RUST_PROJECTS", "1"),
-        ])
-        .unwrap();
-        assert!(c.switches().rust_auth && c.switches().rust_projects);
-        assert!(cfg(&[up, ("NOEVIA_RUST_PROJECTS", "1")]).is_err());
+        for pairs in [
+            vec![up],
+            vec![up, ("UI_DATA_DIR", "")],
+            vec![up, ("NOEVIA_RUST_AUTH", "1")],
+        ] {
+            let err = cfg(&pairs).unwrap_err();
+            assert!(err.contains("UI_DATA_DIR is required"), "{err}");
+        }
+        let err = cfg(&[up, DATA, ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "maybe")]).unwrap_err();
+        assert!(err.contains("invalid native auth environment"), "{err}");
+    }
+
+    #[test]
+    fn rust_projects_no_longer_needs_the_retired_auth_switch() {
+        let up = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021");
+        let c = cfg(&[up, DATA, ("NOEVIA_RUST_PROJECTS", "1")]).unwrap();
+        assert!(c.switches().rust_projects);
         for v in ["", "0", "true"] {
-            let c = cfg(&[
-                up,
-                data,
-                ("NOEVIA_RUST_AUTH", "1"),
-                ("NOEVIA_RUST_PROJECTS", v),
-            ])
-            .unwrap();
+            let c = cfg(&[up, DATA, ("NOEVIA_RUST_PROJECTS", v)]).unwrap();
             assert!(!c.switches().rust_projects, "{v:?}");
-            assert!(cfg(&[up, ("NOEVIA_RUST_PROJECTS", v)]).is_ok(), "{v:?}");
         }
     }
 
@@ -494,21 +489,25 @@ mod tests {
             "http://127.0.0.1:0",
             "127.0.0.1:9021",
         ] {
-            assert!(cfg(&[("NOEVIA_LEGACY_UPSTREAM", bad)]).is_err(), "{bad}");
+            assert!(
+                cfg(&[("NOEVIA_LEGACY_UPSTREAM", bad), DATA]).is_err(),
+                "{bad}"
+            );
         }
-        assert!(cfg(&[]).is_err());
-        assert!(cfg(&[("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:8021")]).is_err());
+        assert!(cfg(&[DATA]).is_err());
+        assert!(cfg(&[("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:8021"), DATA]).is_err());
         assert!(cfg(&[
             ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021"),
-            ("UI_PORT", "x")
+            ("UI_PORT", "x"),
+            DATA
         ])
         .is_err());
     }
 }
 
-/// sbstndalton/noevia#1071: the front read routes have no switch of their own. They are on
-/// exactly when NOEVIA_RUST_AUTH=1 (the export: NOEVIA_RUST_PROJECTS=1), and everything they need
-/// is a startup requirement then.
+/// sbstndalton/noevia#1071: the front read routes have no switch of their own. They are always
+/// the front's (the export: with NOEVIA_RUST_PROJECTS=1), and everything they need is a startup
+/// requirement.
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod front_routes_tests {
@@ -523,7 +522,6 @@ mod front_routes_tests {
     }
 
     const UP: (&str, &str) = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9");
-    const AUTH: (&str, &str) = ("NOEVIA_RUST_AUTH", "1");
     const PROJECTS: (&str, &str) = ("NOEVIA_RUST_PROJECTS", "1");
     const DATA: (&str, &str) = ("UI_DATA_DIR", "/data");
 
@@ -551,14 +549,15 @@ mod front_routes_tests {
         for (name, compiled) in FRONT_ROUTE_FEATURES {
             assert_eq!(crate::FEATURES.contains(name), *compiled, "{name}");
         }
-        // rust-usage and rust-sampling-settings are in every build.
+        // rust-auth, rust-usage and rust-sampling-settings are in every build.
+        assert!(crate::FEATURES.contains(&"rust-auth"));
         assert!(crate::FEATURES.contains(&"rust-usage"));
         assert!(crate::FEATURES.contains(&"rust-sampling-settings"));
     }
 
     #[test]
-    fn native_auth_owns_every_front_route_without_their_old_switches() {
-        let enabled = lookup(&[UP, AUTH, PROJECTS, DATA]);
+    fn the_front_owns_every_read_route_without_any_switch() {
+        let enabled = lookup(&[UP, PROJECTS, DATA]);
         if !all_compiled() {
             let err = enabled.unwrap_err();
             for (name, compiled) in FRONT_ROUTE_FEATURES {
@@ -578,54 +577,42 @@ mod front_routes_tests {
             server_stats::Kind::None
         );
         // Without NOEVIA_RUST_PROJECTS the export stays off; the rest is unchanged.
-        let c = lookup(&[UP, AUTH, DATA]).unwrap();
+        let c = lookup(&[UP, DATA]).unwrap();
         assert_eq!(owned(&c)[..8], [true; 8]);
         assert!(!c.rust_export && c.rust_chatgpt_status.is_some());
     }
 
     #[test]
     fn a_leftover_retired_switch_never_changes_ownership() {
-        for value in ["0", "1", "", "true"] {
-            let mut on = vec![UP, AUTH, PROJECTS, DATA];
-            let mut off = vec![UP];
-            for name in RETIRED_SWITCHES {
-                on.push((name, value));
-                off.push((name, value));
-            }
-            // Off: nothing is owned, nothing is required, whatever the old switch says.
-            let c = lookup(&off).unwrap();
-            assert_eq!(owned(&c), [false; 10], "{value:?}");
-            assert_eq!(c.retired, RETIRED_SWITCHES.to_vec());
-            if all_compiled() {
-                let c = lookup(&on).unwrap();
-                assert_eq!(owned(&c), [true; 10], "{value:?}");
-                assert_eq!(c.retired, RETIRED_SWITCHES.to_vec());
-            }
-        }
-    }
-
-    #[test]
-    fn native_auth_refuses_to_start_without_a_data_dir_or_valid_auth() {
         if !all_compiled() {
             return;
         }
-        for pairs in [
-            vec![UP, AUTH],
-            vec![UP, AUTH, ("UI_DATA_DIR", "")],
-            vec![
-                UP,
-                AUTH,
-                DATA,
-                ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "maybe"),
-            ],
-        ] {
-            let err = lookup(&pairs).unwrap_err();
-            assert!(err.contains("UI_DATA_DIR and valid native auth"), "{err}");
+        for value in ["0", "1", "", "true"] {
+            let mut on = vec![UP, PROJECTS, DATA];
+            for name in RETIRED_SWITCHES {
+                on.push((name, value));
+            }
+            let c = lookup(&on).unwrap();
+            assert_eq!(owned(&c), [true; 10], "{value:?}");
+            assert_eq!(c.retired, RETIRED_SWITCHES.to_vec());
         }
     }
 
     #[test]
-    fn stats_engine_problems_refuse_startup_under_native_auth_only() {
+    fn the_front_refuses_to_start_without_a_data_dir_or_valid_auth() {
+        if !all_compiled() {
+            return;
+        }
+        for pairs in [vec![UP], vec![UP, ("UI_DATA_DIR", "")]] {
+            let err = lookup(&pairs).unwrap_err();
+            assert!(err.contains("UI_DATA_DIR is required"), "{err}");
+        }
+        let err = lookup(&[UP, DATA, ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "maybe")]).unwrap_err();
+        assert!(err.contains("invalid native auth environment"), "{err}");
+    }
+
+    #[test]
+    fn stats_engine_problems_refuse_startup() {
         let bad: [(Vec<(&str, &str)>, &str); 5] = [
             (
                 vec![("MODEL_MANAGER_KIND", "ollama")],
@@ -658,23 +645,15 @@ mod front_routes_tests {
             ),
         ];
         for (pairs, words) in bad {
-            // Without native auth the engine configuration is Node's business.
-            let mut off = vec![UP];
-            off.extend(pairs.iter().copied());
-            assert!(lookup(&off).unwrap().rust_stats.is_none());
-            if !all_compiled() {
-                continue;
-            }
-            let mut on = vec![UP, AUTH, DATA];
+            let mut on = vec![UP, DATA];
             on.extend(pairs);
             let err = lookup(&on).unwrap_err();
             assert!(err.contains(words), "{err}");
-            assert!(err.starts_with("NOEVIA_RUST_AUTH=1"), "{err}");
+            assert!(err.contains("/api/stats"), "{err}");
         }
         if all_compiled() {
             let c = lookup(&[
                 UP,
-                AUTH,
                 DATA,
                 ("MODEL_MANAGER_KIND", "llamacpp"),
                 ("MODEL_MANAGER_BASE_URL", "http://router:8080/v1"),
@@ -688,7 +667,7 @@ mod front_routes_tests {
     }
 
     #[test]
-    fn product_flags_are_validated_under_native_auth_only() {
+    fn product_flags_are_validated_at_startup() {
         for (key, words) in [
             (
                 "NOEVIA_FEATURE_CHATGPT_OAUTH",
@@ -696,26 +675,20 @@ mod front_routes_tests {
             ),
             ("NOEVIA_FEATURE_ROUTING_MODES", ""),
         ] {
-            assert!(lookup(&[UP, (key, "maybe")]).is_ok(), "{key}");
             if all_compiled() {
-                let err = lookup(&[UP, AUTH, DATA, (key, "maybe")]).unwrap_err();
+                let err = lookup(&[UP, DATA, (key, "maybe")]).unwrap_err();
                 assert!(err.contains(words), "{key}: {err}");
             }
         }
         if all_compiled() {
-            let c = lookup(&[UP, AUTH, DATA, ("NOEVIA_FEATURE_CHATGPT_OAUTH", " Off ")]).unwrap();
+            let c = lookup(&[UP, DATA, ("NOEVIA_FEATURE_CHATGPT_OAUTH", " Off ")]).unwrap();
             assert_eq!(
                 c.rust_chatgpt_status.as_ref().unwrap().feature_env,
                 Some(false)
             );
             // The previous key never reaches Debug output.
-            let c = lookup(&[
-                UP,
-                AUTH,
-                DATA,
-                ("SECRETS_KEY_PREVIOUS", "synthetic-previous-key"),
-            ])
-            .unwrap();
+            let c =
+                lookup(&[UP, DATA, ("SECRETS_KEY_PREVIOUS", "synthetic-previous-key")]).unwrap();
             assert!(!format!("{c:?}").contains("synthetic-previous-key"));
         }
     }
@@ -735,7 +708,6 @@ mod export_tests {
     }
 
     const UP: (&str, &str) = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9");
-    const AUTH: (&str, &str) = ("NOEVIA_RUST_AUTH", "1");
     const PROJECTS: (&str, &str) = ("NOEVIA_RUST_PROJECTS", "1");
     const DATA: (&str, &str) = ("UI_DATA_DIR", "/data");
     const STORE_PORT: (&str, &str) = ("NOEVIA_PROJECT_STORE_PORT", "19021");
@@ -748,14 +720,14 @@ mod export_tests {
     fn project_store_runs_with_a_port_and_never_reads_the_retired_switch() {
         // No port: no store, whatever the retired switch says.
         for v in [None, Some("1"), Some("0")] {
-            let mut pairs = vec![UP, AUTH, PROJECTS, DATA, STORE_TOKEN];
+            let mut pairs = vec![UP, PROJECTS, DATA, STORE_TOKEN];
             if let Some(v) = v {
                 pairs.push(("NOEVIA_RUST_PROJECT_STORE", v));
             }
             assert!(lookup(&pairs).unwrap().project_store.is_none(), "{v:?}");
         }
         for extra in [None, Some(("NOEVIA_RUST_PROJECT_STORE", "0"))] {
-            let mut pairs = vec![UP, AUTH, PROJECTS, DATA, STORE_PORT, STORE_TOKEN];
+            let mut pairs = vec![UP, PROJECTS, DATA, STORE_PORT, STORE_TOKEN];
             pairs.extend(extra);
             let c = lookup(&pairs).unwrap();
             assert_eq!(c.project_store.as_ref().unwrap().port, 19021);
@@ -767,17 +739,13 @@ mod export_tests {
         for (missing, pairs) in [
             (
                 "NOEVIA_RUST_PROJECTS=1",
-                vec![UP, AUTH, DATA, STORE_PORT, STORE_TOKEN],
+                vec![UP, DATA, STORE_PORT, STORE_TOKEN],
             ),
-            (
-                "UI_DATA_DIR",
-                vec![UP, AUTH, PROJECTS, STORE_PORT, STORE_TOKEN],
-            ),
+            ("UI_DATA_DIR", vec![UP, PROJECTS, STORE_PORT, STORE_TOKEN]),
             (
                 "NOEVIA_PROJECT_STORE_PORT",
                 vec![
                     UP,
-                    AUTH,
                     PROJECTS,
                     DATA,
                     STORE_TOKEN,
@@ -786,13 +754,12 @@ mod export_tests {
             ),
             (
                 "NOEVIA_PROJECT_STORE_TOKEN",
-                vec![UP, AUTH, PROJECTS, DATA, STORE_PORT],
+                vec![UP, PROJECTS, DATA, STORE_PORT],
             ),
             (
                 "NOEVIA_PROJECT_STORE_TOKEN",
                 vec![
                     UP,
-                    AUTH,
                     PROJECTS,
                     DATA,
                     STORE_PORT,
@@ -818,7 +785,7 @@ mod export_tests {
             Some("1 "),
             Some(""),
         ] {
-            let mut pairs = vec![UP, AUTH, PROJECTS, DATA];
+            let mut pairs = vec![UP, PROJECTS, DATA];
             if let Some(v) = value {
                 pairs.push(("NOEVIA_RUST_PROJECT_WRITES", v));
             }
@@ -827,16 +794,16 @@ mod export_tests {
             assert!(!c.rust_project_writes);
             assert!(!c.switches().on("NOEVIA_RUST_PROJECT_WRITES"));
         }
-        assert!(!lookup(&[UP]).unwrap().rust_project_writes);
+        assert!(!lookup(&[UP, DATA]).unwrap().rust_project_writes);
     }
 
     #[test]
     fn project_writes_need_projects_the_compiled_slice_and_a_data_dir() {
         let err = lookup(&[UP, WRITES, DATA]).unwrap_err();
         assert!(err.contains("NOEVIA_RUST_PROJECTS=1"), "{err}");
-        let err = lookup(&[UP, AUTH, WRITES, DATA]).unwrap_err();
+        let err = lookup(&[UP, WRITES, DATA]).unwrap_err();
         assert!(err.contains("NOEVIA_RUST_PROJECTS=1"), "{err}");
-        let enabled = lookup(&[UP, AUTH, PROJECTS, WRITES, DATA]);
+        let enabled = lookup(&[UP, PROJECTS, WRITES, DATA]);
         assert_eq!(
             crate::FEATURES.contains(&"rust-project-writes"),
             cfg!(feature = "rust-project-writes")
@@ -849,7 +816,7 @@ mod export_tests {
         }
         let c = enabled.unwrap();
         assert!(c.rust_project_writes && c.switches().on("NOEVIA_RUST_PROJECT_WRITES"));
-        let err = lookup(&[UP, AUTH, PROJECTS, WRITES]).unwrap_err();
+        let err = lookup(&[UP, PROJECTS, WRITES]).unwrap_err();
         assert!(err.contains("UI_DATA_DIR"), "{err}");
     }
 }

@@ -148,19 +148,8 @@ fn the_reader_refuses_every_write() {
 }
 
 #[test]
-fn the_switch_is_exactly_one() {
-    assert!(RustAuth::from_env_value(Some("1")).is_some());
-    for off in [
-        None,
-        Some(""),
-        Some("0"),
-        Some("true"),
-        Some(" 1"),
-        Some("1 "),
-        Some("yes"),
-    ] {
-        assert!(RustAuth::from_env_value(off).is_none(), "{off:?}");
-    }
+fn the_ownership_is_permanent() {
+    assert_eq!(RustAuth::owned(), RustAuth::for_tests());
     assert!(OWNED_TABLES.iter().any(|(t, _)| *t == "sessions"));
     assert!(!OWNED_TABLES.iter().any(|(t, _)| *t == "settings"));
     assert!(!OWNED_TABLES

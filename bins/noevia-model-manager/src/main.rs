@@ -42,6 +42,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-section-writes") {
                 output.write_all(b"native-section-writes\n")?;
             }
+            if cfg!(feature = "native-settings-write") {
+                output.write_all(b"native-settings-write\n")?;
+            }
+            if cfg!(feature = "native-backend-control") {
+                output.write_all(b"native-backend-control\n")?;
+            }
+            if cfg!(feature = "native-benchmark-overview") {
+                output.write_all(b"native-benchmark-overview\n")?;
+            }
+            if cfg!(feature = "native-check-updates") {
+                output.write_all(b"native-check-updates\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -157,6 +169,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let control_mode = environment("MODEL_MANAGER_BACKEND_CONTROL_IMPL", "python")?;
+    if !matches!(control_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_BACKEND_CONTROL_IMPL must be python or rust".into());
+    }
+    if control_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-backend-control")) {
+        return Err(
+            "native-backend-control requires rust model manager and compiled native-backend-control feature"
+                .into(),
+        );
+    }
+    // LLAMA_DEFAULT_PORT as Python's settings read it (0 means none).
+    #[cfg(feature = "native-backend-control")]
+    let default_port: Option<u16> = if control_mode == "rust" {
+        match environment("LLAMA_DEFAULT_PORT", "8080")?
+            .trim()
+            .parse::<u16>()
+        {
+            Ok(0) => None,
+            Ok(p) => Some(p),
+            Err(_) => return Err("LLAMA_DEFAULT_PORT must be a port number".into()),
+        }
+    } else {
+        None
+    };
+    let settings_write_mode = environment("MODEL_MANAGER_SETTINGS_WRITE_IMPL", "python")?;
+    if !matches!(settings_write_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_SETTINGS_WRITE_IMPL must be python or rust".into());
+    }
+    if settings_write_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-settings-write"))
+    {
+        return Err(
+            "native-settings-write requires rust model manager and compiled native-settings-write feature"
+                .into(),
+        );
+    }
+    #[cfg(feature = "native-settings-write")]
+    let settings_write_root = if settings_write_mode == "rust" {
+        Some(data_dir()?)
+    } else {
+        None
+    };
     #[cfg_attr(not(feature = "native-section-writes"), allow(unused_mut))]
     let mut writes_mode = environment("MODEL_MANAGER_SECTION_WRITES_IMPL", "python")?;
     if !matches!(writes_mode.as_str(), "python" | "rust") {
@@ -177,6 +230,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(reason) => {
                 eprintln!("native-section-writes: {reason}; models.ini writes stay with python");
                 writes_mode = "python".to_owned();
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let check_mode = environment("MODEL_MANAGER_CHECK_UPDATES_IMPL", "python")?;
+    if !matches!(check_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_CHECK_UPDATES_IMPL must be python or rust".into());
+    }
+    if check_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-check-updates")) {
+        return Err(
+            "native-check-updates requires rust model manager and compiled native-check-updates feature"
+                .into(),
+        );
+    }
+    #[cfg(feature = "native-check-updates")]
+    let check_roots = if check_mode == "rust" {
+        Some(model_updates_roots(std::env::vars_os().collect())?)
+    } else {
+        None
+    };
+    #[cfg_attr(not(feature = "native-benchmark-overview"), allow(unused_mut))]
+    let mut overview_mode = environment("MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL", "python")?;
+    if !matches!(overview_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL must be python or rust".into());
+    }
+    if overview_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-benchmark-overview")) {
+        return Err(
+            "native-benchmark-overview requires rust model manager and compiled native-benchmark-overview feature"
+                .into(),
+        );
+    }
+    #[cfg(feature = "native-benchmark-overview")]
+    let overview_roots = if overview_mode == "rust" {
+        match overview_ini(std::env::vars_os().collect()) {
+            Ok(ini) => Some((data_dir()?, ini)),
+            Err(reason) => {
+                eprintln!("native-benchmark-overview: {reason}; GET /benchmark stays with python");
+                overview_mode = "python".to_owned();
                 None
             }
         }
@@ -258,6 +351,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -421,6 +518,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::Path::new(root),
         ))
     });
+    #[cfg(feature = "native-backend-control")]
+    let backends = if control_mode == "rust" {
+        Some(Arc::new(noevia_model_manager::backends::Backends::new(
+            default_port,
+        )?))
+    } else {
+        None
+    };
+    #[cfg(feature = "native-check-updates")]
+    let check_updates = match check_roots.as_ref() {
+        Some(roots) => Some(Arc::new(
+            noevia_model_manager::check_updates::CheckUpdates::new(
+                std::path::Path::new(&roots.models),
+                std::path::Path::new(&roots.ini),
+                std::path::Path::new(&roots.data),
+            )?,
+        )),
+        None => None,
+    };
+    #[cfg(feature = "native-benchmark-overview")]
+    let benchmark_overview = overview_roots.as_ref().map(|(data, ini)| {
+        Arc::new(
+            noevia_model_manager::benchmark_overview::BenchmarkOverview::new(
+                std::path::Path::new(data),
+                std::path::Path::new(ini),
+            ),
+        )
+    });
+    #[cfg(feature = "native-settings-write")]
+    let settings_write = settings_write_root.as_deref().map(|root| {
+        Arc::new(noevia_model_manager::settings_write::SettingsWrite::new(
+            std::path::Path::new(root),
+        ))
+    });
     #[cfg(feature = "native-section-writes")]
     let section_writes = writes_roots.as_ref().map(|roots| {
         Arc::new(noevia_model_manager::section_writes::SectionWrites::new(
@@ -467,6 +598,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &targets_mode,
         #[cfg(feature = "native-download-targets")]
         targets_roots.as_ref(),
+    );
+    model_updates_child_as(
+        &mut child_command,
+        "NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED",
+        &check_mode,
+        #[cfg(feature = "native-check-updates")]
+        check_roots.as_ref(),
+    );
+    benchmark_overview_child(
+        &mut child_command,
+        &overview_mode,
+        #[cfg(feature = "native-benchmark-overview")]
+        overview_roots.as_ref(),
+    );
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED",
+        if control_mode == "rust" { "1" } else { "0" },
+    );
+    settings_write_child(
+        &mut child_command,
+        &settings_write_mode,
+        #[cfg(feature = "native-settings-write")]
+        settings_write_root.as_deref(),
     );
     section_writes_child(
         &mut child_command,
@@ -540,6 +694,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         bench_runs,
         #[cfg(feature = "native-section-writes")]
         section_writes,
+        #[cfg(feature = "native-settings-write")]
+        settings_write,
+        #[cfg(feature = "native-backend-control")]
+        backends,
+        #[cfg(feature = "native-benchmark-overview")]
+        benchmark_overview,
+        #[cfg(feature = "native-check-updates")]
+        check_updates,
         sections,
         embedding,
         host,
@@ -594,7 +756,9 @@ fn prompt_data_dir() -> Result<String, &'static str> {
     feature = "native-prompts",
     feature = "native-settings",
     feature = "native-badges",
-    feature = "native-bench-runs"
+    feature = "native-bench-runs",
+    feature = "native-settings-write",
+    feature = "native-benchmark-overview"
 ))]
 fn data_dir() -> Result<String, &'static str> {
     prompt_data_dir_from(std::env::vars_os())
@@ -695,6 +859,59 @@ fn model_updates_child(
             .env("MODELS_DIR", &roots.models)
             .env("MODELS_INI_PATH", &roots.ini)
             .env("DATA_DIR", &roots.data);
+    }
+}
+
+/// noevia#1318: the child refuses `POST /api/v1/models/check-updates` only when the native writer
+/// owns it, and is handed the same three roots (the status map reads the same models folder).
+fn model_updates_child_as(
+    child_command: &mut tokio::process::Command,
+    confirmation: &str,
+    mode: &str,
+    #[cfg(feature = "native-check-updates")] roots: Option<&UpdatesRoots>,
+) {
+    child_command.env(confirmation, if mode == "rust" { "1" } else { "0" });
+    #[cfg(feature = "native-check-updates")]
+    if let Some(roots) = roots {
+        child_command
+            .env("MODELS_DIR", &roots.models)
+            .env("MODELS_INI_PATH", &roots.ini)
+            .env("DATA_DIR", &roots.data);
+    }
+}
+
+#[cfg(all(test, feature = "native-check-updates"))]
+mod check_updates_command_tests {
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        let roots = super::UpdatesRoots {
+            models: "/synthetic/models".into(),
+            ini: "/synthetic/models.ini".into(),
+            data: "/synthetic/data".into(),
+        };
+        for (mode, roots, expected) in [("rust", Some(&roots), "1"), ("python", None, "0")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED",
+                "hostile",
+            );
+            super::model_updates_child_as(
+                &mut command,
+                "NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED",
+                mode,
+                roots,
+            );
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(
+                get("MODELS_DIR"),
+                roots.map(|r| std::ffi::OsStr::new(r.models.as_str()))
+            );
+        }
     }
 }
 
@@ -893,6 +1110,48 @@ mod download_targets_command_tests {
 /// them, and reads (benchmark runs, the models list) the same `DATA_DIR/model_loader.db`.
 /// noevia#1318: the child refuses canonical `GET /api/v1/benchmark/runs/{id}` and serves the
 /// private runtime call only when the native reader owns the route, on the same `DATA_DIR`.
+/// noevia#1318: the child refuses `PUT /api/v1/settings` and serves the private token test only
+/// when the native writer owns it, on the same `DATA_DIR`.
+fn settings_write_child(
+    child_command: &mut tokio::process::Command,
+    mode: &str,
+    #[cfg(feature = "native-settings-write")] root: Option<&str>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED",
+        if mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-settings-write")]
+    if let Some(root) = root {
+        child_command.env("DATA_DIR", root);
+    }
+}
+
+#[cfg(all(test, feature = "native-settings-write"))]
+mod settings_write_command_tests {
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        for (mode, root, expected) in [
+            ("rust", Some("/synthetic/data"), "1"),
+            ("python", None, "0"),
+        ] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED",
+                "hostile",
+            );
+            super::settings_write_child(&mut command, mode, root);
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(get("DATA_DIR"), root.map(std::ffi::OsStr::new));
+        }
+    }
+}
+
 /// noevia#1318: what the native models.ini writer reads, named exactly as the Python child's
 /// settings read them (they fold names, so case-folded aliases keep Python writing).
 #[cfg(feature = "native-section-writes")]
@@ -969,6 +1228,121 @@ fn section_writes_roots(
         cache: (cap, hard),
         rust_backups,
     })
+}
+
+/// noevia#1318: the native overview reads the same models.ini as the child, so its path must
+/// have one spelling (pydantic reads the variable case-insensitively) and be absolute and normal.
+#[cfg(feature = "native-benchmark-overview")]
+fn overview_ini(
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<String, &'static str> {
+    let name = "MODELS_INI_PATH";
+    let mut found = None;
+    for (key, value) in &values {
+        if key
+            .to_str()
+            .is_some_and(|key| key != name && key.eq_ignore_ascii_case(name))
+        {
+            return Err("MODELS_INI_PATH needs canonical environment spelling");
+        }
+        if key == name {
+            found = Some(
+                value
+                    .to_str()
+                    .ok_or("environment setting must be UTF-8")?
+                    .to_owned(),
+            );
+        }
+    }
+    let ini = found.unwrap_or_else(|| "/models/models.ini".into());
+    let normal = ini.starts_with('/')
+        && !ini.ends_with('/')
+        && ini.len() <= 4096
+        && ini
+            .split('/')
+            .skip(1)
+            .all(|segment| !matches!(segment, "" | "." | ".."));
+    if !normal {
+        return Err("MODELS_INI_PATH is not an absolute, normalised path");
+    }
+    Ok(ini)
+}
+
+/// noevia#1318: the child refuses `GET /api/v1/benchmark` and serves the private job read only
+/// when the native overview owns it, and then reads the same store and models.ini.
+fn benchmark_overview_child(
+    child_command: &mut tokio::process::Command,
+    overview_mode: &str,
+    #[cfg(feature = "native-benchmark-overview")] roots: Option<&(String, String)>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED",
+        if overview_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-benchmark-overview")]
+    if let Some((data, ini)) = roots {
+        child_command
+            .env("DATA_DIR", data)
+            .env("MODELS_INI_PATH", ini);
+    }
+}
+
+#[cfg(all(test, feature = "native-benchmark-overview"))]
+mod benchmark_overview_command_tests {
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        for (mode, roots, expected) in [
+            (
+                "rust",
+                Some((
+                    "/synthetic/data".to_owned(),
+                    "/synthetic/models.ini".to_owned(),
+                )),
+                "1",
+            ),
+            ("python", None, "0"),
+        ] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED",
+                "hostile",
+            );
+            super::benchmark_overview_child(&mut command, mode, roots.as_ref());
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(
+                get("MODELS_INI_PATH"),
+                roots
+                    .as_ref()
+                    .map(|(_, i)| std::ffi::OsStr::new(i.as_str()))
+            );
+        }
+    }
+
+    #[test]
+    fn ini_path_needs_one_normal_spelling() {
+        let env = |pairs: &[(&str, &str)]| -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect()
+        };
+        assert_eq!(
+            super::overview_ini(env(&[])).as_deref(),
+            Ok("/models/models.ini")
+        );
+        assert_eq!(
+            super::overview_ini(env(&[("MODELS_INI_PATH", "/m/x.ini")])).as_deref(),
+            Ok("/m/x.ini")
+        );
+        assert!(super::overview_ini(env(&[("models_ini_path", "/m/x.ini")])).is_err());
+        assert!(super::overview_ini(env(&[("MODELS_INI_PATH", "/m/../x.ini")])).is_err());
+        assert!(super::overview_ini(env(&[("MODELS_INI_PATH", "m.ini")])).is_err());
+    }
 }
 
 /// noevia#1318: the child refuses the five models.ini writers and serves the private

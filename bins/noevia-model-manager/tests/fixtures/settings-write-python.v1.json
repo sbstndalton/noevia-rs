@@ -1,0 +1,189 @@
+{
+ "cases": [
+  {
+   "answers": [
+    {
+     "body": "{\"hasToken\":true,\"tokenHint\":\"…0001\"}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 200,
+     "stored": "hf_good_synthetic_0001"
+    },
+    {
+     "body": "{\"hasToken\":true,\"tokenHint\":\"…0001\",\"test\":{\"ok\":true,\"message\":\"synthetic check of 22 chars\"}}",
+     "content_type": "application/json",
+     "runtime": "{\"ok\":true,\"message\":\"synthetic check of 22 chars\"}",
+     "status": 200,
+     "stored": "hf_good_synthetic_0001"
+    },
+    {
+     "body": "{\"hasToken\":true,\"tokenHint\":\"…0002\",\"test\":{\"ok\":false,\"message\":\"synthetic check of 21 chars\"}}",
+     "content_type": "application/json",
+     "runtime": "{\"ok\":false,\"message\":\"synthetic check of 21 chars\"}",
+     "status": 200,
+     "stored": "hf_bad_synthetic_0002"
+    },
+    {
+     "body": "{\"hasToken\":true,\"tokenHint\":\"…0002\"}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 200,
+     "stored": "hf_bad_synthetic_0002"
+    },
+    {
+     "body": "{\"hasToken\":false,\"tokenHint\":\"\"}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 200,
+     "stored": ""
+    },
+    {
+     "body": "{\"hasToken\":false,\"tokenHint\":\"\",\"test\":{\"ok\":true,\"message\":\"anonymous (no token)\"}}",
+     "content_type": "application/json",
+     "runtime": "{\"ok\":true,\"message\":\"anonymous (no token)\"}",
+     "status": 200,
+     "stored": ""
+    }
+   ],
+   "id": "set-read-test",
+   "initial": null,
+   "steps": [
+    "{\"hfToken\": \"  hf_good_synthetic_0001  \"}",
+    "{\"test\": true}",
+    "{\"hfToken\": \"hf_bad_synthetic_0002\", \"test\": 1}",
+    "{}",
+    "{\"hfToken\": null}",
+    "{\"hfToken\": \"\", \"test\": true}"
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"hasToken\":true,\"tokenHint\":\"…6789\"}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 200,
+     "stored": "123456789"
+    },
+    {
+     "body": "{\"hasToken\":true,\"tokenHint\":\"\"}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 200,
+     "stored": "['a', 1]"
+    },
+    {
+     "body": "{\"hasToken\":false,\"tokenHint\":\"\"}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 200,
+     "stored": ""
+    },
+    {
+     "body": "{\"hasToken\":true,\"tokenHint\":\"…-xyz\"}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 200,
+     "stored": "tökén-😀-xyz"
+    },
+    {
+     "body": "{\"hasToken\":true,\"tokenHint\":\"…wins\"}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 200,
+     "stored": "hf_good_last_wins"
+    },
+    {
+     "body": "{\"hasToken\":true,\"tokenHint\":\"\",\"test\":{\"ok\":false,\"message\":\"Test failed: synthetic failure\"}}",
+     "content_type": "application/json",
+     "runtime": "{\"ok\":false,\"message\":\"Test failed: synthetic failure\"}",
+     "status": 200,
+     "stored": "boom"
+    },
+    {
+     "body": "{\"hasToken\":true,\"tokenHint\":\"\"}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 200,
+     "stored": "boom"
+    }
+   ],
+   "id": "value-forms",
+   "initial": "hf_existing_9999",
+   "steps": [
+    "{\"hfToken\": 123456789}",
+    "{\"hfToken\": [\"a\", 1]}",
+    "{\"hfToken\": false}",
+    "{\"hfToken\": \"tökén-😀-xyz\"}",
+    "{\"hfToken\":\"x\",\"hfToken\":\"hf_good_last_wins\"}",
+    "{\"hfToken\": \"boom\", \"test\": true}",
+    "{\"other\": \"ignored\", \"test\": 0}"
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":[1]}]}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 422,
+     "stored": null
+    },
+    {
+     "body": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",1],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting property name enclosed in double quotes\"}}]}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 422,
+     "stored": null
+    },
+    {
+     "body": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\"],\"msg\":\"Field required\",\"input\":null}]}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 422,
+     "stored": null
+    },
+    {
+     "body": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\"],\"msg\":\"Field required\",\"input\":null}]}",
+     "content_type": "application/json",
+     "runtime": null,
+     "status": 422,
+     "stored": null
+    }
+   ],
+   "id": "body-errors",
+   "initial": null,
+   "steps": [
+    "[1]",
+    "{bad",
+    "null",
+    ""
+   ]
+  }
+ ],
+ "oracle": {
+  "api.py": "eb8e12f6929baf15d2b1a1998aceff9529fbe48ca8242094ac6b7526c253a91d",
+  "db.py": "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478",
+  "main.py": "70c639b3c8c2881f0f739451ce774df71e2e96a037bdc402b8577bd58667cd05"
+ },
+ "schema": [
+  "CREATE TABLE kv (\n                key   TEXT PRIMARY KEY,\n                value TEXT NOT NULL\n            )",
+  "CREATE TABLE download_history (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                repo_id      TEXT NOT NULL,\n                filename     TEXT NOT NULL,\n                dest_path    TEXT NOT NULL,\n                total_bytes  INTEGER NOT NULL,\n                status       TEXT NOT NULL,\n                error        TEXT,\n                started_at   REAL NOT NULL,\n                completed_at REAL\n            )",
+  "CREATE TABLE avatar_cache (\n                owner       TEXT PRIMARY KEY,\n                url         TEXT NOT NULL,\n                fetched_at  REAL NOT NULL\n            )",
+  "CREATE TABLE update_check (\n                filename          TEXT PRIMARY KEY,\n                repo_id           TEXT NOT NULL,\n                hf_last_modified  TEXT,\n                checked_at        REAL NOT NULL\n            )",
+  "CREATE TABLE req_timing (\n                id            INTEGER PRIMARY KEY AUTOINCREMENT,\n                ts            REAL NOT NULL,\n                backend       TEXT NOT NULL,\n                instance      TEXT NOT NULL,\n                task          INTEGER NOT NULL,\n                model_path    TEXT NOT NULL DEFAULT '',\n                alias         TEXT NOT NULL DEFAULT '',\n                spec_type     TEXT NOT NULL DEFAULT '',\n                prompt_tokens INTEGER NOT NULL DEFAULT 0,\n                prompt_tps    REAL    NOT NULL DEFAULT 0,\n                gen_tokens    INTEGER NOT NULL DEFAULT 0,\n                gen_tps       REAL    NOT NULL DEFAULT 0,\n                draft_acc     REAL,\n                draft_len     REAL,\n                UNIQUE(backend, instance, task)\n            )",
+  "CREATE INDEX req_timing_model\n                ON req_timing(model_path, ts DESC)",
+  "CREATE INDEX req_timing_alias\n                ON req_timing(alias, ts DESC)",
+  "CREATE INDEX req_timing_dedupe\n                ON req_timing(backend, task, ts)",
+  "CREATE TABLE bench_run (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                backend     TEXT NOT NULL,\n                status      TEXT NOT NULL,           -- running | done | cancelled | error\n                started_at  REAL NOT NULL,\n                finished_at REAL,\n                reps        INTEGER NOT NULL DEFAULT 1,\n                max_tokens  INTEGER NOT NULL DEFAULT 256,\n                note        TEXT NOT NULL DEFAULT ''\n            )",
+  "CREATE TABLE bench_variant (\n                id       INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id   INTEGER NOT NULL,\n                alias    TEXT NOT NULL,\n                argv_json TEXT NOT NULL DEFAULT '{}',\n                load_ms  REAL,\n                UNIQUE(run_id, alias)\n            )",
+  "CREATE TABLE bench_result (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                variant_id  INTEGER NOT NULL,\n                prompt_name TEXT NOT NULL,\n                rep         INTEGER NOT NULL,\n                cold        INTEGER NOT NULL DEFAULT 0,\n                ttft_ms     REAL,\n                ttft_answer_ms REAL,\n                truncated   INTEGER NOT NULL DEFAULT 0,\n                total_ms    REAL,\n                prompt_n    INTEGER,\n                prompt_tps  REAL,\n                gen_n       INTEGER,\n                gen_tps     REAL,\n                draft_n     INTEGER,\n                draft_acc   REAL,\n                peak_vram_json TEXT NOT NULL DEFAULT '[]',\n                contended   INTEGER NOT NULL DEFAULT 0,\n                err         TEXT NOT NULL DEFAULT '',\n                -- The generated text itself. Timings alone cannot answer \"is this model any\n                -- good at this\", and a run that keeps only timings destroys the one artifact\n                -- that could ever be graded. Keeping it makes scoring an OFFLINE pass over\n                -- stored rows: a rubric can change and re-score history without spending GPU\n                -- time again. Reasoning is deliberately not kept - the answer is what gets\n                -- graded, and thinking would multiply row size for text no rubric reads.\n                response_text TEXT NOT NULL DEFAULT ''\n            )",
+  "CREATE INDEX bench_result_variant ON bench_result(variant_id)",
+  "CREATE TABLE bench_sweep (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id       INTEGER NOT NULL,\n                alias        TEXT NOT NULL DEFAULT '',\n                model_type   TEXT NOT NULL DEFAULT '',\n                test         TEXT NOT NULL DEFAULT '',\n                n_prompt     INTEGER, n_gen INTEGER, n_depth INTEGER,\n                avg_ts       REAL,    stddev_ts REAL,\n                n_gpu_layers INTEGER, n_cpu_moe INTEGER, n_ubatch INTEGER,\n                type_k       TEXT,    type_v TEXT, flash_attn INTEGER,\n                split_mode   TEXT,\n                raw_json     TEXT NOT NULL DEFAULT '{}'\n            )",
+  "CREATE INDEX bench_sweep_run ON bench_sweep(run_id)",
+  "CREATE TABLE server_config (\n                backend    TEXT NOT NULL,\n                instance   TEXT NOT NULL,\n                alias      TEXT NOT NULL DEFAULT '',\n                model_path TEXT NOT NULL DEFAULT '',\n                argv_json  TEXT NOT NULL DEFAULT '{}',\n                first_seen REAL NOT NULL DEFAULT 0,\n                PRIMARY KEY (backend, instance)\n            )",
+  "CREATE TABLE prompts (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                name        TEXT NOT NULL,\n                body        TEXT NOT NULL,\n                created_at  REAL NOT NULL\n            )",
+  "CREATE TABLE model_badge (\n                id         INTEGER PRIMARY KEY AUTOINCREMENT,\n                alias      TEXT NOT NULL,\n                category   TEXT NOT NULL,\n                rating     INTEGER NOT NULL,\n                note       TEXT NOT NULL DEFAULT '',\n                run_id     INTEGER,\n                created_at REAL NOT NULL,\n                -- One rating per category per model. Re-rating updates in place, so the\n                -- badge always reflects your latest opinion instead of accumulating a\n                -- history nothing reads.\n                UNIQUE(alias, category)\n            )",
+  "CREATE INDEX model_badge_alias ON model_badge(alias)"
+ ]
+}

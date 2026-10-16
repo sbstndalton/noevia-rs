@@ -43,7 +43,7 @@ const BUSY_WAIT: Duration = Duration::from_millis(3000);
 const DEADLINE: Duration = Duration::from_millis(3500);
 
 /// A JSON string literal as `json.dumps(ensure_ascii=False)` writes it.
-fn json_string(text: &str) -> String {
+pub(crate) fn json_string(text: &str) -> String {
     serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_owned())
 }
 
@@ -83,12 +83,13 @@ impl Num {
     fn truthy(self) -> bool {
         self.value() != 0.0
     }
-    /// JSON text as `json.dumps` writes it; non-finite floats are refused (Python writes NaN).
+    /// JSON text as FastAPI writes a `-> dict` answer: pydantic's JSON mode writes non-finite
+    /// floats as `null` (noevia#1935).
     pub fn render(self) -> Option<String> {
         match self {
             Num::Int(n) => Some(n.to_string()),
             Num::Float(f) if f.is_finite() => Some(gguf::py_float_repr(f)),
-            Num::Float(_) => None,
+            Num::Float(_) => Some("null".to_owned()),
         }
     }
 }
@@ -99,7 +100,8 @@ pub fn py_round(x: Num, digits: usize) -> Option<Num> {
     match x {
         Num::Int(_) => Some(x),
         Num::Float(f) if f.is_finite() => format!("{f:.digits$}").parse().ok().map(Num::Float),
-        Num::Float(_) => None,
+        // `round(inf, n)` and `round(nan, n)` return the value itself.
+        Num::Float(_) => Some(x),
     }
 }
 
@@ -169,7 +171,7 @@ impl Val {
 
 /// `dict(row)`: names in column order; a repeated name keeps its last value at its first place.
 #[derive(Debug, Clone, Default)]
-pub struct Row(Vec<(String, Val)>);
+pub struct Row(pub(crate) Vec<(String, Val)>);
 
 impl Row {
     fn get(&self, name: &str) -> Option<&Val> {
@@ -178,7 +180,7 @@ impl Row {
     fn truthy(&self, name: &str) -> bool {
         self.get(name).is_some_and(Val::truthy)
     }
-    fn render(&self) -> Option<String> {
+    pub(crate) fn render(&self) -> Option<String> {
         let mut seen: Vec<&str> = Vec::new();
         let mut out = String::from("{");
         for (name, _) in &self.0 {
@@ -268,13 +270,24 @@ fn val(value: ValueRef<'_>) -> Val {
 }
 
 fn rows(db: &Connection, sql: &str, param: rusqlite::types::Value) -> Result<Vec<Row>, ()> {
+    rows_with(db, sql, &[param])
+}
+
+/// `dict(r) for r in cursor` for any parameter list (one row cap for every query).
+pub(crate) fn rows_with(
+    db: &Connection,
+    sql: &str,
+    params: &[rusqlite::types::Value],
+) -> Result<Vec<Row>, ()> {
     let mut statement = db.prepare(sql).map_err(|_| ())?;
     let names: Vec<String> = statement
         .column_names()
         .into_iter()
         .map(str::to_owned)
         .collect();
-    let mut cursor = statement.query([param]).map_err(|_| ())?;
+    let mut cursor = statement
+        .query(rusqlite::params_from_iter(params.iter()))
+        .map_err(|_| ())?;
     let mut out = Vec::new();
     while let Some(row) = cursor.next().map_err(|_| ())? {
         if out.len() >= ROW_CAP {

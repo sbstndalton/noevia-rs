@@ -8,7 +8,7 @@ fn fixture() -> (tempfile::TempDir, RustAuth, RustSamplingSettings) {
         .replace("value TEXT NOT NULL", "value");
     db.execute_batch(&schema).unwrap();
     db.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('a','a','a','Synthetic','admin','x','a',1,1)",[]).unwrap();
-    let auth = RustAuth::from_env_value(Some("1")).unwrap();
+    let auth = RustAuth::owned();
     let sampling = RustSamplingSettings::from_env_value(Some("1"), auth).unwrap();
     (d, auth, sampling)
 }

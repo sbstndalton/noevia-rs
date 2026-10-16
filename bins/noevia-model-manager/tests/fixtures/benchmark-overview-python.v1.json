@@ -1,0 +1,312 @@
+{
+ "cases": [
+  {
+   "body": "{\"sections\":[\"chat-model\",\"éclair-7b\",\"bare\"],\"sweepArgs\":{\"chat-model\":\"-ctk q8_0 -ctv q8_0 -fa on -ngl 99 -sm layer -ts 3/1 -b 2048\",\"éclair-7b\":\"-ngl 99 -ncmoe 4 -mg 1 -ub 512\",\"bare\":\"-fa on -ngl 99\"},\"prompts\":[{\"id\":2,\"name\":\"Alpha\",\"body\":\"Prove it.\",\"created_at\":1.0},{\"id\":4,\"name\":\"alpha2\",\"body\":\"\",\"created_at\":0.0},{\"id\":1,\"name\":\"beta\",\"body\":\"Write a sort.\",\"created_at\":1700000000.5},{\"id\":3,\"name\":\"éclair\",\"body\":\"Unicode 😀 body\\nwith a newline and \\\"quotes\\\"\",\"created_at\":2.25}],\"backends\":[\"llama\",\"manual\",\"Other-LLAMA\"],\"maxTokensDefault\":3072,\"maxTokensCeiling\":8192,\"job\":{\"run_id\":7,\"status\":\"done\",\"backend\":\"llama\",\"total\":12,\"done\":12,\"current\":\"\",\"started_at\":1700000000.25,\"finished_at\":1700000090.75,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"m1: done — ok 😀\"],\"pct\":100,\"elapsed\":90.5,\"eta\":0.0,\"active\":false},\"runs\":[{\"id\":3,\"backend\":\"é-backend\",\"status\":\"error\",\"started_at\":1e+20,\"finished_at\":0.1,\"reps\":10,\"max_tokens\":8192,\"note\":\"could not start: boom\",\"n_variants\":1,\"n_results\":0},{\"id\":2,\"backend\":\"llama\",\"status\":\"running\",\"started_at\":1.0,\"finished_at\":null,\"reps\":1,\"max_tokens\":3072,\"note\":\"\",\"n_variants\":0,\"n_results\":0},{\"id\":1,\"backend\":\"llama\",\"status\":\"done\",\"started_at\":1700000000.5,\"finished_at\":1700000100.25,\"reps\":3,\"max_tokens\":256,\"note\":\"synthetic run\",\"n_variants\":2,\"n_results\":3}],\"categories\":[{\"key\":\"coding\",\"label\":\"Coding\"},{\"key\":\"writing\",\"label\":\"Creative writing\"},{\"key\":\"reasoning\",\"label\":\"Reasoning\"},{\"key\":\"tools\",\"label\":\"Tool use\"},{\"key\":\"vision\",\"label\":\"Vision\"}]}",
+   "configured": [
+    "llama",
+    "manual"
+   ],
+   "containers": [
+    [
+     "llama",
+     "ghcr.io/ggml-org/llama.cpp:server-cuda"
+    ],
+    [
+     "model-loader",
+     "ghcr.io/ggml-org/llama.cpp:server"
+    ],
+    [
+     "Other-LLAMA",
+     "local/LLaMA.CPP:rocm"
+    ],
+    [
+     "db",
+     "postgres:16"
+    ]
+   ],
+   "content_type": "application/json",
+   "id": "full",
+   "ini": "version = 1\n\n[DEFAULT]\nflash-attn = on\nngl = 99\n\n[chat-model]\nmodel = /models/chat.gguf\ncache-type-k = q8_0\ncache-type-v =  q8_0  \nn-gpu-layers = 50\ntensor-split = 3,1\nsplit-mode = layer\nbatch-size = 2048\n\n[éclair-7b]\nflash-attn =\nmain-gpu = 1\nubatch-size = 512\nn-cpu-moe = 4\nextra = ignored\n\n[bare]\n",
+   "ini_bytes": false,
+   "job": "{\"run_id\":7,\"status\":\"done\",\"backend\":\"llama\",\"total\":12,\"done\":12,\"current\":\"\",\"started_at\":1700000000.25,\"finished_at\":1700000090.75,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"m1: done — ok 😀\"],\"pct\":100,\"elapsed\":90.5,\"eta\":0.0,\"active\":false}",
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'beta', 'Write a sort.', 1700000000.5)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'Alpha', 'Prove it.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'éclair', 'Unicode 😀 body\nwith a newline and \"quotes\"', 2.25)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(4, 'alpha2', '', 0)",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(1, 'llama', 'done', 1700000000.5, 1700000100.25, 3, 256, 'synthetic run')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(2, 'llama', 'running', 1.0, NULL, 1, 3072, '')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(3, 'é-backend', 'error', 1e20, 0.1, 10, 8192, 'could not start: boom')",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(1, 1, 'm1', '{}', 12.5)",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(2, 1, 'm2', '{}', NULL)",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(3, 3, 'm3', '{}', NULL)",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(1, 'p', 0, 1, 10.5, '[]', '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(1, 'p', 1, 0, 11.5, '[]', '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(2, 'p', 0, 1, 12.5, '[]', 'boom', '')"
+   ],
+   "status": 200
+  },
+  {
+   "body": "{\"sections\":[],\"sweepArgs\":{},\"prompts\":[{\"id\":2,\"name\":\"Alpha\",\"body\":\"Prove it.\",\"created_at\":1.0},{\"id\":4,\"name\":\"alpha2\",\"body\":\"\",\"created_at\":0.0},{\"id\":1,\"name\":\"beta\",\"body\":\"Write a sort.\",\"created_at\":1700000000.5},{\"id\":3,\"name\":\"éclair\",\"body\":\"Unicode 😀 body\\nwith a newline and \\\"quotes\\\"\",\"created_at\":2.25}],\"backends\":[\"llama\",\"Other-LLAMA\"],\"maxTokensDefault\":3072,\"maxTokensCeiling\":8192,\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false},\"runs\":[{\"id\":3,\"backend\":\"é-backend\",\"status\":\"error\",\"started_at\":1e+20,\"finished_at\":0.1,\"reps\":10,\"max_tokens\":8192,\"note\":\"could not start: boom\",\"n_variants\":1,\"n_results\":0},{\"id\":2,\"backend\":\"llama\",\"status\":\"running\",\"started_at\":1.0,\"finished_at\":null,\"reps\":1,\"max_tokens\":3072,\"note\":\"\",\"n_variants\":0,\"n_results\":0},{\"id\":1,\"backend\":\"llama\",\"status\":\"done\",\"started_at\":1700000000.5,\"finished_at\":1700000100.25,\"reps\":3,\"max_tokens\":256,\"note\":\"synthetic run\",\"n_variants\":2,\"n_results\":3}],\"categories\":[{\"key\":\"coding\",\"label\":\"Coding\"},{\"key\":\"writing\",\"label\":\"Creative writing\"},{\"key\":\"reasoning\",\"label\":\"Reasoning\"},{\"key\":\"tools\",\"label\":\"Tool use\"},{\"key\":\"vision\",\"label\":\"Vision\"}]}",
+   "configured": [],
+   "containers": [
+    [
+     "llama",
+     "ghcr.io/ggml-org/llama.cpp:server-cuda"
+    ],
+    [
+     "model-loader",
+     "ghcr.io/ggml-org/llama.cpp:server"
+    ],
+    [
+     "Other-LLAMA",
+     "local/LLaMA.CPP:rocm"
+    ],
+    [
+     "db",
+     "postgres:16"
+    ]
+   ],
+   "content_type": "application/json",
+   "id": "idle-no-ini",
+   "ini": null,
+   "ini_bytes": false,
+   "job": "{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}",
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'beta', 'Write a sort.', 1700000000.5)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'Alpha', 'Prove it.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'éclair', 'Unicode 😀 body\nwith a newline and \"quotes\"', 2.25)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(4, 'alpha2', '', 0)",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(1, 'llama', 'done', 1700000000.5, 1700000100.25, 3, 256, 'synthetic run')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(2, 'llama', 'running', 1.0, NULL, 1, 3072, '')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(3, 'é-backend', 'error', 1e20, 0.1, 10, 8192, 'could not start: boom')",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(1, 1, 'm1', '{}', 12.5)",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(2, 1, 'm2', '{}', NULL)",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(3, 3, 'm3', '{}', NULL)",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(1, 'p', 0, 1, 10.5, '[]', '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(1, 'p', 1, 0, 11.5, '[]', '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(2, 'p', 0, 1, 12.5, '[]', 'boom', '')"
+   ],
+   "status": 200
+  },
+  {
+   "body": "{\"sections\":[],\"sweepArgs\":{},\"prompts\":[],\"backends\":[],\"maxTokensDefault\":3072,\"maxTokensCeiling\":8192,\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false},\"runs\":[],\"categories\":[{\"key\":\"coding\",\"label\":\"Coding\"},{\"key\":\"writing\",\"label\":\"Creative writing\"},{\"key\":\"reasoning\",\"label\":\"Reasoning\"},{\"key\":\"tools\",\"label\":\"Tool use\"},{\"key\":\"vision\",\"label\":\"Vision\"}]}",
+   "configured": [],
+   "containers": [],
+   "content_type": "application/json",
+   "id": "empty-store",
+   "ini": "",
+   "ini_bytes": false,
+   "job": "{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}",
+   "seed": [],
+   "status": 200
+  },
+  {
+   "body": "{\"sections\":[\"chat-model\",\"éclair-7b\",\"bare\"],\"sweepArgs\":{\"chat-model\":\"-ctk q8_0 -ctv q8_0 -fa on -ngl 99 -sm layer -ts 3/1 -b 2048\",\"éclair-7b\":\"-ngl 99 -ncmoe 4 -mg 1 -ub 512\",\"bare\":\"-fa on -ngl 99\"},\"prompts\":[],\"backends\":[],\"maxTokensDefault\":3072,\"maxTokensCeiling\":8192,\"job\":{\"run_id\":9,\"status\":\"cancelled\",\"backend\":\"é\",\"total\":3,\"done\":1,\"current\":\"\",\"started_at\":10.0,\"finished_at\":13.5,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":33,\"elapsed\":3.5,\"eta\":0.0,\"active\":false},\"runs\":[{\"id\":30,\"backend\":\"b30\",\"status\":\"done\",\"started_at\":30.5,\"finished_at\":31.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n30\",\"n_variants\":0,\"n_results\":0},{\"id\":29,\"backend\":\"b29\",\"status\":\"done\",\"started_at\":29.5,\"finished_at\":30.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n29\",\"n_variants\":0,\"n_results\":0},{\"id\":28,\"backend\":\"b28\",\"status\":\"done\",\"started_at\":28.5,\"finished_at\":29.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n28\",\"n_variants\":0,\"n_results\":0},{\"id\":27,\"backend\":\"b27\",\"status\":\"done\",\"started_at\":27.5,\"finished_at\":28.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n27\",\"n_variants\":0,\"n_results\":0},{\"id\":26,\"backend\":\"b26\",\"status\":\"done\",\"started_at\":26.5,\"finished_at\":27.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n26\",\"n_variants\":0,\"n_results\":0},{\"id\":25,\"backend\":\"b25\",\"status\":\"done\",\"started_at\":25.5,\"finished_at\":26.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n25\",\"n_variants\":0,\"n_results\":0},{\"id\":24,\"backend\":\"b24\",\"status\":\"done\",\"started_at\":24.5,\"finished_at\":25.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n24\",\"n_variants\":0,\"n_results\":0},{\"id\":23,\"backend\":\"b23\",\"status\":\"done\",\"started_at\":23.5,\"finished_at\":24.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n23\",\"n_variants\":0,\"n_results\":0},{\"id\":22,\"backend\":\"b22\",\"status\":\"done\",\"started_at\":22.5,\"finished_at\":23.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n22\",\"n_variants\":0,\"n_results\":0},{\"id\":21,\"backend\":\"b21\",\"status\":\"done\",\"started_at\":21.5,\"finished_at\":22.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n21\",\"n_variants\":0,\"n_results\":0},{\"id\":20,\"backend\":\"b20\",\"status\":\"done\",\"started_at\":20.5,\"finished_at\":21.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n20\",\"n_variants\":0,\"n_results\":0},{\"id\":19,\"backend\":\"b19\",\"status\":\"done\",\"started_at\":19.5,\"finished_at\":20.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n19\",\"n_variants\":0,\"n_results\":0},{\"id\":18,\"backend\":\"b18\",\"status\":\"done\",\"started_at\":18.5,\"finished_at\":19.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n18\",\"n_variants\":0,\"n_results\":0},{\"id\":17,\"backend\":\"b17\",\"status\":\"done\",\"started_at\":17.5,\"finished_at\":18.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n17\",\"n_variants\":0,\"n_results\":0},{\"id\":16,\"backend\":\"b16\",\"status\":\"done\",\"started_at\":16.5,\"finished_at\":17.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n16\",\"n_variants\":0,\"n_results\":0},{\"id\":15,\"backend\":\"b15\",\"status\":\"done\",\"started_at\":15.5,\"finished_at\":16.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n15\",\"n_variants\":0,\"n_results\":0},{\"id\":14,\"backend\":\"b14\",\"status\":\"done\",\"started_at\":14.5,\"finished_at\":15.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n14\",\"n_variants\":0,\"n_results\":0},{\"id\":13,\"backend\":\"b13\",\"status\":\"done\",\"started_at\":13.5,\"finished_at\":14.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n13\",\"n_variants\":0,\"n_results\":0},{\"id\":12,\"backend\":\"b12\",\"status\":\"done\",\"started_at\":12.5,\"finished_at\":13.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n12\",\"n_variants\":0,\"n_results\":0},{\"id\":11,\"backend\":\"b11\",\"status\":\"done\",\"started_at\":11.5,\"finished_at\":12.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n11\",\"n_variants\":0,\"n_results\":0},{\"id\":10,\"backend\":\"b10\",\"status\":\"done\",\"started_at\":10.5,\"finished_at\":11.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n10\",\"n_variants\":0,\"n_results\":0},{\"id\":9,\"backend\":\"b9\",\"status\":\"done\",\"started_at\":9.5,\"finished_at\":10.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n9\",\"n_variants\":0,\"n_results\":0},{\"id\":8,\"backend\":\"b8\",\"status\":\"done\",\"started_at\":8.5,\"finished_at\":9.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n8\",\"n_variants\":0,\"n_results\":0},{\"id\":7,\"backend\":\"b7\",\"status\":\"done\",\"started_at\":7.5,\"finished_at\":8.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n7\",\"n_variants\":0,\"n_results\":0},{\"id\":6,\"backend\":\"b6\",\"status\":\"done\",\"started_at\":6.5,\"finished_at\":7.0,\"reps\":1,\"max_tokens\":16,\"note\":\"n6\",\"n_variants\":0,\"n_results\":0}],\"categories\":[{\"key\":\"coding\",\"label\":\"Coding\"},{\"key\":\"writing\",\"label\":\"Creative writing\"},{\"key\":\"reasoning\",\"label\":\"Reasoning\"},{\"key\":\"tools\",\"label\":\"Tool use\"},{\"key\":\"vision\",\"label\":\"Vision\"}]}",
+   "configured": [],
+   "containers": [],
+   "content_type": "application/json",
+   "id": "run-limit-25",
+   "ini": "version = 1\n\n[DEFAULT]\nflash-attn = on\nngl = 99\n\n[chat-model]\nmodel = /models/chat.gguf\ncache-type-k = q8_0\ncache-type-v =  q8_0  \nn-gpu-layers = 50\ntensor-split = 3,1\nsplit-mode = layer\nbatch-size = 2048\n\n[éclair-7b]\nflash-attn =\nmain-gpu = 1\nubatch-size = 512\nn-cpu-moe = 4\nextra = ignored\n\n[bare]\n",
+   "ini_bytes": false,
+   "job": "{\"run_id\":9,\"status\":\"cancelled\",\"backend\":\"é\",\"total\":3,\"done\":1,\"current\":\"\",\"started_at\":10.0,\"finished_at\":13.5,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":33,\"elapsed\":3.5,\"eta\":0.0,\"active\":false}",
+   "seed": [
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(1, 'b1', 'done', 1.5, 2.0, 1, 16, 'n1')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(2, 'b2', 'done', 2.5, 3.0, 1, 16, 'n2')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(3, 'b3', 'done', 3.5, 4.0, 1, 16, 'n3')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(4, 'b4', 'done', 4.5, 5.0, 1, 16, 'n4')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(5, 'b5', 'done', 5.5, 6.0, 1, 16, 'n5')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(6, 'b6', 'done', 6.5, 7.0, 1, 16, 'n6')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(7, 'b7', 'done', 7.5, 8.0, 1, 16, 'n7')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(8, 'b8', 'done', 8.5, 9.0, 1, 16, 'n8')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(9, 'b9', 'done', 9.5, 10.0, 1, 16, 'n9')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(10, 'b10', 'done', 10.5, 11.0, 1, 16, 'n10')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(11, 'b11', 'done', 11.5, 12.0, 1, 16, 'n11')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(12, 'b12', 'done', 12.5, 13.0, 1, 16, 'n12')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(13, 'b13', 'done', 13.5, 14.0, 1, 16, 'n13')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(14, 'b14', 'done', 14.5, 15.0, 1, 16, 'n14')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(15, 'b15', 'done', 15.5, 16.0, 1, 16, 'n15')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(16, 'b16', 'done', 16.5, 17.0, 1, 16, 'n16')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(17, 'b17', 'done', 17.5, 18.0, 1, 16, 'n17')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(18, 'b18', 'done', 18.5, 19.0, 1, 16, 'n18')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(19, 'b19', 'done', 19.5, 20.0, 1, 16, 'n19')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(20, 'b20', 'done', 20.5, 21.0, 1, 16, 'n20')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(21, 'b21', 'done', 21.5, 22.0, 1, 16, 'n21')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(22, 'b22', 'done', 22.5, 23.0, 1, 16, 'n22')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(23, 'b23', 'done', 23.5, 24.0, 1, 16, 'n23')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(24, 'b24', 'done', 24.5, 25.0, 1, 16, 'n24')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(25, 'b25', 'done', 25.5, 26.0, 1, 16, 'n25')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(26, 'b26', 'done', 26.5, 27.0, 1, 16, 'n26')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(27, 'b27', 'done', 27.5, 28.0, 1, 16, 'n27')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(28, 'b28', 'done', 28.5, 29.0, 1, 16, 'n28')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(29, 'b29', 'done', 29.5, 30.0, 1, 16, 'n29')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(30, 'b30', 'done', 30.5, 31.0, 1, 16, 'n30')"
+   ],
+   "status": 200
+  },
+  {
+   "body": "{\"sections\":[\"a\",\"b\"],\"sweepArgs\":{\"a\":\"-ngl 3 -ts 1/1/2\",\"b\":\"-ngl 2\"},\"prompts\":[{\"id\":2,\"name\":\"Alpha\",\"body\":\"Prove it.\",\"created_at\":1.0},{\"id\":4,\"name\":\"alpha2\",\"body\":\"\",\"created_at\":0.0},{\"id\":1,\"name\":\"beta\",\"body\":\"Write a sort.\",\"created_at\":1700000000.5},{\"id\":3,\"name\":\"éclair\",\"body\":\"Unicode 😀 body\\nwith a newline and \\\"quotes\\\"\",\"created_at\":2.25}],\"backends\":[\"llama\"],\"maxTokensDefault\":3072,\"maxTokensCeiling\":8192,\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false},\"runs\":[{\"id\":3,\"backend\":\"é-backend\",\"status\":\"error\",\"started_at\":1e+20,\"finished_at\":0.1,\"reps\":10,\"max_tokens\":8192,\"note\":\"could not start: boom\",\"n_variants\":1,\"n_results\":0},{\"id\":2,\"backend\":\"llama\",\"status\":\"running\",\"started_at\":1.0,\"finished_at\":null,\"reps\":1,\"max_tokens\":3072,\"note\":\"\",\"n_variants\":0,\"n_results\":0},{\"id\":1,\"backend\":\"llama\",\"status\":\"done\",\"started_at\":1700000000.5,\"finished_at\":1700000100.25,\"reps\":3,\"max_tokens\":256,\"note\":\"synthetic run\",\"n_variants\":2,\"n_results\":3}],\"categories\":[{\"key\":\"coding\",\"label\":\"Coding\"},{\"key\":\"writing\",\"label\":\"Creative writing\"},{\"key\":\"reasoning\",\"label\":\"Reasoning\"},{\"key\":\"tools\",\"label\":\"Tool use\"},{\"key\":\"vision\",\"label\":\"Vision\"}]}",
+   "configured": [
+    "llama"
+   ],
+   "containers": null,
+   "content_type": "application/json",
+   "id": "docker-unreachable",
+   "ini": "[a]\nngl = 1\n[b]\nngl = 2\n[a]\nngl = 3\ntensor-split = 1,1,2\n",
+   "ini_bytes": false,
+   "job": "{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}",
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'beta', 'Write a sort.', 1700000000.5)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'Alpha', 'Prove it.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'éclair', 'Unicode 😀 body\nwith a newline and \"quotes\"', 2.25)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(4, 'alpha2', '', 0)",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(1, 'llama', 'done', 1700000000.5, 1700000100.25, 3, 256, 'synthetic run')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(2, 'llama', 'running', 1.0, NULL, 1, 3072, '')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(3, 'é-backend', 'error', 1e20, 0.1, 10, 8192, 'could not start: boom')",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(1, 1, 'm1', '{}', 12.5)",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(2, 1, 'm2', '{}', NULL)",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(3, 3, 'm3', '{}', NULL)",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(1, 'p', 0, 1, 10.5, '[]', '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(1, 'p', 1, 0, 11.5, '[]', '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(2, 'p', 0, 1, 12.5, '[]', 'boom', '')"
+   ],
+   "status": 200
+  },
+  {
+   "body": "{\"sections\":[\"a\",\"b\"],\"sweepArgs\":{\"a\":\"-ngl 3 -ts 1/1/2\",\"b\":\"-ngl 2\"},\"prompts\":[],\"backends\":[\"llama\",\"Other-LLAMA\"],\"maxTokensDefault\":3072,\"maxTokensCeiling\":8192,\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false},\"runs\":[],\"categories\":[{\"key\":\"coding\",\"label\":\"Coding\"},{\"key\":\"writing\",\"label\":\"Creative writing\"},{\"key\":\"reasoning\",\"label\":\"Reasoning\"},{\"key\":\"tools\",\"label\":\"Tool use\"},{\"key\":\"vision\",\"label\":\"Vision\"}]}",
+   "configured": [],
+   "containers": [
+    [
+     "llama",
+     "ghcr.io/ggml-org/llama.cpp:server-cuda"
+    ],
+    [
+     "model-loader",
+     "ghcr.io/ggml-org/llama.cpp:server"
+    ],
+    [
+     "Other-LLAMA",
+     "local/LLaMA.CPP:rocm"
+    ],
+    [
+     "db",
+     "postgres:16"
+    ]
+   ],
+   "content_type": "application/json",
+   "id": "duplicate-sections",
+   "ini": "[a]\nngl = 1\n[b]\nngl = 2\n[a]\nngl = 3\ntensor-split = 1,1,2\n",
+   "ini_bytes": false,
+   "job": "{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}",
+   "seed": [],
+   "status": 200
+  },
+  {
+   "body": "{\"sections\":[\"cont\"],\"sweepArgs\":{\"cont\":\"-ctk q4_0\\ncontinued\"},\"prompts\":[],\"backends\":[],\"maxTokensDefault\":3072,\"maxTokensCeiling\":8192,\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false},\"runs\":[],\"categories\":[{\"key\":\"coding\",\"label\":\"Coding\"},{\"key\":\"writing\",\"label\":\"Creative writing\"},{\"key\":\"reasoning\",\"label\":\"Reasoning\"},{\"key\":\"tools\",\"label\":\"Tool use\"},{\"key\":\"vision\",\"label\":\"Vision\"}]}",
+   "configured": [],
+   "containers": [],
+   "content_type": "application/json",
+   "id": "continuation-value",
+   "ini": "[cont]\ncache-type-k = q4_0\n  continued\n",
+   "ini_bytes": false,
+   "job": "{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}",
+   "seed": [],
+   "status": 200
+  },
+  {
+   "body": "{\"sections\":[],\"sweepArgs\":{},\"prompts\":[{\"id\":2,\"name\":\"Alpha\",\"body\":\"Prove it.\",\"created_at\":1.0},{\"id\":4,\"name\":\"alpha2\",\"body\":\"\",\"created_at\":0.0},{\"id\":1,\"name\":\"beta\",\"body\":\"Write a sort.\",\"created_at\":1700000000.5},{\"id\":3,\"name\":\"éclair\",\"body\":\"Unicode 😀 body\\nwith a newline and \\\"quotes\\\"\",\"created_at\":2.25}],\"backends\":[],\"maxTokensDefault\":3072,\"maxTokensCeiling\":8192,\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false},\"runs\":[{\"id\":3,\"backend\":\"é-backend\",\"status\":\"error\",\"started_at\":1e+20,\"finished_at\":0.1,\"reps\":10,\"max_tokens\":8192,\"note\":\"could not start: boom\",\"n_variants\":1,\"n_results\":0},{\"id\":2,\"backend\":\"llama\",\"status\":\"running\",\"started_at\":1.0,\"finished_at\":null,\"reps\":1,\"max_tokens\":3072,\"note\":\"\",\"n_variants\":0,\"n_results\":0},{\"id\":1,\"backend\":\"llama\",\"status\":\"done\",\"started_at\":1700000000.5,\"finished_at\":1700000100.25,\"reps\":3,\"max_tokens\":256,\"note\":\"synthetic run\",\"n_variants\":2,\"n_results\":3}],\"categories\":[{\"key\":\"coding\",\"label\":\"Coding\"},{\"key\":\"writing\",\"label\":\"Creative writing\"},{\"key\":\"reasoning\",\"label\":\"Reasoning\"},{\"key\":\"tools\",\"label\":\"Tool use\"},{\"key\":\"vision\",\"label\":\"Vision\"}]}",
+   "configured": [],
+   "containers": [],
+   "content_type": "application/json",
+   "id": "ini-parse-error",
+   "ini": "no section header here\n",
+   "ini_bytes": false,
+   "job": "{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}",
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'beta', 'Write a sort.', 1700000000.5)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'Alpha', 'Prove it.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'éclair', 'Unicode 😀 body\nwith a newline and \"quotes\"', 2.25)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(4, 'alpha2', '', 0)",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(1, 'llama', 'done', 1700000000.5, 1700000100.25, 3, 256, 'synthetic run')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(2, 'llama', 'running', 1.0, NULL, 1, 3072, '')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(3, 'é-backend', 'error', 1e20, 0.1, 10, 8192, 'could not start: boom')",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(1, 1, 'm1', '{}', 12.5)",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(2, 1, 'm2', '{}', NULL)",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(3, 3, 'm3', '{}', NULL)",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(1, 'p', 0, 1, 10.5, '[]', '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(1, 'p', 1, 0, 11.5, '[]', '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(2, 'p', 0, 1, 12.5, '[]', 'boom', '')"
+   ],
+   "status": 200
+  },
+  {
+   "body": "Internal Server Error",
+   "configured": [],
+   "containers": [],
+   "content_type": "text/plain; charset=utf-8",
+   "id": "ini-not-utf8",
+   "ini": "[a]\nngl = ÿ\n",
+   "ini_bytes": true,
+   "job": "{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}",
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'beta', 'Write a sort.', 1700000000.5)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'Alpha', 'Prove it.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'éclair', 'Unicode 😀 body\nwith a newline and \"quotes\"', 2.25)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(4, 'alpha2', '', 0)",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(1, 'llama', 'done', 1700000000.5, 1700000100.25, 3, 256, 'synthetic run')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(2, 'llama', 'running', 1.0, NULL, 1, 3072, '')",
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(3, 'é-backend', 'error', 1e20, 0.1, 10, 8192, 'could not start: boom')",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(1, 1, 'm1', '{}', 12.5)",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(2, 1, 'm2', '{}', NULL)",
+    "INSERT INTO bench_variant(id, run_id, alias, argv_json, load_ms) VALUES(3, 3, 'm3', '{}', NULL)",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(1, 'p', 0, 1, 10.5, '[]', '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(1, 'p', 1, 0, 11.5, '[]', '', 'ok')",
+    "INSERT INTO bench_result(variant_id, prompt_name, rep, cold, total_ms, peak_vram_json, err, response_text) VALUES(2, 'p', 0, 1, 12.5, '[]', 'boom', '')"
+   ],
+   "status": 500
+  },
+  {
+   "body": "{\"sections\":[\"chat-model\",\"éclair-7b\",\"bare\"],\"sweepArgs\":{\"chat-model\":\"-ctk q8_0 -ctv q8_0 -fa on -ngl 99 -sm layer -ts 3/1 -b 2048\",\"éclair-7b\":\"-ngl 99 -ncmoe 4 -mg 1 -ub 512\",\"bare\":\"-fa on -ngl 99\"},\"prompts\":[],\"backends\":[],\"maxTokensDefault\":3072,\"maxTokensCeiling\":8192,\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false},\"runs\":[{\"id\":1,\"backend\":\"b\",\"status\":\"done\",\"started_at\":1.0,\"finished_at\":null,\"reps\":1,\"max_tokens\":16,\"note\":\"\",\"n_variants\":0,\"n_results\":0}],\"categories\":[{\"key\":\"coding\",\"label\":\"Coding\"},{\"key\":\"writing\",\"label\":\"Creative writing\"},{\"key\":\"reasoning\",\"label\":\"Reasoning\"},{\"key\":\"tools\",\"label\":\"Tool use\"},{\"key\":\"vision\",\"label\":\"Vision\"}]}",
+   "configured": [],
+   "containers": [],
+   "content_type": "application/json",
+   "id": "inf-in-run",
+   "ini": "version = 1\n\n[DEFAULT]\nflash-attn = on\nngl = 99\n\n[chat-model]\nmodel = /models/chat.gguf\ncache-type-k = q8_0\ncache-type-v =  q8_0  \nn-gpu-layers = 50\ntensor-split = 3,1\nsplit-mode = layer\nbatch-size = 2048\n\n[éclair-7b]\nflash-attn =\nmain-gpu = 1\nubatch-size = 512\nn-cpu-moe = 4\nextra = ignored\n\n[bare]\n",
+   "ini_bytes": false,
+   "job": "{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}",
+   "seed": [
+    "INSERT INTO bench_run(id, backend, status, started_at, finished_at, reps, max_tokens, note) VALUES(1, 'b', 'done', 1.0, 2.0, 1, 16, '')",
+    "UPDATE bench_run SET finished_at = 1e999 WHERE id = 1"
+   ],
+   "status": 200
+  }
+ ],
+ "oracle": {
+  "api.py": "eb8e12f6929baf15d2b1a1998aceff9529fbe48ca8242094ac6b7526c253a91d",
+  "bench.py": "2e59f9b057e2686b7f05e5dac04826c8ff37e3c1eb4398bf671faa2d74f3b14b",
+  "db.py": "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478",
+  "ini.py": "450a042cbecc36ea7ab68d6e08a10ffa2400c35721f78e62fe592d2a67e41ef0",
+  "main.py": "fcd84c9d7396b2851cabd2077072ac392b5dae0b272149efec616eebdb8e4899",
+  "services.py": "aadf227ddc3666cebb1631a0ae543c8090539a382e8ca52710fc7a5458f1d041"
+ },
+ "schema": [
+  "CREATE TABLE kv (\n                key   TEXT PRIMARY KEY,\n                value TEXT NOT NULL\n            )",
+  "CREATE TABLE download_history (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                repo_id      TEXT NOT NULL,\n                filename     TEXT NOT NULL,\n                dest_path    TEXT NOT NULL,\n                total_bytes  INTEGER NOT NULL,\n                status       TEXT NOT NULL,\n                error        TEXT,\n                started_at   REAL NOT NULL,\n                completed_at REAL\n            )",
+  "CREATE TABLE avatar_cache (\n                owner       TEXT PRIMARY KEY,\n                url         TEXT NOT NULL,\n                fetched_at  REAL NOT NULL\n            )",
+  "CREATE TABLE update_check (\n                filename          TEXT PRIMARY KEY,\n                repo_id           TEXT NOT NULL,\n                hf_last_modified  TEXT,\n                checked_at        REAL NOT NULL\n            )",
+  "CREATE TABLE req_timing (\n                id            INTEGER PRIMARY KEY AUTOINCREMENT,\n                ts            REAL NOT NULL,\n                backend       TEXT NOT NULL,\n                instance      TEXT NOT NULL,\n                task          INTEGER NOT NULL,\n                model_path    TEXT NOT NULL DEFAULT '',\n                alias         TEXT NOT NULL DEFAULT '',\n                spec_type     TEXT NOT NULL DEFAULT '',\n                prompt_tokens INTEGER NOT NULL DEFAULT 0,\n                prompt_tps    REAL    NOT NULL DEFAULT 0,\n                gen_tokens    INTEGER NOT NULL DEFAULT 0,\n                gen_tps       REAL    NOT NULL DEFAULT 0,\n                draft_acc     REAL,\n                draft_len     REAL,\n                UNIQUE(backend, instance, task)\n            )",
+  "CREATE INDEX req_timing_model\n                ON req_timing(model_path, ts DESC)",
+  "CREATE INDEX req_timing_alias\n                ON req_timing(alias, ts DESC)",
+  "CREATE INDEX req_timing_dedupe\n                ON req_timing(backend, task, ts)",
+  "CREATE TABLE bench_run (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                backend     TEXT NOT NULL,\n                status      TEXT NOT NULL,           -- running | done | cancelled | error\n                started_at  REAL NOT NULL,\n                finished_at REAL,\n                reps        INTEGER NOT NULL DEFAULT 1,\n                max_tokens  INTEGER NOT NULL DEFAULT 256,\n                note        TEXT NOT NULL DEFAULT ''\n            )",
+  "CREATE TABLE bench_variant (\n                id       INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id   INTEGER NOT NULL,\n                alias    TEXT NOT NULL,\n                argv_json TEXT NOT NULL DEFAULT '{}',\n                load_ms  REAL,\n                UNIQUE(run_id, alias)\n            )",
+  "CREATE TABLE bench_result (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                variant_id  INTEGER NOT NULL,\n                prompt_name TEXT NOT NULL,\n                rep         INTEGER NOT NULL,\n                cold        INTEGER NOT NULL DEFAULT 0,\n                ttft_ms     REAL,\n                ttft_answer_ms REAL,\n                truncated   INTEGER NOT NULL DEFAULT 0,\n                total_ms    REAL,\n                prompt_n    INTEGER,\n                prompt_tps  REAL,\n                gen_n       INTEGER,\n                gen_tps     REAL,\n                draft_n     INTEGER,\n                draft_acc   REAL,\n                peak_vram_json TEXT NOT NULL DEFAULT '[]',\n                contended   INTEGER NOT NULL DEFAULT 0,\n                err         TEXT NOT NULL DEFAULT '',\n                -- The generated text itself. Timings alone cannot answer \"is this model any\n                -- good at this\", and a run that keeps only timings destroys the one artifact\n                -- that could ever be graded. Keeping it makes scoring an OFFLINE pass over\n                -- stored rows: a rubric can change and re-score history without spending GPU\n                -- time again. Reasoning is deliberately not kept - the answer is what gets\n                -- graded, and thinking would multiply row size for text no rubric reads.\n                response_text TEXT NOT NULL DEFAULT ''\n            )",
+  "CREATE INDEX bench_result_variant ON bench_result(variant_id)",
+  "CREATE TABLE bench_sweep (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id       INTEGER NOT NULL,\n                alias        TEXT NOT NULL DEFAULT '',\n                model_type   TEXT NOT NULL DEFAULT '',\n                test         TEXT NOT NULL DEFAULT '',\n                n_prompt     INTEGER, n_gen INTEGER, n_depth INTEGER,\n                avg_ts       REAL,    stddev_ts REAL,\n                n_gpu_layers INTEGER, n_cpu_moe INTEGER, n_ubatch INTEGER,\n                type_k       TEXT,    type_v TEXT, flash_attn INTEGER,\n                split_mode   TEXT,\n                raw_json     TEXT NOT NULL DEFAULT '{}'\n            )",
+  "CREATE INDEX bench_sweep_run ON bench_sweep(run_id)",
+  "CREATE TABLE server_config (\n                backend    TEXT NOT NULL,\n                instance   TEXT NOT NULL,\n                alias      TEXT NOT NULL DEFAULT '',\n                model_path TEXT NOT NULL DEFAULT '',\n                argv_json  TEXT NOT NULL DEFAULT '{}',\n                first_seen REAL NOT NULL DEFAULT 0,\n                PRIMARY KEY (backend, instance)\n            )",
+  "CREATE TABLE prompts (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                name        TEXT NOT NULL,\n                body        TEXT NOT NULL,\n                created_at  REAL NOT NULL\n            )",
+  "CREATE TABLE model_badge (\n                id         INTEGER PRIMARY KEY AUTOINCREMENT,\n                alias      TEXT NOT NULL,\n                category   TEXT NOT NULL,\n                rating     INTEGER NOT NULL,\n                note       TEXT NOT NULL DEFAULT '',\n                run_id     INTEGER,\n                created_at REAL NOT NULL,\n                -- One rating per category per model. Re-rating updates in place, so the\n                -- badge always reflects your latest opinion instead of accumulating a\n                -- history nothing reads.\n                UNIQUE(alias, category)\n            )",
+  "CREATE INDEX model_badge_alias ON model_badge(alias)"
+ ]
+}

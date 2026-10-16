@@ -62,6 +62,10 @@ pub fn parse_fields(bytes: &[u8]) -> Result<(String, String), Error> {
 pub fn decode_body(bytes: &[u8]) -> Result<std::borrow::Cow<'_, str>, Error> {
     encoding::decode(bytes)
 }
+/// `json.loads(bytes)`'s encoding detection for a text of up to `cap` bytes.
+pub fn decode_json_bytes(bytes: &[u8], cap: usize) -> Result<std::borrow::Cow<'_, str>, Error> {
+    encoding::decode_capped(bytes, cap)
+}
 pub fn parse_fields_json(text: &str) -> Result<(String, String), Error> {
     text::fields(&text::parse(text.as_bytes())?)
 }

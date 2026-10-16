@@ -8,9 +8,10 @@
 //!
 //! Fail closed: until `cowork.db` exists and has the schema this build knows, or when the auth
 //! environment is invalid (an unknown NOEVIA_FEATURE_NATIVE_CLIENT_AUTH value, which also stops
-//! Node), every extraction answers 503 and nothing is treated as signed in. Without
-//! NOEVIA_RUST_AUTH no route needs an identity and the front keeps proxying; with it, main()
-//! exits on [`Status::Refused`] (schema newer than known).
+//! Node), every extraction answers 503 and nothing is treated as signed in. Rust owns sign-in
+//! (permanent since sbstndalton/noevia#1071), so main() exits on [`Status::Refused`] (schema newer
+//! than known); config.rs already refuses to start without UI_DATA_DIR or with an invalid auth
+//! environment.
 
 use crate::reply;
 use crate::App;

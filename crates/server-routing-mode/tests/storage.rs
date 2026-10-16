@@ -6,11 +6,8 @@ use std::{
 };
 const A: &str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 fn cap() -> server_store::RustRoutingMode {
-    server_store::RustRoutingMode::from_env_value(
-        Some("1"),
-        server_store::RustAuth::from_env_value(Some("1")).unwrap(),
-    )
-    .unwrap()
+    server_store::RustRoutingMode::from_env_value(Some("1"), server_store::RustAuth::owned())
+        .unwrap()
 }
 #[test]
 fn tenant_boundaries_regular_files_atomic_bytes_and_cancellation() {

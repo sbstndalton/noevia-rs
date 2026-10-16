@@ -182,7 +182,6 @@ async fn start_app(
     let mut env: HashMap<&str, String> = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", dir.display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
         ("TRUST_PROXY", "true".into()),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "1".into()),
         ("PUBLIC_ORIGIN", origin),
@@ -382,13 +381,12 @@ async fn signed_out_polls_get_401_even_when_every_gate_permit_is_taken() {
 
 #[test]
 fn an_invalid_auth_config_refuses_startup_instead_of_serving_stats() {
-    // sbstndalton/noevia#1071: GET /api/stats is permanent under NOEVIA_RUST_AUTH=1, so an auth
+    // sbstndalton/noevia#1071: GET /api/stats is always the front's, so an auth
     // environment it cannot check refuses startup (Node refuses to start on it too).
     let d = tempfile::tempdir().unwrap();
     let env: HashMap<&str, String> = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", d.path().display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "maybe".into()),
     ]);
     let err = Config::from_lookup(|k| env.get(k).cloned()).unwrap_err();

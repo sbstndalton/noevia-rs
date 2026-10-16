@@ -54,7 +54,7 @@ jobs:
           set -euo pipefail
           cargo build --locked --target-dir target/export-featureless -p noevia-server --no-default-features
           if target/export-featureless/debug/noevia-server --features | grep -qx rust-export; then exit 1; fi
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 target/export-featureless/debug/noevia-server > "$RUNNER_TEMP/export-featureless.log" 2>&1; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_PROJECTS=1 target/export-featureless/debug/noevia-server > "$RUNNER_TEMP/export-featureless.log" 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-export' "$RUNNER_TEMP/export-featureless.log"
           cargo build --locked -p replay -p noevia-server --features noevia-server/rust-export,noevia-server/rust-free-chats,noevia-server/rust-project-chats
           target/debug/noevia-server --features | grep -qx rust-export
