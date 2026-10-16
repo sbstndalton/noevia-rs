@@ -157,10 +157,7 @@ async fn server_main() -> ExitCode {
                 return ExitCode::from(1);
             }
         };
-        println!(
-            "noevia-server: NOEVIA_RUST_PROJECT_STORE=1, project store on 127.0.0.1:{}",
-            cfg.port
-        );
+        println!("noevia-server: project store on 127.0.0.1:{}", cfg.port);
         let store = noevia_server::project_store::Store {
             data_dir,
             token: cfg.token.into(),
