@@ -15,6 +15,7 @@ pub mod prompts;
 pub mod sections;
 #[cfg(feature = "native-settings")]
 pub mod settings;
+pub mod validation;
 
 use axum::{
     body::{to_bytes, Body},
@@ -666,7 +667,7 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
                     prompts::Operation::Add(name, body)
                 }
                 (&Method::DELETE, Some(id)) => {
-                    let id=match prompts::parse_id(id){Ok(id)=>id,Err(_)=>return (StatusCode::UNPROCESSABLE_ENTITY,Json(json!({"detail":[{"type":"int_parsing","loc":["path","pid"],"msg":"Input should be a valid integer, unable to parse string as an integer","input":id}]}))).into_response()};
+                    let id=match prompts::parse_id(id){Ok(id)=>id,Err(_)=>return (StatusCode::UNPROCESSABLE_ENTITY,Json(validation::parsing("int_parsing",&[validation::key("path"),validation::key("pid")],"Input should be a valid integer, unable to parse string as an integer",id))).into_response()};
                     prompts::Operation::Delete(id)
                 }
                 _ => return detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed"),
@@ -1131,9 +1132,20 @@ async fn native_sections(sections: &sections::Sections, path: &str, query: &str)
         {
             let low = value.to_lowercase();
             defaults = match low.as_str() {
-                "1"|"true"|"on"|"yes"|"y"|"t" => true,
-                "0"|"false"|"off"|"no"|"n"|"f" => false,
-                _ if name.is_some() => return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"detail":[{"type":"bool_parsing","loc":["query","defaults"],"msg":"Input should be a valid boolean, unable to interpret input","input":value}]}))).into_response(),
+                "1" | "true" | "on" | "yes" | "y" | "t" => true,
+                "0" | "false" | "off" | "no" | "n" | "f" => false,
+                _ if name.is_some() => {
+                    return (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        Json(validation::parsing(
+                            "bool_parsing",
+                            &[validation::key("query"), validation::key("defaults")],
+                            "Input should be a valid boolean, unable to interpret input",
+                            &value,
+                        )),
+                    )
+                        .into_response()
+                }
                 _ => false,
             };
         }
