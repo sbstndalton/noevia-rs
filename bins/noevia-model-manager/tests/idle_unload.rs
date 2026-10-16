@@ -138,7 +138,7 @@ async fn editor_save_without_the_key_gets_it_back_with_a_matching_revision() {
     let now = std::fs::read(&ini).unwrap();
     assert_eq!(
         String::from_utf8(now.clone()).unwrap(),
-        format!("[*]\nsleep-idle-seconds = 900\n\n{SAVED}")
+        format!("[*]\nsleep-idle-seconds = 1800\n\n{SAVED}")
     );
     // The editor's next save must be based on the file as it now is.
     assert_eq!(body["revision"], revision(&now));
@@ -240,4 +240,187 @@ async fn other_routes_keep_their_revision_and_never_reconcile() {
     let body: Value = serde_json::from_slice(&raw).unwrap();
     assert_eq!(body["revision"], "settings-revision-7");
     assert_eq!(std::fs::read_to_string(&ini).unwrap(), SAVED);
+}
+
+async fn send(state: Arc<StateData>, method: &str, body: &str) -> (u16, Value) {
+    let response = noevia_model_manager::router(state)
+        .oneshot(
+            Request::builder()
+                .method(method)
+                .uri(noevia_model_manager::IDLE_UNLOAD_ROUTE)
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_owned()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let raw = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&raw).unwrap())
+}
+
+fn stored(dir: &std::path::Path, env: Option<&str>) -> Arc<Reconciler> {
+    Arc::new(Reconciler::with_store(
+        dir.join("models.ini"),
+        idle_unload::parse_env(env).unwrap(),
+        Some(dir.join(idle_unload::STORE_FILE)),
+    ))
+}
+
+/// noevia#1863: the default is 30 minutes and is reported as such.
+#[tokio::test]
+async fn setting_defaults_to_thirty_minutes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (status, body) = send(
+        state("http://127.0.0.1:9", Some(stored(dir.path(), None))),
+        "GET",
+        "",
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["seconds"], 1800);
+    assert_eq!(body["source"], "default");
+    assert_eq!(body["fallbackSeconds"], 1800);
+    assert_eq!(body["defaultSeconds"], 1800);
+    assert_eq!(body["minSeconds"], 300);
+    assert_eq!(body["maxSeconds"], 86400);
+}
+
+/// noevia#1863: a change is saved, rewrites the chat preset at once (no restart), survives a
+/// restart, wins over the env seed, survives a later editor save, and `null` returns to the env.
+#[tokio::test]
+async fn setting_persists_applies_at_once_and_clears_back_to_env() {
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    std::fs::write(&ini, SAVED).unwrap();
+    let reconciler = stored(dir.path(), Some("900"));
+    reconciler.reconcile().await.unwrap();
+    assert!(std::fs::read_to_string(&ini)
+        .unwrap()
+        .contains("sleep-idle-seconds = 900\n"));
+    let base = fake_python(ini.clone(), SAVED, false).await;
+
+    let (status, body) = send(
+        state(&base, Some(reconciler.clone())),
+        "PUT",
+        r#"{"seconds":3600}"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["seconds"], 3600);
+    assert_eq!(body["source"], "setting");
+    assert_eq!(body["fallbackSeconds"], 900);
+    assert_eq!(body["fallbackSource"], "env");
+    assert_eq!(body["preset"], "written");
+    assert_eq!(
+        std::fs::read_to_string(&ini).unwrap(),
+        format!("[*]\nsleep-idle-seconds = 3600\n\n{SAVED}")
+    );
+    // Same value again: nothing to rewrite.
+    let (_, body) = send(
+        state(&base, Some(reconciler.clone())),
+        "PUT",
+        r#"{"seconds":3600}"#,
+    )
+    .await;
+    assert_eq!(body["preset"], "unchanged");
+
+    // An editor save that drops the key gets the admin's value back, not the env seed.
+    let (status, _) = call(state(&base, Some(reconciler.clone())), "PUT").await;
+    assert_eq!(status, 200);
+    assert!(std::fs::read_to_string(&ini)
+        .unwrap()
+        .starts_with("[*]\nsleep-idle-seconds = 3600\n"));
+
+    // A restart reads the stored choice back.
+    let restarted = stored(dir.path(), Some("900"));
+    assert_eq!(restarted.setting(), Some(3600));
+    let (_, body) = send(state(&base, Some(restarted.clone())), "GET", "").await;
+    assert_eq!(body["source"], "setting");
+
+    // Never: the key is removed (llama.cpp rejects 0).
+    let (status, body) = send(
+        state(&base, Some(restarted.clone())),
+        "PUT",
+        r#"{"seconds":0}"#,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(body["seconds"], 0);
+    assert!(!std::fs::read_to_string(&ini)
+        .unwrap()
+        .contains("sleep-idle-seconds"));
+    assert_eq!(stored(dir.path(), Some("900")).setting(), None);
+
+    // Clearing goes back to the env seed and forgets the stored choice.
+    let (status, body) = send(state(&base, Some(restarted)), "PUT", r#"{"seconds":null}"#).await;
+    assert_eq!(status, 200);
+    assert_eq!(body["seconds"], 900);
+    assert_eq!(body["source"], "env");
+    assert!(std::fs::read_to_string(&ini)
+        .unwrap()
+        .contains("sleep-idle-seconds = 900\n"));
+    assert!(!dir.path().join(idle_unload::STORE_FILE).exists());
+}
+
+#[tokio::test]
+async fn bad_requests_change_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    std::fs::write(&ini, SAVED).unwrap();
+    let reconciler = stored(dir.path(), None);
+    for body in [
+        r#"{"seconds":60}"#,
+        r#"{"seconds":299}"#,
+        r#"{"seconds":86401}"#,
+        r#"{"seconds":-1}"#,
+        r#"{"seconds":1800.5}"#,
+        r#"{"seconds":"1800"}"#,
+        r#"{"seconds":true}"#,
+        r#"{}"#,
+        r#"[1800]"#,
+        "not json",
+    ] {
+        let (status, out) = send(
+            state("http://127.0.0.1:9", Some(reconciler.clone())),
+            "PUT",
+            body,
+        )
+        .await;
+        assert_eq!(status, 400, "{body}: {out}");
+    }
+    let (status, _) = send(
+        state("http://127.0.0.1:9", Some(reconciler.clone())),
+        "DELETE",
+        "",
+    )
+    .await;
+    assert_eq!(status, 405);
+    assert_eq!(std::fs::read_to_string(&ini).unwrap(), SAVED);
+    assert!(!dir.path().join(idle_unload::STORE_FILE).exists());
+    assert_eq!(reconciler.setting(), Some(1800));
+}
+
+/// A stored file that is not a valid choice is ignored (the env applies) rather than fatal.
+#[tokio::test]
+async fn unreadable_store_falls_back_to_env() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(idle_unload::STORE_FILE), r#"{"seconds":5}"#).unwrap();
+    let reconciler = stored(dir.path(), Some("600"));
+    assert_eq!(reconciler.setting(), Some(600));
+    assert_eq!(reconciler.view().source, idle_unload::Source::Env);
+}
+
+/// Without a store (no DATA_DIR) a save is refused instead of being lost on restart.
+#[tokio::test]
+async fn no_store_refuses_saves() {
+    let dir = tempfile::tempdir().unwrap();
+    let reconciler = Arc::new(Reconciler::new(dir.path().join("models.ini"), Some(1800)));
+    let (status, _) = send(
+        state("http://127.0.0.1:9", Some(reconciler)),
+        "PUT",
+        r#"{"seconds":600}"#,
+    )
+    .await;
+    assert_eq!(status, 503);
 }
