@@ -417,8 +417,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
     // noevia#1318 slice 13: the backend sampler (Docker discovery, container stats, sysfs, GPU_VRAM)
-    // and GET /api/v1/backends. Never a reason to refuse startup: anything this side cannot own
-    // exactly keeps both with Python.
+    // and GET /api/v1/backends. Like the other switches, startup is refused for a value other than
+    // python or rust, and for `rust` without MODEL_MANAGER_IMPL=rust or without the compiled
+    // native-backends feature. Only once those hold does anything this side cannot own exactly
+    // (`backends_fallback`) keep the sampler and the route with Python, with a notice, instead of
+    // refusing.
     let backends_mode = environment("MODEL_MANAGER_BACKENDS_IMPL", "python")?;
     if !matches!(backends_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_BACKENDS_IMPL must be python or rust".into());
