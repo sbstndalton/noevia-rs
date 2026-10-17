@@ -928,7 +928,7 @@ jobs:
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
 
   native-benchmark-runner:
-    name: Native benchmark runner (prompt suite), actual Python differential and omission (#1318)
+    name: Native benchmark runner (prompt suite, sweeps, startup cleanup), actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -956,12 +956,20 @@ jobs:
             diff bins/noevia-model-manager/tests/fixtures/bench-runner-python.v1.json "$RUNNER_TEMP/bench-runner.json" | head -40
             exit 1
           }
+      - name: Regenerate the actual Python sweep and startup cleanup oracle
+        run: |
+          python3 -I tools/gen-bench-sweep-oracle.py bench-runner-services/model-manager/app > "$RUNNER_TEMP/bench-sweep.json"
+          cmp bins/noevia-model-manager/tests/fixtures/bench-sweep-python.v1.json "$RUNNER_TEMP/bench-sweep.json" || {
+            diff bins/noevia-model-manager/tests/fixtures/bench-sweep-python.v1.json "$RUNNER_TEMP/bench-sweep.json" | head -40
+            exit 1
+          }
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-benchmark-runner -- -D warnings
       - name: Native benchmark runner differential and route policy
         run: |
-          cargo test --locked -p noevia-model-manager --features native-benchmark-runner --test bench_runner --test benchmark_overview --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-benchmark-runner --test bench_runner --test bench_sweep --test benchmark_overview --test lifecycle --bin noevia-model-manager
           cargo test --locked -p noevia-model-manager --features native-benchmark-runner --lib bench_runner::
+          cargo test --locked -p noevia-model-manager --features native-benchmark-runner --lib docker::sweep::
       - name: Benchmark runner capability omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-benchmark-overview --test lifecycle

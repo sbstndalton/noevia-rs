@@ -1,0 +1,2016 @@
+{
+ "backends": {
+  "127.0.0.1": {
+   "gpu": true,
+   "mounts": [
+    [
+     "/mnt/user/models",
+     "/models"
+    ],
+    [
+     "/mnt/user/cache",
+     "/root/.cache"
+    ]
+   ],
+   "tags": [
+    "ghcr.io/example/llama:full"
+   ],
+   "workdir": "/models"
+  },
+  "notag": {
+   "gpu": false,
+   "mounts": [],
+   "tags": [],
+   "workdir": ""
+  }
+ },
+ "cases": [
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":3.0,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":2,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000010.5,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"freeing GPU: restarting the backend so the sweep has the cards to itself\",\"backend back up, GPUs clear\",\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"m1: 2 measurements\",\"m2: section defaults\",\"m2: main: error: failed to load model '/models/sub/m2.gguf'\"],\"pct\":100,\"elapsed\":10.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "docker": [
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "256",
+       "-n",
+       "64",
+       "-r",
+       "2",
+       "-o",
+       "json",
+       "-d",
+       "0,512",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000001"
+    ],
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "sub/m2.gguf",
+       "-p",
+       "256",
+       "-n",
+       "64",
+       "-r",
+       "2",
+       "-o",
+       "json",
+       "-d",
+       "0,512"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000002"
+    ]
+   ],
+   "id": "sweep",
+   "listed": [],
+   "llama": [
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m1\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "restarts": [
+    "127.0.0.1"
+   ],
+   "runs": [
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000001",
+     "statuses": [
+      "running",
+      "running",
+      "exited"
+     ],
+     "stderr": "",
+     "stdout": "ggml_cuda_init: found 1 CUDA devices\n[\n  {\n    \"build_commit\": \"abc\",\n    \"model_type\": \"qwen3 8B Q4_K - M\\u00e9dium\",\n    \"n_prompt\": 256,\n    \"n_gen\": 0,\n    \"n_depth\": 512,\n    \"avg_ts\": 1234.5,\n    \"stddev_ts\": 0.1,\n    \"n_gpu_layers\": 99,\n    \"n_cpu_moe\": 0,\n    \"n_ubatch\": 512,\n    \"type_k\": \"q8_0\",\n    \"type_v\": \"f16\",\n    \"flash_attn\": true,\n    \"split_mode\": \"layer\",\n    \"samples_ts\": [\n      1,\n      2.5\n    ],\n    \"devices\": null\n  },\n  {\n    \"n_prompt\": 0,\n    \"n_gen\": 64,\n    \"n_depth\": 0,\n    \"avg_ts\": 50.25,\n    \"stddev_ts\": null,\n    \"flash_attn\": 1\n  }\n]\n"
+    },
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000002",
+     "statuses": [
+      "exited"
+     ],
+     "stderr": "load_backend: loaded CUDA\nmain: error: failed to load model '/models/sub/m2.gguf'\nllama_bench: done\n",
+     "stdout": "[\n"
+    }
+   ],
+   "steps": [
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1",
+       "",
+       "m2"
+      ],
+      "backend": "127.0.0.1",
+      "depths": " 0,512 ",
+      "nGen": 64,
+      "nPrompt": 256,
+      "reps": 2
+     }
+    ],
+    [
+     "progress"
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000000.0",
+      "1700000010.5",
+      "2",
+      "64",
+      "''"
+     ]
+    ],
+    "bench_sweep": [
+     [
+      "1",
+      "'m1'",
+      "'qwen3 8B Q4_K - Médium'",
+      "'pp256 @ d512'",
+      "256",
+      "0",
+      "512",
+      "1234.5",
+      "0.1",
+      "99",
+      "0",
+      "512",
+      "'q8_0'",
+      "'f16'",
+      "1",
+      "'layer'",
+      "'{\"avg_ts\": 1234.5, \"build_commit\": \"abc\", \"devices\": null, \"flash_attn\": true, \"model_type\": \"qwen3 8B Q4_K - M\\u00e9dium\", \"n_cpu_moe\": 0, \"n_depth\": 512, \"n_gen\": 0, \"n_gpu_layers\": 99, \"n_prompt\": 256, \"n_ubatch\": 512, \"samples_ts\": [1, 2.5], \"split_mode\": \"layer\", \"stddev_ts\": 0.1, \"type_k\": \"q8_0\", \"type_v\": \"f16\"}'"
+     ],
+     [
+      "1",
+      "'m1'",
+      "''",
+      "'tg64'",
+      "0",
+      "64",
+      "0",
+      "50.25",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "''",
+      "''",
+      "1",
+      "''",
+      "'{\"avg_ts\": 50.25, \"flash_attn\": 1, \"n_depth\": 0, \"n_gen\": 64, \"n_prompt\": 0, \"stddev_ts\": null}'"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"detail\":\"no backend selected\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"no backend selected\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"no models selected\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"no models selected\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"section 'nomodel' has no model path\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"section 'absent' has no model path\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000004.5,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"a benchmark is already running\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"a benchmark is already running\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":1,\"current\":\"\",\"started_at\":1700000004.5,\"finished_at\":1700000012.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\"],\"pct\":100,\"elapsed\":7.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "docker": [
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000003"
+    ]
+   ],
+   "id": "refusals",
+   "listed": [],
+   "llama": [
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": []}",
+    "status": 200
+   },
+   "restarts": [],
+   "runs": [
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000003",
+     "statuses": [
+      "exited"
+     ],
+     "stderr": "",
+     "stdout": "[]"
+    }
+   ],
+   "steps": [
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": ""
+     }
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": " "
+     }
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       ""
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "sweep",
+     {
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "nomodel"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1",
+       "absent"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "progress"
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ]
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000004.5",
+      "1700000012.0",
+      "3",
+      "128",
+      "''"
+     ]
+    ],
+    "bench_sweep": []
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "Internal Server Error",
+     "content_type": "text/plain; charset=utf-8",
+     "status": 500
+    },
+    {
+     "body": "{\"detail\":\"could not start the benchmark: Python int too large to convert to SQLite INTEGER\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"could not start the benchmark: Python int too large to convert to SQLite INTEGER\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000003.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"a benchmark is already running\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000003.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":4.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":1,\"current\":\"\",\"started_at\":1700000003.0,\"finished_at\":1700000010.5,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"m1: no output\"],\"pct\":100,\"elapsed\":7.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "docker": [
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "['a', 1]",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000004"
+    ]
+   ],
+   "id": "conversions",
+   "listed": [],
+   "llama": [
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": []}",
+    "status": 200
+   },
+   "restarts": [],
+   "runs": [
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000004",
+     "statuses": [
+      "dead"
+     ],
+     "stderr": "",
+     "stdout": ""
+    }
+   ],
+   "steps": [
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "nPrompt": "abc"
+     }
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "reps": 1180591620717411303424
+     }
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "nGen": 1180591620717411303424
+     }
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "depths": [
+       "a",
+       1
+      ]
+     }
+    ],
+    [
+     "sweep",
+     {
+      "aliases": "m1",
+      "backend": "127.0.0.1",
+      "depths": 0,
+      "nGen": " 7 ",
+      "nPrompt": true,
+      "reps": -3.9
+     }
+    ],
+    [
+     "progress"
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000003.0",
+      "1700000010.5",
+      "3",
+      "128",
+      "''"
+     ]
+    ],
+    "bench_sweep": []
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"notag\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"notag\",\"total\":2,\"done\":2,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000003.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"m1: cannot determine backend image\",\"m2: section defaults\",\"m2: cannot determine backend image\"],\"pct\":100,\"elapsed\":3.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":2,\"status\":\"running\",\"backend\":\"missing\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000004.5,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":2,\"status\":\"done\",\"backend\":\"missing\",\"total\":1,\"done\":1,\"current\":\"\",\"started_at\":1700000004.5,\"finished_at\":1700000007.5,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"m1: NotFound: No such container: missing\"],\"pct\":100,\"elapsed\":3.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "docker": [],
+   "id": "docker-errors",
+   "listed": [],
+   "llama": [],
+   "models": {
+    "body": "{\"data\": []}",
+    "status": 200
+   },
+   "restarts": [],
+   "runs": [],
+   "steps": [
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1",
+       "m2"
+      ],
+      "backend": "notag"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "missing"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_run": [
+     [
+      "1",
+      "'notag'",
+      "'done'",
+      "1700000000.0",
+      "1700000003.0",
+      "3",
+      "128",
+      "''"
+     ],
+     [
+      "2",
+      "'missing'",
+      "'done'",
+      "1700000004.5",
+      "1700000007.5",
+      "3",
+      "128",
+      "''"
+     ]
+    ],
+    "bench_sweep": []
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":2,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000003.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"m1: APIError: create boom\",\"m2: section defaults\",\"m2: APIError: start boom\"],\"pct\":100,\"elapsed\":3.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "docker": [
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "sub/m2.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000006"
+    ]
+   ],
+   "id": "create-and-start-fail",
+   "listed": [],
+   "llama": [
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": []}",
+    "status": 200
+   },
+   "restarts": [],
+   "runs": [
+    {
+     "create_error": "create boom",
+     "id": "0000000000000000000000000000000000000000000000000000000000000005"
+    },
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000006",
+     "start_error": "start boom"
+    }
+   ],
+   "steps": [
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1",
+       "m2"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000000.0",
+      "1700000003.0",
+      "3",
+      "128",
+      "''"
+     ]
+    ],
+    "bench_sweep": []
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":1,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700001806.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"m1: timed out after 1800s\"],\"pct\":100,\"elapsed\":1806.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "docker": [
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "kill",
+     "0000000000000000000000000000000000000000000000000000000000000007"
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000007"
+    ]
+   ],
+   "id": "timeout",
+   "listed": [],
+   "llama": [
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": []}",
+    "status": 200
+   },
+   "restarts": [],
+   "runs": [
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000007",
+     "repeat": "running",
+     "statuses": [
+      "created"
+     ],
+     "stderr": "",
+     "stdout": ""
+    }
+   ],
+   "steps": [
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000000.0",
+      "1700001806.0",
+      "3",
+      "128",
+      "''"
+     ]
+    ],
+    "bench_sweep": []
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"cancelling\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"cancel requested — finishing the request in flight\"],\"pct\":0,\"elapsed\":3.0,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"cancelling\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"cancel requested — finishing the request in flight\"],\"pct\":0,\"elapsed\":4.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"cancelled\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000006.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"cancel requested — finishing the request in flight\",\"freeing GPU: restarting the backend so the sweep has the cards to itself\"],\"pct\":0,\"elapsed\":6.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"cancelled\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000006.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"cancel requested — finishing the request in flight\",\"freeing GPU: restarting the backend so the sweep has the cards to itself\"],\"pct\":0,\"elapsed\":6.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "docker": [],
+   "id": "cancel",
+   "listed": [],
+   "llama": [
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m1\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "restarts": [
+    "127.0.0.1"
+   ],
+   "runs": [],
+   "steps": [
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1",
+       "m2"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "cancel"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "cancel"
+    ]
+   ],
+   "tables": {
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'cancelled'",
+      "1700000000.0",
+      "1700000006.0",
+      "3",
+      "128",
+      "''"
+     ]
+    ],
+    "bench_sweep": []
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000007.5,\"error\":\"AttributeError: 'int' object has no attribute 'get'\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"failed: AttributeError: 'int' object has no attribute 'get'\"],\"pct\":0,\"elapsed\":7.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":2,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000009.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":2,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000009.0,\"finished_at\":1700000016.5,\"error\":\"ValueError: invalid literal for int() with base 10: 'x'\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"failed: ValueError: invalid literal for int() with base 10: 'x'\"],\"pct\":0,\"elapsed\":7.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":3,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000018.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":3,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000018.0,\"finished_at\":1700000025.5,\"error\":\"ProgrammingError: Error binding parameter 8: type 'list' is not supported\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"failed: ProgrammingError: Error binding parameter 8: type 'list' is not supported\"],\"pct\":0,\"elapsed\":7.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":4,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000027.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":4,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000027.0,\"finished_at\":1700000034.5,\"error\":\"OverflowError: Python int too large to convert to SQLite INTEGER\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"failed: OverflowError: Python int too large to convert to SQLite INTEGER\"],\"pct\":0,\"elapsed\":7.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":5,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000036.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":5,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":1,\"current\":\"\",\"started_at\":1700000036.0,\"finished_at\":1700000043.5,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"m1: no output\"],\"pct\":100,\"elapsed\":7.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":6,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000045.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":6,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":1,\"current\":\"\",\"started_at\":1700000045.0,\"finished_at\":1700000052.5,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"m1: 1 measurements\"],\"pct\":100,\"elapsed\":7.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":7,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000054.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":7,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000054.0,\"finished_at\":1700000061.5,\"error\":\"AttributeError: 'str' object has no attribute 'get'\",\"unit\":\"models\",\"lines\":[\"m1: -ctk q8_0 -fa on -ngl 99 -ts 1/2\",\"failed: AttributeError: 'str' object has no attribute 'get'\"],\"pct\":0,\"elapsed\":7.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "docker": [
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000008"
+    ],
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000009"
+    ],
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "000000000000000000000000000000000000000000000000000000000000000a"
+    ],
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "000000000000000000000000000000000000000000000000000000000000000b"
+    ],
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "000000000000000000000000000000000000000000000000000000000000000c"
+    ],
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "000000000000000000000000000000000000000000000000000000000000000d"
+    ],
+    [
+     "create",
+     {
+      "binds": [
+       "/mnt/user/cache:/root/.cache:ro",
+       "/mnt/user/models:/models:ro"
+      ],
+      "cmd": [
+       "bench",
+       "-m",
+       "/models/m1.gguf",
+       "-p",
+       "512",
+       "-n",
+       "128",
+       "-r",
+       "3",
+       "-o",
+       "json",
+       "-d",
+       "0,4096,16384",
+       "-ctk",
+       "q8_0",
+       "-fa",
+       "on",
+       "-ngl",
+       "99",
+       "-ts",
+       "1/2"
+      ],
+      "detach": true,
+      "entrypoint": "/app/llama",
+      "gpu": true,
+      "image": "ghcr.io/example/llama:full",
+      "labels": {
+       "noevia.model-manager.bench": "1"
+      },
+      "network": "none",
+      "remove": false
+     }
+    ],
+    [
+     "remove",
+     "000000000000000000000000000000000000000000000000000000000000000e"
+    ]
+   ],
+   "id": "bad-entries",
+   "listed": [],
+   "llama": [
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "method": "GET",
+     "path": "/v1/models"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": []}",
+    "status": 200
+   },
+   "restarts": [],
+   "runs": [
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000008",
+     "statuses": [
+      "running",
+      "running",
+      "exited"
+     ],
+     "stderr": "",
+     "stdout": "[1]"
+    },
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000009",
+     "statuses": [
+      "running",
+      "running",
+      "exited"
+     ],
+     "stderr": "",
+     "stdout": "[{\"n_prompt\": \"x\"}]"
+    },
+    {
+     "id": "000000000000000000000000000000000000000000000000000000000000000a",
+     "statuses": [
+      "running",
+      "running",
+      "exited"
+     ],
+     "stderr": "",
+     "stdout": "[{\"n_prompt\": 1, \"avg_ts\": [1]}]"
+    },
+    {
+     "id": "000000000000000000000000000000000000000000000000000000000000000b",
+     "statuses": [
+      "running",
+      "running",
+      "exited"
+     ],
+     "stderr": "",
+     "stdout": "[{\"n_prompt\": 1180591620717411303424}]"
+    },
+    {
+     "id": "000000000000000000000000000000000000000000000000000000000000000c",
+     "statuses": [
+      "running",
+      "running",
+      "exited"
+     ],
+     "stderr": "",
+     "stdout": "[{\"n_gen\": 2.9, \"n_depth\": \"  1_0 \"}] trailing"
+    },
+    {
+     "id": "000000000000000000000000000000000000000000000000000000000000000d",
+     "statuses": [
+      "running",
+      "running",
+      "exited"
+     ],
+     "stderr": "",
+     "stdout": "[{\"n_gen\": 2.9, \"n_depth\": \"  1_0 \", \"model_type\": 0, \"type_k\": [], \"split_mode\": 3}]"
+    },
+    {
+     "id": "000000000000000000000000000000000000000000000000000000000000000e",
+     "statuses": [
+      "running",
+      "running",
+      "exited"
+     ],
+     "stderr": "",
+     "stdout": "xÿ[\"é\", {\"a\": NaN, \"b\": -Infinity, \"c\": 1e400}]"
+    }
+   ],
+   "steps": [
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000000.0",
+      "1700000007.5",
+      "3",
+      "128",
+      "'AttributeError: ''int'' object has no attribute ''get'''"
+     ],
+     [
+      "2",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000009.0",
+      "1700000016.5",
+      "3",
+      "128",
+      "'ValueError: invalid literal for int() with base 10: ''x'''"
+     ],
+     [
+      "3",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000018.0",
+      "1700000025.5",
+      "3",
+      "128",
+      "'ProgrammingError: Error binding parameter 8: type ''list'' is not supported'"
+     ],
+     [
+      "4",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000027.0",
+      "1700000034.5",
+      "3",
+      "128",
+      "'OverflowError: Python int too large to convert to SQLite INTEGER'"
+     ],
+     [
+      "5",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000036.0",
+      "1700000043.5",
+      "3",
+      "128",
+      "''"
+     ],
+     [
+      "6",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000045.0",
+      "1700000052.5",
+      "3",
+      "128",
+      "''"
+     ],
+     [
+      "7",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000054.0",
+      "1700000061.5",
+      "3",
+      "128",
+      "'AttributeError: ''str'' object has no attribute ''get'''"
+     ]
+    ],
+    "bench_sweep": [
+     [
+      "6",
+      "'m1'",
+      "''",
+      "'tg2 @ d10'",
+      "0",
+      "2",
+      "10",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "''",
+      "''",
+      "NULL",
+      "'3'",
+      "'{\"model_type\": 0, \"n_depth\": \"  1_0 \", \"n_gen\": 2.9, \"split_mode\": 3, \"type_k\": []}'"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "reaped": 2,
+     "stuck": 1
+    },
+    {
+     "body": "{\"job\":{\"run_id\":0,\"status\":\"running\",\"backend\":\"\",\"total\":1,\"done\":0,\"current\":\"stopping a llama-bench left over from before a restart\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"models\",\"lines\":[\"a llama-bench container from before a restart is still running; stopping it\"],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"a benchmark is already running\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":0,\"status\":\"error\",\"backend\":\"\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000004.5,\"error\":\"a benchmark was interrupted by a model-manager restart; its leftover container was stopped\",\"unit\":\"models\",\"lines\":[\"a llama-bench container from before a restart is still running; stopping it\"],\"pct\":0,\"elapsed\":4.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "docker": [
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000014"
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000015"
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000016"
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000016"
+    ],
+    [
+     "remove",
+     "0000000000000000000000000000000000000000000000000000000000000016"
+    ]
+   ],
+   "id": "reap",
+   "listed": [
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000014",
+     "removes": [
+      "ok"
+     ]
+    },
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000015",
+     "removes": [
+      "notfound"
+     ]
+    },
+    {
+     "id": "0000000000000000000000000000000000000000000000000000000000000016",
+     "removes": [
+      "error:conflict",
+      "error:conflict",
+      "ok"
+     ]
+    }
+   ],
+   "llama": [],
+   "models": {
+    "body": "{\"data\": []}",
+    "status": 200
+   },
+   "restarts": [],
+   "runs": [],
+   "steps": [
+    [
+     "reap"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "sweep",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_run": [],
+    "bench_sweep": []
+   }
+  },
+  {
+   "answers": [
+    {
+     "reaped": 0,
+     "stuck": 0
+    },
+    {
+     "body": "{\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "docker": [],
+   "id": "reap-none",
+   "listed": [],
+   "llama": [],
+   "models": {
+    "body": "{\"data\": []}",
+    "status": 200
+   },
+   "restarts": [],
+   "runs": [],
+   "steps": [
+    [
+     "reap"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_run": [],
+    "bench_sweep": []
+   }
+  }
+ ],
+ "image_id": "sha256:abababababababababababababababababababababababababababababababab",
+ "ini": "[m1]\nmodel = /models/m1.gguf\nngl = 99\nn-gpu-layers = 5\ncache-type-k = q8_0\ntensor-split = 1,2\nflash-attn = on\n\n[m2]\nmodel = sub/m2.gguf\n\n[nomodel]\nngl = 1\n",
+ "oracle": {
+  "api.py": "eb8e12f6929baf15d2b1a1998aceff9529fbe48ca8242094ac6b7526c253a91d",
+  "bench.py": "2e59f9b057e2686b7f05e5dac04826c8ff37e3c1eb4398bf671faa2d74f3b14b",
+  "db.py": "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478",
+  "ini.py": "450a042cbecc36ea7ab68d6e08a10ffa2400c35721f78e62fe592d2a67e41ef0",
+  "main.py": "fcd84c9d7396b2851cabd2077072ac392b5dae0b272149efec616eebdb8e4899"
+ },
+ "schema": [
+  "CREATE TABLE kv (\n                key   TEXT PRIMARY KEY,\n                value TEXT NOT NULL\n            )",
+  "CREATE TABLE download_history (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                repo_id      TEXT NOT NULL,\n                filename     TEXT NOT NULL,\n                dest_path    TEXT NOT NULL,\n                total_bytes  INTEGER NOT NULL,\n                status       TEXT NOT NULL,\n                error        TEXT,\n                started_at   REAL NOT NULL,\n                completed_at REAL\n            )",
+  "CREATE TABLE avatar_cache (\n                owner       TEXT PRIMARY KEY,\n                url         TEXT NOT NULL,\n                fetched_at  REAL NOT NULL\n            )",
+  "CREATE TABLE update_check (\n                filename          TEXT PRIMARY KEY,\n                repo_id           TEXT NOT NULL,\n                hf_last_modified  TEXT,\n                checked_at        REAL NOT NULL\n            )",
+  "CREATE TABLE req_timing (\n                id            INTEGER PRIMARY KEY AUTOINCREMENT,\n                ts            REAL NOT NULL,\n                backend       TEXT NOT NULL,\n                instance      TEXT NOT NULL,\n                task          INTEGER NOT NULL,\n                model_path    TEXT NOT NULL DEFAULT '',\n                alias         TEXT NOT NULL DEFAULT '',\n                spec_type     TEXT NOT NULL DEFAULT '',\n                prompt_tokens INTEGER NOT NULL DEFAULT 0,\n                prompt_tps    REAL    NOT NULL DEFAULT 0,\n                gen_tokens    INTEGER NOT NULL DEFAULT 0,\n                gen_tps       REAL    NOT NULL DEFAULT 0,\n                draft_acc     REAL,\n                draft_len     REAL,\n                UNIQUE(backend, instance, task)\n            )",
+  "CREATE INDEX req_timing_model\n                ON req_timing(model_path, ts DESC)",
+  "CREATE INDEX req_timing_alias\n                ON req_timing(alias, ts DESC)",
+  "CREATE INDEX req_timing_dedupe\n                ON req_timing(backend, task, ts)",
+  "CREATE TABLE bench_run (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                backend     TEXT NOT NULL,\n                status      TEXT NOT NULL,           -- running | done | cancelled | error\n                started_at  REAL NOT NULL,\n                finished_at REAL,\n                reps        INTEGER NOT NULL DEFAULT 1,\n                max_tokens  INTEGER NOT NULL DEFAULT 256,\n                note        TEXT NOT NULL DEFAULT ''\n            )",
+  "CREATE TABLE bench_variant (\n                id       INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id   INTEGER NOT NULL,\n                alias    TEXT NOT NULL,\n                argv_json TEXT NOT NULL DEFAULT '{}',\n                load_ms  REAL,\n                UNIQUE(run_id, alias)\n            )",
+  "CREATE TABLE bench_result (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                variant_id  INTEGER NOT NULL,\n                prompt_name TEXT NOT NULL,\n                rep         INTEGER NOT NULL,\n                cold        INTEGER NOT NULL DEFAULT 0,\n                ttft_ms     REAL,\n                ttft_answer_ms REAL,\n                truncated   INTEGER NOT NULL DEFAULT 0,\n                total_ms    REAL,\n                prompt_n    INTEGER,\n                prompt_tps  REAL,\n                gen_n       INTEGER,\n                gen_tps     REAL,\n                draft_n     INTEGER,\n                draft_acc   REAL,\n                peak_vram_json TEXT NOT NULL DEFAULT '[]',\n                contended   INTEGER NOT NULL DEFAULT 0,\n                err         TEXT NOT NULL DEFAULT '',\n                -- The generated text itself. Timings alone cannot answer \"is this model any\n                -- good at this\", and a run that keeps only timings destroys the one artifact\n                -- that could ever be graded. Keeping it makes scoring an OFFLINE pass over\n                -- stored rows: a rubric can change and re-score history without spending GPU\n                -- time again. Reasoning is deliberately not kept - the answer is what gets\n                -- graded, and thinking would multiply row size for text no rubric reads.\n                response_text TEXT NOT NULL DEFAULT ''\n            )",
+  "CREATE INDEX bench_result_variant ON bench_result(variant_id)",
+  "CREATE TABLE bench_sweep (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id       INTEGER NOT NULL,\n                alias        TEXT NOT NULL DEFAULT '',\n                model_type   TEXT NOT NULL DEFAULT '',\n                test         TEXT NOT NULL DEFAULT '',\n                n_prompt     INTEGER, n_gen INTEGER, n_depth INTEGER,\n                avg_ts       REAL,    stddev_ts REAL,\n                n_gpu_layers INTEGER, n_cpu_moe INTEGER, n_ubatch INTEGER,\n                type_k       TEXT,    type_v TEXT, flash_attn INTEGER,\n                split_mode   TEXT,\n                raw_json     TEXT NOT NULL DEFAULT '{}'\n            )",
+  "CREATE INDEX bench_sweep_run ON bench_sweep(run_id)",
+  "CREATE TABLE server_config (\n                backend    TEXT NOT NULL,\n                instance   TEXT NOT NULL,\n                alias      TEXT NOT NULL DEFAULT '',\n                model_path TEXT NOT NULL DEFAULT '',\n                argv_json  TEXT NOT NULL DEFAULT '{}',\n                first_seen REAL NOT NULL DEFAULT 0,\n                PRIMARY KEY (backend, instance)\n            )",
+  "CREATE TABLE prompts (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                name        TEXT NOT NULL,\n                body        TEXT NOT NULL,\n                created_at  REAL NOT NULL\n            )",
+  "CREATE TABLE model_badge (\n                id         INTEGER PRIMARY KEY AUTOINCREMENT,\n                alias      TEXT NOT NULL,\n                category   TEXT NOT NULL,\n                rating     INTEGER NOT NULL,\n                note       TEXT NOT NULL DEFAULT '',\n                run_id     INTEGER,\n                created_at REAL NOT NULL,\n                -- One rating per category per model. Re-rating updates in place, so the\n                -- badge always reflects your latest opinion instead of accumulating a\n                -- history nothing reads.\n                UNIQUE(alias, category)\n            )",
+  "CREATE INDEX model_badge_alias ON model_badge(alias)"
+ ],
+ "time": [
+  1700000000.0,
+  1.5
+ ]
+}
