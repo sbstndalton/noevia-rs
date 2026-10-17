@@ -1213,3 +1213,276 @@ async fn failures_and_the_overview_count() {
 fn state_with(table: Arc<Downloads>, child_port: u16) -> Arc<StateData> {
     state(table, child_port)
 }
+
+// ---- noevia#1984: mixed mode (native downloads, Python delete) ------------------------------
+
+/// How the fake child answers one request.
+enum Reply {
+    Answer(u16, String),
+    /// Close the connection without answering.
+    Close,
+}
+
+/// A child whose answers the test hands out one at a time: every request is reported on
+/// `arrivals` (`"delete"` or `"plan"`), then waits for the next reply of its kind. Replies can be
+/// queued before the request comes.
+struct Scripted {
+    port: u16,
+    arrivals: tokio::sync::mpsc::UnboundedReceiver<&'static str>,
+    deletes: tokio::sync::mpsc::UnboundedSender<Reply>,
+    plans: tokio::sync::mpsc::UnboundedSender<Reply>,
+}
+
+async fn turn_based_child() -> Scripted {
+    type Queue = Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<Reply>>>;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (arrived, arrivals) = tokio::sync::mpsc::unbounded_channel();
+    let (deletes, delete_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (plans, plan_rx) = tokio::sync::mpsc::unbounded_channel();
+    let delete_rx: Queue = Arc::new(tokio::sync::Mutex::new(delete_rx));
+    let plan_rx: Queue = Arc::new(tokio::sync::Mutex::new(plan_rx));
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut sock, _)) = listener.accept().await else {
+                return;
+            };
+            let (arrived, delete_rx, plan_rx) =
+                (arrived.clone(), delete_rx.clone(), plan_rx.clone());
+            tokio::spawn(async move {
+                let mut data = Vec::new();
+                let mut buf = [0u8; 65536];
+                let end = loop {
+                    if let Some(i) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+                        break i + 4;
+                    }
+                    let n = sock.read(&mut buf).await.unwrap();
+                    if n == 0 {
+                        return;
+                    }
+                    data.extend_from_slice(&buf[..n]);
+                };
+                let head = String::from_utf8_lossy(&data[..end]).to_lowercase();
+                let length: usize = head
+                    .lines()
+                    .find_map(|l| l.strip_prefix("content-length:"))
+                    .map_or(0, |v| v.trim().parse().unwrap());
+                while data.len() < end + length {
+                    let n = sock.read(&mut buf).await.unwrap();
+                    if n == 0 {
+                        return;
+                    }
+                    data.extend_from_slice(&buf[..n]);
+                }
+                let (kind, queue) = if head.starts_with("post /api/v1/models/delete ") {
+                    assert!(!head.contains("x-noevia-download-plan"), "{head}");
+                    ("delete", delete_rx)
+                } else {
+                    assert!(head.contains("x-noevia-download-plan: 1"), "{head}");
+                    ("plan", plan_rx)
+                };
+                arrived.send(kind).unwrap();
+                let reply = queue.lock().await.recv().await;
+                if let Some(Reply::Answer(status, answer)) = reply {
+                    let reply = format!(
+                        "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{answer}",
+                        answer.len()
+                    );
+                    let _ = sock.write_all(reply.as_bytes()).await;
+                }
+            });
+        }
+    });
+    Scripted {
+        port,
+        arrivals,
+        deletes,
+        plans,
+    }
+}
+
+impl Scripted {
+    async fn arrived(&mut self) -> &'static str {
+        tokio::time::timeout(Duration::from_secs(20), self.arrivals.recv())
+            .await
+            .expect("the child got no request")
+            .unwrap()
+    }
+}
+
+/// A plan the child answers a start with: one file, served by a server that never answers.
+fn one_file_plan(filename: &str, hang: u16) -> Reply {
+    Reply::Answer(
+        200,
+        json!({
+            "status": 200,
+            "body": "{\"queued\":[\"x.gguf\"]}",
+            "jobs": [{"repo_id": "example.test", "filename": filename,
+                      "url": format!("http://127.0.0.1:{hang}/x.gguf"), "total_bytes": 1}],
+        })
+        .to_string(),
+    )
+}
+
+async fn wait_released(table: &Downloads) {
+    let end = std::time::Instant::now() + Duration::from_secs(20);
+    while table.whole_reservations() != 0 {
+        assert!(std::time::Instant::now() < end, "the reservation was kept");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+const DELETE: &str = r#"{"models":["synthetic/m.gguf"]}"#;
+const URL_START: &str = "/api/v1/downloads";
+const HEADS_START: &str = "/api/v1/sections/synthetic-chat/draft-heads/download";
+
+/// noevia#1984: while a Python delete is forwarded, every native start (a URL plan, a draft-head
+/// plan, also one whose plan was already in flight when the delete began) answers the delete
+/// 409 and queues nothing. The whole-table reservation is released when the child answers (a
+/// 200 or an error), when the forward fails, and, for a request dropped mid-forward, only once
+/// the child has answered. Starts before and after a forward queue as before.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn python_delete_forward_reserves_the_whole_table() {
+    let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let hang = silent.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((sock, _)) = silent.accept().await {
+            held.push(sock);
+        }
+    });
+    let mut child = turn_based_child().await;
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let models = root.join("models");
+    std::fs::create_dir(&models).unwrap();
+    let db = Connection::open(root.join("model_loader.db")).unwrap();
+    for sql in fixture()["schema"].as_array().unwrap() {
+        db.execute_batch(sql.as_str().unwrap()).unwrap();
+    }
+    let table = Downloads::new(Config {
+        models_dir: models.to_str().unwrap().to_owned(),
+        database: root.join("model_loader.db"),
+        max_concurrent: 2,
+        token_origin: TokenOrigin::hub(),
+        parallel_min: 64 * 1024,
+        unknown_cap: noevia_model_manager::downloads::UNKNOWN_SIZE_CAP,
+        clock: wall,
+    })
+    .unwrap();
+    let state = state(table.clone(), child.port);
+    let post = |uri: &'static str, body: &'static str| {
+        let state = state.clone();
+        tokio::spawn(async move { send(&state, "POST", uri, Some(body.to_owned())).await })
+    };
+    let conflict = json!({"detail": noevia_model_manager::downloads::DELETE_IN_PROGRESS});
+    let cancel_all = |state: Arc<StateData>| async move {
+        for job in jobs(&state).await {
+            let id = job["id"].as_str().unwrap().to_owned();
+            send(
+                &state,
+                "POST",
+                &format!("/api/v1/downloads/{id}/cancel"),
+                None,
+            )
+            .await;
+        }
+        wait(&state, idle).await;
+    };
+
+    // Before any forward a URL start queues as before.
+    child
+        .plans
+        .send(one_file_plan("before/x.gguf", hang))
+        .unwrap();
+    assert_eq!(post(URL_START, r#"{"url": "x"}"#).await.unwrap().0, 200);
+    assert_eq!(child.arrived().await, "plan");
+    assert_eq!(jobs(&state).await.len(), 1);
+    cancel_all(state.clone()).await;
+
+    // A URL start whose plan is in flight when the delete begins.
+    let url_start = post(URL_START, r#"{"url": "x"}"#);
+    assert_eq!(child.arrived().await, "plan");
+    let delete = post("/api/v1/models/delete", DELETE);
+    assert_eq!(child.arrived().await, "delete");
+    assert_eq!(table.whole_reservations(), 1);
+    child
+        .plans
+        .send(one_file_plan("hang/x.gguf", hang))
+        .unwrap();
+    let (status, body) = url_start.await.unwrap();
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap(), conflict);
+    // A draft-head start begun during the delete.
+    child
+        .plans
+        .send(one_file_plan("heads/d.gguf", hang))
+        .unwrap();
+    let (status, body) = post(HEADS_START, "{}").await.unwrap();
+    assert_eq!(child.arrived().await, "plan");
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(serde_json::from_str::<Value>(&body).unwrap(), conflict);
+    assert_eq!(jobs(&state).await.len(), 1, "nothing new was queued");
+    assert!(!models.join("hang").exists() && !models.join("heads").exists());
+    // The child answers: the answer is passed through and the reservation is gone.
+    child
+        .deletes
+        .send(Reply::Answer(200, r#"{"results":[]}"#.into()))
+        .unwrap();
+    assert_eq!(delete.await.unwrap(), (200, r#"{"results":[]}"#.to_owned()));
+    assert_eq!(table.whole_reservations(), 0);
+    child
+        .plans
+        .send(one_file_plan("heads/d.gguf", hang))
+        .unwrap();
+    assert_eq!(post(HEADS_START, "{}").await.unwrap().0, 200);
+    assert_eq!(child.arrived().await, "plan");
+    assert_eq!(jobs(&state).await.len(), 2);
+    cancel_all(state.clone()).await;
+
+    // The child's error is passed through; the reservation is released.
+    child
+        .deletes
+        .send(Reply::Answer(500, r#"{"detail":"boom"}"#.into()))
+        .unwrap();
+    assert_eq!(post("/api/v1/models/delete", DELETE).await.unwrap().0, 500);
+    assert_eq!(child.arrived().await, "delete");
+    assert_eq!(table.whole_reservations(), 0);
+    // The child drops the connection: a gateway error; released.
+    child.deletes.send(Reply::Close).unwrap();
+    assert_eq!(post("/api/v1/models/delete", DELETE).await.unwrap().0, 502);
+    assert_eq!(child.arrived().await, "delete");
+    assert_eq!(table.whole_reservations(), 0);
+
+    // The request is dropped mid-forward (the client went away; a route timeout drops it the
+    // same way): Python may still be deleting, so the reservation stays until the child answers.
+    let dropped = post("/api/v1/models/delete", DELETE);
+    assert_eq!(child.arrived().await, "delete");
+    dropped.abort();
+    assert!(dropped.await.unwrap_err().is_cancelled());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        table.whole_reservations(),
+        1,
+        "released while Python deletes"
+    );
+    child
+        .plans
+        .send(one_file_plan("hang/x.gguf", hang))
+        .unwrap();
+    let (status, body) = post(URL_START, r#"{"url": "x"}"#).await.unwrap();
+    assert_eq!(child.arrived().await, "plan");
+    assert_eq!(status, 409, "{body}");
+    child
+        .deletes
+        .send(Reply::Answer(200, r#"{"results":[]}"#.into()))
+        .unwrap();
+    wait_released(&table).await;
+    child
+        .plans
+        .send(one_file_plan("hang/x.gguf", hang))
+        .unwrap();
+    assert_eq!(post(URL_START, r#"{"url": "x"}"#).await.unwrap().0, 200);
+    assert_eq!(child.arrived().await, "plan");
+    cancel_all(state.clone()).await;
+}
