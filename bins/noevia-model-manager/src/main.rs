@@ -682,6 +682,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         benchmark_overview,
         #[cfg(feature = "native-check-updates")]
         check_updates,
+        #[cfg(feature = "native-benchmark-runner")]
+        bench_runner: None,
         sections,
         embedding,
         host,

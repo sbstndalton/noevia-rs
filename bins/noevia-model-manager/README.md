@@ -176,4 +176,6 @@ Docker services or production data are used.
 
 `native-check-updates` and `MODEL_MANAGER_CHECK_UPDATES_IMPL=rust` serve `POST /api/v1/models/check-updates`, default off. The Hub tree listing is fetched and `update_check` is written here. See [native model update check](docs/native-check-updates.md).
 
+`native-benchmark-runner` ports the prompt-suite runner behind `POST /api/v1/benchmark/start`, `GET /api/v1/benchmark/progress` and `POST /api/v1/benchmark/cancel`. It is not built by `main` yet. It is switched on together with sweeps in slice 9b, so the job slot keeps one owner. See [native benchmark runner](docs/native-benchmark-runner.md).
+
 `native-diagnose` and `MODEL_MANAGER_DIAGNOSE_IMPL=rust` select the whole internal backend diagnosis GET, default off. Selection requires exact `TZ=UTC` before startup. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.

@@ -77,6 +77,8 @@ fn state(docker: FakeDocker, child: &str, backends: Backends) -> Arc<StateData> 
         benchmark_overview: None,
         #[cfg(feature = "native-check-updates")]
         check_updates: None,
+        #[cfg(feature = "native-benchmark-runner")]
+        bench_runner: None,
         backends: Some(Arc::new(backends)),
         #[cfg(feature = "native-model-updates")]
         model_updates: None,

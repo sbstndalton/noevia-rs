@@ -1,0 +1,2801 @@
+{
+ "cases": [
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":8,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":8,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":3.0,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":8,\"done\":8,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000016.5,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"m1 · beta rep 2: HTTP 503: model is loading xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"m1: done\",\"m2: starting (already resident)\",\"m2: done\"],\"pct\":100,\"elapsed\":16.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"cut\"}}]}\r\n\r\ndata: {\"choices\": [{\"index\": 0, \"delta\": {}, \"finish_reason\": \"length\"}]}\r\n\r\ndata: {\"timings\": {\"prompt_n\": \"7\", \"predicted_n\": 3.9}}\r\n\r\ndata: [DONE]\r\n\r\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"\\u00e9\\ud83d\\ude00\"}}]}\ndata: not json\ndata: : comment\n",
+     "status": 200
+    },
+    {
+     "body": "model is loading xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "status": 503
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": true,
+   "id": "suite",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":100,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":100,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Écris \\\"ceci\\\".\"}],\"max_tokens\":100,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Écris \\\"ceci\\\".\"}],\"max_tokens\":100,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m2\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":100,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m2\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":100,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m2\",\"messages\":[{\"role\":\"user\",\"content\":\"Écris \\\"ceci\\\".\"}],\"max_tokens\":100,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m2\",\"messages\":[{\"role\":\"user\",\"content\":\"Écris \\\"ceci\\\".\"}],\"max_tokens\":100,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1",
+      "m2"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000004.5
+    },
+    {
+     "alias": "m1",
+     "load": "127.0.0.1"
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1",
+      "m2"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000006.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1",
+      "m2"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000007.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1",
+      "m2"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000009.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1",
+      "m2"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000010.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1",
+      "m2"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000012.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1",
+      "m2"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000013.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1",
+      "m2"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000015.0
+    }
+   ],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1",
+       "m2"
+      ],
+      "backend": "127.0.0.1",
+      "maxTokens": 100,
+      "promptIds": [
+       2,
+       1
+      ],
+      "reps": 2
+     }
+    ],
+    [
+     "progress"
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [
+     [
+      "1",
+      "'alpha'",
+      "1",
+      "1",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "1",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "2",
+      "0",
+      "125.0",
+      "250.0",
+      "1",
+      "375.0",
+      "7",
+      "NULL",
+      "3",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "1",
+      "''",
+      "'cut'"
+     ],
+     [
+      "1",
+      "'beta'",
+      "1",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "0",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "1",
+      "''",
+      "'é😀'"
+     ],
+     [
+      "1",
+      "'beta'",
+      "2",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "1",
+      "'HTTP 503: model is loading xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'",
+      "''"
+     ],
+     [
+      "2",
+      "'alpha'",
+      "1",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "1",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "2",
+      "'alpha'",
+      "2",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "125.0",
+      "0",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "1",
+      "''",
+      "''"
+     ],
+     [
+      "2",
+      "'beta'",
+      "1",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "1",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "2",
+      "'beta'",
+      "2",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "1",
+      "''",
+      "'Hello world'"
+     ]
+    ],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000000.0",
+      "1700000016.5",
+      "2",
+      "100",
+      "''"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m1'",
+      "'{}'",
+      "1234.5"
+     ],
+     [
+      "2",
+      "1",
+      "'m2'",
+      "'{}'",
+      "NULL"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"detail\":\"no backend selected\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"no backend selected\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"no models selected\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"no models selected\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"no prompts selected\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"no prompts selected\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"NotFound: No such container: missing\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"detail\":\"no internal port exposed\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    {
+     "body": "{\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":9,\"done\":0,\"current\":\"\",\"started_at\":1700000004.5,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":9,\"done\":0,\"current\":\"\",\"started_at\":1700000004.5,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":3.0,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "refusals",
+   "llama": [],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "",
+      "promptIds": [
+       1
+      ]
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "  ",
+      "promptIds": [
+       1
+      ]
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "",
+       ""
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ]
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ]
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       99
+      ]
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1"
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "missing",
+      "promptIds": [
+       1
+      ]
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "noport",
+      "promptIds": [
+       1
+      ]
+     }
+    ],
+    [
+     "progress"
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "",
+       null,
+       0,
+       false
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ]
+     }
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'running'",
+      "1700000004.5",
+      "NULL",
+      "3",
+      "3072",
+      "''"
+     ]
+    ],
+    "bench_variant": []
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":12,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":12,\"done\":12,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000021.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"m: starting\",\"m · Gamma rep 3: HTTP 500: no scripted answer\",\"m · alpha rep 1: HTTP 500: no scripted answer\",\"m · alpha rep 2: HTTP 500: no scripted answer\",\"m · alpha rep 3: HTTP 500: no scripted answer\",\"m: done\",\"1: starting\",\"1 · Gamma rep 1: HTTP 500: no scripted answer\",\"1 · Gamma rep 2: HTTP 500: no scripted answer\",\"1 · Gamma rep 3: HTTP 500: no scripted answer\",\"1 · alpha rep 1: HTTP 500: no scripted answer\",\"1 · alpha rep 2: HTTP 500: no scripted answer\",\"1 · alpha rep 3: HTTP 500: no scripted answer\",\"1: done\"],\"pct\":100,\"elapsed\":21.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "clamps-and-conversions",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"Third\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"Third\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"Third\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"1\",\"messages\":[{\"role\":\"user\",\"content\":\"Third\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"1\",\"messages\":[{\"role\":\"user\",\"content\":\"Third\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"1\",\"messages\":[{\"role\":\"user\",\"content\":\"Third\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":8192,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000003.0
+    },
+    {
+     "alias": "m",
+     "load": "127.0.0.1"
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000004.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000006.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000007.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000009.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000010.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000012.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000013.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000015.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000016.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000018.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "1",
+      "m"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000019.5
+    }
+   ],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": "m1",
+      "backend": "127.0.0.1",
+      "maxTokens": 99999,
+      "promptIds": [
+       "1",
+       3.7,
+       true
+      ],
+      "reps": 0
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [
+     [
+      "1",
+      "'Gamma'",
+      "1",
+      "1",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'Gamma'",
+      "2",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'Gamma'",
+      "3",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "0",
+      "'HTTP 500: no scripted answer'",
+      "''"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "1",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "0",
+      "'HTTP 500: no scripted answer'",
+      "''"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "2",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "0",
+      "'HTTP 500: no scripted answer'",
+      "''"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "3",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "0",
+      "'HTTP 500: no scripted answer'",
+      "''"
+     ],
+     [
+      "2",
+      "'Gamma'",
+      "1",
+      "1",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "0",
+      "'HTTP 500: no scripted answer'",
+      "''"
+     ],
+     [
+      "2",
+      "'Gamma'",
+      "2",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "0",
+      "'HTTP 500: no scripted answer'",
+      "''"
+     ],
+     [
+      "2",
+      "'Gamma'",
+      "3",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "0",
+      "'HTTP 500: no scripted answer'",
+      "''"
+     ],
+     [
+      "2",
+      "'alpha'",
+      "1",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "0",
+      "'HTTP 500: no scripted answer'",
+      "''"
+     ],
+     [
+      "2",
+      "'alpha'",
+      "2",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "0",
+      "'HTTP 500: no scripted answer'",
+      "''"
+     ],
+     [
+      "2",
+      "'alpha'",
+      "3",
+      "0",
+      "NULL",
+      "NULL",
+      "0",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "NULL",
+      "'[1.5, 2.25]'",
+      "0",
+      "'HTTP 500: no scripted answer'",
+      "''"
+     ]
+    ],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000000.0",
+      "1700000021.0",
+      "3",
+      "8192",
+      "''"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m'",
+      "'{}'",
+      "1234.5"
+     ],
+     [
+      "2",
+      "1",
+      "'1'",
+      "'{}'",
+      "NULL"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":10,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":10,\"done\":10,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000018.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"m1: done\"],\"pct\":100,\"elapsed\":18.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "clamp-low",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":16,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000003.0
+    },
+    {
+     "alias": "m1",
+     "load": "127.0.0.1"
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000004.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000006.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000007.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000009.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000010.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000012.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000013.5
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000015.0
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000016.5
+    }
+   ],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "maxTokens": "-5",
+      "promptIds": [
+       1
+      ],
+      "reps": " 12 "
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [
+     [
+      "1",
+      "'alpha'",
+      "1",
+      "1",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "2",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "3",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "4",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "5",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "6",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "7",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "8",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "9",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "10",
+      "0",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ]
+    ],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000000.0",
+      "1700000018.0",
+      "10",
+      "16",
+      "''"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m1'",
+      "'{}'",
+      "1234.5"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"a benchmark is already running\"}",
+     "content_type": "application/json",
+     "status": 409
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":1,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000006.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"m1: done\"],\"pct\":100,\"elapsed\":6.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "already-running",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":3072,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000004.5
+    },
+    {
+     "alias": "m1",
+     "load": "127.0.0.1"
+    }
+   ],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": 1
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": 1
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [
+     [
+      "1",
+      "'alpha'",
+      "1",
+      "1",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "0",
+      "''",
+      "'Hello world'"
+     ]
+    ],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000000.0",
+      "1700000006.0",
+      "1",
+      "3072",
+      "''"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m1'",
+      "'{}'",
+      "1234.5"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000001.5,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"cancelling\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000001.5,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"cancel requested — finishing the request in flight\"],\"pct\":0,\"elapsed\":3.0,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"cancelling\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000001.5,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"cancel requested — finishing the request in flight\"],\"pct\":0,\"elapsed\":4.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"cancelled\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000001.5,\"finished_at\":1700000007.5,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"cancel requested — finishing the request in flight\"],\"pct\":0,\"elapsed\":6.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"cancelled\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000001.5,\"finished_at\":1700000007.5,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"cancel requested — finishing the request in flight\"],\"pct\":0,\"elapsed\":6.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "cancel-before-run",
+   "llama": [],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "cancel"
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1",
+       "m2"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": 1
+     }
+    ],
+    [
+     "cancel"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ],
+    [
+     "cancel"
+    ]
+   ],
+   "tables": {
+    "bench_result": [],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'cancelled'",
+      "1700000001.5",
+      "1700000007.5",
+      "1",
+      "3072",
+      "''"
+     ]
+    ],
+    "bench_variant": []
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "Internal Server Error",
+     "content_type": "text/plain; charset=utf-8",
+     "status": 500
+    },
+    {
+     "body": "Internal Server Error",
+     "content_type": "text/plain; charset=utf-8",
+     "status": 500
+    },
+    {
+     "body": "Internal Server Error",
+     "content_type": "text/plain; charset=utf-8",
+     "status": 500
+    },
+    {
+     "body": "Internal Server Error",
+     "content_type": "text/plain; charset=utf-8",
+     "status": 500
+    },
+    {
+     "body": "Internal Server Error",
+     "content_type": "text/plain; charset=utf-8",
+     "status": 500
+    },
+    {
+     "body": "{\"job\":{\"run_id\":0,\"status\":\"idle\",\"backend\":\"\",\"total\":0,\"done\":0,\"current\":\"\",\"started_at\":0.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":0.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [],
+   "contended": false,
+   "id": "bad-conversions",
+   "llama": [],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       "x"
+      ]
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": "abc"
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": 5,
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ]
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1180591620717411303424
+      ]
+     }
+    ],
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": [
+       1
+      ]
+     }
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [],
+    "bench_run": [],
+    "bench_variant": []
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000004.5,\"error\":\"AttributeError: 'list' object has no attribute 'get'\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"failed: AttributeError: 'list' object has no attribute 'get'\"],\"pct\":0,\"elapsed\":4.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: [1, 2]\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "chunk-not-object",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":3072,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": 1
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000000.0",
+      "1700000004.5",
+      "1",
+      "3072",
+      "'AttributeError: ''list'' object has no attribute ''get'''"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m1'",
+      "'{}'",
+      "NULL"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000004.5,\"error\":\"ProgrammingError: Error binding parameter 10: type 'list' is not supported\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"failed: ProgrammingError: Error binding parameter 10: type 'list' is not supported\"],\"pct\":0,\"elapsed\":4.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"a\"}}]}\n\ndata: {\"timings\": {\"prompt_per_second\": [1]}}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "tps-list",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":3072,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000003.0
+    }
+   ],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": 1
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000000.0",
+      "1700000004.5",
+      "1",
+      "3072",
+      "'ProgrammingError: Error binding parameter 10: type ''list'' is not supported'"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m1'",
+      "'{}'",
+      "NULL"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000004.5,\"error\":\"OverflowError: Python int too large to convert to SQLite INTEGER\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"failed: OverflowError: Python int too large to convert to SQLite INTEGER\"],\"pct\":0,\"elapsed\":4.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"a\"}}]}\n\ndata: {\"timings\": {\"prompt_n\": 1180591620717411303424}}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "count-past-64-bits",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":3072,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000003.0
+    }
+   ],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": 1
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000000.0",
+      "1700000004.5",
+      "1",
+      "3072",
+      "'OverflowError: Python int too large to convert to SQLite INTEGER'"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m1'",
+      "'{}'",
+      "NULL"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000004.5,\"error\":\"ValueError: invalid literal for int() with base 10: 'many'\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"failed: ValueError: invalid literal for int() with base 10: 'many'\"],\"pct\":0,\"elapsed\":4.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"a\"}}]}\n\ndata: {\"timings\": {\"predicted_n\": \"many\"}}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "count-not-a-number",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":3072,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": 1
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000000.0",
+      "1700000004.5",
+      "1",
+      "3072",
+      "'ValueError: invalid literal for int() with base 10: ''many'''"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m1'",
+      "'{}'",
+      "NULL"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000004.5,\"error\":\"TypeError: sequence item 0: expected str instance, int found\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"failed: TypeError: sequence item 0: expected str instance, int found\"],\"pct\":0,\"elapsed\":4.5,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": 5}}]}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "content-not-text",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":3072,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    }
+   ],
+   "models": {
+    "body": "{\"data\": [{\"id\": \"m2\", \"status\": {\"value\": \"loaded\"}}, {\"id\": \"m1\", \"status\": {\"value\": \"unloaded\"}}, {\"id\": \"m3\"}, {\"id\": \"\", \"status\": {\"value\": \"loaded\"}}]}",
+    "status": 200
+   },
+   "observed": [],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": 1
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000000.0",
+      "1700000004.5",
+      "1",
+      "3072",
+      "'TypeError: sequence item 0: expected str instance, int found'"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m1'",
+      "'{}'",
+      "NULL"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"error\",\"backend\":\"127.0.0.1\",\"total\":1,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000003.0,\"error\":\"AttributeError: 'list' object has no attribute 'get'\",\"unit\":\"requests\",\"lines\":[\"failed: AttributeError: 'list' object has no attribute 'get'\"],\"pct\":0,\"elapsed\":3.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": false,
+   "id": "models-not-object",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    }
+   ],
+   "models": {
+    "body": "[]",
+    "status": 200
+   },
+   "observed": [],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": 1
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'error'",
+      "1700000000.0",
+      "1700000003.0",
+      "1",
+      "3072",
+      "'AttributeError: ''list'' object has no attribute ''get'''"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m1'",
+      "'{}'",
+      "NULL"
+     ]
+    ]
+   }
+  },
+  {
+   "answers": [
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"running\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":0,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":0.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[],\"pct\":0,\"elapsed\":1.5,\"eta\":0.0,\"active\":true}}",
+     "content_type": "application/json",
+     "status": 200
+    },
+    null,
+    {
+     "body": "{\"job\":{\"run_id\":1,\"status\":\"done\",\"backend\":\"127.0.0.1\",\"total\":2,\"done\":2,\"current\":\"\",\"started_at\":1700000000.0,\"finished_at\":1700000006.0,\"error\":\"\",\"unit\":\"requests\",\"lines\":[\"m1: starting\",\"m1: done\",\"m1: starting\",\"m1: done\"],\"pct\":100,\"elapsed\":6.0,\"eta\":0.0,\"active\":false}}",
+     "content_type": "application/json",
+     "status": 200
+    }
+   ],
+   "chats": [
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    },
+    {
+     "body": "data: {\"choices\": [{\"delta\": {\"role\": \"assistant\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"reasoning_content\": \"thinking\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hello\"}}]}\n\ndata: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \" world\"}, \"finish_reason\": \"stop\"}]}\n\ndata: {\"timings\": {\"prompt_n\": 12, \"prompt_per_second\": 250.5, \"predicted_n\": 40, \"predicted_per_second\": 33.25, \"draft_n\": 8, \"draft_n_accepted\": 5}, \"choices\": []}\n\ndata: [DONE]\n\n",
+     "status": 200
+    }
+   ],
+   "contended": true,
+   "id": "models-error",
+   "llama": [
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":3072,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    },
+    {
+     "body": null,
+     "method": "GET",
+     "path": "/v1/models"
+    },
+    {
+     "body": "{\"model\":\"m1\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi.\"}],\"max_tokens\":3072,\"temperature\":0.0,\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+     "method": "POST",
+     "path": "/v1/chat/completions"
+    }
+   ],
+   "models": {
+    "body": "{}",
+    "status": 500
+   },
+   "observed": [
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000003.0
+    },
+    {
+     "alias": "m1",
+     "load": "127.0.0.1"
+    },
+    {
+     "peak": "127.0.0.1"
+    },
+    {
+     "aliases": [
+      "m1"
+     ],
+     "other": "127.0.0.1",
+     "since": 1700000004.5
+    },
+    {
+     "alias": "m1",
+     "load": "127.0.0.1"
+    }
+   ],
+   "seed": [
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(1, 'alpha', 'Say hi.', 1.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(2, 'beta', 'Écris \"ceci\".', 2.0)",
+    "INSERT INTO prompts(id, name, body, created_at) VALUES(3, 'Gamma', 'Third', 3.0)"
+   ],
+   "steps": [
+    [
+     "start",
+     {
+      "aliases": [
+       "m1",
+       "m1"
+      ],
+      "backend": "127.0.0.1",
+      "promptIds": [
+       1
+      ],
+      "reps": 1
+     }
+    ],
+    [
+     "run"
+    ],
+    [
+     "progress"
+    ]
+   ],
+   "tables": {
+    "bench_result": [
+     [
+      "1",
+      "'alpha'",
+      "1",
+      "1",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "1",
+      "''",
+      "'Hello world'"
+     ],
+     [
+      "1",
+      "'alpha'",
+      "1",
+      "1",
+      "125.0",
+      "250.0",
+      "0",
+      "375.0",
+      "12",
+      "250.5",
+      "40",
+      "33.25",
+      "8",
+      "0.625",
+      "'[1.5, 2.25]'",
+      "1",
+      "''",
+      "'Hello world'"
+     ]
+    ],
+    "bench_run": [
+     [
+      "1",
+      "'127.0.0.1'",
+      "'done'",
+      "1700000000.0",
+      "1700000006.0",
+      "1",
+      "3072",
+      "''"
+     ]
+    ],
+    "bench_variant": [
+     [
+      "1",
+      "1",
+      "'m1'",
+      "'{}'",
+      "1234.5"
+     ]
+    ]
+   }
+  }
+ ],
+ "load_ms": 1234.5,
+ "oracle": {
+  "api.py": "eb8e12f6929baf15d2b1a1998aceff9529fbe48ca8242094ac6b7526c253a91d",
+  "bench.py": "2e59f9b057e2686b7f05e5dac04826c8ff37e3c1eb4398bf671faa2d74f3b14b",
+  "db.py": "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478",
+  "main.py": "fcd84c9d7396b2851cabd2077072ac392b5dae0b272149efec616eebdb8e4899"
+ },
+ "peak": [
+  1.5,
+  2.25
+ ],
+ "perf": [
+  100.0,
+  0.125
+ ],
+ "port_placeholder": "PORT",
+ "schema": [
+  "CREATE TABLE kv (\n                key   TEXT PRIMARY KEY,\n                value TEXT NOT NULL\n            )",
+  "CREATE TABLE download_history (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                repo_id      TEXT NOT NULL,\n                filename     TEXT NOT NULL,\n                dest_path    TEXT NOT NULL,\n                total_bytes  INTEGER NOT NULL,\n                status       TEXT NOT NULL,\n                error        TEXT,\n                started_at   REAL NOT NULL,\n                completed_at REAL\n            )",
+  "CREATE TABLE avatar_cache (\n                owner       TEXT PRIMARY KEY,\n                url         TEXT NOT NULL,\n                fetched_at  REAL NOT NULL\n            )",
+  "CREATE TABLE update_check (\n                filename          TEXT PRIMARY KEY,\n                repo_id           TEXT NOT NULL,\n                hf_last_modified  TEXT,\n                checked_at        REAL NOT NULL\n            )",
+  "CREATE TABLE req_timing (\n                id            INTEGER PRIMARY KEY AUTOINCREMENT,\n                ts            REAL NOT NULL,\n                backend       TEXT NOT NULL,\n                instance      TEXT NOT NULL,\n                task          INTEGER NOT NULL,\n                model_path    TEXT NOT NULL DEFAULT '',\n                alias         TEXT NOT NULL DEFAULT '',\n                spec_type     TEXT NOT NULL DEFAULT '',\n                prompt_tokens INTEGER NOT NULL DEFAULT 0,\n                prompt_tps    REAL    NOT NULL DEFAULT 0,\n                gen_tokens    INTEGER NOT NULL DEFAULT 0,\n                gen_tps       REAL    NOT NULL DEFAULT 0,\n                draft_acc     REAL,\n                draft_len     REAL,\n                UNIQUE(backend, instance, task)\n            )",
+  "CREATE INDEX req_timing_model\n                ON req_timing(model_path, ts DESC)",
+  "CREATE INDEX req_timing_alias\n                ON req_timing(alias, ts DESC)",
+  "CREATE INDEX req_timing_dedupe\n                ON req_timing(backend, task, ts)",
+  "CREATE TABLE bench_run (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                backend     TEXT NOT NULL,\n                status      TEXT NOT NULL,           -- running | done | cancelled | error\n                started_at  REAL NOT NULL,\n                finished_at REAL,\n                reps        INTEGER NOT NULL DEFAULT 1,\n                max_tokens  INTEGER NOT NULL DEFAULT 256,\n                note        TEXT NOT NULL DEFAULT ''\n            )",
+  "CREATE TABLE bench_variant (\n                id       INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id   INTEGER NOT NULL,\n                alias    TEXT NOT NULL,\n                argv_json TEXT NOT NULL DEFAULT '{}',\n                load_ms  REAL,\n                UNIQUE(run_id, alias)\n            )",
+  "CREATE TABLE bench_result (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                variant_id  INTEGER NOT NULL,\n                prompt_name TEXT NOT NULL,\n                rep         INTEGER NOT NULL,\n                cold        INTEGER NOT NULL DEFAULT 0,\n                ttft_ms     REAL,\n                ttft_answer_ms REAL,\n                truncated   INTEGER NOT NULL DEFAULT 0,\n                total_ms    REAL,\n                prompt_n    INTEGER,\n                prompt_tps  REAL,\n                gen_n       INTEGER,\n                gen_tps     REAL,\n                draft_n     INTEGER,\n                draft_acc   REAL,\n                peak_vram_json TEXT NOT NULL DEFAULT '[]',\n                contended   INTEGER NOT NULL DEFAULT 0,\n                err         TEXT NOT NULL DEFAULT '',\n                -- The generated text itself. Timings alone cannot answer \"is this model any\n                -- good at this\", and a run that keeps only timings destroys the one artifact\n                -- that could ever be graded. Keeping it makes scoring an OFFLINE pass over\n                -- stored rows: a rubric can change and re-score history without spending GPU\n                -- time again. Reasoning is deliberately not kept - the answer is what gets\n                -- graded, and thinking would multiply row size for text no rubric reads.\n                response_text TEXT NOT NULL DEFAULT ''\n            )",
+  "CREATE INDEX bench_result_variant ON bench_result(variant_id)",
+  "CREATE TABLE bench_sweep (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id       INTEGER NOT NULL,\n                alias        TEXT NOT NULL DEFAULT '',\n                model_type   TEXT NOT NULL DEFAULT '',\n                test         TEXT NOT NULL DEFAULT '',\n                n_prompt     INTEGER, n_gen INTEGER, n_depth INTEGER,\n                avg_ts       REAL,    stddev_ts REAL,\n                n_gpu_layers INTEGER, n_cpu_moe INTEGER, n_ubatch INTEGER,\n                type_k       TEXT,    type_v TEXT, flash_attn INTEGER,\n                split_mode   TEXT,\n                raw_json     TEXT NOT NULL DEFAULT '{}'\n            )",
+  "CREATE INDEX bench_sweep_run ON bench_sweep(run_id)",
+  "CREATE TABLE server_config (\n                backend    TEXT NOT NULL,\n                instance   TEXT NOT NULL,\n                alias      TEXT NOT NULL DEFAULT '',\n                model_path TEXT NOT NULL DEFAULT '',\n                argv_json  TEXT NOT NULL DEFAULT '{}',\n                first_seen REAL NOT NULL DEFAULT 0,\n                PRIMARY KEY (backend, instance)\n            )",
+  "CREATE TABLE prompts (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                name        TEXT NOT NULL,\n                body        TEXT NOT NULL,\n                created_at  REAL NOT NULL\n            )",
+  "CREATE TABLE model_badge (\n                id         INTEGER PRIMARY KEY AUTOINCREMENT,\n                alias      TEXT NOT NULL,\n                category   TEXT NOT NULL,\n                rating     INTEGER NOT NULL,\n                note       TEXT NOT NULL DEFAULT '',\n                run_id     INTEGER,\n                created_at REAL NOT NULL,\n                -- One rating per category per model. Re-rating updates in place, so the\n                -- badge always reflects your latest opinion instead of accumulating a\n                -- history nothing reads.\n                UNIQUE(alias, category)\n            )",
+  "CREATE INDEX model_badge_alias ON model_badge(alias)"
+ ],
+ "time": [
+  1700000000.0,
+  1.5
+ ]
+}

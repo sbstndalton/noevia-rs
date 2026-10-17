@@ -23,6 +23,7 @@ native-settings-write = ["native-settings", "native-prompts"]
 native-backend-control = ["native-logs", "native-prompts"]
 native-benchmark-overview = ["native-bench-runs", "native-section-writes"]
 native-check-updates = ["native-model-updates", "native-prompts"]
+native-benchmark-runner = ["native-benchmark-overview", "native-backend-control", "dep:form_urlencoded"]
 [lints]
 workspace = true
 [dependencies]
