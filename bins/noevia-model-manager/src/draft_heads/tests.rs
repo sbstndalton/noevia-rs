@@ -629,10 +629,12 @@ async fn read_page(page: &[u8]) -> Option<Vec<u8>> {
 /// refused, and nothing on the way holds more than a fixed bound. The raw buffer never grows past
 /// `PAGE_CAP`; a page one byte over is not read. The parse stops at the first node or string
 /// character over its limit, so what a refused page allocated is a prefix of a page the limits
-/// admit; the largest admitted trees of each shape (bare numbers, object keys, long strings) are
-/// measured by their buffer capacities and stay under `tree_bound()` (68 MiB). The raw page is
-/// dropped before the projection starts, so with the projected payload (at most
-/// `MAX_INPUT_BYTES`, see the next test) one lookup holds under 100 MiB; it was 1-2 GiB.
+/// admit; the largest admitted trees of each shape (bare numbers, object keys, long strings,
+/// nested single-element arrays) are measured by their buffer capacities and stay under
+/// `tree_bound()` (68 MiB). A lookup's first stages: the page and its tree, then the tree and the
+/// projected listing (at most `MAX_INPUT_BYTES`, see `projected_entries_…`): each at most
+/// `tree_bound() + 16 MiB` = 84 MiB. The final parse of the listing and its file list are
+/// `final_stage_is_bounded`. It was 1-2 GiB per page.
 #[tokio::test]
 async fn hostile_pages_are_refused_within_a_bound() {
     // Escaped non-ASCII text (`\u00e9` is 6 page bytes for one character) and raw 4-byte text.
@@ -666,6 +668,17 @@ async fn hostile_pages_are_refused_within_a_bound() {
             "object keys",
             format!("{{{}}}", vec!["\"k\": 1"; PAGE_NODES / 2 - 1].join(", ")).into_bytes(),
         ),
+        // noevia#1995: nested single-element arrays, the most heap per node (each level a
+        // `Vec` of 4 values), 501 levels deep.
+        (
+            "nested arrays",
+            filled(
+                "[",
+                &format!("{}1{}, ", "[".repeat(500), "]".repeat(500)),
+                "1]",
+                1003 * (PAGE_NODES / 501 - 1) + 3,
+            ),
+        ),
         // Strings one character past a power of two: the most doubling slack.
         (
             "long strings",
@@ -679,7 +692,7 @@ async fn hostile_pages_are_refused_within_a_bound() {
     ];
     let bound = tree_bound();
     assert!(
-        bound + PAGE_CAP + model_files::MAX_INPUT_BYTES <= 100 * MIB,
+        bound + PAGE_CAP.max(model_files::MAX_INPUT_BYTES) <= 84 * MIB,
         "{bound}"
     );
     for (name, page) in largest {
@@ -733,7 +746,7 @@ fn projected_entries_are_measured_before_they_are_appended() {
     ]);
     let mut size = Count::default();
     dump_projected(&entry, &mut size);
-    assert!(size.0 > model_files::MAX_INPUT_BYTES, "{}", size.0);
+    assert!(size.bytes > model_files::MAX_INPUT_BYTES, "{}", size.bytes);
     let mut fresh = Projected::default();
     assert!(fresh.push(&entry).is_none());
     assert_eq!((fresh.out.len(), fresh.out.capacity()), (0, 0));
@@ -830,5 +843,214 @@ async fn pages_over_the_parse_limits_are_failed_lookups() {
     let body: J = serde_json::from_slice(&body).unwrap();
     assert!(body.get("remoteError").is_none(), "{body}");
     assert!(body["remote"].is_array(), "{body}");
+    server.abort();
+}
+
+// ---- noevia#1995: the projected listing and its final parse -----------------------------------
+
+/// `{"size": [1, 1, …]}` with `ints` numbers: `ints + 3` nodes.
+fn sized(ints: usize) -> Value {
+    Value::Obj(vec![(
+        "size".into(),
+        Value::Arr(vec![Value::Int(model_files::BigInt::from_u64(1)); ints]),
+    )])
+}
+
+/// The node count the payload keeps is the count `model_files::json` takes when it parses it: the
+/// payload parses with exactly that many nodes allowed and not with one fewer.
+#[test]
+fn projected_nodes_are_counted_as_the_parser_counts_them() {
+    let parsed = model_files::json::parse(
+        r#"[{"type": "file", "oid": "x", "path": "a.gguf", "size": 1.5e300, "lfs": {"size": 7, "x": 1}},
+            {"path": "p", "path": "q", "size": NaN, "lfs": 3}, "str", 12, [true, null, [[]], {}],
+            {"lfs": {}}, {"type": "file", "type": "dir", "a": {"k": 1, "k": 2}},
+            {"size": {"b": 1, "a": 2, "b": 3}, "lfs": {"size": {"z": [1, {"y": "w"}]}}}, {}]"#,
+    )
+    .unwrap();
+    let Value::Arr(items) = parsed else { panic!() };
+    let mut running = Projected::default();
+    for item in &items {
+        running.push(item).unwrap();
+    }
+    let nodes = running.nodes + 1;
+    let payload = running.finish();
+    let with = |nodes: usize| Limits {
+        nodes,
+        ..Limits::default()
+    };
+    assert!(model_files::json::parse_with_limits(&payload, with(nodes)).is_ok());
+    assert!(model_files::json::parse_with_limits(&payload, with(nodes - 1)).is_err());
+    let mut empty = Projected::default();
+    assert_eq!(empty.nodes, 0);
+    empty.push(&sized(2)).unwrap();
+    assert_eq!(empty.nodes, 5);
+}
+
+/// noevia#1995: an entry that would take the payload past `PROJECTED_NODES` (with its enclosing
+/// array) or past `MAX_ENTRIES` entries is refused with nothing appended.
+#[test]
+fn projected_nodes_and_entries_are_capped() {
+    let mut running = Projected::default();
+    running.push(&sized(PROJECTED_NODES - 4)).unwrap();
+    assert_eq!(running.nodes + 1, PROJECTED_NODES);
+    let before = (running.out.len(), running.nodes, running.entries);
+    assert!(running.push(&Value::Null).is_none());
+    assert_eq!((running.out.len(), running.nodes, running.entries), before);
+    assert!(Projected::default()
+        .push(&sized(PROJECTED_NODES - 3))
+        .is_none());
+
+    let mut many = Projected::default();
+    for _ in 0..model_files::MAX_ENTRIES {
+        many.push(&Value::Obj(Vec::new())).unwrap();
+    }
+    let len = many.out.len();
+    assert!(many.push(&Value::Obj(Vec::new())).is_none());
+    assert_eq!(
+        (many.out.len(), many.entries),
+        (len, model_files::MAX_ENTRIES)
+    );
+}
+
+/// noevia#1995: the final parse is held to `PROJECTED_NODES` too (it used the default, no node
+/// limit), so a payload over it is a failed lookup whatever built it.
+#[test]
+fn the_final_parse_refuses_a_payload_over_the_node_cap() {
+    // `[{"size": [1, …]}]`: 4 + ints nodes.
+    let payload = |ints: usize| format!("[{{\"size\": [{}]}}]", vec!["1"; ints].join(", "));
+    assert_eq!(files_of(payload(PROJECTED_NODES - 4)).unwrap(), Vec::new());
+    assert!(files_of(payload(PROJECTED_NODES - 3)).is_err());
+}
+
+fn files_heap(files: &[model_files::HfFile], capacity: usize) -> usize {
+    charged(capacity * std::mem::size_of::<model_files::HfFile>())
+        + files
+            .iter()
+            .map(|f| {
+                charged(f.path.capacity())
+                    + charged(f.shard_base.capacity())
+                    + f.quant.as_ref().map_or(0, |q| charged(q.capacity()))
+                    + charged(f.size.to_string().trim_start_matches('-').len())
+            })
+            .sum::<usize>()
+}
+
+/// noevia#1995: the final stage. The listing text (at most `MAX_INPUT_BYTES`) and its tree (at
+/// most `PROJECTED_NODES` nodes: `tree_bound()`, as for a page) are 84 MiB at most; the text is
+/// then dropped and the file list built beside the tree. The file list holds at most one file per
+/// 5 nodes and copies of their paths (the shard base and the quant label come from each path);
+/// for the shapes that maximise it (the most files, short sharded quantised names, the longest
+/// ASCII and 4-byte paths) the tree and the list stay under 84 MiB too.
+#[test]
+fn final_stage_is_bounded() {
+    let mk = |entry: String, count: usize| format!("[{}]", vec![entry; count].join(", "));
+    let fill = |path: String| {
+        let entry = format!(r#"{{"type": "file", "path": "{path}", "size": 123456789012}}"#);
+        let count = (model_files::MAX_INPUT_BYTES - 16) / (entry.len() + 2);
+        mk(entry, count)
+    };
+    let shapes = [
+        (
+            "most files",
+            mk(
+                r#"{"type": "file", "path": "a.gguf"}"#.to_owned(),
+                (PROJECTED_NODES - 1) / 5,
+            ),
+        ),
+        (
+            "sharded quantised",
+            mk(
+                r#"{"type": "file", "path": "x-Q4_K_M-00001-of-00002.gguf", "size": 123456789012}"#
+                    .to_owned(),
+                (PROJECTED_NODES - 1) / 7,
+            ),
+        ),
+        (
+            "long ASCII paths",
+            fill(format!(
+                "{}-Q4_K_M-00001-of-00002.gguf",
+                "a".repeat(model_files::json::MAX_STRING_CHARS - 30)
+            )),
+        ),
+        (
+            "long 4-byte paths",
+            fill(format!(
+                "{}-IQ4_XS-00001-of-00002.gguf",
+                "\u{1F600}".repeat(model_files::json::MAX_STRING_CHARS - 30)
+            )),
+        ),
+    ];
+    for (name, payload) in shapes {
+        assert!(payload.len() <= model_files::MAX_INPUT_BYTES, "{name}");
+        let limits = Limits {
+            nodes: PROJECTED_NODES,
+            ..Limits::default()
+        };
+        let tree = model_files::json::parse_with_limits(&payload, limits).unwrap();
+        let held = heap(&tree);
+        assert!(held <= tree_bound(), "{name}: {held}");
+        let files = model_files::files_from_tree(&tree).unwrap();
+        assert!(!files.is_empty(), "{name}");
+        let list = files_heap(&files, files.capacity());
+        assert!(held + list <= 84 * MIB, "{name}: {held} + {list}");
+        assert_eq!(files_of(payload).unwrap(), files, "{name}");
+        eprintln!(
+            "{name}: tree {:.1} MiB, {} files {:.1} MiB",
+            held as f64 / MIB as f64,
+            files.len(),
+            list as f64 / MIB as f64
+        );
+    }
+}
+
+/// noevia#1995: the attack the review found. Every page passes the page limits, but each keeps a
+/// `size` of 262,140 numbers in the projection. 21 such pages stay under the 16 MiB input cap
+/// (3 bytes a number), so the final parse would build about 5.5 million numbers (some 370 MiB).
+/// Now the listing fails on the second page and never asks for the third.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pages_of_kept_numbers_fail_the_lookup_at_the_node_cap() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let models = one_section(&root);
+    let tree = "/api/models/acme/a/tree/main";
+    let body = format!("[{{\"size\": [{}]}}]", vec!["1"; PAGE_NODES - 4].join(","));
+    assert!(parse_page(body.clone().into_bytes()).is_some());
+    let mut answers = serde_json::Map::new();
+    let pages = 21;
+    let projected = (body.len() - 15) / 2 * 3 + 15;
+    assert!(pages * projected < model_files::MAX_INPUT_BYTES);
+    for page in 1..=pages {
+        let path = if page == 1 {
+            format!("{tree}?recursive=true&expand=true")
+        } else {
+            format!("{tree}?cursor={page}")
+        };
+        let mut headers = vec![serde_json::json!(["content-type", "application/json"])];
+        if page < pages {
+            headers.push(serde_json::json!([
+                "link",
+                format!("<@HUB@{tree}?cursor={}>; rel=\"next\"", page + 1)
+            ]));
+        }
+        answers.insert(
+            path,
+            serde_json::json!({"status": 200, "headers": headers, "body": hex_of(body.as_bytes())}),
+        );
+    }
+    let (base, seen, server) = hub(J::Object(answers)).await;
+    let heads = DraftHeads::with(
+        &models,
+        &models.join("models.ini"),
+        &root,
+        &format!("{base}/api"),
+        Root::synthetic,
+    )
+    .unwrap();
+    let Outcome::Json(200, answer) = heads.get("a").await else {
+        panic!()
+    };
+    let answer: J = serde_json::from_slice(&answer).unwrap();
+    assert_eq!(answer["remoteError"], REMOTE_ERROR);
+    assert_eq!(seen.lock().unwrap().len(), 2);
     server.abort();
 }
