@@ -374,6 +374,7 @@ impl Token {
 
 /// noevia#1318 (downloads): the stored token as the `Authorization` value `hf._auth_headers`
 /// would send, read fresh as `hf.get_token()` is for every request.
+#[cfg(feature = "native-downloads")]
 pub(crate) enum HubAuth {
     /// A falsy token: no header.
     Absent,
@@ -386,6 +387,7 @@ pub(crate) enum HubAuth {
     Failed,
 }
 
+#[cfg(feature = "native-downloads")]
 pub(crate) fn hub_auth(database: &Path) -> HubAuth {
     let Ok(db) = open(database) else {
         return HubAuth::Failed;
