@@ -48,6 +48,94 @@ fn identity(fd: impl AsFd) -> Result<(u64, u64), std::io::Error> {
     Ok((st.st_dev as u64, st.st_ino as u64))
 }
 
+const DIR_FLAGS: OFlags = OFlags::RDONLY
+    .union(OFlags::DIRECTORY)
+    .union(OFlags::CLOEXEC);
+
+/// Whether the opened directory lies inside the folder whose identity is `top`: walk `..` from
+/// the handle itself; it is inside iff the walk meets that folder before the filesystem root.
+fn within(top: (u64, u64), dir: &OwnedFd) -> Result<bool, std::io::Error> {
+    let mut here = identity(dir)?;
+    let mut cursor: Option<OwnedFd> = None;
+    for _ in 0..MAX_DEPTH {
+        if here == top {
+            return Ok(true);
+        }
+        let up = rustix::fs::openat(
+            cursor.as_ref().unwrap_or(dir),
+            "..",
+            DIR_FLAGS | OFlags::NOFOLLOW,
+            Mode::empty(),
+        )
+        .map_err(io)?;
+        let next = identity(&up)?;
+        if next == here {
+            return Ok(false);
+        }
+        here = next;
+        cursor = Some(up);
+    }
+    Ok(false)
+}
+
+/// noevia#1967: `dest.parent.mkdir(parents=True, exist_ok=True)` one level at a time from the
+/// models-folder handle. Each level is created with `mkdirat` and opened with `O_NOFOLLOW`; a
+/// level that is a link is followed only after its target is checked to lie inside the models
+/// folder, so a folder swapped for a link never gets anything created through it. `Ok(false)`:
+/// a level leads outside (nothing was created beyond it).
+pub(super) fn make_parents(root: &str, dest: &str) -> Result<bool, std::io::Error> {
+    let rel = dest
+        .strip_prefix(root.trim_end_matches('/'))
+        .and_then(|r| r.strip_prefix('/'))
+        .unwrap_or_default();
+    let Some((parents, _name)) = rel.rsplit_once('/') else {
+        return Ok(true); // directly in the models folder
+    };
+    let base = rustix::fs::open(root, DIR_FLAGS, Mode::empty()).map_err(io)?;
+    let top = identity(&base)?;
+    let mut stack: Vec<OwnedFd> = vec![base];
+    for part in parents.split('/') {
+        match part {
+            "" | "." => continue,
+            ".." => {
+                // Every level on the stack is a real folder (links were resolved and checked),
+                // so popping is the kernel's `..`; above the models folder is outside.
+                if stack.len() <= 1 {
+                    return Ok(false);
+                }
+                stack.pop();
+                continue;
+            }
+            _ => {}
+        }
+        let here = stack.last().ok_or_else(|| io(rustix::io::Errno::INVAL))?;
+        match rustix::fs::mkdirat(here, part, Mode::from_raw_mode(0o777)) {
+            Ok(()) | Err(rustix::io::Errno::EXIST) => {}
+            Err(e) => return Err(io(e)),
+        }
+        let next = match rustix::fs::openat(here, part, DIR_FLAGS | OFlags::NOFOLLOW, Mode::empty())
+        {
+            Ok(fd) => fd,
+            // A link (ELOOP; some systems answer ENOTDIR for O_DIRECTORY|O_NOFOLLOW on a link):
+            // follow it only when its target is inside.
+            Err(rustix::io::Errno::LOOP | rustix::io::Errno::NOTDIR)
+                if rustix::fs::statat(here, part, AtFlags::SYMLINK_NOFOLLOW).is_ok_and(|st| {
+                    rustix::fs::FileType::from_raw_mode(st.st_mode).is_symlink()
+                }) =>
+            {
+                let fd = rustix::fs::openat(here, part, DIR_FLAGS, Mode::empty()).map_err(io)?;
+                if !within(top, &fd)? {
+                    return Ok(false);
+                }
+                fd
+            }
+            Err(e) => return Err(io(e)),
+        };
+        stack.push(next);
+    }
+    Ok(true)
+}
+
 impl Place {
     /// `None` when the directory is not inside `root` (or the names cannot be used).
     fn open(root: &str, dest: &str) -> Result<Option<Self>, std::io::Error> {
@@ -58,32 +146,9 @@ impl Place {
         let Some(name) = name.to_str() else {
             return Ok(None);
         };
-        let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
-        let top = identity(rustix::fs::open(root, flags, Mode::empty()).map_err(io)?)?;
-        let dir = rustix::fs::open(parent, flags, Mode::empty()).map_err(io)?;
-        // Walk `..` from the opened directory itself: it is inside iff the walk meets the
-        // models folder before the filesystem root.
-        let mut here = identity(&dir)?;
-        let mut cursor: Option<OwnedFd> = None;
-        let mut inside = false;
-        for _ in 0..MAX_DEPTH {
-            if here == top {
-                inside = true;
-                break;
-            }
-            let up = match &cursor {
-                Some(fd) => rustix::fs::openat(fd, "..", flags | OFlags::NOFOLLOW, Mode::empty()),
-                None => rustix::fs::openat(&dir, "..", flags | OFlags::NOFOLLOW, Mode::empty()),
-            }
-            .map_err(io)?;
-            let next = identity(&up)?;
-            if next == here {
-                break;
-            }
-            here = next;
-            cursor = Some(up);
-        }
-        if !inside {
+        let top = identity(rustix::fs::open(root, DIR_FLAGS, Mode::empty()).map_err(io)?)?;
+        let dir = rustix::fs::open(parent, DIR_FLAGS, Mode::empty()).map_err(io)?;
+        if !within(top, &dir)? {
             return Ok(None);
         }
         let temp = format!("{name}.download");
@@ -515,8 +580,18 @@ impl Downloads {
                     "download destination is outside the models folder",
                 ));
             }
-            std::fs::create_dir_all(parent)
-                .map_err(|e| os_error(&e, &parent.to_string_lossy(), None))?;
+            // noevia#1967: level by level from the models-folder handle, never through a link
+            // that leads outside.
+            match make_parents(&self.config.models_dir, &job.dest) {
+                Ok(true) => {}
+                Ok(false) => {
+                    return Err(failed(
+                        "ValueError",
+                        "download destination is outside the models folder",
+                    ))
+                }
+                Err(e) => return Err(os_error(&e, &parent.to_string_lossy(), None)),
+            }
         }
         let place = self.place(job)?;
         let mut total = 0;
