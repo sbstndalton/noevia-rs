@@ -22,7 +22,7 @@
 - **Malformed repo ids:** a repo id that isn't Hub-shaped (segments of letters, digits and `._-`, no empty, `.` or `..` segment) is not sent to the Hub and gets no dates. Python would send it, and the Hub does not list such repos.
 - **Header bytes:** h11 accepts the bytes 0x01–0x08, 0x0e–0x1f and 0x7f in a header value, but the HTTP library here does not. A token containing them is treated as a failed request.
 - **Bounds:**
-  - **Tree listing:** 64 MiB (larger means no dates).
+  - **Tree listing (noevia#1996):** 16 MiB, at most 262,144 JSON values and keys, and strings of at most 65,536 characters. A larger page means no dates, as for a failed request; Python reads any size. Real Hub pages are well under 1 MiB. The read buffer never grows past 16 MiB. A UTF-16 or UTF-32 page is decoded and its raw bytes are dropped before the parse; a UTF-8 page is parsed where it lies. So one check holds at most the page and its parsed tree, at most 84 MiB by buffer capacities (a hostile 64 MiB page of bare numbers was about 2 GiB). Within a check, repositories are looked up one after another; concurrent checks are bounded only by the front's 4 request permits. A page of more than 262,144 values whose items are not objects (for example `[1, 1, …]`) also means no dates; Python would answer 500 for it.
   - **JSON nesting:** depth 512 (deeper means no dates; CPython parses until RecursionError).
   - **Records:** 4096 (more answers 500).
   - **Timeouts:** connect and each read 15 s (httpx's `timeout=15.0`), and 120 s for a whole tree request.

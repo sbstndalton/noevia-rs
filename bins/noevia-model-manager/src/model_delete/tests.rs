@@ -814,6 +814,28 @@ fn reservation_cases() -> Value {
     .unwrap()
 }
 
+/// noevia#1993: sha256 of `delete-reservation-cases.json`, the same constant noevia-services pins
+/// (`FIXTURE_SHA256` in `model-manager/tests/test_delete_reservation_parity.py`). Refresh BOTH
+/// copies together: change the canonical file here, copy it byte for byte to noevia-services, and
+/// update this constant and the services one in the same pair of PRs. Otherwise one side would
+/// keep passing on cases the other no longer has.
+const RESERVATION_CASES_SHA256: &str =
+    "4f75883a80832383ad0866942f5668e962cceb2bfd82504807114659c8469ddc";
+
+#[test]
+fn the_shared_cases_are_the_pinned_copy() {
+    use sha2::{Digest, Sha256};
+    let bytes = include_bytes!("../../tests/fixtures/delete-reservation-cases.json");
+    let digest: String = Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(
+        digest, RESERVATION_CASES_SHA256,
+        "delete-reservation-cases.json changed: refresh the noevia-services copy and both pins together"
+    );
+}
+
 fn text_list(v: &Value) -> Vec<String> {
     v.as_array()
         .unwrap()

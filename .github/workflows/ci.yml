@@ -877,7 +877,7 @@ jobs:
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-downloads -- -D warnings
       - name: Native downloads differential, failures and route policy
         run: |
-          cargo test --locked -p noevia-model-manager --features native-downloads --test downloads --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-downloads --test downloads --test embedding --test lifecycle --bin noevia-model-manager
           cargo test --locked -p noevia-model-manager --features native-downloads --lib downloads::
       - name: Downloads capability omission
         run: |

@@ -378,9 +378,11 @@ pub enum Queued {
 pub const DELETE_IN_PROGRESS: &str = "A delete is removing that folder right now; nothing was queued. Try again when it has finished.";
 
 /// noevia#1972: models-relative folders and files a running delete may remove; released on drop.
+/// noevia#1984: or the whole models folder ([`Downloads::reserve_all`]).
 pub struct Reservation {
     table: Arc<Downloads>,
     rels: Vec<String>,
+    whole: bool,
 }
 
 impl Drop for Reservation {
@@ -388,11 +390,23 @@ impl Drop for Reservation {
         let _jobs = lock(&self.table.jobs);
         let mut reserved = lock(&self.table.reserved);
         for rel in &self.rels {
-            if let Some(i) = reserved.iter().position(|r| r == rel) {
-                reserved.remove(i);
+            if let Some(i) = reserved.rels.iter().position(|r| r == rel) {
+                reserved.rels.remove(i);
             }
         }
+        if self.whole {
+            reserved.whole = reserved.whole.saturating_sub(1);
+        }
     }
+}
+
+/// What running deletes hold against new downloads.
+#[derive(Default)]
+struct Reserved {
+    /// Normalised models-relative folders and files (one entry per holder).
+    rels: Vec<String>,
+    /// noevia#1984: holders of the whole table (forwarded Python deletes), matching every path.
+    whole: usize,
 }
 
 /// `posixpath.normpath` of a models-relative path.
@@ -421,7 +435,7 @@ pub struct Downloads {
     /// noevia#1972: what running deletes hold. Always locked after `jobs`, so a start and a
     /// delete's reservation are ordered: either the delete sees the job, or the start sees the
     /// reservation.
-    reserved: Mutex<Vec<String>>,
+    reserved: Mutex<Reserved>,
     permits: Arc<tokio::sync::Semaphore>,
     http: engine::Http,
     ids: std::collections::hash_map::RandomState,
@@ -438,7 +452,7 @@ impl Downloads {
             http: engine::Http::new()?,
             config,
             jobs: Mutex::new(Vec::new()),
-            reserved: Mutex::new(Vec::new()),
+            reserved: Mutex::new(Reserved::default()),
             ids: std::collections::hash_map::RandomState::new(),
             serial: std::sync::atomic::AtomicU64::new(0),
         }))
@@ -522,21 +536,42 @@ impl Downloads {
             .filter(|r| r != ".")
             .collect();
         let _jobs = lock(&self.jobs);
-        lock(&self.reserved).extend(rels.iter().cloned());
+        lock(&self.reserved).rels.extend(rels.iter().cloned());
         Reservation {
             table: self.clone(),
             rels,
+            whole: false,
         }
     }
 
-    /// Whether a destination (as `safe_dest` joined it) lies on or inside a reservation.
-    fn reserved_for(&self, reserved: &[String], dest: &str) -> bool {
+    /// noevia#1984: hold the whole models folder against new downloads until the guard drops.
+    /// A Python delete (mixed mode) is forwarded under it: Python's own reservations are not
+    /// visible here, and a planned start may be waiting on the child while the delete runs.
+    /// Take it before looking for active jobs, like [`Downloads::reserve`].
+    pub fn reserve_all(self: &Arc<Self>) -> Reservation {
+        let _jobs = lock(&self.jobs);
+        let mut reserved = lock(&self.reserved);
+        reserved.whole = reserved.whole.saturating_add(1);
+        drop(reserved);
+        Reservation {
+            table: self.clone(),
+            rels: Vec::new(),
+            whole: true,
+        }
+    }
+
+    /// Whether a destination (as `safe_dest` joined it) lies on or inside a reservation. A
+    /// whole-table reservation matches every destination.
+    fn reserved_for(&self, reserved: &Reserved, dest: &str) -> bool {
+        if reserved.whole > 0 {
+            return true;
+        }
         let prefix = format!("{}/", self.config.models_dir.trim_end_matches('/'));
         let Some(rel) = dest.strip_prefix(&prefix) else {
             return false;
         };
         let rel = rel_norm(rel);
-        reserved.iter().any(|r| {
+        reserved.rels.iter().any(|r| {
             rel == *r
                 || rel
                     .strip_prefix(r.as_str())
@@ -548,7 +583,12 @@ impl Downloads {
     #[cfg(test)]
     #[cfg_attr(not(feature = "native-model-delete"), allow(dead_code))]
     pub(crate) fn reservations(&self) -> Vec<String> {
-        lock(&self.reserved).clone()
+        lock(&self.reserved).rels.clone()
+    }
+
+    /// noevia#1984: how many whole-table reservations are held.
+    pub fn whole_reservations(&self) -> usize {
+        lock(&self.reserved).whole
     }
 
     /// `manager.cancel(job_id)`.
@@ -1269,5 +1309,39 @@ mod tests {
             }
         });
         port
+    }
+
+    /// noevia#1984: a whole-table reservation refuses every start (nothing is queued), alongside
+    /// folder reservations, and holds until its last holder drops.
+    #[test]
+    fn whole_table_reservations_refuse_every_start_until_the_last_drops() {
+        let dir = tempfile::tempdir().unwrap();
+        let models = dir.path().join("models");
+        std::fs::create_dir(&models).unwrap();
+        let table = table(&models, UNKNOWN_SIZE_CAP, 1);
+        let first = table.reserve_all();
+        let second = table.reserve_all();
+        let folder = table.reserve(vec!["sub".into()]);
+        assert_eq!(table.whole_reservations(), 2);
+        for name in ["a.gguf", "sub/b.gguf", "deep/er/c.gguf"] {
+            let start = vec![planned(name, "http://127.0.0.1:9/x", 1)];
+            assert_eq!(table.queue(start), Queued::Deleting, "{name}");
+        }
+        drop(first);
+        assert_eq!(table.whole_reservations(), 1);
+        let start = vec![planned("a.gguf", "http://127.0.0.1:9/x", 1)];
+        assert_eq!(table.queue(start), Queued::Deleting);
+        drop(second);
+        assert_eq!(table.whole_reservations(), 0);
+        assert_eq!(table.reservations(), vec!["sub".to_owned()]);
+        let start = vec![planned("sub/b.gguf", "http://127.0.0.1:9/x", 1)];
+        assert_eq!(
+            table.queue(start),
+            Queued::Deleting,
+            "the folder hold remains"
+        );
+        drop(folder);
+        assert!(table.reservations().is_empty());
+        assert_eq!(table.active(), 0);
     }
 }
