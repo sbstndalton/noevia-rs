@@ -151,6 +151,11 @@ async fn start_front_with(
     env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{upstream}"));
     env.insert("UI_PORT", "1".to_string());
     env.insert("NOEVIA_WEB_DIST", dist.display().to_string());
+    // The front owns sign-in (sbstndalton/noevia#1071) and needs a data directory to start; an
+    // empty one is enough here (identity answers 503 until Node creates cowork.db).
+    let data = dist.join(".synthetic-ui-data");
+    std::fs::create_dir_all(&data).unwrap();
+    env.insert("UI_DATA_DIR", data.display().to_string());
     for (k, v) in extra {
         env.insert(k, v.to_string());
     }
@@ -240,7 +245,8 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
             }
             continue;
         }
-        // With every deployment switch off (the default), a switched flip is still Node's.
+        // With every deployment switch off (the default), a switched flip is still Node's; sign-in,
+        // the account and the front read routes have no switch (#1071) and are Rust's.
         match r.owner_under(Switches::default()) {
             Owner::Rust => {
                 let method = r.methods.first().copied().unwrap_or("GET");
@@ -249,7 +255,11 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
                     res.headers().get("x-upstream").is_none(),
                     "{path} is rust-owned but reached Node"
                 );
-                assert_eq!(res.status(), 200, "{path}");
+                // The account and front read routes answer for themselves (signed out, no
+                // database here: 401/503); only readiness is a plain 200.
+                if r.path == "/api/ready" {
+                    assert_eq!(res.status(), 200, "{path}");
+                }
             }
             Owner::Node => {
                 node_routes += 1;
@@ -359,7 +369,7 @@ async fn headers_cookies_and_forwarded_for() {
         let (res, _c) = call(
             front,
             "POST",
-            "/api/auth/login/password?x=1",
+            "/api/projects?x=1",
             &[
                 ("x-forwarded-for", "6.6.6.6"),
                 ("x-noevia-client-ip", "7.7.7.7"),
@@ -381,7 +391,7 @@ async fn headers_cookies_and_forwarded_for() {
         assert_eq!(cookies, vec!["a=1; Path=/; HttpOnly", "b=2; Path=/"]);
         assert!(res.headers().get("x-hop").is_none());
         let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
-        assert_eq!(echo["path"], "/api/auth/login/password");
+        assert_eq!(echo["path"], "/api/projects");
         assert_eq!(echo["bodyLen"], 7);
         let h = &echo["headers"];
         assert_eq!(h["host"][0], "front.test");
@@ -862,6 +872,7 @@ fn a_malformed_code_net_spec_stops_startup() {
                 "http://127.0.0.1:9021".to_string(),
             ),
             ("COWORK_CODE_NET_ADDR", bad.to_string()),
+            ("UI_DATA_DIR", "/data".to_string()),
         ]
         .into_iter()
         .collect();

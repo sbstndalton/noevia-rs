@@ -43,7 +43,7 @@ fn world(native: bool) -> World {
         format!("{SETUP_CODE}\n"),
     )
     .unwrap();
-    let switch = RustAuth::from_env_value(Some("1")).unwrap();
+    let switch = RustAuth::owned();
     let writer = Arc::new(Writer::open(dir.path(), switch).unwrap());
     let auth = Arc::new(Authenticator::new(AuthConfig {
         public_origin: ORIGIN.into(),

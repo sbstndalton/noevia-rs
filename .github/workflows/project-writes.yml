@@ -53,12 +53,10 @@ jobs:
           set -euo pipefail
           cargo build --locked --target-dir target/writes-featureless -p noevia-server --no-default-features
           if target/writes-featureless/debug/noevia-server --features | grep -qx rust-project-writes; then exit 1; fi
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_PROJECT_WRITES=1 target/writes-featureless/debug/noevia-server > "$RUNNER_TEMP/writes-featureless.log" 2>&1; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_PROJECT_WRITES=1 target/writes-featureless/debug/noevia-server > "$RUNNER_TEMP/writes-featureless.log" 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-project-writes' "$RUNNER_TEMP/writes-featureless.log"
           cargo build --locked -p replay -p noevia-server --features noevia-server/rust-project-writes,noevia-server/rust-project-chats,noevia-server/rust-free-chats
           target/debug/noevia-server --features | grep -qx rust-project-writes
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 UI_DATA_DIR=/tmp NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECT_WRITES=1 target/debug/noevia-server > "$RUNNER_TEMP/writes-noprojects.log" 2>&1; then exit 1; fi
-          grep -q 'NOEVIA_RUST_PROJECT_WRITES=1 needs NOEVIA_RUST_PROJECTS=1' "$RUNNER_TEMP/writes-noprojects.log"
       - name: Build dav-parse.wasm at core's pinned noevia-rs ref
         working-directory: core
         run: |
@@ -79,7 +77,7 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
             --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --state-out "$RUNNER_TEMP/node-state.json"
-      - name: Full replay through the front with NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_PROJECT_WRITES=1
+      - name: Full replay through the front with NOEVIA_RUST_PROJECT_WRITES=1
         # The corpus's GET /api/chats/{id}/context is the front's here; every answer, file and
         # cowork.db row must still be Node's. The M4 lock files are ignored, as in ci.yml.
         run: |
@@ -87,7 +85,7 @@ jobs:
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-writes" \
-            --server-cmd "exec env NOEVIA_RUST_AUTH=1 NOEVIA_RUST_PROJECTS=1 NOEVIA_RUST_PROJECT_WRITES=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
+            --server-cmd "exec env NOEVIA_RUST_PROJECT_WRITES=1 sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/writes-positive.json" \
             --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' \
             --expect-state "$RUNNER_TEMP/node-state.json"

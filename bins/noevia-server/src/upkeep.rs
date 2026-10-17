@@ -1,4 +1,4 @@
-//! M3 (`NOEVIA_RUST_AUTH=1`): the session and device-grant writes Node's request gate made on
+//! M3 (permanent since sbstndalton/noevia#1071): the session and device-grant writes Node's request gate made on
 //! every request (server-auth `upkeep`), now Rust's because Rust owns those tables and Node
 //! refuses to write them. Run before every request the front proxies to Node or answers on an
 //! /api/ route of its own; the bundle and /api/ready, which Node no longer sees since M1, are
@@ -18,7 +18,7 @@ const WARN_EVERY: Duration = Duration::from_secs(60);
 
 pub struct WriterLayer {
     data_dir: Option<PathBuf>,
-    switch: Option<RustAuth>,
+    switch: RustAuth,
     /// Opened on first use and kept once it opens; a failed open is retried next time.
     writer: Mutex<Option<Arc<Writer>>>,
     warned: Mutex<Option<Instant>>,
@@ -34,16 +34,14 @@ impl WriterLayer {
         }
     }
 
-    /// The switch, when it is on.
-    pub fn switch(&self) -> Option<RustAuth> {
+    /// Rust's ownership of the auth tables (always held).
+    pub fn switch(&self) -> RustAuth {
         self.switch
     }
 
-    /// The writer (blocking: opens the database the first time). Refused without the switch.
+    /// The writer (blocking: opens the database the first time).
     pub fn writer(&self) -> Result<Arc<Writer>, StoreError> {
-        let switch = self
-            .switch
-            .ok_or_else(|| StoreError::NotOwned("cowork.db (NOEVIA_RUST_AUTH is off)".into()))?;
+        let switch = self.switch;
         let mut slot = self.writer.lock().map_err(|_| StoreError::Poisoned)?;
         if let Some(w) = slot.as_ref() {
             return Ok(Arc::clone(w));

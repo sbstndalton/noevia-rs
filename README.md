@@ -441,11 +441,12 @@ one slice at a time.
   every read) or missing a column it reads. M3: `Writer` writes only what the compiled
   `OWNED_TABLES` grants (the auth tables, per-table INSERT/UPDATE/DELETE; `audit_events`
   append-only; `diary_connectors` delete-only for recovery), `settings` only for
-  `OWNED_SETTING_KEYS` through key-checked helpers, with `foreign_keys = ON`; it opens only with
-  the deployment switch `NOEVIA_RUST_AUTH=1` (`RustAuth`). Node refuses the same writes while the
-  switch is on (noevia-core `server/rust-auth.cjs`). `json.rs` is Node's `atomicJson` (same temp
+  `OWNED_SETTING_KEYS` through key-checked helpers, with `foreign_keys = ON`; it opens with the
+  ownership token `RustAuth::owned()` (the old switch `NOEVIA_RUST_AUTH` is retired,
+  sbstndalton/noevia#1071). Node always refuses the same writes (noevia-core
+  `server/rust-auth.cjs`). `json.rs` is Node's `atomicJson` (same temp
   name, modes and rename, `JSON.stringify` bytes), gated by `OWNED_JSON_FILES` (the account-*.json
-  records) and the switch.
+  records) and the ownership token.
 - `crates/server-auth` (M2): noevia-core's request gate, read-only: auth.cjs `authenticate`
   (session cookie, legacy bearer), device-auth.cjs device tokens and `browserOnly`, `csrfValid`,
   `originValid` (never wider than Node: after a first-run setup that chose an address other
@@ -455,9 +456,9 @@ one slice at a time.
   `noevia-server`'s `identity::ValidatedIdentity` uses it (a path WHATWG parsing would change
   is refused 400 before the gate). M3 `upkeep`: the writes Node's gate made on every request
   (a live session's `last_seen_at`, a rejected session's DELETE, a device grant's `last_used_at`
-  at most once a minute), which the front makes before proxying while `NOEVIA_RUST_AUTH=1`; the
-  differential table records each case's writes and Rust must make the same ones. Under the
-  switch the address is the restart rule (`origin_from_settings`), as Node then re-reads it.
+  at most once a minute), which the front always makes before proxying; the differential table
+  records each case's writes and Rust must make the same ones. The address is the restart rule
+  (`origin_from_settings`, always set by `AuthConfig::from_lookup`), as Node re-reads it.
   Differential table from noevia-core's own code at
   `contracts/http/core.ref`:
   `NOEVIA_CORE_CHECKOUT=<noevia-core> node tools/gen-auth-fixtures.cjs > crates/server-auth/tests/fixtures/node-auth.v1.json`
@@ -467,9 +468,9 @@ one slice at a time.
   truthiness, UTF-16 lengths and slices. `js_json::wtf16` (M4) is the lossless variant for files
   Node writes: lone surrogates (a preview cut mid-emoji) kept and written back as `\udxxx`, JS
   property order for array-index keys; it says whether a refusal is one `JSON.parse` shares.
-- `crates/server-projects` (M4): the project routes the front answers under
-  `NOEVIA_RUST_PROJECTS`: a project's images, and (in a noevia-server built with the cargo feature
-  `rust-project-chats`) its chat list (`GET`/`POST /api/projects/{id}/chats`, with core's
+- `crates/server-projects` (M4): the project routes the front always answers (their switch
+  `NOEVIA_RUST_PROJECTS` is retired, sbstndalton/noevia#1071): a project's images, and (in a
+  noevia-server built with the cargo feature `rust-project-chats`, a default feature) its chat list (`GET`/`POST /api/projects/{id}/chats`, with core's
   getProject heal, instruction-skill reconcile, mergeChats and normalizeFrame). Differential table from core's own route on synthetic workspaces:
   `node tools/gen-project-chats-fixtures.cjs <noevia-core> crates/server-projects/tests/fixtures/node-chats.v1.json`;
   `tests/chats_property.rs` also runs generated saves through core when `NOEVIA_CORE_CHECKOUT` is set.
@@ -489,8 +490,8 @@ one slice at a time.
   account mounts, routes/device-auth.cjs, routes/account.cjs for instructions/memory/preferences)
   over server-store's writer, in index.cjs's order with Node's bodies, statuses, cookies, audit
   details and in-memory rate limits; Argon2 bounded to 4 at a time like Node's thread pool.
-  `noevia-server` answers the `switch = "NOEVIA_RUST_AUTH"` routes with it while the switch is
-  on; what Node's chain would hand on goes to Node. CI job `corpus-replay-front-rust-auth`
+  `noevia-server` always answers the sign-in and account routes with it (no switch since
+  sbstndalton/noevia#1071); what Node's chain would hand on goes to Node. CI job `corpus-replay-front-rust-auth`
   replays the corpus that way with zero differences and Node's final data dir, plus a negative
   control (Node alone with the switch refuses setup).
 

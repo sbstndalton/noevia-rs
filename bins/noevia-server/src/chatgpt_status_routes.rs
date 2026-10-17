@@ -2,8 +2,8 @@
 //! ChatGPT connection status (crates/server-chatgpt-status). Node's session gate first (signed out
 //! 401, as in Node), then the product flag (off: Node's 404 before any OAuth row or key), then the
 //! owner's row, read-only. Only that exact path and GET are owned (routes.toml); every other method,
-//! a trailing-slash path, every `/api/providers/chatgpt/*` sibling and every request while
-//! NOEVIA_RUST_CHATGPT_STATUS is off go to Node. The front's usual session upkeep (main's Writer,
+//! a trailing-slash path, every `/api/providers/chatgpt/*` sibling and every request without
+//! NOEVIA_RUST_AUTH=1 go to Node (its old switch NOEVIA_RUST_CHATGPT_STATUS is retired, #1071). The front's usual session upkeep (main's Writer,
 //! lib.rs) runs before this as for every routed request; the status read itself writes nothing.
 //!
 //! Keys (owner decision 1 on #1373): the current and previous secret keys are snapshotted once,

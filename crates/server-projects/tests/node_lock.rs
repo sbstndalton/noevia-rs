@@ -118,7 +118,7 @@ fn race(core: &str, blind: bool) -> (Vec<String>, Vec<String>, String) {
         .stdin(Stdio::piped())
         .spawn()
         .expect("node on PATH");
-    let switch = RustProjects::from_env_value(Some("1")).unwrap();
+    let switch = RustProjects::owned();
     let loaded = dir.path().join("projects.json.loaded");
     let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
     while !loaded.exists() {
@@ -388,7 +388,7 @@ fn chat_race(core: &str, blind: bool) -> Vec<String> {
         let ctx = server_projects::Ctx {
             data_dir: root.path(),
             user_id: USER,
-            switch: RustProjects::from_env_value(Some("1")).unwrap(),
+            switch: RustProjects::owned(),
             now_ms: 1,
         };
         let body =
@@ -504,7 +504,7 @@ fn move_out_race(core: &str, old_order: bool) -> (bool, bool) {
     let ctx = server_projects::Ctx {
         data_dir: root.path(),
         user_id: USER,
-        switch: RustProjects::from_env_value(Some("1")).unwrap(),
+        switch: RustProjects::owned(),
         now_ms: 1,
     };
     // The stale client still lists c1 in p1 (with a newer title), next to a new chat.
@@ -551,7 +551,7 @@ fn free_ctx(root: &std::path::Path) -> server_projects::Ctx<'_> {
     server_projects::Ctx {
         data_dir: root,
         user_id: FREE_USER,
-        switch: RustProjects::from_env_value(Some("1")).unwrap(),
+        switch: RustProjects::owned(),
         now_ms: 1,
     }
 }

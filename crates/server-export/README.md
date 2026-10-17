@@ -154,7 +154,7 @@ the signed-in user's directory only (owner decision 2026-10-12: export what is o
 chats, the projects without the Diary-internal ones, and each chat's history file, with Node's
 coercions and fallbacks (see the module docs). bins/noevia-server `export_routes.rs` runs Node's
 gate first, writes the `export.conversations` audit row before sending, and answers with Node's
-headers; the switch is `NOEVIA_RUST_EXPORT=1` (needs `NOEVIA_RUST_PROJECTS=1` and a build with
+headers; the switch was `NOEVIA_RUST_EXPORT=1` (it is retired, as is `NOEVIA_RUST_PROJECTS`, #1071; a build needs
 `rust-export` and `rust-free-chats`).
 
 Narrower than Node, as refusals: an unparsable free-chats.json or projects.json, a `projects` that

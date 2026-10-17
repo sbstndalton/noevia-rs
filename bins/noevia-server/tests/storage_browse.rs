@@ -424,7 +424,7 @@ fn native_app(dir: &std::path::Path) -> Arc<App> {
     let mut app = App::new(
         Config::from_lookup(|k| match k {
             "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
-            "NOEVIA_RUST_AUTH" | "NOEVIA_RUST_STORAGE_BROWSE" => Some("1".into()),
+            "NOEVIA_RUST_STORAGE_BROWSE" => Some("1".into()),
             "UI_DATA_DIR" => Some(data.clone()),
             "PUBLIC_ORIGIN" => Some(ORIGIN.into()),
             _ => None,

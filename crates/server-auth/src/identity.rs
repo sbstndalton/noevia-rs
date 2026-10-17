@@ -3,8 +3,8 @@
 //!
 //! Verdicts are Node's. What Node also does on each request (a valid session's `last_seen_at`
 //! moved to now, a rejected session row deleted, a device grant's `last_used_at` touched) is not
-//! done here: this reads only. Node keeps doing it while it owns those tables; with
-//! NOEVIA_RUST_AUTH (M3) the front does it first, through [`crate::upkeep`].
+//! done here: this reads only. Since M3 (permanent since #1071) the front does it first, through
+//! [`crate::upkeep`].
 
 use crate::config::AuthConfig;
 use crate::js;

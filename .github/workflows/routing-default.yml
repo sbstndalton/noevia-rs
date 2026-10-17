@@ -46,7 +46,7 @@ jobs:
           set -euo pipefail
           cargo build --locked --target-dir target/routing-default-featureless -p noevia-server --no-default-features
           if target/routing-default-featureless/debug/noevia-server --features | grep -qx rust-routing-default; then exit 1; fi
-          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 NOEVIA_RUST_AUTH=1 NOEVIA_RUST_ROUTING_DEFAULT=1 target/routing-default-featureless/debug/noevia-server > "$RUNNER_TEMP/routing-default-featureless.log" 2>&1; then exit 1; fi
+          if NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9 target/routing-default-featureless/debug/noevia-server > "$RUNNER_TEMP/routing-default-featureless.log" 2>&1; then exit 1; fi
           grep -q 'needs compiled rust-routing-default' "$RUNNER_TEMP/routing-default-featureless.log"
           cargo build --locked -p noevia-server --features rust-routing-default
           target/debug/noevia-server --features | grep -qx rust-routing-default

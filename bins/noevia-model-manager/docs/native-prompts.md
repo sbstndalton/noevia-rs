@@ -1,10 +1,10 @@
 # Native prompt library (#1356)
 
-The optional `native-prompts` Cargo feature moves the complete prompt CRUD and once-only startup seed writer together. `MODEL_MANAGER_PROMPTS_IMPL` defaults to `python`. Selecting `rust` requires the compiled feature and `MODEL_MANAGER_IMPL=rust`. Invalid selection refuses before database access or child spawn. This document describes implementation and qualification boundaries; it does not authorize activation.
+The optional `native-prompts` Cargo feature moves the complete prompt CRUD and once-only startup seed writer together. `MODEL_MANAGER_PROMPTS_IMPL` defaults to `python`. Selecting `rust` requires the compiled feature. Invalid selection refuses before database access or child spawn. This document describes implementation and qualification boundaries; it does not authorize activation.
 
 The native pairs are GET and POST `/api/v1/prompts`, and DELETE `/api/v1/prompts/{pid}` with one decoded segment. Unsupported methods on these known paths return 405. Unknown prompt subpaths return 404. Token authentication precedes path, method, body and store work. Native failures never fall back to Python. The public Node proxy retains session, CSRF, admin, no-store and normalization policy; owning these service endpoints does not move the public route.
 
-Python exec removes inherited prompt confirmation. A native parent with the prompt selector off replaces it with `0`. Only successful native store/seed readiness permits the supervised loopback child to receive exact `NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED=1`. The services handoff must guard direct add/delete/seed and only the fixed seed kv write, suppress only startup seed, and authenticate before refusing the three HTTP pairs. Python retains other tables, kv keys and indirect prompt reads.
+The native parent is always used (noevia#1071); with the prompt selector off it replaces any inherited prompt confirmation with `0`. Only successful native store/seed readiness permits the supervised loopback child to receive exact `NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED=1`. The services handoff must guard direct add/delete/seed and only the fixed seed kv write, suppress only startup seed, and authenticate before refusing the three HTTP pairs. Python retains other tables, kv keys and indirect prompt reads.
 
 ## Shared store and lifetime
 

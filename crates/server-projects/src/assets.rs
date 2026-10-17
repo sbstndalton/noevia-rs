@@ -365,7 +365,7 @@ mod tests {
             Ctx {
                 data_dir: self.root.path(),
                 user_id: user,
-                switch: RustProjects::from_env_value(Some("1")).unwrap(),
+                switch: RustProjects::owned(),
                 now_ms: 1_791_600_933_849,
             }
         }

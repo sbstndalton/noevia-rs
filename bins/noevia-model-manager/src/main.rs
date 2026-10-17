@@ -3,7 +3,7 @@ mod child_lifecycle;
 use noevia_model_manager::{
     docker::UnixDocker, legacy_client, router, validate_token, Redactor, StateData,
 };
-use std::{io::Write, os::unix::process::CommandExt, sync::Arc};
+use std::{io::Write, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -68,7 +68,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Err("native-logs feature is not enabled".into());
     }
-    let mode = environment("MODEL_MANAGER_IMPL", "python")?;
+    // noevia#1071: the native parent is permanent. MODEL_MANAGER_IMPL is retired; a leftover
+    // value other than `rust` is ignored with a warning (there is no Python-only mode to exec).
+    if retired_selector_ignored(&environment("MODEL_MANAGER_IMPL", "rust")?) {
+        eprintln!(
+            "MODEL_MANAGER_IMPL is retired and ignored; the native model manager always runs"
+        );
+    }
+    // The sub-selectors below still name the parent mode; it is always native now.
+    let mode = "rust";
     let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
     let sections_mode = environment("MODEL_MANAGER_SECTIONS_IMPL", "python")?;
     let prompts_mode = environment("MODEL_MANAGER_PROMPTS_IMPL", "python")?;
@@ -390,36 +398,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(
             "native-host requires rust model manager and compiled native-host feature".into(),
         );
-    }
-    if mode == "python" {
-        let error = std::process::Command::new("uvicorn")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED")
-            .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
-            .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
-            .env_remove("NOEVIA_EMBED_SERVICE_URL")
-            .args(["app.main:app", "--host", "0.0.0.0", "--port", "8090"])
-            .exec();
-        return Err(error.into());
-    }
-    if mode != "rust" {
-        return Err("MODEL_MANAGER_IMPL must be python or rust".into());
     }
     if !cfg!(feature = "native-logs") {
         return Err("native-logs feature is not enabled".into());
@@ -846,6 +824,11 @@ async fn terminate() {
             std::future::pending::<()>().await;
         }
     }
+}
+
+/// noevia#1071: true when a leftover `MODEL_MANAGER_IMPL` asks for anything but the native parent.
+fn retired_selector_ignored(value: &str) -> bool {
+    value != "rust"
 }
 
 fn environment(key: &str, default: &str) -> Result<String, &'static str> {

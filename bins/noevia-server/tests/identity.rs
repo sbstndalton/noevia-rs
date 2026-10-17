@@ -222,10 +222,16 @@ async fn fails_closed_until_the_store_is_usable() {
         assert!(s.2.contains("unavailable"), "{}", s.2);
     };
     let cookie = format!("cowork_session={SESSION}");
-    // No UI_DATA_DIR.
-    let app0 = app(&[]);
-    assert!(matches!(app0.identity.status(), Status::Unavailable(_)));
-    unavailable(call(&app0, "GET", "/api/test/who", &[("cookie", &cookie)]).await);
+    // No UI_DATA_DIR: the front owns sign-in (#1071), so it refuses to start at all.
+    let refused = |pairs: &[(&str, &str)]| {
+        let m: HashMap<String, String> = [("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9")]
+            .iter()
+            .chain(pairs)
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect();
+        Config::from_lookup(|k| m.get(k).cloned()).is_err()
+    };
+    assert!(refused(&[]));
     // No database yet; then Node creates it and the next request works without a restart.
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path().display().to_string();
@@ -248,12 +254,11 @@ async fn fails_closed_until_the_store_is_usable() {
     );
     let fresh = app(&[("UI_DATA_DIR", &d)]);
     assert!(matches!(fresh.identity.status(), Status::Refused(_)));
-    // An invalid feature value (Node refuses to start on it): 503, and the front still builds.
-    let bad = app(&[
+    // An invalid feature value (Node refuses to start on it): the front refuses to start too.
+    assert!(refused(&[
         ("UI_DATA_DIR", &d),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "maybe"),
-    ]);
-    assert!(matches!(bad.identity.status(), Status::Refused(_)));
+    ]));
 }
 
 /// Review F2: Node gates on the WHATWG-parsed pathname. A path parsing would change is refused

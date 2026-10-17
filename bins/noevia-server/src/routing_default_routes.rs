@@ -1,7 +1,7 @@
 //! Native `GET /api/routing-default` (M6, sbstndalton/noevia#1305): the signed-in user's default
 //! routing, read from their own preferences.json (crates/server-routing-default). Identity
 //! precedes everything; only GET is owned (routes.toml), so every other method, and every request
-//! while NOEVIA_RUST_ROUTING_DEFAULT is off, goes to Node. A failed or unsafe read answers 503,
+//! without NOEVIA_RUST_AUTH=1, goes to Node (NOEVIA_RUST_ROUTING_DEFAULT is retired, #1071). A failed or unsafe read answers 503,
 //! never a guessed routing and never a fallback to Node.
 use crate::{identity, reply, App};
 use axum::{

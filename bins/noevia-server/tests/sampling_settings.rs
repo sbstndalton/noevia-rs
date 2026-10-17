@@ -101,8 +101,6 @@ async fn sampling_identity_admin_methods_audit_caps_and_omission() {
     let env = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", d.path().display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
-        ("NOEVIA_RUST_SAMPLING_SETTINGS", "1".into()),
         ("PUBLIC_ORIGIN", origin.clone()),
     ]);
     let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
@@ -260,6 +258,7 @@ async fn sampling_identity_admin_methods_audit_caps_and_omission() {
     assert_eq!(call(addr, "GET", p, member, "", "").await.0, 200);
     tx.send(()).unwrap();
     task.await.unwrap();
+    // sbstndalton/noevia#1071: the retired switch set to "0" keeps the route native.
     let mut env = env;
     env.insert("NOEVIA_RUST_SAMPLING_SETTINGS", "0".into());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -284,7 +283,11 @@ async fn sampling_identity_admin_methods_audit_caps_and_omission() {
         "/api/x/../sampling-settings",
         "/api/x/%2e%2e/sampling-settings",
     ] {
-        assert_eq!(call(addr, "GET", path, member, "", "").await.0, 502);
+        assert_eq!(
+            call(addr, "GET", path, member, "", "").await.0,
+            200,
+            "{path}"
+        );
     }
     tx.send(()).unwrap();
     task.await.unwrap();
@@ -319,8 +322,6 @@ async fn actual_node_matrix_through_native_http_with_dead_legacy() {
     let env = HashMap::from([
         ("UI_DATA_DIR", d.path().display().to_string()),
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
-        ("NOEVIA_RUST_SAMPLING_SETTINGS", "1".into()),
         ("PUBLIC_ORIGIN", origin.clone()),
     ]);
     let (tx, rx) = oneshot::channel();
