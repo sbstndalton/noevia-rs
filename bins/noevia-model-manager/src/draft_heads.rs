@@ -74,10 +74,11 @@ const RULE_WORK: u64 = 64 * 1024 * 1024;
 pub const CONCURRENT_READS: usize = 2;
 /// Concurrent Hub lookups (noevia#1973): each may hold one tree page (up to [`PAGE_CAP`]) while
 /// it is parsed into a tree (bounded by [`PAGE_NODES`] and [`PAGE_STRING_CHARS`]), then that tree
-/// plus the projected listing (up to `model_files::MAX_INPUT_BYTES`), then the listing's own tree
-/// (bounded by [`PROJECTED_NODES`]) and its file list; later requests wait.
+/// plus the projected listing (up to `model_files::MAX_INPUT_BYTES`, kept from earlier pages
+/// throughout), then the listing's own tree (bounded by [`PROJECTED_NODES`]) and its file list:
+/// about 100 MiB per lookup at most (noevia#1995); later requests wait.
 pub const CONCURRENT_LOOKUPS: usize = 2;
-/// noevia#1985: largest tree page read (the update check keeps its own `TREE_CAP`). A Hub page
+/// noevia#1985: largest tree page read (the update check has its own `UPDATE_PAGE_CAP`). A Hub page
 /// is at most a few thousand entries (well under 1 MiB); a larger one is a failed lookup.
 pub const PAGE_CAP: usize = 16 * 1024 * 1024;
 /// noevia#1985: most JSON values and keys in one page. A Hub entry with `expand=true` is about
@@ -361,12 +362,14 @@ impl Projected {
         if entries > model_files::MAX_ENTRIES || nodes.checked_add(1)? > PROJECTED_NODES {
             return None;
         }
-        if self.out.capacity() < len {
+        // Room for the closing `]` too, so `finish` never reallocates (len < the cap here).
+        let room = len.checked_add(1)?;
+        if self.out.capacity() < room {
             let grown = self
                 .out
                 .capacity()
                 .saturating_mul(2)
-                .max(len)
+                .max(room)
                 .min(model_files::MAX_INPUT_BYTES);
             self.out.try_reserve_exact(grown - self.out.len()).ok()?;
         }

@@ -631,9 +631,10 @@ async fn read_page(page: &[u8]) -> Option<Vec<u8>> {
 /// character over its limit, so what a refused page allocated is a prefix of a page the limits
 /// admit; the largest admitted trees of each shape (bare numbers, object keys, long strings,
 /// nested single-element arrays) are measured by their buffer capacities and stay under
-/// `tree_bound()` (68 MiB). A lookup's first stages: the page and its tree, then the tree and the
-/// projected listing (at most `MAX_INPUT_BYTES`, see `projected_entries_…`): each at most
-/// `tree_bound() + 16 MiB` = 84 MiB. The final parse of the listing and its file list are
+/// `tree_bound()` (68 MiB). While a page is read and parsed, the listing projected from the
+/// earlier pages is held too (at most `MAX_INPUT_BYTES`, see `projected_entries_…`), so that
+/// stage is at most page + tree + listing = 16 + 68 + 16 = 100 MiB (noevia#1995); projecting it
+/// (tree + listing) is less. The final parse of the listing and its file list are
 /// `final_stage_is_bounded`. It was 1-2 GiB per page.
 #[tokio::test]
 async fn hostile_pages_are_refused_within_a_bound() {
@@ -692,7 +693,7 @@ async fn hostile_pages_are_refused_within_a_bound() {
     ];
     let bound = tree_bound();
     assert!(
-        bound + PAGE_CAP.max(model_files::MAX_INPUT_BYTES) <= 84 * MIB,
+        bound + PAGE_CAP + model_files::MAX_INPUT_BYTES <= 100 * MIB,
         "{bound}"
     );
     for (name, page) in largest {
@@ -938,9 +939,13 @@ fn files_heap(files: &[model_files::HfFile], capacity: usize) -> usize {
 /// noevia#1995: the final stage. The listing text (at most `MAX_INPUT_BYTES`) and its tree (at
 /// most `PROJECTED_NODES` nodes: `tree_bound()`, as for a page) are 84 MiB at most; the text is
 /// then dropped and the file list built beside the tree. The file list holds at most one file per
-/// 5 nodes and copies of their paths (the shard base and the quant label come from each path);
-/// for the shapes that maximise it (the most files, short sharded quantised names, the longest
-/// ASCII and 4-byte paths) the tree and the list stay under 84 MiB too.
+/// 5 nodes and copies of their paths (the shard base and the quant label come from each path).
+/// It is largest for sharded paths just past a power of two, where both the node cap and the
+/// input cap bind: the parser's path string doubles (288 characters keep 512 bytes) and the shard
+/// base is reserved by characters and then doubled by the `.gguf` extend. A sweep of path lengths
+/// 40-1100 (and 2049, 4096), sharded or not, peaked at 98.3 MiB for 288-character sharded paths
+/// (52,428 files), so the bound is 100 MiB. The other shapes: the most files, short sharded
+/// quantised names, and the longest ASCII and 4-byte paths.
 #[test]
 fn final_stage_is_bounded() {
     let mk = |entry: String, count: usize| format!("[{}]", vec![entry; count].join(", "));
@@ -949,7 +954,25 @@ fn final_stage_is_bounded() {
         let count = (model_files::MAX_INPUT_BYTES - 16) / (entry.len() + 2);
         mk(entry, count)
     };
+    // `{"type": "file", "path": …}` with a `len`-character sharded quantised path, as many as both
+    // caps allow.
+    let sharded = |len: usize| {
+        let suffix = "-Q4_K_M-00001-of-00002.gguf";
+        let entry = format!(
+            r#"{{"type": "file", "path": "{}{suffix}"}}"#,
+            "a".repeat(len - suffix.len())
+        );
+        let count = ((model_files::MAX_INPUT_BYTES - 16) / (entry.len() + 2))
+            .min((PROJECTED_NODES - 1) / 5);
+        mk(entry, count)
+    };
     let shapes = [
+        ("257-character sharded paths", sharded(257)),
+        (
+            "288-character sharded paths (the sweep's peak)",
+            sharded(288),
+        ),
+        ("513-character sharded paths", sharded(513)),
         (
             "most files",
             mk(
@@ -992,7 +1015,7 @@ fn final_stage_is_bounded() {
         let files = model_files::files_from_tree(&tree).unwrap();
         assert!(!files.is_empty(), "{name}");
         let list = files_heap(&files, files.capacity());
-        assert!(held + list <= 84 * MIB, "{name}: {held} + {list}");
+        assert!(held + list <= 100 * MIB, "{name}: {held} + {list}");
         assert_eq!(files_of(payload).unwrap(), files, "{name}");
         eprintln!(
             "{name}: tree {:.1} MiB, {} files {:.1} MiB",
@@ -1053,4 +1076,25 @@ async fn pages_of_kept_numbers_fail_the_lookup_at_the_node_cap() {
     assert_eq!(answer["remoteError"], REMOTE_ERROR);
     assert_eq!(seen.lock().unwrap().len(), 2);
     server.abort();
+}
+
+/// noevia#1995: `push` keeps room for the closing `]`, so `finish` never reallocates: a payload of
+/// one ~15 MiB entry stays at (about) its length instead of doubling to ~30 MiB, and no finished
+/// payload's buffer passes `MAX_INPUT_BYTES`.
+#[test]
+fn finishing_the_listing_never_reallocates() {
+    let entry = Value::Str("p".repeat(15 * MIB));
+    let mut one = Projected::default();
+    one.push(&entry).unwrap();
+    let before = one.out.capacity();
+    assert!(before > one.out.len(), "no room for the closing bracket");
+    let payload = one.finish();
+    assert_eq!(payload.capacity(), before);
+    assert!(payload.capacity() <= model_files::MAX_INPUT_BYTES);
+    let at_cap = Value::Str("a".repeat(model_files::MAX_INPUT_BYTES - 4));
+    let mut full = Projected::default();
+    full.push(&at_cap).unwrap();
+    let payload = full.finish();
+    assert_eq!(payload.len(), model_files::MAX_INPUT_BYTES);
+    assert_eq!(payload.capacity(), model_files::MAX_INPUT_BYTES);
 }
