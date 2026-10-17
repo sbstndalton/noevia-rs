@@ -72,6 +72,9 @@ const BUSY_WAIT: Duration = Duration::from_millis(5000);
 const RULE_WORK: u64 = 64 * 1024 * 1024;
 /// Concurrent file parts: each may hold a GGUF header while parsing.
 pub const CONCURRENT_READS: usize = 2;
+/// Concurrent Hub lookups (noevia#1973): each may hold one tree page (up to `TREE_CAP`) plus the
+/// projected listing (up to `model_files::MAX_INPUT_BYTES`); later requests wait for a permit.
+pub const CONCURRENT_LOOKUPS: usize = 2;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
@@ -90,6 +93,7 @@ pub struct DraftHeads {
     hf_api: String,
     client: reqwest::Client,
     reads: Arc<tokio::sync::Semaphore>,
+    lookups: Arc<tokio::sync::Semaphore>,
     open: fn(&Path) -> Result<Root, WalkError>,
 }
 
@@ -140,6 +144,7 @@ impl DraftHeads {
             hf_api: hf_api.trim_end_matches('/').to_owned(),
             client,
             reads: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_READS)),
+            lookups: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_LOOKUPS)),
             open,
         })
     }
@@ -176,6 +181,10 @@ impl DraftHeads {
         let mut mtp_build = "null".to_owned();
         let mut remote_error = false;
         if let Some(repo) = &local.repo {
+            // Held for the listing and the sibling lookup; the semaphore is never closed.
+            let Ok(_lookup) = self.lookups.acquire().await else {
+                return Outcome::Refused;
+            };
             match self.repo_detail(repo).await {
                 Ok(files) => {
                     let heads = heads(repo, files);
@@ -230,7 +239,11 @@ impl DraftHeads {
             "{}/models/{repo}/tree/main?recursive=true&expand=true",
             self.hf_api
         );
-        let mut entries: Vec<Value> = Vec::new();
+        // Each page is projected as it arrives (noevia#1973): only the projected entries are
+        // kept, with the running size of `json.dumps(projected)`, and the lookup fails as soon as
+        // it passes the binary's input cap (Python's `len(payload) > MODEL_FILES_STDIN_CAP`
+        // after the last page; the size only grows, so the answer is the same).
+        let mut projected = Projected::default();
         for _ in 0..TREE_MAX_PAGES {
             let mut request = self.client.get(&url);
             if let Some(value) = &header {
@@ -247,7 +260,10 @@ impl DraftHeads {
             let Value::Arr(items) = page else {
                 break;
             };
-            entries.extend(items);
+            for item in &items {
+                projected.push(item).ok_or(Lookup::Failed)?;
+            }
+            drop(items);
             let Some(next) = next_link(&link) else {
                 break;
             };
@@ -257,12 +273,9 @@ impl DraftHeads {
             }
             url = next;
         }
-        let payload = py_dumps_ascii(&Value::Arr(entries.iter().map(project).collect()));
+        let payload = projected.finish();
         let files = tokio::task::spawn_blocking(move || {
-            // `len(payload) > MODEL_FILES_STDIN_CAP`, then the binary's own parse and caps.
-            if payload.len() > model_files::MAX_INPUT_BYTES {
-                return Err(Lookup::Failed);
-            }
+            // The binary's own parse and caps (the size was checked page by page).
             let value = model_files::json::parse(&payload).map_err(|_| Lookup::Failed)?;
             model_files::files_from_tree(&value).map_err(|_| Lookup::Failed)
         })
@@ -275,6 +288,33 @@ impl DraftHeads {
             (!lower.ends_with(".gguf"), lower)
         });
         Ok(files)
+    }
+}
+
+/// `json.dumps([_project(e) for e in entries])`, built entry by entry under the input cap.
+#[derive(Default)]
+struct Projected {
+    out: String,
+}
+
+impl Projected {
+    /// Adds one entry; `None` once the finished payload would pass `model_files::MAX_INPUT_BYTES`.
+    fn push(&mut self, entry: &Value) -> Option<()> {
+        self.out.push(if self.out.is_empty() { '[' } else { ',' });
+        if self.out.len() > 1 {
+            self.out.push(' ');
+        }
+        dump(&project(entry), &mut self.out);
+        // The closing `]` counts too.
+        (self.out.len() < model_files::MAX_INPUT_BYTES).then_some(())
+    }
+
+    fn finish(mut self) -> String {
+        if self.out.is_empty() {
+            self.out.push('[');
+        }
+        self.out.push(']');
+        self.out
     }
 }
 
@@ -444,6 +484,7 @@ fn project(e: &Value) -> Value {
 
 /// `json.dumps(value, ensure_ascii=True)` for what `json.loads` returned (a dict keeps the first
 /// position of a repeated key and its last value).
+#[cfg(test)]
 fn py_dumps_ascii(value: &Value) -> String {
     let mut out = String::new();
     dump(value, &mut out);

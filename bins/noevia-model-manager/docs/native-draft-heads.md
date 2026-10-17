@@ -31,6 +31,7 @@ Only GET with a name segment that does not decode to `/` is native. Other method
 - **Next links stay on the Hub's origin:** Python follows any `next` link and sends the token with it. Natively, a `next` link to another scheme, host or port is a failed lookup (`remoteError`), so the token never leaves the configured Hub origin.
 - **Hub-shaped ids only:** a repository id with a segment that is empty, `.`, `..`, or not letters, digits and `._-` is a failed lookup. Python would send it (the update check does the same).
 - **Bounds:** a page over 64 MiB, or JSON nested deeper than 512 levels, is a failed lookup. Python reads any size and recurses until `RecursionError`, which also fails the lookup.
+- **Memory (noevia#1973):** each page is projected as it arrives (only `type`, `path`, `size` and `lfs.size` are kept, as `model_files._project` does), and the lookup fails as soon as the projected listing passes the 16 MiB input cap of `model-files`, without asking for the next page. Python keeps every page and checks the cap once at the end; the answer is the same because the size only grows. At most 2 Hub lookups run at once; later requests wait. One lookup holds at most one page (64 MiB) plus the 16 MiB projected listing.
 - **Refusals:** some conditions answer the native 503 before any Hub request, because the kernel-contained reader cannot follow them exactly:
   - a link or symlinked folder leaving the models folder;
   - a `..` in a `model =` path;

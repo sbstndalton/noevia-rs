@@ -353,3 +353,201 @@ async fn cross_origin_next_links_and_odd_ids_are_failed_lookups() {
 fn hex_of(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
+
+/// noevia#1973: the payload built page by page is byte for byte `json.dumps(projected)`, and the
+/// size check gives Python's `len(payload) > MODEL_FILES_STDIN_CAP` answer at the exact edge.
+#[test]
+fn running_projection_matches_the_whole_dump_and_its_cap() {
+    let parsed = model_files::json::parse(
+        r#"[{"type": "file", "path": "a", "oid": "x"}, "s", 3, {"lfs": {"size": 1}}]"#,
+    )
+    .unwrap();
+    let Value::Arr(items) = parsed else { panic!() };
+    let mut running = Projected::default();
+    for item in &items {
+        running.push(item).unwrap();
+    }
+    assert_eq!(
+        running.finish(),
+        py_dumps_ascii(&Value::Arr(items.iter().map(project).collect()))
+    );
+    assert_eq!(Projected::default().finish(), "[]");
+    // `["<n x a>"]` is n + 4 bytes: exactly the cap passes, one more byte fails.
+    let at_cap = Value::Str("a".repeat(model_files::MAX_INPUT_BYTES - 4));
+    let mut edge = Projected::default();
+    assert!(edge.push(&at_cap).is_some());
+    assert_eq!(edge.finish().len(), model_files::MAX_INPUT_BYTES);
+    let over = Value::Str("a".repeat(model_files::MAX_INPUT_BYTES - 3));
+    assert!(Projected::default().push(&over).is_none());
+}
+
+fn tree_page(path_bytes: usize, filler_bytes: usize) -> Vec<u8> {
+    // One projected entry of about `path_bytes`, plus a field `_project` drops.
+    format!(
+        r#"[{{"type": "file", "path": "{}.gguf", "size": 1, "oid": "{}"}}]"#,
+        "p".repeat(path_bytes),
+        "o".repeat(filler_bytes)
+    )
+    .into_bytes()
+}
+
+fn one_section(root: &Path) -> PathBuf {
+    let case = serde_json::json!({"files": [
+        {"name": "a.gguf", "gguf": {"general.architecture": ["str", "llama"]}}]});
+    let models = build(root, &case);
+    store(
+        root,
+        &fixture()["schema"],
+        &serde_json::json!({"seed": [
+            "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/a', 'a.gguf', '/m', 1, 'done', 1.0)"]}),
+    );
+    models
+}
+
+/// noevia#1973: pages each under `TREE_CAP` whose projected total passes the input cap fail the
+/// lookup on the page that passes it; the next page is never asked for (nothing more is held),
+/// and fields `_project` drops do not count.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn projected_total_over_the_cap_fails_on_the_page_that_passes_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let models = one_section(&root);
+    let nine = 9 * 1024 * 1024;
+    let tree = "/api/models/acme/a/tree/main";
+    let page = |body: Vec<u8>, next: Option<&str>| {
+        let mut headers = vec![serde_json::json!(["content-type", "application/json"])];
+        if let Some(n) = next {
+            headers.push(serde_json::json!([
+                "link",
+                format!("<@HUB@{tree}?cursor={n}>; rel=\"next\"")
+            ]));
+        }
+        serde_json::json!({"status": 200, "headers": headers, "body": hex_of(&body)})
+    };
+    let mut answers = serde_json::Map::new();
+    // Page 1: a 30 MiB page whose projection is tiny (dropped `oid`), so it does not count.
+    answers.insert(
+        format!("{tree}?recursive=true&expand=true"),
+        page(tree_page(8, 30 * 1024 * 1024), Some("2")),
+    );
+    answers.insert(
+        format!("{tree}?cursor=2"),
+        page(tree_page(nine, 0), Some("3")),
+    );
+    answers.insert(
+        format!("{tree}?cursor=3"),
+        page(tree_page(nine, 0), Some("4")),
+    );
+    answers.insert(format!("{tree}?cursor=4"), page(b"[]".to_vec(), None));
+    let (base, seen, server) = hub(J::Object(answers)).await;
+    let heads = DraftHeads::with(
+        &models,
+        &models.join("models.ini"),
+        &root,
+        &format!("{base}/api"),
+        Root::synthetic,
+    )
+    .unwrap();
+    let Outcome::Json(200, body) = heads.get("a").await else {
+        panic!()
+    };
+    let body: J = serde_json::from_slice(&body).unwrap();
+    assert_eq!(body["remoteError"], REMOTE_ERROR);
+    assert_eq!(body["remote"], serde_json::json!([]));
+    let paths: Vec<String> = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|r| r["path"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            format!("{tree}?recursive=true&expand=true"),
+            format!("{tree}?cursor=2"),
+            format!("{tree}?cursor=3")
+        ]
+    );
+    server.abort();
+}
+
+/// noevia#1973: at most `CONCURRENT_LOOKUPS` Hub lookups are in flight at once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn remote_lookups_are_bounded() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let models = one_section(&root);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    let (now, peak, total) = (
+        Arc::new(AtomicUsize::new(0)),
+        Arc::new(AtomicUsize::new(0)),
+        Arc::new(AtomicUsize::new(0)),
+    );
+    // Every answer waits until all lookups that may be in flight have arrived (or 2 s pass), so
+    // an unbounded reader would show more than `CONCURRENT_LOOKUPS` at once.
+    let arrived = Arc::new(tokio::sync::Notify::new());
+    let (n, p, t, a) = (now.clone(), peak.clone(), total.clone(), arrived.clone());
+    let server = tokio::spawn(async move {
+        while let Ok((mut sock, _)) = listener.accept().await {
+            let (n, p, t, a) = (n.clone(), p.clone(), t.clone(), a.clone());
+            tokio::spawn(async move {
+                let mut head = Vec::new();
+                let mut byte = [0u8; 1];
+                while !head.ends_with(b"\r\n\r\n") {
+                    if sock.read(&mut byte).await.unwrap_or(0) == 0 {
+                        return;
+                    }
+                    head.push(byte[0]);
+                }
+                let inflight = n.fetch_add(1, Ordering::SeqCst) + 1;
+                p.fetch_max(inflight, Ordering::SeqCst);
+                t.fetch_add(1, Ordering::SeqCst);
+                a.notify_waiters();
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                    while n.load(Ordering::SeqCst) <= CONCURRENT_LOOKUPS {
+                        a.notified().await;
+                    }
+                })
+                .await;
+                n.fetch_sub(1, Ordering::SeqCst);
+                let _ = sock
+                    .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n[]")
+                    .await;
+                let _ = sock.shutdown().await;
+            });
+        }
+    });
+    let heads = Arc::new(
+        DraftHeads::with(
+            &models,
+            &models.join("models.ini"),
+            &root,
+            &format!("{base}/api"),
+            Root::synthetic,
+        )
+        .unwrap(),
+    );
+    let calls: Vec<_> = (0..6)
+        .map(|_| {
+            let h = heads.clone();
+            tokio::spawn(async move { h.get("a").await })
+        })
+        .collect();
+    for call in calls {
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(60), call)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(outcome, Outcome::Json(200, _)));
+    }
+    // Each answer is a listing without heads, then the `-GGUF` sibling rule does not apply.
+    assert_eq!(total.load(Ordering::SeqCst), 6);
+    assert!(
+        peak.load(Ordering::SeqCst) <= CONCURRENT_LOOKUPS,
+        "{peak:?}"
+    );
+    assert!(peak.load(Ordering::SeqCst) >= 1);
+    server.abort();
+}
