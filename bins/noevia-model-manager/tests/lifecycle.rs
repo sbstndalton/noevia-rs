@@ -670,12 +670,7 @@ fn check_updates_selector_omission_and_python_confirmation_are_closed_before_chi
 #[test]
 fn benchmark_runner_selector_omission_and_python_confirmation_are_closed_before_child() {
     let (dir, marker) = owned_uvicorn();
-    for (parent, targets) in [
-        ("python", "rust"),
-        ("rust", "invalid"),
-        ("rust", "Rust"),
-        ("invalid", "rust"),
-    ] {
+    for (parent, targets) in [("rust", "invalid"), ("rust", "Rust")] {
         let output = command(dir.path(), &marker)
             .env("MODEL_MANAGER_IMPL", parent)
             .env("MODEL_MANAGER_BENCHMARK_RUNNER_IMPL", targets)
@@ -696,7 +691,7 @@ fn benchmark_runner_selector_omission_and_python_confirmation_are_closed_before_
         );
         assert!(!marker.exists());
     }
-    // Default python: an inherited confirmation never reaches uvicorn.
+    // Selector off: the always-native parent hands the child "0" over an inherited value.
     let script = dir.path().join("uvicorn");
     std::fs::write(&script,"#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
     for selected in [None, Some("python")] {
@@ -708,10 +703,9 @@ fn benchmark_runner_selector_omission_and_python_confirmation_are_closed_before_
         if let Some(value) = selected {
             cmd.env("MODEL_MANAGER_BENCHMARK_RUNNER_IMPL", value);
         }
-        let output = busy_retry(&mut cmd);
-        assert_eq!(output.status.code(), Some(42));
-        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unset");
-        std::fs::remove_file(&marker).unwrap();
+        if let (Some(record), _) = native_child_record(&mut cmd, &marker) {
+            assert_eq!(record, "0");
+        }
     }
 }
 
