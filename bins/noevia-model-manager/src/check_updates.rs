@@ -26,9 +26,6 @@ use std::{
 
 /// `hf.HF_API`.
 pub const HF_API: &str = "https://huggingface.co/api";
-/// Largest tree page the draft-heads read takes (until it has its own cap, noevia#1985). The
-/// update check uses [`UPDATE_PAGE_CAP`].
-pub const TREE_CAP: usize = 64 * 1024 * 1024;
 /// noevia#1996: largest tree listing the update check reads; a larger one is treated as a failed
 /// request (no dates). The check reads one page per repository (the Hub pages the listing; real
 /// pages are a few thousand entries at most, well under 1 MiB).

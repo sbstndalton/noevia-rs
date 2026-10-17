@@ -39,7 +39,7 @@
 //! lookup (Python would send them); conditions the bounded reader cannot follow exactly (a link
 //! leaving the models folder, a symlinked folder, a `..` in a `model =` path, a header past the
 //! reader's bound, a summary error whose Python class is unknown) answer the native 503 refusal.
-use crate::check_updates::{hub_auth, hub_id, HubAuth, JSON_DEPTH, TREE_CAP};
+use crate::check_updates::{hub_auth, hub_id, HubAuth, JSON_DEPTH};
 use crate::model_detail::{hit_read_bound, is_file, stems_present, Watched};
 use crate::model_updates::{exists, inside, json_string, listing, read_ini, Stop};
 use crate::sections::{access::Root, ini, Budget, Error as WalkError};
@@ -72,9 +72,28 @@ const BUSY_WAIT: Duration = Duration::from_millis(5000);
 const RULE_WORK: u64 = 64 * 1024 * 1024;
 /// Concurrent file parts: each may hold a GGUF header while parsing.
 pub const CONCURRENT_READS: usize = 2;
-/// Concurrent Hub lookups (noevia#1973): each may hold one tree page (up to `TREE_CAP`) plus the
-/// projected listing (up to `model_files::MAX_INPUT_BYTES`); later requests wait for a permit.
+/// Concurrent Hub lookups (noevia#1973): each may hold one tree page (up to [`PAGE_CAP`]) while
+/// it is parsed into a tree (bounded by [`PAGE_NODES`] and [`PAGE_STRING_CHARS`]), then that tree
+/// plus the projected listing (up to `model_files::MAX_INPUT_BYTES`, kept from earlier pages
+/// throughout), then the listing's own tree (bounded by [`PROJECTED_NODES`]) and its file list:
+/// about 100 MiB per lookup at most (noevia#1995); later requests wait.
 pub const CONCURRENT_LOOKUPS: usize = 2;
+/// noevia#1985: largest tree page read (the update check has its own `UPDATE_PAGE_CAP`). A Hub page
+/// is at most a few thousand entries (well under 1 MiB); a larger one is a failed lookup.
+pub const PAGE_CAP: usize = 16 * 1024 * 1024;
+/// noevia#1985: most JSON values and keys in one page. A Hub entry with `expand=true` is about
+/// 30-60 nodes, so this is several thousand entries; a page of bare numbers at [`PAGE_CAP`]
+/// would be about 8 million (each an allocated big integer).
+pub const PAGE_NODES: usize = 256 * 1024;
+/// noevia#1985: longest string in one page, in characters. A projected string longer than the
+/// binary's own `model_files::json::MAX_STRING_CHARS` fails the lookup anyway; this bounds the
+/// fields `_project` drops (commit titles and the like).
+pub const PAGE_STRING_CHARS: usize = 64 * 1024;
+/// noevia#1995: most JSON values and keys in the projected listing (the payload the binary
+/// parses), counted as `model_files::json` counts them. A projected file entry is at most 11
+/// nodes, so this is about 23,800 such entries (a GGUF repository has tens); it keeps the parsed
+/// payload within the same bound as one page. Python would read up to `MAX_ENTRIES` (100,000).
+pub const PROJECTED_NODES: usize = PAGE_NODES;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
@@ -255,8 +274,11 @@ impl DraftHeads {
                 return Err(Lookup::Failed);
             }
             let link = link_header(response.headers());
-            let body = read_capped(response).await.ok_or(Lookup::Failed)?;
-            let page = parse_page(&body).ok_or(Lookup::Failed)?;
+            let body = read_capped(response.bytes_stream(), PAGE_CAP)
+                .await
+                .ok_or(Lookup::Failed)?;
+            // The raw page is dropped by the parse (noevia#1985): only the tree is kept.
+            let page = parse_page(body).ok_or(Lookup::Failed)?;
             let Value::Arr(items) = page else {
                 break;
             };
@@ -274,13 +296,9 @@ impl DraftHeads {
             url = next;
         }
         let payload = projected.finish();
-        let files = tokio::task::spawn_blocking(move || {
-            // The binary's own parse and caps (the size was checked page by page).
-            let value = model_files::json::parse(&payload).map_err(|_| Lookup::Failed)?;
-            model_files::files_from_tree(&value).map_err(|_| Lookup::Failed)
-        })
-        .await
-        .map_err(|_| Lookup::Failed)??;
+        let files = tokio::task::spawn_blocking(move || files_of(payload))
+            .await
+            .map_err(|_| Lookup::Failed)??;
         let mut files = files;
         // `files.sort(key=lambda f: (not f.path.lower().endswith(".gguf"), f.path.lower()))`.
         files.sort_by_cached_key(|f| {
@@ -291,22 +309,75 @@ impl DraftHeads {
     }
 }
 
+/// The binary's own parse and caps for the projected listing (its size, entries and nodes were
+/// checked entry by entry). noevia#1995: the parse is held to [`PROJECTED_NODES`] as well, and
+/// the payload text is dropped before the files are built.
+fn files_of(payload: String) -> Result<Vec<model_files::HfFile>, Lookup> {
+    let limits = Limits {
+        nodes: PROJECTED_NODES,
+        ..Limits::default()
+    };
+    let value =
+        model_files::json::parse_with_limits(&payload, limits).map_err(|_| Lookup::Failed)?;
+    drop(payload);
+    model_files::files_from_tree(&value).map_err(|_| Lookup::Failed)
+}
+
 /// `json.dumps([_project(e) for e in entries])`, built entry by entry under the input cap.
 #[derive(Default)]
 struct Projected {
     out: String,
+    /// noevia#1995: entries appended, at most `model_files::MAX_ENTRIES` (the binary refuses
+    /// more, so the answer is the same).
+    entries: usize,
+    /// noevia#1995: values and keys appended (without the enclosing array), so the payload
+    /// stays within [`PROJECTED_NODES`].
+    nodes: usize,
 }
 
 impl Projected {
     /// Adds one entry; `None` once the finished payload would pass `model_files::MAX_INPUT_BYTES`.
+    ///
+    /// noevia#1985: the entry's projected size is measured first and nothing is appended when it
+    /// does not fit, so one entry (escaped non-ASCII text dumps to up to 3 times its page bytes)
+    /// never takes the payload past the cap. The buffer grows by doubling but never beyond the cap.
+    ///
+    /// noevia#1995: likewise once the payload would hold more than `model_files::MAX_ENTRIES`
+    /// entries or [`PROJECTED_NODES`] nodes (the enclosing array is one).
     fn push(&mut self, entry: &Value) -> Option<()> {
-        self.out.push(if self.out.is_empty() { '[' } else { ',' });
-        if self.out.len() > 1 {
-            self.out.push(' ');
-        }
-        dump(&project(entry), &mut self.out);
+        let separator = if self.out.is_empty() { "[" } else { ", " };
+        let mut size = Count::default();
+        dump_projected(entry, &mut size);
+        let len = self
+            .out
+            .len()
+            .checked_add(separator.len())?
+            .checked_add(size.bytes)?;
         // The closing `]` counts too.
-        (self.out.len() < model_files::MAX_INPUT_BYTES).then_some(())
+        if len >= model_files::MAX_INPUT_BYTES {
+            return None;
+        }
+        let entries = self.entries.checked_add(1)?;
+        let nodes = self.nodes.checked_add(size.nodes)?;
+        if entries > model_files::MAX_ENTRIES || nodes.checked_add(1)? > PROJECTED_NODES {
+            return None;
+        }
+        // Room for the closing `]` too, so `finish` never reallocates (len < the cap here).
+        let room = len.checked_add(1)?;
+        if self.out.capacity() < room {
+            let grown = self
+                .out
+                .capacity()
+                .saturating_mul(2)
+                .max(room)
+                .min(model_files::MAX_INPUT_BYTES);
+            self.out.try_reserve_exact(grown - self.out.len()).ok()?;
+        }
+        self.out.push_str(separator);
+        dump_projected(entry, &mut self.out);
+        self.entries = entries;
+        self.nodes = nodes;
+        Some(())
     }
 
     fn finish(mut self) -> String {
@@ -433,32 +504,67 @@ fn next_link(link: &str) -> Option<String> {
         .map(|m| m.as_str().to_owned())
 }
 
-async fn read_capped(response: reqwest::Response) -> Option<Vec<u8>> {
+/// A response body of at most `cap` bytes (`None` past it or on a transport error). The buffer
+/// grows by doubling but never beyond `cap` (noevia#1985).
+async fn read_capped<S, E>(mut stream: S, cap: usize) -> Option<Vec<u8>>
+where
+    S: futures_util::Stream<Item = Result<bytes::Bytes, E>> + Unpin,
+{
     use futures_util::StreamExt;
-    let mut stream = response.bytes_stream();
-    let mut body = Vec::new();
+    let mut body: Vec<u8> = Vec::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.ok()?;
-        if body.len().saturating_add(chunk.len()) > TREE_CAP {
+        let len = body.len().checked_add(chunk.len())?;
+        if len > cap {
             return None;
+        }
+        if body.capacity() < len {
+            let grown = body.capacity().saturating_mul(2).max(len).min(cap);
+            body.try_reserve_exact(grown - body.len()).ok()?;
         }
         body.extend_from_slice(&chunk);
     }
     Some(body)
 }
 
-/// `tree.json()`: `None` where `json.loads` raises.
-fn parse_page(body: &[u8]) -> Option<Value> {
-    let text = crate::prompts::decode_json_bytes(body, TREE_CAP).ok()?;
-    let limits = Limits {
+/// The parse limits of one page (noevia#1985).
+fn page_limits() -> Limits {
+    Limits {
+        bytes: PAGE_CAP,
         depth: JSON_DEPTH,
-        string_chars: usize::MAX,
+        nodes: PAGE_NODES,
+        string_chars: PAGE_STRING_CHARS,
         ..Limits::default()
-    };
-    model_files::json::parse_with_limits(&text, limits).ok()
+    }
 }
 
-/// `model_files._project(e)`: only `type`, `path`, `size` and `lfs.size` reach the binary.
+/// `tree.json()`: `None` where `json.loads` raises, and (noevia#1985) for a page over
+/// [`PAGE_NODES`] or [`PAGE_STRING_CHARS`], a failed lookup like a page over [`PAGE_CAP`].
+///
+/// A UTF-8 page is parsed where it lies; a UTF-16 or UTF-32 one is decoded and the raw bytes are
+/// dropped before the parse. Either way only the tree outlives this call.
+fn parse_page(body: Vec<u8>) -> Option<Value> {
+    let decoded = match crate::prompts::decode_json_bytes(&body, PAGE_CAP).ok()? {
+        std::borrow::Cow::Borrowed(_) => None,
+        std::borrow::Cow::Owned(text) => Some(text),
+    };
+    match decoded {
+        Some(mut text) => {
+            drop(body);
+            // The decoder may have grown past what it holds (noevia#1995).
+            text.shrink_to_fit();
+            model_files::json::parse_with_limits(&text, page_limits()).ok()
+        }
+        None => {
+            let text = crate::prompts::decode_json_bytes(&body, PAGE_CAP).ok()?;
+            model_files::json::parse_with_limits(&text, page_limits()).ok()
+        }
+    }
+}
+
+/// `model_files._project(e)`: only `type`, `path`, `size` and `lfs.size` reach the binary. The
+/// payload is written by [`dump_projected`] without building this copy.
+#[cfg(test)]
 fn project(e: &Value) -> Value {
     let Value::Obj(_) = e else {
         return e.clone();
@@ -491,7 +597,90 @@ fn py_dumps_ascii(value: &Value) -> String {
     out
 }
 
-fn dump(value: &Value, out: &mut String) {
+/// Where [`dump`] writes: the payload, or (noevia#1985) only its length, to size an entry before
+/// it is appended.
+trait Sink {
+    fn push_str(&mut self, s: &str);
+    fn push(&mut self, c: char);
+    /// One JSON value or object key written, as `model_files::json` counts nodes (noevia#1995).
+    fn node(&mut self) {}
+}
+
+impl Sink for String {
+    fn push_str(&mut self, s: &str) {
+        String::push_str(self, s);
+    }
+    fn push(&mut self, c: char) {
+        String::push(self, c);
+    }
+}
+
+/// The byte length and node count of what would be written.
+#[derive(Default)]
+struct Count {
+    bytes: usize,
+    nodes: usize,
+}
+
+impl Sink for Count {
+    fn push_str(&mut self, s: &str) {
+        self.bytes = self.bytes.saturating_add(s.len());
+    }
+    fn push(&mut self, c: char) {
+        self.bytes = self.bytes.saturating_add(c.len_utf8());
+    }
+    fn node(&mut self) {
+        self.nodes = self.nodes.saturating_add(1);
+    }
+}
+
+/// `json.dumps(_project(e))` written straight from the entry (no projected copy is built).
+fn dump_projected(e: &Value, out: &mut impl Sink) {
+    let Value::Obj(_) = e else {
+        return dump(e, out);
+    };
+    out.node();
+    out.push('{');
+    let mut first = true;
+    let mut key = |out: &mut dyn Sink, name: &str| {
+        out.node();
+        if !first {
+            out.push_str(", ");
+        }
+        first = false;
+        out.push('"');
+        out.push_str(name);
+        out.push_str("\": ");
+    };
+    for name in ["type", "path", "size"] {
+        if let Some(v) = e.get(name) {
+            key(out, name);
+            dump(v, out);
+        }
+    }
+    if let Some(lfs) = e.get("lfs") {
+        key(out, "lfs");
+        match lfs {
+            Value::Obj(_) => {
+                out.node();
+                match lfs.get("size") {
+                    Some(size) => {
+                        out.node();
+                        out.push_str("{\"size\": ");
+                        dump(size, out);
+                        out.push('}');
+                    }
+                    None => out.push_str("{}"),
+                }
+            }
+            other => dump(other, out),
+        }
+    }
+    out.push('}');
+}
+
+fn dump(value: &Value, out: &mut (impl Sink + ?Sized)) {
+    out.node();
     match value {
         Value::Null => out.push_str("null"),
         Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
@@ -513,20 +702,31 @@ fn dump(value: &Value, out: &mut String) {
             out.push(']');
         }
         Value::Obj(pairs) => {
-            let mut keys: Vec<&str> = Vec::new();
-            for (k, _) in pairs {
-                if !keys.contains(&k.as_str()) {
-                    keys.push(k);
-                }
+            // Each key at its first position with its last value, in linear time (noevia#1985:
+            // an entry is dumped twice, measured then written, and a page may hold an object of
+            // `PAGE_NODES / 2` keys).
+            let mut spans: std::collections::HashMap<&str, (usize, usize)> =
+                std::collections::HashMap::with_capacity(pairs.len());
+            for (i, (k, _)) in pairs.iter().enumerate() {
+                spans.entry(k.as_str()).or_insert((i, i)).1 = i;
             }
             out.push('{');
-            for (i, key) in keys.iter().enumerate() {
-                if i > 0 {
+            let mut written = 0usize;
+            for (i, (key, _)) in pairs.iter().enumerate() {
+                let Some(&(first, last)) = spans.get(key.as_str()) else {
+                    continue;
+                };
+                if first != i {
+                    continue;
+                }
+                if written > 0 {
                     out.push_str(", ");
                 }
+                written += 1;
+                out.node();
                 dump_str(key, out);
                 out.push_str(": ");
-                if let Some(v) = value.get(key) {
+                if let Some((_, v)) = pairs.get(last) {
                     dump(v, out);
                 }
             }
@@ -535,7 +735,7 @@ fn dump(value: &Value, out: &mut String) {
     }
 }
 
-fn dump_str(s: &str, out: &mut String) {
+fn dump_str(s: &str, out: &mut (impl Sink + ?Sized)) {
     out.push('"');
     for c in s.chars() {
         match c {
@@ -550,7 +750,11 @@ fn dump_str(s: &str, out: &mut String) {
             c => {
                 let mut units = [0u16; 2];
                 for unit in c.encode_utf16(&mut units) {
-                    out.push_str(&format!("\\u{unit:04x}"));
+                    out.push_str("\\u");
+                    for shift in [12, 8, 4, 0] {
+                        let digit = u32::from(*unit >> shift) & 0xf;
+                        out.push(char::from_digit(digit, 16).unwrap_or('0'));
+                    }
                 }
             }
         }
