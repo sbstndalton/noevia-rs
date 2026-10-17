@@ -26,8 +26,20 @@ use std::{
 
 /// `hf.HF_API`.
 pub const HF_API: &str = "https://huggingface.co/api";
-/// Largest tree listing read; a larger one is treated as a failed request (no dates).
+/// Largest tree page the draft-heads read takes (until it has its own cap, noevia#1985). The
+/// update check uses [`UPDATE_PAGE_CAP`].
 pub const TREE_CAP: usize = 64 * 1024 * 1024;
+/// noevia#1996: largest tree listing the update check reads; a larger one is treated as a failed
+/// request (no dates). The check reads one page per repository (the Hub pages the listing; real
+/// pages are a few thousand entries at most, well under 1 MiB).
+pub const UPDATE_PAGE_CAP: usize = 16 * 1024 * 1024;
+/// noevia#1996: most JSON values and keys in that page (an `expand=true` entry is about 30-60, so
+/// several thousand entries). A page of bare numbers at the cap would be about 8 million, each an
+/// allocated big integer. Over it, a failed request.
+pub const UPDATE_PAGE_NODES: usize = 256 * 1024;
+/// noevia#1996: longest string in that page, in characters (paths, dates and commit titles are
+/// far shorter). Over it, a failed request.
+pub const UPDATE_PAGE_STRING_CHARS: usize = 64 * 1024;
 /// Most download records handled; more answers 500 instead of thousands of Hub requests.
 pub const RECORD_CAP: usize = 4096;
 /// httpx's `timeout=15.0` (connect and each read).
@@ -206,10 +218,10 @@ impl CheckUpdates {
         if response.status() != reqwest::StatusCode::OK {
             return Ok(Vec::new());
         }
-        let Some(body) = read_capped(response).await else {
+        let Some(body) = read_capped(response.bytes_stream(), UPDATE_PAGE_CAP).await else {
             return Ok(Vec::new());
         };
-        blocking(move || entries(&body)).await
+        blocking(move || entries(body)).await
     }
 }
 
@@ -230,18 +242,60 @@ async fn blocking<T: Send + 'static>(
     tokio::task::spawn_blocking(f).await.map_err(|_| Raised)?
 }
 
-async fn read_capped(response: reqwest::Response) -> Option<Vec<u8>> {
+/// A response body of at most `cap` bytes (`None` past it or on a transport error). The buffer
+/// grows by doubling but never beyond `cap` (noevia#1996).
+async fn read_capped<S, E>(mut stream: S, cap: usize) -> Option<Vec<u8>>
+where
+    S: futures_util::Stream<Item = Result<bytes::Bytes, E>> + Unpin,
+{
     use futures_util::StreamExt;
-    let mut stream = response.bytes_stream();
-    let mut body = Vec::new();
+    let mut body: Vec<u8> = Vec::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.ok()?;
-        if body.len().saturating_add(chunk.len()) > TREE_CAP {
+        let len = body.len().checked_add(chunk.len())?;
+        if len > cap {
             return None;
+        }
+        if body.capacity() < len {
+            let grown = body.capacity().saturating_mul(2).max(len).min(cap);
+            body.try_reserve_exact(grown - body.len()).ok()?;
         }
         body.extend_from_slice(&chunk);
     }
     Some(body)
+}
+
+/// The parse limits of the update check's page (noevia#1996).
+fn page_limits() -> Limits {
+    Limits {
+        bytes: UPDATE_PAGE_CAP,
+        depth: JSON_DEPTH,
+        nodes: UPDATE_PAGE_NODES,
+        string_chars: UPDATE_PAGE_STRING_CHARS,
+        ..Limits::default()
+    }
+}
+
+/// `tree.json()` of the page: `None` where `json.loads` raises, and (noevia#1996) for a page over
+/// the node or string limits, a failed request like a page over the size cap. A UTF-8 page is
+/// parsed where it lies; a UTF-16 or UTF-32 one is decoded, its raw bytes dropped and the text
+/// shrunk to its length before the parse. Only the tree outlives this call.
+fn parse_page(body: Vec<u8>) -> Option<Json> {
+    let decoded = match crate::prompts::decode_json_bytes(&body, UPDATE_PAGE_CAP).ok()? {
+        std::borrow::Cow::Borrowed(_) => None,
+        std::borrow::Cow::Owned(text) => Some(text),
+    };
+    match decoded {
+        Some(mut text) => {
+            drop(body);
+            text.shrink_to_fit();
+            model_files::json::parse_with_limits(&text, page_limits()).ok()
+        }
+        None => {
+            let text = crate::prompts::decode_json_bytes(&body, UPDATE_PAGE_CAP).ok()?;
+            model_files::json::parse_with_limits(&text, page_limits()).ok()
+        }
+    }
 }
 
 /// The store as Python's `_conn()` opens it for a write (never created here).
@@ -475,16 +529,8 @@ pub(crate) fn hub_id(repo: &str) -> bool {
 
 /// `repo_file_mtimes`' parse of a 200 answer: `Ok(pairs)` in insertion order (a later path wins on
 /// lookup), `Ok(empty)` for a body `json.loads` refuses, `Err` where the loop raises.
-fn entries(body: &[u8]) -> Result<Vec<(String, Json)>, Raised> {
-    let Ok(text) = crate::prompts::decode_json_bytes(body, TREE_CAP) else {
-        return Ok(Vec::new());
-    };
-    let limits = Limits {
-        depth: JSON_DEPTH,
-        string_chars: usize::MAX,
-        ..Limits::default()
-    };
-    let Ok(parsed) = model_files::json::parse_with_limits(&text, limits) else {
+fn entries(body: Vec<u8>) -> Result<Vec<(String, Json)>, Raised> {
+    let Some(parsed) = parse_page(body) else {
         return Ok(Vec::new());
     };
     let list = match parsed {
@@ -561,7 +607,7 @@ fn set_update_check(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
     use super::*;
 
     #[test]
@@ -661,6 +707,182 @@ mod tests {
         assert_eq!(g.len(), 2);
         assert_eq!(g[0].1, vec![t("a"), t("c")]);
         assert_eq!(g[1].1, vec![t("b"), t("d")]);
+    }
+
+    // ---- noevia#1996: memory under a hostile tree page ------------------------------------
+
+    const MIB: usize = 1024 * 1024;
+
+    /// Heap bytes of a buffer, charged as glibc's malloc does (at least 24 usable bytes, an 8-byte
+    /// header, 16-byte steps). Deterministic: capacities, no allocator hooks (`unsafe_code` is
+    /// forbidden).
+    fn charged(bytes: usize) -> usize {
+        if bytes == 0 {
+            0
+        } else {
+            (bytes.max(24) + 8).div_ceil(16) * 16
+        }
+    }
+
+    fn heap(value: &Json) -> usize {
+        match value {
+            Json::Null | Json::Bool(_) | Json::Float(_) => 0,
+            // `BigInt` keeps its digits in a `String` reserved exactly.
+            Json::Int(i) => charged(i.to_string().trim_start_matches('-').len()),
+            Json::Str(s) => charged(s.capacity()),
+            Json::Arr(items) => {
+                charged(items.capacity() * std::mem::size_of::<Json>())
+                    + items.iter().map(heap).sum::<usize>()
+            }
+            Json::Obj(pairs) => {
+                charged(pairs.capacity() * std::mem::size_of::<(String, Json)>())
+                    + pairs
+                        .iter()
+                        .map(|(k, v)| charged(k.capacity()) + heap(v))
+                        .sum::<usize>()
+            }
+        }
+    }
+
+    /// Per node a slot in its parent (an object pair is the larger) with doubling slack plus its
+    /// own smallest allocation; every string byte twice (unescaped strings grow by doubling).
+    fn tree_bound() -> usize {
+        let per_node = 2 * std::mem::size_of::<(String, Json)>() + charged(1);
+        UPDATE_PAGE_NODES * per_node + 2 * UPDATE_PAGE_CAP
+    }
+
+    /// `unit` repeated into exactly `len` bytes between `open` and `close`.
+    fn filled(open: &str, unit: &str, close: &str, len: usize) -> Vec<u8> {
+        let mut page = String::with_capacity(len);
+        page.push_str(open);
+        while page.len() + unit.len() + close.len() <= len {
+            page.push_str(unit);
+        }
+        while page.len() + close.len() < len {
+            page.push(' ');
+        }
+        page.push_str(close);
+        assert_eq!(page.len(), len);
+        page.into_bytes()
+    }
+
+    /// Streams `page` in 48 KiB chunks (not a power of two: plain doubling would reach 24 MiB).
+    async fn read_page(page: &[u8]) -> Option<Vec<u8>> {
+        let chunks: Vec<Result<bytes::Bytes, std::io::Error>> = page
+            .chunks(48 * 1024)
+            .map(|c| Ok(bytes::Bytes::copy_from_slice(c)))
+            .collect();
+        read_capped(futures_util::stream::iter(chunks), UPDATE_PAGE_CAP).await
+    }
+
+    /// noevia#1996: hostile pages at the cap are refused as a failed request (no dates) with the
+    /// read buffer never past the cap, a page one byte over is not read, and the largest trees
+    /// the limits admit (each shape) stay under `tree_bound()` (68 MiB): with the page, at most
+    /// 84 MiB per check, where a 64 MiB page of bare numbers was about 2 GiB. The parse stops
+    /// at the first node or character over a limit, so a refused page allocated less than an
+    /// admitted one.
+    #[tokio::test]
+    async fn hostile_pages_are_refused_within_a_bound() {
+        let cap = UPDATE_PAGE_CAP;
+        let hostile = [
+            ("bare numbers", filled("[1", ",1", "]", cap)),
+            ("deep nesting", filled("", "[", "", cap)),
+            ("escaped text", filled("[\"", "\\u00e9", "\"]", cap)),
+            ("raw 4-byte text", filled("[\"", "\u{1F600}", "\"]", cap)),
+            ("object keys", filled("{\"k\": 1", ", \"k\": 1", "}", cap)),
+            ("empty objects", filled("[{}", ", {}", "]", cap)),
+            (
+                "file entries",
+                filled(
+                    "[{}",
+                    r#", {"type": "file", "path": "a.gguf", "lastCommit": {"date": "d"}}"#,
+                    "]",
+                    cap,
+                ),
+            ),
+        ];
+        for (name, page) in hostile {
+            let body = read_page(&page).await.unwrap();
+            assert_eq!(body.len(), cap, "{name}");
+            assert!(body.capacity() <= cap, "{name}: {}", body.capacity());
+            assert!(parse_page(body.clone()).is_none(), "{name} was parsed");
+            assert!(entries(body).unwrap().is_empty(), "{name}");
+        }
+        let mut over = filled("[", " ", "]", cap);
+        over.push(b' ');
+        assert!(read_page(&over).await.is_none());
+
+        let bound = tree_bound();
+        assert!(bound + cap <= 84 * MIB, "{bound}");
+        let largest = [
+            (
+                "bare numbers",
+                filled("[1", ",1", "]", 2 * UPDATE_PAGE_NODES - 1),
+            ),
+            (
+                "object keys",
+                format!(
+                    "{{{}}}",
+                    vec!["\"k\": 1"; UPDATE_PAGE_NODES / 2 - 1].join(", ")
+                )
+                .into_bytes(),
+            ),
+            (
+                "nested arrays",
+                filled(
+                    "[",
+                    &format!("{}1{}, ", "[".repeat(500), "]".repeat(500)),
+                    "1]",
+                    1003 * (UPDATE_PAGE_NODES / 501 - 1) + 3,
+                ),
+            ),
+            (
+                "long strings",
+                filled(
+                    "[\"\"",
+                    &format!(", \"{}\"", "\u{1F600}".repeat(8 * 1024 + 1)),
+                    "]",
+                    cap,
+                ),
+            ),
+        ];
+        for (name, page) in largest {
+            let body = read_page(&page).await.unwrap();
+            assert!(body.capacity() <= cap, "{name}");
+            let tree = parse_page(body).unwrap_or_else(|| panic!("{name}"));
+            let held = heap(&tree);
+            assert!(held <= bound, "{name}: {held} > {bound}");
+        }
+        let numbers = filled("[1", ",1", "]", 2 * UPDATE_PAGE_NODES + 1);
+        assert!(parse_page(numbers).is_none());
+        let long = format!("[\"{}\"]", "a".repeat(UPDATE_PAGE_STRING_CHARS + 1)).into_bytes();
+        assert!(parse_page(long).is_none());
+        let longest = format!("[\"{}\"]", "a".repeat(UPDATE_PAGE_STRING_CHARS)).into_bytes();
+        assert!(parse_page(longest).is_some());
+    }
+
+    /// noevia#1996: an ordinary page reads exactly as before, also as UTF-16 (decoded, the raw
+    /// bytes dropped and the text shrunk before the parse).
+    #[test]
+    fn ordinary_pages_keep_their_dates() {
+        let page = r#"[{"type": "directory", "path": "d"},
+            {"type": "file", "path": "a.gguf", "lastCommit": {"date": "2026-01-02T03:04:05.000Z"}},
+            {"type": "file", "path": "b.gguf", "lastCommit": {"id": "x"}},
+            {"type": "file", "path": "a.gguf", "lastCommit": {"date": 7}}]"#;
+        let expected = vec![
+            (
+                "a.gguf".to_owned(),
+                Json::Str("2026-01-02T03:04:05.000Z".into()),
+            ),
+            (
+                "a.gguf".to_owned(),
+                Json::Int(model_files::BigInt::from_u64(7)),
+            ),
+        ];
+        assert_eq!(entries(page.as_bytes().to_vec()).unwrap(), expected);
+        let utf16: Vec<u8> = page.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        assert_eq!(entries(utf16).unwrap(), expected);
+        assert!(entries(b"[1]".to_vec()).is_err());
     }
 
     #[test]
