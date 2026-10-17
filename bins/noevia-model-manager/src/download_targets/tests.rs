@@ -103,3 +103,24 @@ proptest! {
         }
     }
 }
+
+/// noevia#2006: a request dropped while the targets are read (the client went away) keeps its
+/// admission permit until the read has returned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_request_keeps_its_permit_until_the_read_ends() {
+    use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.download_targets = Some(std::sync::Arc::new(DownloadTargets::new(
+        "/models",
+        "",
+        &dir.path().join("mountinfo"),
+    )));
+    let state = std::sync::Arc::new(state);
+    let request = axum::http::Request::get("/api/v1/download-targets")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let open = dropped_in_blocking_work(&state, request).await;
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+}

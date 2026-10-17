@@ -76,7 +76,8 @@ impl BenchmarkOverview {
     pub(crate) async fn local(&self) -> Result<Local, ()> {
         let database = self.database.clone();
         let ini = self.ini.clone();
-        tokio::task::spawn_blocking(move || {
+        // noevia#2006: admitted: a dropped request keeps its permit until the reads return.
+        crate::docker::spawn_blocking_admitted(move || {
             let (sections, sweep) = sections(&ini)?;
             let (prompts, runs) = store(&database, Instant::now() + DEADLINE)?;
             Ok(Local {

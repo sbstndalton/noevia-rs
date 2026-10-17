@@ -169,8 +169,10 @@ fn busy() -> Outcome {
     detail(503, "service is busy")
 }
 
+/// noevia#2006: admitted: a dropped request keeps its permit (as the job keeps the write lock)
+/// until the write returns.
 async fn run(job: impl FnOnce() -> Result<Vec<u8>, ()> + Send + 'static) -> Outcome {
-    match tokio::task::spawn_blocking(job).await {
+    match crate::docker::spawn_blocking_admitted(job).await {
         Ok(Ok(bytes)) => Outcome::Json(200, bytes),
         _ => Outcome::Failed,
     }

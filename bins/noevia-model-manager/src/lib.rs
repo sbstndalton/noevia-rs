@@ -436,8 +436,8 @@ pub fn router(state: Arc<StateData>) -> Router {
     Router::new().fallback(handler).with_state(state)
 }
 
-/// Lib tests of work that outlives its request (noevia#1997, #1998).
-#[cfg(all(test, feature = "native-check-updates"))]
+/// Lib tests of work that outlives its request (noevia#1997, #1998, #2006).
+#[cfg(test)]
 #[allow(clippy::unwrap_used)]
 pub(crate) mod test_support {
     use super::*;
@@ -453,6 +453,7 @@ pub(crate) mod test_support {
             prompts: None,
             #[cfg(feature = "native-backend-control")]
             backends: None,
+            #[cfg(feature = "native-check-updates")]
             check_updates: None,
             #[cfg(feature = "native-downloads")]
             downloads: None,
@@ -470,6 +471,7 @@ pub(crate) mod test_support {
             settings_write: None,
             #[cfg(feature = "native-settings")]
             settings: None,
+            #[cfg(feature = "native-model-updates")]
             model_updates: None,
             #[cfg(feature = "native-model-detail")]
             model_detail: None,
@@ -536,6 +538,7 @@ pub(crate) mod test_support {
 
     /// Starts `request` on the router in its own task, and drops it (the client went away) once
     /// `gate`'s hook has been entered. The sender opens the gate.
+    #[cfg(feature = "native-check-updates")]
     pub(crate) async fn dropped_while_blocked(
         state: &Arc<StateData>,
         request: axum::http::Request<Body>,
@@ -543,6 +546,36 @@ pub(crate) mod test_support {
     ) -> mpsc::Sender<()> {
         use tower::ServiceExt;
         let task = tokio::spawn(router(state.clone()).oneshot(request));
+        drop_once_entered(task, gate).await
+    }
+
+    /// noevia#2006: starts `request` on the router in its own task, with a gate that every
+    /// blocking task it starts through `docker::spawn_blocking_admitted` enters first, and drops
+    /// it (the client went away) once the first has entered. The request is gone, its blocking
+    /// work is not: checks that the request's permit is still taken. The sender opens the gate.
+    pub(crate) async fn dropped_in_blocking_work(
+        state: &Arc<StateData>,
+        request: axum::http::Request<Body>,
+    ) -> mpsc::Sender<()> {
+        use tower::ServiceExt;
+        let gate = Gate::new();
+        let task = tokio::spawn(
+            docker::BLOCKING_HOOK.scope(gate.hook.clone(), router(state.clone()).oneshot(request)),
+        );
+        let open = drop_once_entered(task, gate).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(
+            state.permits.available_permits(),
+            3,
+            "permit returned mid-work"
+        );
+        open
+    }
+
+    async fn drop_once_entered<T: std::fmt::Debug>(
+        task: tokio::task::JoinHandle<T>,
+        gate: Gate,
+    ) -> mpsc::Sender<()> {
         let open = gate.entered().await;
         task.abort();
         assert!(task.await.unwrap_err().is_cancelled());
@@ -1619,7 +1652,8 @@ async fn native_section_write(
             }
         }
     };
-    let outcome = tokio::task::spawn_blocking(job)
+    // noevia#2006: admitted: a dropped request keeps its permit until the write returns.
+    let outcome = docker::spawn_blocking_admitted(job)
         .await
         .unwrap_or(section_writes::Outcome::Failed);
     // #1747: a saved preset may have lost the chat preset's idle key; the answer reports the

@@ -6,7 +6,7 @@
 
 - `PUT` reads a FastAPI `dict` body with the prompt writer's rules (content type, CPython JSON encodings, 1 MiB cap, the same 422 bodies), then: `alias` (`str(value or "")`, stripped; empty answers 400 `no model given`), `category` (one of `coding`, `writing`, `reasoning`, `tools`, `vision`, else 400 `unknown category '<repr>'`), `rating` 1-5 (else 400 `rating must be 1-5`), `note` (`str(value or "")`, stripped, first 500 code points), `runId` (0 or missing is none). It upserts one row per alias and category and answers `{"badges": [...]}` for the alias, ordered by category, every column in table order.
 - `DELETE` reads the required `alias` and `category` query values (the last of each; FastAPI's 422 lists the missing ones) and answers the alias's remaining badges.
-- Each request has one 4.5 s deadline, taken when it arrives. The in-process write lock is waited for only until that deadline (503 `service is busy` otherwise). The lock guard moves into the store job, so a write whose request was dropped (the front's 504) still finishes before the next write starts (noevia#1909).
+- Each request has one 4.5 s deadline, taken when it arrives. The in-process write lock is waited for only until that deadline (503 `service is busy` otherwise). The lock guard moves into the store job, so a write whose request was dropped (the front's 504) still finishes before the next write starts (noevia#1909). That job is also registered with the request's admission, so the request's permit (one of the front's 4) comes back only when the job has returned (noevia#2006).
 - Store failures (no database, no table, a lock held past 4 s, a value that is not UTF-8) answer FastAPI's `500 text/plain Internal Server Error`.
 
 ## Fixed on the way (noevia#1905)

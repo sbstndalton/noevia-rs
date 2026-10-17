@@ -113,7 +113,8 @@ impl SettingsWrite {
             let stored = crate::settings::read(&database, deadline).map_err(|_| ())?;
             crate::settings::render(stored.as_ref()).ok_or(())
         };
-        match tokio::task::spawn_blocking(job).await {
+        // noevia#2006: admitted: a dropped request keeps its permit until the write returns.
+        match crate::docker::spawn_blocking_admitted(job).await {
             Ok(Ok(bytes)) => Outcome::Saved(bytes, test),
             _ => Outcome::Failed,
         }
@@ -179,5 +180,23 @@ mod tests {
             ),
             br#"{"hasToken":true,"tokenHint":"","test":{"ok":true,"message":"m"}}"#.to_vec()
         );
+    }
+
+    /// noevia#2006: a save dropped while it writes (the client went away) keeps the request's
+    /// admission permit until the write has returned.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_dropped_save_keeps_its_permit_until_the_write_ends() {
+        use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = test_state(crate::LEGACY_BASE);
+        state.settings_write = Some(std::sync::Arc::new(SettingsWrite::new(dir.path())));
+        let state = std::sync::Arc::new(state);
+        let request = axum::http::Request::put("/api/v1/settings")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{"hfToken":"synthetic-token"}"#))
+            .unwrap();
+        let open = dropped_in_blocking_work(&state, request).await;
+        open.send(()).unwrap();
+        all_permits_back(&state).await;
     }
 }

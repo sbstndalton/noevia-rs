@@ -109,3 +109,43 @@ proptest! {
         prop_assert_eq!(py_round(once, n), Some(once));
     }
 }
+
+/// noevia#2006: a request dropped while the store is read (the client went away) keeps its
+/// admission permit until the read has returned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_request_keeps_its_permit_until_the_read_ends() {
+    use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.bench_runs = Some(std::sync::Arc::new(BenchRuns::new(dir.path())));
+    let state = std::sync::Arc::new(state);
+    let request = axum::http::Request::get("/api/v1/benchmark/runs/1")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let open = dropped_in_blocking_work(&state, request).await;
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+}
+
+/// noevia#2006: the same for `GET /api/v1/benchmark`, whose models.ini and store reads run on
+/// one blocking task. (Here because CI runs the overview's lib tests through `bench_runs::`.)
+#[cfg(feature = "native-benchmark-overview")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_overview_keeps_its_permit_until_its_reads_end() {
+    use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.benchmark_overview = Some(std::sync::Arc::new(
+        crate::benchmark_overview::BenchmarkOverview::new(
+            dir.path(),
+            &dir.path().join("models.ini"),
+        ),
+    ));
+    let state = std::sync::Arc::new(state);
+    let request = axum::http::Request::get("/api/v1/benchmark")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let open = dropped_in_blocking_work(&state, request).await;
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+}

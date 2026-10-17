@@ -110,7 +110,9 @@ impl ModelDetail {
         else {
             return Step::Done(Outcome::Refused);
         };
-        tokio::task::spawn_blocking(move || {
+        // noevia#2006: admitted: a dropped request keeps its admission permit (as its read
+        // slot) until the read returns.
+        crate::docker::spawn_blocking_admitted(move || {
             let _permit = permit;
             locate(&models, &ini, &query, deadline, Root::new)
         })

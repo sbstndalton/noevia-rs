@@ -77,7 +77,8 @@ impl DownloadTargets {
             self.declared.clone(),
             self.mountinfo.clone(),
         );
-        tokio::task::spawn_blocking(move || targets(&root, &declared, &mountinfo))
+        // noevia#2006: admitted: a dropped request keeps its permit until the read returns.
+        crate::docker::spawn_blocking_admitted(move || targets(&root, &declared, &mountinfo))
             .await
             .unwrap_or(Outcome::Failed)
     }

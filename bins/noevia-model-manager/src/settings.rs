@@ -56,7 +56,8 @@ impl Settings {
     pub async fn response(&self) -> Outcome {
         let database = self.database.clone();
         let deadline = Instant::now() + DEADLINE;
-        match tokio::task::spawn_blocking(move || read(&database, deadline)).await {
+        // noevia#2006: admitted: a dropped request keeps its permit until the read returns.
+        match crate::docker::spawn_blocking_admitted(move || read(&database, deadline)).await {
             Ok(Ok(stored)) => render(stored.as_ref()).map_or(Outcome::Failed, Outcome::Json),
             _ => Outcome::Failed,
         }
@@ -197,5 +198,22 @@ mod tests {
         assert_eq!(blob_hint(b"synthetic\x00'\\\n"), "…b\"\\x00'\\\\\\n\"");
         assert_eq!(blob_hint(b"synthetic'\"\xff\t"), "…b'\\'\"\\xff\\t'");
         assert_eq!(blob_hint(b"12345678"), "");
+    }
+
+    /// noevia#2006: a request dropped while the store is read (the client went away) keeps its
+    /// admission permit until the read has returned.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_dropped_read_keeps_its_permit_until_the_read_ends() {
+        use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = test_state(crate::LEGACY_BASE);
+        state.settings = Some(std::sync::Arc::new(Settings::new(dir.path())));
+        let state = std::sync::Arc::new(state);
+        let request = axum::http::Request::get("/api/v1/settings")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let open = dropped_in_blocking_work(&state, request).await;
+        open.send(()).unwrap();
+        all_permits_back(&state).await;
     }
 }

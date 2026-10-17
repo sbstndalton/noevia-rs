@@ -429,3 +429,24 @@ fn an_unknowable_section_refuses_only_the_model_it_may_configure() {
 fn detail_reads_are_bounded() {
     assert_eq!(CONCURRENT_READS, 2);
 }
+
+/// noevia#2006: a request dropped while the file part is read (the client went away) keeps its
+/// admission permit and its read slot until the read has returned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_request_keeps_its_permit_and_read_slot_until_the_read_ends() {
+    use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    let detail = std::sync::Arc::new(ModelDetail::new(&models, &models.join("models.ini")));
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.model_detail = Some(detail.clone());
+    let state = std::sync::Arc::new(state);
+    let request = axum::http::Request::get("/api/v1/models/detail?name=synthetic.gguf")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let open = dropped_in_blocking_work(&state, request).await;
+    assert_eq!(detail.reads.available_permits(), CONCURRENT_READS - 1);
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+    assert_eq!(detail.reads.available_permits(), CONCURRENT_READS);
+}

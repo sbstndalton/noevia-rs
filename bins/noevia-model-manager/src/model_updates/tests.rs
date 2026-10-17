@@ -451,3 +451,25 @@ fn closed_wal_store_is_read() {
         .unwrap();
     assert_eq!(mode, "wal");
 }
+
+/// noevia#2006: a request dropped while the tree and store are read (the client went away) keeps
+/// its admission permit until the walk has returned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_request_keeps_its_permit_until_the_walk_ends() {
+    use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.model_updates = Some(std::sync::Arc::new(ModelUpdates::new(
+        &models,
+        &models.join("models.ini"),
+        dir.path(),
+    )));
+    let state = std::sync::Arc::new(state);
+    let request = axum::http::Request::get("/api/v1/models/updates")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let open = dropped_in_blocking_work(&state, request).await;
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+}
