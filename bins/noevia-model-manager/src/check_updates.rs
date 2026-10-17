@@ -372,6 +372,37 @@ impl Token {
     }
 }
 
+/// noevia#1318 (downloads): the stored token as the `Authorization` value `hf._auth_headers`
+/// would send, read fresh as `hf.get_token()` is for every request.
+#[cfg(feature = "native-downloads")]
+pub(crate) enum HubAuth {
+    /// A falsy token: no header.
+    Absent,
+    Value(reqwest::header::HeaderValue),
+    /// httpx raises UnicodeEncodeError while encoding the header.
+    NotAscii,
+    /// h11 refuses the value (LocalProtocolError), or this HTTP library does.
+    Refused,
+    /// The store could not be read (`db.get_setting` raised).
+    Failed,
+}
+
+#[cfg(feature = "native-downloads")]
+pub(crate) fn hub_auth(database: &Path) -> HubAuth {
+    let Ok(db) = open(database) else {
+        return HubAuth::Failed;
+    };
+    match read_token(&db) {
+        Err(_) => HubAuth::Failed,
+        Ok(None) => HubAuth::Absent,
+        Ok(Some(token)) => match token.header() {
+            Header::Value(v) => HubAuth::Value(v),
+            Header::NotAscii => HubAuth::NotAscii,
+            Header::Refused => HubAuth::Refused,
+        },
+    }
+}
+
 /// h11's `field_value`: `([^\x00\s]+([ \t]+[^\x00\s]+)*)?` on bytes.
 fn h11_field_value(value: &[u8]) -> bool {
     let vchar = |b: u8| !matches!(b, 0 | b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c);
@@ -549,6 +580,56 @@ mod tests {
         ));
         assert!(matches!(Token::Int(7).header(), Header::Value(v) if v == "Bearer 7"));
         assert!(matches!(Token::Real(1.5).header(), Header::Value(v) if v == "Bearer 1.5"));
+    }
+
+    /// noevia#1952: the Hub client speaks TLS. A client without a TLS backend refuses an
+    /// `https://` URL before connecting; this one must open the connection with a ClientHello.
+    #[tokio::test]
+    async fn the_hub_client_opens_https_connections() {
+        let dir = tempfile::tempdir().unwrap();
+        let checker = CheckUpdates::with(
+            dir.path(),
+            &dir.path().join("models.ini"),
+            dir.path(),
+            HF_API,
+            now,
+        )
+        .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let request = tokio::spawn({
+            let client = checker.client.clone();
+            async move {
+                client
+                    .get(format!("https://127.0.0.1:{port}/api/models"))
+                    .send()
+                    .await
+            }
+        });
+        let accepted =
+            tokio::time::timeout(std::time::Duration::from_secs(20), listener.accept()).await;
+        assert!(
+            accepted.is_ok(),
+            "no connection: the client cannot open https URLs"
+        );
+        let (mut socket, _) = accepted.unwrap().unwrap();
+        let mut hello = [0u8; 6];
+        tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            tokio::io::AsyncReadExt::read_exact(&mut socket, &mut hello),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        // TLS record type 22 (handshake), message type 1 (ClientHello).
+        assert_eq!((hello[0], hello[5]), (0x16, 0x01));
+        drop(socket);
+        // Nothing here can complete a verified handshake.
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(20), request)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(outcome.is_err());
     }
 
     #[test]

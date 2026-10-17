@@ -709,6 +709,43 @@ fn benchmark_runner_selector_omission_and_python_confirmation_are_closed_before_
     }
 }
 
+#[test]
+fn downloads_selector_omission_and_python_confirmation_are_closed_before_child() {
+    let (dir, marker) = owned_uvicorn();
+    for (parent, targets) in [("rust", "invalid"), ("rust", "Rust")] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", parent)
+            .env("MODEL_MANAGER_DOWNLOADS_IMPL", targets)
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success(), "{parent}/{targets}");
+        assert!(!marker.exists());
+    }
+    if !cfg!(feature = "native-downloads") {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", "rust")
+            .env("MODEL_MANAGER_DOWNLOADS_IMPL", "rust")
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("compiled native-downloads"));
+        assert!(!marker.exists());
+    }
+    // Selector off: the always-native parent hands the child "0" over an inherited value.
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script,"#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    for selected in [None, Some("python")] {
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED", "1");
+        if let Some(value) = selected {
+            cmd.env("MODEL_MANAGER_DOWNLOADS_IMPL", value);
+        }
+        if let (Some(record), _) = native_child_record(&mut cmd, &marker) {
+            assert_eq!(record, "0");
+        }
+    }
+}
+
 #[cfg(feature = "native-model-detail")]
 #[test]
 fn native_model_detail_never_refuses_startup_over_zone_or_roots() {
@@ -987,6 +1024,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         }
         if cfg!(feature = "native-benchmark-runner") {
             expected.push_str("native-benchmark-runner\n");
+        }
+        if cfg!(feature = "native-downloads") {
+            expected.push_str("native-downloads\n");
         }
         // noevia#1925: the production image also advertises native-diagnose (printed last).
         if cfg!(feature = "native-diagnose") {

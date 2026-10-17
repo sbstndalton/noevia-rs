@@ -458,6 +458,8 @@ fn state(runner: Arc<Runner>) -> Arc<StateData> {
         benchmark_overview: None,
         #[cfg(feature = "native-check-updates")]
         check_updates: None,
+        #[cfg(feature = "native-downloads")]
+        downloads: None,
         bench_runner: Some(runner),
         backends: None,
         sections: None,

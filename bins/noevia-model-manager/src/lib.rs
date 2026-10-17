@@ -17,6 +17,8 @@ pub mod diagnose_docker;
 pub mod docker;
 #[cfg(feature = "native-download-targets")]
 pub mod download_targets;
+#[cfg(feature = "native-downloads")]
+pub mod downloads;
 pub mod embedding;
 pub mod host;
 pub mod idle_unload;
@@ -112,6 +114,9 @@ pub struct StateData {
     /// noevia#1318: native `POST /api/v1/models/check-updates` (asks the Hub, writes update_check).
     #[cfg(feature = "native-check-updates")]
     pub check_updates: Option<Arc<check_updates::CheckUpdates>>,
+    /// noevia#1318: the native download job table and transfers; a start is planned by the child.
+    #[cfg(feature = "native-downloads")]
+    pub downloads: Option<Arc<downloads::Downloads>>,
     /// noevia#1318: the native benchmark runner (the one job slot): start, progress, cancel.
     #[cfg(feature = "native-benchmark-runner")]
     pub bench_runner: Option<Arc<bench_runner::Runner>>,
@@ -608,6 +613,14 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     let native = native || native_download_targets_route(&state, req.method(), path);
     #[cfg(feature = "native-badges")]
     let native = native || native_badges_route(&state, req.method(), path);
+    // A download start waits on the child's plan (Hub lookups): a forwarded route's budget.
+    #[cfg(feature = "native-downloads")]
+    let native = native
+        || (state.downloads.is_some()
+            && matches!(
+                downloads_route(req.method(), path),
+                Some(DownloadRoute::List | DownloadRoute::Cancel(_) | DownloadRoute::Clear)
+            ));
     // A benchmark run also waits on the child for its live values: a forwarded route's budget,
     // like model detail (no change to `native` here).
     // The detail route waits on the Python child for its live fields: a forwarded route's budget.
@@ -997,6 +1010,12 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
                     detail(StatusCode::SERVICE_UNAVAILABLE, model_updates::REFUSAL)
                 }
             };
+        }
+    }
+    #[cfg(feature = "native-downloads")]
+    if let Some(table) = state.downloads.clone() {
+        if let Some(route) = downloads_route(req.method(), path) {
+            return native_downloads(&state, &table, route, req).await;
         }
     }
     #[cfg(feature = "native-benchmark-runner")]
@@ -1719,6 +1738,8 @@ async fn forward(state: Arc<StateData>, req: Request) -> Response {
     }
     let (parts, body) = req.into_parts();
     let preset_write = idle_unload::writes_models_ini(parts.method.as_str(), parts.uri.path());
+    #[cfg(feature = "native-downloads")]
+    let overview = parts.method == Method::GET && parts.uri.path() == "/api/v1/overview";
     let bytes = match to_bytes(body, REQUEST_CAP).await {
         Ok(b) => b,
         Err(_) => return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit"),
@@ -1764,6 +1785,14 @@ async fn forward(state: Arc<StateData>, req: Request) -> Response {
     if preset_write && status.is_success() {
         if let Some(reconciler) = &state.idle_unload {
             bytes = after_preset_write(reconciler, bytes).await;
+        }
+    }
+    #[cfg(feature = "native-downloads")]
+    if overview && status == StatusCode::OK {
+        if let Some(table) = &state.downloads {
+            if let Some(patched) = downloads::patch_overview(&bytes, table.active()) {
+                bytes = patched;
+            }
         }
     }
     (
@@ -2290,6 +2319,151 @@ pub fn parse_tail(value: Option<&str>) -> Result<usize, &'static str> {
     } else {
         number.clamp(20, 2000)
     })
+}
+
+/// noevia#1318: the routes the native download job table answers.
+#[cfg(feature = "native-downloads")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DownloadRoute {
+    List,
+    Start,
+    Cancel(String),
+    Clear,
+}
+
+/// `urllib.parse.unquote` as uvicorn applies it to the path: valid `%XX` escapes decoded, the
+/// bytes read as UTF-8 with replacement, invalid escapes kept.
+#[cfg(feature = "native-downloads")]
+fn py_unquote(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while let Some(&b) = bytes.get(i) {
+        let hex = |j: usize| bytes.get(j).and_then(|c| char::from(*c).to_digit(16));
+        match (b, hex(i + 1), hex(i + 2)) {
+            (b'%', Some(h), Some(l)) => {
+                out.push(u8::try_from(h * 16 + l).unwrap_or(0));
+                i += 3;
+            }
+            _ => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Which download route a request is, on the path as the child would decode it. A segment
+/// that decodes to contain `/` is not a route there (404), so it is left to the child.
+#[cfg(feature = "native-downloads")]
+pub fn downloads_route(method: &Method, path: &str) -> Option<DownloadRoute> {
+    let parts: Vec<&str> = path.split('/').collect();
+    let segment = |raw: &str| {
+        let decoded = py_unquote(raw);
+        (!decoded.is_empty() && !decoded.contains('/')).then_some(decoded)
+    };
+    match (method.as_str(), parts.as_slice()) {
+        ("GET", ["", "api", "v1", "downloads"]) => Some(DownloadRoute::List),
+        ("POST", ["", "api", "v1", "downloads"]) => Some(DownloadRoute::Start),
+        ("POST", ["", "api", "v1", "downloads", "clear"]) => Some(DownloadRoute::Clear),
+        ("POST", ["", "api", "v1", "downloads", id, "cancel"]) => {
+            segment(id).map(DownloadRoute::Cancel)
+        }
+        ("POST", ["", "api", "v1", "sections", name, "draft-heads", "download"]) => {
+            segment(name).map(|_| DownloadRoute::Start)
+        }
+        _ => None,
+    }
+}
+
+#[cfg(feature = "native-downloads")]
+fn json_bytes(status: StatusCode, body: impl Into<Body>) -> Response {
+    (
+        status,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        body.into(),
+    )
+        .into_response()
+}
+
+/// noevia#1318: the download routes. A start is planned by the child (the same route, run
+/// without queueing) and its files are queued here; everything else is this side's table.
+#[cfg(feature = "native-downloads")]
+async fn native_downloads(
+    state: &StateData,
+    table: &Arc<downloads::Downloads>,
+    route: DownloadRoute,
+    req: Request,
+) -> Response {
+    match route {
+        DownloadRoute::List => json_bytes(StatusCode::OK, table.list()),
+        DownloadRoute::Cancel(id) => {
+            json_bytes(StatusCode::OK, format!("{{\"ok\":{}}}", table.cancel(&id)))
+        }
+        DownloadRoute::Clear => {
+            json_bytes(StatusCode::OK, format!("{{\"cleared\":{}}}", table.clear()))
+        }
+        DownloadRoute::Start => {
+            let (parts, body) = req.into_parts();
+            let Ok(bytes) = to_bytes(body, REQUEST_CAP).await else {
+                return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+            };
+            let target = parts.uri.path_and_query().map_or("/", |p| p.as_str());
+            let mut request = state
+                .legacy
+                .post(format!("{}{target}", state.legacy_base))
+                .header(downloads::PLAN_HEADER, "1")
+                .body(bytes);
+            if let Some(content_type) = parts.headers.get("content-type") {
+                request = request.header("content-type", content_type);
+            }
+            if !state.token.is_empty() {
+                request = request.header("x-model-loader-token", &state.token);
+            }
+            let Ok(response) = request.send().await else {
+                return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable");
+            };
+            let status = response.status();
+            let mut chunks = response.bytes_stream();
+            let mut answer = Vec::new();
+            while let Some(chunk) = chunks.next().await {
+                let Ok(chunk) = chunk else {
+                    return detail(StatusCode::BAD_GATEWAY, "Python-owned response unavailable");
+                };
+                if answer.len().saturating_add(chunk.len()) > downloads::PLAN_CAP {
+                    return detail(
+                        StatusCode::BAD_GATEWAY,
+                        "Python-owned response exceeded limit",
+                    );
+                }
+                answer.extend_from_slice(&chunk);
+            }
+            if status == StatusCode::INTERNAL_SERVER_ERROR {
+                return internal_error();
+            }
+            let plan = match (status, downloads::parse_plan(&answer)) {
+                (StatusCode::OK, Some(plan)) => plan,
+                _ => return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable"),
+            };
+            let Ok(code) = StatusCode::from_u16(plan.status) else {
+                return internal_error();
+            };
+            if code == StatusCode::OK {
+                match table.queue(plan.jobs) {
+                    downloads::Queued::Done => {}
+                    downloads::Queued::Raised => return internal_error(),
+                    downloads::Queued::Full => {
+                        return detail(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "too many downloads are held; clear the finished ones",
+                        )
+                    }
+                }
+            }
+            json_bytes(code, plan.body)
+        }
+    }
 }
 
 /// Explicit Python-owned endpoint/method table. Native-owned paths never enter this table.

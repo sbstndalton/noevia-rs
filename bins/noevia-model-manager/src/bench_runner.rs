@@ -1659,6 +1659,65 @@ mod tests {
         );
     }
 
+    /// noevia#1943 / noevia#1960: the request future is dropped while the `bench_run` insert is
+    /// still running on the blocking pool. Whichever side finishes second must finish the row as
+    /// an error with `DROPPED_NOTE`, and the slot goes back to idle.
+    #[tokio::test]
+    async fn drop_during_the_insert_finishes_the_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let c = Connection::open(dir.path().join("model_loader.db")).unwrap();
+        c.execute_batch(
+            "CREATE TABLE bench_run(id INTEGER PRIMARY KEY, backend TEXT, status TEXT, \
+             started_at REAL, finished_at REAL, reps INTEGER, max_tokens INTEGER, note TEXT)",
+        )
+        .unwrap();
+        let runner = Runner::new(
+            dir.path(),
+            Clock {
+                perf_counter: || 0.0,
+                time: || 1_700_000_000.0,
+            },
+            Arc::new(|_task| {}),
+            Arc::new(|_query: String| Box::pin(async { None })),
+            Arc::new(|_backend: String| Box::pin(async { Ok(String::new()) })),
+        )
+        .unwrap();
+        runner.with(|s| s.status = "starting".into());
+        let entered = Arc::new(std::sync::Barrier::new(2));
+        let release = Arc::new(std::sync::Barrier::new(2));
+        let guard = StartGuard::new(&runner);
+        let insert = {
+            let (entered, release) = (entered.clone(), release.clone());
+            guard.track(move |database| {
+                entered.wait();
+                release.wait();
+                create_run(database, "synthetic-backend", 1, 16, 1_700_000_000.0)
+            })
+        };
+        let running = tokio::task::spawn_blocking(insert);
+        let wait = entered.clone();
+        tokio::task::spawn_blocking(move || wait.wait())
+            .await
+            .unwrap();
+        // The insert is now blocked inside the closure: drop the request.
+        drop(guard);
+        assert_eq!(runner.snapshot().status, "idle");
+        let open = release.clone();
+        tokio::task::spawn_blocking(move || open.wait())
+            .await
+            .unwrap();
+        let run_id = running.await.unwrap().unwrap();
+        let (status, note): (String, String) = c
+            .query_row(
+                "SELECT status, note FROM bench_run WHERE id = ?",
+                [run_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((status.as_str(), note.as_str()), ("error", DROPPED_NOTE));
+        assert_eq!(runner.snapshot().status, "idle");
+    }
+
     #[test]
     fn int_conversion_is_pythons() {
         let p = |t: &str| py_int(&model_files::json::parse(t).unwrap());
