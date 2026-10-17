@@ -800,3 +800,120 @@ async fn a_dropped_request_keeps_the_folder_reserved_until_the_removal_ends() {
     );
     server.abort();
 }
+
+// ------------------------------------------------ noevia#1987: shared delete-reservation cases
+
+/// `tests/fixtures/delete-reservation-cases.json`: the same file noevia-services keeps (sha256 pinned
+/// in its `test_delete_reservation_parity.py`). Each case is a synthetic models folder; the paths a
+/// delete of each listed model reserves, and the 409 wording either side of a delete, must match
+/// what `services.delete_reservation`, `DELETE_IN_PROGRESS` and `downloading_message` answer.
+fn reservation_cases() -> Value {
+    serde_json::from_str(include_str!(
+        "../../tests/fixtures/delete-reservation-cases.json"
+    ))
+    .unwrap()
+}
+
+fn text_list(v: &Value) -> Vec<String> {
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s.as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn delete_reservation_matches_the_shared_cases() {
+    let fixture = reservation_cases();
+    assert_eq!(fixture["format"], "delete-reservation-cases.v1");
+    let cases = fixture["cases"].as_array().unwrap();
+    assert!(cases.len() >= 10, "the shared cases were emptied");
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let models = dir.path().join("models");
+        std::fs::create_dir_all(&models).unwrap();
+        for file in text_list(&case["files"]) {
+            let path = models.join(&file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, [0u8; 8]).unwrap();
+        }
+        let listed =
+            crate::model_detail::snapshot(&models, &models.join("models.ini"), Root::synthetic)
+                .ok()
+                .flatten()
+                .unwrap();
+        let table = table_for(&models, &dir.path().join("data"));
+        for expected in case["entries"].as_array().unwrap() {
+            let (base, subdir) = (
+                expected["base"].as_str().unwrap(),
+                expected["subdir"].as_str().unwrap(),
+            );
+            let entry = listed
+                .entries
+                .iter()
+                .find(|e| e.model.base == base && e.model.subdir == subdir)
+                .unwrap_or_else(|| panic!("{name}: no listed model {subdir}/{base}"));
+            let reserved = reservation(entry);
+            assert_eq!(reserved, text_list(&expected["reserved"]), "{name}: {base}");
+            // While reserved, a start into each reserved path (a folder: anything inside it) is
+            // the 409 `Deleting`, which the route answers with `DELETE_IN_PROGRESS`; nothing is
+            // queued. (A start that is not refused would spawn a transfer, so only the refusal is
+            // driven here.)
+            let hold = table.reserve(reserved.clone());
+            for path in &reserved {
+                let dest = if path.ends_with(".gguf") {
+                    path.clone()
+                } else {
+                    format!("{path}/blocked.gguf")
+                };
+                assert_eq!(
+                    table.queue(planned(&dest, 9)),
+                    crate::downloads::Queued::Deleting,
+                    "{name}: {dest}"
+                );
+            }
+            drop(hold);
+        }
+        assert!(table.reservations().is_empty(), "{name}");
+        let jobs: Value = serde_json::from_str(&table.list()).unwrap();
+        assert!(jobs["jobs"].as_array().unwrap().is_empty(), "{name}");
+    }
+}
+
+#[test]
+fn delete_409_wording_matches_the_shared_cases() {
+    let fixture = reservation_cases();
+    // A download blocked by a delete.
+    let blocked = &fixture["downloadBlockedByDelete"];
+    assert_eq!(blocked["status"], 409);
+    assert_eq!(
+        blocked["detail"].as_str().unwrap(),
+        crate::downloads::DELETE_IN_PROGRESS
+    );
+    // A delete blocked by a download.
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir_all(&models).unwrap();
+    for case in fixture["deleteBlockedByDownload"].as_array().unwrap() {
+        let base = case["base"].as_str().unwrap();
+        std::fs::write(models.join(base), [0u8; 8]).unwrap();
+        let listed =
+            crate::model_detail::snapshot(&models, &models.join("models.ini"), Root::synthetic)
+                .ok()
+                .flatten()
+                .unwrap();
+        let entry = listed
+            .entries
+            .iter()
+            .find(|e| e.model.base == base)
+            .unwrap();
+        assert_eq!(case["status"], 409);
+        assert_eq!(
+            downloading_message(entry, &text_list(&case["rels"])),
+            case["detail"].as_str().unwrap(),
+            "{}",
+            case["name"]
+        );
+    }
+}
