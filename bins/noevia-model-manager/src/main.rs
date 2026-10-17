@@ -66,6 +66,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-draft-heads") {
                 output.write_all(b"native-draft-heads\n")?;
             }
+            if cfg!(feature = "native-backends") {
+                output.write_all(b"native-backends\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -407,6 +410,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(reason) => {
                 eprintln!("native-draft-heads: {reason}; GET draft-heads stays with python");
                 heads_mode = "python".to_owned();
+                None
+            }
+        }
+    } else {
+        None
+    };
+    // noevia#1318 slice 13: the backend sampler (Docker discovery, container stats, sysfs, GPU_VRAM)
+    // and GET /api/v1/backends. Never a reason to refuse startup: anything this side cannot own
+    // exactly keeps both with Python.
+    let backends_mode = environment("MODEL_MANAGER_BACKENDS_IMPL", "python")?;
+    if !matches!(backends_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_BACKENDS_IMPL must be python or rust".into());
+    }
+    if backends_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-backends")) {
+        return Err(
+            "native-backends requires rust model manager and compiled native-backends feature"
+                .into(),
+        );
+    }
+    #[cfg_attr(not(feature = "native-backends"), allow(unused_mut))]
+    let mut backends_mode = backends_mode;
+    #[cfg(feature = "native-backends")]
+    let backends_settings = if backends_mode == "rust" {
+        match backends_fallback(
+            &control_mode,
+            &environment("TZ", "")?,
+            std::env::vars_os().collect(),
+        ) {
+            Ok(settings) => Some(settings),
+            Err(reason) => {
+                eprintln!(
+                    "native-backends: {reason}; the backend sampler and GET /api/v1/backends stay with python"
+                );
+                backends_mode = "python".to_owned();
                 None
             }
         }
@@ -769,6 +806,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "native-draft-heads")]
         heads_roots.as_ref(),
     );
+    backends_child(&mut child_command, &backends_mode);
     child_command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED",
         if control_mode == "rust" { "1" } else { "0" },
@@ -873,7 +911,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )),
         None => None,
     };
+    #[cfg(feature = "native-backends")]
+    let backend_stats = match backends_settings {
+        Some(gpu_vram) => Some(Arc::new(
+            noevia_model_manager::backend_stats::BackendStats::new(
+                noevia_model_manager::backend_stats::Config {
+                    configured: configured.clone(),
+                    gpu_vram,
+                    default_port,
+                    drm_root: noevia_model_manager::backend_stats::DRM_ROOT.into(),
+                    legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
+                    token: token.clone(),
+                },
+                docker.clone(),
+            )?,
+        )),
+        None => None,
+    };
     let mut child = child_command.spawn()?;
+    #[cfg(feature = "native-backends")]
+    let _backend_sampler = backend_stats.as_ref().map(|stats| stats.start());
     let _host_sampler = host
         .as_ref()
         .map(|history| noevia_model_manager::host::HostSampler::start(history.clone()));
@@ -910,6 +967,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_delete,
         #[cfg(feature = "native-draft-heads")]
         draft_heads,
+        #[cfg(feature = "native-backends")]
+        backend_stats,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner,
         sections,
@@ -1632,6 +1691,98 @@ fn model_delete_child(
             .env("MODELS_INI_PATH", &roots.ini)
             .env("MODELS_HOST_PATH", &roots.host_path)
             .env("MODEL_DOWNLOAD_TARGETS", &roots.targets);
+    }
+}
+
+/// noevia#1318 slice 13: what the native sampler reads, or why both stay with Python: it keeps the
+/// native restart's errors (so it needs MODEL_MANAGER_BACKEND_CONTROL_IMPL=rust), formats start
+/// times in UTC (TZ unset or UTC; the child is given UTC too), and reads LLAMA_CONTAINERS,
+/// GPU_VRAM and LLAMA_DEFAULT_PORT by their exact names (the child's settings fold names, so a
+/// case-folded alias is refused).
+#[cfg(feature = "native-backends")]
+fn backends_fallback(
+    control_mode: &str,
+    tz: &str,
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<Vec<(String, f64)>, &'static str> {
+    if control_mode != "rust" {
+        return Err("needs MODEL_MANAGER_BACKEND_CONTROL_IMPL=rust (the restart errors it shows are kept natively)");
+    }
+    if !(tz.is_empty() || tz == "UTC") {
+        return Err("TZ is set to a zone other than UTC");
+    }
+    let mut gpu_vram = String::new();
+    for (key, value) in &values {
+        let Some(key) = key.to_str() else { continue };
+        let upper = key.to_ascii_uppercase();
+        if matches!(
+            upper.as_str(),
+            "GPU_VRAM" | "LLAMA_CONTAINERS" | "LLAMA_DEFAULT_PORT"
+        ) && key != upper
+        {
+            return Err(
+                "a case-folded spelling of GPU_VRAM, LLAMA_CONTAINERS or LLAMA_DEFAULT_PORT is set",
+            );
+        }
+        if key == "GPU_VRAM" {
+            gpu_vram = value.to_str().ok_or("GPU_VRAM must be UTF-8")?.to_owned();
+        }
+    }
+    noevia_model_manager::backend_stats::gpu_vram_map(&gpu_vram)
+}
+
+/// noevia#1318 slice 13: the child stops sampling the backends and refuses GET /api/v1/backends
+/// only when the native sampler owns them; it then runs in UTC like the native answer.
+fn backends_child(child_command: &mut tokio::process::Command, backends_mode: &str) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_BACKENDS_CONFIRMED",
+        if backends_mode == "rust" { "1" } else { "0" },
+    );
+    if backends_mode == "rust" {
+        child_command.env("TZ", "UTC");
+    }
+}
+
+#[cfg(all(test, feature = "native-backends"))]
+mod backends_command_tests {
+    #![allow(clippy::unwrap_used)]
+    fn env(pairs: &[(&str, &str)]) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).into(), (*v).into()))
+            .collect()
+    }
+
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        for (mode, expected, tz) in [("rust", "1", Some("UTC")), ("python", "0", None)] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env("NOEVIA_NATIVE_MODEL_MANAGER_BACKENDS_CONFIRMED", "hostile");
+            super::backends_child(&mut command, mode);
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_BACKENDS_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(get("TZ"), tz.map(std::ffi::OsStr::new));
+        }
+    }
+
+    #[test]
+    fn fallback_reasons() {
+        let ok = super::backends_fallback("rust", "", env(&[("GPU_VRAM", "a:8, b:x,a:12")]));
+        assert_eq!(ok, Ok(vec![("a".to_owned(), 12.0)]));
+        assert!(super::backends_fallback("rust", "UTC", env(&[])).is_ok());
+        assert!(super::backends_fallback("python", "", env(&[])).is_err());
+        assert!(super::backends_fallback("rust", "Europe/Berlin", env(&[])).is_err());
+        for alias in ["gpu_vram", "Llama_Containers", "llama_default_port"] {
+            assert!(
+                super::backends_fallback("rust", "", env(&[(alias, "x")])).is_err(),
+                "{alias}"
+            );
+        }
+        assert!(super::backends_fallback("rust", "", env(&[("GPU_VRAM", "a:\u{0661}")])).is_err());
     }
 }
 

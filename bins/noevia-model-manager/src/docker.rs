@@ -101,6 +101,23 @@ where
     B::Data: Send,
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
+    send_request_full(socket, method, request)
+        .await
+        .map(|(status, _, body)| (status, body))
+}
+
+/// As [`send_request`], with the reason phrase of the status line (what docker-py's error text
+/// shows: the daemon's own phrase when it is not the canonical one).
+async fn send_request_full<B>(
+    socket: &std::path::Path,
+    method: &'static str,
+    request: Request<B>,
+) -> Result<(StatusCode, String, Vec<u8>), &'static str>
+where
+    B: hyper::body::Body + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
     let stream = UnixStream::connect(socket)
         .await
         .map_err(|_| "docker unreachable")?;
@@ -123,7 +140,7 @@ async fn exchange<B>(
     sender: &mut http1::SendRequest<B>,
     method: &'static str,
     request: Request<B>,
-) -> Result<(StatusCode, Vec<u8>), &'static str>
+) -> Result<(StatusCode, String, Vec<u8>), &'static str>
 where
     B: hyper::body::Body + Send + 'static,
 {
@@ -162,6 +179,12 @@ where
         }
     }
     let status = response.status();
+    // http.client decodes the status line as Latin-1.
+    let reason = response
+        .extensions()
+        .get::<hyper::ext::ReasonPhrase>()
+        .map(|r| r.as_bytes().iter().map(|b| char::from(*b)).collect())
+        .unwrap_or_else(|| status.canonical_reason().unwrap_or("").to_owned());
     // Docker answers 304 to stopping an already-stopped container; that is not a redirect.
     if status.is_redirection() && !(method == "POST" && status == StatusCode::NOT_MODIFIED) {
         return Err("Docker redirect refused");
@@ -178,7 +201,7 @@ where
             .map_err(|_| "allocation refused")?;
         raw.extend_from_slice(&data);
     }
-    Ok((status, raw))
+    Ok((status, reason, raw))
 }
 
 /// Joins of connection drivers whose request future was dropped before `finish` (deadline or
@@ -350,6 +373,51 @@ pub fn allowed_backend_restart(path: &str, container: &str) -> bool {
     segment(container).is_ok()
         && !container.bytes().all(|c| c.is_ascii_hexdigit())
         && path == format!("/containers/{container}/restart?t=15")
+}
+
+/// noevia#1318 slice 13: the read-only GETs of the native backend sampler and `GET /backends`:
+/// the daemon version, the container list, container and image inspect, and one-shot container
+/// stats. Never exec, create, start, stop or kill.
+#[cfg(feature = "native-backends")]
+pub fn allowed_backend_read(path: &str) -> bool {
+    if path == "/version" || path == "/containers/json?all=true&limit=1025&size=false" {
+        return true;
+    }
+    let (path, query) = path.split_once('?').unwrap_or((path, ""));
+    let parts: Vec<_> = path.split('/').collect();
+    // A Docker name, id or image digest always starts with a letter or digit (never `.`/`..`).
+    let id_ok = |id: &str| {
+        segment(id).is_ok() && id.bytes().next().is_some_and(|b| b.is_ascii_alphanumeric())
+    };
+    match parts.as_slice() {
+        ["", "containers" | "images", id, "json"] => query.is_empty() && id_ok(id),
+        ["", "containers", id, "stats"] => query == "stream=false" && id_ok(id),
+        _ => false,
+    }
+}
+
+#[cfg(feature = "native-backends")]
+impl crate::backend_stats::DockerApi for UnixDocker {
+    fn get<'a>(&'a self, path: &'a str) -> Job<'a, crate::backend_stats::Raw> {
+        Box::pin(async move {
+            if !allowed_backend_read(path) {
+                return Err("Docker operation refused");
+            }
+            let request = Request::builder()
+                .method("GET")
+                .uri(path)
+                .header("host", "localhost")
+                .header("connection", "close")
+                .body(Empty::<Bytes>::new())
+                .map_err(|_| "Docker request refused")?;
+            let (status, reason, body) = send_request_full(&self.socket, "GET", request).await?;
+            Ok(crate::backend_stats::Raw {
+                status: status.as_u16(),
+                reason,
+                body,
+            })
+        })
+    }
 }
 
 /// noevia#1318: the running containers the model delete checks (`containers.list()`).
@@ -812,6 +880,8 @@ mod tests {
             model_delete: None,
             #[cfg(feature = "native-draft-heads")]
             draft_heads: None,
+            #[cfg(feature = "native-backends")]
+            backend_stats: None,
             #[cfg(feature = "native-benchmark-runner")]
             bench_runner: None,
             #[cfg(feature = "native-backend-control")]
