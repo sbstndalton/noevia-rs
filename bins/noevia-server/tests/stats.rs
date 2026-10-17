@@ -202,6 +202,34 @@ async fn start_app(
     (addr, stop, app)
 }
 
+/// A loopback port that refuses every connection and that no other test can be handed.
+///
+/// Binding a listener and dropping it frees the port at once, so another test running in parallel
+/// in this binary (a router, a front listener) can be given the same port by `bind("127.0.0.1:0")`
+/// before the "dead" engine is polled; the poll then reaches that test's router, answers `up:true`
+/// and adds a `/models` read to its count (#2016). A socket that is bound but never listening
+/// keeps the port allocated for as long as it lives, and a connect to it is refused.
+struct DeadPort {
+    _socket: tokio::net::TcpSocket,
+    port: u16,
+}
+
+impl DeadPort {
+    fn new() -> Self {
+        let socket = tokio::net::TcpSocket::new_v4().unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let port = socket.local_addr().unwrap().port();
+        Self {
+            _socket: socket,
+            port,
+        }
+    }
+
+    fn port(&self) -> u16 {
+        self.port
+    }
+}
+
 fn switched_on(port: u16) -> Vec<(&'static str, String)> {
     vec![
         ("MODEL_MANAGER_KIND", "llamacpp".into()),
@@ -435,10 +463,9 @@ async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queue
 async fn a_dead_engine_is_up_false_and_a_retired_switch_value_keeps_the_route_native() {
     let d = tempfile::tempdir().unwrap();
     seed_database(d.path());
-    let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = dead.local_addr().unwrap().port();
-    drop(dead);
-    let (addr, stop) = start(d.path(), &switched_on(port)).await;
+    // Held to the end of the test: see `DeadPort`.
+    let dead = DeadPort::new();
+    let (addr, stop) = start(d.path(), &switched_on(dead.port())).await;
     let (status, _, body) = call(addr, "GET", "/api/stats", ADMIN, None).await;
     assert_eq!(status, 200);
     assert!(
@@ -462,4 +489,20 @@ async fn a_dead_engine_is_up_false_and_a_retired_switch_value_keeps_the_route_na
     );
     assert_eq!(listings.load(Ordering::SeqCst), 1);
     let _ = stop.send(());
+}
+
+#[tokio::test]
+async fn a_dead_port_refuses_connections_and_cannot_be_taken_by_another_listener() {
+    let dead = DeadPort::new();
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], dead.port()));
+    let refused = TcpStream::connect(addr).await.unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::ConnectionRefused);
+    // Neither an explicit bind of the port nor a burst of OS-assigned ones ever lands on it.
+    assert!(TcpListener::bind(addr).await.is_err());
+    let mut taken = Vec::new();
+    for _ in 0..256 {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        assert_ne!(l.local_addr().unwrap().port(), dead.port());
+        taken.push(l);
+    }
 }
