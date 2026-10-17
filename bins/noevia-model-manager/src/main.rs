@@ -75,6 +75,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "MODEL_MANAGER_IMPL is retired and ignored; the native model manager always runs"
         );
     }
+    // noevia#1957: MODEL_FILES_IMPL is retired too; models.ini backups always follow the
+    // model-files backups plan, so any leftover value is only reported.
+    if std::env::var_os("MODEL_FILES_IMPL").is_some() {
+        eprintln!(
+            "MODEL_FILES_IMPL is retired and ignored; models.ini backups always follow the model-files plan"
+        );
+    }
     // The sub-selectors below still name the parent mode; it is always native now.
     let mode = "rust";
     let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
@@ -621,7 +628,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(noevia_model_manager::section_writes::SectionWrites::new(
             std::path::Path::new(&roots.ini),
             roots.cache,
-            roots.rust_backups,
         ))
     });
     #[cfg(feature = "native-bench-runs")]
@@ -1250,7 +1256,6 @@ mod settings_write_command_tests {
 struct WritesRoots {
     ini: String,
     cache: (i64, i64),
-    rust_backups: bool,
 }
 
 #[cfg(feature = "native-section-writes")]
@@ -1309,15 +1314,9 @@ fn section_writes_roots(
     let cap = int("LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB", 1024)?
         .max(0)
         .min(hard);
-    let impl_raw = canonical("MODEL_FILES_IMPL")?;
-    let rust_backups = impl_raw
-        .as_deref()
-        .map(|v| v.trim().to_lowercase())
-        .is_some_and(|v| v == "rust");
     Ok(WritesRoots {
         ini,
         cache: (cap, hard),
-        rust_backups,
     })
 }
 
@@ -1639,8 +1638,8 @@ mod section_writes_command_tests {
     fn roots_defaults_limits_and_fallbacks() {
         let r = roots("", &[]).unwrap();
         assert_eq!(
-            (r.ini.as_str(), r.cache, r.rust_backups),
-            ("/models/models.ini", (1024, 2048), false)
+            (r.ini.as_str(), r.cache),
+            ("/models/models.ini", (1024, 2048))
         );
         let r = roots(
             "UTC",
@@ -1650,7 +1649,16 @@ mod section_writes_command_tests {
             ],
         )
         .unwrap();
-        assert_eq!((r.cache, r.rust_backups), ((512, 512), true));
+        assert_eq!(r.cache, (512, 512));
+        // noevia#1957: a leftover MODEL_FILES_IMPL (any value or spelling) changes nothing.
+        for value in ["python", " Rust ", ""] {
+            let r = roots("", &[("MODEL_FILES_IMPL", value)]).unwrap();
+            assert_eq!(
+                (r.ini.as_str(), r.cache),
+                ("/models/models.ini", (1024, 2048))
+            );
+        }
+        assert!(roots("", &[("model_files_impl", "python")]).is_ok());
         assert_eq!(
             roots("", &[("LLAMACPP_CACHE_RAM_HARD_MAX_MIB", "-5")])
                 .unwrap()

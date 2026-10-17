@@ -249,7 +249,6 @@ async fn actual_python_differential() {
         let writes = SectionWrites::with_clock(
             &ini,
             cache,
-            case["impl"] == "rust",
             Arc::new(move || UNIX_EPOCH + Duration::from_secs(epoch)),
         );
         let state = state(writes, &base);
@@ -326,7 +325,7 @@ async fn safe_defaults_plan_failures_and_name_checks() {
     std::fs::write(&ini, "[a]\n").unwrap();
     let plan = Arc::new(Mutex::new(Some((500, "Internal Server Error".to_owned()))));
     let base = child(plan.clone()).await;
-    let s = state(SectionWrites::new(&ini, (1024, 2048), false), &base);
+    let s = state(SectionWrites::new(&ini, (1024, 2048)), &base);
     let post = |p: &str| serde_json::json!({"method": "POST", "path": p, "body": null, "content_type": null});
     let got = send(s.clone(), &post("/api/v1/sections/m/safe-defaults"), "").await;
     assert_eq!(got.status, 500);
@@ -350,10 +349,7 @@ async fn non_native_shapes_never_write() {
     // keep the existing 404/405 (or reach the child, here a dead address), and write nothing.
     let dir = tempfile::tempdir().unwrap();
     let ini = dir.path().join("models.ini");
-    let s = state(
-        SectionWrites::new(&ini, (1024, 2048), false),
-        "http://127.0.0.1:9",
-    );
+    let s = state(SectionWrites::new(&ini, (1024, 2048)), "http://127.0.0.1:9");
     for (method, path) in [
         ("PUT", "/api/v1/sections/a/"),
         ("GET", "/api/v1/sections/a/rename"),

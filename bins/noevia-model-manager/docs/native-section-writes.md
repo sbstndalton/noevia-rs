@@ -20,7 +20,7 @@ Python's `ini.WRITE_LOCK` only serialises threads inside the Python process. Spl
   - `models.roles.json` drops a deleted section's role and moves a renamed one's.
 - **Files:**
   - Python reads models.ini with universal newlines, and edits write `\n`. The raw editor writes its text verbatim.
-  - Backups follow the `model-files backups` plan when `MODEL_FILES_IMPL=rust`, otherwise the rotating `.bak-<UTC stamp>[-n]` copy plus the revision copy, keeping 10.
+  - Backups always follow the `model-files backups` plan (rotating `.bak-<UTC stamp>[-n]` copy plus the revision copy, keeping 10 of each). `MODEL_FILES_IMPL` is retired (noevia#1957): a leftover value is ignored with one warning.
   - The replace is a fsynced temp file, renamed over models.ini, then the directory is fsynced.
 - **Answer:** `{"ok": true, "revision", ["section"], ["mtp"]}`, where `section` is `get_section` (DEFAULT keys merged). After a successful write the idle-unload reconcile (#1747) runs and the revision reported is that of the final file, as for the forwarded writers.
 
@@ -38,7 +38,7 @@ These need the GGUF hints, the draft-head search beside the weights and the buil
 - **Known gaps (approximate, not byte-tested):** cache-ram values with non-ASCII digits are treated as text. A 422 body's key order follows the shared validator (see noevia#1908).
 
 ## Differential evidence
-`tools/gen-section-writes-oracle.py` runs the actual services app (pinned `ff8f314`, services#67) step by step on synthetic models folders. `time.strftime` is pinned to one UTC instant, and `MODEL_FILES_IMPL=rust` cases use the real `model-files` binary.
+`tools/gen-section-writes-oracle.py` runs the actual services app (pinned `ff8f314`, services#67) step by step on synthetic models folders. `time.strftime` is pinned to one UTC instant, and cases with `impl` `rust` use the real `model-files` binary; the native tests ignore `impl` because the plan is the only backup path.
 
 It records every answer, the plan the child gives for each safe-defaults step, and the final models.ini, roles file and directory listing. The cases cover new files, preserving edits, every error path, cache-ram rules, a `[DEFAULT]` section, duplicates, unparseable files, odd headers (full render), CRLF and missing final newlines, the raw editor (backups, `backup: false`, size, parse errors), Rust and Python backup policies with pruning, rename (roles, fallback, header comments), delete (roles, trailing blanks, a middle section) and safe defaults (flat file, folder with a draft head, refusals).
 
