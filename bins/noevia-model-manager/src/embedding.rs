@@ -30,7 +30,9 @@ pub const MAX_MODELS: usize = 2;
 pub const ACT_TIMEOUT: Duration = Duration::from_secs(30);
 /// #1677: how long a change waits for another change (or a delete check) to finish. The request
 /// budget is ACT_TIMEOUT + LOCK_WAIT plus a margin, so a change that waited too long gives up
-/// itself and can never be applied after its caller was told it failed.
+/// itself and can never be applied after its caller was told it failed. A delete keeps the lock
+/// until its work ends (noevia#1997), at most its route's budget, so a change during a long
+/// delete fails after this wait.
 pub const LOCK_WAIT: Duration = Duration::from_secs(15);
 /// #1717: how often the watcher checks whether the router lost its models (an embed container
 /// restart that noevia did not make: crash, host reboot, manual recreate).
@@ -92,7 +94,8 @@ pub struct EmbeddingService {
     store: PathBuf,
     control: Arc<dyn ServiceControl>,
     probe: Arc<dyn Probe>,
-    lock: tokio::sync::Mutex<()>,
+    /// Shared (noevia#1997) so a delete can hold it in the task that outlives its request.
+    lock: Arc<tokio::sync::Mutex<()>>,
     /// Set when boot could not read or write the saved state or the preset. While set, every
     /// delete is refused (fail closed) and status reports the error; a successful apply clears it.
     broken: std::sync::Mutex<Option<&'static str>>,
@@ -184,7 +187,7 @@ impl EmbeddingService {
             store,
             control,
             probe,
-            lock: tokio::sync::Mutex::new(()),
+            lock: Arc::new(tokio::sync::Mutex::new(())),
             broken: std::sync::Mutex::new(None),
             act_timeout: ACT_TIMEOUT,
             lock_wait: LOCK_WAIT,
@@ -284,6 +287,13 @@ impl EmbeddingService {
     /// for the service while its file is being deleted, nor deleted while it is being chosen.
     pub async fn hold(&self) -> tokio::sync::MutexGuard<'_, ()> {
         self.lock.lock().await
+    }
+
+    /// noevia#1997: [`Self::hold`], owned, for a delete whose work outlives its request future
+    /// (a client that went away, the route's timeout). The guard moves into the task doing the
+    /// delete and is released only when that work ends.
+    pub async fn hold_owned(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        self.lock.clone().lock_owned().await
     }
 
     pub fn saved(&self) -> Result<Option<Saved>, &'static str> {

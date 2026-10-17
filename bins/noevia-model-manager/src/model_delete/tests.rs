@@ -939,3 +939,175 @@ fn delete_409_wording_matches_the_shared_cases() {
         );
     }
 }
+
+/// An embedding service with nothing saved and nothing loaded: it protects no model.
+fn idle_embedding(root: &Path) -> Arc<crate::embedding::EmbeddingService> {
+    struct Idle;
+    impl crate::embedding::ServiceControl for Idle {
+        fn act(&self, _: crate::embedding::Action) -> Job<'_, ()> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+    impl crate::embedding::Probe for Idle {
+        fn models(&self) -> Job<'_, Vec<crate::embedding::Served>> {
+            Box::pin(async { Ok(Vec::new()) })
+        }
+        fn load<'a>(&'a self, _: &'a str) -> Job<'a, ()> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+    Arc::new(crate::embedding::EmbeddingService::new(
+        "embed".into(),
+        root.join("models"),
+        "/models".into(),
+        root.join("embedding.ini"),
+        root.join("embedding-service.json"),
+        Arc::new(Idle),
+        Arc::new(Idle),
+    ))
+}
+
+/// True when the embedding service's hold is taken (a switch would wait).
+async fn embedding_held(service: &crate::embedding::EmbeddingService) -> bool {
+    tokio::time::timeout(std::time::Duration::from_millis(100), service.hold())
+        .await
+        .is_err()
+}
+
+/// noevia#1997/#1998: an embedding-guarded delete dropped while its removal runs (the client
+/// went away, the route's timeout) keeps the embedding service's hold, so no switch can choose
+/// the model being removed, and the request's admission permit until the removal returns.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_guarded_delete_keeps_the_embedding_hold_and_its_permit_until_the_removal_ends() {
+    use crate::test_support::{all_permits_back, dropped_while_blocked, test_state, Gate};
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir_all(models.join("dlz")).unwrap();
+    std::fs::write(models.join("dlz/a.gguf"), [0u8; 6]).unwrap();
+    let mut delete = ModelDelete::with_root(
+        plain_config(&models, dir.path()),
+        no_docker(),
+        Root::synthetic,
+    );
+    let gate = Gate::new();
+    delete.during = Some(gate.hook.clone());
+    let service = idle_embedding(dir.path());
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.embedding = Some(service.clone());
+    state.model_delete = Some(Arc::new(delete));
+    let state = Arc::new(state);
+    let request = axum::http::Request::post("/api/v1/models/delete")
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(r#"{"models":["dlz/a.gguf"]}"#))
+        .unwrap();
+    let open = dropped_while_blocked(&state, request, gate).await;
+
+    // The request is gone; its removal is not: the hold and the permit stay taken.
+    assert!(embedding_held(&service).await, "hold released mid-removal");
+    assert_eq!(state.permits.available_permits(), 3);
+    assert!(models.join("dlz/a.gguf").exists());
+
+    // The removal finishes: only then are both released.
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+    assert!(!models.join("dlz").exists(), "the removal finished whole");
+    assert!(!embedding_held(&service).await);
+}
+
+/// Review of noevia#1997/#1998: a delete that waited for the embedding service's hold and then
+/// forwarded to a child that never answers still answers its 504 by the route's budget, and its
+/// hold, any table reservation and its permit are released by then (not one child timeout
+/// later). `table`: native downloads, so the forward also holds the whole download table.
+async fn late_forward_times_out_by_the_budget(table: bool) {
+    use crate::test_support::test_state;
+    use std::time::{Duration, Instant};
+    let dir = tempfile::tempdir().unwrap();
+    let (port, server) = silent_server().await;
+    let service = idle_embedding(dir.path());
+    let mut state = test_state(&format!("http://127.0.0.1:{port}"));
+    state.embedding = Some(service.clone());
+    let downloads = table.then(|| table_for(&dir.path().join("models"), &dir.path().join("data")));
+    state.downloads = downloads.clone();
+    let state = Arc::new(state);
+    // Another delete (or a switch) holds the embedding service.
+    let other = service.hold_owned().await;
+    let budget = Duration::from_millis(800);
+    let admission = crate::Admission::try_new(&state).unwrap();
+    let request = axum::http::Request::post("/api/v1/models/delete")
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(r#"{"models":["synthetic/a.gguf"]}"#))
+        .unwrap();
+    let started = Instant::now();
+    let answer = tokio::spawn(crate::serve_admitted(
+        state.clone(),
+        admission,
+        request,
+        budget,
+    ));
+    // The hold comes free late in the budget: the forward starts then and the child is silent.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    drop(other);
+    let response = tokio::time::timeout(Duration::from_secs(10), answer).await;
+    assert!(
+        response.is_ok(),
+        "the timeout answer waited for the forward past the route budget"
+    );
+    let response = response.unwrap().unwrap();
+    assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+    assert!(started.elapsed() < budget + Duration::from_secs(2));
+    assert_eq!(state.permits.available_permits(), 4);
+    assert!(
+        !embedding_held(&service).await,
+        "hold kept past the deadline"
+    );
+    if let Some(downloads) = downloads {
+        assert_eq!(downloads.whole_reservations(), 0);
+    }
+    server.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_guarded_forward_that_waited_for_the_hold_times_out_by_the_route_budget() {
+    late_forward_times_out_by_the_budget(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_guarded_python_delete_that_waited_for_the_hold_times_out_by_the_route_budget() {
+    late_forward_times_out_by_the_budget(true).await;
+}
+
+/// A delete still waiting for the embedding service's hold at the deadline answers 504 then, and
+/// holds nothing afterwards.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_delete_waiting_for_the_hold_at_the_deadline_times_out_by_the_route_budget() {
+    use crate::test_support::test_state;
+    use std::time::{Duration, Instant};
+    let dir = tempfile::tempdir().unwrap();
+    let service = idle_embedding(dir.path());
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.embedding = Some(service.clone());
+    let state = Arc::new(state);
+    let other = service.hold_owned().await;
+    let admission = crate::Admission::try_new(&state).unwrap();
+    let request = axum::http::Request::post("/api/v1/models/delete")
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(r#"{"models":["synthetic/a.gguf"]}"#))
+        .unwrap();
+    let started = Instant::now();
+    let response = tokio::time::timeout(
+        Duration::from_secs(10),
+        crate::serve_admitted(
+            state.clone(),
+            admission,
+            request,
+            Duration::from_millis(300),
+        ),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert_eq!(state.permits.available_permits(), 4);
+    drop(other);
+    assert!(!embedding_held(&service).await);
+}

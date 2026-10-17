@@ -1244,3 +1244,120 @@ async fn a_guarded_python_delete_holds_the_download_table_while_forwarded() {
     assert_eq!(table.whole_reservations(), 0);
     server.abort();
 }
+
+/// A child that takes a delete and answers only when told: its base, the arrival, the answer.
+async fn child_holding_delete() -> (
+    String,
+    tokio::sync::oneshot::Receiver<()>,
+    tokio::sync::oneshot::Sender<()>,
+    tokio::task::JoinHandle<()>,
+) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let (arrived, arrived_rx) = tokio::sync::oneshot::channel::<()>();
+    let (release, released) = tokio::sync::oneshot::channel::<()>();
+    let hooks = Arc::new(Mutex::new(Some((arrived, released))));
+    let app = axum::Router::new().route(
+        "/api/v1/models/delete",
+        axum::routing::post(move || {
+            let hooks = hooks.clone();
+            async move {
+                let (arrived, released) = hooks.lock().unwrap().take().unwrap();
+                let _ = arrived.send(());
+                let _ = released.await;
+                axum::Json(serde_json::json!({"results": [{"ok": true}]}))
+            }
+        }),
+    );
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    (base, arrived_rx, release, server)
+}
+
+/// Starts the guarded delete of a model nothing protects, waits until the child has it, then drops
+/// the request (the client went away).
+async fn drop_forwarded_delete(
+    state: &Arc<StateData>,
+    arrived: tokio::sync::oneshot::Receiver<()>,
+) {
+    let delete = tokio::spawn(call(
+        state.clone(),
+        "POST",
+        "/api/v1/models/delete",
+        r#"{"models":["synthetic/a.gguf"]}"#,
+    ));
+    tokio::time::timeout(Duration::from_secs(20), arrived)
+        .await
+        .unwrap()
+        .unwrap();
+    delete.abort();
+    assert!(delete.await.unwrap_err().is_cancelled());
+}
+
+/// True when the embedding service's hold is taken (a switch would wait).
+async fn hold_taken(service: &EmbeddingService) -> bool {
+    tokio::time::timeout(Duration::from_millis(100), service.hold())
+        .await
+        .is_err()
+}
+
+/// Waits (at most 20 s) until all `n` request permits are back.
+async fn permits_back(state: &StateData, n: usize) {
+    tokio::time::timeout(Duration::from_secs(20), async {
+        while state.permits.available_permits() < n {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+/// noevia#1997/#1998: a guarded delete forwarded to the child and dropped before the child
+/// answers (the client went away) keeps the embedding service's hold, so no switch can choose
+/// the model being deleted, and its admission permit until the child has answered.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_guarded_delete_keeps_the_hold_and_its_permit_until_the_child_answers() {
+    let f = fixture();
+    let (base, arrived, release, server) = child_holding_delete().await;
+    let state = state_at(f.service.clone(), &base);
+    drop_forwarded_delete(&state, arrived).await;
+    assert!(hold_taken(&f.service).await, "hold released mid-forward");
+    assert_eq!(state.permits.available_permits(), 1);
+    release.send(()).unwrap();
+    permits_back(&state, 2).await;
+    assert!(!hold_taken(&f.service).await);
+    server.abort();
+}
+
+/// noevia#1997/#1998: the same with native downloads (the whole table reserved while the child
+/// deletes): the hold, the reservation and the permit all last until the child has answered.
+#[cfg(feature = "native-downloads")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_guarded_python_delete_keeps_the_hold_table_and_permit_until_the_child_answers() {
+    use noevia_model_manager::downloads::{Config, Downloads};
+    let f = fixture();
+    let (base, arrived, release, server) = child_holding_delete().await;
+    let data = f.dir.path().join("data");
+    let models = f.dir.path().join("models");
+    let table = Downloads::new(Config::production(
+        models.to_str().unwrap().to_owned(),
+        data.to_str().unwrap(),
+        1,
+    ))
+    .unwrap();
+    let mut s = Arc::try_unwrap(state_at(f.service.clone(), &base))
+        .ok()
+        .unwrap();
+    s.downloads = Some(table.clone());
+    let state = Arc::new(s);
+    drop_forwarded_delete(&state, arrived).await;
+    assert!(hold_taken(&f.service).await, "hold released mid-forward");
+    assert_eq!(table.whole_reservations(), 1);
+    assert_eq!(state.permits.available_permits(), 1);
+    release.send(()).unwrap();
+    permits_back(&state, 2).await;
+    assert_eq!(table.whole_reservations(), 0);
+    assert!(!hold_taken(&f.service).await);
+    server.abort();
+}

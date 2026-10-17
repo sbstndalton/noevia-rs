@@ -114,6 +114,9 @@ pub struct DraftHeads {
     reads: Arc<tokio::sync::Semaphore>,
     lookups: Arc<tokio::sync::Semaphore>,
     open: fn(&Path) -> Result<Root, WalkError>,
+    /// Lib tests: runs in the listing parse's blocking task, before the parse.
+    #[cfg(test)]
+    during_parse: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 /// The local part of an answer.
@@ -165,6 +168,8 @@ impl DraftHeads {
             reads: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_READS)),
             lookups: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_LOOKUPS)),
             open,
+            #[cfg(test)]
+            during_parse: None,
         })
     }
 
@@ -180,7 +185,9 @@ impl DraftHeads {
             self.open,
             name.to_owned(),
         );
-        let located = tokio::task::spawn_blocking(move || {
+        // noevia#1998: every blocking task here is admitted: a dropped request keeps its
+        // admission permit until the task has returned.
+        let located = crate::docker::spawn_blocking_admitted(move || {
             let _permit = permit;
             locate(&models, &ini_path, &database, &section, open)
         })
@@ -201,16 +208,19 @@ impl DraftHeads {
         let mut remote_error = false;
         if let Some(repo) = &local.repo {
             // Held for the listing and the sibling lookup; the semaphore is never closed.
-            let Ok(_lookup) = self.lookups.acquire().await else {
+            // noevia#1998: each listing parse keeps a share, so a dropped request gives the
+            // lookup back only when its parse has returned.
+            let Ok(lookup) = self.lookups.clone().acquire_owned().await else {
                 return Outcome::Refused;
             };
-            match self.repo_detail(repo).await {
+            let lookup = Arc::new(lookup);
+            match self.repo_detail(repo, &lookup).await {
                 Ok(files) => {
                     let heads = heads(repo, files);
                     remote = heads.render;
                     if heads.empty && local.builtin == "0" {
                         if let Some(sibling) = sibling(repo) {
-                            if self.repo_detail(&sibling).await.is_ok() {
+                            if self.repo_detail(&sibling, &lookup).await.is_ok() {
                                 mtp_build = json_string(&sibling);
                             }
                         }
@@ -239,10 +249,14 @@ impl DraftHeads {
     }
 
     /// `hf.repo_detail(repo_id)`: every page of the tree listing, as files.
-    async fn repo_detail(&self, repo: &str) -> Result<Vec<model_files::HfFile>, Lookup> {
+    async fn repo_detail(
+        &self,
+        repo: &str,
+        lookup: &Arc<tokio::sync::OwnedSemaphorePermit>,
+    ) -> Result<Vec<model_files::HfFile>, Lookup> {
         // `_auth_headers()` when the client is built: any failure raises inside the lookup.
         let database = self.database.clone();
-        let auth = tokio::task::spawn_blocking(move || hub_auth(&database))
+        let auth = crate::docker::spawn_blocking_admitted(move || hub_auth(&database))
             .await
             .map_err(|_| Lookup::Failed)?;
         let header = match auth {
@@ -296,9 +310,19 @@ impl DraftHeads {
             url = next;
         }
         let payload = projected.finish();
-        let files = tokio::task::spawn_blocking(move || files_of(payload))
-            .await
-            .map_err(|_| Lookup::Failed)??;
+        let lookup = lookup.clone();
+        #[cfg(test)]
+        let during = self.during_parse.clone();
+        let files = crate::docker::spawn_blocking_admitted(move || {
+            let _lookup = lookup;
+            #[cfg(test)]
+            if let Some(during) = during {
+                during();
+            }
+            files_of(payload)
+        })
+        .await
+        .map_err(|_| Lookup::Failed)??;
         let mut files = files;
         // `files.sort(key=lambda f: (not f.path.lower().endswith(".gguf"), f.path.lower()))`.
         files.sort_by_cached_key(|f| {
