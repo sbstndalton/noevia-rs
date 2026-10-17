@@ -914,6 +914,42 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-logs --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
 
+  native-downloads:
+    name: Native downloads, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: bf552c19c761510d7353bcbeb5b8a7cd81ddf0da
+          path: downloads-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r downloads-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Regenerate the actual Python downloads oracle against fake hub and CDN servers
+        run: |
+          python3 -I tools/gen-downloads-oracle.py downloads-services/model-manager/app > "$RUNNER_TEMP/downloads.json"
+          cmp bins/noevia-model-manager/tests/fixtures/downloads-python.v1.json "$RUNNER_TEMP/downloads.json"
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-downloads -- -D warnings
+      - name: Native downloads differential, failures and route policy
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-downloads --test downloads --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-downloads --lib downloads::
+      - name: Downloads capability omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-check-updates --test lifecycle
+          cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+
   native-benchmark-overview:
     name: Native benchmark overview, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest

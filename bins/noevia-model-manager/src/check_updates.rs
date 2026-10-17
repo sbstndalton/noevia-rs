@@ -372,6 +372,35 @@ impl Token {
     }
 }
 
+/// noevia#1318 (downloads): the stored token as the `Authorization` value `hf._auth_headers`
+/// would send, read fresh as `hf.get_token()` is for every request.
+pub(crate) enum HubAuth {
+    /// A falsy token: no header.
+    Absent,
+    Value(reqwest::header::HeaderValue),
+    /// httpx raises UnicodeEncodeError while encoding the header.
+    NotAscii,
+    /// h11 refuses the value (LocalProtocolError), or this HTTP library does.
+    Refused,
+    /// The store could not be read (`db.get_setting` raised).
+    Failed,
+}
+
+pub(crate) fn hub_auth(database: &Path) -> HubAuth {
+    let Ok(db) = open(database) else {
+        return HubAuth::Failed;
+    };
+    match read_token(&db) {
+        Err(_) => HubAuth::Failed,
+        Ok(None) => HubAuth::Absent,
+        Ok(Some(token)) => match token.header() {
+            Header::Value(v) => HubAuth::Value(v),
+            Header::NotAscii => HubAuth::NotAscii,
+            Header::Refused => HubAuth::Refused,
+        },
+    }
+}
+
 /// h11's `field_value`: `([^\x00\s]+([ \t]+[^\x00\s]+)*)?` on bytes.
 fn h11_field_value(value: &[u8]) -> bool {
     let vchar = |b: u8| !matches!(b, 0 | b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c);

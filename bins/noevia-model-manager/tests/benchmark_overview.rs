@@ -72,6 +72,8 @@ fn state(
             .map(|r| Arc::new(BenchmarkOverview::new(r, &r.join("models.ini")))),
         #[cfg(feature = "native-check-updates")]
         check_updates: None,
+        #[cfg(feature = "native-downloads")]
+        downloads: None,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner: None,
         #[cfg(feature = "native-backend-control")]

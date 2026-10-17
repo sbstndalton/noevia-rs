@@ -1,0 +1,4914 @@
+{
+ "cases": [
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"v1\"",
+     "path": "/files/synthetic-small.gguf",
+     "seed": 1,
+     "server": "cdn",
+     "size": 4096
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "synthetic-small/synthetic-small.gguf",
+     "synthetic-small/synthetic-small.gguf",
+     4096,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "url-small",
+   "models": [
+    {
+     "path": "synthetic-small/synthetic-small.gguf",
+     "sha256": "b5d89a867a078e7c9de7919965bff4e40d08b03b37125d5f228c7da1b1c74a4d",
+     "size": 4096
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-small.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/synthetic-small.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"synthetic-small.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "synthetic-small/synthetic-small.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 4096,
+        "url": "http://{CDN}/files/synthetic-small.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/synthetic-small.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 4096,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 4096,
+       "error": null,
+       "filename": "synthetic-small/synthetic-small.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "path": "/files/x.gguf",
+     "seed": 2,
+     "server": "cdn",
+     "size": 1500
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "archive/custom-name/custom-name.gguf",
+     "archive/custom-name/custom-name.gguf",
+     1500,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "url-target-and-name",
+   "models": [
+    {
+     "path": "archive/custom-name/custom-name.gguf",
+     "sha256": "623aab6b1dbd1ad90be0dddf17bae42c903b99f7da4617b14317bca2d62f844f",
+     "size": 1500
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/x.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/x.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"custom-name.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "archive/custom-name/custom-name.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 1500,
+        "url": "http://{CDN}/files/x.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/x.gguf\", \"filename\": \"custom-name.gguf\", \"target\": \"archive\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 1500,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 1500,
+       "error": null,
+       "filename": "archive/custom-name/custom-name.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [
+    "archive"
+   ],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "path": "/synthetic-owner/synthetic-repo/resolve/main/Synthetic-Q4_K_M.gguf",
+     "redirect": {
+      "path": "/blobs/Synthetic-Q4_K_M.gguf",
+      "server": "cdn"
+     },
+     "seed": 10,
+     "server": "hub",
+     "size": 3000
+    },
+    {
+     "path": "/synthetic-owner/synthetic-repo/resolve/main/mmproj-synthetic-f16.gguf",
+     "redirect": {
+      "path": "/blobs/mmproj-synthetic-f16.gguf",
+      "server": "cdn"
+     },
+     "seed": 11,
+     "server": "hub",
+     "size": 500
+    },
+    {
+     "path": "/synthetic-owner/synthetic-repo/resolve/main/synthetic-draft-0.5B-Q8_0.gguf",
+     "redirect": {
+      "path": "/blobs/synthetic-draft-0.5B-Q8_0.gguf",
+      "server": "cdn"
+     },
+     "seed": 12,
+     "server": "hub",
+     "size": 200
+    },
+    {
+     "etag": "\"b0\"",
+     "path": "/blobs/Synthetic-Q4_K_M.gguf",
+     "seed": 10,
+     "server": "cdn",
+     "size": 3000
+    },
+    {
+     "etag": "\"b1\"",
+     "path": "/blobs/mmproj-synthetic-f16.gguf",
+     "seed": 11,
+     "server": "cdn",
+     "size": 500
+    },
+    {
+     "etag": "\"b2\"",
+     "path": "/blobs/synthetic-draft-0.5B-Q8_0.gguf",
+     "seed": 12,
+     "server": "cdn",
+     "size": 200
+    }
+   ],
+   "history": [
+    [
+     "synthetic-owner/synthetic-repo",
+     "Synthetic-Q4_K_M/Synthetic-Q4_K_M.gguf",
+     "Synthetic-Q4_K_M/Synthetic-Q4_K_M.gguf",
+     3000,
+     "done",
+     null,
+     true,
+     true
+    ],
+    [
+     "synthetic-owner/synthetic-repo",
+     "Synthetic-Q4_K_M/mmproj-synthetic-f16.gguf",
+     "Synthetic-Q4_K_M/mmproj-synthetic-f16.gguf",
+     500,
+     "done",
+     null,
+     true,
+     true
+    ],
+    [
+     "synthetic-owner/synthetic-repo",
+     "Synthetic-Q4_K_M/synthetic-draft-0.5B-Q8_0.gguf",
+     "Synthetic-Q4_K_M/synthetic-draft-0.5B-Q8_0.gguf",
+     200,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "hub-companions",
+   "models": [
+    {
+     "path": "Synthetic-Q4_K_M/Synthetic-Q4_K_M.gguf",
+     "sha256": "0931a38104bbce33d1a02475ebb27370d2dd6cd951c34183ad70cf8aef0c69c3",
+     "size": 3000
+    },
+    {
+     "path": "Synthetic-Q4_K_M/mmproj-synthetic-f16.gguf",
+     "sha256": "da2a0bc2cdab4d7b4dc8ef60a1d5207c611828096d162e3d6101ea3084aea0e6",
+     "size": 500
+    },
+    {
+     "path": "Synthetic-Q4_K_M/synthetic-draft-0.5B-Q8_0.gguf",
+     "sha256": "ed99d8b1c8a5d03061e927bbd18c6e6817850bd08d4742aa360d324d8fe62624",
+     "size": 200
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/blobs/Synthetic-Q4_K_M.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "GET",
+     "/blobs/mmproj-synthetic-f16.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "GET",
+     "/blobs/synthetic-draft-0.5B-Q8_0.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/blobs/Synthetic-Q4_K_M.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/blobs/mmproj-synthetic-f16.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/blobs/synthetic-draft-0.5B-Q8_0.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-repo/resolve/main/Synthetic-Q4_K_M.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-repo/resolve/main/mmproj-synthetic-f16.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-repo/resolve/main/synthetic-draft-0.5B-Q8_0.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/synthetic-owner/synthetic-repo/resolve/main/Synthetic-Q4_K_M.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/synthetic-owner/synthetic-repo/resolve/main/mmproj-synthetic-f16.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/synthetic-owner/synthetic-repo/resolve/main/synthetic-draft-0.5B-Q8_0.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"Synthetic-Q4_K_M.gguf\",\"mmproj-synthetic-f16.gguf\",\"synthetic-draft-0.5B-Q8_0.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "Synthetic-Q4_K_M/Synthetic-Q4_K_M.gguf",
+        "repo_id": "synthetic-owner/synthetic-repo",
+        "total_bytes": 3000,
+        "url": "http://{HUB}/synthetic-owner/synthetic-repo/resolve/main/Synthetic-Q4_K_M.gguf"
+       },
+       {
+        "filename": "Synthetic-Q4_K_M/mmproj-synthetic-f16.gguf",
+        "repo_id": "synthetic-owner/synthetic-repo",
+        "total_bytes": 500,
+        "url": "http://{HUB}/synthetic-owner/synthetic-repo/resolve/main/mmproj-synthetic-f16.gguf"
+       },
+       {
+        "filename": "Synthetic-Q4_K_M/synthetic-draft-0.5B-Q8_0.gguf",
+        "repo_id": "synthetic-owner/synthetic-repo",
+        "total_bytes": 200,
+        "url": "http://{HUB}/synthetic-owner/synthetic-repo/resolve/main/synthetic-draft-0.5B-Q8_0.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"repo\": \"synthetic-owner/synthetic-repo\", \"path\": \"Synthetic-Q4_K_M.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 3000,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 3000,
+       "error": null,
+       "filename": "Synthetic-Q4_K_M/Synthetic-Q4_K_M.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "synthetic-owner/synthetic-repo",
+       "started": true,
+       "status": "done"
+      },
+      {
+       "bytes": 500,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 500,
+       "error": null,
+       "filename": "Synthetic-Q4_K_M/mmproj-synthetic-f16.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "synthetic-owner/synthetic-repo",
+       "started": true,
+       "status": "done"
+      },
+      {
+       "bytes": 200,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 200,
+       "error": null,
+       "filename": "Synthetic-Q4_K_M/synthetic-draft-0.5B-Q8_0.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "synthetic-owner/synthetic-repo",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": "hf_synthetic_download_token_0123"
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"big\"",
+     "path": "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "ranges": true,
+     "seed": 5,
+     "server": "hub",
+     "size": 262144
+    }
+   ],
+   "history": [
+    [
+     "synthetic-owner/synthetic-big",
+     "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+     "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+     262144,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "parallel",
+   "models": [
+    {
+     "path": "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+     "sha256": "c34e3c4ed709bb86231672d8956b76224ebb394254c85fe1a34ae8f7eddeee3c",
+     "size": 262144
+    }
+   ],
+   "requests": [
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "bytes=0-32767",
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "bytes=131072-163839",
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "bytes=163840-196607",
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "bytes=196608-229375",
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "bytes=229376-262143",
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "bytes=32768-65535",
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "bytes=65536-98303",
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "bytes=98304-131071",
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"Synthetic-Big-Q8_0.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+        "repo_id": "synthetic-owner/synthetic-big",
+        "total_bytes": 262144,
+        "url": "http://{HUB}/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"repo\": \"synthetic-owner/synthetic-big\", \"path\": \"Synthetic-Big-Q8_0.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 262144,
+       "chunks": [
+        {
+         "index": 0,
+         "pct": 100.0,
+         "status": "done"
+        },
+        {
+         "index": 1,
+         "pct": 100.0,
+         "status": "done"
+        },
+        {
+         "index": 2,
+         "pct": 100.0,
+         "status": "done"
+        },
+        {
+         "index": 3,
+         "pct": 100.0,
+         "status": "done"
+        },
+        {
+         "index": 4,
+         "pct": 100.0,
+         "status": "done"
+        },
+        {
+         "index": 5,
+         "pct": 100.0,
+         "status": "done"
+        },
+        {
+         "index": 6,
+         "pct": 100.0,
+         "status": "done"
+        },
+        {
+         "index": 7,
+         "pct": 100.0,
+         "status": "done"
+        }
+       ],
+       "completed": true,
+       "downloaded": 262144,
+       "error": null,
+       "filename": "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": true,
+       "pct": 100.0,
+       "repo": "synthetic-owner/synthetic-big",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": "hf_synthetic_download_token_0123"
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "fail_range_start": 98304,
+     "path": "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "ranges": true,
+     "seed": 5,
+     "server": "hub",
+     "size": 262144
+    }
+   ],
+   "history": [
+    [
+     "synthetic-owner/synthetic-big",
+     "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+     "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+     262144,
+     "error",
+     "RuntimeError: HTTP 200 for range 98304-131071",
+     true,
+     true
+    ]
+   ],
+   "id": "parallel-chunk-200",
+   "models": [],
+   "requests": null,
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"Synthetic-Big-Q8_0.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+        "repo_id": "synthetic-owner/synthetic-big",
+        "total_bytes": 262144,
+        "url": "http://{HUB}/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"repo\": \"synthetic-owner/synthetic-big\", \"path\": \"Synthetic-Big-Q8_0.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 262144,
+       "chunks": [],
+       "completed": true,
+       "downloaded": null,
+       "error": "RuntimeError: HTTP 200 for range 98304-131071",
+       "filename": "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": true,
+       "pct": null,
+       "repo": "synthetic-owner/synthetic-big",
+       "started": true,
+       "status": "error"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "bad_range_start": 0,
+     "path": "/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf",
+     "ranges": true,
+     "seed": 5,
+     "server": "hub",
+     "size": 262144
+    }
+   ],
+   "history": [
+    [
+     "synthetic-owner/synthetic-big",
+     "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+     "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+     262144,
+     "error",
+     "RuntimeError: unexpected Content-Range for range 0-32767",
+     true,
+     true
+    ]
+   ],
+   "id": "parallel-bad-range",
+   "models": [],
+   "requests": null,
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"Synthetic-Big-Q8_0.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+        "repo_id": "synthetic-owner/synthetic-big",
+        "total_bytes": 262144,
+        "url": "http://{HUB}/synthetic-owner/synthetic-big/resolve/main/Synthetic-Big-Q8_0.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"repo\": \"synthetic-owner/synthetic-big\", \"path\": \"Synthetic-Big-Q8_0.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 262144,
+       "chunks": [],
+       "completed": true,
+       "downloaded": null,
+       "error": "RuntimeError: unexpected Content-Range for range 0-32767",
+       "filename": "Synthetic-Big-Q8_0/Synthetic-Big-Q8_0.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": true,
+       "pct": null,
+       "repo": "synthetic-owner/synthetic-big",
+       "started": true,
+       "status": "error"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"r1\"",
+     "path": "/files/synthetic-resume.gguf",
+     "range_mode": "honor",
+     "seed": 7,
+     "server": "cdn",
+     "size": 3000
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "synthetic-resume/synthetic-resume.gguf",
+     "synthetic-resume/synthetic-resume.gguf",
+     3000,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "resume-206",
+   "models": [
+    {
+     "path": "synthetic-resume/synthetic-resume.gguf",
+     "sha256": "2d7a907e20f9006c85c3a7bdd2a760cbd46b70533cec1d308564f054597bec55",
+     "size": 3000
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-resume.gguf",
+     "bytes=1000-",
+     "\"r1\"",
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "file": "synthetic-resume/synthetic-resume.gguf.download",
+     "op": "partial",
+     "seed": 7,
+     "size": 1000,
+     "total": 3000,
+     "validator": "\"r1\"\t3000"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"synthetic-resume.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "synthetic-resume/synthetic-resume.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 3000,
+        "url": "http://{CDN}/files/synthetic-resume.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/synthetic-resume.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 3000,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 3000,
+       "error": null,
+       "filename": "synthetic-resume/synthetic-resume.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"r1\"",
+     "path": "/files/synthetic-resume.gguf",
+     "range_mode": "honor",
+     "seed": 7,
+     "server": "cdn",
+     "size": 3000
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "synthetic-resume/synthetic-resume.gguf",
+     "synthetic-resume/synthetic-resume.gguf",
+     3000,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "resume-no-validator",
+   "models": [
+    {
+     "path": "synthetic-resume/synthetic-resume.gguf",
+     "sha256": "2d7a907e20f9006c85c3a7bdd2a760cbd46b70533cec1d308564f054597bec55",
+     "size": 3000
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "file": "synthetic-resume/synthetic-resume.gguf.download",
+     "op": "partial",
+     "seed": 7,
+     "size": 1000,
+     "total": 3000,
+     "validator": null
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"synthetic-resume.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "synthetic-resume/synthetic-resume.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 3000,
+        "url": "http://{CDN}/files/synthetic-resume.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/synthetic-resume.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 3000,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 3000,
+       "error": null,
+       "filename": "synthetic-resume/synthetic-resume.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"new\"",
+     "path": "/files/synthetic-resume.gguf",
+     "range_mode": "honor",
+     "seed": 8,
+     "server": "cdn",
+     "size": 3000
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "synthetic-resume/synthetic-resume.gguf",
+     "synthetic-resume/synthetic-resume.gguf",
+     3000,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "resume-changed-upload",
+   "models": [
+    {
+     "path": "synthetic-resume/synthetic-resume.gguf",
+     "sha256": "138887ae382a9c96cd757090e46853286615cd4e22e4dba20d966fb19cd4aa91",
+     "size": 3000
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "file": "synthetic-resume/synthetic-resume.gguf.download",
+     "op": "partial",
+     "seed": 7,
+     "size": 1000,
+     "total": 3000,
+     "validator": "\"old\"\t3000"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"synthetic-resume.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "synthetic-resume/synthetic-resume.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 3000,
+        "url": "http://{CDN}/files/synthetic-resume.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/synthetic-resume.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 3000,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 3000,
+       "error": null,
+       "filename": "synthetic-resume/synthetic-resume.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"r1\"",
+     "path": "/files/synthetic-resume.gguf",
+     "range_mode": "416",
+     "seed": 7,
+     "server": "cdn",
+     "size": 3000
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "synthetic-resume/synthetic-resume.gguf",
+     "synthetic-resume/synthetic-resume.gguf",
+     3000,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "resume-416",
+   "models": [
+    {
+     "path": "synthetic-resume/synthetic-resume.gguf",
+     "sha256": "2d7a907e20f9006c85c3a7bdd2a760cbd46b70533cec1d308564f054597bec55",
+     "size": 3000
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-resume.gguf",
+     "bytes=1000-",
+     "\"r1\"",
+     null
+    ],
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "file": "synthetic-resume/synthetic-resume.gguf.download",
+     "op": "partial",
+     "seed": 7,
+     "size": 1000,
+     "total": 3000,
+     "validator": "\"r1\"\t3000"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"synthetic-resume.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "synthetic-resume/synthetic-resume.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 3000,
+        "url": "http://{CDN}/files/synthetic-resume.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/synthetic-resume.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 3000,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 3000,
+       "error": null,
+       "filename": "synthetic-resume/synthetic-resume.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"r1\"",
+     "path": "/files/synthetic-resume.gguf",
+     "range_mode": "wrong_offset",
+     "seed": 7,
+     "server": "cdn",
+     "size": 3000
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "synthetic-resume/synthetic-resume.gguf",
+     "synthetic-resume/synthetic-resume.gguf",
+     3000,
+     "error",
+     "RuntimeError: unexpected Content-Range 'bytes 0-2999/3000' resuming at byte 1000",
+     true,
+     true
+    ]
+   ],
+   "id": "resume-wrong-offset",
+   "models": [
+    {
+     "path": "synthetic-resume/synthetic-resume.gguf.download",
+     "sha256": "52cfdd36bc71cae8497dae99d17cad53b7fc4147524d773cc3510b5acdcfc0a4",
+     "size": 1000
+    },
+    {
+     "path": "synthetic-resume/synthetic-resume.gguf.download.validator",
+     "sha256": "599e2b0015d5ac1896a77aeb0a9ed48f13529d9ee69562d67c1b94c7b14e6d0e",
+     "size": 9,
+     "text": "\"r1\"\t3000"
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-resume.gguf",
+     "bytes=1000-",
+     "\"r1\"",
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "file": "synthetic-resume/synthetic-resume.gguf.download",
+     "op": "partial",
+     "seed": 7,
+     "size": 1000,
+     "total": 3000,
+     "validator": "\"r1\"\t3000"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"synthetic-resume.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "synthetic-resume/synthetic-resume.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 3000,
+        "url": "http://{CDN}/files/synthetic-resume.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/synthetic-resume.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 3000,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 1000,
+       "error": "RuntimeError: unexpected Content-Range 'bytes 0-2999/3000' resuming at byte 1000",
+       "filename": "synthetic-resume/synthetic-resume.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 33.3,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "error"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"r1\"",
+     "path": "/files/synthetic-resume.gguf",
+     "range_mode": "other_total",
+     "seed": 7,
+     "server": "cdn",
+     "size": 3000
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "synthetic-resume/synthetic-resume.gguf",
+     "synthetic-resume/synthetic-resume.gguf",
+     3000,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "resume-other-total",
+   "models": [
+    {
+     "path": "synthetic-resume/synthetic-resume.gguf",
+     "sha256": "2d7a907e20f9006c85c3a7bdd2a760cbd46b70533cec1d308564f054597bec55",
+     "size": 3000
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-resume.gguf",
+     "bytes=1000-",
+     "\"r1\"",
+     null
+    ],
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "file": "synthetic-resume/synthetic-resume.gguf.download",
+     "op": "partial",
+     "seed": 7,
+     "size": 1000,
+     "total": 3000,
+     "validator": "\"r1\"\t3000"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"synthetic-resume.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "synthetic-resume/synthetic-resume.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 3000,
+        "url": "http://{CDN}/files/synthetic-resume.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/synthetic-resume.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 3000,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 3000,
+       "error": null,
+       "filename": "synthetic-resume/synthetic-resume.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "date": "Tue, 02 Jan 2024 00:00:00 GMT",
+     "last_modified": "Mon, 01 Jan 2024 00:00:00 GMT",
+     "path": "/files/synthetic-resume.gguf",
+     "range_mode": "honor",
+     "seed": 7,
+     "server": "cdn",
+     "size": 3000
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "synthetic-resume/synthetic-resume.gguf",
+     "synthetic-resume/synthetic-resume.gguf",
+     3000,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "resume-last-modified",
+   "models": [
+    {
+     "path": "synthetic-resume/synthetic-resume.gguf",
+     "sha256": "2d7a907e20f9006c85c3a7bdd2a760cbd46b70533cec1d308564f054597bec55",
+     "size": 3000
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-resume.gguf",
+     "bytes=1000-",
+     "Mon, 01 Jan 2024 00:00:00 GMT",
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "file": "synthetic-resume/synthetic-resume.gguf.download",
+     "op": "partial",
+     "seed": 7,
+     "size": 1000,
+     "total": 3000,
+     "validator": "Mon, 01 Jan 2024 00:00:00 GMT\t3000"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"synthetic-resume.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "synthetic-resume/synthetic-resume.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 3000,
+        "url": "http://{CDN}/files/synthetic-resume.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/synthetic-resume.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 3000,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 3000,
+       "error": null,
+       "filename": "synthetic-resume/synthetic-resume.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "date": "Mon, 01 Jan 2024 00:00:10 GMT",
+     "etag": "W/\"w\"",
+     "last_modified": "Mon, 01 Jan 2024 00:00:00 GMT",
+     "path": "/files/synthetic-resume.gguf",
+     "range_mode": "honor",
+     "seed": 7,
+     "server": "cdn",
+     "size": 3000
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "synthetic-resume/synthetic-resume.gguf",
+     "synthetic-resume/synthetic-resume.gguf",
+     3000,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "recent-last-modified-weak-etag",
+   "models": [
+    {
+     "path": "synthetic-resume/synthetic-resume.gguf",
+     "sha256": "2d7a907e20f9006c85c3a7bdd2a760cbd46b70533cec1d308564f054597bec55",
+     "size": 3000
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/synthetic-resume.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"synthetic-resume.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "synthetic-resume/synthetic-resume.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 3000,
+        "url": "http://{CDN}/files/synthetic-resume.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/synthetic-resume.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 3000,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 3000,
+       "error": null,
+       "filename": "synthetic-resume/synthetic-resume.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "path": "/files/missing.gguf",
+     "seed": 1,
+     "server": "cdn",
+     "size": 10,
+     "status": 404,
+     "status_body": "synthetic not found"
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "missing/missing.gguf",
+     "missing/missing.gguf",
+     0,
+     "error",
+     "RuntimeError: HTTP 404 from http://{CDN}/files/missing.gguf: synthetic not found",
+     true,
+     true
+    ]
+   ],
+   "id": "http-404",
+   "models": [],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/missing.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/missing.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"missing.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "missing/missing.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 0,
+        "url": "http://{CDN}/files/missing.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/missing.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 0,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 0,
+       "error": "RuntimeError: HTTP 404 from http://{CDN}/files/missing.gguf: synthetic not found",
+       "filename": "missing/missing.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 0.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "error"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "get_size": 150,
+     "head_size": 100,
+     "path": "/files/over.gguf",
+     "seed": 3,
+     "server": "cdn",
+     "size": 100
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "over/over.gguf",
+     "over/over.gguf",
+     100,
+     "error",
+     "RuntimeError: downloaded file is 150 bytes, expected 100; discarded it, nothing was installed",
+     true,
+     true
+    ]
+   ],
+   "id": "oversized",
+   "models": [],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/over.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/over.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"over.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "over/over.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 100,
+        "url": "http://{CDN}/files/over.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/over.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 100,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 150,
+       "error": "RuntimeError: downloaded file is 150 bytes, expected 100; discarded it, nothing was installed",
+       "filename": "over/over.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "error"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"s\"",
+     "get_size": 60,
+     "path": "/files/short.gguf",
+     "seed": 3,
+     "server": "cdn",
+     "size": 100
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "short/short.gguf",
+     "short/short.gguf",
+     100,
+     "error",
+     "RuntimeError: download incomplete: 60 of 100 bytes; nothing was installed (retry to resume)",
+     true,
+     true
+    ]
+   ],
+   "id": "short",
+   "models": [
+    {
+     "path": "short/short.gguf.download",
+     "sha256": "f9a1a9f6d203a5dce758db3ff13262b2a04ba6e71d92c06dbcd42b6e17ed58fd",
+     "size": 60
+    },
+    {
+     "path": "short/short.gguf.download.validator",
+     "sha256": "ee18dc73c666362f10a459ba9e1be70a85f765016ea6756580b7499113f17b29",
+     "size": 7,
+     "text": "\"s\"\t100"
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/short.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/short.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"short.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "short/short.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 100,
+        "url": "http://{CDN}/files/short.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/short.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 100,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 60,
+       "error": "RuntimeError: download incomplete: 60 of 100 bytes; nothing was installed (retry to resume)",
+       "filename": "short/short.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 60.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "error"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"c\"",
+     "path": "/files/cut.gguf",
+     "seed": 4,
+     "server": "cdn",
+     "size": 31,
+     "truncate_after": 10
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "cut/cut.gguf",
+     "cut/cut.gguf",
+     31,
+     "error",
+     "RemoteProtocolError: peer closed connection without sending complete message body (received 10 bytes, expected 31)",
+     true,
+     true
+    ]
+   ],
+   "id": "truncated",
+   "models": [
+    {
+     "path": "cut/cut.gguf.download",
+     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "size": 0
+    },
+    {
+     "path": "cut/cut.gguf.download.validator",
+     "sha256": "ba8f73e692705cebf661371cc287ad04ffa29dfdd0ec1deb747b3c6baa55540c",
+     "size": 6,
+     "text": "\"c\"\t31"
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/cut.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/cut.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"cut.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "cut/cut.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 31,
+        "url": "http://{CDN}/files/cut.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/cut.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 31,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 0,
+       "error": "RemoteProtocolError: peer closed connection without sending complete message body (received 10 bytes, expected 31)",
+       "filename": "cut/cut.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 0.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "error"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "etag": "\"slow\"",
+     "path": "/files/slow.gguf",
+     "seed": 6,
+     "server": "cdn",
+     "size": 1049576,
+     "stall_after": 1048576
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "slow/slow.gguf",
+     "slow/slow.gguf",
+     1049576,
+     "canceled",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "cancel-running",
+   "models": [],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/slow.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/slow.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"slow.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "slow/slow.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 1049576,
+        "url": "http://{CDN}/files/slow.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/slow.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": {
+      "downloaded": 1048576,
+      "file": "slow/slow.gguf"
+     }
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 1049576,
+       "chunks": [],
+       "completed": false,
+       "downloaded": 1048576,
+       "error": null,
+       "filename": "slow/slow.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 99.9,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "downloading"
+      }
+     ],
+     "op": "list"
+    },
+    {
+     "body": "{\"ok\":true}",
+     "file": "slow/slow.gguf",
+     "op": "cancel",
+     "status": 200
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 1049576,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 1048576,
+       "error": null,
+       "filename": "slow/slow.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 99.9,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "canceled"
+      }
+     ],
+     "op": "list"
+    },
+    {
+     "op": "release"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 1,
+   "files": [
+    {
+     "path": "/files/slow.gguf",
+     "seed": 6,
+     "server": "cdn",
+     "size": 1049576,
+     "stall_after": 1048576
+    },
+    {
+     "path": "/files/next.gguf",
+     "seed": 9,
+     "server": "cdn",
+     "size": 500
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "next/next.gguf",
+     "next/next.gguf",
+     500,
+     "canceled",
+     null,
+     true,
+     true
+    ],
+    [
+     "{CDN}",
+     "slow/slow.gguf",
+     "slow/slow.gguf",
+     1049576,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "cancel-queued-and-clear",
+   "models": [
+    {
+     "path": "slow/slow.gguf",
+     "sha256": "04cd083399beb1b04b2f20235a43cdfa06a6e96ec5d2724edfa9c2edb8b0fafd",
+     "size": 1049576
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/slow.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/slow.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"slow.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "slow/slow.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 1049576,
+        "url": "http://{CDN}/files/slow.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/slow.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": {
+      "downloaded": 1048576,
+      "file": "slow/slow.gguf"
+     }
+    },
+    {
+     "file": "next/next.gguf.download",
+     "op": "partial",
+     "seed": 9,
+     "size": 100,
+     "total": 500,
+     "validator": null
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"next.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "next/next.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 500,
+        "url": "http://{CDN}/files/next.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/next.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": {
+      "file": "next/next.gguf",
+      "status": "queued"
+     }
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 500,
+       "chunks": [],
+       "completed": false,
+       "downloaded": 0,
+       "error": null,
+       "filename": "next/next.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 0.0,
+       "repo": "{CDN}",
+       "started": false,
+       "status": "queued"
+      },
+      {
+       "bytes": 1049576,
+       "chunks": [],
+       "completed": false,
+       "downloaded": 1048576,
+       "error": null,
+       "filename": "slow/slow.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 99.9,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "downloading"
+      }
+     ],
+     "op": "list"
+    },
+    {
+     "body": "{\"ok\":true}",
+     "file": "next/next.gguf",
+     "op": "cancel",
+     "status": 200
+    },
+    {
+     "body": "{\"ok\":false}",
+     "op": "cancel_unknown",
+     "status": 200
+    },
+    {
+     "op": "wait",
+     "until": {
+      "file": "next/next.gguf",
+      "status": "canceled"
+     }
+    },
+    {
+     "op": "release"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 500,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 0,
+       "error": null,
+       "filename": "next/next.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 0.0,
+       "repo": "{CDN}",
+       "started": false,
+       "status": "canceled"
+      },
+      {
+       "bytes": 1049576,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 1049576,
+       "error": null,
+       "filename": "slow/slow.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    },
+    {
+     "body": "{\"cleared\":2}",
+     "op": "clear",
+     "status": 200
+    },
+    {
+     "jobs": [],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "path": "/files/slow.gguf",
+     "seed": 6,
+     "server": "cdn",
+     "size": 1049576,
+     "stall_after": 1048576
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "slow/slow.gguf",
+     "slow/slow.gguf",
+     1049576,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "dedupe",
+   "models": [
+    {
+     "path": "slow/slow.gguf",
+     "sha256": "04cd083399beb1b04b2f20235a43cdfa06a6e96ec5d2724edfa9c2edb8b0fafd",
+     "size": 1049576
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/slow.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/slow.gguf",
+     null,
+     null,
+     null
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"slow.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "slow/slow.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 1049576,
+        "url": "http://{CDN}/files/slow.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/slow.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": {
+      "downloaded": 1048576,
+      "file": "slow/slow.gguf"
+     }
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"slow.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "slow/slow.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 1049576,
+        "url": "http://{CDN}/files/slow.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/slow.gguf\"}"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 1049576,
+       "chunks": [],
+       "completed": false,
+       "downloaded": 1048576,
+       "error": null,
+       "filename": "slow/slow.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 99.9,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "downloading"
+      }
+     ],
+     "op": "list"
+    },
+    {
+     "op": "release"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 1049576,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 1049576,
+       "error": null,
+       "filename": "slow/slow.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "path": "/files/loop.gguf",
+     "redirect_loop": true,
+     "seed": 1,
+     "server": "hub",
+     "size": 10
+    }
+   ],
+   "history": [
+    [
+     "{HUB}",
+     "loop/loop.gguf",
+     "loop/loop.gguf",
+     0,
+     "error",
+     "TooManyRedirects: Exceeded maximum allowed redirects.",
+     true,
+     true
+    ]
+   ],
+   "id": "redirect-loop",
+   "models": [],
+   "requests": [
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=1",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=10",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=11",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=12",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=13",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=14",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=15",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=16",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=17",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=18",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=19",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=2",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=20",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=3",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=4",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=5",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=6",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=7",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=8",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/loop.gguf?r=9",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=1",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=10",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=11",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=12",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=13",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=14",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=15",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=16",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=17",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=18",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=19",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=2",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=20",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=3",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=4",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=5",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=6",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=7",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=8",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/loop.gguf?r=9",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"loop.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "loop/loop.gguf",
+        "repo_id": "{HUB}",
+        "total_bytes": 0,
+        "url": "http://{HUB}/files/loop.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{HUB}/files/loop.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 0,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 0,
+       "error": "TooManyRedirects: Exceeded maximum allowed redirects.",
+       "filename": "loop/loop.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 0.0,
+       "repo": "{HUB}",
+       "started": true,
+       "status": "error"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": "hf_synthetic_download_token_0123"
+  },
+  {
+   "concurrent": 2,
+   "files": [],
+   "history": [
+    [
+     "{DEAD}",
+     "x/x.gguf",
+     "x/x.gguf",
+     0,
+     "error",
+     "ConnectError: All connection attempts failed",
+     true,
+     true
+    ]
+   ],
+   "id": "refused",
+   "models": [],
+   "requests": [],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"x.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "x/x.gguf",
+        "repo_id": "{DEAD}",
+        "total_bytes": 0,
+        "url": "http://{DEAD}/files/x.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{DEAD}/files/x.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 0,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 0,
+       "error": "ConnectError: All connection attempts failed",
+       "filename": "x/x.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 0.0,
+       "repo": "{DEAD}",
+       "started": true,
+       "status": "error"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "path": "/files/c.gguf",
+     "seed": 1,
+     "server": "cdn",
+     "size": 300
+    },
+    {
+     "path": "/files/h.gguf",
+     "seed": 2,
+     "server": "hub",
+     "size": 300
+    }
+   ],
+   "history": [
+    [
+     "{CDN}",
+     "c/c.gguf",
+     "c/c.gguf",
+     300,
+     "done",
+     null,
+     true,
+     true
+    ],
+    [
+     "{HUB}",
+     "h/h.gguf",
+     "h/h.gguf",
+     300,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "token-origin-only",
+   "models": [
+    {
+     "path": "c/c.gguf",
+     "sha256": "d8d9e38723f09bb9201727fc05c5a3ff68c0ae98c00e7d315cde1ec1e3faba1c",
+     "size": 300
+    },
+    {
+     "path": "h/h.gguf",
+     "sha256": "cf11285a531c53c574cc39ce2449d79ebffc16667326803bf5ac7c6a7dc82b0b",
+     "size": 300
+    }
+   ],
+   "requests": [
+    [
+     "cdn",
+     "GET",
+     "/files/c.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "cdn",
+     "HEAD",
+     "/files/c.gguf",
+     null,
+     null,
+     null
+    ],
+    [
+     "hub",
+     "GET",
+     "/files/h.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/files/h.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"c.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "c/c.gguf",
+        "repo_id": "{CDN}",
+        "total_bytes": 300,
+        "url": "http://{CDN}/files/c.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{CDN}/files/c.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"queued\":[\"h.gguf\"]}",
+      "jobs": [
+       {
+        "filename": "h/h.gguf",
+        "repo_id": "{HUB}",
+        "total_bytes": 300,
+        "url": "http://{HUB}/files/h.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"url\": \"http://{HUB}/files/h.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 300,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 300,
+       "error": null,
+       "filename": "c/c.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{CDN}",
+       "started": true,
+       "status": "done"
+      },
+      {
+       "bytes": 300,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 300,
+       "error": null,
+       "filename": "h/h.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "{HUB}",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": "hf_synthetic_download_token_0123"
+  },
+  {
+   "concurrent": 2,
+   "files": [
+    {
+     "path": "/synthetic-owner/synthetic-repo/resolve/main/synthetic-draft-0.5B-Q8_0.gguf",
+     "seed": 12,
+     "server": "hub",
+     "size": 200
+    }
+   ],
+   "history": [
+    [
+     "synthetic-owner/synthetic-repo",
+     "Synthetic/synthetic-draft-0.5B-Q8_0.gguf",
+     "Synthetic/synthetic-draft-0.5B-Q8_0.gguf",
+     200,
+     "done",
+     null,
+     true,
+     true
+    ]
+   ],
+   "id": "draft-head",
+   "models": [
+    {
+     "path": "Synthetic/synthetic-draft-0.5B-Q8_0.gguf",
+     "sha256": "ed99d8b1c8a5d03061e927bbd18c6e6817850bd08d4742aa360d324d8fe62624",
+     "size": 200
+    }
+   ],
+   "requests": [
+    [
+     "hub",
+     "GET",
+     "/synthetic-owner/synthetic-repo/resolve/main/synthetic-draft-0.5B-Q8_0.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ],
+    [
+     "hub",
+     "HEAD",
+     "/synthetic-owner/synthetic-repo/resolve/main/synthetic-draft-0.5B-Q8_0.gguf",
+     null,
+     null,
+     "Bearer hf_synthetic_download_token_0123"
+    ]
+   ],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/sections/synthetic-model/draft-heads/download",
+     "plan": {
+      "body": "{\"queued\":[\"synthetic-draft-0.5B-Q8_0.gguf\"],\"folder\":\"Synthetic\"}",
+      "jobs": [
+       {
+        "filename": "Synthetic/synthetic-draft-0.5B-Q8_0.gguf",
+        "repo_id": "synthetic-owner/synthetic-repo",
+        "total_bytes": 200,
+        "url": "http://{HUB}/synthetic-owner/synthetic-repo/resolve/main/synthetic-draft-0.5B-Q8_0.gguf"
+       }
+      ],
+      "status": 200
+     },
+     "request": "{\"path\": \"synthetic-draft-0.5B-Q8_0.gguf\"}"
+    },
+    {
+     "op": "wait",
+     "until": "idle"
+    },
+    {
+     "jobs": [
+      {
+       "bytes": 200,
+       "chunks": [],
+       "completed": true,
+       "downloaded": 200,
+       "error": null,
+       "filename": "Synthetic/synthetic-draft-0.5B-Q8_0.gguf",
+       "keys": [
+        "id",
+        "repo",
+        "filename",
+        "status",
+        "error",
+        "bytes",
+        "downloaded",
+        "pct",
+        "speed",
+        "speedH",
+        "eta",
+        "etaH",
+        "startedAt",
+        "completedAt",
+        "parallel",
+        "history",
+        "chunks"
+       ],
+       "parallel": false,
+       "pct": 100.0,
+       "repo": "synthetic-owner/synthetic-repo",
+       "started": true,
+       "status": "done"
+      }
+     ],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": "hf_synthetic_download_token_0123"
+  },
+  {
+   "concurrent": 2,
+   "files": [],
+   "history": [],
+   "id": "plan-refusals",
+   "models": [],
+   "requests": [],
+   "steps": [
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"detail\":\"URL must start with http:// or https://\"}",
+      "jobs": [],
+      "status": 400
+     },
+     "request": "{\"url\": \"ftp://example.test/x.gguf\"}"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"detail\":\"Choose one of the offered download locations\"}",
+      "jobs": [],
+      "status": 400
+     },
+     "request": "{\"target\": \"nowhere\"}"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"detail\":\"That file is not in the repository\"}",
+      "jobs": [],
+      "status": 404
+     },
+     "request": "{\"repo\": \"synthetic-owner/synthetic-repo\", \"path\": \"absent.gguf\"}"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":[1]}]}",
+      "jobs": [],
+      "status": 422
+     },
+     "request": "[1]"
+    },
+    {
+     "op": "start",
+     "path": "/api/v1/downloads",
+     "plan": {
+      "body": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",1],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting property name enclosed in double quotes\"}}]}",
+      "jobs": [],
+      "status": 422
+     },
+     "request": "{not json"
+    },
+    {
+     "jobs": [],
+     "op": "list"
+    }
+   ],
+   "targets": [],
+   "token": null
+  }
+ ],
+ "oracle": {
+  "api.py": "eb8e12f6929baf15d2b1a1998aceff9529fbe48ca8242094ac6b7526c253a91d",
+  "db.py": "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478",
+  "downloader.py": "496545fa337a647af7865d56e06714827519cbbc5f2a034ee2d7302af9e47d8a",
+  "helpers.py": "fcf2ccb14e5e068f97bb7a4b7985ab7f4f4855b940eb6d9e3838f239ad97918d",
+  "hf.py": "43fcc6344cf4792e70ce7d2bfe141b90c78d2ecff253236f8d352542988a55fa",
+  "main.py": "eddf36c21981c7d4f76db447a133a4782b13f763caa8dcf579c6915fac1f9ce2",
+  "utils.py": "3f56fb6b04094ec19c09c191a0d4267e2d233e3461884be0648e4875e6ef6426"
+ },
+ "parallel_min": 65536,
+ "render": {
+  "cases": [
+   {
+    "json": "{\"id\":\"render000000\",\"repo\":\"synthetic-owner/r\",\"filename\":\"f0.gguf\",\"status\":\"queued\",\"error\":null,\"bytes\":0,\"downloaded\":0,\"pct\":0.0,\"speed\":0.0,\"speedH\":\"—\",\"eta\":null,\"etaH\":\"—\",\"startedAt\":null,\"completedAt\":null,\"parallel\":false,\"history\":[],\"chunks\":[]}",
+    "spec": {
+     "downloaded": 0,
+     "samples": [],
+     "status": "queued",
+     "total": 0
+    }
+   },
+   {
+    "json": "{\"id\":\"render000001\",\"repo\":\"synthetic-owner/r\",\"filename\":\"f1.gguf\",\"status\":\"downloading\",\"error\":null,\"bytes\":3000,\"downloaded\":1000,\"pct\":33.3,\"speed\":800.0,\"speedH\":\"800 B/s\",\"eta\":2,\"etaH\":\"2s\",\"startedAt\":null,\"completedAt\":null,\"parallel\":false,\"history\":[0.000762939453125,0.000762939453125],\"chunks\":[]}",
+    "spec": {
+     "downloaded": 1000,
+     "samples": [
+      [
+       1700000096.0,
+       0
+      ],
+      [
+       1700000096.5,
+       400
+      ],
+      [
+       1700000097.25,
+       1000
+      ]
+     ],
+     "status": "downloading",
+     "total": 3000
+    }
+   },
+   {
+    "json": "{\"id\":\"render000002\",\"repo\":\"synthetic-owner/r\",\"filename\":\"f2.gguf\",\"status\":\"downloading\",\"error\":null,\"bytes\":10000000000,\"downloaded\":123456789,\"pct\":1.2,\"speed\":30864184.75,\"speedH\":\"29.4 MB/s\",\"eta\":320,\"etaH\":\"5m 20s\",\"startedAt\":1700000094.0,\"completedAt\":null,\"parallel\":false,\"history\":[4.76837158203125e-05,29.434380292892456],\"chunks\":[]}",
+    "spec": {
+     "downloaded": 123456789,
+     "samples": [
+      [
+       1700000094.0,
+       0
+      ],
+      [
+       1700000095.0,
+       50
+      ],
+      [
+       1700000099.0,
+       123456789
+      ]
+     ],
+     "started": 1700000094.0,
+     "status": "downloading",
+     "total": 10000000000
+    }
+   },
+   {
+    "json": "{\"id\":\"render000003\",\"repo\":\"synthetic-owner/r\",\"filename\":\"f3.gguf\",\"status\":\"done\",\"error\":null,\"bytes\":5,\"downloaded\":5,\"pct\":100.0,\"speed\":0.0,\"speedH\":\"—\",\"eta\":null,\"etaH\":\"—\",\"startedAt\":1700000000.0,\"completedAt\":1700000001.5,\"parallel\":false,\"history\":[],\"chunks\":[]}",
+    "spec": {
+     "completed": 1700000001.5,
+     "downloaded": 5,
+     "samples": [
+      [
+       1700000000.0,
+       0
+      ],
+      [
+       1700000000.0,
+       5
+      ]
+     ],
+     "started": 1700000000.0,
+     "status": "done",
+     "total": 5
+    }
+   },
+   {
+    "json": "{\"id\":\"render000004\",\"repo\":\"synthetic-owner/r\",\"filename\":\"f4.gguf\",\"status\":\"error\",\"error\":\"RuntimeError: synthetic “quoted” failure\\n\",\"bytes\":7,\"downloaded\":3,\"pct\":42.9,\"speed\":3.0,\"speedH\":\"3 B/s\",\"eta\":1,\"etaH\":\"1s\",\"startedAt\":1.0,\"completedAt\":2.0,\"parallel\":false,\"history\":[2.86102294921875e-06],\"chunks\":[]}",
+    "spec": {
+     "completed": 2.0,
+     "downloaded": 3,
+     "error": "RuntimeError: synthetic “quoted” failure\n",
+     "samples": [
+      [
+       1700000099.0,
+       0
+      ],
+      [
+       1700000100.0,
+       3
+      ]
+     ],
+     "started": 1.0,
+     "status": "error",
+     "total": 7
+    }
+   },
+   {
+    "json": "{\"id\":\"render000005\",\"repo\":\"synthetic-owner/r\",\"filename\":\"f5.gguf\",\"status\":\"downloading\",\"error\":null,\"bytes\":1073741824,\"downloaded\":1,\"pct\":0.0,\"speed\":10.000009536752259,\"speedH\":\"10 B/s\",\"eta\":107374079,\"etaH\":\"29826h 7m\",\"startedAt\":null,\"completedAt\":null,\"parallel\":false,\"history\":[9.536752259018191e-06],\"chunks\":[]}",
+    "spec": {
+     "downloaded": 1,
+     "samples": [
+      [
+       1700000099.9,
+       0
+      ],
+      [
+       1700000100.0,
+       1
+      ]
+     ],
+     "status": "downloading",
+     "total": 1073741824
+    }
+   },
+   {
+    "json": "{\"id\":\"render000006\",\"repo\":\"synthetic-owner/r\",\"filename\":\"f6.gguf\",\"status\":\"downloading\",\"error\":null,\"bytes\":24,\"downloaded\":9,\"pct\":37.5,\"speed\":14.0,\"speedH\":\"14 B/s\",\"eta\":1,\"etaH\":\"1s\",\"startedAt\":null,\"completedAt\":null,\"parallel\":true,\"history\":[1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05,1.33514404296875e-05],\"chunks\":[{\"index\":0,\"pct\":100.0,\"status\":\"done\",\"speed\":6.0},{\"index\":1,\"pct\":0.0,\"status\":\"pending\",\"speed\":0.0},{\"index\":2,\"pct\":33.3,\"status\":\"downloading\",\"speed\":0.0},{\"index\":3,\"pct\":0.0,\"status\":\"done\",\"speed\":0.0}]}",
+    "spec": {
+     "chunks": [
+      {
+       "downloaded": 3,
+       "end": 2,
+       "idx": 0,
+       "samples": [
+        [
+         1700000099.0,
+         0
+        ],
+        [
+         1700000099.5,
+         3
+        ]
+       ],
+       "start": 0
+      },
+      {
+       "downloaded": 0,
+       "end": 5,
+       "idx": 1,
+       "samples": [],
+       "start": 3
+      },
+      {
+       "downloaded": 1,
+       "end": 8,
+       "idx": 2,
+       "samples": [
+        [
+         1700000099.0,
+         1
+        ]
+       ],
+       "start": 6
+      },
+      {
+       "downloaded": 3,
+       "end": 8,
+       "idx": 3,
+       "samples": [],
+       "start": 9
+      }
+     ],
+     "downloaded": 9,
+     "parallel": true,
+     "samples": [
+      [
+       1700000090.0,
+       0
+      ],
+      [
+       1700000090.5,
+       7
+      ],
+      [
+       1700000091.0,
+       14
+      ],
+      [
+       1700000091.5,
+       21
+      ],
+      [
+       1700000092.0,
+       28
+      ],
+      [
+       1700000092.5,
+       35
+      ],
+      [
+       1700000093.0,
+       42
+      ],
+      [
+       1700000093.5,
+       49
+      ],
+      [
+       1700000094.0,
+       56
+      ],
+      [
+       1700000094.5,
+       63
+      ],
+      [
+       1700000095.0,
+       70
+      ],
+      [
+       1700000095.5,
+       77
+      ],
+      [
+       1700000096.0,
+       84
+      ],
+      [
+       1700000096.5,
+       91
+      ],
+      [
+       1700000097.0,
+       98
+      ],
+      [
+       1700000097.5,
+       105
+      ],
+      [
+       1700000098.0,
+       112
+      ],
+      [
+       1700000098.5,
+       119
+      ],
+      [
+       1700000099.0,
+       126
+      ],
+      [
+       1700000099.5,
+       133
+      ],
+      [
+       1700000100.0,
+       140
+      ],
+      [
+       1700000100.5,
+       147
+      ],
+      [
+       1700000101.0,
+       154
+      ],
+      [
+       1700000101.5,
+       161
+      ],
+      [
+       1700000102.0,
+       168
+      ],
+      [
+       1700000102.5,
+       175
+      ],
+      [
+       1700000103.0,
+       182
+      ],
+      [
+       1700000103.5,
+       189
+      ],
+      [
+       1700000104.0,
+       196
+      ],
+      [
+       1700000104.5,
+       203
+      ],
+      [
+       1700000105.0,
+       210
+      ],
+      [
+       1700000105.5,
+       217
+      ],
+      [
+       1700000106.0,
+       224
+      ],
+      [
+       1700000106.5,
+       231
+      ],
+      [
+       1700000107.0,
+       238
+      ],
+      [
+       1700000107.5,
+       245
+      ],
+      [
+       1700000108.0,
+       252
+      ],
+      [
+       1700000108.5,
+       259
+      ],
+      [
+       1700000109.0,
+       266
+      ],
+      [
+       1700000109.5,
+       273
+      ],
+      [
+       1700000110.0,
+       280
+      ],
+      [
+       1700000110.5,
+       287
+      ],
+      [
+       1700000111.0,
+       294
+      ],
+      [
+       1700000111.5,
+       301
+      ],
+      [
+       1700000112.0,
+       308
+      ],
+      [
+       1700000112.5,
+       315
+      ],
+      [
+       1700000113.0,
+       322
+      ],
+      [
+       1700000113.5,
+       329
+      ],
+      [
+       1700000114.0,
+       336
+      ],
+      [
+       1700000114.5,
+       343
+      ],
+      [
+       1700000115.0,
+       350
+      ],
+      [
+       1700000115.5,
+       357
+      ],
+      [
+       1700000116.0,
+       364
+      ],
+      [
+       1700000116.5,
+       371
+      ],
+      [
+       1700000117.0,
+       378
+      ],
+      [
+       1700000117.5,
+       385
+      ],
+      [
+       1700000118.0,
+       392
+      ],
+      [
+       1700000118.5,
+       399
+      ],
+      [
+       1700000119.0,
+       406
+      ],
+      [
+       1700000119.5,
+       413
+      ],
+      [
+       1700000120.0,
+       420
+      ],
+      [
+       1700000120.5,
+       427
+      ],
+      [
+       1700000121.0,
+       434
+      ],
+      [
+       1700000121.5,
+       441
+      ],
+      [
+       1700000122.0,
+       448
+      ],
+      [
+       1700000122.5,
+       455
+      ],
+      [
+       1700000123.0,
+       462
+      ],
+      [
+       1700000123.5,
+       469
+      ],
+      [
+       1700000124.0,
+       476
+      ],
+      [
+       1700000124.5,
+       483
+      ],
+      [
+       1700000125.0,
+       490
+      ],
+      [
+       1700000125.5,
+       497
+      ],
+      [
+       1700000126.0,
+       504
+      ],
+      [
+       1700000126.5,
+       511
+      ],
+      [
+       1700000127.0,
+       518
+      ],
+      [
+       1700000127.5,
+       525
+      ],
+      [
+       1700000128.0,
+       532
+      ],
+      [
+       1700000128.5,
+       539
+      ],
+      [
+       1700000129.0,
+       546
+      ],
+      [
+       1700000129.5,
+       553
+      ],
+      [
+       1700000130.0,
+       560
+      ],
+      [
+       1700000130.5,
+       567
+      ],
+      [
+       1700000131.0,
+       574
+      ],
+      [
+       1700000131.5,
+       581
+      ],
+      [
+       1700000132.0,
+       588
+      ],
+      [
+       1700000132.5,
+       595
+      ],
+      [
+       1700000133.0,
+       602
+      ],
+      [
+       1700000133.5,
+       609
+      ],
+      [
+       1700000134.0,
+       616
+      ],
+      [
+       1700000134.5,
+       623
+      ],
+      [
+       1700000135.0,
+       630
+      ],
+      [
+       1700000135.5,
+       637
+      ],
+      [
+       1700000136.0,
+       644
+      ],
+      [
+       1700000136.5,
+       651
+      ],
+      [
+       1700000137.0,
+       658
+      ],
+      [
+       1700000137.5,
+       665
+      ],
+      [
+       1700000138.0,
+       672
+      ],
+      [
+       1700000138.5,
+       679
+      ],
+      [
+       1700000139.0,
+       686
+      ],
+      [
+       1700000139.5,
+       693
+      ],
+      [
+       1700000140.0,
+       700
+      ],
+      [
+       1700000140.5,
+       707
+      ],
+      [
+       1700000141.0,
+       714
+      ],
+      [
+       1700000141.5,
+       721
+      ],
+      [
+       1700000142.0,
+       728
+      ],
+      [
+       1700000142.5,
+       735
+      ],
+      [
+       1700000143.0,
+       742
+      ],
+      [
+       1700000143.5,
+       749
+      ],
+      [
+       1700000144.0,
+       756
+      ],
+      [
+       1700000144.5,
+       763
+      ],
+      [
+       1700000145.0,
+       770
+      ],
+      [
+       1700000145.5,
+       777
+      ],
+      [
+       1700000146.0,
+       784
+      ],
+      [
+       1700000146.5,
+       791
+      ],
+      [
+       1700000147.0,
+       798
+      ],
+      [
+       1700000147.5,
+       805
+      ],
+      [
+       1700000148.0,
+       812
+      ],
+      [
+       1700000148.5,
+       819
+      ],
+      [
+       1700000149.0,
+       826
+      ],
+      [
+       1700000149.5,
+       833
+      ],
+      [
+       1700000150.0,
+       840
+      ],
+      [
+       1700000150.5,
+       847
+      ],
+      [
+       1700000151.0,
+       854
+      ],
+      [
+       1700000151.5,
+       861
+      ],
+      [
+       1700000152.0,
+       868
+      ],
+      [
+       1700000152.5,
+       875
+      ],
+      [
+       1700000153.0,
+       882
+      ],
+      [
+       1700000153.5,
+       889
+      ],
+      [
+       1700000154.0,
+       896
+      ],
+      [
+       1700000154.5,
+       903
+      ]
+     ],
+     "status": "downloading",
+     "total": 24
+    }
+   },
+   {
+    "json": "{\"id\":\"render000007\",\"repo\":\"synthetic-owner/r\",\"filename\":\"f7.gguf\",\"status\":\"downloading\",\"error\":null,\"bytes\":3,\"downloaded\":9,\"pct\":100.0,\"speed\":-9.0,\"speedH\":\"—\",\"eta\":null,\"etaH\":\"—\",\"startedAt\":null,\"completedAt\":null,\"parallel\":false,\"history\":[-8.58306884765625e-06],\"chunks\":[]}",
+    "spec": {
+     "downloaded": 9,
+     "samples": [
+      [
+       1700000098.0,
+       9
+      ],
+      [
+       1700000099.0,
+       0
+      ]
+     ],
+     "status": "downloading",
+     "total": 3
+    }
+   }
+  ],
+  "now": 1700000100.0
+ },
+ "safe_dest": [
+  {
+   "name": "a.gguf",
+   "result": "inside:a.gguf"
+  },
+  {
+   "name": "sub/a.gguf",
+   "result": "inside:sub/a.gguf"
+  },
+  {
+   "name": "./a.gguf",
+   "result": "inside:a.gguf"
+  },
+  {
+   "name": "sub/../a.gguf",
+   "result": "inside:a.gguf"
+  },
+  {
+   "name": "../escape.gguf",
+   "result": "outside"
+  },
+  {
+   "name": "/abs/elsewhere.gguf",
+   "result": "outside"
+  },
+  {
+   "name": "inside/x.gguf",
+   "result": "inside:inside/x.gguf"
+  },
+  {
+   "name": "outside/x.gguf",
+   "result": "outside"
+  },
+  {
+   "name": "loop/x.gguf",
+   "result": "raised"
+  },
+  {
+   "name": "",
+   "result": "outside"
+  },
+  {
+   "name": ".",
+   "result": "outside"
+  },
+  {
+   "name": "sub/",
+   "result": "inside:sub"
+  },
+  {
+   "name": "inside/../../x.gguf",
+   "result": "outside"
+  },
+  {
+   "name": "sub/./b//c.gguf",
+   "result": "inside:sub/b/c.gguf"
+  },
+  {
+   "name": "dangling/x.gguf",
+   "result": "inside:dangling/x.gguf"
+  }
+ ],
+ "schema": [
+  "CREATE TABLE kv (\n                key   TEXT PRIMARY KEY,\n                value TEXT NOT NULL\n            )",
+  "CREATE TABLE download_history (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                repo_id      TEXT NOT NULL,\n                filename     TEXT NOT NULL,\n                dest_path    TEXT NOT NULL,\n                total_bytes  INTEGER NOT NULL,\n                status       TEXT NOT NULL,\n                error        TEXT,\n                started_at   REAL NOT NULL,\n                completed_at REAL\n            )"
+ ],
+ "validator": {
+  "dates": [
+   {
+    "time": 1704067200.0,
+    "value": "Mon, 01 Jan 2024 00:00:00 GMT"
+   },
+   {
+    "time": 1704067200.0,
+    "value": "01 Jan 2024 00:00:00 GMT"
+   },
+   {
+    "time": 1704067200.0,
+    "value": "Mon,01 Jan 2024 00:00 UT"
+   },
+   {
+    "time": -31449601.0,
+    "value": "1 jan 69 23:59:59 +0000"
+   },
+   {
+    "time": 3092687999.0,
+    "value": "1 jan 68 23:59:59 +0000"
+   },
+   {
+    "time": 1704128400.0,
+    "value": "Jan 1 2024 10:00:00 PDT"
+   },
+   {
+    "time": null,
+    "value": "Mon, 31 Feb 2024 00:00:00 GMT"
+   },
+   {
+    "time": null,
+    "value": "Mon, 01 Jan 2024 24:00:00 GMT"
+   },
+   {
+    "time": null,
+    "value": "Mon, 01 Jan 2024 00:00:00"
+   },
+   {
+    "time": 1704067200.0,
+    "value": "Mon, 01 Jan 2024 00.00.00 GMT"
+   },
+   {
+    "time": null,
+    "value": "Mon, 01 Jan 2024 00:00:00 +2400"
+   },
+   {
+    "time": 1703980860.0,
+    "value": "Mon, 01 Jan 2024 00:00:00 +2359"
+   },
+   {
+    "time": 946684800.0,
+    "value": "Mon, 01 Jan 0000 00:00:00 GMT"
+   },
+   {
+    "time": 915148800.0,
+    "value": "Mon, 01 Jan 1_9_9_9 00:00:00 GMT"
+   },
+   {
+    "time": null,
+    "value": ""
+   },
+   {
+    "time": null,
+    "value": "   "
+   },
+   {
+    "time": null,
+    "value": "x"
+   },
+   {
+    "time": 1704067200.0,
+    "value": "Mon, 01 January 2024 00:00:00 z"
+   },
+   {
+    "time": null,
+    "value": "2024 Jan 01 00:00:00 GMT"
+   },
+   {
+    "time": null,
+    "value": "Mon, 01 Jan 2024 00:00:00 XYZ"
+   },
+   {
+    "time": 1704170045.0,
+    "value": "Tue, 02 Jan 2024 03:04:05 -0130"
+   },
+   {
+    "time": 1704067200.0,
+    "value": "Mon 01 Jan 2024 00:00:00 GMT"
+   },
+   {
+    "time": 1704067200.0,
+    "value": "01-Jan-2024 00:00:00 GMT"
+   },
+   {
+    "time": 1704067200.0,
+    "value": "Mon, 1 Jan 2024 0:0:0 GMT"
+   },
+   {
+    "time": 1704067140.0,
+    "value": "Mon, 01 Jan 2024 00:00:00 +01"
+   },
+   {
+    "time": 1704067200.0,
+    "value": "Mon, 01 Jan 2024, 00:00:00 GMT"
+   }
+  ],
+  "now": 1700000000.0,
+  "validators": [
+   {
+    "headers": {
+     "etag": "\"strong\""
+    },
+    "validator": "\"strong\""
+   },
+   {
+    "headers": {
+     "etag": "W/\"weak\""
+    },
+    "validator": ""
+   },
+   {
+    "headers": {
+     "etag": "  "
+    },
+    "validator": ""
+   },
+   {
+    "headers": {
+     "etag": " \"padded\" "
+    },
+    "validator": "\"padded\""
+   },
+   {
+    "headers": {
+     "date": "Tue, 02 Jan 2024 00:00:00 GMT",
+     "etag": "W/\"weak\"",
+     "last-modified": "Mon, 01 Jan 2024 00:00:00 GMT"
+    },
+    "validator": "Mon, 01 Jan 2024 00:00:00 GMT"
+   },
+   {
+    "headers": {
+     "date": "Mon, 01 Jan 2024 00:00:59 GMT",
+     "last-modified": "Mon, 01 Jan 2024 00:00:00 GMT"
+    },
+    "validator": ""
+   },
+   {
+    "headers": {
+     "date": "Mon, 01 Jan 2024 00:01:00 GMT",
+     "last-modified": "Mon, 01 Jan 2024 00:00:00 GMT"
+    },
+    "validator": "Mon, 01 Jan 2024 00:00:00 GMT"
+   },
+   {
+    "headers": {
+     "last-modified": "Mon, 01 Jan 2024 00:00:00 GMT"
+    },
+    "validator": ""
+   },
+   {
+    "headers": {
+     "last-modified": "Sat, 01 Jan 2050 00:00:00 GMT"
+    },
+    "validator": ""
+   },
+   {
+    "headers": {
+     "last-modified": "garbage"
+    },
+    "validator": ""
+   },
+   {
+    "headers": {
+     "date": "Tue, 02 Jan 2024 00:00:00 GMT",
+     "last-modified": "Mon, 01 Jan 2024 00:00:00 -0000"
+    },
+    "validator": ""
+   },
+   {
+    "headers": {
+     "date": "Tue, 02 Jan 2024 00:00:00 GMT",
+     "last-modified": "Mon, 01 Jan 2024 00:00:00 +0100"
+    },
+    "validator": "Mon, 01 Jan 2024 00:00:00 +0100"
+   },
+   {
+    "headers": {
+     "date": "garbage",
+     "last-modified": "Mon, 01 Jan 2024 00:00:00 EST"
+    },
+    "validator": ""
+   },
+   {
+    "headers": {
+     "date": "Tue, 02 Jan 2024 00:00:00 GMT",
+     "last-modified": "Monday, 01-Jan-24 00:00:00 GMT"
+    },
+    "validator": "Monday, 01-Jan-24 00:00:00 GMT"
+   },
+   {
+    "headers": {
+     "date": "Tue, 02 Jan 2024 00:00:00 GMT",
+     "last-modified": "Mon Jan  1 00:00:00 2024"
+    },
+    "validator": ""
+   }
+  ]
+ }
+}

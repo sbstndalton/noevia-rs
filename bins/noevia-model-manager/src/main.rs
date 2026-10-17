@@ -57,6 +57,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-benchmark-runner") {
                 output.write_all(b"native-benchmark-runner\n")?;
             }
+            if cfg!(feature = "native-downloads") {
+                output.write_all(b"native-downloads\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -300,6 +303,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         runner_mode = "python".to_owned();
     }
+    // noevia#1318: the download job table. The five routes share one in-memory table, so they
+    // move together; a start is still planned by the child.
+    let downloads_mode = environment("MODEL_MANAGER_DOWNLOADS_IMPL", "python")?;
+    if !matches!(downloads_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_DOWNLOADS_IMPL must be python or rust".into());
+    }
+    if downloads_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-downloads")) {
+        return Err(
+            "native-downloads requires rust model manager and compiled native-downloads feature"
+                .into(),
+        );
+    }
+    #[cfg_attr(not(feature = "native-downloads"), allow(unused_mut))]
+    let mut downloads_mode = downloads_mode;
+    #[cfg(feature = "native-downloads")]
+    let downloads_roots = if downloads_mode == "rust" {
+        match downloads_roots(std::env::vars_os().collect()) {
+            Ok(roots) => Some(roots),
+            Err(reason) => {
+                eprintln!("native-downloads: {reason}; downloads stay with python");
+                downloads_mode = "python".to_owned();
+                None
+            }
+        }
+    } else {
+        None
+    };
     let bench_mode = environment("MODEL_MANAGER_BENCH_RUNS_IMPL", "python")?;
     if !matches!(bench_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_BENCH_RUNS_IMPL must be python or rust".into());
@@ -380,6 +410,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED")
             .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED")
+            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED")
             .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
             .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
             .env_remove("NOEVIA_EMBED_SERVICE_URL")
@@ -668,6 +699,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         overview_roots.as_ref(),
     );
     benchmark_runner_child(&mut child_command, &runner_mode);
+    downloads_child(
+        &mut child_command,
+        &downloads_mode,
+        #[cfg(feature = "native-downloads")]
+        downloads_roots.as_ref(),
+    );
     child_command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED",
         if control_mode == "rust" { "1" } else { "0" },
@@ -727,6 +764,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Err(error) = idle_unload.reconcile().await {
         eprintln!("idle unload: {error}");
     }
+    #[cfg(feature = "native-downloads")]
+    let downloads = match downloads_roots.as_ref() {
+        Some(roots) => Some(noevia_model_manager::downloads::Downloads::new(
+            noevia_model_manager::downloads::Config::production(
+                roots.models.clone(),
+                &roots.data,
+                roots.concurrent,
+            ),
+        )?),
+        None => None,
+    };
     let mut child = child_command.spawn()?;
     let _host_sampler = host
         .as_ref()
@@ -758,6 +806,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         benchmark_overview,
         #[cfg(feature = "native-check-updates")]
         check_updates,
+        #[cfg(feature = "native-downloads")]
+        downloads,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner,
         sections,
@@ -1347,6 +1397,139 @@ fn benchmark_overview_child(
 
 /// noevia#1318: the child refuses the four runner routes, skips `reap_orphans` and serves the
 /// private observation route only when the native runner owns the job slot.
+/// noevia#1318: what the native download table needs: the models folder in pathlib's normal
+/// form (Python's `dest_path` is `models_dir / filename`), the store, and the job slots.
+#[cfg(feature = "native-downloads")]
+#[derive(Debug, PartialEq, Eq)]
+struct DownloadsRoots {
+    models: String,
+    data: String,
+    concurrent: usize,
+}
+
+#[cfg(feature = "native-downloads")]
+fn downloads_roots(
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<DownloadsRoots, &'static str> {
+    let roots = model_updates_roots(values.clone()).map_err(|_| {
+        "native downloads require canonical MODELS_DIR, MODELS_INI_PATH and DATA_DIR environment spelling within limits"
+    })?;
+    let models = roots.models.as_str();
+    let normal = models.starts_with('/')
+        && (models == "/"
+            || (!models.ends_with('/')
+                && models
+                    .split('/')
+                    .skip(1)
+                    .all(|segment| !matches!(segment, "" | "." | ".."))));
+    if !normal {
+        return Err("native downloads require an absolute, normalised MODELS_DIR");
+    }
+    // `settings.max_concurrent_downloads` (default 2): plain digits only, 1..=64.
+    let mut concurrent = 2;
+    for (key, value) in &values {
+        let Some(key) = key.to_str() else { continue };
+        if key != "MAX_CONCURRENT_DOWNLOADS" && key.eq_ignore_ascii_case("MAX_CONCURRENT_DOWNLOADS")
+        {
+            return Err("native downloads require canonical MAX_CONCURRENT_DOWNLOADS spelling");
+        }
+        if key == "MAX_CONCURRENT_DOWNLOADS" {
+            concurrent = value
+                .to_str()
+                .filter(|v| !v.is_empty() && v.len() <= 2 && v.bytes().all(|b| b.is_ascii_digit()))
+                .and_then(|v| v.parse().ok())
+                .filter(|n| (1..=64).contains(n))
+                .ok_or("MAX_CONCURRENT_DOWNLOADS must be a plain number from 1 to 64")?;
+        }
+    }
+    Ok(DownloadsRoots {
+        models: roots.models,
+        data: roots.data,
+        concurrent,
+    })
+}
+
+/// noevia#1318: the child refuses the download routes and plans starts only when the native
+/// table owns them, and is handed the same models folder and store.
+fn downloads_child(
+    child_command: &mut tokio::process::Command,
+    downloads_mode: &str,
+    #[cfg(feature = "native-downloads")] roots: Option<&DownloadsRoots>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED",
+        if downloads_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-downloads")]
+    if let Some(roots) = roots {
+        child_command
+            .env("MODELS_DIR", &roots.models)
+            .env("DATA_DIR", &roots.data)
+            .env("MAX_CONCURRENT_DOWNLOADS", roots.concurrent.to_string());
+    }
+}
+
+#[cfg(all(test, feature = "native-downloads"))]
+mod downloads_command_tests {
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        let roots = super::DownloadsRoots {
+            models: "/synthetic/models".into(),
+            data: "/synthetic/data".into(),
+            concurrent: 3,
+        };
+        for (mode, roots, expected) in [("rust", Some(&roots), "1"), ("python", None, "0")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED", "hostile");
+            super::downloads_child(&mut command, mode, roots);
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(
+                get("MODELS_DIR"),
+                roots.map(|r| std::ffi::OsStr::new(r.models.as_str()))
+            );
+        }
+    }
+
+    #[test]
+    fn roots_need_a_normal_models_dir_and_a_plain_slot_count() {
+        let env = |pairs: &[(&str, &str)]| -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect()
+        };
+        assert_eq!(
+            super::downloads_roots(env(&[("MODELS_DIR", "/m"), ("DATA_DIR", "/d")])),
+            Ok(super::DownloadsRoots {
+                models: "/m".into(),
+                data: "/d".into(),
+                concurrent: 2
+            })
+        );
+        assert_eq!(
+            super::downloads_roots(env(&[("MAX_CONCURRENT_DOWNLOADS", "4")])).map(|r| r.concurrent),
+            Ok(4)
+        );
+        for bad in [
+            env(&[("MODELS_DIR", "/m/")]),
+            env(&[("MODELS_DIR", "/m/./x")]),
+            env(&[("MODELS_DIR", "m")]),
+            env(&[("MAX_CONCURRENT_DOWNLOADS", "0")]),
+            env(&[("MAX_CONCURRENT_DOWNLOADS", " 2")]),
+            env(&[("MAX_CONCURRENT_DOWNLOADS", "65")]),
+            env(&[("max_concurrent_downloads", "2")]),
+            env(&[("models_dir", "/m")]),
+        ] {
+            assert!(super::downloads_roots(bad.clone()).is_err(), "{bad:?}");
+        }
+    }
+}
+
 fn benchmark_runner_child(child_command: &mut tokio::process::Command, runner_mode: &str) {
     child_command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED",
