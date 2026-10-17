@@ -76,6 +76,8 @@ fn state(check: Option<CheckUpdates>) -> Arc<StateData> {
         check_updates: check.map(Arc::new),
         #[cfg(feature = "native-downloads")]
         downloads: None,
+        #[cfg(feature = "native-model-delete")]
+        model_delete: None,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner: None,
         #[cfg(feature = "native-backend-control")]

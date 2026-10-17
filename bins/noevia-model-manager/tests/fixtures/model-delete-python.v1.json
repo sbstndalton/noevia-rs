@@ -1,0 +1,2740 @@
+{
+"cases": [
+{
+"files": [
+{
+"name": "x.gguf",
+"size": 100
+},
+{
+"name": "y.gguf",
+"size": 50
+}
+],
+"id": "flat-one",
+"requests": [
+{
+"body": "{\"models\": [\"x.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"x.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"x.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":100,\"freedH\":\"100 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/y.gguf",
+"file",
+50
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"x.gguf\",\"ok\":false,\"message\":\"model not found\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/y.gguf",
+"file",
+50
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "sub/m-00001-of-00002.gguf",
+"size": 2048
+},
+{
+"name": "sub/m-00002-of-00002.gguf",
+"size": 1024
+},
+{
+"name": "sub/mmproj-m.gguf",
+"size": 300
+},
+{
+"name": "sub/README.md",
+"size": 7
+},
+{
+"name": "sub/chat_template.jinja",
+"size": 5
+},
+{
+"name": "sub/deeper/notes.txt",
+"size": 3
+},
+{
+"name": "keep.gguf",
+"size": 1
+}
+],
+"id": "subdir-whole",
+"requests": [
+{
+"body": "{\"models\": [\"sub/m.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"sub/m.gguf\",\"ok\":true,\"message\":\"deleted 6 file(s), removed sub/\",\"freed\":3387,\"freedH\":\"3.3 KB\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/keep.gguf",
+"file",
+1
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "sub/a.gguf",
+"size": 10
+},
+{
+"name": "sub/b.gguf",
+"size": 20
+},
+{
+"name": "sub/mmproj-b.gguf",
+"size": 30
+}
+],
+"id": "subdir-shared",
+"requests": [
+{
+"body": "{\"models\": [\"sub/a.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"sub/b.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"sub/a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/b.gguf",
+"file",
+20
+],
+[
+"models/sub/mmproj-b.gguf",
+"file",
+30
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"sub/b.gguf\",\"ok\":true,\"message\":\"deleted 2 file(s), removed sub/\",\"freed\":50,\"freedH\":\"50 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "sub/a.gguf",
+"size": 10
+},
+{
+"name": "sub/old/z.gguf",
+"size": 10
+},
+{
+"name": "sub/mmproj-a.gguf",
+"size": 10
+}
+],
+"id": "nested-other",
+"requests": [
+{
+"body": "{\"models\": [\"sub/a.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"sub/a.gguf\",\"ok\":true,\"message\":\"deleted 2 file(s)\",\"freed\":20,\"freedH\":\"20 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/old",
+"dir",
+null
+],
+[
+"models/sub/old/z.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "sub/a.gguf",
+"size": 10
+},
+{
+"name": "sub/proj/mmproj-x.gguf",
+"size": 10
+}
+],
+"id": "nested-companion-only",
+"requests": [
+{
+"body": "{\"models\": [\"sub/a.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"sub/a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/proj",
+"dir",
+null
+],
+[
+"models/sub/proj/mmproj-x.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "sub/a.gguf",
+"size": 10
+},
+{
+"name": "sub/old/z.gguf",
+"size": 10
+}
+],
+"id": "per-file-empties-folder",
+"requests": [
+{
+"body": "{\"models\": [\"sub/old/z.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"sub/a.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"sub/old/z.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s), removed sub/old/\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/a.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"sub/a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s), removed sub/\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+]
+]
+}
+]
+},
+{
+"env": {
+"MODEL_DOWNLOAD_TARGETS": " dl/ , other "
+},
+"files": [
+{
+"name": "dl/a.gguf",
+"size": 10
+},
+{
+"name": "dl/notes.txt",
+"size": 10
+}
+],
+"id": "download-target",
+"requests": [
+{
+"body": "{\"models\": [\"dl/a.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"dl/a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/dl",
+"dir",
+null
+],
+[
+"models/dl/notes.txt",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"env": {
+"MODEL_DOWNLOAD_TARGETS": "dl"
+},
+"files": [
+{
+"name": "dl/a.gguf",
+"size": 10
+}
+],
+"id": "download-target-empties",
+"requests": [
+{
+"body": "{\"models\": [\"dl/a.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"dl/a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/dl",
+"dir",
+null
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "mnt/a.gguf",
+"size": 10
+},
+{
+"name": "mnt/b.txt",
+"size": 10
+},
+{
+"name": "sub/a.gguf",
+"size": 10
+},
+{
+"name": "sub/in ner/data.bin",
+"size": 10
+}
+],
+"id": "mount-point",
+"mountinfo": [
+"36 35 98:0 / @MODELS@/mnt rw,noatime - ext4 /dev/x rw",
+"37 35 98:0 /x @MODELS@/sub/in\\040ner rw - ext4 /dev/y rw",
+"short line"
+],
+"requests": [
+{
+"body": "{\"models\": [\"mnt/a.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"sub/a.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"mnt/a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/mnt",
+"dir",
+null
+],
+[
+"models/mnt/b.txt",
+"file",
+10
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/a.gguf",
+"file",
+10
+],
+[
+"models/sub/in ner",
+"dir",
+null
+],
+[
+"models/sub/in ner/data.bin",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"sub/a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/mnt",
+"dir",
+null
+],
+[
+"models/mnt/b.txt",
+"file",
+10
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/in ner",
+"dir",
+null
+],
+[
+"models/sub/in ner/data.bin",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "models--o--r/blobs/b1",
+"size": 100
+},
+{
+"name": "models--o--r/blobs/b2",
+"size": 40
+},
+{
+"name": "models--o--r/refs/main",
+"size": 4
+}
+],
+"id": "hf-cache",
+"links": [
+[
+"models--o--r/snapshots/rev1/x-Q4.gguf",
+"../../blobs/b1"
+],
+[
+"models--o--r/snapshots/rev1/mmproj-x.gguf",
+"../../blobs/b2"
+]
+],
+"requests": [
+{
+"body": "{\"models\": [\"models--o--r/snapshots/rev1/x-Q4.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"models--o--r/snapshots/rev1/x-Q4.gguf\",\"ok\":true,\"message\":\"deleted 2 file(s), removed models--o--r/\",\"freed\":144,\"freedH\":\"144 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "models--o--r/blobs/b1",
+"size": 100
+},
+{
+"name": "models--o--r/blobs/b3",
+"size": 9
+}
+],
+"id": "hf-cache-shared-blob",
+"links": [
+[
+"models--o--r/snapshots/rev1/x-Q4.gguf",
+"../../blobs/b1"
+],
+[
+"models--o--r/snapshots/rev2/x-Q4.gguf",
+"../../blobs/b1"
+],
+[
+"models--o--r/snapshots/rev1/config.json",
+"../../blobs/b3"
+]
+],
+"requests": [
+{
+"body": "{\"models\": [\"models--o--r/snapshots/rev1/x-Q4.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"models--o--r/snapshots/rev1/x-Q4.gguf\",\"ok\":true,\"message\":\"deleted 2 file(s)\",\"freed\":9,\"freedH\":\"9 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/models--o--r",
+"dir",
+null
+],
+[
+"models/models--o--r/blobs",
+"dir",
+null
+],
+[
+"models/models--o--r/blobs/b1",
+"file",
+100
+],
+[
+"models/models--o--r/snapshots",
+"dir",
+null
+],
+[
+"models/models--o--r/snapshots/rev2",
+"dir",
+null
+],
+[
+"models/models--o--r/snapshots/rev2/x-Q4.gguf",
+"link",
+"../../blobs/b1"
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "models--o--r/blobs/q4",
+"size": 64
+},
+{
+"name": "models--o--r/blobs/q8",
+"size": 128
+}
+],
+"id": "hf-two-quants",
+"links": [
+[
+"models--o--r/snapshots/rev/Q4/x-Q4.gguf",
+"../../../blobs/q4"
+],
+[
+"models--o--r/snapshots/rev/Q8/x-Q8.gguf",
+"../../../blobs/q8"
+]
+],
+"requests": [
+{
+"body": "{\"models\": [\"models--o--r/snapshots/rev/Q4/x-Q4.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"models--o--r/snapshots/rev/Q8/x-Q8.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"models--o--r/snapshots/rev/Q4/x-Q4.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":64,\"freedH\":\"64 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/models--o--r",
+"dir",
+null
+],
+[
+"models/models--o--r/blobs",
+"dir",
+null
+],
+[
+"models/models--o--r/blobs/q8",
+"file",
+128
+],
+[
+"models/models--o--r/snapshots",
+"dir",
+null
+],
+[
+"models/models--o--r/snapshots/rev",
+"dir",
+null
+],
+[
+"models/models--o--r/snapshots/rev/Q8",
+"dir",
+null
+],
+[
+"models/models--o--r/snapshots/rev/Q8/x-Q8.gguf",
+"link",
+"../../../blobs/q8"
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"models--o--r/snapshots/rev/Q8/x-Q8.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s), removed models--o--r/\",\"freed\":128,\"freedH\":\"128 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+]
+]
+}
+]
+},
+{
+"env": {
+"MODEL_DOWNLOAD_TARGETS": "hf/models--o--r/snapshots/rev"
+},
+"files": [
+{
+"name": "hf/models--o--r/blobs/q4",
+"size": 64
+}
+],
+"id": "hf-in-download-target",
+"links": [
+[
+"hf/models--o--r/snapshots/rev/x-Q4.gguf",
+"../../blobs/q4"
+]
+],
+"requests": [
+{
+"body": "{\"models\": [\"hf/models--o--r/snapshots/rev/x-Q4.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"hf/models--o--r/snapshots/rev/x-Q4.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":64,\"freedH\":\"64 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/hf",
+"dir",
+null
+],
+[
+"models/hf/models--o--r",
+"dir",
+null
+],
+[
+"models/hf/models--o--r/blobs",
+"dir",
+null
+],
+[
+"models/hf/models--o--r/snapshots",
+"dir",
+null
+],
+[
+"models/hf/models--o--r/snapshots/rev",
+"dir",
+null
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "models--o--r/blobs/b1",
+"size": 21
+},
+{
+"name": "elsewhere.bin",
+"size": 5
+}
+],
+"id": "hf-dangling-and-outside",
+"links": [
+[
+"models--o--r/snapshots/rev/x.gguf",
+"../../blobs/b1"
+],
+[
+"models--o--r/snapshots/rev/gone.bin",
+"../../blobs/missing"
+],
+[
+"models--o--r/snapshots/rev/out.bin",
+"../../../elsewhere.bin"
+]
+],
+"requests": [
+{
+"body": "{\"models\": [\"models--o--r/snapshots/rev/x.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"models--o--r/snapshots/rev/x.gguf\",\"ok\":true,\"message\":\"deleted 3 file(s), removed models--o--r/\",\"freed\":21,\"freedH\":\"21 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/elsewhere.bin",
+"file",
+5
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "models--o--r/blobs/a",
+"size": 11
+},
+{
+"name": "models--o--r/blobs/b",
+"size": 12
+},
+{
+"name": "models--o--r/blobs/p",
+"size": 13
+}
+],
+"id": "hf-beside",
+"links": [
+[
+"models--o--r/snapshots/rev/a.gguf",
+"../../blobs/a"
+],
+[
+"models--o--r/snapshots/rev/b.gguf",
+"../../blobs/b"
+],
+[
+"models--o--r/snapshots/rev/mmproj-b.gguf",
+"../../blobs/p"
+]
+],
+"requests": [
+{
+"body": "{\"models\": [\"models--o--r/snapshots/rev/a.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"models--o--r/snapshots/rev/a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":11,\"freedH\":\"11 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/models--o--r",
+"dir",
+null
+],
+[
+"models/models--o--r/blobs",
+"dir",
+null
+],
+[
+"models/models--o--r/blobs/b",
+"file",
+12
+],
+[
+"models/models--o--r/blobs/p",
+"file",
+13
+],
+[
+"models/models--o--r/snapshots",
+"dir",
+null
+],
+[
+"models/models--o--r/snapshots/rev",
+"dir",
+null
+],
+[
+"models/models--o--r/snapshots/rev/b.gguf",
+"link",
+"../../blobs/b"
+],
+[
+"models/models--o--r/snapshots/rev/mmproj-b.gguf",
+"link",
+"../../blobs/p"
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "x.gguf",
+"size": 5
+},
+{
+"name": "sub/y.gguf",
+"size": 6
+}
+],
+"id": "keys",
+"requests": [
+{
+"body": "{\"models\": [\"../x\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"/abs.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"a/b/c/d/e/f.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"nope.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [5, true, null, 1.5, -0.0, 1e+100]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": {\"x.gguf\": 1}}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": 3}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": null}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": []}",
+"content_type": "application/json"
+},
+{
+"body": "{}",
+"content_type": "application/json"
+},
+{
+"body": "[]",
+"content_type": "application/json"
+},
+{
+"body": "\"x\"",
+"content_type": "application/json"
+},
+{
+"body": "{bad",
+"content_type": "application/json"
+},
+{
+"body": "",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"nope.gguf\"]}",
+"content_type": null
+},
+{
+"body": "{\"models\": [\"nope.gguf\"]}",
+"content_type": "text/plain"
+},
+{
+"body": "{\"models\": [\"nope.gguf\"], \"models\": [\"x.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"sub/y.gguf\", \"sub/y.gguf\", \"x.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"../x\",\"ok\":false,\"message\":\"bad model key\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+],
+[
+"models/x.gguf",
+"file",
+5
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"/abs.gguf\",\"ok\":false,\"message\":\"bad model key\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+],
+[
+"models/x.gguf",
+"file",
+5
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"a/b/c/d/e/f.gguf\",\"ok\":false,\"message\":\"bad model key\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+],
+[
+"models/x.gguf",
+"file",
+5
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"nope.gguf\",\"ok\":false,\"message\":\"model not found\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+],
+[
+"models/x.gguf",
+"file",
+5
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"5\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\"True\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\"None\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\"1.5\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\"-0.0\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\"1e+100\",\"ok\":false,\"message\":\"model not found\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+],
+[
+"models/x.gguf",
+"file",
+5
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"x.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":5,\"freedH\":\"5 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "Internal Server Error",
+"content_type": "text/plain; charset=utf-8",
+"docker_lists": 0,
+"status": 500,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"results\":[]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"results\":[]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"results\":[]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":[]}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 422,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":\"x\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 422,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",1],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting property name enclosed in double quotes\"}}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 422,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\"],\"msg\":\"Field required\",\"input\":null}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 422,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"nope.gguf\",\"ok\":false,\"message\":\"model not found\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"detail\":[{\"type\":\"dict_type\",\"loc\":[\"body\"],\"msg\":\"Input should be a valid dictionary\",\"input\":\"{\\\"models\\\": [\\\"nope.gguf\\\"]}\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 422,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"x.gguf\",\"ok\":false,\"message\":\"model not found\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/y.gguf",
+"file",
+6
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"x.gguf\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\"sub/y.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s), removed sub/\",\"freed\":6,\"freedH\":\"6 B\"},{\"key\":\"sub/y.gguf\",\"ok\":false,\"message\":\"not found: y.gguf\",\"freed\":0,\"freedH\":\"\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "x",
+"size": 10
+},
+{
+"name": "q.gguf",
+"size": 10
+}
+],
+"id": "string-models",
+"requests": [
+{
+"body": "{\"models\": \"q.gguf\"}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"q\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\".\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\"g\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\"g\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\"u\",\"ok\":false,\"message\":\"model not found\"},{\"key\":\"f\",\"ok\":false,\"message\":\"model not found\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/q.gguf",
+"file",
+10
+],
+[
+"models/x",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"docker": [
+{
+"args": null,
+"cmd": [
+"--model",
+"/models/x.gguf",
+"--port",
+"8080"
+],
+"entrypoint": null,
+"env": [],
+"id": "e1",
+"mounts": [],
+"name": "embed"
+}
+],
+"files": [
+{
+"name": "x.gguf",
+"size": 10
+},
+{
+"name": "sub/s.gguf",
+"size": 10
+}
+],
+"id": "holders-command",
+"requests": [
+{
+"body": "{\"models\": [\"sub/s.gguf\", \"x.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"sub/s.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"detail\":\"x.gguf is in use by a running container: embed (its command runs x.gguf). Stop or reconfigure it first; nothing was deleted.\"}",
+"content_type": "application/json",
+"docker_lists": 1,
+"status": 409,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/s.gguf",
+"file",
+10
+],
+[
+"models/x.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"sub/s.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s), removed sub/\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 2,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/x.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"docker": [
+{
+"args": [
+"--model=t.gguf"
+],
+"cmd": null,
+"entrypoint": "/bin/llama --model=/models//sub/./s.gguf",
+"env": [],
+"id": "c0ffee",
+"mounts": [],
+"name": "embed"
+}
+],
+"files": [
+{
+"name": "sub/s.gguf",
+"size": 10
+},
+{
+"name": "t.gguf",
+"size": 10
+}
+],
+"id": "holders-command-eq-and-norm",
+"requests": [
+{
+"body": "{\"models\": [\"sub/s.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"t.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"detail\":\"s.gguf is in use by a running container: embed (its command runs sub/s.gguf). Stop or reconfigure it first; nothing was deleted.\"}",
+"content_type": "application/json",
+"docker_lists": 1,
+"status": 409,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/s.gguf",
+"file",
+10
+],
+[
+"models/t.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"detail\":\"t.gguf is in use by a running container: embed (its command runs t.gguf). Stop or reconfigure it first; nothing was deleted.\"}",
+"content_type": "application/json",
+"docker_lists": 1,
+"status": 409,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/s.gguf",
+"file",
+10
+],
+[
+"models/t.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"docker": [
+{
+"args": null,
+"cmd": [
+"--model",
+"/data/x.gguf"
+],
+"entrypoint": null,
+"env": [],
+"id": "c0ffee",
+"mounts": [
+{
+"Destination": "/data",
+"Source": "/elsewhere"
+}
+],
+"name": "other"
+},
+{
+"args": null,
+"cmd": [
+"--model",
+"/m/y.gguf"
+],
+"entrypoint": null,
+"env": [],
+"id": "e2",
+"mounts": [
+{
+"Destination": "/m/",
+"Source": "/srv/models"
+}
+],
+"name": "embed"
+}
+],
+"env": {
+"MODELS_HOST_PATH": "/srv/models/"
+},
+"files": [
+{
+"name": "x.gguf",
+"size": 10
+},
+{
+"name": "y.gguf",
+"size": 10
+}
+],
+"id": "holders-mount-source",
+"requests": [
+{
+"body": "{\"models\": [\"x.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"y.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"x.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 2,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/y.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"detail\":\"y.gguf is in use by a running container: embed (its command runs y.gguf). Stop or reconfigure it first; nothing was deleted.\"}",
+"content_type": "application/json",
+"docker_lists": 1,
+"status": 409,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/y.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"docker": [
+{
+"args": null,
+"cmd": null,
+"entrypoint": null,
+"env": [
+"EMBEDDING_MODEL=x",
+"RERANK_MODEL=y",
+"LLM_EMBED_MODEL=default",
+"EMBED_MODEL= short ",
+"NOISE"
+],
+"id": "w1",
+"mounts": [],
+"name": "web"
+},
+{
+"args": null,
+"cmd": null,
+"entrypoint": null,
+"env": [
+"EMBEDDING_MODEL=z"
+],
+"id": "ml",
+"mounts": [],
+"name": "model-loader"
+},
+{
+"args": null,
+"cmd": null,
+"entrypoint": null,
+"env": [
+"EMBEDDING_MODEL=z"
+],
+"id": "abc123",
+"mounts": [],
+"name": "self"
+}
+],
+"env": {
+"HOSTNAME": "abc"
+},
+"files": [
+{
+"name": "x.gguf",
+"size": 10
+},
+{
+"name": "y.gguf",
+"size": 10
+},
+{
+"name": "z.gguf",
+"size": 10
+},
+{
+"name": "w.gguf",
+"size": 10
+}
+],
+"id": "holders-env",
+"ini": "[short]\nmodel = /models/w.gguf\n\n[z]\nctx-size = 4\n",
+"requests": [
+{
+"body": "{\"models\": [\"y.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"x.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"z.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"w.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"y.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 2,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/models.ini",
+"file",
+49
+],
+[
+"models/w.gguf",
+"file",
+10
+],
+[
+"models/x.gguf",
+"file",
+10
+],
+[
+"models/z.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"detail\":\"x.gguf is in use by a running container: web (EMBEDDING_MODEL is set to x). Stop or reconfigure it first; nothing was deleted.\"}",
+"content_type": "application/json",
+"docker_lists": 1,
+"status": 409,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/models.ini",
+"file",
+49
+],
+[
+"models/w.gguf",
+"file",
+10
+],
+[
+"models/x.gguf",
+"file",
+10
+],
+[
+"models/z.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"z.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 2,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/models.ini",
+"file",
+49
+],
+[
+"models/w.gguf",
+"file",
+10
+],
+[
+"models/x.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"detail\":\"w.gguf is in use by a running container: web (EMBED_MODEL is set to short). Stop or reconfigure it first; nothing was deleted.\"}",
+"content_type": "application/json",
+"docker_lists": 1,
+"status": 409,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/models.ini",
+"file",
+49
+],
+[
+"models/w.gguf",
+"file",
+10
+],
+[
+"models/x.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"docker": [
+{
+"args": null,
+"cmd": null,
+"entrypoint": null,
+"env": [
+"RERANK_MODEL=y.gguf",
+"NOEVIA_FEATURE_RAG_RERANK=On"
+],
+"id": "c0ffee",
+"mounts": [],
+"name": "diary"
+}
+],
+"files": [
+{
+"name": "y.gguf",
+"size": 10
+}
+],
+"id": "holders-rerank-on",
+"requests": [
+{
+"body": "{\"models\": [\"y.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"detail\":\"y.gguf is in use by a running container: diary (RERANK_MODEL is set to y.gguf). Stop or reconfigure it first; nothing was deleted.\"}",
+"content_type": "application/json",
+"docker_lists": 1,
+"status": 409,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/y.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"docker": [
+{
+"args": null,
+"cmd": null,
+"entrypoint": null,
+"env": [
+"EMBEDDING_MODEL=x"
+],
+"id": "e1",
+"mounts": [],
+"name": "embed"
+},
+{
+"args": null,
+"cmd": null,
+"entrypoint": null,
+"env": [
+"EMBEDDING_MODEL=y",
+"EMBEDDING_BASE_URL=http://embed:8080"
+],
+"id": "w1",
+"mounts": [],
+"name": "web"
+},
+{
+"args": null,
+"cmd": null,
+"entrypoint": null,
+"env": [
+"LLM_EMBED_MODEL=z",
+"LLM_EMBED_BASE_URL=http://gpu-box:8080"
+],
+"id": "d1",
+"mounts": [],
+"name": "diary"
+}
+],
+"env": {
+"NOEVIA_EMBED_SERVICE_CONTAINER": "embed",
+"NOEVIA_EMBED_SERVICE_GUARDED": "1",
+"NOEVIA_EMBED_SERVICE_URL": "http://Embed:8080/v1"
+},
+"files": [
+{
+"name": "x.gguf",
+"size": 10
+},
+{
+"name": "y.gguf",
+"size": 10
+},
+{
+"name": "z.gguf",
+"size": 10
+}
+],
+"id": "embed-guard",
+"requests": [
+{
+"body": "{\"models\": [\"x.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"y.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"z.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"x.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 2,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/y.gguf",
+"file",
+10
+],
+[
+"models/z.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"y.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 2,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/z.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"detail\":\"z.gguf is in use by a running container: diary (LLM_EMBED_MODEL is set to z). Stop or reconfigure it first; nothing was deleted.\"}",
+"content_type": "application/json",
+"docker_lists": 1,
+"status": 409,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/z.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"docker": "fail",
+"files": [
+{
+"name": "x.gguf",
+"size": 10
+}
+],
+"id": "docker-fails",
+"requests": [
+{
+"body": "{\"models\": [\"nope.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"x.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"nope.gguf\",\"ok\":false,\"message\":\"model not found\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/x.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"detail\":\"Could not check which containers use this model (APIError); nothing was deleted.\"}",
+"content_type": "application/json",
+"docker_lists": 1,
+"status": 409,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/x.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"id": "no-models-dir",
+"models": "missing",
+"requests": [
+{
+"body": "{\"models\": [\"x.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"x.gguf\",\"ok\":false,\"message\":\"model not found\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": []
+}
+]
+},
+{
+"files": [
+{
+"name": "real/b.gguf",
+"size": 77
+}
+],
+"id": "linked-file",
+"links": [
+[
+"a.gguf",
+"real/b.gguf"
+]
+],
+"requests": [
+{
+"body": "{\"models\": [\"a.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"real/b.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":0,\"freedH\":\"\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/real",
+"dir",
+null
+],
+[
+"models/real/b.gguf",
+"file",
+77
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"real/b.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s), removed real/\",\"freed\":77,\"freedH\":\"77 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "sub/a.gguf",
+"size": 10
+},
+{
+"name": "other/z.gguf",
+"size": 33
+},
+{
+"name": "other/n.txt",
+"size": 4
+}
+],
+"id": "linked-folder-inside",
+"links": [
+[
+"sub/link",
+"../other"
+]
+],
+"requests": [
+{
+"body": "{\"models\": [\"sub/a.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"sub/a.gguf\",\"ok\":true,\"message\":\"deleted 2 file(s), removed sub/\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/other",
+"dir",
+null
+],
+[
+"models/other/n.txt",
+"file",
+4
+],
+[
+"models/other/z.gguf",
+"file",
+33
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "sub/mmproj-x.gguf",
+"size": 10
+},
+{
+"name": "mmproj-flat.gguf",
+"size": 10
+},
+{
+"name": "solo/x-draft-Q4.gguf",
+"size": 10
+}
+],
+"id": "companion-alone",
+"requests": [
+{
+"body": "{\"models\": [\"sub/mmproj-x.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"mmproj-flat.gguf\"]}",
+"content_type": "application/json"
+},
+{
+"body": "{\"models\": [\"solo/x-draft-Q4.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"sub/mmproj-x.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s), removed sub/\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/mmproj-flat.gguf",
+"file",
+10
+],
+[
+"models/solo",
+"dir",
+null
+],
+[
+"models/solo/x-draft-Q4.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"mmproj-flat.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/solo",
+"dir",
+null
+],
+[
+"models/solo/x-draft-Q4.gguf",
+"file",
+10
+]
+]
+},
+{
+"body": "{\"results\":[{\"key\":\"solo/x-draft-Q4.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s), removed solo/\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "a.gguf",
+"size": 10
+},
+{
+"name": "b.gguf",
+"size": 10
+},
+{
+"name": "mmproj-a.gguf",
+"size": 10
+}
+],
+"id": "flat-companion-stays",
+"requests": [
+{
+"body": "{\"models\": [\"a.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/b.gguf",
+"file",
+10
+],
+[
+"models/mmproj-a.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "ro/a.gguf",
+"size": 10
+},
+{
+"name": "ro/b.gguf",
+"size": 10
+}
+],
+"id": "readonly-folder",
+"readonly": [
+"ro"
+],
+"requests": [
+{
+"body": "{\"models\": [\"ro/a.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"ro/a.gguf\",\"ok\":false,\"message\":\"failed to delete a.gguf: [Errno 13] Permission denied: '@ROOT@/models/ro/a.gguf'. removed so far: []\",\"freed\":0,\"freedH\":\"\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/ro",
+"dir",
+null
+],
+[
+"models/ro/a.gguf",
+"file",
+10
+],
+[
+"models/ro/b.gguf",
+"file",
+10
+]
+]
+}
+]
+},
+{
+"files": [
+{
+"name": "Up/B.GGUF",
+"size": 10
+},
+{
+"name": "sub/a.gguf",
+"size": 10
+},
+{
+"name": "A.gguf",
+"size": 10
+}
+],
+"id": "case-and-sort",
+"requests": [
+{
+"body": "{\"models\": [\"Up/B.GGUF\", \"sub/a.gguf\", \"A.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"Up/B.GGUF\",\"ok\":true,\"message\":\"deleted 1 file(s), removed Up/\",\"freed\":10,\"freedH\":\"10 B\"},{\"key\":\"sub/a.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s), removed sub/\",\"freed\":10,\"freedH\":\"10 B\"},{\"key\":\"A.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":10,\"freedH\":\"10 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+]
+]
+}
+]
+},
+{
+"id": "models-is-a-file",
+"models": "file",
+"requests": [
+{
+"body": "{\"models\": [\"x.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"x.gguf\",\"ok\":false,\"message\":\"model not found\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"file",
+0
+]
+]
+}
+]
+},
+{
+"diverges": "native refuses the fallback to a same-named model in another folder",
+"files": [
+{
+"name": "dup.gguf",
+"size": 3
+},
+{
+"name": "sub/dup.gguf",
+"size": 4
+},
+{
+"name": "sub/other.gguf",
+"size": 5
+}
+],
+"id": "flat-fallback",
+"requests": [
+{
+"body": "{\"models\": [\"dup.gguf\", \"dup.gguf\"]}",
+"content_type": "application/json"
+}
+],
+"results": [
+{
+"body": "{\"results\":[{\"key\":\"dup.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":3,\"freedH\":\"3 B\"},{\"key\":\"dup.gguf\",\"ok\":true,\"message\":\"deleted 1 file(s)\",\"freed\":4,\"freedH\":\"4 B\"}]}",
+"content_type": "application/json",
+"docker_lists": 0,
+"status": 200,
+"tree": [
+[
+"models",
+"dir",
+null
+],
+[
+"models/sub",
+"dir",
+null
+],
+[
+"models/sub/other.gguf",
+"file",
+5
+]
+]
+}
+]
+}
+],
+"oracle": {
+"api.py": "0b5e9aa8a15f5583618b02d2b42a7695a9bd21e7bc7f018ec2b92ce84feb2570",
+"config.py": "4708a112769dbc3b9da6c49eeb7057e02d06868ca4af0e0bf4567971a267581a",
+"ini.py": "b3cb05fd382b5f408ad16430db8841d40c82a3714115233f2e35b2f7f3b61740",
+"main.py": "139436d011ca7c14e76db19f4a24cc0c9419c368fb3f895d533115a7d7f74d29",
+"services.py": "1fba80188ab565c2e00ea002217b59f8ae5354052f6641d322f8b24f141da983",
+"utils.py": "3f56fb6b04094ec19c09c191a0d4267e2d233e3461884be0648e4875e6ef6426"
+}
+}

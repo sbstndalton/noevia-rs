@@ -60,6 +60,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-downloads") {
                 output.write_all(b"native-downloads\n")?;
             }
+            if cfg!(feature = "native-model-delete") {
+                output.write_all(b"native-model-delete\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -332,6 +335,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(reason) => {
                 eprintln!("native-downloads: {reason}; downloads stay with python");
                 downloads_mode = "python".to_owned();
+                None
+            }
+        }
+    } else {
+        None
+    };
+    // noevia#1318: model deletion (the whole POST /api/v1/models/delete).
+    let delete_mode = environment("MODEL_MANAGER_MODEL_DELETE_IMPL", "python")?;
+    if !matches!(delete_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_MODEL_DELETE_IMPL must be python or rust".into());
+    }
+    if delete_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-model-delete")) {
+        return Err(
+            "native-model-delete requires rust model manager and compiled native-model-delete feature"
+                .into(),
+        );
+    }
+    #[cfg_attr(not(feature = "native-model-delete"), allow(unused_mut))]
+    let mut delete_mode = delete_mode;
+    #[cfg(feature = "native-model-delete")]
+    let delete_roots = if delete_mode == "rust" {
+        match delete_roots(std::env::vars_os().collect()) {
+            Ok(roots) => Some(roots),
+            Err(reason) => {
+                eprintln!("native-model-delete: {reason}; model deletion stays with python");
+                delete_mode = "python".to_owned();
                 None
             }
         }
@@ -683,6 +712,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "native-downloads")]
         downloads_roots.as_ref(),
     );
+    model_delete_child(
+        &mut child_command,
+        &delete_mode,
+        #[cfg(feature = "native-model-delete")]
+        delete_roots.as_ref(),
+    );
     child_command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED",
         if control_mode == "rust" { "1" } else { "0" },
@@ -742,6 +777,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Err(error) = idle_unload.reconcile().await {
         eprintln!("idle unload: {error}");
     }
+    #[cfg(feature = "native-model-delete")]
+    let model_delete = delete_roots.as_ref().map(|roots| {
+        Arc::new(noevia_model_manager::model_delete::ModelDelete::new(
+            noevia_model_manager::model_delete::Config {
+                models: roots.models.clone(),
+                ini: roots.ini.clone().into(),
+                host_path: roots.host_path.clone(),
+                targets: roots.targets.clone(),
+                mountinfo: "/proc/self/mountinfo".into(),
+                hostname: roots.hostname.clone(),
+                embed: embedding
+                    .as_ref()
+                    .map(|s| (s.container.clone(), embed_url.clone())),
+            },
+            docker.clone(),
+        ))
+    });
     #[cfg(feature = "native-downloads")]
     let downloads = match downloads_roots.as_ref() {
         Some(roots) => Some(noevia_model_manager::downloads::Downloads::new(
@@ -786,6 +838,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         check_updates,
         #[cfg(feature = "native-downloads")]
         downloads,
+        #[cfg(feature = "native-model-delete")]
+        model_delete,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner,
         sections,
@@ -1430,6 +1484,155 @@ fn downloads_roots(
         data: roots.data,
         concurrent,
     })
+}
+
+/// noevia#1318: what the native model delete reads, named exactly as the Python child's settings
+/// read them (they fold names, so case-folded aliases are refused), and this container's name.
+#[cfg(feature = "native-model-delete")]
+#[derive(Debug, PartialEq, Eq)]
+struct DeleteRoots {
+    models: String,
+    ini: String,
+    host_path: String,
+    targets: String,
+    hostname: String,
+}
+
+#[cfg(feature = "native-model-delete")]
+fn delete_roots(
+    values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+) -> Result<DeleteRoots, &'static str> {
+    let canonical = |name: &str, default: &str| -> Result<String, &'static str> {
+        let mut found = None;
+        for (key, value) in &values {
+            if key
+                .to_str()
+                .is_some_and(|key| key != name && key.eq_ignore_ascii_case(name))
+            {
+                return Err("native model delete requires canonical MODELS_DIR, MODELS_INI_PATH, MODELS_HOST_PATH and MODEL_DOWNLOAD_TARGETS spelling");
+            }
+            if key == name {
+                found = Some(
+                    value
+                        .to_str()
+                        .ok_or("environment setting must be UTF-8")?
+                        .to_owned(),
+                );
+            }
+        }
+        let found = found.unwrap_or_else(|| default.to_owned());
+        if found.len() > 65536 {
+            return Err("native model delete settings exceeded limit");
+        }
+        Ok(found)
+    };
+    let models = canonical("MODELS_DIR", "/models")?;
+    let normal = models.len() <= 4096
+        && models.starts_with('/')
+        && !models.ends_with('/')
+        && models
+            .split('/')
+            .skip(1)
+            .all(|segment| !matches!(segment, "" | "." | ".."));
+    if !normal {
+        return Err("native model delete requires an absolute, normalised MODELS_DIR other than /");
+    }
+    let ini = canonical("MODELS_INI_PATH", "/models/models.ini")?;
+    if ini.is_empty() || ini.len() > 4096 {
+        return Err("native model delete requires a MODELS_INI_PATH within limits");
+    }
+    let hostname = std::env::var("HOSTNAME").unwrap_or_default();
+    Ok(DeleteRoots {
+        models,
+        ini,
+        host_path: canonical("MODELS_HOST_PATH", "")?,
+        targets: canonical("MODEL_DOWNLOAD_TARGETS", "")?,
+        hostname,
+    })
+}
+
+/// noevia#1318: the child refuses `POST /api/v1/models/delete` only when the native side owns
+/// it, and is handed the same settings the native side reads.
+fn model_delete_child(
+    child_command: &mut tokio::process::Command,
+    delete_mode: &str,
+    #[cfg(feature = "native-model-delete")] roots: Option<&DeleteRoots>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DELETE_CONFIRMED",
+        if delete_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-model-delete")]
+    if let Some(roots) = roots {
+        child_command
+            .env("MODELS_DIR", &roots.models)
+            .env("MODELS_INI_PATH", &roots.ini)
+            .env("MODELS_HOST_PATH", &roots.host_path)
+            .env("MODEL_DOWNLOAD_TARGETS", &roots.targets);
+    }
+}
+
+#[cfg(all(test, feature = "native-model-delete"))]
+mod model_delete_command_tests {
+    #![allow(clippy::unwrap_used)]
+    fn env(pairs: &[(&str, &str)]) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).into(), (*v).into()))
+            .collect()
+    }
+
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        for (mode, expected) in [("rust", "1"), ("python", "0")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DELETE_CONFIRMED",
+                "hostile",
+            );
+            let roots = super::delete_roots(env(&[("MODELS_DIR", "/m")])).unwrap();
+            super::model_delete_child(&mut command, mode, (mode == "rust").then_some(&roots));
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DELETE_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(
+                get("MODELS_DIR"),
+                (mode == "rust").then_some(std::ffi::OsStr::new("/m"))
+            );
+        }
+    }
+
+    #[test]
+    fn roots_need_canonical_spelling_and_a_normal_models_dir() {
+        let roots = super::delete_roots(env(&[
+            ("MODELS_DIR", "/srv/m"),
+            ("MODEL_DOWNLOAD_TARGETS", "hf, dl"),
+            ("MODELS_HOST_PATH", "/mnt/user/models"),
+        ]))
+        .unwrap();
+        assert_eq!(
+            (
+                roots.models.as_str(),
+                roots.ini.as_str(),
+                roots.targets.as_str()
+            ),
+            ("/srv/m", "/models/models.ini", "hf, dl")
+        );
+        for bad in [
+            env(&[("MODELS_DIR", "/")]),
+            env(&[("MODELS_DIR", "/m/")]),
+            env(&[("MODELS_DIR", "m")]),
+            env(&[("MODELS_DIR", "/m/../x")]),
+            env(&[("models_dir", "/m")]),
+            env(&[("Model_Download_Targets", "x")]),
+            env(&[("MODELS_INI_PATH", "")]),
+        ] {
+            assert!(super::delete_roots(bad.clone()).is_err(), "{bad:?}");
+        }
+    }
 }
 
 /// noevia#1318: the child refuses the download routes and plans starts only when the native

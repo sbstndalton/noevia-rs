@@ -87,6 +87,8 @@ fn state(badges: Option<Badges>, legacy_base: &str) -> Arc<StateData> {
         check_updates: None,
         #[cfg(feature = "native-downloads")]
         downloads: None,
+        #[cfg(feature = "native-model-delete")]
+        model_delete: None,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner: None,
         #[cfg(feature = "native-backend-control")]
