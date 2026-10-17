@@ -151,36 +151,30 @@ fn native_child_record(cmd: &mut Command, marker: &std::path::Path) -> (Option<S
         (None, stderr)
     }
 }
+/// noevia#2011: the retired MODEL_MANAGER_IMPL and MODEL_FILES_IMPL keys are not read at all: a
+/// leftover value of either changes nothing and is not reported, and the parent is always native.
 #[test]
-fn retired_selector_is_ignored_and_native_parent_is_unconditional() {
+fn retired_keys_are_not_read_and_native_parent_is_unconditional() {
     let (dir, marker) = owned_uvicorn();
-    let retired = "MODEL_MANAGER_IMPL is retired and ignored";
-    for selected in [
-        None,
-        Some("rust"),
-        Some("python"),
-        Some("invalid"),
-        Some(""),
-    ] {
-        let mut cmd = command(dir.path(), &marker);
-        cmd.env("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED", "hostile");
-        if let Some(value) = selected {
-            cmd.env("MODEL_MANAGER_IMPL", value);
+    for key in [None, Some("MODEL_MANAGER_IMPL"), Some("MODEL_FILES_IMPL")] {
+        for value in ["rust", "python", "invalid", ""] {
+            let mut cmd = command(dir.path(), &marker);
+            cmd.env("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED", "hostile")
+                .env_remove("MODEL_FILES_IMPL");
+            if let Some(key) = key {
+                cmd.env(key, value);
+            }
+            let (record, stderr) = native_child_record(&mut cmd, &marker);
+            // Never the old public uvicorn exec on 8090: only the private loopback child.
+            if let Some(record) = record {
+                assert_eq!(
+                    record, "1\napp.main:app\n--host\n127.0.0.1\n--port\n8091\n",
+                    "{key:?}={value:?}"
+                );
+            }
+            assert!(!stderr.contains("retired"), "{key:?}={value:?}: {stderr}");
+            assert!(!stderr.contains("_IMPL"), "{key:?}={value:?}: {stderr}");
         }
-        let (record, stderr) = native_child_record(&mut cmd, &marker);
-        // Never the old public uvicorn exec on 8090: only the private loopback child.
-        if let Some(record) = record {
-            assert_eq!(
-                record, "1\napp.main:app\n--host\n127.0.0.1\n--port\n8091\n",
-                "{selected:?}"
-            );
-        }
-        let warned = !matches!(selected, None | Some("rust"));
-        assert_eq!(
-            stderr.matches(retired).count(),
-            usize::from(warned),
-            "{selected:?}"
-        );
     }
 }
 #[test]
@@ -511,6 +505,51 @@ fn section_writes_selector_omission_and_python_confirmation_are_closed_before_ch
         if let (Some(record), _) = native_child_record(&mut cmd, &marker) {
             assert_eq!(record, "0");
         }
+    }
+}
+
+/// noevia#2010: with the native writer selected the parent migrates models.ini before the child
+/// starts (the child sees the migrated file and the confirmation that makes it skip its own run);
+/// MIGRATE_CACHE_RAM_ON_START=false leaves the file alone.
+#[cfg(all(feature = "native-section-writes", feature = "native-logs"))]
+#[test]
+fn native_writer_migrates_cache_ram_before_the_child_starts() {
+    let (dir, marker) = owned_uvicorn();
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script, "#!/bin/sh\nprintf '%s|' \"$NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED\" > \"$S1_TEST_MARKER\"\n/bin/cat \"$MODELS_INI_PATH\" >> \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let models = tempfile::tempdir().unwrap();
+    let ini = models.path().join("models.ini");
+    let original = "[chat]\nmodel = /models/synthetic.gguf\n";
+    for (setting, want) in [
+        (
+            None,
+            "[chat]\nmodel = /models/synthetic.gguf\ncache-ram = 1024\n",
+        ),
+        (Some("false"), "[chat]\nmodel = /models/synthetic.gguf\n"),
+    ] {
+        std::fs::write(&ini, original).unwrap();
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env("MODEL_MANAGER_SECTION_WRITES_IMPL", "rust")
+            .env("TZ", "UTC")
+            .env("MODELS_INI_PATH", &ini)
+            .env_remove("MIGRATE_CACHE_RAM_ON_START");
+        if let Some(value) = setting {
+            cmd.env("MIGRATE_CACHE_RAM_ON_START", value);
+        }
+        let (record, stderr) = native_child_record(&mut cmd, &marker);
+        let record = record.unwrap();
+        // The idle-unload reconcile (#1747) runs after the migration and adds its own `[*]` line
+        // before the child starts too; the chat section is the migration's.
+        assert!(record.starts_with("1|"), "{setting:?}: {record}");
+        assert!(record.ends_with(want), "{setting:?}: {record} {stderr}");
+        assert_eq!(record.contains("cache-ram"), setting.is_none(), "{record}");
+        assert_eq!(
+            stderr.contains(
+                "cache-ram migration: set an explicit bounded cache-ram in 1 section(s): chat"
+            ),
+            setting.is_none(),
+            "{stderr}"
+        );
     }
 }
 

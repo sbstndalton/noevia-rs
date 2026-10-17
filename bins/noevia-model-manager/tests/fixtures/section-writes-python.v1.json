@@ -1526,6 +1526,570 @@
      "path": "/api/v1/sections/llama-small/safe-defaults"
     }
    ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[\"chat-a\",\"chat-alias\",\"chat-neg\",\"chat-padded\",\"cased\",\"my-embed\",\"flagged\",\"Rerank-Big\",\"layabout\",\"multi-line\",\"laya-by-role-chat\"]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    },
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [
+    [
+     "models.ini.bak-20200101-000000",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000001",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000002",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000003",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000004",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000005",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000006",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000007",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000008",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000009",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000010",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-20200101-000011",
+     "old",
+     1600000000
+    ],
+    [
+     "models.ini.bak-before-upgrade",
+     "operator",
+     1600000000
+    ]
+   ],
+   "final": {
+    "ini": "version = 1\n\n# synthetic presets\n[chat-a]\n; keep this comment\nmodel = /models/chat-a.gguf\nctx-size = 8192\ncache-ram = 1024\n\n[chat-alias]\nmodel = /models/b.gguf\ncache-ram = 2048\n\n[chat-neg]\ncache-ram = 2048\n\n[chat-ok]\nmodel = /models/c.gguf\ncache-ram = 1024\n\n[chat-text]\ncache-ram = lots\n\n[chat-padded]\ncache-ram = 42\n\n[cased]\ncache-ram = 77\n\n[my-embed]\nmodel = /models/e.gguf\ncache-ram = 0\n\n[flagged]\nmodel = /models/f.gguf\nreranking = ON\ncache-ram = 0\n\n[embed-explicit]\ncache-ram = 300\n\n[Rerank-Big]\ncache-ram = 0\n\n[laya_router]\nmodel = /models/x.gguf\n\n[routed-by-path]\nmodel = /models/LAYA-v2/w.gguf\n\n[routed-by-m]\nm = C:\\models\\laya.gguf\n\n[layabout]\nmodel = /models/l.gguf\ncache-ram = 1024\n\n[multi-line]\nmodel = /a/laya\n  next\ncache-ram = 1024\n\n[laya-by-role-chat]\nmodel = /models/laya-q.gguf\ncache-ram = 1024\n\n[by-role]\nmodel = /models/r.gguf\n",
+    "listing": [
+     "models.ini",
+     "models.ini.bak-20200101-000003",
+     "models.ini.bak-20200101-000004",
+     "models.ini.bak-20200101-000005",
+     "models.ini.bak-20200101-000006",
+     "models.ini.bak-20200101-000007",
+     "models.ini.bak-20200101-000008",
+     "models.ini.bak-20200101-000009",
+     "models.ini.bak-20200101-000010",
+     "models.ini.bak-20200101-000011",
+     "models.ini.bak-20261016-120000",
+     "models.ini.bak-before-upgrade",
+     "models.roles.json"
+    ],
+    "roles": "{\"laya-by-role-chat\": \"chat\", \"by-role\": \" LAYA \"}"
+   },
+   "hard": 2048,
+   "id": "migrate-rules",
+   "impl": "rust",
+   "ini": "version = 1\n\n# synthetic presets\n[chat-a]\n; keep this comment\nmodel = /models/chat-a.gguf\nctx-size = 8192\n\n[chat-alias]\nmodel = /models/b.gguf\nLLAMA_ARG_CACHE_RAM = 8192\ncram = 100\n\n[chat-neg]\n--cache-ram = -1\n\n[chat-ok]\nmodel = /models/c.gguf\ncache-ram = 1024\n\n[chat-text]\ncache-ram = lots\n\n[chat-padded]\ncache-ram = 0042\n\n[cased]\nCache-RAM = 77\n\n[my-embed]\nmodel = /models/e.gguf\n\n[flagged]\nmodel = /models/f.gguf\nreranking = ON\n\n[embed-explicit]\ncache-ram = 300\n\n[Rerank-Big]\n\n[laya_router]\nmodel = /models/x.gguf\n\n[routed-by-path]\nmodel = /models/LAYA-v2/w.gguf\n\n[routed-by-m]\nm = C:\\models\\laya.gguf\n\n[layabout]\nmodel = /models/l.gguf\n\n[multi-line]\nmodel = /a/laya\n  next\n\n[laya-by-role-chat]\nmodel = /models/laya-q.gguf\n\n[by-role]\nmodel = /models/r.gguf\n",
+   "roles": "{\"laya-by-role-chat\": \"chat\", \"by-role\": \" LAYA \"}",
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    },
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[\"b\",\"c-embed\"]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    },
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 512,
+   "files": [],
+   "final": {
+    "ini": "[*]\ncache-ram = 512\n\n[a]\nmodel = m\n\n[b]\ncache-ram = 4096\n\n[c-embed]\ncache-ram = 0\n",
+    "listing": [
+     "models.ini",
+     "models.ini.bak-20261016-120000"
+    ],
+    "roles": null
+   },
+   "hard": 4096,
+   "id": "migrate-star-bounded",
+   "impl": "rust",
+   "ini": "[*]\ncache-ram = 512\n\n[a]\nmodel = m\n\n[b]\ncache-ram = 99999\n\n[c-embed]\n",
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    },
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[\"a\",\"b\"]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    },
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "[*]\ncache-ram = -1\n[a]\ncache-ram = 1024\n[b]\nembedding = true\ncache-ram = 0\n",
+    "listing": [
+     "models.ini",
+     "models.ini.bak-20261016-120000"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "migrate-star-unbounded",
+   "impl": "rust",
+   "ini": "[*]\ncache-ram = -1\n[a]\n[b]\nembedding = true\n",
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    },
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[\"a\",\"my-embed\"]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    },
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "[DEFAULT]\nthreads = 4\ncache-ram = -1\n\n[a]\nmodel = /models/a.gguf\ncache-ram = 2048\n\n[my-embed]\ncache-ram = 2048\n\n[*]\n",
+    "listing": [
+     "models.ini",
+     "models.ini.bak-20261016-120000"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "migrate-defaults",
+   "impl": "rust",
+   "ini": "[DEFAULT]\nthreads = 4\ncache-ram = -1\n\n[a]\nmodel = /models/a.gguf\n\n[my-embed]\n\n[*]\n",
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    },
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[\"b\"]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    },
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "[a]\ncache-ram = 100\ntemp = 1\n\n[b]\nmodel = m\ncache-ram = 1024\n",
+    "listing": [
+     "models.ini",
+     "models.ini.bak-20261016-120000"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "migrate-reorder-only-counts-values",
+   "impl": "rust",
+   "ini": "[a]\ncache-ram = 100\ntemp = 1\n\n[b]\nmodel = m\n",
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    },
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "[a]\ncache-ram = 100\n\n[e-embed]\ncache-ram = 0\n\n[laya]\n",
+    "listing": [
+     "models.ini"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "migrate-nothing-to-do",
+   "impl": "rust",
+   "ini": "[a]\ncache-ram = 100\n\n[e-embed]\ncache-ram = 0\n\n[laya]\n",
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[\"a\"]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    },
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "[a]\nmodel = m\ncache-ram = 1024\n[b]\ncache-ram = 5",
+    "listing": [
+     "models.ini",
+     "models.ini.bak-20261016-120000"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "migrate-crlf-no-final-newline",
+   "impl": "rust",
+   "ini": "[a]\r\nmodel = m\r\n[b]\r\ncache-ram = 5",
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    },
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[\"a\",\"b\"]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    },
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "v = 1\n[a]\nmodel = m\ncache-ram = 1024\n\n[b]\nk = v\ncache-ram = 1024\n\n",
+    "listing": [
+     "models.ini",
+     "models.ini.bak-20261016-120000"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "migrate-odd-headers-full-render",
+   "impl": "rust",
+   "ini": "v = 1\n[a] trailing\nmodel = m\n[b];c\nk : v\n",
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    },
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[\"lay\"]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    },
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "[laya]\n\n[Laya.X]\n\n[laya-]\n\n[lay]\ncache-ram = 1024\n",
+    "listing": [
+     "models.ini",
+     "models.ini.bak-20261016-120000",
+     "models.roles.json"
+    ],
+    "roles": "[1]"
+   },
+   "hard": 2048,
+   "id": "migrate-roles-unusable",
+   "impl": "rust",
+   "ini": "[laya]\n\n[Laya.X]\n\n[laya-]\n\n[lay]\n",
+   "roles": "[1]",
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    },
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "",
+     "content_type": null,
+     "plan": null,
+     "status": 500
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "[a]\nx = 1\n[a]\n",
+    "listing": [
+     "models.ini"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "migrate-duplicates-refused",
+   "impl": "rust",
+   "ini": "[a]\nx = 1\n[a]\n",
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "",
+     "content_type": null,
+     "plan": null,
+     "status": 500
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "[a]\ngarbage line\n",
+    "listing": [
+     "models.ini"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "migrate-unparseable",
+   "impl": "rust",
+   "ini": "[a]\ngarbage line\n",
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": null,
+    "listing": [],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "migrate-missing-file",
+   "impl": "rust",
+   "ini": null,
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
   }
  ],
  "epoch": 1792152000,

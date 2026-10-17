@@ -211,6 +211,23 @@ async fn send(state: Arc<StateData>, step: &Value, rev: &str) -> Answer {
     }
 }
 
+/// A `MIGRATE` step: the startup cache-ram migration as the parent runs it (noevia#2010).
+async fn migrate(state: &Arc<StateData>) -> Answer {
+    let writes = state.section_writes.clone().unwrap();
+    match writes.migrate_cache_ram_at_startup().await {
+        Ok(changed) => Answer {
+            status: 200,
+            content_type: None,
+            body: serde_json::to_string(&changed).unwrap(),
+        },
+        Err(_) => Answer {
+            status: 500,
+            content_type: None,
+            body: String::new(),
+        },
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn actual_python_differential() {
     let fx = fixture();
@@ -275,7 +292,11 @@ async fn actual_python_differential() {
                 "{:x}",
                 Sha256::digest(std::fs::read(&ini).unwrap_or_default())
             );
-            let got = send(state.clone(), step, &rev).await;
+            let got = if step["method"] == "MIGRATE" {
+                migrate(&state).await
+            } else {
+                send(state.clone(), step, &rev).await
+            };
             assert_eq!(
                 u64::from(got.status),
                 want["status"].as_u64().unwrap(),
