@@ -94,6 +94,8 @@ pub fn state(reader: Arc<dyn DiagnosisRead>, configured: Vec<String>) -> Arc<Sta
         downloads: None,
         #[cfg(feature = "native-model-delete")]
         model_delete: None,
+        #[cfg(feature = "native-draft-heads")]
+        draft_heads: None,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner: None,
         #[cfg(feature = "native-backend-control")]

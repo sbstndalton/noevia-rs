@@ -63,6 +63,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-model-delete") {
                 output.write_all(b"native-model-delete\n")?;
             }
+            if cfg!(feature = "native-draft-heads") {
+                output.write_all(b"native-draft-heads\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -378,6 +381,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(reason) => {
                 eprintln!("native-model-delete: {reason}; model deletion stays with python");
                 delete_mode = "python".to_owned();
+                None
+            }
+        }
+    } else {
+        None
+    };
+    // noevia#1318 slice 12: GET /api/v1/sections/{name}/draft-heads.
+    let heads_mode = environment("MODEL_MANAGER_DRAFT_HEADS_IMPL", "python")?;
+    if !matches!(heads_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_DRAFT_HEADS_IMPL must be python or rust".into());
+    }
+    if heads_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-draft-heads")) {
+        return Err(
+            "native-draft-heads requires rust model manager and compiled native-draft-heads feature"
+                .into(),
+        );
+    }
+    #[cfg_attr(not(feature = "native-draft-heads"), allow(unused_mut))]
+    let mut heads_mode = heads_mode;
+    #[cfg(feature = "native-draft-heads")]
+    let heads_roots = if heads_mode == "rust" {
+        match model_updates_roots(std::env::vars_os().collect()) {
+            Ok(roots) => Some(roots),
+            Err(reason) => {
+                eprintln!("native-draft-heads: {reason}; GET draft-heads stays with python");
+                heads_mode = "python".to_owned();
                 None
             }
         }
@@ -734,6 +763,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "native-model-delete")]
         delete_roots.as_ref(),
     );
+    draft_heads_child(
+        &mut child_command,
+        &heads_mode,
+        #[cfg(feature = "native-draft-heads")]
+        heads_roots.as_ref(),
+    );
     child_command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED",
         if control_mode == "rust" { "1" } else { "0" },
@@ -827,6 +862,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_downloads(table.clone()),
             )
         });
+    #[cfg(feature = "native-draft-heads")]
+    let draft_heads = match heads_roots.as_ref() {
+        Some(roots) => Some(Arc::new(
+            noevia_model_manager::draft_heads::DraftHeads::new(
+                std::path::Path::new(&roots.models),
+                std::path::Path::new(&roots.ini),
+                std::path::Path::new(&roots.data),
+            )?,
+        )),
+        None => None,
+    };
     let mut child = child_command.spawn()?;
     let _host_sampler = host
         .as_ref()
@@ -862,6 +908,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         downloads,
         #[cfg(feature = "native-model-delete")]
         model_delete,
+        #[cfg(feature = "native-draft-heads")]
+        draft_heads,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner,
         sections,
@@ -1584,6 +1632,56 @@ fn model_delete_child(
             .env("MODELS_INI_PATH", &roots.ini)
             .env("MODELS_HOST_PATH", &roots.host_path)
             .env("MODEL_DOWNLOAD_TARGETS", &roots.targets);
+    }
+}
+
+/// noevia#1318 slice 12: the child refuses the draft-head read only when the native read owns it,
+/// and is handed the same three roots.
+fn draft_heads_child(
+    child_command: &mut tokio::process::Command,
+    heads_mode: &str,
+    #[cfg(feature = "native-draft-heads")] roots: Option<&UpdatesRoots>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_DRAFT_HEADS_CONFIRMED",
+        if heads_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-draft-heads")]
+    if let Some(roots) = roots {
+        child_command
+            .env("MODELS_DIR", &roots.models)
+            .env("MODELS_INI_PATH", &roots.ini)
+            .env("DATA_DIR", &roots.data);
+    }
+}
+
+#[cfg(all(test, feature = "native-draft-heads"))]
+mod draft_heads_command_tests {
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        let roots = super::UpdatesRoots {
+            models: "/synthetic/models".into(),
+            ini: "/synthetic/models.ini".into(),
+            data: "/synthetic/data".into(),
+        };
+        for (mode, roots, expected) in [("rust", Some(&roots), "1"), ("python", None, "0")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_DRAFT_HEADS_CONFIRMED",
+                "hostile",
+            );
+            super::draft_heads_child(&mut command, mode, roots);
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_DRAFT_HEADS_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(
+                get("DATA_DIR"),
+                roots.map(|r| std::ffi::OsStr::new(r.data.as_str()))
+            );
+        }
     }
 }
 

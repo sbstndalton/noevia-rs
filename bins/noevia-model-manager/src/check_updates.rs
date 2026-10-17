@@ -37,7 +37,7 @@ const REQUEST_BUDGET: Duration = Duration::from_secs(120);
 /// sqlite3's default `timeout=5.0`.
 const BUSY_WAIT: Duration = Duration::from_millis(5000);
 /// CPython parses deeper JSON (until RecursionError); this bound is a failed request instead.
-const JSON_DEPTH: usize = 512;
+pub(crate) const JSON_DEPTH: usize = 512;
 
 pub type Clock = fn() -> f64;
 
@@ -374,7 +374,7 @@ impl Token {
 
 /// noevia#1318 (downloads): the stored token as the `Authorization` value `hf._auth_headers`
 /// would send, read fresh as `hf.get_token()` is for every request.
-#[cfg(feature = "native-downloads")]
+#[cfg(any(feature = "native-downloads", feature = "native-draft-heads"))]
 pub(crate) enum HubAuth {
     /// A falsy token: no header.
     Absent,
@@ -387,7 +387,7 @@ pub(crate) enum HubAuth {
     Failed,
 }
 
-#[cfg(feature = "native-downloads")]
+#[cfg(any(feature = "native-downloads", feature = "native-draft-heads"))]
 pub(crate) fn hub_auth(database: &Path) -> HubAuth {
     let Ok(db) = open(database) else {
         return HubAuth::Failed;
@@ -462,7 +462,7 @@ fn read_token(db: &Connection) -> Result<Option<Token>, Raised> {
 
 /// Only Hub-shaped ids (`owner/name`, letters, digits, `._-`) are asked about; Python would also
 /// send a malformed id, which the Hub does not list.
-fn hub_id(repo: &str) -> bool {
+pub(crate) fn hub_id(repo: &str) -> bool {
     repo.split('/').all(|segment| {
         !segment.is_empty()
             && segment != "."

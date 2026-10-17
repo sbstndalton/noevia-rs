@@ -385,7 +385,7 @@ fn companion_file(name: &str, size: u64) -> bool {
 }
 
 /// `ini._stems_present()`: stem -> relative path of every non-companion file, the last one wins.
-fn stems_present(found: &[Found]) -> Result<HashMap<String, String>, Stop> {
+pub(crate) fn stems_present(found: &[Found]) -> Result<HashMap<String, String>, Stop> {
     let mut out = HashMap::new();
     for file in found {
         if companion_file(&file.name, file.size) {
@@ -420,7 +420,7 @@ fn shard_base(name: &str) -> Result<String, Stop> {
 /// `(settings.models_dir / rel).is_file()` for a section's `model =` path. pathlib drops empty
 /// and `.` segments. `None` when the contained reader cannot tell: a `..` segment, or a link
 /// leaving the folder (noevia#1889: that decides only this section, never the whole route).
-fn is_file(root: &Root, base: &Path, rel: &str) -> Option<bool> {
+pub(crate) fn is_file(root: &Root, base: &Path, rel: &str) -> Option<bool> {
     let mut segments = Vec::new();
     for segment in rel.split('/') {
         match segment {
@@ -501,9 +501,9 @@ fn sections_by_file(
 
 /// A reader that remembers whether the file itself failed (Python's `OSError`, whose text names
 /// an errno this reader does not reproduce).
-struct Watched<R> {
-    inner: R,
-    failed: bool,
+pub(crate) struct Watched<R> {
+    pub(crate) inner: R,
+    pub(crate) failed: bool,
 }
 
 impl<R: Read> Read for Watched<R> {
@@ -543,7 +543,7 @@ fn open_part(root: &Root, base: &Path, rel: &str) -> Result<std::fs::File, Stop>
 }
 
 /// The reader's own bound (no Python counterpart) shows up as this `_error` text.
-fn hit_read_bound(raw: &gguf::Raw) -> bool {
+pub(crate) fn hit_read_bound(raw: &gguf::Raw) -> bool {
     ["_error", "_tensor_params_error"].iter().any(|key| {
         matches!(raw.get(*key), Some(gguf::Value::Str(text)) if text.contains("header read limit of"))
     })

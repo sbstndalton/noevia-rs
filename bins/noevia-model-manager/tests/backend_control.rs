@@ -81,6 +81,8 @@ fn state(docker: FakeDocker, child: &str, backends: Backends) -> Arc<StateData> 
         downloads: None,
         #[cfg(feature = "native-model-delete")]
         model_delete: None,
+        #[cfg(feature = "native-draft-heads")]
+        draft_heads: None,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner: None,
         backends: Some(Arc::new(backends)),

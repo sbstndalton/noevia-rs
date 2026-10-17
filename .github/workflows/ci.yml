@@ -916,13 +916,61 @@ jobs:
           }
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-model-delete -- -D warnings
-      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes,native-settings-write,native-backend-control,native-benchmark-overview,native-check-updates,native-benchmark-runner,native-downloads,native-model-delete -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes,native-settings-write,native-backend-control,native-benchmark-overview,native-check-updates,native-benchmark-runner,native-downloads,native-model-delete,native-draft-heads -- -D warnings
       - name: Native model delete differential (lib and Linux router), bounds and route policy
         run: |
           cargo test --locked -p noevia-model-manager --features native-model-delete --test model_delete --test model_detail --test lifecycle --bin noevia-model-manager
           cargo test --locked -p noevia-model-manager --features native-model-delete --lib model_delete::
           cargo test --locked -p noevia-model-manager --features native-model-delete --lib model_detail::
       - name: Model delete capability omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-model-detail --test lifecycle
+          cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+
+  native-draft-heads:
+    name: Native draft-head read, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          # noevia#1318 slice 12: services feat/1318-native-draft-heads (the guard; routes unchanged).
+          ref: 1c966cde911f9f0946b47052ffc039e5fc776495
+          path: draft-heads-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r draft-heads-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Build model-files for the Python child's tree listing
+        run: cargo build --locked -p model-files-cli
+      - name: Regenerate the actual Python GET /api/v1/sections/{name}/draft-heads oracle (synthetic folders, fake Hub)
+        env:
+          MODEL_FILES_BIN: ${{ github.workspace }}/target/debug/model-files
+        run: |
+          python3 -I tools/gen-draft-heads-oracle.py draft-heads-services/model-manager/app > "$RUNNER_TEMP/draft-heads.json"
+          cmp bins/noevia-model-manager/tests/fixtures/draft-heads-python.v1.json "$RUNNER_TEMP/draft-heads.json" || {
+            python3 -c 'import sys; a, b = (open(p, "rb").read() for p in sys.argv[1:]); i = next(i for i in range(min(len(a), len(b)) + 1) if a[i:i + 1] != b[i:i + 1]); print("committed:", a[max(0, i - 160):i + 160]); print("regenerated:", b[max(0, i - 160):i + 160])' bins/noevia-model-manager/tests/fixtures/draft-heads-python.v1.json "$RUNNER_TEMP/draft-heads.json"
+            exit 1
+          }
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-draft-heads -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes,native-settings-write,native-backend-control,native-benchmark-overview,native-check-updates,native-benchmark-runner,native-downloads,native-model-delete,native-draft-heads -- -D warnings
+      - name: Native draft-head differential (lib and Linux router), route policy and selector
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-draft-heads --test draft_heads --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-draft-heads --lib draft_heads::
+          cargo test --locked -p noevia-model-manager --features native-draft-heads --lib model_detail::
+          cargo test --locked -p noevia-model-manager --features native-draft-heads --lib check_updates::
+      - name: Draft-head capability omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-model-detail --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle

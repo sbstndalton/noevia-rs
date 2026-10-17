@@ -1068,6 +1068,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         if cfg!(feature = "native-model-delete") {
             expected.push_str("native-model-delete\n");
         }
+        if cfg!(feature = "native-draft-heads") {
+            expected.push_str("native-draft-heads\n");
+        }
         // noevia#1925: the production image also advertises native-diagnose (printed last).
         if cfg!(feature = "native-diagnose") {
             expected.push_str("native-diagnose\n");
@@ -1312,5 +1315,49 @@ fn native_model_delete_needs_native_downloads() {
             falls_back,
             "{downloads:?}: {stderr}"
         );
+    }
+}
+
+/// noevia#1318 slice 12: the draft-head selector is closed before any child, and the native parent
+/// hands the child the exact confirmation (over an inherited value).
+#[test]
+fn draft_heads_selector_and_confirmation() {
+    let (dir, marker) = owned_uvicorn();
+    for value in ["invalid", "Rust", ""] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_DRAFT_HEADS_IMPL", value)
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success(), "{value:?}");
+        assert!(!marker.exists());
+    }
+    if !cfg!(feature = "native-draft-heads") {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_DRAFT_HEADS_IMPL", "rust")
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("compiled native-draft-heads"));
+        assert!(!marker.exists());
+    }
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script, "#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_DRAFT_HEADS_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let mut cases = vec![(None, "0"), (Some("python"), "0")];
+    if cfg!(feature = "native-draft-heads") {
+        cases.push((Some("rust"), "1"));
+    }
+    for (selected, expected) in cases {
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env(
+            "NOEVIA_NATIVE_MODEL_MANAGER_DRAFT_HEADS_CONFIRMED",
+            "hostile",
+        )
+        .env_remove("MODEL_MANAGER_DRAFT_HEADS_IMPL");
+        if let Some(value) = selected {
+            cmd.env("MODEL_MANAGER_DRAFT_HEADS_IMPL", value);
+        }
+        if let (Some(record), _) = native_child_record(&mut cmd, &marker) {
+            assert_eq!(record, expected, "{selected:?}");
+        }
     }
 }

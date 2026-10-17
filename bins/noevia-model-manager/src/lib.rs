@@ -19,6 +19,8 @@ pub mod docker;
 pub mod download_targets;
 #[cfg(feature = "native-downloads")]
 pub mod downloads;
+#[cfg(feature = "native-draft-heads")]
+pub mod draft_heads;
 pub mod embedding;
 pub mod host;
 pub mod idle_unload;
@@ -128,6 +130,8 @@ pub struct StateData {
     /// noevia#1318: native `POST /api/v1/models/delete`.
     #[cfg(feature = "native-model-delete")]
     pub model_delete: Option<Arc<model_delete::ModelDelete>>,
+    #[cfg(feature = "native-draft-heads")]
+    pub draft_heads: Option<Arc<draft_heads::DraftHeads>>,
     /// noevia#1318: the native benchmark runner (the one job slot): start, progress, cancel.
     #[cfg(feature = "native-benchmark-runner")]
     pub bench_runner: Option<Arc<bench_runner::Runner>>,
@@ -511,7 +515,7 @@ pub fn section_write_route(method: &Method, path: &str) -> Option<SectionWrite> 
     }
 }
 
-#[cfg(feature = "native-section-writes")]
+#[cfg(any(feature = "native-section-writes", feature = "native-draft-heads"))]
 fn lossy_unquote(raw: &str) -> String {
     let bytes = raw.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -531,6 +535,23 @@ fn lossy_unquote(raw: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// noevia#1318: `GET /api/v1/sections/{name}/draft-heads`, the name segment percent-decoded as
+/// uvicorn does; a name that decodes to a slash is not this route (FastAPI would not match it).
+#[cfg(feature = "native-draft-heads")]
+pub fn draft_heads_route(method: &Method, path: &str) -> Option<String> {
+    if *method != Method::GET {
+        return None;
+    }
+    let seg = path
+        .strip_prefix("/api/v1/sections/")?
+        .strip_suffix("/draft-heads")?;
+    if seg.is_empty() || seg.contains('/') {
+        return None;
+    }
+    let name = lossy_unquote(seg);
+    (!name.contains('/')).then_some(name)
+}
+
 /// FastAPI's answer to an unhandled exception, byte for byte.
 #[cfg(any(
     feature = "native-model-updates",
@@ -540,7 +561,8 @@ fn lossy_unquote(raw: &str) -> String {
     feature = "native-bench-runs",
     feature = "native-section-writes",
     feature = "native-settings-write",
-    feature = "native-backend-control"
+    feature = "native-backend-control",
+    feature = "native-draft-heads"
 ))]
 fn internal_error() -> Response {
     (
@@ -1033,6 +1055,23 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
     if let Some(runner) = state.bench_runner.clone() {
         if let Some(route) = bench_runner_route(req.method(), path) {
             return native_bench_runner(&runner, route, req).await;
+        }
+    }
+    #[cfg(feature = "native-draft-heads")]
+    if let Some(heads) = state.draft_heads.clone() {
+        if let Some(name) = draft_heads_route(req.method(), path) {
+            return match heads.get(&name).await {
+                draft_heads::Outcome::Json(status, bytes) => (
+                    StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    bytes,
+                )
+                    .into_response(),
+                draft_heads::Outcome::Failed => internal_error(),
+                draft_heads::Outcome::Refused => {
+                    detail(StatusCode::SERVICE_UNAVAILABLE, draft_heads::REFUSAL)
+                }
+            };
         }
     }
     #[cfg(feature = "native-check-updates")]
