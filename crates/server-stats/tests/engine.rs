@@ -168,9 +168,12 @@ async fn the_none_kind_asks_nothing() {
 #[tokio::test]
 async fn a_dead_engine_is_down_not_an_error() {
     // Nothing listens on port 9 (discard) on a test host; a refused connection is up:false.
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
+    // Bound but never listening, and held to the end of the test: a connect is refused, and no
+    // parallel test's `bind("127.0.0.1:0")` can be handed the port as it could a dropped
+    // listener's (#2016).
+    let dead = tokio::net::TcpSocket::new_v4().unwrap();
+    dead.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let port = dead.local_addr().unwrap().port();
     let e = Engine::new(
         Kind::LlamaCpp,
         &format!("http://127.0.0.1:{port}/v1"),
@@ -181,4 +184,5 @@ async fn a_dead_engine_is_down_not_an_error() {
     let reply = e.read().await;
     assert_eq!(reply.status, 200);
     assert!(reply.body.starts_with(r#"{"up":false,"#));
+    drop(dead);
 }
