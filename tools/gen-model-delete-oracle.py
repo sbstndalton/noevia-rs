@@ -147,9 +147,17 @@ CASES: list[dict] = [
     {"id": "case-and-sort", "files": [f("Up/B.GGUF"), f("sub/a.gguf"), f("A.gguf")],
      "requests": [req(["Up/B.GGUF", "sub/a.gguf", "A.gguf"])]},
     {"id": "models-is-a-file", "models": "file", "requests": [req(["x.gguf"])]},
+    # noevia#1964: the second key is "not found"; `sub/dup.gguf` (nobody named it) stays.
     {"id": "flat-fallback", "files": [f("dup.gguf", 3), f("sub/dup.gguf", 4), f("sub/other.gguf", 5)],
-     "diverges": "native refuses the fallback to a same-named model in another folder",
      "requests": [req(["dup.gguf", "dup.gguf"])]},
+    # noevia#1966: a partial download beside or below the model is another model on its way, so
+    # the whole-folder delete degrades to per-file and the partial file stays.
+    {"id": "partial-download-beside", "files": [f("sub/a.gguf", 6), f("sub/b.gguf.download", 7),
+                                                f("sub/notes.txt", 2)],
+     "requests": [req(["sub/a.gguf"])]},
+    {"id": "partial-download-below", "files": [f("sub/a.gguf", 6), f("sub/mmproj-a.gguf", 3),
+                                               f("sub/old/c.GGUF.download", 7)],
+     "requests": [req(["sub/a.gguf"])]},
 ]
 
 

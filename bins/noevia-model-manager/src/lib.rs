@@ -1142,6 +1142,12 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             return native_model_delete(&delete, req).await;
         }
     }
+    #[cfg(feature = "native-downloads")]
+    if path == "/api/v1/models/delete" && req.method() == Method::POST {
+        if let Some(refusal) = python_delete_blocked(&state) {
+            return refusal;
+        }
+    }
     let name = path
         .strip_prefix("/api/v1/backends/")
         .and_then(|p| p.strip_suffix("/logs"))
@@ -1966,7 +1972,28 @@ async fn guarded_delete(
     if let Some(delete) = state.model_delete.clone() {
         return native_model_delete(&delete, req).await;
     }
+    #[cfg(feature = "native-downloads")]
+    if let Some(refusal) = python_delete_blocked(&state) {
+        return refusal;
+    }
     forward(state, req).await
+}
+
+/// The 409 for a Python-served delete while the native table has a queued or running download.
+#[cfg(feature = "native-downloads")]
+pub const PYTHON_DELETE_WHILE_DOWNLOADING: &str = "A download is queued or running; wait for it to finish or cancel it before deleting a model. Nothing was deleted.";
+
+/// noevia#1966: with native downloads but a Python delete, Python cannot see the native jobs, so
+/// any active download refuses the delete before it reaches Python (coarser than the native
+/// per-folder check, never a deletion under a running transfer).
+#[cfg(feature = "native-downloads")]
+fn python_delete_blocked(state: &StateData) -> Option<Response> {
+    #[cfg(feature = "native-model-delete")]
+    if state.model_delete.is_some() {
+        return None;
+    }
+    let table = state.downloads.as_ref()?;
+    (table.active() > 0).then(|| detail(StatusCode::CONFLICT, PYTHON_DELETE_WHILE_DOWNLOADING))
 }
 
 /// noevia#1318: `POST /api/v1/models/delete` with FastAPI's `dict` body rules, answered natively.

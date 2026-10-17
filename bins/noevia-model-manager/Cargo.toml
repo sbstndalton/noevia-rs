@@ -29,7 +29,8 @@ native-benchmark-runner = ["native-benchmark-overview", "native-backend-control"
 # noevia#1318 slice 10: the download job table and transfers (TLS comes with check-updates).
 native-downloads = ["native-check-updates"]
 # noevia#1318: model deletion (snapshot shared with model detail, FastAPI dict bodies).
-native-model-delete = ["native-model-detail", "native-prompts"]
+# noevia#1966: it refuses while a native download writes into the model's folder.
+native-model-delete = ["native-model-detail", "native-prompts", "native-downloads"]
 [lints]
 workspace = true
 [dependencies]

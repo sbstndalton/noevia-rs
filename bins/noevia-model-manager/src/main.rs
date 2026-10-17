@@ -361,6 +361,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     #[cfg_attr(not(feature = "native-model-delete"), allow(unused_mut))]
     let mut delete_mode = delete_mode;
+    // noevia#1966: the delete must see every queued and running download, so it is native only
+    // while this process also owns the download table (else both stay with Python, whose delete
+    // checks its own jobs).
+    #[cfg(feature = "native-model-delete")]
+    if delete_mode == "rust" && downloads_mode != "rust" {
+        eprintln!(
+            "native-model-delete: needs MODEL_MANAGER_DOWNLOADS_IMPL=rust (the delete checks the download table); model deletion stays with python"
+        );
+        delete_mode = "python".to_owned();
+    }
     #[cfg(feature = "native-model-delete")]
     let delete_roots = if delete_mode == "rust" {
         match delete_roots(std::env::vars_os().collect()) {
@@ -783,23 +793,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Err(error) = idle_unload.reconcile().await {
         eprintln!("idle unload: {error}");
     }
-    #[cfg(feature = "native-model-delete")]
-    let model_delete = delete_roots.as_ref().map(|roots| {
-        Arc::new(noevia_model_manager::model_delete::ModelDelete::new(
-            noevia_model_manager::model_delete::Config {
-                models: roots.models.clone(),
-                ini: roots.ini.clone().into(),
-                host_path: roots.host_path.clone(),
-                targets: roots.targets.clone(),
-                mountinfo: "/proc/self/mountinfo".into(),
-                hostname: roots.hostname.clone(),
-                embed: embedding
-                    .as_ref()
-                    .map(|s| (s.container.clone(), embed_url.clone())),
-            },
-            docker.clone(),
-        ))
-    });
     #[cfg(feature = "native-downloads")]
     let downloads = match downloads_roots.as_ref() {
         Some(roots) => Some(noevia_model_manager::downloads::Downloads::new(
@@ -811,6 +804,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?),
         None => None,
     };
+    #[cfg(feature = "native-model-delete")]
+    let model_delete = delete_roots
+        .as_ref()
+        .zip(downloads.as_ref())
+        .map(|(roots, table)| {
+            Arc::new(
+                noevia_model_manager::model_delete::ModelDelete::new(
+                    noevia_model_manager::model_delete::Config {
+                        models: roots.models.clone(),
+                        ini: roots.ini.clone().into(),
+                        host_path: roots.host_path.clone(),
+                        targets: roots.targets.clone(),
+                        mountinfo: "/proc/self/mountinfo".into(),
+                        hostname: roots.hostname.clone(),
+                        embed: embedding
+                            .as_ref()
+                            .map(|s| (s.container.clone(), embed_url.clone())),
+                    },
+                    docker.clone(),
+                )
+                .with_downloads(table.clone()),
+            )
+        });
     let mut child = child_command.spawn()?;
     let _host_sampler = host
         .as_ref()

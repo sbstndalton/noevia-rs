@@ -9,19 +9,19 @@ use crate::{Container, Job};
 use serde_json::Value;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// sha256 of the services sources the fixture came from (noevia-services 09f7d01).
+/// sha256 of the services sources the fixture came from (noevia-services 54b8b51, sbstndalton/noevia-services#81).
 const ORACLE: [(&str, &str); 6] = [
     (
         "api.py",
-        "0b5e9aa8a15f5583618b02d2b42a7695a9bd21e7bc7f018ec2b92ce84feb2570",
+        "55651c96d06267840dfcbdbe9c167919ebb81cb4d65b0b595728b27d37949e22",
     ),
     (
         "main.py",
-        "139436d011ca7c14e76db19f4a24cc0c9419c368fb3f895d533115a7d7f74d29",
+        "d6124693930a163c47a9856c71486570798e2581850cb23a84dc25304bce4f3d",
     ),
     (
         "services.py",
-        "1fba80188ab565c2e00ea002217b59f8ae5354052f6641d322f8b24f141da983",
+        "c148d1ca50d78c9adf0a41dcf3cbae66064965981bfb203616d3fca9bfc474c5",
     ),
     (
         "ini.py",
@@ -280,7 +280,6 @@ async fn actual_python_differential() {
             docker.clone(),
             Root::synthetic,
         );
-        let diverges = case.get("diverges").is_some();
         for (step, (request, expected)) in case["requests"]
             .as_array()
             .unwrap()
@@ -296,10 +295,6 @@ async fn actual_python_differential() {
             )
             .await;
             let body = body.replace(root.to_str().unwrap(), "@ROOT@");
-            if diverges {
-                flat_fallback_is_refused(id, status, &body, root);
-                continue;
-            }
             let ctx = format!("{id} step {step}: {}", request["body"]);
             assert_eq!(
                 status,
@@ -325,20 +320,6 @@ async fn actual_python_differential() {
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
     }
-}
-
-/// The one deliberate difference in the fixture: Python's second `dup.gguf` deletes
-/// `sub/dup.gguf`, which nobody asked for. Natively it is "not found" and stays.
-fn flat_fallback_is_refused(id: &str, status: u16, body: &str, root: &Path) {
-    assert_eq!(id, "flat-fallback");
-    assert_eq!(status, 200);
-    assert_eq!(
-        body,
-        r#"{"results":[{"key":"dup.gguf","ok":true,"message":"deleted 1 file(s)","freed":3,"freedH":"3 B"},{"key":"dup.gguf","ok":false,"message":"not found: dup.gguf","freed":0,"freedH":""}]}"#
-    );
-    assert!(root.join("models/sub/dup.gguf").exists());
-    assert!(root.join("models/sub/other.gguf").exists());
-    assert!(!root.join("models/dup.gguf").exists());
 }
 
 #[test]
@@ -456,4 +437,156 @@ fn a_folder_swapped_for_a_link_is_never_entered() {
     );
     assert_eq!(std::fs::read(outside.join("a.gguf")).unwrap(), b"keep");
     assert_eq!(std::fs::read(outside.join("notes.txt")).unwrap(), b"keep");
+}
+
+// ------------------------------------------------ noevia#1966: active downloads
+
+/// A server that accepts and never answers: a job it serves stays queued or downloading.
+async fn silent_server() -> (u16, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let task = tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((sock, _)) = listener.accept().await {
+            held.push(sock);
+        }
+    });
+    (port, task)
+}
+
+fn plain_config(models: &Path, info: &Path) -> Config {
+    Config {
+        models: models.to_str().unwrap().to_owned(),
+        ini: models.join("models.ini"),
+        host_path: String::new(),
+        targets: String::new(),
+        mountinfo: info.join("absent-mountinfo"),
+        hostname: String::new(),
+        embed: None,
+    }
+}
+
+fn no_docker() -> Arc<FakeDocker> {
+    Arc::new(FakeDocker {
+        spec: Value::Null,
+        lists: AtomicUsize::new(0),
+    })
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_active_download_into_the_folder_refuses_the_delete() {
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir_all(models.join("sub")).unwrap();
+    std::fs::write(models.join("sub/a.gguf"), [0u8; 6]).unwrap();
+    std::fs::write(models.join("sub/b.gguf.download"), [0u8; 7]).unwrap();
+    std::fs::write(models.join("flat.gguf"), [0u8; 3]).unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir(&data).unwrap();
+    let table = crate::downloads::Downloads::new(crate::downloads::Config::production(
+        models.to_str().unwrap().to_owned(),
+        data.to_str().unwrap(),
+        1,
+    ))
+    .unwrap();
+    let (port, server) = silent_server().await;
+    let queued = table.queue(vec![crate::downloads::Planned {
+        repo_id: "example.test".into(),
+        filename: "sub/b.gguf".into(),
+        url: format!("http://127.0.0.1:{port}/b.gguf"),
+        total_bytes: 0,
+    }]);
+    assert_eq!(queued, crate::downloads::Queued::Done);
+    assert_eq!(table.active(), 1);
+    let delete = ModelDelete::with_root(
+        plain_config(&models, dir.path()),
+        no_docker(),
+        Root::synthetic,
+    )
+    .with_downloads(table.clone());
+
+    let (status, _, body) = answer(
+        &delete,
+        Some("application/json"),
+        br#"{"models":["sub/a.gguf"]}"#,
+    )
+    .await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(
+        body,
+        serde_json::json!({"detail": "a.gguf has a download queued or running in its folder: sub/b.gguf. Wait for it to finish or cancel it first; nothing was deleted."}).to_string()
+    );
+    assert!(models.join("sub/a.gguf").exists());
+    assert!(models.join("sub/b.gguf.download").exists());
+
+    // A flat model is blocked only by its own files.
+    let (status, _, body) = answer(
+        &delete,
+        Some("application/json"),
+        br#"{"models":["flat.gguf"]}"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert!(!models.join("flat.gguf").exists());
+
+    // Once the job is cancelled (which removes its partial file) the delete goes ahead. A partial
+    // file without a job (a restart lost it) is still another model on its way: per file, and the
+    // folder stays.
+    let list: Value = serde_json::from_str(&table.list()).unwrap();
+    assert!(table.cancel(list["jobs"][0]["id"].as_str().unwrap()));
+    tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        while table.active() > 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap(); // the cancelled job settles
+    std::fs::write(models.join("sub/c.gguf.download"), [0u8; 5]).unwrap();
+    let (status, _, body) = answer(
+        &delete,
+        Some("application/json"),
+        br#"{"models":["sub/a.gguf"]}"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains(r#""message":"deleted 1 file(s)""#), "{body}");
+    assert!(!models.join("sub/a.gguf").exists());
+    assert!(models.join("sub/c.gguf.download").exists());
+    server.abort();
+}
+
+#[test]
+fn download_blockers_cover_own_files_the_folder_and_the_hf_repository() {
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    let snap = "models--o--r/snapshots/rev";
+    std::fs::create_dir_all(models.join(snap)).unwrap();
+    std::fs::create_dir_all(models.join("sub")).unwrap();
+    std::fs::write(models.join(format!("{snap}/q.gguf")), [0u8; 4]).unwrap();
+    std::fs::write(models.join("sub/a.gguf"), [0u8; 4]).unwrap();
+    std::fs::write(models.join("mmproj-flat.gguf"), [0u8; 2]).unwrap();
+    std::fs::write(models.join("flat.gguf"), [0u8; 4]).unwrap();
+    let listed =
+        crate::model_detail::snapshot(&models, &models.join("models.ini"), Root::synthetic)
+            .ok()
+            .flatten()
+            .unwrap();
+    let entries = &listed.entries;
+    let find = |key: &str| entries.iter().find(|e| e.route_key() == key).unwrap();
+    let dests: Vec<String> = [
+        "sub/./b.gguf",
+        "models--o--r/blobs/x.gguf",
+        "flat.gguf",
+        "subway/c.gguf",
+        "other/d.gguf",
+    ]
+    .map(String::from)
+    .to_vec();
+    assert_eq!(blockers(find("sub/a.gguf"), &dests), ["sub/b.gguf"]);
+    assert_eq!(
+        blockers(find(&format!("{snap}/q.gguf")), &dests),
+        ["models--o--r/blobs/x.gguf"]
+    );
+    assert_eq!(blockers(find("flat.gguf"), &dests), ["flat.gguf"]);
+    assert!(blockers(find("flat.gguf"), &["sub/../mmproj-x.gguf".into()]).is_empty());
 }

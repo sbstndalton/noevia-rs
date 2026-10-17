@@ -1278,3 +1278,33 @@ fn host_selector_requires_compiled_capability_and_native_parent() {
         assert!(String::from_utf8_lossy(&output.stderr).contains("native-host"));
     }
 }
+
+/// noevia#1966: a native delete must see every download, so it is native only together with
+/// native downloads; alone it stays with Python (whose delete checks its own job table).
+#[cfg(feature = "native-model-delete")]
+#[test]
+fn native_model_delete_needs_native_downloads() {
+    let (dir, marker) = owned_uvicorn();
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script,"#!/bin/sh\nprintf '%s %s' \"${NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DELETE_CONFIRMED-unset}\" \"${NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let fallback = "native-model-delete: needs MODEL_MANAGER_DOWNLOADS_IMPL=rust";
+    for (downloads, expected, falls_back) in [
+        (None, "0 0", true),
+        (Some("python"), "0 0", true),
+        (Some("rust"), "1 1", false),
+    ] {
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env("MODEL_MANAGER_MODEL_DELETE_IMPL", "rust")
+            .env_remove("MODEL_MANAGER_DOWNLOADS_IMPL");
+        if let Some(value) = downloads {
+            cmd.env("MODEL_MANAGER_DOWNLOADS_IMPL", value);
+        }
+        let (record, stderr) = native_child_record(&mut cmd, &marker);
+        assert_eq!(record.as_deref(), Some(expected), "{downloads:?}: {stderr}");
+        assert_eq!(
+            stderr.contains(fallback),
+            falls_back,
+            "{downloads:?}: {stderr}"
+        );
+    }
+}

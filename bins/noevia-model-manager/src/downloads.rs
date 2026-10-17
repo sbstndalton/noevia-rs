@@ -454,6 +454,17 @@ impl Downloads {
         lock(&self.jobs).iter().filter(|j| j.active()).count()
     }
 
+    /// noevia#1966: the destinations of queued and running jobs relative to the models folder
+    /// (`safe_dest` keeps them as joined, so this is the file name as planned, normalised).
+    pub fn active_destinations(&self) -> Vec<String> {
+        let prefix = format!("{}/", self.config.models_dir.trim_end_matches('/'));
+        lock(&self.jobs)
+            .iter()
+            .filter(|j| j.active())
+            .filter_map(|j| j.dest.strip_prefix(&prefix).map(str::to_owned))
+            .collect()
+    }
+
     /// `manager.cancel(job_id)`.
     pub fn cancel(&self, id: &str) -> bool {
         let job = lock(&self.jobs).iter().find(|j| j.id == id).cloned();

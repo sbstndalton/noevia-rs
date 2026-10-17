@@ -347,9 +347,6 @@ async fn actual_python_differential_through_the_router() {
     let info = tempfile::tempdir().unwrap();
     let mut compared = 0;
     for case in fixture["cases"].as_array().unwrap() {
-        if case.get("diverges").is_some() {
-            continue; // asserted by the lib test
-        }
         let id = case["id"].as_str().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -422,4 +419,60 @@ async fn actual_python_differential_through_the_router() {
         }
     }
     assert!(compared >= 60, "{compared}");
+}
+
+/// noevia#1966: native downloads with a Python delete. Python cannot see the native jobs, so any
+/// queued or running download refuses the delete before it is forwarded; with none it forwards.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn python_delete_is_refused_while_a_native_download_is_active() {
+    use noevia_model_manager::downloads::{Config as DlConfig, Downloads, Planned, Queued};
+    let dir = tempfile::tempdir().unwrap();
+    let models = synthetic_tree(dir.path());
+    let data = dir.path().join("data");
+    std::fs::create_dir(&data).unwrap();
+    let table = Downloads::new(DlConfig::production(
+        models.to_str().unwrap().to_owned(),
+        data.to_str().unwrap(),
+        1,
+    ))
+    .unwrap();
+    // The forwarded request goes to a child that never exists (a closed port).
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let child = format!("http://127.0.0.1:{}", closed.local_addr().unwrap().port());
+    drop(closed);
+    let docker = Arc::new(FakeDocker {
+        spec: Value::Null,
+        lists: AtomicUsize::new(0),
+    });
+    let mut data_state = Arc::try_unwrap(state(None, docker, &child)).ok().unwrap();
+    data_state.downloads = Some(table.clone());
+    let shared = Arc::new(data_state);
+    let body = r#"{"models":["sub/s.gguf"]}"#;
+
+    let (status, _, idle) = post(shared.clone(), body, Some("application/json"), true).await;
+    assert_ne!(status, 409, "no active download: forwarded ({idle})");
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((sock, _)) = listener.accept().await {
+            held.push(sock);
+        }
+    });
+    let queued = table.queue(vec![Planned {
+        repo_id: "example.test".into(),
+        filename: "elsewhere/b.gguf".into(),
+        url: format!("http://127.0.0.1:{port}/b.gguf"),
+        total_bytes: 0,
+    }]);
+    assert_eq!(queued, Queued::Done);
+    let (status, _, text) = post(shared, body, Some("application/json"), true).await;
+    assert_eq!(status, 409, "{text}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&text).unwrap()["detail"],
+        noevia_model_manager::PYTHON_DELETE_WHILE_DOWNLOADING
+    );
+    assert!(models.join("sub/s.gguf").exists());
+    server.abort();
 }

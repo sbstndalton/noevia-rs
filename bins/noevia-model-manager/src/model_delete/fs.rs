@@ -264,6 +264,10 @@ impl Tree<'_> {
         let entries = self.list(rel)?;
         // os.walk: what `is_dir()` (following links) calls a folder is not a file name.
         for (name, kind) in &entries {
+            // noevia#1966: a download's partial file is another model on its way.
+            if !kind.is_dir() && name.to_lowercase().ends_with(".gguf.download") {
+                return Ok(true);
+            }
             if kind.is_dir() || !name.to_lowercase().ends_with(".gguf") {
                 continue;
             }

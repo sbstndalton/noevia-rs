@@ -25,9 +25,10 @@
 //! Every file operation goes through directory handles opened from the models folder without
 //! following links, so a folder swapped for a link after the snapshot is never descended.
 //!
-//! Deliberate differences (see `docs/native-model-delete.md`): no fallback from a flat key to a
-//! same-named model in another folder (Python's `delete_gguf` would delete that one instead); a
-//! Docker socket that exists but cannot be read refuses with the 409 (Python treats a socket it
+//! #1966: a queued or running native download into the model's folder refuses the delete (409),
+//! as services#81 does against Python's job table.
+//!
+//! Deliberate differences (see `docs/native-model-delete.md`): a Docker socket that exists but cannot be read refuses with the 409 (Python treats a socket it
 //! cannot connect to as "no Docker"); conditions the bounded reader cannot follow exactly answer
 //! the native 503 before anything is deleted.
 mod fs;
@@ -102,6 +103,8 @@ pub enum Outcome {
 pub struct ModelDelete {
     config: Arc<Config>,
     docker: Arc<dyn DockerRead>,
+    /// noevia#1966: the native download table (this process serves downloads when it deletes).
+    downloads: Option<Arc<crate::downloads::Downloads>>,
     open: fn(&Path) -> Result<Root, WalkError>,
     lock: tokio::sync::Mutex<()>,
 }
@@ -123,9 +126,26 @@ impl ModelDelete {
         Self {
             config: Arc::new(config),
             docker,
+            downloads: None,
             open,
             lock: tokio::sync::Mutex::new(()),
         }
+    }
+
+    /// noevia#1966: refuse while a queued or running download writes into a model's folder.
+    #[must_use]
+    pub fn with_downloads(mut self, downloads: Arc<crate::downloads::Downloads>) -> Self {
+        self.downloads = Some(downloads);
+        self
+    }
+
+    /// Destinations of active downloads that land on one of `entry`'s files or inside the folder
+    /// a delete may remove (its subdir, or the Hugging Face repository folder).
+    fn download_blockers(&self, entry: &Entry) -> Vec<String> {
+        let Some(table) = &self.downloads else {
+            return Vec::new();
+        };
+        blockers(entry, &table.active_destinations())
     }
 
     /// `api.delete_models(body)` for a body FastAPI accepted as a `dict`.
@@ -174,6 +194,10 @@ impl ModelDelete {
             let holders = holders(&self.config, &entry, containers.as_deref().unwrap_or(&[]));
             if !holders.is_empty() {
                 return Outcome::Conflict(in_use_message(&entry, &holders));
+            }
+            let downloads = self.download_blockers(&entry);
+            if !downloads.is_empty() {
+                return Outcome::Conflict(downloading_message(&entry, &downloads));
             }
             todo.push((key, entry));
         }
@@ -282,6 +306,10 @@ impl ModelDelete {
         if !holders.is_empty() {
             return (false, in_use_message(&found, &holders), 0);
         }
+        let downloads = self.download_blockers(&found);
+        if !downloads.is_empty() {
+            return (false, downloading_message(&found, &downloads), 0);
+        }
         let config = self.config.clone();
         let base = snap.base.clone();
         drop(snap);
@@ -355,6 +383,52 @@ fn in_use_message(entry: &Entry, holders: &[String]) -> String {
         entry.model.base,
         holders.join("; ")
     )
+}
+
+/// `services.downloading_message(entry, rels)`.
+fn downloading_message(entry: &Entry, rels: &[String]) -> String {
+    format!(
+        "{} has a download queued or running in its folder: {}. Wait for it to finish or cancel it first; nothing was deleted.",
+        entry.model.base,
+        rels.join("; ")
+    )
+}
+
+/// `services.download_blockers(entry, jobs)` over models-relative destinations.
+pub(crate) fn blockers(entry: &Entry, destinations: &[String]) -> Vec<String> {
+    let own = own_rels(entry);
+    let folder = fs::hf_repo(&entry.model.subdir).unwrap_or_else(|| entry.model.subdir.clone());
+    let mut found: Vec<String> = Vec::new();
+    for dest in destinations {
+        let rel = relnorm(dest);
+        let inside = !folder.is_empty()
+            && rel
+                .strip_prefix(folder.as_str())
+                .is_some_and(|rest| rest.starts_with('/'));
+        if (own.contains(&rel) || inside) && !found.contains(&rel) {
+            found.push(rel);
+        }
+    }
+    found
+}
+
+/// `posixpath.normpath` of a relative path.
+fn relnorm(rel: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in rel.split('/') {
+        match part {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|p| *p != "..") => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    if parts.is_empty() {
+        ".".into()
+    } else {
+        parts.join("/")
+    }
 }
 
 /// The model's files relative to the models folder: parts, then companions.
