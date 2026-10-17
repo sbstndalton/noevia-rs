@@ -8,7 +8,7 @@
 //! the revision compare-and-swap, `_upsert_section` with the `_bound_cache_ram` cache-ram
 //! bounds, the in-place `_render_preserving` edit (falling back to configparser's full render),
 //! `_rename_header`, the roles file (`models.roles.json`), and `_replace_file`'s backups (the
-//! `model-files backups` plan when `MODEL_FILES_IMPL=rust`, else the rotating copies) and
+//! `model-files backups` plan; MODEL_FILES_IMPL is retired, noevia#1957) and
 //! fsynced atomic replace. Safe defaults need the GGUF hints, the draft-head search and the
 //! built-in MTP layer count: those come from the Python child's private
 //! `GET /api/v1/internal/safe-defaults-plan` (read-only there), asked while this side holds
@@ -58,8 +58,6 @@ pub struct SectionWrites {
     pub ini: PathBuf,
     /// `settings.cache_ram_limits`: (cap, hard maximum) in MiB.
     pub cache: (i64, i64),
-    /// `MODEL_FILES_IMPL=rust`: backups follow the `model-files backups` plan.
-    pub rust_backups: bool,
     clock: Clock,
     lock: Arc<tokio::sync::Mutex<()>>,
 }
@@ -422,19 +420,13 @@ fn require_revision(base: Option<&Json>, current: &str) -> Result<(), Outcome> {
 }
 
 impl SectionWrites {
-    pub fn new(ini: &Path, cache: (i64, i64), rust_backups: bool) -> Self {
-        Self::with_clock(
-            ini,
-            cache,
-            rust_backups,
-            Arc::new(std::time::SystemTime::now),
-        )
+    pub fn new(ini: &Path, cache: (i64, i64)) -> Self {
+        Self::with_clock(ini, cache, Arc::new(std::time::SystemTime::now))
     }
-    pub fn with_clock(ini: &Path, cache: (i64, i64), rust_backups: bool, clock: Clock) -> Self {
+    pub fn with_clock(ini: &Path, cache: (i64, i64), clock: Clock) -> Self {
         Self {
             ini: ini.to_owned(),
             cache,
-            rust_backups,
             clock,
             lock: Arc::new(tokio::sync::Mutex::new(())),
         }
@@ -492,52 +484,43 @@ impl SectionWrites {
         let mut prune: Vec<PathBuf> = Vec::new();
         if let Ok(meta) = std::fs::metadata(path) {
             mode = meta.permissions().mode() & 0o777;
-            if self.rust_backups {
-                let mut existing = Vec::new();
-                for entry in std::fs::read_dir(dir)? {
-                    let entry = entry?;
-                    let meta = entry.metadata()?;
-                    if meta.file_type().is_file() {
-                        let Ok(n) = entry.file_name().into_string() else {
-                            continue;
-                        };
-                        let ns = i128::from(meta.mtime()) * 1_000_000_000
-                            + i128::from(meta.mtime_nsec());
-                        existing.push(model_files::backups::Listed {
-                            name: n,
-                            mtime_ns: u128::try_from(ns.max(0)).unwrap_or(0),
-                        });
-                    }
+            let mut existing = Vec::new();
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let meta = entry.metadata()?;
+                if meta.file_type().is_file() {
+                    let Ok(n) = entry.file_name().into_string() else {
+                        continue;
+                    };
+                    let ns =
+                        i128::from(meta.mtime()) * 1_000_000_000 + i128::from(meta.mtime_nsec());
+                    existing.push(model_files::backups::Listed {
+                        name: n,
+                        mtime_ns: u128::try_from(ns.max(0)).unwrap_or(0),
+                    });
                 }
-                let request = model_files::backups::Request {
-                    file: name.to_owned(),
-                    base_revision: base.map(str::to_owned),
-                    backup,
-                    rotating_name: Some(self.rotating_name(dir, name)),
-                    keep_revisions: BACKUPS_TO_KEEP,
-                    existing,
-                };
-                let plan = model_files::backups::plan(&request);
-                if plan.revision.is_some() {
-                    immutable_backup(path, base.unwrap_or_default())?;
-                }
-                if let Some(rot) = plan.rotating {
-                    copy(path, &dir.join(rot))?;
-                }
-                prune = plan
-                    .prune
-                    .iter()
-                    .filter(|n| own_copy(name, n))
-                    .map(|n| dir.join(n))
-                    .collect();
-            } else if backup {
-                if let Some(base) = base {
-                    immutable_backup(path, base)?;
-                }
-                let rot = self.rotating_name(dir, name);
-                copy(path, &dir.join(rot))?;
-                prune_rotating(dir, name);
             }
+            let request = model_files::backups::Request {
+                file: name.to_owned(),
+                base_revision: base.map(str::to_owned),
+                backup,
+                rotating_name: Some(self.rotating_name(dir, name)),
+                keep_revisions: BACKUPS_TO_KEEP,
+                existing,
+            };
+            let plan = model_files::backups::plan(&request);
+            if plan.revision.is_some() {
+                immutable_backup(path, base.unwrap_or_default())?;
+            }
+            if let Some(rot) = plan.rotating {
+                copy(path, &dir.join(rot))?;
+            }
+            prune = plan
+                .prune
+                .iter()
+                .filter(|n| own_copy(name, n))
+                .map(|n| dir.join(n))
+                .collect();
         }
         let nanos = std::time::Instant::now().elapsed().as_nanos()
             + std::time::SystemTime::now()
@@ -613,22 +596,6 @@ fn immutable_backup(path: &Path, base: &str) -> std::io::Result<()> {
     file.write_all(&std::fs::read(path)?)?;
     file.flush()?;
     file.sync_all()
-}
-
-/// `_prune_backups()`: the newest ten of this manager's own rotating copies stay.
-fn prune_rotating(dir: &Path, name: &str) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut own: Vec<String> = entries
-        .filter_map(Result::ok)
-        .filter_map(|e| e.file_name().into_string().ok())
-        .filter(|n| model_files::backups::is_own_rotating_copy(name, n))
-        .collect();
-    own.sort_by(|a, b| b.cmp(a));
-    for old in own.iter().skip(BACKUPS_TO_KEEP) {
-        let _ = std::fs::remove_file(dir.join(old));
-    }
 }
 
 /// `{"ok":true,"revision":...}` plus extra fields already rendered.
