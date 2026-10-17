@@ -1174,6 +1174,45 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-logs --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
 
+  native-backends:
+    name: Native backend sampler and GET /backends, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 0a885dbb491af663279b5852b977f57c24103019
+          path: backends-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r backends-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Regenerate the actual Python backends oracle
+        run: |
+          python3 -I tools/gen-backends-oracle.py backends-services/model-manager/app > "$RUNNER_TEMP/backends.json"
+          cmp bins/noevia-model-manager/tests/fixtures/backends-python.v1.json "$RUNNER_TEMP/backends.json"
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-backends -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-settings,native-backend-control,native-backends -- -D warnings
+      - name: Native backends differential, transport allowlist and selector
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-backends --test backends --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-backends --lib backend_stats::
+          cargo test --locked -p noevia-model-manager --features native-backends --lib docker::
+      - name: Backends capability omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-backend-control --test lifecycle
+          cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+
   native-backend-control:
     name: Native backend restart and test, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest

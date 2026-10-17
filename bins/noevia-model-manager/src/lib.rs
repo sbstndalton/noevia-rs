@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+#[cfg(feature = "native-backends")]
+pub mod backend_stats;
 #[cfg(feature = "native-backend-control")]
 pub mod backends;
 #[cfg(feature = "native-badges")]
@@ -132,6 +134,9 @@ pub struct StateData {
     pub model_delete: Option<Arc<model_delete::ModelDelete>>,
     #[cfg(feature = "native-draft-heads")]
     pub draft_heads: Option<Arc<draft_heads::DraftHeads>>,
+    /// noevia#1318 slice 13: the native backend sampler and `GET /api/v1/backends`.
+    #[cfg(feature = "native-backends")]
+    pub backend_stats: Option<Arc<backend_stats::BackendStats>>,
     /// noevia#1318: the native benchmark runner (the one job slot): start, progress, cancel.
     #[cfg(feature = "native-benchmark-runner")]
     pub bench_runner: Option<Arc<bench_runner::Runner>>,
@@ -1074,6 +1079,22 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    #[cfg(feature = "native-backends")]
+    if *req.method() == Method::GET && path == "/api/v1/backends" {
+        if let Some(stats) = state.backend_stats.clone() {
+            return match stats.get().await {
+                backend_stats::Outcome::Json(body) => (
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    body,
+                )
+                    .into_response(),
+                backend_stats::Outcome::Failed => internal_error(),
+                backend_stats::Outcome::Refused => {
+                    detail(StatusCode::SERVICE_UNAVAILABLE, backend_stats::REFUSAL)
+                }
+            };
+        }
+    }
     #[cfg(feature = "native-check-updates")]
     if *req.method() == Method::POST && path == "/api/v1/models/check-updates" {
         if let Some(check) = state.check_updates.clone() {
@@ -1662,6 +1683,10 @@ async fn native_backend_control(
             Ok(None) => return answer(false, "container not found"),
             Err(e) => return answer(false, &format!("docker error: {e}")),
         }
+        #[cfg(feature = "native-backends")]
+        if let Some(stats) = &state.backend_stats {
+            stats.set_restart_error(&name, None);
+        }
         set_restart_error(&state.legacy, &state.legacy_base, &state.token, &name, None).await;
         let task_state = state.clone();
         tokio::spawn(async move {
@@ -1675,6 +1700,10 @@ async fn native_backend_control(
                 Ok(Err(e)) => format!("APIError: {e}"),
                 Err(_) => "APIError: the restart did not finish in time".to_owned(),
             };
+            #[cfg(feature = "native-backends")]
+            if let Some(stats) = &task_state.backend_stats {
+                stats.set_restart_error(&name, Some(&error));
+            }
             set_restart_error(
                 &task_state.legacy,
                 &task_state.legacy_base,
