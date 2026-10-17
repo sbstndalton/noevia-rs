@@ -182,7 +182,6 @@ async fn start_app(
     let mut env: HashMap<&str, String> = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", dir.display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
         ("TRUST_PROXY", "true".into()),
         ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "1".into()),
         ("PUBLIC_ORIGIN", origin),
@@ -205,7 +204,6 @@ async fn start_app(
 
 fn switched_on(port: u16) -> Vec<(&'static str, String)> {
     vec![
-        ("NOEVIA_RUST_STATS", "1".into()),
         ("MODEL_MANAGER_KIND", "llamacpp".into()),
         (
             "MODEL_MANAGER_BASE_URL",
@@ -381,24 +379,18 @@ async fn signed_out_polls_get_401_even_when_every_gate_permit_is_taken() {
     let _ = stop.send(());
 }
 
-#[tokio::test]
-async fn an_invalid_auth_config_is_503_not_401_even_without_a_credential() {
+#[test]
+fn an_invalid_auth_config_refuses_startup_instead_of_serving_stats() {
+    // sbstndalton/noevia#1071: GET /api/stats is always the front's, so an auth
+    // environment it cannot check refuses startup (Node refuses to start on it too).
     let d = tempfile::tempdir().unwrap();
-    seed_database(d.path());
-    let (engine, listings) = router(Duration::ZERO).await;
-    let mut env = switched_on(engine);
-    // Node refuses to start on this; the front keeps answering "unavailable", never "signed out".
-    env.push(("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "maybe".into()));
-    let (addr, stop) = start(d.path(), &env).await;
-    for cookie in ["", MEMBER] {
-        assert_eq!(
-            call(addr, "GET", "/api/stats", cookie, None).await.0,
-            503,
-            "{cookie:?}"
-        );
-    }
-    assert_eq!(listings.load(Ordering::SeqCst), 0);
-    let _ = stop.send(());
+    let env: HashMap<&str, String> = HashMap::from([
+        ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
+        ("UI_DATA_DIR", d.path().display().to_string()),
+        ("NOEVIA_FEATURE_NATIVE_CLIENT_AUTH", "maybe".into()),
+    ]);
+    let err = Config::from_lookup(|k| env.get(k).cloned()).unwrap_err();
+    assert!(err.contains("valid native auth"), "{err}");
 }
 
 #[tokio::test]
@@ -443,7 +435,7 @@ async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queue
 }
 
 #[tokio::test]
-async fn a_dead_engine_is_up_false_and_the_switch_off_keeps_the_route_on_node() {
+async fn a_dead_engine_is_up_false_and_a_retired_switch_value_keeps_the_route_native() {
     let d = tempfile::tempdir().unwrap();
     seed_database(d.path());
     let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -458,17 +450,19 @@ async fn a_dead_engine_is_up_false_and_the_switch_off_keeps_the_route_on_node() 
     );
     let _ = stop.send(());
 
+    // sbstndalton/noevia#1071: NOEVIA_RUST_STATS is retired; "0" still leaves GET native, and
+    // the role write stays Node's (the dead upstream's 502).
     let (engine, listings) = router(Duration::ZERO).await;
     let mut off = switched_on(engine);
-    off.retain(|(k, _)| *k != "NOEVIA_RUST_STATS");
+    off.push(("NOEVIA_RUST_STATS", "0".into()));
     let (addr, stop) = start(d.path(), &off).await;
-    assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 502);
+    assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 200);
     assert_eq!(
         call(addr, "PUT", "/api/auto-roles", ADMIN, Some("csrf"))
             .await
             .0,
         502
     );
-    assert_eq!(listings.load(Ordering::SeqCst), 0);
+    assert_eq!(listings.load(Ordering::SeqCst), 1);
     let _ = stop.send(());
 }

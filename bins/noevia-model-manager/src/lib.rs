@@ -757,7 +757,71 @@ async fn native_diagnosis(
     }
 }
 
+/// noevia#1937: the child's `/api/v1/internal/*` endpoints are for this parent only (it calls them
+/// itself through `child_runtime` and `set_restart_error`, never through `dispatch`). True for the
+/// raw path and for the percent-decoded, dot-segment-resolved path, so `%2F`, `%2e%2e` and doubly
+/// encoded spellings cannot reach them either.
+fn is_internal_path(path: &str) -> bool {
+    const PREFIX: &str = "/api/v1/internal/";
+    if path.starts_with(PREFIX) {
+        return true;
+    }
+    let mut current = path.to_owned();
+    // Decode to a fixed point (bounded), so `%252F` is seen as `/` as well.
+    for _ in 0..4 {
+        let decoded = percent_decode_lossy(&current);
+        if decoded == current {
+            break;
+        }
+        current = decoded;
+    }
+    let normalized = current.replace('\\', "/");
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in normalized.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            other => segments.push(other),
+        }
+    }
+    let mut leading = segments.iter();
+    matches!(
+        (leading.next(), leading.next(), leading.next()),
+        (Some(a), Some(v), Some(i))
+            if a.eq_ignore_ascii_case("api")
+                && v.eq_ignore_ascii_case("v1")
+                && i.eq_ignore_ascii_case("internal")
+    )
+}
+
+fn percent_decode_lossy(input: &str) -> String {
+    let mut out = Vec::with_capacity(input.len());
+    let mut bytes = input.bytes();
+    while let Some(byte) = bytes.next() {
+        if byte == b'%' {
+            let mut ahead = bytes.clone();
+            let pair = ahead
+                .next()
+                .and_then(|hi| (hi as char).to_digit(16))
+                .zip(ahead.next().and_then(|lo| (lo as char).to_digit(16)));
+            if let Some((hi, lo)) = pair {
+                out.push(u8::try_from(hi * 16 + lo).unwrap_or(b'%'));
+                bytes.next();
+                bytes.next();
+                continue;
+            }
+        }
+        out.push(byte);
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
+    if is_internal_path(req.uri().path()) {
+        return detail(StatusCode::NOT_FOUND, "Not Found");
+    }
     let path = req.uri().path();
     #[cfg(feature = "native-prompts")]
     if let Some(prompts) = &state.prompts {

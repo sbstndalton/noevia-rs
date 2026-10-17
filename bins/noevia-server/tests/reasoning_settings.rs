@@ -80,7 +80,7 @@ async fn call_bytes(
     )
 }
 #[tokio::test]
-async fn native_put_identity_csrf_admin_audit_caps_and_selector_omission() {
+async fn native_put_identity_csrf_admin_audit_caps_and_retired_selector() {
     let d = tempfile::tempdir().unwrap();
     let db = Connection::open(d.path().join("cowork.db")).unwrap();
     db.execute_batch(include_str!(
@@ -102,8 +102,6 @@ async fn native_put_identity_csrf_admin_audit_caps_and_selector_omission() {
     let mut env = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
         ("UI_DATA_DIR", d.path().display().to_string()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
-        ("NOEVIA_RUST_REASONING_SETTINGS", "1".into()),
         ("PUBLIC_ORIGIN", origin.clone()),
     ]);
     let (tx, rx) = oneshot::channel();
@@ -277,11 +275,12 @@ async fn native_put_identity_csrf_admin_audit_caps_and_selector_omission() {
             .0,
         200
     );
+    // sbstndalton/noevia#1071: the retired switch set to "0" no longer hands the write to Node.
     assert_eq!(
         call(addr, "PUT", p, admin, &trusted, r#"{"default":"low"}"#)
             .await
             .0,
-        502
+        200
     );
     assert_eq!(
         db.query_row(
@@ -290,7 +289,7 @@ async fn native_put_identity_csrf_admin_audit_caps_and_selector_omission() {
             |r| r.get::<_, String>(0)
         )
         .unwrap(),
-        "high"
+        "low"
     );
     tx.send(()).unwrap();
     task.await.unwrap();
@@ -330,8 +329,6 @@ async fn actual_node_matrix_through_native_http_with_dead_legacy() {
     let env = HashMap::from([
         ("UI_DATA_DIR", d.path().display().to_string()),
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into()),
-        ("NOEVIA_RUST_AUTH", "1".into()),
-        ("NOEVIA_RUST_REASONING_SETTINGS", "1".into()),
         ("PUBLIC_ORIGIN", origin.clone()),
     ]);
     let (tx, rx) = oneshot::channel();

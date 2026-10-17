@@ -348,6 +348,94 @@ async fn python_owned_response_can_exceed_native_log_timeout() {
     );
     server.await.unwrap();
 }
+/// noevia#1937: the child's private `/api/v1/internal/*` endpoints are answered 404 by the parent
+/// and never reach the child, whatever the method or spelling.
+#[tokio::test]
+async fn internal_child_paths_get_404_and_never_reach_the_child() {
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let reached = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let seen = reached.clone();
+    let child = tokio::spawn(async move {
+        loop {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            // The head may arrive together with a request body, so look for the blank line.
+            while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                let mut chunk = [0u8; 512];
+                let n = socket.read(&mut chunk).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..n]);
+            }
+            let line = String::from_utf8_lossy(&request)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+            seen.lock().unwrap().push(line);
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"reached\":true}\n")
+                .await
+                .unwrap();
+        }
+    });
+    let mut state = fixture(fake(), "");
+    Arc::get_mut(&mut state).unwrap().legacy_base = base;
+    let router = noevia_model_manager::router(state);
+    for (method, path) in [
+        ("PUT", "/api/v1/internal/backend-restart-error"),
+        ("GET", "/api/v1/internal/hf-token-test"),
+        ("GET", "/api/v1/internal/bench-job"),
+        ("GET", "/api/v1/internal/model-detail-runtime"),
+        ("GET", "/api/v1/internal/"),
+        ("PUT", "/api/v1/internal%2Fbackend-restart-error"),
+        ("GET", "/api/v1%2Finternal%2Fhf-token-test"),
+        ("GET", "/api/v1/%69nternal/hf-token-test"),
+        ("GET", "/api/v1/internal%252Fhf-token-test"),
+        ("GET", "/api/v1/sections/..%2Finternal%2Fbench-job"),
+        ("GET", "/api/v1/sections/%2e%2e/internal/bench-job"),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 404, "{method} {path}");
+    }
+    assert_eq!(
+        reached.lock().unwrap().as_slice(),
+        &[] as &[String],
+        "an internal path reached the child"
+    );
+    // Control: the harness does forward an ordinary Python-owned path.
+    let response = router
+        .oneshot(
+            Request::get("/api/v1/settings")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(
+        reached.lock().unwrap().as_slice(),
+        &["GET /api/v1/settings HTTP/1.1".to_owned()]
+    );
+    child.abort();
+}
+
 proptest! {
     #[test]
     fn secret_filter_never_reveals_value(secret in "[A-Za-z]{8,64}") {

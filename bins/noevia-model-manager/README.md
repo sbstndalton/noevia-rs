@@ -5,8 +5,10 @@ Refs noevia#1319, #1330, #1334 and #1318. This binary owns `GET /api/v1/health` 
 capabilities described below. Unselected endpoint/method pairs remain Python-owned.
 Full S1 remains open.
 
-`MODEL_MANAGER_IMPL=python` is the default and execs the existing uvicorn app unchanged.
-`MODEL_MANAGER_IMPL=rust` requires the `native-logs` compiled feature and valid configuration
+The native parent is permanent (noevia#1071): there is no Python-only mode and no uvicorn
+exec on the public port. `MODEL_MANAGER_IMPL` is retired; a leftover `rust` is accepted
+silently and any other value is ignored with one warning. The binary requires the
+`native-logs` compiled feature (a build without it refuses at startup) and valid configuration
 before any child starts. Rust supervises one existing Python app on fixed private loopback
 port 8091; Python retains its existing DB/seed/reap/sampler/INI startup for unported work.
 The native process does not duplicate that business startup. The corresponding services
@@ -57,8 +59,8 @@ the linked services integration must qualify before closing it.
 Unicode hardening (#1325): regex word classes explicitly use Python letter/number/underscore semantics and whitespace includes U+001C–U+001F. Counter exemptions require single-word ASCII letter/digit/underscore keys. AWS access-key prefixes are scrubbed even before word-character suffixes. The bounded payload is scrubbed before Python-compatible line splitting, then each line again; this intentionally redacts more than Python when control whitespace separates keys and values across lines. Adversarial fixtures retain actual Python output for comparison and assert the stricter native no-secret output and empty secret-query result.
 
 Host telemetry is separately default off: compile `native-host` (which includes
-`native-logs`) and select `MODEL_MANAGER_IMPL=rust` plus
-`MODEL_MANAGER_HOST_IMPL=rust`. A missing host feature or a Python parent refuses
+`native-logs`) and select
+`MODEL_MANAGER_HOST_IMPL=rust`. A missing host feature refuses
 that selector before binding or spawning. Without the selector `/api/v1/host`
 remains Python-owned. Only the selected native owner passes
 `NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED=1` to its supervised child, which
@@ -77,14 +79,14 @@ checking the result. Run that tool only in an isolated checkout.
 
 ## Section configuration reads (#1334)
 
-Compile `native-sections` and select `MODEL_MANAGER_IMPL=rust` plus
+Compile `native-sections` and select
 `MODEL_MANAGER_SECTIONS_IMPL=rust` to own exactly GET `/api/v1/sections` and
-GET `/api/v1/sections/{name}`. The default is Python; omitted capability or a
-Python parent refuses selection before child startup. The selected child receives
+GET `/api/v1/sections/{name}`. The default is Python; omitted capability
+refuses selection before child startup. The selected child receives
 `NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED=1` and refuses only those two GET
 shapes after authentication. INI writes, backup creation, actions, startup migration,
-backend stats, jobs and DB ownership remain Python. Stale confirmation is removed
-when executing the default Python implementation.
+backend stats, jobs and DB ownership remain Python. With the selector off the native
+parent hands the child `0` over any inherited confirmation.
 
 Reads use a single bounded INI byte snapshot for both raw text and its SHA256
 revision. This intentionally strengthens consistency during replacement; there is

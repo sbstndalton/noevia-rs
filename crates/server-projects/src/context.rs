@@ -247,7 +247,7 @@ mod tests {
         let ctx = Ctx {
             data_dir: root.path(),
             user_id: user,
-            switch: server_store::RustProjects::from_env_value(Some("1")).unwrap(),
+            switch: server_store::RustProjects::owned(),
             now_ms: 5,
         };
         // Hold the lock so the request has done its unlocked reads and waits for it.
@@ -272,7 +272,7 @@ mod tests {
         let ctx = || Ctx {
             data_dir: root.path(),
             user_id: user,
-            switch: server_store::RustProjects::from_env_value(Some("1")).unwrap(),
+            switch: server_store::RustProjects::owned(),
             now_ms: 5,
         };
         std::thread::scope(|s| {

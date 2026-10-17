@@ -76,6 +76,11 @@ async fn server_main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    for name in &config.retired {
+        eprintln!(
+            "noevia-server: warning: {name} is retired (sbstndalton/noevia#1071) and ignored; its routes are always the front's"
+        );
+    }
     let listener = match tokio::net::TcpListener::bind((config.host.as_str(), config.port)).await {
         Ok(l) => l,
         Err(e) => {
@@ -99,12 +104,9 @@ async fn server_main() -> ExitCode {
         config.upstream.authority(),
         config.trust_proxy
     );
-    let rust_auth = config.rust_auth.is_some();
-    let rust_projects = config.rust_projects.is_some();
     let app = App::new(config);
     app.statics.warm();
-    // Without NOEVIA_RUST_AUTH no route needs an identity, so a refusal is only reported. With it
-    // Rust owns sign-in: a schema newer than this build stops the front (identity.rs).
+    // Rust owns sign-in (#1071): a schema newer than this build stops the front (identity.rs).
     let layer = std::sync::Arc::clone(&app.identity);
     // The Argon2 decoy is built once; build it before the first request can time it.
     match tokio::task::spawn_blocking(move || {
@@ -122,35 +124,25 @@ async fn server_main() -> ExitCode {
             println!("noevia-server: identity unavailable for now: {why}")
         }
         Ok(noevia_server::identity::Status::Refused(why)) => {
-            if rust_auth {
-                eprintln!("noevia-server: NOEVIA_RUST_AUTH=1 but identity is refused: {why}");
-                return ExitCode::from(1);
-            }
-            eprintln!("noevia-server: warning: identity refused: {why}")
+            eprintln!("noevia-server: identity is refused: {why}");
+            return ExitCode::from(1);
         }
         Err(_) => eprintln!("noevia-server: warning: identity check did not run"),
     }
-    if rust_auth {
-        let writes = std::sync::Arc::clone(&app.writes);
-        match tokio::task::spawn_blocking(move || writes.writer().map(|_| ())).await {
-            Ok(Ok(())) => println!(
-                "noevia-server: NOEVIA_RUST_AUTH=1, Rust owns sign-in and the account tables"
-            ),
-            Ok(Err(e)) => {
-                println!("noevia-server: NOEVIA_RUST_AUTH=1, cowork.db writer not open yet: {e}")
-            }
-            Err(_) => eprintln!("noevia-server: warning: writer check did not run"),
-        }
-        if rust_projects {
-            println!("noevia-server: NOEVIA_RUST_PROJECTS=1, Rust owns the project image routes");
-        }
+    let writes = std::sync::Arc::clone(&app.writes);
+    match tokio::task::spawn_blocking(move || writes.writer().map(|_| ())).await {
+        Ok(Ok(())) => println!("noevia-server: Rust owns sign-in and the account tables"),
+        Ok(Err(e)) => println!("noevia-server: cowork.db writer not open yet: {e}"),
+        Err(_) => eprintln!("noevia-server: warning: writer check did not run"),
     }
+    // #1071: permanent; NOEVIA_RUST_PROJECTS is retired (a leftover value is reported above).
+    println!("noevia-server: Rust owns the project routes, projects.json and free-chats.json");
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let mut stop_wait = stop_rx.clone();
     // sbstndalton/noevia#1264: Node's projects.json / free-chats.json writes, loopback only.
-    if let (Some(cfg), Some(switch), Some(data_dir)) = (
+    let switch = app.config.rust_projects;
+    if let (Some(cfg), Some(data_dir)) = (
         app.config.project_store.clone(),
-        app.config.rust_projects,
         app.config.data_dir.clone(),
     ) {
         let listener = match tokio::net::TcpListener::bind(("127.0.0.1", cfg.port)).await {
@@ -163,10 +155,7 @@ async fn server_main() -> ExitCode {
                 return ExitCode::from(1);
             }
         };
-        println!(
-            "noevia-server: NOEVIA_RUST_PROJECT_STORE=1, project store on 127.0.0.1:{}",
-            cfg.port
-        );
+        println!("noevia-server: project store on 127.0.0.1:{}", cfg.port);
         let store = noevia_server::project_store::Store {
             data_dir,
             token: cfg.token.into(),

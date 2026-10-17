@@ -3,7 +3,7 @@ mod child_lifecycle;
 use noevia_model_manager::{
     docker::UnixDocker, legacy_client, router, validate_token, Redactor, StateData,
 };
-use std::{io::Write, os::unix::process::CommandExt, sync::Arc};
+use std::{io::Write, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,9 +54,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-check-updates") {
                 output.write_all(b"native-check-updates\n")?;
             }
-            if cfg!(feature = "native-benchmark-runner") {
-                output.write_all(b"native-benchmark-runner\n")?;
-            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -65,7 +62,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Err("native-logs feature is not enabled".into());
     }
-    let mode = environment("MODEL_MANAGER_IMPL", "python")?;
+    // noevia#1071: the native parent is permanent. MODEL_MANAGER_IMPL is retired; a leftover
+    // value other than `rust` is ignored with a warning (there is no Python-only mode to exec).
+    if retired_selector_ignored(&environment("MODEL_MANAGER_IMPL", "rust")?) {
+        eprintln!(
+            "MODEL_MANAGER_IMPL is retired and ignored; the native model manager always runs"
+        );
+    }
+    // The sub-selectors below still name the parent mode; it is always native now.
+    let mode = "rust";
     let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
     let sections_mode = environment("MODEL_MANAGER_SECTIONS_IMPL", "python")?;
     let prompts_mode = environment("MODEL_MANAGER_PROMPTS_IMPL", "python")?;
@@ -279,27 +284,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
-    // noevia#1318: the benchmark runner owns the one job slot (prompt runs, sweeps, the
-    // startup cleanup of leftover sweep containers), so all four routes move together, and
-    // only with the native overview, which then reads the job from it.
-    let runner_mode = environment("MODEL_MANAGER_BENCHMARK_RUNNER_IMPL", "python")?;
-    if !matches!(runner_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_BENCHMARK_RUNNER_IMPL must be python or rust".into());
-    }
-    if runner_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-benchmark-runner")) {
-        return Err(
-            "native-benchmark-runner requires rust model manager and compiled native-benchmark-runner feature"
-                .into(),
-        );
-    }
-    #[cfg_attr(not(feature = "native-benchmark-runner"), allow(unused_mut))]
-    let mut runner_mode = runner_mode;
-    if runner_mode == "rust" && overview_mode != "rust" {
-        eprintln!(
-            "native-benchmark-runner: needs MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL=rust; the benchmark runner stays with python"
-        );
-        runner_mode = "python".to_owned();
-    }
     let bench_mode = environment("MODEL_MANAGER_BENCH_RUNS_IMPL", "python")?;
     if !matches!(bench_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_BENCH_RUNS_IMPL must be python or rust".into());
@@ -361,35 +345,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "native-host requires rust model manager and compiled native-host feature".into(),
         );
     }
-    if mode == "python" {
-        let error = std::process::Command::new("uvicorn")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_PROMPTS_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED")
-            .env_remove("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED")
-            .env_remove("NOEVIA_EMBED_SERVICE_GUARDED")
-            .env_remove("NOEVIA_EMBED_SERVICE_CONTAINER")
-            .env_remove("NOEVIA_EMBED_SERVICE_URL")
-            .args(["app.main:app", "--host", "0.0.0.0", "--port", "8090"])
-            .exec();
-        return Err(error.into());
-    }
-    if mode != "rust" {
-        return Err("MODEL_MANAGER_IMPL must be python or rust".into());
-    }
     if !cfg!(feature = "native-logs") {
         return Err("native-logs feature is not enabled".into());
     }
@@ -414,36 +369,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         configured.push(name.to_owned());
     }
     let docker = Arc::new(UnixDocker::from_env()?);
-    #[cfg(feature = "native-benchmark-runner")]
-    let bench_runner = match (runner_mode.as_str(), overview_roots.as_ref()) {
-        ("rust", Some((data, ini))) => {
-            let runner = noevia_model_manager::bench_runner::production(
-                noevia_model_manager::bench_runner::Production {
-                    data: data.into(),
-                    ini: ini.into(),
-                    models_dir: environment("MODELS_DIR", "/models")?,
-                    socket: docker.socket.clone(),
-                    docker: docker.clone(),
-                    configured: configured.clone(),
-                    legacy: legacy_client()?,
-                    legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
-                    token: token.clone(),
-                },
-            )?;
-            // bench.reap_orphans at startup: leftover sweep containers, by exact label only.
-            match tokio::time::timeout(std::time::Duration::from_secs(60), runner.reap_orphans())
-                .await
-            {
-                Ok((reaped, stuck)) if reaped + stuck > 0 => {
-                    eprintln!("benchmark orphan check: {reaped} removed, {stuck} still stopping");
-                }
-                Ok(_) => {}
-                Err(_) => eprintln!("benchmark orphan check timed out; startup continues"),
-            }
-            Some(runner)
-        }
-        _ => None,
-    };
     #[cfg(feature = "native-diagnose")]
     let diagnosis = if diagnose_mode == "rust" {
         Some(Arc::new(
@@ -667,7 +592,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "native-benchmark-overview")]
         overview_roots.as_ref(),
     );
-    benchmark_runner_child(&mut child_command, &runner_mode);
     child_command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED",
         if control_mode == "rust" { "1" } else { "0" },
@@ -759,7 +683,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "native-check-updates")]
         check_updates,
         #[cfg(feature = "native-benchmark-runner")]
-        bench_runner,
+        bench_runner: None,
         sections,
         embedding,
         host,
@@ -796,6 +720,11 @@ async fn terminate() {
             std::future::pending::<()>().await;
         }
     }
+}
+
+/// noevia#1071: true when a leftover `MODEL_MANAGER_IMPL` asks for anything but the native parent.
+fn retired_selector_ignored(value: &str) -> bool {
+    value != "rust"
 }
 
 fn environment(key: &str, default: &str) -> Result<String, &'static str> {
@@ -1342,39 +1271,6 @@ fn benchmark_overview_child(
         child_command
             .env("DATA_DIR", data)
             .env("MODELS_INI_PATH", ini);
-    }
-}
-
-/// noevia#1318: the child refuses the four runner routes, skips `reap_orphans` and serves the
-/// private observation route only when the native runner owns the job slot.
-fn benchmark_runner_child(child_command: &mut tokio::process::Command, runner_mode: &str) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED",
-        if runner_mode == "rust" { "1" } else { "0" },
-    );
-}
-
-#[cfg(all(test, feature = "native-benchmark-runner"))]
-mod benchmark_runner_command_tests {
-    #[test]
-    fn confirmation_overrides_inherited_value() {
-        for (mode, expected) in [("rust", "1"), ("python", "0")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED",
-                "hostile",
-            );
-            super::benchmark_runner_child(&mut command, mode);
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            assert_eq!(
-                envs.get(std::ffi::OsStr::new(
-                    "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED"
-                ))
-                .copied()
-                .flatten(),
-                Some(std::ffi::OsStr::new(expected))
-            );
-        }
     }
 }
 

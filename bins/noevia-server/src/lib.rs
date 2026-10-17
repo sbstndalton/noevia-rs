@@ -38,31 +38,28 @@ use axum::Router;
 use std::sync::Arc;
 
 /// What `noevia-server --features` lists, one per line.
-/// `rust-auth`: this build answers sign-in and the account under NOEVIA_RUST_AUTH (M3); the web
-/// supervisor should let Node refuse the account tables only when the front reports it.
-/// `rust-projects`: this build answers a project's image routes under NOEVIA_RUST_PROJECTS (M4)
-/// and writes projects.json under the lock Node shares; the supervisor confirms it to Node the same
-/// way. `rust-project-chats` (cargo feature of that name): it answers a project's chat list under
-/// the same switch too; the supervisor confirms that slice to Node separately
-/// (NOEVIA_RUST_PROJECT_CHATS_CONFIRMED), so Node refuses the chat-list save only behind a front
-/// that answers it (sbstndalton/noevia#1409). `rust-free-chats` (cargo feature of that name): it
-/// answers the free-chat list (`GET`/`POST /api/freechats`) under the same switch and shares
-/// free-chats.json with Node under its lock; confirmed to Node separately as well
-/// (NOEVIA_RUST_FREE_CHATS_CONFIRMED). `rust-stats` (cargo feature of that name): it answers
+/// `rust-auth`: this build answers sign-in and the account (M3), always (NOEVIA_RUST_AUTH is
+/// retired, sbstndalton/noevia#1071); the web supervisor refuses to start without it, and Node
+/// always refuses the account tables.
+/// `rust-projects`: this build always answers a project's image routes (M4) and is the only writer
+/// of projects.json; `rust-project-chats` and `rust-free-chats` (cargo features of those names): a
+/// project's chat list and the free-chat list (`GET`/`POST /api/freechats`, free-chats.json). Their
+/// switch NOEVIA_RUST_PROJECTS is retired (sbstndalton/noevia#1071): Node always refuses those
+/// routes, so config.rs and the web supervisor refuse a build without any of them. `rust-stats` (cargo feature of that name): it answers
 /// `GET /api/stats` under NOEVIA_RUST_STATS (#1650); the supervisor confirms it to Node
 /// (NOEVIA_RUST_STATS_CONFIRMED), which then refuses that GET. `rust-export` (cargo feature of
 /// that name): it answers `GET /api/export/conversations` under NOEVIA_RUST_EXPORT (#1315, with
-/// NOEVIA_RUST_PROJECTS and rust-free-chats); the supervisor confirms it to Node
+/// rust-free-chats); the supervisor confirms it to Node
 /// (NOEVIA_RUST_EXPORT_CONFIRMED), which then refuses that GET. `rust-chatgpt-status` (cargo
 /// feature of that name): it answers `GET /api/providers/chatgpt` under NOEVIA_RUST_CHATGPT_STATUS
 /// (#1373); the supervisor confirms it to Node (NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED), which then
 /// refuses that GET. `rust-project-writes` (cargo feature of that name): it answers the project
 /// writes ported for sbstndalton/noevia#1264 (so far `GET`/`POST /api/chats/{chatId}/context`)
-/// under NOEVIA_RUST_PROJECT_WRITES, with NOEVIA_RUST_PROJECTS; the supervisor confirms it to Node
+/// under NOEVIA_RUST_PROJECT_WRITES; the supervisor confirms it to Node
 /// (NOEVIA_RUST_PROJECT_WRITES_CONFIRMED), which then refuses those writes.
 ///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
-/// free-chats.json through under NOEVIA_RUST_PROJECT_STORE=1 (src/project_store.rs, #1264); the
+/// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
 ///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
@@ -103,7 +100,7 @@ pub const FEATURES: &[&str] = &[
 ];
 
 pub struct App {
-    /// GET /api/providers/chatgpt while NOEVIA_RUST_CHATGPT_STATUS is on (M6, #1373).
+    /// GET /api/providers/chatgpt under NOEVIA_RUST_AUTH (M6, #1373; permanent since #1071).
     #[cfg(feature = "rust-chatgpt-status")]
     pub chatgpt_status: Option<Arc<chatgpt_status_routes::StatusLayer>>,
     #[cfg(feature = "rust-storage-reads")]
@@ -121,16 +118,16 @@ pub struct App {
     pub code_net: Arc<code_net::CodeNetGuard>,
     /// The validated identity for Rust-owned routes.
     pub identity: Arc<identity::IdentityLayer>,
-    /// The cowork.db writer while NOEVIA_RUST_AUTH is on (M3).
+    /// The cowork.db writer (M3).
     pub writes: Arc<upkeep::WriterLayer>,
-    /// The account routes while NOEVIA_RUST_AUTH is on (M3).
+    /// The account routes (M3).
     pub accounts: Arc<account_routes::AccountLayer>,
     pub usage: Arc<usage_routes::UsageLayer>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
     pub sampling_settings: Arc<tokio::sync::Semaphore>,
     pub routing_mode: Arc<tokio::sync::Semaphore>,
     pub routing_default: Arc<tokio::sync::Semaphore>,
-    /// GET /api/stats and its shared answer while NOEVIA_RUST_STATS is on (M6, #1650).
+    /// GET /api/stats and its shared answer under NOEVIA_RUST_AUTH (M6, #1650; permanent since #1071).
     pub stats: Option<Arc<stats_routes::StatsLayer>>,
     /// GET /api/export/conversations runs one export at a time (#1315; export_routes.rs).
     pub export: Arc<tokio::sync::Semaphore>,
@@ -211,28 +208,26 @@ async fn handle(
     // Node routes on the WHATWG pathname (`new URL(req.url, base)`): a Rust-owned switched route
     // is matched on it too, so "/api/x/../auth/session" is the same route as "/api/auth/session".
     let whatwg = identity::whatwg_pathname_of(req.uri());
-    if switches.rust_auth {
-        if let Some(w) = whatwg.as_deref().filter(|w| *w != path) {
-            let on_whatwg = routes::dispatch_under(req.method().as_str(), w, switches);
-            if matches!(
-                on_whatwg,
-                Some(
-                    routes::Native::Account
-                        | routes::Native::Projects
-                        | routes::Native::Usage
-                        | routes::Native::SamplingSettings
-                        | routes::Native::ReasoningSettings
-                        | routes::Native::StorageMetadata
-                        | routes::Native::StorageBrowse
-                        | routes::Native::RoutingMode
-                        | routes::Native::RoutingDefault
-                        | routes::Native::Stats
-                        | routes::Native::Export
-                        | routes::Native::ChatgptStatus
-                )
-            ) {
-                native = on_whatwg;
-            }
+    if let Some(w) = whatwg.as_deref().filter(|w| *w != path) {
+        let on_whatwg = routes::dispatch_under(req.method().as_str(), w, switches);
+        if matches!(
+            on_whatwg,
+            Some(
+                routes::Native::Account
+                    | routes::Native::Projects
+                    | routes::Native::Usage
+                    | routes::Native::SamplingSettings
+                    | routes::Native::ReasoningSettings
+                    | routes::Native::StorageMetadata
+                    | routes::Native::StorageBrowse
+                    | routes::Native::RoutingMode
+                    | routes::Native::RoutingDefault
+                    | routes::Native::Stats
+                    | routes::Native::Export
+                    | routes::Native::ChatgptStatus
+            )
+        ) {
+            native = on_whatwg;
         }
     }
     let served_bundle = match native {
@@ -258,8 +253,8 @@ async fn handle(
     if let Some(write) = stats_routes::invalidation(&app, &req, whatwg.as_deref()) {
         write.run(&app).await;
     }
-    if app.writes.switch().is_some() && !served_bundle {
-        // Node's gate wrote these on every request it saw; with NOEVIA_RUST_AUTH it no longer can.
+    if !served_bundle {
+        // Node's gate wrote these on every request it saw; since M3 it no longer can.
         let creds = server_auth::Creds::from_headers(
             req.method().as_str(),
             req.headers()

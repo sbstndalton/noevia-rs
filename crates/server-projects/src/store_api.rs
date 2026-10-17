@@ -1,5 +1,5 @@
 //! The project store Node writes through (sbstndalton/noevia#1264, option 2 of the lead's
-//! 2026-10-16 decision): with NOEVIA_RUST_PROJECT_STORE=1 Node no longer writes `projects.json` or
+//! 2026-10-16 decision): Node no longer writes `projects.json` or
 //! `free-chats.json` itself, and no longer takes their flock with a blocking `spawnSync(flock)`.
 //! It reads the file and its version here, merges its own changes into it as before (core
 //! rust-projects.cjs `merge` / `mergeFreeChats`), and asks this module to write the result only if
@@ -155,7 +155,7 @@ mod tests {
     const USER: &str = "11111111-2222-4333-8444-555555555555";
 
     fn on() -> server_store::RustProjects {
-        server_store::RustProjects::from_env_value(Some("1")).unwrap()
+        server_store::RustProjects::owned()
     }
 
     fn ws() -> tempfile::TempDir {
@@ -255,6 +255,8 @@ mod tests {
     /// Many writers, each retrying its read-modify-write on conflict: every append survives.
     #[test]
     fn concurrent_compare_and_swap_loses_no_update() {
+        /// Overall bound per append so a genuine livelock still fails the test.
+        const MAX_ATTEMPTS: u32 = 500;
         let root = ws();
         let p = StoreFile::Projects;
         write(root.path(), USER, p, "", "{\"projects\":[]}", on()).unwrap();
@@ -263,7 +265,13 @@ mod tests {
                 let root = root.path();
                 s.spawn(move || {
                     for i in 0..10 {
+                        let mut attempts = 0u32;
                         loop {
+                            attempts += 1;
+                            assert!(
+                                attempts <= MAX_ATTEMPTS,
+                                "thread {t} append {i}: no success after {MAX_ATTEMPTS} attempts"
+                            );
                             let snap = read(root, USER, p).unwrap();
                             let mut v =
                                 js_json::wtf16::parse(snap.text.as_deref().unwrap()).unwrap();
@@ -276,6 +284,12 @@ mod tests {
                             match write(root, USER, p, &snap.version, &text, on()) {
                                 Ok(_) => break,
                                 Err(WriteError::Conflict(_)) => continue,
+                                // The bounded lock wait expired under contention: transient,
+                                // clients are expected to retry (the route answers 503 + Retry-After).
+                                Err(WriteError::Store(StoreError::Busy)) => {
+                                    std::thread::sleep(std::time::Duration::from_millis(10));
+                                    continue;
+                                }
                                 Err(e) => panic!("{e:?}"),
                             }
                         }

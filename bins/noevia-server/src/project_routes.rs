@@ -1,4 +1,4 @@
-//! M4 (NOEVIA_RUST_PROJECTS=1, with NOEVIA_RUST_AUTH=1): the front answers a project's image
+//! M4 (permanent since sbstndalton/noevia#1071; NOEVIA_RUST_PROJECTS is retired): the front answers a project's image
 //! routes (crates/server-projects `assets`), its chat list (`chats`) and the free-chat list
 //! (`free_chats`) itself instead of proxying them. The request passes
 //! Node's gate first (server-auth: session, origin + CSRF for writes, device-token limits), here
@@ -121,8 +121,8 @@ pub async fn serve(
             .forward(conn.peer, Request::from_parts(parts, body))
             .await;
     };
-    let (Some(switch), Some(data_dir)) = (app.config.rust_projects, app.config.data_dir.clone())
-    else {
+    let switch = app.config.rust_projects;
+    let Some(data_dir) = app.config.data_dir.clone() else {
         return Rejection::Unavailable.into_response();
     };
     let creds = identity::creds_of(&parts);

@@ -25,7 +25,7 @@ async fn start() -> (tempfile::TempDir, SocketAddr) {
     let store = Store {
         data_dir: root.path().to_path_buf(),
         token: TOKEN.into(),
-        switch: server_store::RustProjects::from_env_value(Some("1")).unwrap(),
+        switch: server_store::RustProjects::owned(),
     };
     tokio::spawn(serve(listener, store, std::future::pending()));
     (root, addr)
@@ -177,7 +177,7 @@ async fn concurrent_clients_and_native_writes_lose_no_update() {
             let ctx = server_projects::Ctx {
                 data_dir: &data,
                 user_id: USER,
-                switch: server_store::RustProjects::from_env_value(Some("1")).unwrap(),
+                switch: server_store::RustProjects::owned(),
                 now_ms: 5,
             };
             let body = format!("{{\"chats\":[{{\"id\":\"rust-{i}\",\"updatedAt\":2}}]}}");

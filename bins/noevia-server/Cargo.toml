@@ -15,24 +15,37 @@ name = "noevia-server"
 path = "src/main.rs"
 
 [features]
-default = []
+# sbstndalton/noevia#1071: the front read routes are permanent (no deployment switch); the shipped
+# build carries every one of them, and the web supervisor refuses to start without them.
+default = [
+    "rust-reasoning-settings",
+    "rust-routing-mode",
+    "rust-storage-reads",
+    "rust-storage-browse",
+    "rust-routing-default",
+    "rust-stats",
+    "rust-export",
+    "rust-free-chats",
+    "rust-project-chats",
+    "rust-chatgpt-status",
+]
 rust-reasoning-settings = []
 rust-routing-mode = []
 rust-storage-reads = ["dep:server-storage-reads", "dep:zeroize"]
-# M4 (#1368): connected-storage list/read under NOEVIA_RUST_STORAGE_BROWSE (src/storage_browse_routes.rs).
+# M4 (#1368): connected-storage list/read (permanent under NOEVIA_RUST_AUTH, #1071; src/storage_browse_routes.rs).
 rust-storage-browse = ["rust-storage-reads"]
-# M6 (#1305): GET /api/routing-default under NOEVIA_RUST_ROUTING_DEFAULT (src/routes.rs ROUTING_DEFAULT).
+# M6 (#1305): GET /api/routing-default (permanent under NOEVIA_RUST_AUTH; src/routes.rs ROUTING_DEFAULT).
 rust-routing-default = []
-# M6 (#1650): GET /api/stats under NOEVIA_RUST_STATS (src/routes.rs STATS, crates/server-stats).
+# M6 (#1650): GET /api/stats (permanent under NOEVIA_RUST_AUTH; src/routes.rs STATS, crates/server-stats).
 rust-stats = []
-# M4 (#1315): GET /api/export/conversations under NOEVIA_RUST_EXPORT (src/routes.rs EXPORT, crates/server-export).
+# M4 (#1315): GET /api/export/conversations (permanent since #1071; src/routes.rs EXPORT, crates/server-export).
 rust-export = []
-# M6 (#1373): GET /api/providers/chatgpt under NOEVIA_RUST_CHATGPT_STATUS (src/routes.rs CHATGPT_STATUS,
+# M6 (#1373): GET /api/providers/chatgpt (permanent under NOEVIA_RUST_AUTH; src/routes.rs CHATGPT_STATUS,
 # crates/server-chatgpt-status).
 rust-chatgpt-status = ["dep:server-chatgpt-status", "dep:zeroize"]
-# M4's second slice: a project's chat list under NOEVIA_RUST_PROJECTS (src/routes.rs PROJECT_CHATS).
+# M4's second slice: a project's chat list (permanent since #1071; src/routes.rs PROJECT_CHATS).
 rust-project-chats = []
-# M4's third slice: the free-chat list under NOEVIA_RUST_PROJECTS (src/routes.rs FREE_CHATS).
+# M4's third slice: the free-chat list (permanent since #1071; src/routes.rs FREE_CHATS).
 rust-free-chats = []
 # sbstndalton/noevia#1264: project writes still Node's, under NOEVIA_RUST_PROJECT_WRITES
 # (src/routes.rs PROJECT_WRITES; slice 1: a free chat's attachments project).

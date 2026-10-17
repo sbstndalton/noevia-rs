@@ -1,5 +1,4 @@
-//! M4 (NOEVIA_RUST_EXPORT=1, with NOEVIA_RUST_PROJECTS=1 and NOEVIA_RUST_AUTH=1,
-//! sbstndalton/noevia#1315): the front answers `GET /api/export/conversations` itself, as core
+//! M4 (permanent since #1071, sbstndalton/noevia#1315): the front answers `GET /api/export/conversations` itself, as core
 //! routes/export.cjs does:
 //!
 //! 1. Node's request gate first (server-auth: session, origin, device-token limits) on the exact

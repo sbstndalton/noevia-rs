@@ -8,6 +8,10 @@ the tables the Rust port needs are derived here, from the same interpreter the s
 
     uv run --python 3.12 tools/gen-model-files.py --model-manager <noevia-services>/model-manager
 
+noevia#1071 removed `files_from_tree_py` from the service (model-files is now its only
+implementation), so <noevia-services> must be a checkout at the recorded oracle commit
+9c4bd37 (`git worktree add <dir> 9c4bd37`), not main.
+
 Writes crates/model-files/src/pytables.rs and crates/model-files/tests/fixtures/model-files.v1.json.
 The fixture file is copied verbatim into noevia-services (model-manager/tests/fixtures/). Every
 input is synthetic: invented repository paths and sizes, never a real listing.
@@ -258,7 +262,7 @@ def cases() -> list[tuple[str, str]]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model-manager", required=True, type=Path,
-                    help="noevia-services model-manager directory (holds app/model_files.py)")
+                    help="noevia-services model-manager directory at 9c4bd37 (holds files_from_tree_py)")
     args = ap.parse_args()
     if sys.version_info[:2] != SERVICE_PYTHON:
         print(f"warning: the service runs Python {SERVICE_PYTHON}; this is {sys.version_info[:2]}",
