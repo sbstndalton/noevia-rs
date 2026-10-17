@@ -9,7 +9,7 @@
 - `POST /api/v1/sections/{name}/safe-defaults`
 
 ## Why all five at once
-Python's `ini.WRITE_LOCK` only serialises threads inside the Python process. Splitting the writers across two processes would let a compare-and-swap check in one race a write in the other. So the switch moves every models.ini writer together. One in-process lock serialises them here, and the store work runs on a blocking thread that owns the lock guard (the #1909 rule), so a dropped request still finishes before the next write starts. The first write waits for the child's `/api/v1/health`, because its startup may still be migrating cache-ram values in models.ini.
+Python's `ini.WRITE_LOCK` only serialises threads inside the Python process. Splitting the writers across two processes would let a compare-and-swap check in one race a write in the other. So the switch moves every models.ini writer together. One in-process lock serialises them here, and the store work runs on a blocking thread that owns the lock guard (the #1909 rule), so a dropped request still finishes before the next write starts. That store work is also registered with the request's admission, so the request's permit comes back only when it has returned (noevia#2006). The first write waits for the child's `/api/v1/health`, because its startup may still be migrating cache-ram values in models.ini.
 
 ## Behaviour (services `api.py` + `ini.py`)
 - **Validation:** the same order and messages as Python. FastAPI's 422s come first, then the handlers' 400s (name, `baseRevision`, single-line values, extra lines that open a section), then the revision compare-and-swap (409), duplicate sections (409 with Python's message), 404s, and a 413 above the 1 MiB editor limit.

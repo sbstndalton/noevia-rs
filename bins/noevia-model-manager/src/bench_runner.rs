@@ -306,8 +306,10 @@ impl Drop for StartGuard<'_> {
             let job = move || {
                 let _ = finish_run(&database, run_id, "error", finished, DROPPED_NOTE);
             };
+            // noevia#2006: dropped with the request future, inside its admission: the finish is
+            // registered there, so the permit comes back once the row is finished.
             match tokio::runtime::Handle::try_current() {
-                Ok(handle) => drop(handle.spawn_blocking(job)),
+                Ok(handle) => crate::docker::spawn_blocking_admitted_detached(&handle, job),
                 Err(_) => job(),
             }
         }
@@ -691,10 +693,12 @@ pub fn parse_observed(bytes: &[u8]) -> Option<Observed> {
     })
 }
 
+/// noevia#2006: admitted: a start whose request is dropped keeps its permit until its store
+/// work returns. The worker runs in its own task (no request), where this is only detached.
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, Raised> + Send + 'static,
 ) -> Result<T, Raised> {
-    tokio::task::spawn_blocking(f)
+    crate::docker::spawn_blocking_admitted(f)
         .await
         .map_err(|_| raised("RuntimeError", "worker failed"))?
 }
@@ -1716,6 +1720,90 @@ mod tests {
             .unwrap();
         assert_eq!((status.as_str(), note.as_str()), ("error", DROPPED_NOTE));
         assert_eq!(runner.snapshot().status, "idle");
+    }
+
+    /// A runner over a store with an empty `bench_run` table, a worker that never starts and a
+    /// child that observes nothing.
+    fn synthetic_runner(dir: &Path) -> (Arc<Runner>, Connection) {
+        let c = Connection::open(dir.join("model_loader.db")).unwrap();
+        c.execute_batch(
+            "CREATE TABLE bench_run(id INTEGER PRIMARY KEY, backend TEXT, status TEXT, \
+             started_at REAL, finished_at REAL, reps INTEGER, max_tokens INTEGER, note TEXT)",
+        )
+        .unwrap();
+        let runner = Runner::new(
+            dir,
+            Clock {
+                perf_counter: || 0.0,
+                time: || 1_700_000_000.0,
+            },
+            Arc::new(|_task| {}),
+            Arc::new(|_query: String| Box::pin(async { None })),
+            Arc::new(|_backend: String| Box::pin(async { Ok(String::new()) })),
+        )
+        .unwrap();
+        (runner, c)
+    }
+
+    /// noevia#2006: a start dropped while it reads the store (the client went away) keeps the
+    /// request's admission permit until the read has returned.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_dropped_start_keeps_its_permit_until_its_store_read_ends() {
+        use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+        let dir = tempfile::tempdir().unwrap();
+        let (runner, _store) = synthetic_runner(dir.path());
+        let mut state = test_state(crate::LEGACY_BASE);
+        state.bench_runner = Some(runner.clone());
+        let state = Arc::new(state);
+        let request = axum::http::Request::post("/api/v1/benchmark/start")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(
+                r#"{"backend":"synthetic-backend","aliases":["synthetic"],"promptIds":[1]}"#,
+            ))
+            .unwrap();
+        let open = dropped_in_blocking_work(&state, request).await;
+        open.send(()).unwrap();
+        all_permits_back(&state).await;
+        assert_eq!(runner.snapshot().status, "idle");
+    }
+
+    /// noevia#2006: a start guard dropped with its request after the row was written finishes the
+    /// row on a blocking task registered with the request's admission, so the permit comes back
+    /// only once the row is finished.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_dropped_start_registers_its_row_finish_with_the_admission() {
+        let dir = tempfile::tempdir().unwrap();
+        let (runner, c) = synthetic_runner(dir.path());
+        let run_id = create_run(
+            &dir.path().join("model_loader.db"),
+            "synthetic-backend",
+            1,
+            16,
+            1_700_000_000.0,
+        )
+        .unwrap();
+        let orphans = crate::docker::Orphans::default();
+        crate::docker::ORPHANS
+            .scope(orphans.clone(), async {
+                let guard = StartGuard::new(&runner);
+                lock(&guard.slot).run_id = run_id;
+                drop(guard);
+            })
+            .await;
+        assert_eq!(
+            orphans.lock().unwrap().len(),
+            1,
+            "the finish was not admitted"
+        );
+        crate::docker::observe(&orphans).await;
+        let (status, note): (String, String) = c
+            .query_row(
+                "SELECT status, note FROM bench_run WHERE id = ?",
+                [run_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((status.as_str(), note.as_str()), ("error", DROPPED_NOTE));
     }
 
     #[test]

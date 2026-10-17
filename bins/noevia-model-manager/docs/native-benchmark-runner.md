@@ -42,7 +42,7 @@ A container that can't be removed keeps the job `running`/`models`, as Python do
 
 ## The job slot
 
-The slot is claimed before the backend lookup (prompt suite) or the `models.ini` read (sweep). If the request is dropped before the worker takes over, the slot goes back to idle. This happens on a client disconnect or when the request budget runs out. A `bench_run` row already written is then finished as `error`. The cancel flag is reset inside the claim, so a cancel during `starting` is kept and the worker ends the run as cancelled. Python clears it after the lookup.
+The slot is claimed before the backend lookup (prompt suite) or the `models.ini` read (sweep). If the request is dropped before the worker takes over, the slot goes back to idle. This happens on a client disconnect or when the request budget runs out. A `bench_run` row already written is then finished as `error`. The start's store reads and writes, and that finish, are registered with the request's admission, so a dropped start keeps its request permit until they have returned; the worker's own store writes run outside any request (noevia#2006). The cancel flag is reset inside the claim, so a cancel during `starting` is kept and the worker ends the run as cancelled. Python clears it after the lookup.
 
 ## Differences from Python, on purpose
 

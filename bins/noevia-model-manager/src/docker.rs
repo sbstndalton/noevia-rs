@@ -261,8 +261,8 @@ where
 
 /// noevia#1998: [`spawn_admitted`] for blocking work (`spawn_blocking`): a parse, a folder
 /// removal or a store write a dropped request leaves running keeps the request's permit until
-/// it returns.
-#[cfg(feature = "native-check-updates")]
+/// it returns. noevia#2006: every blocking task a route starts inside the request goes through
+/// here; outside an admitted request (startup, background loops) the task is only detached.
 pub(crate) async fn spawn_blocking_admitted<T, F>(
     work: F,
 ) -> Result<T, tokio::sync::oneshot::error::RecvError>
@@ -270,11 +270,34 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
+    #[cfg(test)]
+    let hook = BLOCKING_HOOK.try_with(Clone::clone).ok();
     let (answer, answered) = tokio::sync::oneshot::channel();
     admit(tokio::task::spawn_blocking(move || {
+        #[cfg(test)]
+        if let Some(hook) = hook {
+            hook();
+        }
         let _ = answer.send(work());
     }));
     answered.await
+}
+
+/// noevia#2006: [`spawn_blocking_admitted`] for a caller that cannot wait for the answer (a
+/// `Drop` inside the request): the task's join is registered the same way, its result dropped.
+#[cfg(feature = "native-benchmark-runner")]
+pub(crate) fn spawn_blocking_admitted_detached(
+    runtime: &tokio::runtime::Handle,
+    work: impl FnOnce() + Send + 'static,
+) {
+    admit(runtime.spawn_blocking(work));
+}
+
+#[cfg(test)]
+tokio::task_local! {
+    /// Lib tests: runs first in every blocking task [`spawn_blocking_admitted`] starts in the
+    /// request it is set for (noevia#2006).
+    pub(crate) static BLOCKING_HOOK: std::sync::Arc<dyn Fn() + Send + Sync>;
 }
 
 /// Owns one connection task. `finish` aborts it and observes its join. Dropping it without

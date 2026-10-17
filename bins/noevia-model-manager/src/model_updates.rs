@@ -81,9 +81,12 @@ impl ModelUpdates {
         let (models, ini, database) =
             (self.models.clone(), self.ini.clone(), self.database.clone());
         let deadline = Instant::now() + DEADLINE;
-        tokio::task::spawn_blocking(move || compute(&models, &ini, &database, deadline, Root::new))
-            .await
-            .unwrap_or(Outcome::Failed)
+        // noevia#2006: admitted: a dropped request keeps its permit until the walk returns.
+        crate::docker::spawn_blocking_admitted(move || {
+            compute(&models, &ini, &database, deadline, Root::new)
+        })
+        .await
+        .unwrap_or(Outcome::Failed)
     }
 }
 

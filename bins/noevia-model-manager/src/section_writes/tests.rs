@@ -118,3 +118,51 @@ proptest! {
         }
     }
 }
+
+/// A child that answers its health check (so the native writers know its startup is over).
+async fn healthy_child() -> (String, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let app = axum::Router::new().route(
+        "/api/v1/health",
+        axum::routing::get(|| async { r#"{"ok":true}"# }),
+    );
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    (base, server)
+}
+
+/// True when the writers' lock is taken (the next write would wait).
+async fn write_lock_held(writes: &SectionWrites) -> bool {
+    tokio::time::timeout(std::time::Duration::from_millis(100), writes.lock())
+        .await
+        .is_err()
+}
+
+/// noevia#2006: a section delete dropped while it writes (the client went away) keeps the
+/// request's admission permit, as it keeps the write lock, until the write has returned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_write_keeps_its_permit_and_lock_until_the_write_ends() {
+    use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    std::fs::write(&ini, "[synthetic]\nmodel = /models/synthetic.gguf\n").unwrap();
+    let (base, server) = healthy_child().await;
+    let writes = Arc::new(SectionWrites::new(&ini, (0, 0)));
+    let mut state = test_state(&base);
+    state.section_writes = Some(writes.clone());
+    let state = Arc::new(state);
+    let request = axum::http::Request::delete("/api/v1/sections/synthetic?baseRevision=synthetic")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let open = dropped_in_blocking_work(&state, request).await;
+    assert!(
+        write_lock_held(&writes).await,
+        "write lock released mid-write"
+    );
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+    assert!(!write_lock_held(&writes).await);
+    server.abort();
+}

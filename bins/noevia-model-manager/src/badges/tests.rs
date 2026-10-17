@@ -120,3 +120,26 @@ proptest! {
         let _ = delete_query(&query);
     }
 }
+
+/// noevia#2006: a delete dropped while it writes (the client went away) keeps the request's
+/// admission permit, as it keeps the write lock, until the write has returned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_write_keeps_its_permit_and_lock_until_the_write_ends() {
+    use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+    let dir = tempfile::tempdir().unwrap();
+    let badges = std::sync::Arc::new(Badges::new(dir.path()));
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.badges = Some(badges.clone());
+    let state = std::sync::Arc::new(state);
+    let request = axum::http::Request::delete("/api/v1/badges?alias=synthetic&category=speed")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let open = dropped_in_blocking_work(&state, request).await;
+    assert!(
+        badges.lock.try_lock().is_err(),
+        "write lock released mid-write"
+    );
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+    assert!(badges.lock.try_lock().is_ok());
+}

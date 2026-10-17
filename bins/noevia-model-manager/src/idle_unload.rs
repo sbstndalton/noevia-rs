@@ -349,7 +349,8 @@ impl Reconciler {
             .store
             .clone()
             .ok_or("idle unload setting has no store")?;
-        tokio::task::spawn_blocking(move || write_store(&store, value))
+        // noevia#2006: admitted (as the reconcile below) when it runs inside a request.
+        crate::docker::spawn_blocking_admitted(move || write_store(&store, value))
             .await
             .map_err(|_| "idle unload setting write failed")??;
         let next = match value {
@@ -382,7 +383,9 @@ impl Reconciler {
     async fn reconcile_locked(&self) -> Result<Option<String>, &'static str> {
         let path = self.path.clone();
         let setting = self.setting();
-        tokio::task::spawn_blocking(move || reconcile_file(&path, setting))
+        // noevia#2006: admitted inside a request (a preset write, the setting's PUT); at startup
+        // there is no request and it is only detached.
+        crate::docker::spawn_blocking_admitted(move || reconcile_file(&path, setting))
             .await
             .map_err(|_| "idle unload reconcile failed")?
     }
@@ -907,5 +910,30 @@ mod tests {
             .map(|p| std::fs::read_to_string(p).unwrap())
             .collect();
         assert_eq!(kept, vec![PY1.to_owned()]);
+    }
+
+    /// noevia#2006: a setting's save dropped while it writes its store (the client went away)
+    /// keeps the request's admission permit until the write has returned, and the write finishes.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_dropped_save_keeps_its_permit_until_the_store_write_ends() {
+        use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join(STORE_FILE);
+        let mut state = test_state(crate::LEGACY_BASE);
+        state.idle_unload = Some(std::sync::Arc::new(Reconciler::with_store(
+            dir.path().join("preset.ini"),
+            (Some(DEFAULT_SECONDS), Source::Default),
+            Some(store.clone()),
+        )));
+        let state = std::sync::Arc::new(state);
+        let request = axum::http::Request::put(crate::IDLE_UNLOAD_ROUTE)
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(r#"{"seconds":3600}"#))
+            .unwrap();
+        let open = dropped_in_blocking_work(&state, request).await;
+        assert_eq!(read_store(&store), Ok(None));
+        open.send(()).unwrap();
+        all_permits_back(&state).await;
+        assert_eq!(read_store(&store), Ok(Some(Some(3600))));
     }
 }

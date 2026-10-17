@@ -244,7 +244,10 @@ impl BenchRuns {
     pub async fn locate(&self, run_id: i64) -> Step {
         let database = self.database.clone();
         let deadline = Instant::now() + DEADLINE;
-        match tokio::task::spawn_blocking(move || read(&database, run_id, deadline)).await {
+        // noevia#2006: admitted: a dropped request keeps its permit until the read returns.
+        match crate::docker::spawn_blocking_admitted(move || read(&database, run_id, deadline))
+            .await
+        {
             Ok(Ok(None)) => Step::Done(Outcome::Json(
                 404,
                 br#"{"detail":"run not found"}"#.to_vec(),
