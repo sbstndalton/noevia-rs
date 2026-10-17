@@ -210,16 +210,19 @@ pub(crate) fn locate(
 }
 
 /// One snapshot row with its aliases, as `GgufEntry` holds it.
-struct Entry {
-    model: Model,
-    aliases: Vec<String>,
+pub(crate) struct Entry {
+    pub(crate) model: Model,
+    pub(crate) aliases: Vec<String>,
+    /// A section whose `model =` path could not be checked may configure this file, so its
+    /// aliases cannot be known exactly.
+    pub(crate) unknowable: bool,
 }
 
 impl Entry {
-    fn stem(&self) -> &str {
+    pub(crate) fn stem(&self) -> &str {
         stem(&self.model.base)
     }
-    fn route_key(&self) -> String {
+    pub(crate) fn route_key(&self) -> String {
         if self.model.subdir.is_empty() {
             self.model.base.clone()
         } else {
@@ -234,7 +237,7 @@ impl Entry {
             format!("{}/{}", self.model.subdir, first.name)
         })
     }
-    fn model_id(&self) -> &str {
+    pub(crate) fn model_id(&self) -> &str {
         let stem = self.stem();
         if self.aliases.iter().any(|a| a == stem) {
             return stem;
@@ -245,7 +248,7 @@ impl Entry {
 
 /// `name[:-5] if name.lower().endswith(".gguf") else name`. The last five characters can only be
 /// ASCII when the lowered name ends with `.gguf`.
-fn stem(name: &str) -> &str {
+pub(crate) fn stem(name: &str) -> &str {
     if name.to_lowercase().ends_with(".gguf") {
         name.get(..name.len().saturating_sub(5)).unwrap_or(name)
     } else {
@@ -253,13 +256,19 @@ fn stem(name: &str) -> &str {
     }
 }
 
-fn find(
+/// `services.snapshot_models_dir()`: the opened models root, its canonical path and every row
+/// with its aliases. `None` for a missing models folder (nothing is read) or one that is a file.
+pub(crate) struct Snapshot {
+    pub(crate) root: Root,
+    pub(crate) base: PathBuf,
+    pub(crate) entries: Vec<Entry>,
+}
+
+pub(crate) fn snapshot(
     models: &Path,
     ini_path: &Path,
-    key: &str,
-    deadline: Instant,
     open: impl FnOnce(&Path) -> Result<Root, WalkError>,
-) -> Result<Option<Step>, Stop> {
+) -> Result<Option<Snapshot>, Stop> {
     // services.snapshot_models_dir(): nothing is read from a missing folder.
     let Some(directory) = exists(models)? else {
         return Ok(None);
@@ -284,25 +293,13 @@ fn find(
         }
         _ => Vec::new(),
     };
-    let mut hit = None;
+    let mut entries = Vec::new();
     for model in group(found)? {
         let rel = match model.parts.first() {
             Some(first) if model.subdir.is_empty() => first.name.clone(),
             Some(first) => format!("{}/{}", model.subdir, first.name),
             None => return Err(Stop::Failed),
         };
-        let route_key = if model.subdir.is_empty() {
-            model.base.clone()
-        } else {
-            format!("{}/{}", model.subdir, model.base)
-        };
-        if route_key != key {
-            continue;
-        }
-        // A section whose `model =` path could not be checked may configure this file.
-        if unknown.contains(&rel) {
-            return Err(Stop::Refused);
-        }
         let matched = match by_file.get(&rel) {
             Some(names) if !names.is_empty() => names.clone(),
             _ => aliases
@@ -311,19 +308,45 @@ fn find(
                 .cloned()
                 .collect(),
         };
-        hit = Some(Entry {
+        entries.push(Entry {
+            unknowable: unknown.contains(&rel),
             model,
             aliases: matched,
         });
-        break;
     }
-    let Some(entry) = hit else {
+    Ok(Some(Snapshot {
+        root,
+        base,
+        entries,
+    }))
+}
+
+fn find(
+    models: &Path,
+    ini_path: &Path,
+    key: &str,
+    deadline: Instant,
+    open: impl FnOnce(&Path) -> Result<Root, WalkError>,
+) -> Result<Option<Step>, Stop> {
+    let Some(snapshot) = snapshot(models, ini_path, open)? else {
         return Ok(None);
     };
+    let Some(entry) = snapshot.entries.into_iter().find(|e| e.route_key() == key) else {
+        return Ok(None);
+    };
+    if entry.unknowable {
+        return Err(Stop::Refused);
+    }
     if Instant::now() >= deadline {
         return Err(Stop::Refused);
     }
-    Ok(Some(describe(&entry, models, &root, &base, deadline)?))
+    Ok(Some(describe(
+        &entry,
+        models,
+        &snapshot.root,
+        &snapshot.base,
+        deadline,
+    )?))
 }
 
 /// `ini.duplicate_sections(text)` is non-empty: then `read_ini_aliases` answers `[]`.
@@ -622,7 +645,7 @@ fn describe(
 }
 
 /// `utils.human_bytes(n)`.
-fn human_bytes(total: u128) -> String {
+pub(crate) fn human_bytes(total: u128) -> String {
     let mut n = total as f64;
     for unit in ["B", "KB", "MB", "GB", "TB", "PB"] {
         if n.abs() < 1024.0 {

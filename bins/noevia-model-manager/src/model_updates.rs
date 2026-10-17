@@ -374,6 +374,8 @@ pub(crate) struct Model {
     pub companion: bool,
     pub companion_name: String,
     pub companion_bytes: u128,
+    /// `companion_parts`: the files of the companions folded into this model, in fold order.
+    pub companion_parts: Vec<Part>,
 }
 
 /// `services.snapshot_models_dir().ggufs`: the walk, shard grouping, companion folding and order.
@@ -414,6 +416,7 @@ pub(crate) fn group(found: Vec<Found>) -> Result<Vec<Model>, Stop> {
                     mtime: 0.0,
                     companion_name: String::new(),
                     companion_bytes: 0,
+                    companion_parts: Vec::new(),
                 });
             }
         }
@@ -448,9 +451,9 @@ pub(crate) fn group(found: Vec<Found>) -> Result<Vec<Model>, Stop> {
         let Some(&main) = main_by_subdir.get(&subdir) else {
             continue;
         };
-        let (name, bytes) = {
+        let (name, bytes, parts) = {
             let g = groups.get(i).ok_or(Stop::Failed)?;
-            (g.base.clone(), g.total)
+            (g.base.clone(), g.total, g.parts.clone())
         };
         let target = groups.get_mut(main).ok_or(Stop::Failed)?;
         if target.companion_name.is_empty() {
@@ -459,6 +462,7 @@ pub(crate) fn group(found: Vec<Found>) -> Result<Vec<Model>, Stop> {
             target.companion_name = format!("{}, {name}", target.companion_name);
         }
         target.companion_bytes += bytes;
+        target.companion_parts.extend(parts);
         *folded.get_mut(i).ok_or(Stop::Failed)? = true;
     }
     let mut surviving: Vec<(String, bool, String, Model)> = groups

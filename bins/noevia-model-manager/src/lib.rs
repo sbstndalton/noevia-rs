@@ -22,6 +22,8 @@ pub mod downloads;
 pub mod embedding;
 pub mod host;
 pub mod idle_unload;
+#[cfg(feature = "native-model-delete")]
+pub mod model_delete;
 #[cfg(feature = "native-model-detail")]
 pub mod model_detail;
 #[cfg(feature = "native-model-updates")]
@@ -90,6 +92,12 @@ pub trait DockerRead: Send + Sync {
     fn restart_backend<'a>(&'a self, _name: &'a str) -> Job<'a, ()> {
         Box::pin(async { Err("docker unreachable") })
     }
+    /// noevia#1318: `docker.from_env().containers.list()` with each container's inspect data
+    /// (`Ok(None)`: no Docker socket at all). The error is the exception class Python names.
+    #[cfg(feature = "native-model-delete")]
+    fn running_containers(&self) -> Job<'_, Option<Vec<model_delete::Running>>> {
+        Box::pin(async { Err("ConnectionError") })
+    }
 }
 
 /// The parts of `docker inspect` a backend's port is resolved from (services
@@ -117,6 +125,9 @@ pub struct StateData {
     /// noevia#1318: the native download job table and transfers; a start is planned by the child.
     #[cfg(feature = "native-downloads")]
     pub downloads: Option<Arc<downloads::Downloads>>,
+    /// noevia#1318: native `POST /api/v1/models/delete`.
+    #[cfg(feature = "native-model-delete")]
+    pub model_delete: Option<Arc<model_delete::ModelDelete>>,
     /// noevia#1318: the native benchmark runner (the one job slot): start, progress, cancel.
     #[cfg(feature = "native-benchmark-runner")]
     pub bench_runner: Option<Arc<bench_runner::Runner>>,
@@ -1125,6 +1136,18 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             return guarded_delete(state, service, req).await;
         }
     }
+    #[cfg(feature = "native-model-delete")]
+    if path == "/api/v1/models/delete" && req.method() == Method::POST {
+        if let Some(delete) = state.model_delete.clone() {
+            return native_model_delete(&delete, req).await;
+        }
+    }
+    #[cfg(feature = "native-downloads")]
+    if path == "/api/v1/models/delete" && req.method() == Method::POST {
+        if let Some(refusal) = python_delete_blocked(&state) {
+            return refusal;
+        }
+    }
     let name = path
         .strip_prefix("/api/v1/backends/")
         .and_then(|p| p.strip_suffix("/logs"))
@@ -1943,7 +1966,58 @@ async fn guarded_delete(
             );
         }
     }
-    forward(state, Request::from_parts(parts, Body::from(raw))).await
+    let req = Request::from_parts(parts, Body::from(raw));
+    // noevia#1318: under the hold, so the embedding service cannot switch to a model mid-delete.
+    #[cfg(feature = "native-model-delete")]
+    if let Some(delete) = state.model_delete.clone() {
+        return native_model_delete(&delete, req).await;
+    }
+    #[cfg(feature = "native-downloads")]
+    if let Some(refusal) = python_delete_blocked(&state) {
+        return refusal;
+    }
+    forward(state, req).await
+}
+
+/// The 409 for a Python-served delete while the native table has a queued or running download.
+#[cfg(feature = "native-downloads")]
+pub const PYTHON_DELETE_WHILE_DOWNLOADING: &str = "A download is queued or running; wait for it to finish or cancel it before deleting a model. Nothing was deleted.";
+
+/// noevia#1966: with native downloads but a Python delete, Python cannot see the native jobs, so
+/// any active download refuses the delete before it reaches Python (coarser than the native
+/// per-folder check, never a deletion under a running transfer).
+#[cfg(feature = "native-downloads")]
+fn python_delete_blocked(state: &StateData) -> Option<Response> {
+    #[cfg(feature = "native-model-delete")]
+    if state.model_delete.is_some() {
+        return None;
+    }
+    let table = state.downloads.as_ref()?;
+    (table.active() > 0).then(|| detail(StatusCode::CONFLICT, PYTHON_DELETE_WHILE_DOWNLOADING))
+}
+
+/// noevia#1318: `POST /api/v1/models/delete` with FastAPI's `dict` body rules, answered natively.
+#[cfg(feature = "native-model-delete")]
+async fn native_model_delete(delete: &model_delete::ModelDelete, req: Request) -> Response {
+    let body = match fastapi_dict_body_capped(req, REQUEST_CAP, None).await {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    match delete.post(&body).await {
+        model_delete::Outcome::Json(bytes) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response(),
+        model_delete::Outcome::Conflict(text) => {
+            (StatusCode::CONFLICT, Json(json!({ "detail": text }))).into_response()
+        }
+        model_delete::Outcome::Failed => internal_error(),
+        model_delete::Outcome::Refused => {
+            detail(StatusCode::SERVICE_UNAVAILABLE, model_delete::REFUSAL)
+        }
+    }
 }
 
 /// noevia#1318: the routes the native benchmark runner answers.
@@ -2093,7 +2167,8 @@ async fn fastapi_dict_body(req: Request) -> Result<prompts::JsonValue, Response>
     feature = "native-badges",
     feature = "native-section-writes",
     feature = "native-settings-write",
-    feature = "native-backend-control"
+    feature = "native-backend-control",
+    feature = "native-model-delete"
 ))]
 #[allow(clippy::result_large_err)]
 async fn fastapi_dict_body_capped(

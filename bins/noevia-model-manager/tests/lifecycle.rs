@@ -746,6 +746,43 @@ fn downloads_selector_omission_and_python_confirmation_are_closed_before_child()
     }
 }
 
+#[test]
+fn model_delete_selector_omission_and_python_confirmation_are_closed_before_child() {
+    let (dir, marker) = owned_uvicorn();
+    for (parent, targets) in [("rust", "invalid"), ("rust", "Rust")] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", parent)
+            .env("MODEL_MANAGER_MODEL_DELETE_IMPL", targets)
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success(), "{parent}/{targets}");
+        assert!(!marker.exists());
+    }
+    if !cfg!(feature = "native-model-delete") {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_IMPL", "rust")
+            .env("MODEL_MANAGER_MODEL_DELETE_IMPL", "rust")
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("compiled native-model-delete"));
+        assert!(!marker.exists());
+    }
+    // Selector off: the always-native parent hands the child "0" over an inherited value.
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script,"#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DELETE_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    for selected in [None, Some("python")] {
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DELETE_CONFIRMED", "1");
+        if let Some(value) = selected {
+            cmd.env("MODEL_MANAGER_MODEL_DELETE_IMPL", value);
+        }
+        if let (Some(record), _) = native_child_record(&mut cmd, &marker) {
+            assert_eq!(record, "0");
+        }
+    }
+}
+
 #[cfg(feature = "native-model-detail")]
 #[test]
 fn native_model_detail_never_refuses_startup_over_zone_or_roots() {
@@ -1028,6 +1065,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         if cfg!(feature = "native-downloads") {
             expected.push_str("native-downloads\n");
         }
+        if cfg!(feature = "native-model-delete") {
+            expected.push_str("native-model-delete\n");
+        }
         // noevia#1925: the production image also advertises native-diagnose (printed last).
         if cfg!(feature = "native-diagnose") {
             expected.push_str("native-diagnose\n");
@@ -1242,5 +1282,35 @@ fn host_selector_requires_compiled_capability_and_native_parent() {
         assert!(!output.status.success());
         assert!(!marker.exists());
         assert!(String::from_utf8_lossy(&output.stderr).contains("native-host"));
+    }
+}
+
+/// noevia#1966: a native delete must see every download, so it is native only together with
+/// native downloads; alone it stays with Python (whose delete checks its own job table).
+#[cfg(feature = "native-model-delete")]
+#[test]
+fn native_model_delete_needs_native_downloads() {
+    let (dir, marker) = owned_uvicorn();
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script,"#!/bin/sh\nprintf '%s %s' \"${NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DELETE_CONFIRMED-unset}\" \"${NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let fallback = "native-model-delete: needs MODEL_MANAGER_DOWNLOADS_IMPL=rust";
+    for (downloads, expected, falls_back) in [
+        (None, "0 0", true),
+        (Some("python"), "0 0", true),
+        (Some("rust"), "1 1", false),
+    ] {
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env("MODEL_MANAGER_MODEL_DELETE_IMPL", "rust")
+            .env_remove("MODEL_MANAGER_DOWNLOADS_IMPL");
+        if let Some(value) = downloads {
+            cmd.env("MODEL_MANAGER_DOWNLOADS_IMPL", value);
+        }
+        let (record, stderr) = native_child_record(&mut cmd, &marker);
+        assert_eq!(record.as_deref(), Some(expected), "{downloads:?}: {stderr}");
+        assert_eq!(
+            stderr.contains(fallback),
+            falls_back,
+            "{downloads:?}: {stderr}"
+        );
     }
 }

@@ -352,8 +352,16 @@ pub fn allowed_backend_restart(path: &str, container: &str) -> bool {
         && path == format!("/containers/{container}/restart?t=15")
 }
 
+/// noevia#1318: the running containers the model delete checks (`containers.list()`).
+#[cfg(feature = "native-model-delete")]
+const RUNNING_LIST: &str = "/containers/json?all=false&limit=1025&size=false";
+
 fn allowed_read(path: &str) -> bool {
     if path == "/containers/json?all=true&limit=1025&size=false" {
+        return true;
+    }
+    #[cfg(feature = "native-model-delete")]
+    if path == RUNNING_LIST {
         return true;
     }
     let (path, query) = path.split_once('?').unwrap_or((path, ""));
@@ -371,6 +379,66 @@ fn allowed_read(path: &str) -> bool {
     }
 }
 impl DockerRead for UnixDocker {
+    #[cfg(feature = "native-model-delete")]
+    fn running_containers(&self) -> Job<'_, Option<Vec<crate::model_delete::Running>>> {
+        Box::pin(async move {
+            // `docker.from_env()` without a socket at all: there is nothing to consult. A socket
+            // that is there but cannot be read refuses (the delete fails closed).
+            if let Err(e) = std::fs::symlink_metadata(&self.socket) {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    return Ok(None);
+                }
+                return Err("ConnectionError");
+            }
+            let (status, raw) = self
+                .read(RUNNING_LIST)
+                .await
+                .map_err(|_| "ConnectionError")?;
+            if status != StatusCode::OK {
+                return Err("APIError");
+            }
+            let inventory = bounded_inventory(&raw).map_err(|_| "APIError")?;
+            if inventory.len() > INVENTORY_CAP {
+                return Err("APIError");
+            }
+            let mut out = Vec::new();
+            out.try_reserve(inventory.len()).map_err(|_| "APIError")?;
+            for summary in inventory {
+                let id = summary.id.ok_or("APIError")?;
+                let inspected = match self.inspect(&id).await {
+                    Ok(i) => i,
+                    // docker-py's list() inspects each container; one gone meanwhile raises.
+                    Err("container not found") => return Err("NotFound"),
+                    Err(_) => return Err("APIError"),
+                };
+                let config = inspected.config.unwrap_or_default();
+                out.push(crate::model_delete::Running {
+                    name: inspected
+                        .name
+                        .unwrap_or_default()
+                        .trim_start_matches('/')
+                        .to_owned(),
+                    id: inspected.id.unwrap_or(id),
+                    entrypoint: config.entrypoint.unwrap_or_default(),
+                    cmd: config.cmd.unwrap_or_default(),
+                    args: inspected.args.unwrap_or_default(),
+                    env: config.env.unwrap_or_default(),
+                    mounts: inspected
+                        .mounts
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|m| {
+                            (
+                                m.destination.unwrap_or_default(),
+                                m.source.unwrap_or_default(),
+                            )
+                        })
+                        .collect(),
+                });
+            }
+            Ok(Some(out))
+        })
+    }
     fn backend_spec<'a>(&'a self, name: &'a str) -> Job<'a, Option<crate::BackendSpec>> {
         Box::pin(async move {
             let inspect = match self.inspect(name).await {
@@ -740,6 +808,8 @@ mod tests {
             check_updates: None,
             #[cfg(feature = "native-downloads")]
             downloads: None,
+            #[cfg(feature = "native-model-delete")]
+            model_delete: None,
             #[cfg(feature = "native-benchmark-runner")]
             bench_runner: None,
             #[cfg(feature = "native-backend-control")]
