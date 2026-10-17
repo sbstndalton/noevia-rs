@@ -106,10 +106,20 @@ pub struct ModelDelete {
     /// noevia#1966: the native download table (this process serves downloads when it deletes).
     downloads: Option<Arc<crate::downloads::Downloads>>,
     open: fn(&Path) -> Result<Root, WalkError>,
-    lock: tokio::sync::Mutex<()>,
-    /// Lib tests: runs after the checks, before each model's files are removed.
+    lock: Arc<tokio::sync::Mutex<()>>,
+    /// Lib tests: runs in the removal's blocking task, after the checks, before each model's
+    /// files are removed.
     #[cfg(test)]
-    during: Option<Box<dyn Fn() + Send + Sync>>,
+    during: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+
+/// noevia#1983: what a delete holds until its removals end: the one-delete-at-a-time lock and
+/// the folder reservations. Each removal's blocking task keeps a share, so a request dropped
+/// while a removal runs (the client went away, the route's timeout) releases them only when
+/// that removal returns, not while it is still removing the folder.
+struct Hold {
+    _lock: tokio::sync::OwnedMutexGuard<()>,
+    reserved: Vec<crate::downloads::Reservation>,
 }
 
 /// One phase-two answer: `(ok, message, freed)`.
@@ -131,7 +141,7 @@ impl ModelDelete {
             docker,
             downloads: None,
             open,
-            lock: tokio::sync::Mutex::new(()),
+            lock: Arc::new(tokio::sync::Mutex::new(())),
             #[cfg(test)]
             during: None,
         }
@@ -157,7 +167,10 @@ impl ModelDelete {
     pub async fn post(&self, body: &JsonValue) -> Outcome {
         // One delete at a time: Python's handlers may interleave, but a second request must
         // never act on a snapshot the first is changing.
-        let _held = self.lock.lock().await;
+        let mut hold = Hold {
+            _lock: self.lock.clone().lock_owned().await,
+            reserved: Vec::new(),
+        };
         let keys = match keys(body) {
             Ok(keys) => keys,
             Err(outcome) => return outcome,
@@ -171,8 +184,7 @@ impl ModelDelete {
         let mut todo: Vec<(String, Arc<Entry>)> = Vec::new();
         let mut containers: Option<Vec<Running>> = None;
         // noevia#1972: each model's folder is reserved before its download check and until the
-        // request ends, so no download starts into a folder this request is removing.
-        let mut reserved: Vec<crate::downloads::Reservation> = Vec::new();
+        // last removal ends (#1983), so no download starts into a folder this request is removing.
         for key in keys {
             if key.contains("..") || key.starts_with('/') || key.matches('/').count() > 4 {
                 results.push(failure(&key, "bad model key"));
@@ -204,7 +216,7 @@ impl ModelDelete {
                 return Outcome::Conflict(in_use_message(&entry, &holders));
             }
             if let Some(table) = &self.downloads {
-                reserved.push(table.reserve(reservation(&entry)));
+                hold.reserved.push(table.reserve(reservation(&entry)));
             }
             let downloads = self.download_blockers(&entry);
             if !downloads.is_empty() {
@@ -213,13 +225,10 @@ impl ModelDelete {
             todo.push((key, entry));
         }
         drop(snap);
+        let hold = Arc::new(hold);
         for (key, entry) in todo {
-            #[cfg(test)]
-            if let Some(during) = &self.during {
-                during();
-            }
             let (ok, message, freed) = self
-                .delete_gguf(&entry.model.base, &entry.model.subdir)
+                .delete_gguf(&entry.model.base, &entry.model.subdir, hold.clone())
                 .await;
             let freed_h = if freed == 0 {
                 String::new()
@@ -233,7 +242,7 @@ impl ModelDelete {
                 json_string(&freed_h)
             ));
         }
-        drop(reserved);
+        drop(hold);
         Outcome::Json(format!("{{\"results\":[{}]}}", results.join(",")).into_bytes())
     }
 
@@ -276,8 +285,9 @@ impl ModelDelete {
         }
     }
 
-    /// `services.delete_gguf(display_name, subdir)`.
-    async fn delete_gguf(&self, display_name: &str, subdir: &str) -> Deleted {
+    /// `services.delete_gguf(display_name, subdir)`. `hold` moves into the removal's blocking
+    /// task and is released when `fs::delete` returns, even if this future is dropped first.
+    async fn delete_gguf(&self, display_name: &str, subdir: &str, hold: Arc<Hold>) -> Deleted {
         let refused = || {
             (
                 false,
@@ -329,9 +339,19 @@ impl ModelDelete {
         let config = self.config.clone();
         let base = snap.base.clone();
         drop(snap);
-        tokio::task::spawn_blocking(move || fs::delete(&config, &base, &found))
-            .await
-            .unwrap_or_else(|_| refused())
+        #[cfg(test)]
+        let during = self.during.clone();
+        tokio::task::spawn_blocking(move || {
+            #[cfg(test)]
+            if let Some(during) = during {
+                during();
+            }
+            let deleted = fs::delete(&config, &base, &found);
+            drop(hold);
+            deleted
+        })
+        .await
+        .unwrap_or_else(|_| refused())
     }
 }
 

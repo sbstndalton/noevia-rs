@@ -634,7 +634,7 @@ async fn a_download_start_into_a_folder_being_deleted_is_refused() {
     )
     .with_downloads(table.clone());
     let (t, s) = (table.clone(), seen.clone());
-    delete.during = Some(Box::new(move || {
+    delete.during = Some(Arc::new(move || {
         let mut seen = s.lock().unwrap();
         let reserved = t.reservations();
         // Into the folder being removed, and into a sub-folder of it: refused.
@@ -676,7 +676,7 @@ async fn a_download_start_into_a_folder_being_deleted_is_refused() {
     // A flat model reserves only its own files.
     let flat = Arc::new(std::sync::Mutex::new(Vec::new()));
     let (t, f) = (table.clone(), flat.clone());
-    delete.during = Some(Box::new(move || {
+    delete.during = Some(Arc::new(move || {
         f.lock().unwrap().push(t.reservations());
     }));
     let (status, _, body) = answer(
@@ -720,5 +720,83 @@ async fn a_refused_delete_releases_its_reservation() {
     assert_eq!(status, 409);
     assert!(models.join("dlq/a.gguf").exists());
     assert!(table.reservations().is_empty());
+    server.abort();
+}
+
+/// noevia#1983: a request dropped while its removal runs (the client went away, the route's
+/// timeout) keeps the folder reserved and the delete lock held until the removal returns, so a
+/// download start into that folder is still refused (the route's 409) in the meantime.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_request_keeps_the_folder_reserved_until_the_removal_ends() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir_all(models.join("dlz")).unwrap();
+    std::fs::write(models.join("dlz/a.gguf"), [0u8; 6]).unwrap();
+    let table = table_for(&models, &dir.path().join("data"));
+    let (port, server) = silent_server().await;
+    let mut delete = ModelDelete::with_root(
+        plain_config(&models, dir.path()),
+        no_docker(),
+        Root::synthetic,
+    )
+    .with_downloads(table.clone());
+    let (entered_tx, entered_rx) = mpsc::channel::<()>();
+    let (release_tx, release_rx) = mpsc::channel::<()>();
+    let (entered_tx, release_rx) = (
+        std::sync::Mutex::new(entered_tx),
+        std::sync::Mutex::new(release_rx),
+    );
+    delete.during = Some(Arc::new(move || {
+        entered_tx.lock().unwrap().send(()).unwrap();
+        release_rx
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(30))
+            .unwrap();
+    }));
+    let delete = Arc::new(delete);
+    let body = crate::prompts::parse_json(r#"{"models":["dlz/a.gguf"]}"#).unwrap();
+    let request = tokio::spawn({
+        let delete = delete.clone();
+        async move { delete.post(&body).await }
+    });
+    // The removal's blocking task is running (and blocked in the hook): drop the request.
+    tokio::task::spawn_blocking(move || entered_rx.recv_timeout(Duration::from_secs(30)))
+        .await
+        .unwrap()
+        .unwrap();
+    request.abort();
+    assert!(request.await.unwrap_err().is_cancelled());
+
+    // The removal is still running: the folder stays reserved and the lock stays held.
+    assert_eq!(table.reservations(), ["dlz"]);
+    assert_eq!(
+        table.queue(planned("dlz/b.gguf", port)),
+        crate::downloads::Queued::Deleting
+    );
+    assert!(delete.lock.try_lock().is_err());
+    assert!(models.join("dlz/a.gguf").exists());
+
+    // The removal finishes: only then are the reservation and the lock released.
+    release_tx.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while !table.reservations().is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(!models.join("dlz").exists(), "the removal finished whole");
+    drop(
+        tokio::time::timeout(Duration::from_secs(30), delete.lock.lock())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        table.queue(planned("dlz/b.gguf", port)),
+        crate::downloads::Queued::Done
+    );
     server.abort();
 }
