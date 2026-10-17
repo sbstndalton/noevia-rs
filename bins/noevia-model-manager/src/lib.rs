@@ -787,26 +787,53 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     } else {
         LEGACY_TIMEOUT
     };
+    serve_admitted(state, admission, req, budget).await
+}
+
+/// The deadline of an admitted request's route. Work the request starts in its own admitted task
+/// (a delete forward) is bounded by it as well, so the timeout answer still goes out by the
+/// route's budget and what that work holds is released then (noevia#1997, #1998).
+#[derive(Clone, Copy)]
+struct RouteDeadline(tokio::time::Instant);
+
+/// The deadline `req` must be answered by: its route's, or a forwarded route's budget from now.
+fn route_deadline(req: &Request) -> tokio::time::Instant {
+    req.extensions().get::<RouteDeadline>().map_or_else(
+        || tokio::time::Instant::now() + LEGACY_TIMEOUT,
+        |deadline| deadline.0,
+    )
+}
+
+fn timed_out() -> Response {
+    detail(
+        StatusCode::GATEWAY_TIMEOUT,
+        "model manager request timed out",
+    )
+}
+
+/// Dispatches an admitted request within `budget`.
+async fn serve_admitted(
+    state: Arc<StateData>,
+    admission: Admission,
+    mut req: Request,
+    budget: Duration,
+) -> Response {
+    let deadline = tokio::time::Instant::now() + budget;
+    req.extensions_mut().insert(RouteDeadline(deadline));
     // The dispatch future is dropped inside the scope (also on a timeout), so a Docker driver it
     // leaves behind is registered with this admission and joined before the permit returns.
     // (tokio drops a scoped future inside its scope, also when the request itself is dropped.)
     // Work it starts with `docker::spawn_admitted` or `spawn_blocking_admitted` is registered
     // here when spawned and is never aborted: the permit returns once that work has ended
-    // (noevia#1998).
+    // (noevia#1998). A delete forward is bounded by the same deadline.
     let result = docker::ORPHANS
         .scope(
             admission.orphans.clone(),
-            tokio::time::timeout(budget, dispatch(state.clone(), req)),
+            tokio::time::timeout_at(deadline, dispatch(state.clone(), req)),
         )
         .await;
     admission.release().await;
-    match result {
-        Ok(r) => r,
-        Err(_) => detail(
-            StatusCode::GATEWAY_TIMEOUT,
-            "model manager request timed out",
-        ),
-    }
+    result.unwrap_or_else(|_| timed_out())
 }
 
 /// One of the request permits (noevia#1385). The permit is taken out of the semaphore with
@@ -2127,6 +2154,7 @@ async fn guarded_delete(
     service: Arc<embedding::EmbeddingService>,
     req: Request,
 ) -> Response {
+    let deadline = route_deadline(&req);
     let (parts, body) = req.into_parts();
     let Ok(raw) = to_bytes(body, REQUEST_CAP).await else {
         return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
@@ -2143,8 +2171,11 @@ async fn guarded_delete(
         .collect();
     // Held across the check and the delete, so a concurrent switch cannot choose a model whose
     // file this request is deleting. noevia#1997: owned, it moves into the task doing the delete
-    // and is released when that work ends, not when this request future is dropped.
-    let held = service.hold_owned().await;
+    // and is released when that work ends, not when this request future is dropped. Waiting for
+    // it, and a forward under it, end at the route's deadline.
+    let Ok(held) = tokio::time::timeout_at(deadline, service.hold_owned()).await else {
+        return timed_out();
+    };
     for key in &keys {
         if service.protects(key).await {
             return detail(
@@ -2163,9 +2194,12 @@ async fn guarded_delete(
     if let Some(table) = python_delete_table(&state) {
         return forward_python_delete(state, table, req, Some(held)).await;
     }
-    // noevia#1997/#1998: the forward runs in its own admitted task that owns the hold.
+    // noevia#1997/#1998: the forward runs in its own admitted task that owns the hold, until
+    // the route's deadline at the latest.
     docker::spawn_admitted(async move {
-        let response = forward(state, req).await;
+        let response = tokio::time::timeout_at(deadline, forward(state, req))
+            .await
+            .unwrap_or_else(|_| timed_out());
         drop(held);
         response
     })
@@ -2198,15 +2232,17 @@ fn python_delete_table(state: &StateData) -> Option<Arc<downloads::Downloads>> {
 /// `Deleting` until the forwarded request has ended. The forward runs in its own task that owns
 /// the reservation: a request dropped mid-forward (client gone, route timeout) does not release
 /// it while Python may still be deleting, only once the child has answered or the forward has
-/// failed or hit its own timeout ([`LEGACY_TIMEOUT`], 600 s). At that timeout it is released
-/// even if Python is still deleting: this side cannot see past it.
+/// failed or reached the route's deadline ([`LEGACY_TIMEOUT`], 600 s after the request
+/// arrived). At that deadline it is released even if Python is still deleting: this side cannot
+/// see past it.
 ///
 /// noevia#1994: the request body is read before the reservation is taken (as `guarded_delete`
 /// does), so a client whose body stalls holds nothing; only the forward itself runs under it.
 ///
 /// noevia#1997: the embedding service's hold (`guarded_delete`), when given, moves into the same
 /// task. noevia#1998: that task is admitted ([`docker::spawn_admitted`]), so a dropped request
-/// also keeps its admission permit until the forward has ended.
+/// also keeps its admission permit until the forward has ended. The forward ends at the route's
+/// deadline at the latest, so the timeout answer goes out by the route's budget.
 #[cfg(feature = "native-downloads")]
 async fn forward_python_delete(
     state: Arc<StateData>,
@@ -2214,6 +2250,7 @@ async fn forward_python_delete(
     req: Request,
     embedding: Option<tokio::sync::OwnedMutexGuard<()>>,
 ) -> Response {
+    let deadline = route_deadline(&req);
     let (parts, body) = req.into_parts();
     let Ok(raw) = to_bytes(body, REQUEST_CAP).await else {
         return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
@@ -2224,7 +2261,9 @@ async fn forward_python_delete(
         return detail(StatusCode::CONFLICT, PYTHON_DELETE_WHILE_DOWNLOADING);
     }
     docker::spawn_admitted(async move {
-        let response = forward(state, req).await;
+        let response = tokio::time::timeout_at(deadline, forward(state, req))
+            .await
+            .unwrap_or_else(|_| timed_out());
         drop(held);
         drop(embedding);
         response

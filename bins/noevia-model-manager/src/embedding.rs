@@ -30,7 +30,9 @@ pub const MAX_MODELS: usize = 2;
 pub const ACT_TIMEOUT: Duration = Duration::from_secs(30);
 /// #1677: how long a change waits for another change (or a delete check) to finish. The request
 /// budget is ACT_TIMEOUT + LOCK_WAIT plus a margin, so a change that waited too long gives up
-/// itself and can never be applied after its caller was told it failed.
+/// itself and can never be applied after its caller was told it failed. A delete keeps the lock
+/// until its work ends (noevia#1997), at most its route's budget, so a change during a long
+/// delete fails after this wait.
 pub const LOCK_WAIT: Duration = Duration::from_secs(15);
 /// #1717: how often the watcher checks whether the router lost its models (an embed container
 /// restart that noevia did not make: crash, host reboot, manual recreate).
