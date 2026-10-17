@@ -107,6 +107,9 @@ pub struct ModelDelete {
     downloads: Option<Arc<crate::downloads::Downloads>>,
     open: fn(&Path) -> Result<Root, WalkError>,
     lock: tokio::sync::Mutex<()>,
+    /// Lib tests: runs after the checks, before each model's files are removed.
+    #[cfg(test)]
+    during: Option<Box<dyn Fn() + Send + Sync>>,
 }
 
 /// One phase-two answer: `(ok, message, freed)`.
@@ -129,6 +132,8 @@ impl ModelDelete {
             downloads: None,
             open,
             lock: tokio::sync::Mutex::new(()),
+            #[cfg(test)]
+            during: None,
         }
     }
 
@@ -165,6 +170,9 @@ impl ModelDelete {
         let mut results = Vec::new();
         let mut todo: Vec<(String, Arc<Entry>)> = Vec::new();
         let mut containers: Option<Vec<Running>> = None;
+        // noevia#1972: each model's folder is reserved before its download check and until the
+        // request ends, so no download starts into a folder this request is removing.
+        let mut reserved: Vec<crate::downloads::Reservation> = Vec::new();
         for key in keys {
             if key.contains("..") || key.starts_with('/') || key.matches('/').count() > 4 {
                 results.push(failure(&key, "bad model key"));
@@ -195,6 +203,9 @@ impl ModelDelete {
             if !holders.is_empty() {
                 return Outcome::Conflict(in_use_message(&entry, &holders));
             }
+            if let Some(table) = &self.downloads {
+                reserved.push(table.reserve(reservation(&entry)));
+            }
             let downloads = self.download_blockers(&entry);
             if !downloads.is_empty() {
                 return Outcome::Conflict(downloading_message(&entry, &downloads));
@@ -203,6 +214,10 @@ impl ModelDelete {
         }
         drop(snap);
         for (key, entry) in todo {
+            #[cfg(test)]
+            if let Some(during) = &self.during {
+                during();
+            }
             let (ok, message, freed) = self
                 .delete_gguf(&entry.model.base, &entry.model.subdir)
                 .await;
@@ -218,6 +233,7 @@ impl ModelDelete {
                 json_string(&freed_h)
             ));
         }
+        drop(reserved);
         Outcome::Json(format!("{{\"results\":[{}]}}", results.join(",")).into_bytes())
     }
 
@@ -410,6 +426,17 @@ pub(crate) fn blockers(entry: &Entry, destinations: &[String]) -> Vec<String> {
         }
     }
     found
+}
+
+/// `services.delete_reservation(entry)`: the folder a delete may remove whole (its subdir, or the
+/// Hugging Face repository folder), or a flat model's own files.
+pub(crate) fn reservation(entry: &Entry) -> Vec<String> {
+    let folder = fs::hf_repo(&entry.model.subdir).unwrap_or_else(|| entry.model.subdir.clone());
+    if folder.is_empty() {
+        own_rels(entry)
+    } else {
+        vec![folder]
+    }
 }
 
 /// `posixpath.normpath` of a relative path.

@@ -2528,6 +2528,9 @@ async fn native_downloads(
                 match table.queue(plan.jobs) {
                     downloads::Queued::Done => {}
                     downloads::Queued::Raised => return internal_error(),
+                    downloads::Queued::Deleting => {
+                        return detail(StatusCode::CONFLICT, downloads::DELETE_IN_PROGRESS)
+                    }
                     downloads::Queued::Full => {
                         return detail(
                             StatusCode::SERVICE_UNAVAILABLE,

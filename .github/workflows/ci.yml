@@ -655,8 +655,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-services
-          # noevia#1964/#1966: services#81 changes api.py (the delete route), which the oracle hashes.
-          ref: 54b8b51f2facbe85804e89cd944114fc7cd9d612
+          # noevia#1972: the services fix changes api.py (the delete route reserves its folder), which the oracle hashes.
+          ref: a14df916b1907ac6a0ed3334668a89b8b72dd871
           path: sections-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
