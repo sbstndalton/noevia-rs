@@ -422,6 +422,10 @@ path = "/api/models/autotune/cancel"
 owner = "node"
 
 [[route]]
+path = "/api/models/autotune/clear"
+owner = "node"
+
+[[route]]
 path = "/api/models/autotune/resume"
 owner = "node"
 
