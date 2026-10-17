@@ -1806,6 +1806,102 @@ mod tests {
         assert_eq!((status.as_str(), note.as_str()), ("error", DROPPED_NOTE));
     }
 
+    /// noevia#2015: a router-level start dropped after its run row was written, while that
+    /// insert (its second admitted task) is still held: the start guard's destructor finishes
+    /// the row on a task registered with the admission before the admission stops watching, so
+    /// the permit stays taken through the insert and then through the row finish.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_start_dropped_after_its_row_is_written_keeps_its_permit_until_the_finish() {
+        use crate::test_support::{all_permits_back, test_state};
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::mpsc;
+        use tower::ServiceExt;
+        let dir = tempfile::tempdir().unwrap();
+        let (runner, c) = synthetic_runner(dir.path());
+        c.execute_batch(
+            "CREATE TABLE prompts(id INTEGER PRIMARY KEY, name TEXT, body TEXT); INSERT INTO prompts VALUES(1, 'synthetic', 'synthetic text')",
+        )
+        .unwrap();
+        let mut state = test_state(crate::LEGACY_BASE);
+        state.bench_runner = Some(runner.clone());
+        let state = Arc::new(state);
+        // After its work, each admitted blocking task calls this: the first (the prompt read)
+        // passes, the second (the run row insert) and third (the destructor's row finish) report
+        // and wait to be let go.
+        let (entered_tx, entered) = mpsc::channel::<usize>();
+        let (open, opened) = mpsc::channel::<()>();
+        let opened = Mutex::new(opened);
+        let calls = AtomicUsize::new(0);
+        let hook: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            let call = calls.fetch_add(1, Ordering::SeqCst) + 1;
+            if call >= 2 {
+                entered_tx.send(call).unwrap();
+                lock(&opened)
+                    .recv_timeout(std::time::Duration::from_secs(30))
+                    .unwrap();
+            }
+        });
+        let entered = Arc::new(Mutex::new(entered));
+        let next = || {
+            let entered = entered.clone();
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    lock(&entered).recv_timeout(std::time::Duration::from_secs(30))
+                })
+                .await
+                .unwrap()
+                .unwrap()
+            }
+        };
+        let row = |run_id: i64| -> (String, Option<String>) {
+            c.query_row(
+                "SELECT status, note FROM bench_run WHERE id = ?",
+                [run_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+        };
+        let request = axum::http::Request::post("/api/v1/benchmark/start")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(
+                r#"{"backend":"synthetic-backend","aliases":["synthetic"],"promptIds":[1]}"#,
+            ))
+            .unwrap();
+        let task = tokio::spawn(
+            crate::docker::BLOCKING_AFTER_HOOK
+                .scope(hook, crate::router(state.clone()).oneshot(request)),
+        );
+        assert_eq!(next().await, 2);
+        let run_id: i64 = c
+            .query_row("SELECT max(id) FROM bench_run", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(row(run_id), ("running".to_owned(), None));
+        // The row is written and its id is in the guard's slot: drop the request.
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_eq!(runner.snapshot().status, "idle");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(
+            state.permits.available_permits(),
+            3,
+            "permit returned while the insert was held"
+        );
+        open.send(()).unwrap();
+        assert_eq!(next().await, 3);
+        assert_eq!(
+            row(run_id),
+            ("error".to_owned(), Some(DROPPED_NOTE.to_owned()))
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(
+            state.permits.available_permits(),
+            3,
+            "permit returned before the row finish ended"
+        );
+        open.send(()).unwrap();
+        all_permits_back(&state).await;
+    }
+
     #[test]
     fn int_conversion_is_pythons() {
         let p = |t: &str| py_int(&model_files::json::parse(t).unwrap());

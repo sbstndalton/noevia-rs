@@ -14,6 +14,9 @@
 ## Fixed on the way
 - noevia#1935: FastAPI writes non-finite floats in a `-> dict` answer as `null` (pydantic JSON mode). The shared row renderer refused them, so the native benchmark run read answered 500. Both reads now write `null`.
 
+## A dropped request (noevia#2006, #2015)
+The models.ini read and the store reads run on one blocking task that is registered with the request's admission. A request that is dropped (the client went away) or that runs past its budget keeps its permit (one of the front's 4) until that task has returned, and a request that timed out sends its 504 only then. The store reads have a deadline. The models.ini read does not, and a filesystem call that has started cannot be interrupted. So on a hung mount neither the 504 nor the permit comes back until that read returns, and there is no bound on that. After four such requests, every admitted route answers 503 `service is busy`.
+
 ## Decisions (technical)
 - **Job controls stay in Python for now.** `start`, `sweep`, `progress` and `cancel` all act on the one runner thread and its in-process state. That runner also does the streamed measurements, starts llama-bench sweep containers, frees the GPU and reaps orphans at startup. Moving only some of these routes would give the job slot two owners, so they move together with a native runner in a later slice.
 - **`MODELS_INI_PATH` spelling:** the path must have one canonical spelling (pydantic reads the variable case-insensitively) and be absolute and normal. Otherwise the switch falls back to `python` with a log line. The child gets the same `DATA_DIR` and `MODELS_INI_PATH`.

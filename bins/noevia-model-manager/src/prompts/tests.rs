@@ -494,3 +494,40 @@ async fn explicit_raw_input_restrictions_have_actual_oracle_proof_and_no_writes(
     }
     assert_eq!(count, 10);
 }
+
+/// noevia#2014: the store runs on its own worker thread, and a dropped request only sets the
+/// job's cancel flag. A prompt write dropped while the worker holds its job (the client went
+/// away) keeps the request's admission permit until the worker is done with it, and the
+/// cancelled job writes nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_request_keeps_its_permit_until_the_worker_ends_its_job() {
+    use crate::test_support::{all_permits_back, dropped_in_blocking_work, test_state};
+    let root = root();
+    let prompts = std::sync::Arc::new(
+        Prompts::open_with_clock(root.path(), || Ok(1_700_000_000.125))
+            .await
+            .unwrap(),
+    );
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.prompts = Some(prompts.clone());
+    let state = std::sync::Arc::new(state);
+    let request = axum::http::Request::post("/api/v1/prompts")
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(
+            r#"{"name":"synthetic-dropped","body":"synthetic text"}"#,
+        ))
+        .unwrap();
+    let open = dropped_in_blocking_work(&state, request).await;
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+    let listed: Value =
+        serde_json::from_slice(&prompts.response(Operation::List).await.unwrap()).unwrap();
+    assert!(
+        listed["prompts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["name"] != "synthetic-dropped"),
+        "a cancelled job wrote its prompt"
+    );
+}

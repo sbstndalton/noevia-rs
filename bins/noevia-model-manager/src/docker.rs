@@ -272,13 +272,20 @@ where
 {
     #[cfg(test)]
     let hook = BLOCKING_HOOK.try_with(Clone::clone).ok();
+    #[cfg(test)]
+    let after = BLOCKING_AFTER_HOOK.try_with(Clone::clone).ok();
     let (answer, answered) = tokio::sync::oneshot::channel();
     admit(tokio::task::spawn_blocking(move || {
         #[cfg(test)]
         if let Some(hook) = hook {
             hook();
         }
-        let _ = answer.send(work());
+        let done = work();
+        #[cfg(test)]
+        if let Some(after) = after {
+            after();
+        }
+        let _ = answer.send(done);
     }));
     answered.await
 }
@@ -290,14 +297,50 @@ pub(crate) fn spawn_blocking_admitted_detached(
     runtime: &tokio::runtime::Handle,
     work: impl FnOnce() + Send + 'static,
 ) {
-    admit(runtime.spawn_blocking(work));
+    #[cfg(test)]
+    let after = BLOCKING_AFTER_HOOK.try_with(Clone::clone).ok();
+    admit(runtime.spawn_blocking(move || {
+        work();
+        #[cfg(test)]
+        if let Some(after) = after {
+            after();
+        }
+    }));
+}
+
+/// noevia#2014: the admission registration of work that runs outside tokio's blocking pool (the
+/// prompt store's own worker thread). Taken inside an admitted request, it keeps that request's
+/// permit until it is dropped, so it moves into the job and is dropped where the job ends: when
+/// the worker has finished it, or when the job is dropped unrun (queue full, worker gone).
+/// Outside an admitted request it registers nothing.
+#[cfg(feature = "native-prompts")]
+pub(crate) struct Registration {
+    _held: tokio::sync::oneshot::Sender<()>,
+}
+
+#[cfg(feature = "native-prompts")]
+impl Registration {
+    pub(crate) fn new() -> Self {
+        let (held, released) = tokio::sync::oneshot::channel::<()>();
+        if ORPHANS.try_with(|_| ()).is_ok() {
+            // Ends when `held` is dropped: the receiver then answers an error.
+            admit(tokio::spawn(async move {
+                let _ = released.await;
+            }));
+        }
+        Self { _held: held }
+    }
 }
 
 #[cfg(test)]
 tokio::task_local! {
     /// Lib tests: runs first in every blocking task [`spawn_blocking_admitted`] starts in the
-    /// request it is set for (noevia#2006).
+    /// request it is set for (noevia#2006), and in every prompt store job (noevia#2014).
     pub(crate) static BLOCKING_HOOK: std::sync::Arc<dyn Fn() + Send + Sync>;
+    /// Lib tests: runs in every blocking task [`spawn_blocking_admitted`] and
+    /// [`spawn_blocking_admitted_detached`] start in the request it is set for, after the work
+    /// and before its answer is sent (noevia#2015).
+    pub(crate) static BLOCKING_AFTER_HOOK: std::sync::Arc<dyn Fn() + Send + Sync>;
 }
 
 /// Owns one connection task. `finish` aborts it and observes its join. Dropping it without
