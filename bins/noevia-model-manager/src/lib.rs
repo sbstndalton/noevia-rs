@@ -25,6 +25,8 @@ pub mod downloads;
 pub mod draft_heads;
 pub mod embedding;
 pub mod host;
+#[cfg(feature = "native-check-updates")]
+pub mod hub_page;
 pub mod idle_unload;
 #[cfg(feature = "native-model-delete")]
 pub mod model_delete;

@@ -39,7 +39,8 @@
 //! lookup (Python would send them); conditions the bounded reader cannot follow exactly (a link
 //! leaving the models folder, a symlinked folder, a `..` in a `model =` path, a header past the
 //! reader's bound, a summary error whose Python class is unknown) answer the native 503 refusal.
-use crate::check_updates::{hub_auth, hub_id, HubAuth, JSON_DEPTH};
+use crate::check_updates::{hub_auth, hub_id, HubAuth};
+use crate::hub_page::{parse_page, read_capped, PAGE_CAP, PAGE_NODES};
 use crate::model_detail::{hit_read_bound, is_file, stems_present, Watched};
 use crate::model_updates::{exists, inside, json_string, listing, read_ini, Stop};
 use crate::sections::{access::Root, ini, Budget, Error as WalkError};
@@ -73,22 +74,11 @@ const RULE_WORK: u64 = 64 * 1024 * 1024;
 /// Concurrent file parts: each may hold a GGUF header while parsing.
 pub const CONCURRENT_READS: usize = 2;
 /// Concurrent Hub lookups (noevia#1973): each may hold one tree page (up to [`PAGE_CAP`]) while
-/// it is parsed into a tree (bounded by [`PAGE_NODES`] and [`PAGE_STRING_CHARS`]), then that tree
-/// plus the projected listing (up to `model_files::MAX_INPUT_BYTES`, kept from earlier pages
+/// it is parsed into a tree (bounded by [`PAGE_NODES`] and `hub_page::PAGE_STRING_CHARS`), then
+/// that tree plus the projected listing (up to `model_files::MAX_INPUT_BYTES`, kept from earlier pages
 /// throughout), then the listing's own tree (bounded by [`PROJECTED_NODES`]) and its file list:
 /// about 100 MiB per lookup at most (noevia#1995); later requests wait.
 pub const CONCURRENT_LOOKUPS: usize = 2;
-/// noevia#1985: largest tree page read (the update check has its own `UPDATE_PAGE_CAP`). A Hub page
-/// is at most a few thousand entries (well under 1 MiB); a larger one is a failed lookup.
-pub const PAGE_CAP: usize = 16 * 1024 * 1024;
-/// noevia#1985: most JSON values and keys in one page. A Hub entry with `expand=true` is about
-/// 30-60 nodes, so this is several thousand entries; a page of bare numbers at [`PAGE_CAP`]
-/// would be about 8 million (each an allocated big integer).
-pub const PAGE_NODES: usize = 256 * 1024;
-/// noevia#1985: longest string in one page, in characters. A projected string longer than the
-/// binary's own `model_files::json::MAX_STRING_CHARS` fails the lookup anyway; this bounds the
-/// fields `_project` drops (commit titles and the like).
-pub const PAGE_STRING_CHARS: usize = 64 * 1024;
 /// noevia#1995: most JSON values and keys in the projected listing (the payload the binary
 /// parses), counted as `model_files::json` counts them. A projected file entry is at most 11
 /// nodes, so this is about 23,800 such entries (a GGUF repository has tens); it keeps the parsed
@@ -526,64 +516,6 @@ fn next_link(link: &str) -> Option<String> {
     re.captures(link)
         .and_then(|c| c.get(1))
         .map(|m| m.as_str().to_owned())
-}
-
-/// A response body of at most `cap` bytes (`None` past it or on a transport error). The buffer
-/// grows by doubling but never beyond `cap` (noevia#1985).
-async fn read_capped<S, E>(mut stream: S, cap: usize) -> Option<Vec<u8>>
-where
-    S: futures_util::Stream<Item = Result<bytes::Bytes, E>> + Unpin,
-{
-    use futures_util::StreamExt;
-    let mut body: Vec<u8> = Vec::new();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.ok()?;
-        let len = body.len().checked_add(chunk.len())?;
-        if len > cap {
-            return None;
-        }
-        if body.capacity() < len {
-            let grown = body.capacity().saturating_mul(2).max(len).min(cap);
-            body.try_reserve_exact(grown - body.len()).ok()?;
-        }
-        body.extend_from_slice(&chunk);
-    }
-    Some(body)
-}
-
-/// The parse limits of one page (noevia#1985).
-fn page_limits() -> Limits {
-    Limits {
-        bytes: PAGE_CAP,
-        depth: JSON_DEPTH,
-        nodes: PAGE_NODES,
-        string_chars: PAGE_STRING_CHARS,
-        ..Limits::default()
-    }
-}
-
-/// `tree.json()`: `None` where `json.loads` raises, and (noevia#1985) for a page over
-/// [`PAGE_NODES`] or [`PAGE_STRING_CHARS`], a failed lookup like a page over [`PAGE_CAP`].
-///
-/// A UTF-8 page is parsed where it lies; a UTF-16 or UTF-32 one is decoded and the raw bytes are
-/// dropped before the parse. Either way only the tree outlives this call.
-fn parse_page(body: Vec<u8>) -> Option<Value> {
-    let decoded = match crate::prompts::decode_json_bytes(&body, PAGE_CAP).ok()? {
-        std::borrow::Cow::Borrowed(_) => None,
-        std::borrow::Cow::Owned(text) => Some(text),
-    };
-    match decoded {
-        Some(mut text) => {
-            drop(body);
-            // The decoder may have grown past what it holds (noevia#1995).
-            text.shrink_to_fit();
-            model_files::json::parse_with_limits(&text, page_limits()).ok()
-        }
-        None => {
-            let text = crate::prompts::decode_json_bytes(&body, PAGE_CAP).ok()?;
-            model_files::json::parse_with_limits(&text, page_limits()).ok()
-        }
-    }
 }
 
 /// `model_files._project(e)`: only `type`, `path`, `size` and `lfs.size` reach the binary. The

@@ -970,6 +970,7 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-draft-heads --lib draft_heads::
           cargo test --locked -p noevia-model-manager --features native-draft-heads --lib model_detail::
           cargo test --locked -p noevia-model-manager --features native-draft-heads --lib check_updates::
+          cargo test --locked -p noevia-model-manager --features native-draft-heads --lib hub_page::
       - name: Draft-head capability omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-model-detail --test lifecycle
@@ -1050,6 +1051,7 @@ jobs:
         run: |
           cargo test --locked -p noevia-model-manager --features native-check-updates --test check_updates --test model_updates --test lifecycle --bin noevia-model-manager
           cargo test --locked -p noevia-model-manager --features native-check-updates --lib check_updates::
+          cargo test --locked -p noevia-model-manager --features native-check-updates --lib hub_page::
       - name: Update check capability omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-model-updates --test lifecycle
