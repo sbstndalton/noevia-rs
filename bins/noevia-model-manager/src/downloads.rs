@@ -363,19 +363,65 @@ pub fn parse_plan(bytes: &[u8]) -> Option<Plan> {
     Some(Plan { status, body, jobs })
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Queued {
     Done,
     /// `safe_dest` raised (Python's 500).
     Raised,
     /// More than [`JOB_CAP`] jobs would be held.
     Full,
+    /// noevia#1972: a running delete may remove one of the destinations (409, nothing queued).
+    Deleting,
+}
+
+/// The 409 detail for [`Queued::Deleting`] (Python's `downloader.DELETE_IN_PROGRESS`).
+pub const DELETE_IN_PROGRESS: &str = "A delete is removing that folder right now; nothing was queued. Try again when it has finished.";
+
+/// noevia#1972: models-relative folders and files a running delete may remove; released on drop.
+pub struct Reservation {
+    table: Arc<Downloads>,
+    rels: Vec<String>,
+}
+
+impl Drop for Reservation {
+    fn drop(&mut self) {
+        let _jobs = lock(&self.table.jobs);
+        let mut reserved = lock(&self.table.reserved);
+        for rel in &self.rels {
+            if let Some(i) = reserved.iter().position(|r| r == rel) {
+                reserved.remove(i);
+            }
+        }
+    }
+}
+
+/// `posixpath.normpath` of a models-relative path.
+fn rel_norm(rel: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for part in rel.split('/') {
+        match part {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|p| *p != "..") => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    if parts.is_empty() {
+        ".".into()
+    } else {
+        parts.join("/")
+    }
 }
 
 /// The job table (`DownloadManager`).
 pub struct Downloads {
     config: Config,
     jobs: Mutex<Vec<Arc<Job>>>,
+    /// noevia#1972: what running deletes hold. Always locked after `jobs`, so a start and a
+    /// delete's reservation are ordered: either the delete sees the job, or the start sees the
+    /// reservation.
+    reserved: Mutex<Vec<String>>,
     permits: Arc<tokio::sync::Semaphore>,
     http: engine::Http,
     ids: std::collections::hash_map::RandomState,
@@ -392,6 +438,7 @@ impl Downloads {
             http: engine::Http::new()?,
             config,
             jobs: Mutex::new(Vec::new()),
+            reserved: Mutex::new(Vec::new()),
             ids: std::collections::hash_map::RandomState::new(),
             serial: std::sync::atomic::AtomicU64::new(0),
         }))
@@ -465,6 +512,45 @@ impl Downloads {
             .collect()
     }
 
+    /// noevia#1972: hold `rels` (models-relative) against new downloads until the guard drops.
+    /// Take it before looking for blocking jobs.
+    pub fn reserve(self: &Arc<Self>, rels: Vec<String>) -> Reservation {
+        let rels: Vec<String> = rels
+            .iter()
+            .filter(|r| !r.is_empty())
+            .map(|r| rel_norm(r))
+            .filter(|r| r != ".")
+            .collect();
+        let _jobs = lock(&self.jobs);
+        lock(&self.reserved).extend(rels.iter().cloned());
+        Reservation {
+            table: self.clone(),
+            rels,
+        }
+    }
+
+    /// Whether a destination (as `safe_dest` joined it) lies on or inside a reservation.
+    fn reserved_for(&self, reserved: &[String], dest: &str) -> bool {
+        let prefix = format!("{}/", self.config.models_dir.trim_end_matches('/'));
+        let Some(rel) = dest.strip_prefix(&prefix) else {
+            return false;
+        };
+        let rel = rel_norm(rel);
+        reserved.iter().any(|r| {
+            rel == *r
+                || rel
+                    .strip_prefix(r.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+    }
+
+    /// The current reservations (tests).
+    #[cfg(test)]
+    #[cfg_attr(not(feature = "native-model-delete"), allow(dead_code))]
+    pub(crate) fn reservations(&self) -> Vec<String> {
+        lock(&self.reserved).clone()
+    }
+
     /// `manager.cancel(job_id)`.
     pub fn cancel(&self, id: &str) -> bool {
         let job = lock(&self.jobs).iter().find(|j| j.id == id).cloned();
@@ -496,12 +582,16 @@ impl Downloads {
         let mut started = Vec::new();
         {
             let mut jobs = lock(&self.jobs);
+            let reserved = lock(&self.reserved);
             let mut fresh: Vec<(Planned, String)> = Vec::new();
             for p in planned {
                 let dest = match pyfmt::safe_dest(&self.config.models_dir, &p.filename) {
                     pyfmt::Dest::Inside(dest) => dest,
                     pyfmt::Dest::Outside | pyfmt::Dest::Raised => return Queued::Raised,
                 };
+                if self.reserved_for(&reserved, &dest) {
+                    return Queued::Deleting;
+                }
                 if jobs.iter().any(|j| j.dest == dest && j.active())
                     || fresh.iter().any(|(_, d)| *d == dest)
                 {
@@ -537,6 +627,7 @@ impl Downloads {
                 jobs.push(job.clone());
                 started.push(job);
             }
+            drop(reserved);
         }
         for job in started {
             let me = self.clone();

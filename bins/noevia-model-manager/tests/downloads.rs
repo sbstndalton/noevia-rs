@@ -1130,7 +1130,8 @@ async fn failures_and_the_overview_count() {
         unknown_cap: noevia_model_manager::downloads::UNKNOWN_SIZE_CAP,
         clock: wall,
     };
-    let state = state(Downloads::new(config()).unwrap(), child_port);
+    let table = Downloads::new(config()).unwrap();
+    let state = state(table.clone(), child_port);
     let start = |body: &str| send(&state, "POST", "/api/v1/downloads", Some(body.to_owned()));
 
     // The child's own 500 is the route's 500; nothing is queued.
@@ -1171,6 +1172,29 @@ async fn failures_and_the_overview_count() {
     let list = wait(&state, idle).await;
     assert_eq!(list[0]["status"], "canceled");
     assert!(!models.join("hang/x.gguf.download").exists());
+
+    // noevia#1972: while a delete holds the folder, a start into it is a 409 and nothing is
+    // queued; once it lets go, the same start queues again.
+    let held = table.reserve(vec!["hang".into()]);
+    let (status, body) = start(r#"{"url": "x"}"#).await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({"detail": noevia_model_manager::downloads::DELETE_IN_PROGRESS})
+    );
+    assert_eq!(jobs(&state).await.len(), 1);
+    drop(held);
+    assert_eq!(start(r#"{"url": "x"}"#).await.0, 200);
+    assert_eq!(jobs(&state).await.len(), 2);
+    let id = jobs(&state).await[0]["id"].as_str().unwrap().to_owned();
+    send(
+        &state,
+        "POST",
+        &format!("/api/v1/downloads/{id}/cancel"),
+        None,
+    )
+    .await;
+    wait(&state, idle).await;
 
     // No child: a gateway error, as for any forwarded route.
     let gone = {
