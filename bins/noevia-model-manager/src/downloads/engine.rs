@@ -3,8 +3,10 @@
 //! only to the token origin, re-decided for every hop).
 use super::{pyfmt, Chunk, Downloads, Job};
 use futures_util::StreamExt;
+use rustix::fs::{AtFlags, Mode, OFlags};
 use std::{
-    io::{Seek, SeekFrom, Write},
+    io::{Read, Seek, SeekFrom, Write},
+    os::fd::{AsFd, OwnedFd},
     sync::Arc,
     time::Duration,
 };
@@ -18,6 +20,159 @@ const MAX_REDIRECTS: usize = 20;
 /// The error body Python quotes is its first 200 characters; this much is read for them.
 const ERROR_BODY_CAP: usize = 4096;
 const TOO_MANY_REDIRECTS: &str = "TooManyRedirects: Exceeded maximum allowed redirects.";
+/// noevia#1960: once a single-stream body has passed the declared size, at most this much more
+/// is read (and not written) to report how large it was, as `_verify_size` would.
+const OVERFLOW_COUNT_CAP: i64 = 1024 * 1024;
+/// noevia#1959: how many `..` steps the containment check takes before giving up.
+const MAX_DEPTH: usize = 4096;
+
+/// noevia#1959: the job's directory, opened once when the transfer starts and checked to lie
+/// inside the models folder. Every later open, stat, rename and unlink of the destination, the
+/// `.download` file and its validator goes through this handle with `O_NOFOLLOW`, so neither a
+/// planted symlink nor a parent directory swapped for one while the job waited for a slot can
+/// send the bytes (or a truncate, or an unlink) outside the models folder.
+pub(super) struct Place {
+    dir: OwnedFd,
+    dest: String,
+    temp: String,
+    validator: String,
+}
+
+fn io(e: rustix::io::Errno) -> std::io::Error {
+    std::io::Error::from_raw_os_error(e.raw_os_error())
+}
+
+fn identity(fd: impl AsFd) -> Result<(u64, u64), std::io::Error> {
+    let st = rustix::fs::fstat(fd).map_err(io)?;
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
+    Ok((st.st_dev as u64, st.st_ino as u64))
+}
+
+impl Place {
+    /// `None` when the directory is not inside `root` (or the names cannot be used).
+    fn open(root: &str, dest: &str) -> Result<Option<Self>, std::io::Error> {
+        let path = std::path::Path::new(dest);
+        let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+            return Ok(None);
+        };
+        let Some(name) = name.to_str() else {
+            return Ok(None);
+        };
+        let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
+        let top = identity(rustix::fs::open(root, flags, Mode::empty()).map_err(io)?)?;
+        let dir = rustix::fs::open(parent, flags, Mode::empty()).map_err(io)?;
+        // Walk `..` from the opened directory itself: it is inside iff the walk meets the
+        // models folder before the filesystem root.
+        let mut here = identity(&dir)?;
+        let mut cursor: Option<OwnedFd> = None;
+        let mut inside = false;
+        for _ in 0..MAX_DEPTH {
+            if here == top {
+                inside = true;
+                break;
+            }
+            let up = match &cursor {
+                Some(fd) => rustix::fs::openat(fd, "..", flags | OFlags::NOFOLLOW, Mode::empty()),
+                None => rustix::fs::openat(&dir, "..", flags | OFlags::NOFOLLOW, Mode::empty()),
+            }
+            .map_err(io)?;
+            let next = identity(&up)?;
+            if next == here {
+                break;
+            }
+            here = next;
+            cursor = Some(up);
+        }
+        if !inside {
+            return Ok(None);
+        }
+        let temp = format!("{name}.download");
+        Ok(Some(Self {
+            dir,
+            dest: name.to_owned(),
+            validator: format!("{temp}.validator"),
+            temp,
+        }))
+    }
+
+    fn file(&self, name: &str, flags: OFlags) -> Result<std::fs::File, std::io::Error> {
+        let fd = rustix::fs::openat(
+            &self.dir,
+            name,
+            flags | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o666),
+        )
+        .map_err(io)?;
+        Ok(std::fs::File::from(fd))
+    }
+
+    /// The `.download` file's size, without following a link.
+    fn temp_len(&self) -> Result<u64, std::io::Error> {
+        let st = rustix::fs::statat(&self.dir, self.temp.as_str(), AtFlags::SYMLINK_NOFOLLOW)
+            .map_err(io)?;
+        #[allow(clippy::cast_sign_loss)]
+        Ok(st.st_size as u64)
+    }
+
+    fn remove(&self, name: &str) {
+        let _ = rustix::fs::unlinkat(&self.dir, name, AtFlags::empty());
+    }
+
+    fn drop_validator(&self) {
+        self.remove(&self.validator);
+    }
+
+    fn install(&self) -> Result<(), std::io::Error> {
+        rustix::fs::renameat(&self.dir, self.temp.as_str(), &self.dir, self.dest.as_str())
+            .map_err(io)
+    }
+}
+
+/// noevia#1960: a redirect may not leave https for plain http, and a redirect from a public
+/// host may not land on a loopback, private, link-local or unspecified address (only literal
+/// addresses and `localhost` are recognised; a public name that resolves to a private address
+/// is not caught here).
+fn redirect_refused(from: &reqwest::Url, to: &reqwest::Url) -> Option<String> {
+    if from.scheme() == "https" && to.scheme() != "https" {
+        return Some(format!("refused a redirect from https to {}", to.scheme()));
+    }
+    if internal(to) && !internal(from) {
+        return Some("refused a redirect to a local or private address".into());
+    }
+    None
+}
+
+fn internal(url: &reqwest::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return true;
+    };
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    match bare.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => internal_v4(ip),
+        Ok(std::net::IpAddr::V6(ip)) => {
+            let first = ip.segments().first().copied().unwrap_or(0);
+            ip.to_ipv4_mapped().is_some_and(internal_v4)
+                || ip.is_loopback()
+                || ip.is_unspecified()
+                || (first & 0xfe00) == 0xfc00
+                || (first & 0xffc0) == 0xfe80
+        }
+        Err(_) => {
+            let name = host.trim_end_matches('.').to_ascii_lowercase();
+            name == "localhost" || name.ends_with(".localhost")
+        }
+    }
+}
+
+fn internal_v4(ip: std::net::Ipv4Addr) -> bool {
+    let [a, b, ..] = ip.octets();
+    ip.is_loopback()
+        || ip.is_private()
+        || ip.is_link_local()
+        || ip.is_unspecified()
+        || ip.is_broadcast()
+        || (a == 100 && (64..128).contains(&b))
+}
 
 pub(super) struct Http {
     head: reqwest::Client,
@@ -218,6 +373,9 @@ impl Downloads {
                         .ok_or_else(|| {
                             failed("RemoteProtocolError", "Invalid URL in location header")
                         })?;
+                    if let Some(reason) = redirect_refused(&base, &target) {
+                        return Err(failed("RuntimeError", reason));
+                    }
                     if status == 303 && method != reqwest::Method::HEAD {
                         method = reqwest::Method::GET;
                     }
@@ -244,12 +402,13 @@ impl Downloads {
                 s.status = "downloading";
                 s.started_at = Some(self.now());
             }
-            self.stream(&job).await?;
+            let place = self.stream(&job).await?;
             // From here on Python has no await: nothing can interrupt the size check or rename.
-            self.verify_size(&job)?;
-            std::fs::rename(&job.temp, &job.dest)
+            self.verify_size(&job, &place)?;
+            place
+                .install()
                 .map_err(|e| os_error(&e, &job.temp, Some(&job.dest)))?;
-            drop_validator(&job);
+            place.drop_validator();
             Ok::<(), Stop>(())
         };
         let outcome = tokio::select! {
@@ -270,8 +429,16 @@ impl Downloads {
                     s.status = "canceled";
                     s.completed_at = Some(now);
                 }
-                let _ = std::fs::remove_file(&job.temp);
-                drop_validator(&job);
+                // The handle the transfer opened, else one opened now (a job cancelled while
+                // queued); nothing is removed when the folder is no longer inside.
+                let place = match job.place.get() {
+                    Some(place) => Some(place.clone()),
+                    None => self.place(&job).ok(),
+                };
+                if let Some(place) = place {
+                    place.remove(&place.temp);
+                    place.drop_validator();
+                }
             }
             Err(Stop::Failed(e) | Stop::Fatal(e)) => {
                 let mut s = job.state();
@@ -309,12 +476,49 @@ impl Downloads {
         .await;
     }
 
+    /// noevia#1959: `safe_dest` again (the folders may have changed while the job waited),
+    /// then the directory handle every file operation of this job goes through.
+    fn place(&self, job: &Job) -> Result<Arc<Place>, Stop> {
+        let outside = || {
+            failed(
+                "ValueError",
+                "download destination is outside the models folder",
+            )
+        };
+        match pyfmt::safe_dest(&self.config.models_dir, &job.filename) {
+            pyfmt::Dest::Inside(dest) if dest == job.dest => {}
+            _ => return Err(outside()),
+        }
+        let parent = std::path::Path::new(&job.dest)
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let place = Place::open(&self.config.models_dir, &job.dest)
+            .map_err(|e| os_error(&e, &parent, None))?
+            .ok_or_else(outside)?;
+        let place = Arc::new(place);
+        let _ = job.place.set(place.clone());
+        Ok(job.place.get().cloned().unwrap_or(place))
+    }
+
     /// `_stream(job)`.
-    async fn stream(&self, job: &Job) -> Result<(), Stop> {
-        if let Some(parent) = std::path::Path::new(&job.dest).parent() {
+    async fn stream(&self, job: &Job) -> Result<Arc<Place>, Stop> {
+        let parent = std::path::Path::new(&job.dest).parent();
+        if let Some(parent) = parent {
+            // Checked before anything is created, and again on the opened folder below.
+            if !matches!(
+                pyfmt::safe_dest(&self.config.models_dir, &job.filename),
+                pyfmt::Dest::Inside(ref d) if *d == job.dest
+            ) {
+                return Err(failed(
+                    "ValueError",
+                    "download destination is outside the models folder",
+                ));
+            }
             std::fs::create_dir_all(parent)
                 .map_err(|e| os_error(&e, &parent.to_string_lossy(), None))?;
         }
+        let place = self.place(job)?;
         let mut total = 0;
         let mut ranges = false;
         let mut resolved = job.url.clone();
@@ -342,18 +546,20 @@ impl Downloads {
             job.state().total = total;
         }
         if ranges && total >= self.config.parallel_min && super::PARALLEL_CHUNKS > 1 {
-            self.parallel(job, &resolved, total).await
+            self.parallel(job, &place, &resolved, total).await?;
         } else {
-            self.single(job, &current, 0).await
+            self.single(job, &place, &current, 0).await?;
         }
+        Ok(place)
     }
 
     /// `_stream_parallel(job, url, headers, total)`.
-    async fn parallel(&self, job: &Job, url: &str, total: i64) -> Result<(), Stop> {
-        drop_validator(job);
+    async fn parallel(&self, job: &Job, place: &Place, url: &str, total: i64) -> Result<(), Stop> {
+        place.drop_validator();
         {
-            let file =
-                std::fs::File::create(&job.temp).map_err(|e| os_error(&e, &job.temp, None))?;
+            let file = place
+                .file(&place.temp, OFlags::WRONLY | OFlags::CREATE | OFlags::TRUNC)
+                .map_err(|e| os_error(&e, &job.temp, None))?;
             file.set_len(u64::try_from(total).unwrap_or(0))
                 .map_err(|e| os_error(&e, &job.temp, None))?;
         }
@@ -385,7 +591,7 @@ impl Downloads {
         }
         let count = job.state().chunks.len();
         let mut workers: futures_util::stream::FuturesUnordered<_> = (0..count)
-            .map(|i| self.worker(job, url, i, total))
+            .map(|i| self.worker(job, place, url, i, total))
             .collect();
         let mut outcome = Ok(());
         while let Some(r) = workers.next().await {
@@ -396,13 +602,20 @@ impl Downloads {
         }
         drop(workers);
         if outcome.is_err() {
-            let _ = std::fs::remove_file(&job.temp);
+            place.remove(&place.temp);
         }
         outcome
     }
 
     /// One parallel range (`worker(cs)`).
-    async fn worker(&self, job: &Job, url: &str, i: usize, total: i64) -> Result<(), Stop> {
+    async fn worker(
+        &self,
+        job: &Job,
+        place: &Place,
+        url: &str,
+        i: usize,
+        total: i64,
+    ) -> Result<(), Stop> {
         let (start, end, size) = {
             let s = job.state();
             let c = s
@@ -434,10 +647,8 @@ impl Downloads {
                 format!("unexpected Content-Range for range {start}-{end}"),
             ));
         }
-        let mut file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&job.temp)
+        let mut file = place
+            .file(&place.temp, OFlags::RDWR)
             .map_err(|e| os_error(&e, &job.temp, None))?;
         file.seek(SeekFrom::Start(u64::try_from(start).unwrap_or(0)))
             .map_err(|e| os_error(&e, &job.temp, None))?;
@@ -511,27 +722,20 @@ impl Downloads {
     }
 
     /// `_verify_size(job)`.
-    fn verify_size(&self, job: &Job) -> Result<(), Stop> {
+    fn verify_size(&self, job: &Job, place: &Place) -> Result<(), Stop> {
         let total = job.state().total;
         if total <= 0 {
             return Ok(());
         }
-        let size = std::fs::metadata(&job.temp)
-            .map_err(|e| os_error(&e, &job.temp, None))?
-            .len();
+        let size = place
+            .temp_len()
+            .map_err(|e| os_error(&e, &job.temp, None))?;
         let size = i64::try_from(size).unwrap_or(i64::MAX);
         if size == total {
             return Ok(());
         }
         if size > total {
-            let _ = std::fs::remove_file(&job.temp);
-            drop_validator(job);
-            return Err(failed(
-                "RuntimeError",
-                format!(
-                    "downloaded file is {size} bytes, expected {total}; discarded it, nothing was installed"
-                ),
-            ));
+            return Err(oversized(place, size, total, false));
         }
         Err(failed(
             "RuntimeError",
@@ -541,10 +745,17 @@ impl Downloads {
 
     /// `_stream_single(job, url, headers, current)`; `depth` bounds the one restart Python can
     /// make (a 416, or a 206 for another upload).
-    async fn single(&self, job: &Job, current: &str, depth: usize) -> Result<(), Stop> {
-        let mut start =
-            std::fs::metadata(&job.temp).map_or(0, |m| i64::try_from(m.len()).unwrap_or(i64::MAX));
-        let (stored, stored_total) = read_validator(job)?;
+    async fn single(
+        &self,
+        job: &Job,
+        place: &Place,
+        current: &str,
+        depth: usize,
+    ) -> Result<(), Stop> {
+        let mut start = place
+            .temp_len()
+            .map_or(0, |n| i64::try_from(n).unwrap_or(i64::MAX));
+        let (stored, stored_total) = read_validator(job, place)?;
         let total = job.state().total;
         if start != 0
             && (stored.is_empty()
@@ -571,15 +782,15 @@ impl Downloads {
             .await?;
         let status = response.status().as_u16();
         let restart = |job: &Job| {
-            let _ = std::fs::remove_file(&job.temp);
-            drop_validator(job);
+            place.remove(&place.temp);
+            place.drop_validator();
             let now = self.now();
             job.state().restart(now);
         };
         if status == 416 && start > 0 && depth == 0 {
             restart(job);
             drop(response);
-            return Box::pin(self.single(job, current, depth + 1)).await;
+            return Box::pin(self.single(job, place, current, depth + 1)).await;
         }
         if status != 200 && status != 206 {
             let text = error_text(response).await;
@@ -618,7 +829,7 @@ impl Downloads {
                     if !expected.is_empty() && expected.iter().any(|t| *t != remote) && depth == 0 {
                         restart(job);
                         drop(response);
-                        return Box::pin(self.single(job, current, depth + 1)).await;
+                        return Box::pin(self.single(job, place, current, depth + 1)).await;
                     }
                     job.state().total = remote;
                 }
@@ -644,21 +855,26 @@ impl Downloads {
                     s.total = declared;
                 }
             }
-            drop_validator(job);
+            place.drop_validator();
             false
         };
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(append)
-            .truncate(!append)
-            .open(&job.temp)
+        let mode = if append {
+            OFlags::APPEND
+        } else {
+            OFlags::TRUNC
+        };
+        let mut file = place
+            .file(&place.temp, OFlags::WRONLY | OFlags::CREATE | mode)
             .map_err(|e| os_error(&e, &job.temp, None))?;
         if !append {
             let value = pyfmt::validator(&|name| header_get(&headers, name), self.now());
             let total = job.state().total;
-            write_validator(job, &value, total)?;
+            write_validator(job, place, &value, total)?;
         }
+        // noevia#1960: the body is bounded. Past a declared size nothing more is written and
+        // the transfer ends as `_verify_size` would end it; without one, past `unknown_cap`.
+        let total = job.state().total;
+        let mut size = start;
         let declared = length(&headers);
         let mut received: i64 = 0;
         let mut chunker = Chunker::default();
@@ -677,12 +893,34 @@ impl Downloads {
                 }
             };
             for piece in pieces {
-                file.write_all(&piece)
-                    .map_err(|e| os_error(&e, &job.temp, None))?;
+                let n = i64::try_from(piece.len()).unwrap_or(i64::MAX);
+                size = size.saturating_add(n);
+                if total <= 0 && size > self.config.unknown_cap {
+                    place.remove(&place.temp);
+                    place.drop_validator();
+                    return Err(failed(
+                        "RuntimeError",
+                        format!(
+                            "download passed {} bytes without a declared size; discarded it, nothing was installed",
+                            self.config.unknown_cap
+                        ),
+                    ));
+                }
+                // Past a declared size the bytes are counted (as Python's progress counts
+                // them) but never written.
+                if total <= 0 || size <= total {
+                    file.write_all(&piece)
+                        .map_err(|e| os_error(&e, &job.temp, None))?;
+                }
                 let now = self.now();
-                job.state()
-                    .progress(i64::try_from(piece.len()).unwrap_or(i64::MAX), now);
+                job.state().progress(n, now);
+                if total > 0 && size > total.saturating_add(OVERFLOW_COUNT_CAP) {
+                    return Err(oversized(place, size, total, true));
+                }
             }
+        }
+        if total > 0 && size > total {
+            return Err(oversized(place, size, total, false));
         }
         Ok(())
     }
@@ -765,12 +1003,29 @@ fn parse_range(text: &str, star: bool) -> Option<(i64, i64, Option<i64>)> {
     Some((number(first)?, number(last)?, total))
 }
 
+/// `_verify_size`'s refusal of a body larger than declared: the file and validator go.
+fn oversized(place: &Place, size: i64, total: i64, more: bool) -> Stop {
+    place.remove(&place.temp);
+    place.drop_validator();
+    let over = if more { "over " } else { "" };
+    failed(
+        "RuntimeError",
+        format!(
+            "downloaded file is {over}{size} bytes, expected {total}; discarded it, nothing was installed"
+        ),
+    )
+}
+
 /// `_read_validator(job)`: `("", 0)` when there is none.
-fn read_validator(job: &Job) -> Result<(String, i64), Stop> {
-    let path = pyfmt::validator_path(&job.temp);
-    let Ok(bytes) = std::fs::read(&path) else {
+fn read_validator(job: &Job, place: &Place) -> Result<(String, i64), Stop> {
+    let _ = job;
+    let mut bytes = Vec::new();
+    let read = place
+        .file(&place.validator, OFlags::RDONLY)
+        .and_then(|mut f| f.read_to_end(&mut bytes));
+    if read.is_err() {
         return Ok((String::new(), 0));
-    };
+    }
     let text = String::from_utf8(bytes).map_err(|_| {
         failed(
             "UnicodeDecodeError",
@@ -789,24 +1044,25 @@ fn read_validator(job: &Job) -> Result<(String, i64), Stop> {
 }
 
 /// `_write_validator(job, value, total)`.
-fn write_validator(job: &Job, value: &str, total: i64) -> Result<(), Stop> {
+fn write_validator(job: &Job, place: &Place, value: &str, total: i64) -> Result<(), Stop> {
     if !value.is_empty() && !value.contains(['\t', '\r', '\n']) {
         let path = pyfmt::validator_path(&job.temp);
-        std::fs::write(&path, format!("{value}\t{}", total.max(0)))
+        place
+            .file(
+                &place.validator,
+                OFlags::WRONLY | OFlags::CREATE | OFlags::TRUNC,
+            )
+            .and_then(|mut f| f.write_all(format!("{value}\t{}", total.max(0)).as_bytes()))
             .map_err(|e| os_error(&e, &path, None))
     } else {
-        drop_validator(job);
+        place.drop_validator();
         Ok(())
     }
 }
 
-/// `_drop_validator(job)`.
-fn drop_validator(job: &Job) {
-    let _ = std::fs::remove_file(pyfmt::validator_path(&job.temp));
-}
-
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -833,5 +1089,43 @@ mod tests {
         assert_eq!(py_repr("bytes 0-30/31"), "'bytes 0-30/31'");
         assert_eq!(py_repr("a'b"), "\"a'b\"");
         assert_eq!(py_repr("a\tb\u{a0}é"), "'a\\tb\\xa0é'");
+    }
+
+    /// noevia#1960: no https-to-http downgrade, and no hop from a public host to a local one.
+    #[test]
+    fn redirects_may_not_downgrade_or_turn_inward() {
+        let u = |s: &str| reqwest::Url::parse(s).unwrap();
+        let hub = u("https://huggingface.co/o/r/resolve/main/x.gguf");
+        assert_eq!(
+            redirect_refused(&hub, &u("https://cdn-lfs.example.test/x")),
+            None
+        );
+        assert!(redirect_refused(&hub, &u("http://cdn-lfs.example.test/x")).is_some());
+        for inward in [
+            "https://127.0.0.1:8090/x",
+            "https://localhost/x",
+            "https://10.0.0.5/x",
+            "https://192.168.1.2/x",
+            "https://172.16.0.1/x",
+            "https://169.254.169.254/latest",
+            "https://100.64.0.1/x",
+            "https://0.0.0.0/x",
+            "https://[::1]/x",
+            "https://[fd00::1]/x",
+            "https://[fe80::1]/x",
+            "https://[::ffff:127.0.0.1]/x",
+        ] {
+            assert!(redirect_refused(&hub, &u(inward)).is_some(), "{inward}");
+        }
+        // A download that already starts on a local address may stay there.
+        let local = u("http://127.0.0.1:9000/x");
+        assert_eq!(
+            redirect_refused(&local, &u("http://127.0.0.1:9001/y")),
+            None
+        );
+        assert_eq!(
+            redirect_refused(&u("http://example.test/x"), &u("http://example.test/y")),
+            None
+        );
     }
 }

@@ -582,6 +582,56 @@ mod tests {
         assert!(matches!(Token::Real(1.5).header(), Header::Value(v) if v == "Bearer 1.5"));
     }
 
+    /// noevia#1952: the Hub client speaks TLS. A client without a TLS backend refuses an
+    /// `https://` URL before connecting; this one must open the connection with a ClientHello.
+    #[tokio::test]
+    async fn the_hub_client_opens_https_connections() {
+        let dir = tempfile::tempdir().unwrap();
+        let checker = CheckUpdates::with(
+            dir.path(),
+            &dir.path().join("models.ini"),
+            dir.path(),
+            HF_API,
+            now,
+        )
+        .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let request = tokio::spawn({
+            let client = checker.client.clone();
+            async move {
+                client
+                    .get(format!("https://127.0.0.1:{port}/api/models"))
+                    .send()
+                    .await
+            }
+        });
+        let accepted =
+            tokio::time::timeout(std::time::Duration::from_secs(20), listener.accept()).await;
+        assert!(
+            accepted.is_ok(),
+            "no connection: the client cannot open https URLs"
+        );
+        let (mut socket, _) = accepted.unwrap().unwrap();
+        let mut hello = [0u8; 6];
+        tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            tokio::io::AsyncReadExt::read_exact(&mut socket, &mut hello),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        // TLS record type 22 (handshake), message type 1 (ClientHello).
+        assert_eq!((hello[0], hello[5]), (0x16, 0x01));
+        drop(socket);
+        // Nothing here can complete a verified handshake.
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(20), request)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(outcome.is_err());
+    }
+
     #[test]
     fn bytes_repr_is_python_repr() {
         assert_eq!(py_bytes_repr(b"ab"), "b'ab'");

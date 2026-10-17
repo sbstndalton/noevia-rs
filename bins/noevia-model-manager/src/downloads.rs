@@ -33,6 +33,10 @@ pub const PLAN_HEADER: &str = "x-noevia-download-plan";
 pub const PLAN_CAP: usize = 8 * 1024 * 1024;
 /// Most files one start may queue (a sharded repo lists a few dozen).
 pub const PLAN_FILES_CAP: usize = 1024;
+/// noevia#1960: a body with no declared size (no `Content-Length` on the HEAD or the GET) is
+/// abandoned once it passes 64 GiB. Hugging Face refuses files over 50 GB, so no Hub file is
+/// cut short; a URL download of an undeclared larger file fails instead of filling the disk.
+pub const UNKNOWN_SIZE_CAP: i64 = 64 * 1024 * 1024 * 1024;
 /// Most jobs held. Python keeps every job until it is cleared; past this a start answers 503.
 pub const JOB_CAP: usize = 4096;
 
@@ -81,6 +85,9 @@ pub struct Config {
     pub token_origin: TokenOrigin,
     /// `PARALLEL_MIN_SIZE` (tests lower it).
     pub parallel_min: i64,
+    /// noevia#1960: the most a single-stream body without a declared size may write
+    /// ([`UNKNOWN_SIZE_CAP`]; tests lower it).
+    pub unknown_cap: i64,
     /// `time.time()`.
     pub clock: fn() -> f64,
 }
@@ -99,6 +106,7 @@ impl Config {
             max_concurrent,
             token_origin: TokenOrigin::hub(),
             parallel_min: PARALLEL_MIN_SIZE,
+            unknown_cap: UNKNOWN_SIZE_CAP,
             clock: wall,
         }
     }
@@ -162,6 +170,8 @@ pub struct Job {
     temp: String,
     state: Mutex<State>,
     cancel: tokio::sync::watch::Sender<bool>,
+    /// noevia#1959: the directory handle the transfer opened (set once it starts).
+    place: std::sync::OnceLock<Arc<engine::Place>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -466,21 +476,32 @@ impl Downloads {
 
     /// `_make_job` for every planned file, in order. A file whose destination already has a
     /// queued or running job is not queued again.
+    ///
+    /// noevia#1958: all-or-nothing. Every destination is resolved and the cap is checked for the
+    /// whole plan before anything is inserted, so a start refused part-way (`Raised` for a later
+    /// file, or `Full`) leaves the table exactly as it was instead of orphaning `queued` jobs
+    /// that never get a worker.
     pub fn queue(self: &Arc<Self>, planned: Vec<Planned>) -> Queued {
         let mut started = Vec::new();
         {
             let mut jobs = lock(&self.jobs);
+            let mut fresh: Vec<(Planned, String)> = Vec::new();
             for p in planned {
                 let dest = match pyfmt::safe_dest(&self.config.models_dir, &p.filename) {
                     pyfmt::Dest::Inside(dest) => dest,
                     pyfmt::Dest::Outside | pyfmt::Dest::Raised => return Queued::Raised,
                 };
-                if jobs.iter().any(|j| j.dest == dest && j.active()) {
+                if jobs.iter().any(|j| j.dest == dest && j.active())
+                    || fresh.iter().any(|(_, d)| *d == dest)
+                {
                     continue;
                 }
-                if jobs.len() >= JOB_CAP {
-                    return Queued::Full;
-                }
+                fresh.push((p, dest));
+            }
+            if jobs.len().saturating_add(fresh.len()) > JOB_CAP {
+                return Queued::Full;
+            }
+            for (p, dest) in fresh {
                 let job = Arc::new(Job {
                     id: self.new_id(&jobs),
                     repo_id: p.repo_id,
@@ -500,6 +521,7 @@ impl Downloads {
                         samples: Vec::new(),
                     }),
                     cancel: tokio::sync::watch::channel(false).0,
+                    place: std::sync::OnceLock::new(),
                 });
                 jobs.push(job.clone());
                 started.push(job);
@@ -616,6 +638,7 @@ mod tests {
                     samples: samples(&spec["samples"]),
                 }),
                 cancel: tokio::sync::watch::channel(false).0,
+                place: std::sync::OnceLock::new(),
             };
             assert_eq!(
                 job.render(now),
@@ -698,5 +721,317 @@ mod tests {
         ] {
             assert!(!hub.allows(url), "{url}");
         }
+    }
+
+    // ------------------------------------------------ review of slice 10 (#1958 #1959 #1960)
+
+    fn table(models: &std::path::Path, unknown_cap: i64, max_concurrent: usize) -> Arc<Downloads> {
+        Downloads::new(Config {
+            models_dir: models.to_str().unwrap().to_owned(),
+            database: models.join("absent.db"),
+            max_concurrent,
+            token_origin: TokenOrigin::hub(),
+            parallel_min: PARALLEL_MIN_SIZE,
+            unknown_cap,
+            clock: wall,
+        })
+        .unwrap()
+    }
+
+    fn planned(filename: &str, url: &str, total_bytes: i64) -> Planned {
+        Planned {
+            repo_id: "example.test".into(),
+            filename: filename.into(),
+            url: url.into(),
+            total_bytes,
+        }
+    }
+
+    fn filler(n: usize) -> Arc<Job> {
+        Arc::new(Job {
+            id: format!("{n:012x}"),
+            repo_id: "example.test".into(),
+            filename: format!("filler-{n}.gguf"),
+            url: "http://127.0.0.1:9/x".into(),
+            dest: format!("/synthetic/filler-{n}.gguf"),
+            temp: format!("/synthetic/filler-{n}.gguf.download"),
+            state: Mutex::new(State {
+                status: "done",
+                error: None,
+                total: 1,
+                downloaded: 1,
+                started_at: None,
+                completed_at: None,
+                chunks: Vec::new(),
+                parallel: false,
+                samples: Vec::new(),
+            }),
+            cancel: tokio::sync::watch::channel(false).0,
+            place: std::sync::OnceLock::new(),
+        })
+    }
+
+    fn ids(t: &Downloads) -> Vec<String> {
+        lock(&t.jobs).iter().map(|j| j.id.clone()).collect()
+    }
+
+    /// noevia#1958: a start refused part-way leaves the table as it was.
+    #[test]
+    fn a_refused_start_queues_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let models = dir.path().canonicalize().unwrap().join("models");
+        std::fs::create_dir(&models).unwrap();
+        let t = table(&models, UNKNOWN_SIZE_CAP, 1);
+        // Room for one more job, a plan of two.
+        lock(&t.jobs).extend((0..JOB_CAP - 1).map(filler));
+        let before = ids(&t);
+        let plan = vec![
+            planned("a.gguf", "http://127.0.0.1:9/a", 1),
+            planned("b.gguf", "http://127.0.0.1:9/b", 1),
+        ];
+        assert_eq!(t.queue(plan), Queued::Full);
+        assert_eq!(ids(&t), before);
+        // A later file that escapes the models folder.
+        lock(&t.jobs).clear();
+        let plan = vec![
+            planned("a.gguf", "http://127.0.0.1:9/a", 1),
+            planned("../x", "http://127.0.0.1:9/x", 1),
+        ];
+        assert_eq!(t.queue(plan), Queued::Raised);
+        assert!(ids(&t).is_empty());
+        assert_eq!(t.active(), 0);
+        // The same file twice in one plan is one job (as before), and fits exactly.
+        lock(&t.jobs).extend((0..JOB_CAP - 1).map(filler));
+        let plan = vec![
+            planned("dup.gguf", "http://127.0.0.1:9/a", 1),
+            planned("dup.gguf", "http://127.0.0.1:9/a", 1),
+        ];
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async { assert_eq!(t.queue(plan), Queued::Done) });
+        assert_eq!(lock(&t.jobs).len(), JOB_CAP);
+    }
+
+    /// A local server: every request's head goes to `answer`, whose bytes are written.
+    async fn server(answer: impl Fn(&str) -> Vec<u8> + Send + Sync + 'static) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let answer = Arc::new(answer);
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let answer = answer.clone();
+                tokio::spawn(async move {
+                    let mut data = Vec::new();
+                    let mut buf = [0u8; 4096];
+                    while !data.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match sock.read(&mut buf).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => data.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    let head = String::from_utf8_lossy(&data).into_owned();
+                    let _ = sock.write_all(&answer(&head)).await;
+                });
+            }
+        });
+        port
+    }
+
+    async fn settle(t: &Downloads) -> Vec<serde_json::Value> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let list: serde_json::Value = serde_json::from_str(&t.list()).unwrap();
+            let jobs = list["jobs"].as_array().unwrap().clone();
+            if jobs
+                .iter()
+                .all(|j| !matches!(j["status"].as_str(), Some("queued" | "downloading")))
+            {
+                return jobs;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "jobs never settled: {jobs:?}"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
+    fn small(head: &str) -> Vec<u8> {
+        let body = if head.starts_with("HEAD ") {
+            ""
+        } else {
+            "0123456789"
+        };
+        format!("HTTP/1.1 200 OK\r\ncontent-length: 10\r\nconnection: close\r\n\r\n{body}")
+            .into_bytes()
+    }
+
+    /// noevia#1959: a `.download` (or validator) symlink planted inside the models folder is
+    /// never written through; the file it points at is untouched.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn planted_temp_symlinks_are_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let models = root.join("models");
+        std::fs::create_dir(&models).unwrap();
+        let outside = root.join("outside.bin");
+        std::fs::write(&outside, b"keep").unwrap();
+        std::os::unix::fs::symlink(&outside, models.join("a.gguf.download")).unwrap();
+        std::os::unix::fs::symlink(&outside, models.join("b.gguf.download.validator")).unwrap();
+        let port = server(small).await;
+        let t = table(&models, UNKNOWN_SIZE_CAP, 2);
+        let url = format!("http://127.0.0.1:{port}/f");
+        assert_eq!(
+            t.queue(vec![
+                planned("a.gguf", &url, 10),
+                planned("b.gguf", &url, 10)
+            ]),
+            Queued::Done
+        );
+        let jobs = settle(&t).await;
+        assert_eq!(std::fs::read(&outside).unwrap(), b"keep");
+        let a = jobs.iter().find(|j| j["filename"] == "a.gguf").unwrap();
+        assert_eq!(a["status"], "error", "{a}");
+        assert!(!models.join("a.gguf").exists());
+        // The validator link is replaced only by unlinking it, never written through.
+        let b = jobs.iter().find(|j| j["filename"] == "b.gguf").unwrap();
+        assert_eq!(b["status"], "done", "{b}");
+        assert_eq!(std::fs::read(models.join("b.gguf")).unwrap(), b"0123456789");
+        assert!(std::fs::symlink_metadata(models.join("b.gguf.download.validator")).is_err());
+    }
+
+    /// noevia#1959: a folder swapped for a symlink while the job waited for a slot is caught
+    /// when the transfer starts; nothing is created outside.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_folder_swapped_while_queued_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let models = root.join("models");
+        let away = root.join("away");
+        std::fs::create_dir_all(models.join("sub")).unwrap();
+        std::fs::create_dir(&away).unwrap();
+        // One slot, held by a job whose server never answers.
+        let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let hang = silent.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((sock, _)) = silent.accept().await {
+                held.push(sock);
+            }
+        });
+        let port = server(small).await;
+        let t = table(&models, UNKNOWN_SIZE_CAP, 1);
+        assert_eq!(
+            t.queue(vec![planned(
+                "hold.gguf",
+                &format!("http://127.0.0.1:{hang}/h"),
+                1
+            )]),
+            Queued::Done
+        );
+        assert_eq!(
+            t.queue(vec![planned(
+                "sub/x.gguf",
+                &format!("http://127.0.0.1:{port}/x"),
+                10
+            )]),
+            Queued::Done
+        );
+        std::fs::remove_dir(models.join("sub")).unwrap();
+        std::os::unix::fs::symlink(&away, models.join("sub")).unwrap();
+        let first = lock(&t.jobs)[0].id.clone();
+        assert!(t.cancel(&first));
+        let jobs = settle(&t).await;
+        let x = jobs.iter().find(|j| j["filename"] == "sub/x.gguf").unwrap();
+        assert_eq!(x["status"], "error");
+        assert_eq!(
+            x["error"],
+            "ValueError: download destination is outside the models folder"
+        );
+        assert_eq!(std::fs::read_dir(&away).unwrap().count(), 0);
+    }
+
+    /// noevia#1960: a single-stream body past its declared size stops (it is not written to
+    /// the end), and one with no declared size stops at the cap.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn single_stream_bodies_are_bounded() {
+        let dir = tempfile::tempdir().unwrap();
+        let models = dir.path().canonicalize().unwrap().join("models");
+        std::fs::create_dir(&models).unwrap();
+        let endless = server_endless().await;
+        let t = table(&models, 3 * 1024 * 1024, 2);
+        assert_eq!(
+            t.queue(vec![
+                planned(
+                    "declared.gguf",
+                    &format!("http://127.0.0.1:{endless}/declared"),
+                    100
+                ),
+                planned("open.gguf", &format!("http://127.0.0.1:{endless}/open"), 0),
+            ]),
+            Queued::Done
+        );
+        let jobs = settle(&t).await;
+        let declared = jobs
+            .iter()
+            .find(|j| j["filename"] == "declared.gguf")
+            .unwrap();
+        assert_eq!(declared["status"], "error");
+        let error = declared["error"].as_str().unwrap();
+        assert!(
+            error.starts_with("RuntimeError: downloaded file is over ")
+                && error.ends_with(" bytes, expected 100; discarded it, nothing was installed"),
+            "{error}"
+        );
+        let open = jobs.iter().find(|j| j["filename"] == "open.gguf").unwrap();
+        assert_eq!(
+            open["error"],
+            "RuntimeError: download passed 3145728 bytes without a declared size; discarded it, nothing was installed"
+        );
+        assert_eq!(std::fs::read_dir(&models).unwrap().count(), 0);
+    }
+
+    /// HEAD: 100 bytes for `/declared`, 404 otherwise; GET: a close-delimited endless body.
+    async fn server_endless() -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut data = Vec::new();
+                    let mut buf = [0u8; 4096];
+                    while !data.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match sock.read(&mut buf).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => data.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    let head = String::from_utf8_lossy(&data).into_owned();
+                    if head.starts_with("HEAD ") {
+                        let reply: &[u8] = if head.contains(" /declared ") {
+                            b"HTTP/1.1 200 OK\r\ncontent-length: 100\r\nconnection: close\r\n\r\n"
+                        } else {
+                            b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                        };
+                        let _ = sock.write_all(reply).await;
+                        return;
+                    }
+                    if sock
+                        .write_all(b"HTTP/1.1 200 OK\r\nconnection: close\r\n\r\n")
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                    let zeros = vec![0u8; 64 * 1024];
+                    while sock.write_all(&zeros).await.is_ok() {}
+                });
+            }
+        });
+        port
     }
 }

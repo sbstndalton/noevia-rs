@@ -764,6 +764,7 @@ async fn actual_python_differential() {
                 port: fake.ports.lock().unwrap()["hub"],
             },
             parallel_min: fixture["parallel_min"].as_i64().unwrap(),
+            unknown_cap: noevia_model_manager::downloads::UNKNOWN_SIZE_CAP,
             clock: wall,
         })
         .unwrap();
@@ -1124,6 +1125,7 @@ async fn failures_and_the_overview_count() {
         max_concurrent: 2,
         token_origin: TokenOrigin::hub(),
         parallel_min: 64 * 1024,
+        unknown_cap: noevia_model_manager::downloads::UNKNOWN_SIZE_CAP,
         clock: wall,
     };
     let state = state(Downloads::new(config()).unwrap(), child_port);

@@ -22,10 +22,12 @@ native-section-writes = ["native-prompts", "dep:form_urlencoded"]
 native-settings-write = ["native-settings", "native-prompts"]
 native-backend-control = ["native-logs", "native-prompts"]
 native-benchmark-overview = ["native-bench-runs", "native-section-writes"]
-native-check-updates = ["native-model-updates", "native-prompts"]
+# noevia#1952: the Hub is https://huggingface.co, so the client needs TLS (rustls, webpki roots,
+# certificate verification on). Downloads inherit it from here.
+native-check-updates = ["native-model-updates", "native-prompts", "reqwest/rustls-tls-webpki-roots"]
 native-benchmark-runner = ["native-benchmark-overview", "native-backend-control", "dep:form_urlencoded"]
-# noevia#1318 slice 10: the download job table and transfers; Hub and URL downloads need TLS.
-native-downloads = ["native-check-updates", "reqwest/rustls-tls-webpki-roots"]
+# noevia#1318 slice 10: the download job table and transfers (TLS comes with check-updates).
+native-downloads = ["native-check-updates"]
 [lints]
 workspace = true
 [dependencies]

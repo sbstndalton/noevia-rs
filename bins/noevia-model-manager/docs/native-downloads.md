@@ -22,7 +22,11 @@
 - **Finishing:** the size is checked, the file is renamed into place, and a `download_history` row is written as `db.record_download` writes it.
 
 ## Decisions (technical)
-- **TLS:** this feature builds reqwest with rustls and webpki roots. Native check-updates has no TLS backend on its own (noevia#1952).
+- **TLS:** `native-check-updates` (and so this feature) builds reqwest with rustls and webpki roots, certificate verification on (noevia#1952).
+- **All-or-nothing starts (noevia#1958):** every planned destination is resolved and the job cap is checked for the whole plan before any job is inserted. A start refused part-way (a later file outside the models folder, or the cap) leaves the table unchanged.
+- **Paths (noevia#1959):** when a transfer starts, `safe_dest` runs again and the destination's folder is opened once and checked (by walking `..` from the opened handle) to lie inside the models folder. Every open, stat, rename and unlink of the destination, the `.download` file and its `.validator` then goes through that handle with `O_NOFOLLOW`. A planted symlink fails the job ("Too many levels of symbolic links") instead of being written through; Python follows it. A folder swapped for a symlink while the job waited fails with `ValueError: download destination is outside the models folder`. Missing folders are still created by path (`mkdir -p`) just before the check.
+- **Redirects (noevia#1960):** a redirect from https to anything else is refused, and so is a redirect from a non-local host to a loopback, private (RFC 1918, CGNAT, ULA), link-local or unspecified address or `localhost`. Only literal addresses are recognised: a public name that resolves to a private address is not caught. Python follows both.
+- **Body size (noevia#1960):** on the single-stream path nothing past the declared size is written. Up to 1 MiB more is counted so the error reads as `_verify_size`'s ("downloaded file is N bytes, expected M; ..."), beyond that the transfer stops ("downloaded file is over N bytes"). A body with no declared size is abandoned after 64 GiB (`UNKNOWN_SIZE_CAP`; Hugging Face refuses files over 50 GB). The parallel path already refused bytes beyond each range.
 - **Bounds:**
   - **Jobs:** 4096 jobs. A start beyond that answers 503 "too many downloads" (Python grows without bound).
   - **Plans:** 8 MiB per plan, 1024 files per plan.
