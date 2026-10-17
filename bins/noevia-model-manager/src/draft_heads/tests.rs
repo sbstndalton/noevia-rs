@@ -1098,3 +1098,47 @@ fn finishing_the_listing_never_reallocates() {
     assert_eq!(payload.len(), model_files::MAX_INPUT_BYTES);
     assert_eq!(payload.capacity(), model_files::MAX_INPUT_BYTES);
 }
+
+/// noevia#1998: a request dropped while its listing is parsed keeps its admission permit and its
+/// Hub lookup until the parse has returned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_request_keeps_its_permit_and_lookup_until_the_parse_ends() {
+    use crate::test_support::{all_permits_back, dropped_while_blocked, test_state, Gate};
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let models = one_section(&root);
+    let answers = serde_json::json!({
+        "/api/models/acme/a/tree/main?recursive=true&expand=true": {
+            "status": 200,
+            "headers": [["content-type", "application/json"]],
+            "body": "5b5d",
+        },
+    });
+    let (base, _seen, server) = hub(answers).await;
+    let mut heads = DraftHeads::with(
+        &models,
+        &models.join("models.ini"),
+        &root,
+        &format!("{base}/api"),
+        Root::synthetic,
+    )
+    .unwrap();
+    let gate = Gate::new();
+    heads.during_parse = Some(gate.hook.clone());
+    let heads = Arc::new(heads);
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.draft_heads = Some(heads.clone());
+    let state = Arc::new(state);
+    let request = axum::http::Request::get("/api/v1/sections/a/draft-heads")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let open = dropped_while_blocked(&state, request, gate).await;
+    // The request is gone; its parse is not: the permit and the lookup stay taken.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(state.permits.available_permits(), 3);
+    assert_eq!(heads.lookups.available_permits(), CONCURRENT_LOOKUPS - 1);
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+    assert_eq!(heads.lookups.available_permits(), CONCURRENT_LOOKUPS);
+    server.abort();
+}

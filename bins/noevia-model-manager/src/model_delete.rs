@@ -116,9 +116,11 @@ pub struct ModelDelete {
 /// noevia#1983: what a delete holds until its removals end: the one-delete-at-a-time lock and
 /// the folder reservations. Each removal's blocking task keeps a share, so a request dropped
 /// while a removal runs (the client went away, the route's timeout) releases them only when
-/// that removal returns, not while it is still removing the folder.
+/// that removal returns, not while it is still removing the folder. noevia#1997: also the
+/// embedding service's hold when the route took one.
 struct Hold {
     _lock: tokio::sync::OwnedMutexGuard<()>,
+    _embedding: Option<tokio::sync::OwnedMutexGuard<()>>,
     reserved: Vec<crate::downloads::Reservation>,
 }
 
@@ -165,10 +167,21 @@ impl ModelDelete {
 
     /// `api.delete_models(body)` for a body FastAPI accepted as a `dict`.
     pub async fn post(&self, body: &JsonValue) -> Outcome {
+        self.post_holding(body, None).await
+    }
+
+    /// [`Self::post`], keeping `embedding` (the embedding service's hold, noevia#1997) with the
+    /// delete's own lock until the last removal ends, also when this future is dropped first.
+    pub async fn post_holding(
+        &self,
+        body: &JsonValue,
+        embedding: Option<tokio::sync::OwnedMutexGuard<()>>,
+    ) -> Outcome {
         // One delete at a time: Python's handlers may interleave, but a second request must
         // never act on a snapshot the first is changing.
         let mut hold = Hold {
             _lock: self.lock.clone().lock_owned().await,
+            _embedding: embedding,
             reserved: Vec::new(),
         };
         let keys = match keys(body) {
@@ -253,7 +266,8 @@ impl ModelDelete {
             self.config.ini.clone(),
             self.open,
         );
-        tokio::task::spawn_blocking(move || {
+        // noevia#1998: admitted, as is each removal below.
+        crate::docker::spawn_blocking_admitted(move || {
             let Some(mut snap) = snapshot(&models, &ini, open)? else {
                 return Ok(None);
             };
@@ -287,6 +301,7 @@ impl ModelDelete {
 
     /// `services.delete_gguf(display_name, subdir)`. `hold` moves into the removal's blocking
     /// task and is released when `fs::delete` returns, even if this future is dropped first.
+    /// noevia#1998: that task is admitted, so a dropped request keeps its permit until then too.
     async fn delete_gguf(&self, display_name: &str, subdir: &str, hold: Arc<Hold>) -> Deleted {
         let refused = || {
             (
@@ -341,7 +356,7 @@ impl ModelDelete {
         drop(snap);
         #[cfg(test)]
         let during = self.during.clone();
-        tokio::task::spawn_blocking(move || {
+        crate::docker::spawn_blocking_admitted(move || {
             #[cfg(test)]
             if let Some(during) = during {
                 during();

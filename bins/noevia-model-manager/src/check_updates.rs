@@ -71,6 +71,9 @@ pub struct CheckUpdates {
     hf_api: String,
     clock: Clock,
     client: reqwest::Client,
+    /// Lib tests: runs in each blocking task, before its work.
+    #[cfg(test)]
+    during: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 /// Any reason Python's handler raises.
@@ -104,6 +107,8 @@ impl CheckUpdates {
             hf_api: hf_api.trim_end_matches('/').to_owned(),
             clock,
             client,
+            #[cfg(test)]
+            during: None,
         })
     }
 
@@ -124,18 +129,19 @@ impl CheckUpdates {
     /// `db.download_records()` and `hf.check_updates_for(records)`; the number of records.
     async fn check(&self) -> Result<usize, Raised> {
         let database = self.database.clone();
-        let (db, records, token) = blocking(move || {
-            let db = open(&database)?;
-            let records = download_records(&db)?;
-            // `get_token()` runs when the first Hub request is built; its error surfaces there.
-            let token = if records.is_empty() {
-                Ok(None)
-            } else {
-                read_token(&db).map_err(|Raised| ())
-            };
-            Ok((db, records, token))
-        })
-        .await?;
+        let (db, records, token) = self
+            .blocking(move || {
+                let db = open(&database)?;
+                let records = download_records(&db)?;
+                // `get_token()` runs when the first Hub request is built; its error surfaces there.
+                let token = if records.is_empty() {
+                    Ok(None)
+                } else {
+                    read_token(&db).map_err(|Raised| ())
+                };
+                Ok((db, records, token))
+            })
+            .await?;
         if records.is_empty() {
             return Ok(0);
         }
@@ -169,7 +175,7 @@ impl CheckUpdates {
                 .collect();
             let db = db.clone();
             let repo = Value::Text(repo);
-            blocking(move || {
+            self.blocking(move || {
                 let db = db.lock().map_err(|_| Raised)?;
                 for (f, last) in rows {
                     // Bound as sqlite3 binds it when this file's row is written.
@@ -218,7 +224,26 @@ impl CheckUpdates {
         let Some(body) = read_capped(response.bytes_stream(), UPDATE_PAGE_CAP).await else {
             return Ok(Vec::new());
         };
-        blocking(move || entries(body)).await
+        self.blocking(move || entries(body)).await
+    }
+
+    /// noevia#1998: the store reads and writes and the tree parse run admitted: a dropped
+    /// request keeps its admission permit until the blocking task has returned.
+    async fn blocking<T: Send + 'static>(
+        &self,
+        f: impl FnOnce() -> Result<T, Raised> + Send + 'static,
+    ) -> Result<T, Raised> {
+        #[cfg(test)]
+        let during = self.during.clone();
+        crate::docker::spawn_blocking_admitted(move || {
+            #[cfg(test)]
+            if let Some(during) = during {
+                during();
+            }
+            f()
+        })
+        .await
+        .map_err(|_| Raised)?
     }
 }
 
@@ -231,12 +256,6 @@ fn splice(checked: usize, status: &[u8]) -> Option<Vec<u8>> {
     let mut out = format!("{{\"checked\":{checked},").into_bytes();
     out.extend_from_slice(rest);
     Some(out)
-}
-
-async fn blocking<T: Send + 'static>(
-    f: impl FnOnce() -> Result<T, Raised> + Send + 'static,
-) -> Result<T, Raised> {
-    tokio::task::spawn_blocking(f).await.map_err(|_| Raised)?
 }
 
 /// A response body of at most `cap` bytes (`None` past it or on a transport error). The buffer
@@ -880,6 +899,36 @@ mod tests {
         let utf16: Vec<u8> = page.encode_utf16().flat_map(u16::to_le_bytes).collect();
         assert_eq!(entries(utf16).unwrap(), expected);
         assert!(entries(b"[1]".to_vec()).is_err());
+    }
+
+    /// noevia#1998: a check dropped while one of its blocking tasks runs (a store read or write,
+    /// a tree parse) keeps the request's admission permit until that task has returned.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_dropped_check_keeps_its_permit_until_its_blocking_work_ends() {
+        use crate::test_support::{all_permits_back, dropped_while_blocked, test_state, Gate};
+        let dir = tempfile::tempdir().unwrap();
+        let mut checker = CheckUpdates::with(
+            dir.path(),
+            &dir.path().join("models.ini"),
+            dir.path(),
+            HF_API,
+            now,
+        )
+        .unwrap();
+        let gate = Gate::new();
+        checker.during = Some(gate.hook.clone());
+        let mut state = test_state(crate::LEGACY_BASE);
+        state.check_updates = Some(Arc::new(checker));
+        let state = Arc::new(state);
+        let request = axum::http::Request::post("/api/v1/models/check-updates")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let open = dropped_while_blocked(&state, request, gate).await;
+        // The request is gone; its blocking task is not: the permit stays taken.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(state.permits.available_permits(), 3);
+        open.send(()).unwrap();
+        all_permits_back(&state).await;
     }
 
     #[test]

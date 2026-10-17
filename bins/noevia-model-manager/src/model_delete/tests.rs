@@ -939,3 +939,77 @@ fn delete_409_wording_matches_the_shared_cases() {
         );
     }
 }
+
+/// An embedding service with nothing saved and nothing loaded: it protects no model.
+fn idle_embedding(root: &Path) -> Arc<crate::embedding::EmbeddingService> {
+    struct Idle;
+    impl crate::embedding::ServiceControl for Idle {
+        fn act(&self, _: crate::embedding::Action) -> Job<'_, ()> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+    impl crate::embedding::Probe for Idle {
+        fn models(&self) -> Job<'_, Vec<crate::embedding::Served>> {
+            Box::pin(async { Ok(Vec::new()) })
+        }
+        fn load<'a>(&'a self, _: &'a str) -> Job<'a, ()> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+    Arc::new(crate::embedding::EmbeddingService::new(
+        "embed".into(),
+        root.join("models"),
+        "/models".into(),
+        root.join("embedding.ini"),
+        root.join("embedding-service.json"),
+        Arc::new(Idle),
+        Arc::new(Idle),
+    ))
+}
+
+/// True when the embedding service's hold is taken (a switch would wait).
+async fn embedding_held(service: &crate::embedding::EmbeddingService) -> bool {
+    tokio::time::timeout(std::time::Duration::from_millis(100), service.hold())
+        .await
+        .is_err()
+}
+
+/// noevia#1997/#1998: an embedding-guarded delete dropped while its removal runs (the client
+/// went away, the route's timeout) keeps the embedding service's hold, so no switch can choose
+/// the model being removed, and the request's admission permit until the removal returns.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_guarded_delete_keeps_the_embedding_hold_and_its_permit_until_the_removal_ends() {
+    use crate::test_support::{all_permits_back, dropped_while_blocked, test_state, Gate};
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir_all(models.join("dlz")).unwrap();
+    std::fs::write(models.join("dlz/a.gguf"), [0u8; 6]).unwrap();
+    let mut delete = ModelDelete::with_root(
+        plain_config(&models, dir.path()),
+        no_docker(),
+        Root::synthetic,
+    );
+    let gate = Gate::new();
+    delete.during = Some(gate.hook.clone());
+    let service = idle_embedding(dir.path());
+    let mut state = test_state(crate::LEGACY_BASE);
+    state.embedding = Some(service.clone());
+    state.model_delete = Some(Arc::new(delete));
+    let state = Arc::new(state);
+    let request = axum::http::Request::post("/api/v1/models/delete")
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(r#"{"models":["dlz/a.gguf"]}"#))
+        .unwrap();
+    let open = dropped_while_blocked(&state, request, gate).await;
+
+    // The request is gone; its removal is not: the hold and the permit stay taken.
+    assert!(embedding_held(&service).await, "hold released mid-removal");
+    assert_eq!(state.permits.available_permits(), 3);
+    assert!(models.join("dlz/a.gguf").exists());
+
+    // The removal finishes: only then are both released.
+    open.send(()).unwrap();
+    all_permits_back(&state).await;
+    assert!(!models.join("dlz").exists(), "the removal finished whole");
+    assert!(!embedding_held(&service).await);
+}

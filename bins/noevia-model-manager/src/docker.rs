@@ -205,8 +205,9 @@ where
 }
 
 /// Joins of connection drivers whose request future was dropped before `finish` (deadline or
-/// client gone). The admitted request owns one; its admission observes every join in it before
-/// the permit is given back (noevia#1385).
+/// client gone), and of the work a request started with [`spawn_admitted`] or
+/// [`spawn_blocking_admitted`] (noevia#1998). The admitted request owns one; its admission
+/// observes every join in it before the permit is given back (noevia#1385).
 pub(crate) type Orphans = std::sync::Arc<std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>>;
 
 tokio::task_local! {
@@ -228,6 +229,52 @@ pub(crate) async fn observe(orphans: &Orphans) {
             let _ = task.await;
         }
     }
+}
+
+/// Hands `task` to the admitted request this task is running, if any (see [`ORPHANS`]).
+fn admit(task: tokio::task::JoinHandle<()>) {
+    let _ = ORPHANS.try_with(|orphans| match orphans.lock() {
+        Ok(mut v) => v.push(task),
+        Err(poisoned) => poisoned.into_inner().push(task),
+    });
+}
+
+/// noevia#1998: runs `work` in its own task, which is never aborted, and answers its result.
+/// The task's join is registered with the admitted request's [`ORPHANS`] when it is spawned, so
+/// a request whose future is dropped (the client went away, the route's timeout) keeps its
+/// permit until the work has ended, as it does for a Docker driver. A request that times out
+/// answers its 504 once the work has ended. Outside an admitted request the task is only
+/// detached. `Err` only when the work panicked.
+pub(crate) async fn spawn_admitted<T, F>(
+    work: F,
+) -> Result<T, tokio::sync::oneshot::error::RecvError>
+where
+    F: std::future::Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    let (answer, answered) = tokio::sync::oneshot::channel();
+    admit(tokio::spawn(async move {
+        let _ = answer.send(work.await);
+    }));
+    answered.await
+}
+
+/// noevia#1998: [`spawn_admitted`] for blocking work (`spawn_blocking`): a parse, a folder
+/// removal or a store write a dropped request leaves running keeps the request's permit until
+/// it returns.
+#[cfg(feature = "native-check-updates")]
+pub(crate) async fn spawn_blocking_admitted<T, F>(
+    work: F,
+) -> Result<T, tokio::sync::oneshot::error::RecvError>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let (answer, answered) = tokio::sync::oneshot::channel();
+    admit(tokio::task::spawn_blocking(move || {
+        let _ = answer.send(work());
+    }));
+    answered.await
 }
 
 /// Owns one connection task. `finish` aborts it and observes its join. Dropping it without
@@ -255,10 +302,7 @@ impl Drop for AbortDriver {
     fn drop(&mut self) {
         if let Some(task) = self.0.take() {
             task.abort();
-            let _ = ORPHANS.try_with(|orphans| match orphans.lock() {
-                Ok(mut v) => v.push(task),
-                Err(poisoned) => poisoned.into_inner().push(task),
-            });
+            admit(task);
         }
     }
 }

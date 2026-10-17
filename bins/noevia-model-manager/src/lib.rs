@@ -435,6 +435,132 @@ fn python_lines(text: &str) -> impl Iterator<Item = &str> {
 pub fn router(state: Arc<StateData>) -> Router {
     Router::new().fallback(handler).with_state(state)
 }
+
+/// Lib tests of work that outlives its request (noevia#1997, #1998).
+#[cfg(all(test, feature = "native-check-updates"))]
+#[allow(clippy::unwrap_used)]
+pub(crate) mod test_support {
+    use super::*;
+    use std::sync::mpsc;
+
+    /// Four request permits, no Docker, the legacy child at `legacy_base`, and nothing native
+    /// until a test sets it.
+    pub(crate) fn test_state(legacy_base: &str) -> StateData {
+        StateData {
+            #[cfg(feature = "native-diagnose")]
+            diagnosis: None,
+            #[cfg(feature = "native-prompts")]
+            prompts: None,
+            #[cfg(feature = "native-backend-control")]
+            backends: None,
+            check_updates: None,
+            #[cfg(feature = "native-downloads")]
+            downloads: None,
+            #[cfg(feature = "native-model-delete")]
+            model_delete: None,
+            #[cfg(feature = "native-draft-heads")]
+            draft_heads: None,
+            #[cfg(feature = "native-backends")]
+            backend_stats: None,
+            #[cfg(feature = "native-benchmark-runner")]
+            bench_runner: None,
+            #[cfg(feature = "native-benchmark-overview")]
+            benchmark_overview: None,
+            #[cfg(feature = "native-settings-write")]
+            settings_write: None,
+            #[cfg(feature = "native-settings")]
+            settings: None,
+            model_updates: None,
+            #[cfg(feature = "native-model-detail")]
+            model_detail: None,
+            #[cfg(feature = "native-bench-runs")]
+            bench_runs: None,
+            #[cfg(feature = "native-section-writes")]
+            section_writes: None,
+            #[cfg(feature = "native-badges")]
+            badges: None,
+            #[cfg(feature = "native-download-targets")]
+            download_targets: None,
+            sections: None,
+            embedding: None,
+            host: None,
+            token: String::new(),
+            configured: Vec::new(),
+            docker: Arc::new(docker::UnixDocker {
+                socket: "/nonexistent/docker.sock".into(),
+            }),
+            redactor: Redactor::new().unwrap(),
+            permits: Semaphore::new(4),
+            legacy: legacy_client().unwrap(),
+            legacy_base: legacy_base.to_owned(),
+            idle_unload: None,
+        }
+    }
+
+    /// A hook for a blocking task: the first call reports that it entered and blocks until the
+    /// gate is opened (at most 30 s); later calls pass.
+    pub(crate) struct Gate {
+        pub(crate) hook: Arc<dyn Fn() + Send + Sync>,
+        entered: mpsc::Receiver<()>,
+        open: mpsc::Sender<()>,
+    }
+
+    impl Gate {
+        pub(crate) fn new() -> Self {
+            let (entered_tx, entered) = mpsc::channel::<()>();
+            let (open, opened) = mpsc::channel::<()>();
+            let first = std::sync::Mutex::new(Some((entered_tx, opened)));
+            Self {
+                hook: Arc::new(move || {
+                    let Some((entered, opened)) = first.lock().unwrap().take() else {
+                        return;
+                    };
+                    entered.send(()).unwrap();
+                    opened.recv_timeout(Duration::from_secs(30)).unwrap();
+                }),
+                entered,
+                open,
+            }
+        }
+
+        /// Waits until the hook has been entered.
+        pub(crate) async fn entered(self) -> mpsc::Sender<()> {
+            let Self { entered, open, .. } = self;
+            tokio::task::spawn_blocking(move || entered.recv_timeout(Duration::from_secs(30)))
+                .await
+                .unwrap()
+                .unwrap();
+            open
+        }
+    }
+
+    /// Starts `request` on the router in its own task, and drops it (the client went away) once
+    /// `gate`'s hook has been entered. The sender opens the gate.
+    pub(crate) async fn dropped_while_blocked(
+        state: &Arc<StateData>,
+        request: axum::http::Request<Body>,
+        gate: Gate,
+    ) -> mpsc::Sender<()> {
+        use tower::ServiceExt;
+        let task = tokio::spawn(router(state.clone()).oneshot(request));
+        let open = gate.entered().await;
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        open
+    }
+
+    /// Waits (at most 30 s) until every request permit is back.
+    pub(crate) async fn all_permits_back(state: &StateData) {
+        tokio::time::timeout(Duration::from_secs(30), async {
+            while state.permits.available_permits() < 4 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+}
+
 /// Only the exact GET path is native; PUT (the writer), other methods and slash variants keep
 /// their existing forward/405/404 handling.
 #[cfg(feature = "native-settings")]
@@ -558,17 +684,6 @@ pub fn draft_heads_route(method: &Method, path: &str) -> Option<String> {
 }
 
 /// FastAPI's answer to an unhandled exception, byte for byte.
-#[cfg(any(
-    feature = "native-model-updates",
-    feature = "native-model-detail",
-    feature = "native-download-targets",
-    feature = "native-badges",
-    feature = "native-bench-runs",
-    feature = "native-section-writes",
-    feature = "native-settings-write",
-    feature = "native-backend-control",
-    feature = "native-draft-heads"
-))]
 fn internal_error() -> Response {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -675,6 +790,9 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     // The dispatch future is dropped inside the scope (also on a timeout), so a Docker driver it
     // leaves behind is registered with this admission and joined before the permit returns.
     // (tokio drops a scoped future inside its scope, also when the request itself is dropped.)
+    // Work it starts with `docker::spawn_admitted` or `spawn_blocking_admitted` is registered
+    // here when spawned and is never aborted: the permit returns once that work has ended
+    // (noevia#1998).
     let result = docker::ORPHANS
         .scope(
             admission.orphans.clone(),
@@ -1199,13 +1317,13 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
     #[cfg(feature = "native-model-delete")]
     if path == "/api/v1/models/delete" && req.method() == Method::POST {
         if let Some(delete) = state.model_delete.clone() {
-            return native_model_delete(&delete, req).await;
+            return native_model_delete(&delete, req, None).await;
         }
     }
     #[cfg(feature = "native-downloads")]
     if path == "/api/v1/models/delete" && req.method() == Method::POST {
         if let Some(table) = python_delete_table(&state) {
-            return forward_python_delete(state, table, req).await;
+            return forward_python_delete(state, table, req, None).await;
         }
     }
     let name = path
@@ -2023,9 +2141,10 @@ async fn guarded_delete(
             other => other.to_string(),
         })
         .collect();
-    // Held across the check and the forward, so a concurrent switch cannot choose a model whose
-    // file this request is deleting.
-    let _held = service.hold().await;
+    // Held across the check and the delete, so a concurrent switch cannot choose a model whose
+    // file this request is deleting. noevia#1997: owned, it moves into the task doing the delete
+    // and is released when that work ends, not when this request future is dropped.
+    let held = service.hold_owned().await;
     for key in &keys {
         if service.protects(key).await {
             return detail(
@@ -2038,13 +2157,20 @@ async fn guarded_delete(
     // noevia#1318: under the hold, so the embedding service cannot switch to a model mid-delete.
     #[cfg(feature = "native-model-delete")]
     if let Some(delete) = state.model_delete.clone() {
-        return native_model_delete(&delete, req).await;
+        return native_model_delete(&delete, req, Some(held)).await;
     }
     #[cfg(feature = "native-downloads")]
     if let Some(table) = python_delete_table(&state) {
-        return forward_python_delete(state, table, req).await;
+        return forward_python_delete(state, table, req, Some(held)).await;
     }
-    forward(state, req).await
+    // noevia#1997/#1998: the forward runs in its own admitted task that owns the hold.
+    docker::spawn_admitted(async move {
+        let response = forward(state, req).await;
+        drop(held);
+        response
+    })
+    .await
+    .unwrap_or_else(|_| internal_error())
 }
 
 /// The 409 for a Python-served delete while the native table has a queued or running download.
@@ -2077,11 +2203,16 @@ fn python_delete_table(state: &StateData) -> Option<Arc<downloads::Downloads>> {
 ///
 /// noevia#1994: the request body is read before the reservation is taken (as `guarded_delete`
 /// does), so a client whose body stalls holds nothing; only the forward itself runs under it.
+///
+/// noevia#1997: the embedding service's hold (`guarded_delete`), when given, moves into the same
+/// task. noevia#1998: that task is admitted ([`docker::spawn_admitted`]), so a dropped request
+/// also keeps its admission permit until the forward has ended.
 #[cfg(feature = "native-downloads")]
 async fn forward_python_delete(
     state: Arc<StateData>,
     table: Arc<downloads::Downloads>,
     req: Request,
+    embedding: Option<tokio::sync::OwnedMutexGuard<()>>,
 ) -> Response {
     let (parts, body) = req.into_parts();
     let Ok(raw) = to_bytes(body, REQUEST_CAP).await else {
@@ -2092,22 +2223,29 @@ async fn forward_python_delete(
     if table.active() > 0 {
         return detail(StatusCode::CONFLICT, PYTHON_DELETE_WHILE_DOWNLOADING);
     }
-    let forwarded = tokio::spawn(async move {
+    docker::spawn_admitted(async move {
         let response = forward(state, req).await;
         drop(held);
+        drop(embedding);
         response
-    });
-    forwarded.await.unwrap_or_else(|_| internal_error())
+    })
+    .await
+    .unwrap_or_else(|_| internal_error())
 }
 
 /// noevia#1318: `POST /api/v1/models/delete` with FastAPI's `dict` body rules, answered natively.
+/// noevia#1997: `embedding` (the embedding service's hold) is kept until the last removal ends.
 #[cfg(feature = "native-model-delete")]
-async fn native_model_delete(delete: &model_delete::ModelDelete, req: Request) -> Response {
+async fn native_model_delete(
+    delete: &model_delete::ModelDelete,
+    req: Request,
+    embedding: Option<tokio::sync::OwnedMutexGuard<()>>,
+) -> Response {
     let body = match fastapi_dict_body_capped(req, REQUEST_CAP, None).await {
         Ok(body) => body,
         Err(response) => return response,
     };
-    match delete.post(&body).await {
+    match delete.post_holding(&body, embedding).await {
         model_delete::Outcome::Json(bytes) => (
             StatusCode::OK,
             [(axum::http::header::CONTENT_TYPE, "application/json")],
