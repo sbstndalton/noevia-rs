@@ -1039,11 +1039,17 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
 #[test]
 fn capability_closed_stdout_returns_error_without_panic_or_child() {
     let (dir, marker) = owned_uvicorn();
-    let (reader, writer) = std::io::pipe().unwrap();
-    drop(reader);
+    // noevia#1965: not a pipe whose read end is dropped. Under the parallel harness another
+    // test's fork may briefly hold a copy of that read end (until its exec closes it), so the
+    // child's first write could land in the pipe buffer and succeed. A socket shut down for
+    // writing refuses every write (EPIPE) through any copy of any descriptor.
+    let (stdout, _peer) = std::os::unix::net::UnixStream::pair().unwrap();
+    stdout.shutdown(std::net::Shutdown::Write).unwrap();
     let output = command(dir.path(), &marker)
         .arg("--features")
-        .stdout(std::process::Stdio::from(writer))
+        .stdout(std::process::Stdio::from(std::os::fd::OwnedFd::from(
+            stdout,
+        )))
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
