@@ -590,3 +590,213 @@ fn download_blockers_cover_own_files_the_folder_and_the_hf_repository() {
     assert_eq!(blockers(find("flat.gguf"), &dests), ["flat.gguf"]);
     assert!(blockers(find("flat.gguf"), &["sub/../mmproj-x.gguf".into()]).is_empty());
 }
+
+// ------------------------------------------------ noevia#1972: delete vs download start
+
+/// One start tried during the delete: its outcome and the reservations at that moment.
+type Seen1972 = (crate::downloads::Queued, Vec<String>);
+
+fn table_for(models: &Path, data: &Path) -> Arc<crate::downloads::Downloads> {
+    std::fs::create_dir_all(data).unwrap();
+    crate::downloads::Downloads::new(crate::downloads::Config::production(
+        models.to_str().unwrap().to_owned(),
+        data.to_str().unwrap(),
+        1,
+    ))
+    .unwrap()
+}
+
+fn planned(filename: &str, port: u16) -> Vec<crate::downloads::Planned> {
+    vec![crate::downloads::Planned {
+        repo_id: "example.test".into(),
+        filename: filename.into(),
+        url: format!("http://127.0.0.1:{port}/x.gguf"),
+        total_bytes: 0,
+    }]
+}
+
+/// A download started while a delete is removing the folder is refused (409 through the route's
+/// `Queued::Deleting`); the delete finishes whole; the reservation is released afterwards.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_download_start_into_a_folder_being_deleted_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir_all(models.join("dlr")).unwrap();
+    std::fs::write(models.join("dlr/a.gguf"), [0u8; 6]).unwrap();
+    std::fs::write(models.join("flat.gguf"), [0u8; 3]).unwrap();
+    let table = table_for(&models, &dir.path().join("data"));
+    let (port, server) = silent_server().await;
+    let seen: Arc<std::sync::Mutex<Vec<Seen1972>>> = Arc::default();
+    let mut delete = ModelDelete::with_root(
+        plain_config(&models, dir.path()),
+        no_docker(),
+        Root::synthetic,
+    )
+    .with_downloads(table.clone());
+    let (t, s) = (table.clone(), seen.clone());
+    delete.during = Some(Arc::new(move || {
+        let mut seen = s.lock().unwrap();
+        let reserved = t.reservations();
+        // Into the folder being removed, and into a sub-folder of it: refused.
+        seen.push((t.queue(planned("dlr/b.gguf", port)), reserved.clone()));
+        seen.push((t.queue(planned("dlr/x/c.gguf", port)), reserved.clone()));
+        // A neighbour whose name only starts the same: queued.
+        seen.push((t.queue(planned("dlr2/d.gguf", port)), reserved));
+    }));
+    let (status, _, body) = answer(
+        &delete,
+        Some("application/json"),
+        br#"{"models":["dlr/a.gguf"]}"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains(r#""ok":true"#), "{body}");
+    assert!(!models.join("dlr").exists(), "the delete finished whole");
+    let seen = seen.lock().unwrap().clone();
+    let outcomes: Vec<_> = seen.iter().map(|(q, _)| *q).collect();
+    assert_eq!(
+        outcomes,
+        [
+            crate::downloads::Queued::Deleting,
+            crate::downloads::Queued::Deleting,
+            crate::downloads::Queued::Done
+        ]
+    );
+    assert_eq!(seen[0].1, ["dlr"]);
+    let list: Value = serde_json::from_str(&table.list()).unwrap();
+    let files: Vec<&str> = list["jobs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|j| j["filename"].as_str().unwrap())
+        .collect();
+    assert_eq!(files, ["dlr2/d.gguf"]);
+    assert!(table.reservations().is_empty());
+
+    // A flat model reserves only its own files.
+    let flat = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (t, f) = (table.clone(), flat.clone());
+    delete.during = Some(Arc::new(move || {
+        f.lock().unwrap().push(t.reservations());
+    }));
+    let (status, _, body) = answer(
+        &delete,
+        Some("application/json"),
+        br#"{"models":["flat.gguf"]}"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(flat.lock().unwrap().clone(), [vec!["flat.gguf".to_owned()]]);
+    assert!(table.reservations().is_empty());
+    server.abort();
+}
+
+/// A delete refused by an active download releases its reservation; the order of a start that
+/// came first is unchanged (the delete sees the job and refuses).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_delete_releases_its_reservation() {
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir_all(models.join("dlq")).unwrap();
+    std::fs::write(models.join("dlq/a.gguf"), [0u8; 6]).unwrap();
+    let table = table_for(&models, &dir.path().join("data"));
+    let (port, server) = silent_server().await;
+    assert_eq!(
+        table.queue(planned("dlq/b.gguf", port)),
+        crate::downloads::Queued::Done
+    );
+    let delete = ModelDelete::with_root(
+        plain_config(&models, dir.path()),
+        no_docker(),
+        Root::synthetic,
+    )
+    .with_downloads(table.clone());
+    let (status, _, _) = answer(
+        &delete,
+        Some("application/json"),
+        br#"{"models":["dlq/a.gguf"]}"#,
+    )
+    .await;
+    assert_eq!(status, 409);
+    assert!(models.join("dlq/a.gguf").exists());
+    assert!(table.reservations().is_empty());
+    server.abort();
+}
+
+/// noevia#1983: a request dropped while its removal runs (the client went away, the route's
+/// timeout) keeps the folder reserved and the delete lock held until the removal returns, so a
+/// download start into that folder is still refused (the route's 409) in the meantime.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dropped_request_keeps_the_folder_reserved_until_the_removal_ends() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir_all(models.join("dlz")).unwrap();
+    std::fs::write(models.join("dlz/a.gguf"), [0u8; 6]).unwrap();
+    let table = table_for(&models, &dir.path().join("data"));
+    let (port, server) = silent_server().await;
+    let mut delete = ModelDelete::with_root(
+        plain_config(&models, dir.path()),
+        no_docker(),
+        Root::synthetic,
+    )
+    .with_downloads(table.clone());
+    let (entered_tx, entered_rx) = mpsc::channel::<()>();
+    let (release_tx, release_rx) = mpsc::channel::<()>();
+    let (entered_tx, release_rx) = (
+        std::sync::Mutex::new(entered_tx),
+        std::sync::Mutex::new(release_rx),
+    );
+    delete.during = Some(Arc::new(move || {
+        entered_tx.lock().unwrap().send(()).unwrap();
+        release_rx
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(30))
+            .unwrap();
+    }));
+    let delete = Arc::new(delete);
+    let body = crate::prompts::parse_json(r#"{"models":["dlz/a.gguf"]}"#).unwrap();
+    let request = tokio::spawn({
+        let delete = delete.clone();
+        async move { delete.post(&body).await }
+    });
+    // The removal's blocking task is running (and blocked in the hook): drop the request.
+    tokio::task::spawn_blocking(move || entered_rx.recv_timeout(Duration::from_secs(30)))
+        .await
+        .unwrap()
+        .unwrap();
+    request.abort();
+    assert!(request.await.unwrap_err().is_cancelled());
+
+    // The removal is still running: the folder stays reserved and the lock stays held.
+    assert_eq!(table.reservations(), ["dlz"]);
+    assert_eq!(
+        table.queue(planned("dlz/b.gguf", port)),
+        crate::downloads::Queued::Deleting
+    );
+    assert!(delete.lock.try_lock().is_err());
+    assert!(models.join("dlz/a.gguf").exists());
+
+    // The removal finishes: only then are the reservation and the lock released.
+    release_tx.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while !table.reservations().is_empty() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(!models.join("dlz").exists(), "the removal finished whole");
+    drop(
+        tokio::time::timeout(Duration::from_secs(30), delete.lock.lock())
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        table.queue(planned("dlz/b.gguf", port)),
+        crate::downloads::Queued::Done
+    );
+    server.abort();
+}

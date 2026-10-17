@@ -314,11 +314,14 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
     let d = tempfile::tempdir().unwrap();
     seed_database(d.path());
     let (engine, listings) = router(Duration::ZERO).await;
-    let (addr, stop) = start(d.path(), &switched_on(engine)).await;
+    let (addr, stop, app) = start_app(d.path(), &switched_on(engine)).await;
+    let stats = app.stats.as_ref().map(Arc::clone).unwrap();
     let poll = || async { call(addr, "GET", "/api/stats", MEMBER, None).await.0 };
     assert_eq!(poll().await, 200);
     assert_eq!(listings.load(Ordering::SeqCst), 1);
     // Refused by Node's gate (no session; a bad CSRF token), a read, or another path: kept.
+    // Judged by the drop count, not by engine reads: on a slow runner the 2 s TTL can run out
+    // inside this loop and the next poll reads again without anything being dropped (#1970).
     for (method, path, cookie, csrf) in [
         ("POST", "/api/auto-roles", "", None),
         ("POST", "/api/models/load", ADMIN, Some("wrong")),
@@ -329,15 +332,12 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
     ] {
         let _ = call(addr, method, path, cookie, csrf).await;
         assert_eq!(poll().await, 200);
-        assert_eq!(
-            listings.load(Ordering::SeqCst),
-            1,
-            "{method} {path} {cookie:?} {csrf:?}"
-        );
+        assert_eq!(stats.drops(), 0, "{method} {path} {cookie:?} {csrf:?}");
     }
     // A member's role save, an admin's model write: dropped, the next poll reads the engine again
     // (the writes themselves go to Node: 502 behind this dead upstream).
-    let mut expected = 1;
+    let mut expected = listings.load(Ordering::SeqCst);
+    let mut dropped = 0;
     for (method, path, cookie) in [
         ("PUT", "/api/auto-roles", MEMBER),
         ("POST", "/api/models/load", ADMIN),
@@ -345,6 +345,8 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
         ("POST", "/api/models/../models/unload", ADMIN),
     ] {
         assert_eq!(call(addr, method, path, cookie, Some("csrf")).await.0, 502);
+        dropped += 1;
+        assert_eq!(stats.drops(), dropped, "{method} {path}");
         assert_eq!(poll().await, 200);
         expected += 1;
         assert_eq!(listings.load(Ordering::SeqCst), expected, "{method} {path}");
@@ -400,7 +402,6 @@ async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queue
     let (engine, listings) = router(Duration::ZERO).await;
     let (addr, stop, app) = start_app(d.path(), &switched_on(engine)).await;
     let stats = app.stats.as_ref().map(Arc::clone).unwrap();
-    let first = std::time::Instant::now();
     assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 200);
     assert_eq!(listings.load(Ordering::SeqCst), 1);
     // Every invalidation permit taken: an admin's model write is still proxied (502 here) but
@@ -413,14 +414,9 @@ async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queue
         502
     );
     drop(held);
+    // The drop count, not engine reads, so a runner slower than the TTL cannot blur it (#1970).
+    assert_eq!(stats.drops(), 0);
     assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 200);
-    // Only meaningful while the first answer is still fresh: a runner slower than the TTL would
-    // see a re-read for the expiry, not for the write.
-    if first.elapsed() < Duration::from_millis(1500) {
-        assert_eq!(listings.load(Ordering::SeqCst), 1);
-    } else {
-        eprintln!("skipped the freshness check: the runner took longer than the TTL");
-    }
     let reads = listings.load(Ordering::SeqCst);
     // With permits free the same write drops it again.
     assert_eq!(
@@ -429,6 +425,7 @@ async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queue
             .0,
         502
     );
+    assert_eq!(stats.drops(), 1);
     assert_eq!(call(addr, "GET", "/api/stats", ADMIN, None).await.0, 200);
     assert_eq!(listings.load(Ordering::SeqCst), reads + 1);
     let _ = stop.send(());

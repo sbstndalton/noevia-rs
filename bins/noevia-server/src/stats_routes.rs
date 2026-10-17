@@ -44,6 +44,8 @@ pub struct StatsLayer {
     read: SharedRead<Arc<Reply>>,
     gate: Arc<Semaphore>,
     invalidation_gate: Arc<Semaphore>,
+    /// How many times the shared answer was dropped (tests read it through [`Self::drops`]).
+    drops: std::sync::atomic::AtomicU64,
 }
 
 impl StatsLayer {
@@ -53,6 +55,7 @@ impl StatsLayer {
             read: SharedRead::new(STATS_TTL),
             gate: Arc::new(Semaphore::new(GATE_PERMITS)),
             invalidation_gate: Arc::new(Semaphore::new(INVALIDATION_PERMITS)),
+            drops: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -66,7 +69,15 @@ impl StatsLayer {
 
     /// Drops the shared answer.
     pub fn clear(&self) {
+        self.drops.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.read.clear();
+    }
+
+    /// How many times the shared answer has been dropped: lets tests tell a drop from the TTL
+    /// running out on a slow runner (sbstndalton/noevia#1970).
+    #[doc(hidden)]
+    pub fn drops(&self) -> u64 {
+        self.drops.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Takes every gate permit (poll and invalidation) until the returned guards drop: what a
