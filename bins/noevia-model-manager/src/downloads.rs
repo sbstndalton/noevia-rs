@@ -965,6 +965,140 @@ mod tests {
         assert_eq!(std::fs::read_dir(&away).unwrap().count(), 0);
     }
 
+    /// noevia#1967: the same with two levels below the swapped folder (`safe_dest` refuses it
+    /// first here; `make_parents_never_creates_through_an_outside_link` covers a swap that comes
+    /// after that check).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_swapped_folder_gets_no_new_levels_through_the_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let models = root.join("models");
+        let away = root.join("away");
+        std::fs::create_dir_all(models.join("sub")).unwrap();
+        std::fs::create_dir(&away).unwrap();
+        let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let hang = silent.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((sock, _)) = silent.accept().await {
+                held.push(sock);
+            }
+        });
+        let port = server(small).await;
+        let t = table(&models, UNKNOWN_SIZE_CAP, 1);
+        assert_eq!(
+            t.queue(vec![planned(
+                "hold.gguf",
+                &format!("http://127.0.0.1:{hang}/h"),
+                1
+            )]),
+            Queued::Done
+        );
+        assert_eq!(
+            t.queue(vec![planned(
+                "sub/deeper/x.gguf",
+                &format!("http://127.0.0.1:{port}/x"),
+                10
+            )]),
+            Queued::Done
+        );
+        std::fs::remove_dir(models.join("sub")).unwrap();
+        std::os::unix::fs::symlink(&away, models.join("sub")).unwrap();
+        let first = lock(&t.jobs)[0].id.clone();
+        assert!(t.cancel(&first));
+        let jobs = settle(&t).await;
+        let x = jobs
+            .iter()
+            .find(|j| j["filename"] == "sub/deeper/x.gguf")
+            .unwrap();
+        assert_eq!(x["status"], "error");
+        assert_eq!(
+            x["error"],
+            "ValueError: download destination is outside the models folder"
+        );
+        assert_eq!(
+            std::fs::read_dir(&away).unwrap().count(),
+            0,
+            "away/ stays empty"
+        );
+    }
+
+    /// noevia#1967: the folder swapped for a link between `safe_dest` and the creation of the
+    /// parents. `create_dir_all` made `away/deeper` there; the handle walk creates nothing.
+    #[test]
+    fn make_parents_never_creates_through_an_outside_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let models = root.join("models");
+        let away = root.join("away");
+        std::fs::create_dir(&models).unwrap();
+        std::fs::create_dir(&away).unwrap();
+        std::os::unix::fs::symlink(&away, models.join("sub")).unwrap();
+        let m = models.to_str().unwrap();
+        let dest = format!("{m}/sub/deeper/x.gguf");
+        assert!(!engine::make_parents(m, &dest).unwrap());
+        assert_eq!(
+            std::fs::read_dir(&away).unwrap().count(),
+            0,
+            "away/ stays empty"
+        );
+        // A link at the second level, and a `..` that would climb above the models folder.
+        std::fs::create_dir(models.join("real")).unwrap();
+        std::os::unix::fs::symlink(&away, models.join("real/link")).unwrap();
+        assert!(!engine::make_parents(m, &format!("{m}/real/link/deeper/x.gguf")).unwrap());
+        assert!(!engine::make_parents(m, &format!("{m}/real/../../escape/x.gguf")).unwrap());
+        assert_eq!(std::fs::read_dir(&away).unwrap().count(), 0);
+        assert!(!root.join("escape").exists());
+        // What the old full-path creation did with the same link.
+        std::fs::create_dir_all(models.join("sub/deeper")).unwrap();
+        assert!(away.join("deeper").is_dir());
+    }
+
+    #[test]
+    fn make_parents_creates_levels_and_reports_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let models = dir.path().canonicalize().unwrap().join("models");
+        std::fs::create_dir(&models).unwrap();
+        let m = models.to_str().unwrap();
+        assert!(engine::make_parents(m, &format!("{m}/flat.gguf")).unwrap());
+        assert!(engine::make_parents(m, &format!("{m}/a/./b/../c/x.gguf")).unwrap());
+        assert!(models.join("a/b").is_dir() && models.join("a/c").is_dir());
+        assert!(engine::make_parents(m, &format!("{m}/a/c/x.gguf")).unwrap()); // exist_ok
+        std::fs::write(models.join("file"), b"").unwrap();
+        let e = engine::make_parents(m, &format!("{m}/file/x/y.gguf")).unwrap_err();
+        assert!(
+            matches!(e.raw_os_error(), Some(n) if n == libc_enotdir()),
+            "{e}"
+        );
+    }
+
+    fn libc_enotdir() -> i32 {
+        rustix::io::Errno::NOTDIR.raw_os_error()
+    }
+
+    /// noevia#1967: new levels are created one at a time, and a link that stays inside the
+    /// models folder is still followed (as `mkdir(parents=True)` would).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn nested_levels_are_created_and_inside_links_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let models = dir.path().canonicalize().unwrap().join("models");
+        std::fs::create_dir_all(models.join("real")).unwrap();
+        std::os::unix::fs::symlink(models.join("real"), models.join("alias")).unwrap();
+        let port = server(small).await;
+        let t = table(&models, UNKNOWN_SIZE_CAP, 2);
+        assert_eq!(
+            t.queue(vec![
+                planned("a/b/c/x.gguf", &format!("http://127.0.0.1:{port}/x"), 10),
+                planned("alias/d/y.gguf", &format!("http://127.0.0.1:{port}/x"), 10),
+            ]),
+            Queued::Done
+        );
+        let jobs = settle(&t).await;
+        assert!(jobs.iter().all(|j| j["status"] == "done"), "{jobs:?}");
+        assert!(models.join("a/b/c/x.gguf").is_file());
+        assert!(models.join("real/d/y.gguf").is_file());
+    }
+
     /// noevia#1960: a single-stream body past its declared size stops (it is not written to
     /// the end), and one with no declared size stops at the cap.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
