@@ -331,3 +331,38 @@ async fn unreachable_hub_records_no_dates() {
     }
     assert_eq!(table(dir.path()), case["update_check"]);
 }
+
+/// noevia#1996: a tree page over the node limit (here `[1, 1, …]`, under the 16 MiB size cap) is
+/// a failed request, answered exactly as Python answers a page it cannot parse (the recorded
+/// `invalid-json` case: no dates). Unbounded, it would be parsed into ~262K big integers per
+/// 512 KiB (a 64 MiB page: ~2 GiB), and Python would answer 500 for the non-object entries.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_page_over_the_node_limit_records_no_dates() {
+    let mut case = fixture()["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == "invalid-json")
+        .unwrap()
+        .clone();
+    let nodes = noevia_model_manager::check_updates::UPDATE_PAGE_NODES;
+    let page = format!("[{}]", vec!["1"; nodes].join(","));
+    assert!(page.len() < noevia_model_manager::check_updates::UPDATE_PAGE_CAP);
+    for answer in case["hub"].as_object_mut().unwrap().values_mut() {
+        if answer["status"] == 200 {
+            answer["body"] = json!(hex(page.as_bytes()));
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    build(dir.path(), &case);
+    let (base, seen) = hub(case["hub"].clone()).await;
+    let (status, _, body) = post(state(Some(check(dir.path(), &base))), "POST").await;
+    if cfg!(target_os = "linux") {
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body, case["body"].as_str().unwrap());
+    } else {
+        assert_eq!(status, 503, "{body}");
+    }
+    assert_eq!(Value::Array(seen.lock().unwrap().clone()), case["requests"]);
+    assert_eq!(table(dir.path()), case["update_check"]);
+}
