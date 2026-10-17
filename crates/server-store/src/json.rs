@@ -257,8 +257,8 @@ pub fn write_owned_text(
 }
 
 /// Writes `dir/name` (a [`crate::SHARED_PROJECT_FILES`] name) atomically with text the caller
-/// serialised (`JSON.stringify(value, null, 2)`, js-json `stringify_pretty`). Only with the M4
-/// switch; the caller holds the file's shared lock (crates/server-projects), which this does not
+/// serialised (`JSON.stringify(value, null, 2)`, js-json `stringify_pretty`). Only with M4's
+/// ownership token; the caller holds the file's shared lock (crates/server-projects), which this does not
 /// take. `dir` (the user's directory) must exist: it is never created here, so a save racing the
 /// account's removal (core workspace.cjs `remove`) fails instead of recreating it
 /// (sbstndalton/noevia#1425).
@@ -393,7 +393,7 @@ mod tests {
         let user = root
             .path()
             .join("users/11111111-2222-4333-8444-555555555555");
-        let projects = crate::RustProjects::for_tests();
+        let projects = crate::RustProjects::owned();
         for name in crate::SHARED_PROJECT_FILES {
             assert!(matches!(
                 write_shared_projects(&user, name, "[]", projects),
@@ -427,8 +427,8 @@ mod tests {
         remove_owned(dir.path(), "account-memory.json", on).unwrap();
         assert!(!dir.path().join("account-memory.json").exists());
         assert!(remove_owned(dir.path(), "projects.json", on).is_err());
-        // projects.json is M4's, with its own switch, and only by that name.
-        let projects = crate::RustProjects::for_tests();
+        // projects.json is M4's, with its own ownership token, and only by that name.
+        let projects = crate::RustProjects::owned();
         write_shared_projects(dir.path(), "projects.json", "{}", projects).unwrap();
         assert_eq!(
             std::fs::read_to_string(dir.path().join("projects.json")).unwrap(),
@@ -439,13 +439,6 @@ mod tests {
                 write_shared_projects(dir.path(), bad, "{}", projects).is_err(),
                 "{bad}"
             );
-        }
-        assert_eq!(
-            crate::RustProjects::from_env_value(Some("1")),
-            Some(projects)
-        );
-        for v in [None, Some(""), Some("true"), Some("1 ")] {
-            assert_eq!(crate::RustProjects::from_env_value(v), None, "{v:?}");
         }
         let owned = ["mine.json"];
         for bad in ["../mine.json", "a/mine.json", "", ".", "..", "theirs.json"] {

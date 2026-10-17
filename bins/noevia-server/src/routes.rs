@@ -1,10 +1,10 @@
 //! Route ownership, from contracts/http/routes.toml (compiled in by build.rs). One owner per
 //! route: a request whose route is owner = "rust" (for one of its methods) is answered natively,
 //! everything else goes to Node through the legacy proxy. A route with a `switch` is Rust's only
-//! while that deployment switch is on (M4: NOEVIA_RUST_PROJECTS, NOEVIA_RUST_PROJECT_WRITES, see
-//! [`Switches`]); off, it is Node's. Sign-in and the account (M3) and the front read routes have
-//! no switch any more (sbstndalton/noevia#1071): they are always Rust's, and Node no longer
-//! answers them.
+//! while that deployment switch is on (NOEVIA_RUST_PROJECT_WRITES, #1264, see [`Switches`]);
+//! off, it is Node's. Sign-in and the account (M3), the front read routes and the M4 project
+//! routes and export have no switch any more (sbstndalton/noevia#1071: NOEVIA_RUST_AUTH and
+//! NOEVIA_RUST_PROJECTS are retired): they are always Rust's, and Node no longer answers them.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Owner {
@@ -24,23 +24,19 @@ pub struct Route {
     pub switch: Option<&'static str>,
 }
 
-/// The deployment switches that are on in this process. Sign-in, the account and the front read
-/// routes have none (sbstndalton/noevia#1071): they are always Rust's; the export is Rust's
-/// under NOEVIA_RUST_PROJECTS.
+/// The deployment switches that are on in this process. Sign-in, the account, the front read
+/// routes, the M4 project routes and the export have none (sbstndalton/noevia#1071): they are
+/// always Rust's.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Switches {
-    /// NOEVIA_RUST_PROJECTS=1: Rust owns the project routes ported so far (M4) and the
-    /// conversation export.
-    pub rust_projects: bool,
-    /// NOEVIA_RUST_PROJECT_WRITES=1 (#1264, only with rust_projects, config.rs): the project
-    /// writes ported from Node so far ([`PROJECT_WRITES`]).
+    /// NOEVIA_RUST_PROJECT_WRITES=1 (#1264, config.rs): the project writes ported from Node so
+    /// far ([`PROJECT_WRITES`]).
     pub rust_project_writes: bool,
 }
 
 impl Switches {
     pub fn on(&self, name: &str) -> bool {
         match name {
-            "NOEVIA_RUST_PROJECTS" => self.rust_projects,
             "NOEVIA_RUST_PROJECT_WRITES" => self.rust_project_writes,
             _ => false,
         }
@@ -69,7 +65,7 @@ pub enum Native {
     Static,
     /// Sign-in and the account (M3, permanent since #1071): crates/server-account.
     Account,
-    /// The project routes ported so far (M4, NOEVIA_RUST_PROJECTS): crates/server-projects
+    /// The project routes ported so far (M4, permanent since #1071): crates/server-projects
     /// `assets` (a project's images), `chats` (its chat list) and `free_chats` (the free-chat list).
     Projects,
     Usage,
@@ -114,22 +110,18 @@ const PROJECT_ROUTES: &[&str] = &[
     FREE_CHATS,
 ];
 
-/// A project's chat list: the second M4 slice. It is answered here only in a build with the cargo
-/// feature `rust-project-chats`, which `--features` then lists, so the supervisor can confirm the
-/// slice to Node on its own (core rust-projects.cjs chatsEnabledFrom, sbstndalton/noevia#1409).
-/// Without it the route stays Node's under NOEVIA_RUST_PROJECTS too, as in a front that answers
-/// only the images.
+/// A project's chat list: the second M4 slice, answered here only in a build with the cargo
+/// feature `rust-project-chats` (listed by `--features`). Node no longer answers it
+/// (sbstndalton/noevia#1071), so config.rs refuses to start a build without it.
 const PROJECT_CHATS: &str = "/api/projects/{projectId}/chats";
 
 /// The free-chat list: the third M4 slice, answered here only in a build with the cargo feature
-/// `rust-free-chats` (listed by `--features`; the supervisor confirms it to Node on its own, core
-/// rust-projects.cjs freeChatsEnabledFrom). Without it the route stays Node's under the switch.
+/// `rust-free-chats` (listed by `--features`; config.rs refuses to start a build without it).
 /// `DELETE /api/freechats/{chatId}` is Node's in every build (routes.toml).
 const FREE_CHATS: &str = "/api/freechats";
 
 /// The project writes ported from Node for sbstndalton/noevia#1264 ([`Native::Projects`] too),
-/// under their own switch NOEVIA_RUST_PROJECT_WRITES (off by default, so turning
-/// NOEVIA_RUST_PROJECTS on never moves them) and answered only in a build with the cargo feature
+/// under their own switch NOEVIA_RUST_PROJECT_WRITES (off by default) and answered only in a build with the cargo feature
 /// `rust-project-writes` (listed by `--features`; the supervisor confirms it to Node,
 /// NOEVIA_RUST_PROJECT_WRITES_CONFIRMED). Slice 1: a free chat's attachments project.
 const PROJECT_WRITES: &[&str] = &[CHAT_CONTEXT];
@@ -178,9 +170,9 @@ fn compiled(route: &Route) -> bool {
         && (route.path != CHATGPT_STATUS || cfg!(feature = "rust-chatgpt-status"))
 }
 
-/// The native handler a rust-owned route is implemented by. The front read routes are matched
-/// on their path first: like the account routes they have no switch (#1071), and the export
-/// shares NOEVIA_RUST_PROJECTS with the project routes.
+/// The native handler a rust-owned route is implemented by. The front read routes and the export
+/// are matched on their path first: like the account and project routes they have no switch
+/// (#1071).
 pub fn native_for(route: &Route) -> Option<Native> {
     if route.catch_all {
         return (route.switch.is_none()).then_some(Native::Static);
@@ -198,13 +190,13 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/reasoning-settings" if auth => return Some(Native::ReasoningSettings),
         "/api/sampling-settings" if auth => return Some(Native::SamplingSettings),
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
-        EXPORT if route.switch == Some("NOEVIA_RUST_PROJECTS") => return Some(Native::Export),
+        EXPORT if auth => return Some(Native::Export),
         _ => {}
     }
     match (route.path, route.switch) {
         ("/api/ready", None) => Some(Native::Ready),
         (p, None) if is_account_path(p) => Some(Native::Account),
-        (p, Some("NOEVIA_RUST_PROJECTS")) if PROJECT_ROUTES.contains(&p) => Some(Native::Projects),
+        (p, None) if PROJECT_ROUTES.contains(&p) => Some(Native::Projects),
         (p, Some("NOEVIA_RUST_PROJECT_WRITES")) if PROJECT_WRITES.contains(&p) => {
             Some(Native::Projects)
         }
@@ -282,8 +274,8 @@ pub fn route_for(path: &str) -> Option<&'static Route> {
     ROUTES.iter().find(|r| r.catch_all)
 }
 
-/// What answers `method path` with every deployment switch off (sign-in, the account and the
-/// front read routes are Rust's regardless): a native handler, or `None` for the legacy proxy.
+/// What answers `method path` with every deployment switch off (sign-in, the account, the front
+/// read routes, the project routes and the export are Rust's regardless): a native handler, or `None` for the legacy proxy.
 pub fn dispatch(method: &str, path: &str) -> Option<Native> {
     dispatch_under(method, path, Switches::default())
 }
@@ -379,38 +371,38 @@ mod tests {
 
     #[test]
     fn switches_by_name() {
-        let on = Switches::default();
-        assert!(!on.on("NOEVIA_RUST_PROJECTS"));
-        // Retired (#1071): the name means nothing, sign-in is Rust's regardless.
-        assert!(!on.on("NOEVIA_RUST_AUTH"));
-        assert!(!on.on("NOEVIA_SOMETHING_ELSE"));
-        let both = Switches {
-            rust_projects: true,
-            ..Default::default()
+        let off = Switches::default();
+        let on = Switches {
+            rust_project_writes: true,
         };
-        assert!(both.on("NOEVIA_RUST_PROJECTS"));
-        assert!(!both.on("NOEVIA_RUST_AUTH"));
+        // Retired (#1071): the names mean nothing, sign-in and the projects are Rust's regardless.
+        for s in [off, on] {
+            assert!(!s.on("NOEVIA_RUST_PROJECTS"));
+            assert!(!s.on("NOEVIA_RUST_AUTH"));
+            assert!(!s.on("NOEVIA_SOMETHING_ELSE"));
+        }
+        assert!(!off.on("NOEVIA_RUST_PROJECT_WRITES"));
+        assert!(on.on("NOEVIA_RUST_PROJECT_WRITES"));
     }
 
+    // #1071: NOEVIA_RUST_PROJECTS is retired; the project routes are Rust's with no switch.
     #[test]
-    fn project_images_are_rusts_only_under_their_switch_and_methods() {
-        let auth = Switches {
-            rust_projects: false,
-            ..Default::default()
-        };
-        let both = Switches {
-            rust_projects: true,
-            ..Default::default()
-        };
+    fn project_images_are_always_rusts_for_their_methods() {
+        let both = Switches::default();
         for (m, p) in [
             ("POST", "/api/projects/p1/assets"),
             ("GET", "/api/projects/p1/assets/img-1"),
             ("DELETE", "/api/projects/p1/assets/img-1"),
         ] {
-            assert_eq!(dispatch(m, p), None, "{m} {p}");
-            assert_eq!(dispatch_under(m, p, auth), None, "{m} {p}");
+            assert_eq!(dispatch(m, p), Some(Native::Projects), "{m} {p}");
             assert_eq!(
-                dispatch_under(m, p, both),
+                dispatch_under(
+                    m,
+                    p,
+                    Switches {
+                        rust_project_writes: true
+                    }
+                ),
                 Some(Native::Projects),
                 "{m} {p}"
             );
@@ -428,13 +420,10 @@ mod tests {
     }
 
     #[test]
-    fn a_projects_chat_list_is_rusts_only_under_the_switch_for_get_and_post() {
-        let auth = Switches::default();
-        let both = Switches {
-            rust_projects: true,
-            ..Default::default()
-        };
-        // Only a build with the chat-list slice answers it (#1409); without, it stays Node's.
+    fn a_projects_chat_list_is_always_rusts_for_get_and_post() {
+        let both = Switches::default();
+        // Only a build with the chat-list slice answers it (#1409); config.rs refuses to start one
+        // without it, since Node no longer answers it (#1071).
         let answered = cfg!(feature = "rust-project-chats").then_some(Native::Projects);
         assert_eq!(
             crate::FEATURES.contains(&"rust-project-chats"),
@@ -442,9 +431,7 @@ mod tests {
         );
         for m in ["GET", "POST"] {
             let p = "/api/projects/p1/chats";
-            assert_eq!(dispatch(m, p), None, "{m}");
-            assert_eq!(dispatch_under(m, p, auth), None, "{m}");
-            assert_eq!(dispatch_under(m, p, both), answered, "{m}");
+            assert_eq!(dispatch(m, p), answered, "{m}");
         }
         // The images do not depend on it.
         assert_eq!(
@@ -483,7 +470,10 @@ mod tests {
         assert_eq!(dispatch("GET", "/device"), None);
         assert_eq!(dispatch("GET", "/device/"), None);
         assert_eq!(dispatch("GET", "/.well-known/webauthn"), None);
-        assert_eq!(dispatch("GET", "/api/projects/p1/chats"), None);
+        assert_eq!(
+            dispatch("GET", "/api/projects/p1/chats"),
+            cfg!(feature = "rust-project-chats").then_some(Native::Projects)
+        );
     }
 
     // #1071: sign-in and the account are always Rust's for their listed methods, with no switch;
@@ -577,17 +567,13 @@ mod tests {
         );
     }
 
-    // #1264: the ported project writes are Node's under NOEVIA_RUST_PROJECTS alone (live today);
-    // only NOEVIA_RUST_PROJECT_WRITES, in a build with the slice, moves them to Rust.
+    // #1264: the ported project writes are Node's by default (live today); only
+    // NOEVIA_RUST_PROJECT_WRITES, in a build with the slice, moves them to Rust.
     #[test]
     fn project_writes_are_rusts_only_under_their_own_switch() {
-        let projects = Switches {
-            rust_projects: true,
-            ..Default::default()
-        };
+        let projects = Switches::default();
         let on = Switches {
             rust_project_writes: true,
-            ..projects
         };
         let answered = cfg!(feature = "rust-project-writes").then_some(Native::Projects);
         assert_eq!(
@@ -615,22 +601,17 @@ mod tests {
     }
 
     #[test]
-    fn the_free_chat_list_is_rusts_only_under_the_switch_for_get_and_post() {
-        let auth = Switches::default();
-        let both = Switches {
-            rust_projects: true,
-            ..Default::default()
-        };
-        // Only a build with the free-chat slice answers it; without, it stays Node's.
+    fn the_free_chat_list_is_always_rusts_for_get_and_post() {
+        let both = Switches::default();
+        // Only a build with the free-chat slice answers it; config.rs refuses to start one without
+        // it (#1071).
         let answered = cfg!(feature = "rust-free-chats").then_some(Native::Projects);
         assert_eq!(
             crate::FEATURES.contains(&"rust-free-chats"),
             answered.is_some()
         );
         for m in ["GET", "POST"] {
-            assert_eq!(dispatch(m, "/api/freechats"), None, "{m}");
-            assert_eq!(dispatch_under(m, "/api/freechats", auth), None, "{m}");
-            assert_eq!(dispatch_under(m, "/api/freechats", both), answered, "{m}");
+            assert_eq!(dispatch(m, "/api/freechats"), answered, "{m}");
         }
         // Independent of the project chat-list slice.
         assert_eq!(
@@ -678,23 +659,11 @@ mod tests {
     }
 
     #[test]
-    fn export_owns_only_get_whenever_projects_is_on_in_a_build_with_the_slice() {
-        let auth = Switches::default();
-        let on = Switches {
-            rust_projects: true,
-            ..auth
-        };
+    fn export_owns_only_get_always_in_a_build_with_the_slice() {
+        let on = Switches::default();
         let answered = cfg!(feature = "rust-export").then_some(Native::Export);
         assert_eq!(crate::FEATURES.contains(&"rust-export"), answered.is_some());
-        assert_eq!(dispatch("GET", "/api/export/conversations"), None);
-        assert_eq!(
-            dispatch_under("GET", "/api/export/conversations", auth),
-            None
-        );
-        assert_eq!(
-            dispatch_under("GET", "/api/export/conversations", on),
-            answered
-        );
+        assert_eq!(dispatch("GET", "/api/export/conversations"), answered);
         // Node keeps every other method (its 405) and the paths around it. (A trailing slash
         // matches the routes.toml pattern; export_routes.rs forwards it, Node matching exactly.)
         for (m, p) in [
@@ -710,6 +679,7 @@ mod tests {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
         }
         assert!(!on.on("NOEVIA_RUST_EXPORT"));
+        assert!(!on.on("NOEVIA_RUST_PROJECTS"));
     }
 
     #[test]

@@ -64,11 +64,20 @@ warning), core no longer has the Node handlers, and the front refuses to start w
 The corpus oracle at `core.ref` predates the removal: tools/front/replay-front.sh always tells it
 the front owns sign-in (`NOEVIA_RUST_AUTH=1` with its confirmation, on the Node side only).
 
-## M4: Rust owns project routes, slice by slice (`NOEVIA_RUST_PROJECTS`)
+## M4: Rust owns project routes (permanent since sbstndalton/noevia#1071)
 
-`switch = "NOEVIA_RUST_PROJECTS"` routes are Rust's only while the deployment sets
-`NOEVIA_RUST_PROJECTS=1` (the front gates the routes it owns itself, and writes the session
-upkeep Node's gate wrote; before #1071 this also needed `NOEVIA_RUST_AUTH=1`). The
+Since sbstndalton/noevia#1071 the M4 project routes, the conversation export and the project store
+have no switch: `NOEVIA_RUST_PROJECTS` is retired (a leftover value only earns a startup warning;
+routes.toml no longer names it and build.rs refuses it), Node refuses those routes
+unconditionally and no longer writes projects.json or free-chats.json itself (it saves through the
+project store, #1264), and the front refuses to start without the cargo features `rust-projects`,
+`rust-project-chats`, `rust-free-chats` and `rust-export` (the default features); the web
+supervisor checks the same in `--features`. The `*_CONFIRMED` handshakes below were how the
+slices rolled out; the corpus oracle at `core.ref` predates the retirement, so
+tools/front/replay-front.sh still tells it `NOEVIA_RUST_PROJECTS=1` and every confirmation. The
+rest of this section describes the slices as they were introduced.
+
+The front gates the routes it owns itself, and writes the session upkeep Node's gate wrote. The
 first slice is a project's images: `POST /api/projects/{id}/assets`, `GET` and `DELETE
 /api/projects/{id}/assets/{assetId}` (crates/server-projects `assets`). The second is a project's
 chat list: `GET` and `POST /api/projects/{id}/chats` (crates/server-projects `chats`: core's
@@ -125,9 +134,8 @@ differences, Node-only data dir), runs the Node-vs-Rust lock races (`server-proj
 node_lock`: images, chat lists and the free list, each with a blind-save control that must lose
 data, and a chat's move and a free chat's delete interleaved with the front's free-list save) and
 the generated saves against core's own routes (`--test chats_property --test
-free_chats_property`), and a negative control where Node is told the front owns the project
-routes but the front does not: the uploads, chat-list and free-chat-list saves must be refused
-with 503.
+free_chats_property`). Its negative control (a front started without the switch) left with the
+switch (#1071): core's own tests prove Node refuses these routes unconditionally.
 
 `core.sha256` records the twice-fetched, byte-identical codeload archive SHA-256 for
 `core.ref` (metadata; existing replay CI consumes the single SHA in `core.ref`).
@@ -137,8 +145,8 @@ The core#61 landing provides the required native OCR front acceptance gate (#127
 
 The usage, sampling and reasoning settings, routing mode and routing default, engine statistics,
 ChatGPT status and connected-storage metadata/list/read routes below are always Rust's (no
-routes.toml `switch`; `NOEVIA_RUST_AUTH` itself is retired as well), and the conversation
-export whenever it runs with `NOEVIA_RUST_PROJECTS=1`. Their own switches (`NOEVIA_RUST_USAGE`,
+routes.toml `switch`; `NOEVIA_RUST_AUTH` itself is retired as well), and so is the conversation
+export (`NOEVIA_RUST_PROJECTS` is retired too). Their own switches (`NOEVIA_RUST_USAGE`,
 `_SAMPLING_SETTINGS`, `_REASONING_SETTINGS`, `_ROUTING_MODE`, `_ROUTING_DEFAULT`, `_STATS`,
 `_CHATGPT_STATUS`, `_STORAGE_READS`, `_STORAGE_BROWSE`, `_EXPORT`) are retired: a leftover value
 only earns a startup warning. Core no longer has the Node handlers, so the front refuses to start without every cargo feature they need (the default features), `UI_DATA_DIR`,

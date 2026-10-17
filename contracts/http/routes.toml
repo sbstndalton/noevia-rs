@@ -18,9 +18,10 @@
 # deployment switch NOEVIA_RUST_AUTH is retired (sbstndalton/noevia#1071) and Node no longer has
 # those routes. `methods` lists what Rust answers; other methods stay Node's. The front read
 # routes (usage, sampling/reasoning settings, routing mode/default, stats, ChatGPT status,
-# storage metadata/list/read) are permanent the same way, and the conversation export under
-# NOEVIA_RUST_PROJECTS; their old switches are retired too. `switch` now only names the M4
-# project switches (NOEVIA_RUST_PROJECTS, NOEVIA_RUST_PROJECT_WRITES).
+# storage metadata/list/read) are permanent the same way; their old switches are retired too. So
+# are the M4 project routes (a project's images and chat list, the free-chat list) and the
+# conversation export: their switch NOEVIA_RUST_PROJECTS is retired (sbstndalton/noevia#1071).
+# `switch` now only names NOEVIA_RUST_PROJECT_WRITES (#1264).
 
 [[route]]
 path = "/api/account/instructions"
@@ -331,7 +332,6 @@ owner = "node"
 path = "/api/export/conversations"
 owner = "rust"
 methods = ["GET"]
-switch = "NOEVIA_RUST_PROJECTS"
 
 [[route]]
 path = "/api/features"
@@ -340,7 +340,6 @@ owner = "node"
 [[route]]
 path = "/api/freechats"
 owner = "rust"
-switch = "NOEVIA_RUST_PROJECTS"
 methods = ["GET", "POST"]
 
 [[route]]
@@ -551,14 +550,12 @@ owner = "node"
 [[route]]
 path = "/api/projects/{id}/assets"
 owner = "rust"
-switch = "NOEVIA_RUST_PROJECTS"
 methods = ["POST"]
 client = false
 
 [[route]]
 path = "/api/projects/{id}/assets/{assetId}"
 owner = "rust"
-switch = "NOEVIA_RUST_PROJECTS"
 methods = ["GET", "DELETE"]
 
 [[route]]
@@ -568,7 +565,6 @@ owner = "node"
 [[route]]
 path = "/api/projects/{projectId}/chats"
 owner = "rust"
-switch = "NOEVIA_RUST_PROJECTS"
 methods = ["GET", "POST"]
 
 [[route]]

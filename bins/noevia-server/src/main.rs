@@ -104,7 +104,6 @@ async fn server_main() -> ExitCode {
         config.upstream.authority(),
         config.trust_proxy
     );
-    let rust_projects = config.rust_projects.is_some();
     let app = App::new(config);
     app.statics.warm();
     // Rust owns sign-in (#1071): a schema newer than this build stops the front (identity.rs).
@@ -136,15 +135,14 @@ async fn server_main() -> ExitCode {
         Ok(Err(e)) => println!("noevia-server: cowork.db writer not open yet: {e}"),
         Err(_) => eprintln!("noevia-server: warning: writer check did not run"),
     }
-    if rust_projects {
-        println!("noevia-server: NOEVIA_RUST_PROJECTS=1, Rust owns the project image routes");
-    }
+    // #1071: permanent; NOEVIA_RUST_PROJECTS is retired (a leftover value is reported above).
+    println!("noevia-server: Rust owns the project routes, projects.json and free-chats.json");
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     let mut stop_wait = stop_rx.clone();
     // sbstndalton/noevia#1264: Node's projects.json / free-chats.json writes, loopback only.
-    if let (Some(cfg), Some(switch), Some(data_dir)) = (
+    let switch = app.config.rust_projects;
+    if let (Some(cfg), Some(data_dir)) = (
         app.config.project_store.clone(),
-        app.config.rust_projects,
         app.config.data_dir.clone(),
     ) {
         let listener = match tokio::net::TcpListener::bind(("127.0.0.1", cfg.port)).await {

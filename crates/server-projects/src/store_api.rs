@@ -155,7 +155,7 @@ mod tests {
     const USER: &str = "11111111-2222-4333-8444-555555555555";
 
     fn on() -> server_store::RustProjects {
-        server_store::RustProjects::from_env_value(Some("1")).unwrap()
+        server_store::RustProjects::owned()
     }
 
     fn ws() -> tempfile::TempDir {

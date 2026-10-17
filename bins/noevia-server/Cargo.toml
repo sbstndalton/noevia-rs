@@ -26,6 +26,7 @@ default = [
     "rust-stats",
     "rust-export",
     "rust-free-chats",
+    "rust-project-chats",
     "rust-chatgpt-status",
 ]
 rust-reasoning-settings = []
@@ -37,14 +38,14 @@ rust-storage-browse = ["rust-storage-reads"]
 rust-routing-default = []
 # M6 (#1650): GET /api/stats (permanent under NOEVIA_RUST_AUTH; src/routes.rs STATS, crates/server-stats).
 rust-stats = []
-# M4 (#1315): GET /api/export/conversations (permanent under NOEVIA_RUST_PROJECTS; src/routes.rs EXPORT, crates/server-export).
+# M4 (#1315): GET /api/export/conversations (permanent since #1071; src/routes.rs EXPORT, crates/server-export).
 rust-export = []
 # M6 (#1373): GET /api/providers/chatgpt (permanent under NOEVIA_RUST_AUTH; src/routes.rs CHATGPT_STATUS,
 # crates/server-chatgpt-status).
 rust-chatgpt-status = ["dep:server-chatgpt-status", "dep:zeroize"]
-# M4's second slice: a project's chat list under NOEVIA_RUST_PROJECTS (src/routes.rs PROJECT_CHATS).
+# M4's second slice: a project's chat list (permanent since #1071; src/routes.rs PROJECT_CHATS).
 rust-project-chats = []
-# M4's third slice: the free-chat list under NOEVIA_RUST_PROJECTS (src/routes.rs FREE_CHATS).
+# M4's third slice: the free-chat list (permanent since #1071; src/routes.rs FREE_CHATS).
 rust-free-chats = []
 # sbstndalton/noevia#1264: project writes still Node's, under NOEVIA_RUST_PROJECT_WRITES
 # (src/routes.rs PROJECT_WRITES; slice 1: a free chat's attachments project).

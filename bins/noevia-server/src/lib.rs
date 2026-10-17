@@ -41,25 +41,21 @@ use std::sync::Arc;
 /// `rust-auth`: this build answers sign-in and the account (M3), always (NOEVIA_RUST_AUTH is
 /// retired, sbstndalton/noevia#1071); the web supervisor refuses to start without it, and Node
 /// always refuses the account tables.
-/// `rust-projects`: this build answers a project's image routes under NOEVIA_RUST_PROJECTS (M4)
-/// and writes projects.json under the lock Node shares; the supervisor confirms it to Node the same
-/// way. `rust-project-chats` (cargo feature of that name): it answers a project's chat list under
-/// the same switch too; the supervisor confirms that slice to Node separately
-/// (NOEVIA_RUST_PROJECT_CHATS_CONFIRMED), so Node refuses the chat-list save only behind a front
-/// that answers it (sbstndalton/noevia#1409). `rust-free-chats` (cargo feature of that name): it
-/// answers the free-chat list (`GET`/`POST /api/freechats`) under the same switch and shares
-/// free-chats.json with Node under its lock; confirmed to Node separately as well
-/// (NOEVIA_RUST_FREE_CHATS_CONFIRMED). `rust-stats` (cargo feature of that name): it answers
+/// `rust-projects`: this build always answers a project's image routes (M4) and is the only writer
+/// of projects.json; `rust-project-chats` and `rust-free-chats` (cargo features of those names): a
+/// project's chat list and the free-chat list (`GET`/`POST /api/freechats`, free-chats.json). Their
+/// switch NOEVIA_RUST_PROJECTS is retired (sbstndalton/noevia#1071): Node always refuses those
+/// routes, so config.rs and the web supervisor refuse a build without any of them. `rust-stats` (cargo feature of that name): it answers
 /// `GET /api/stats` under NOEVIA_RUST_STATS (#1650); the supervisor confirms it to Node
 /// (NOEVIA_RUST_STATS_CONFIRMED), which then refuses that GET. `rust-export` (cargo feature of
 /// that name): it answers `GET /api/export/conversations` under NOEVIA_RUST_EXPORT (#1315, with
-/// NOEVIA_RUST_PROJECTS and rust-free-chats); the supervisor confirms it to Node
+/// rust-free-chats); the supervisor confirms it to Node
 /// (NOEVIA_RUST_EXPORT_CONFIRMED), which then refuses that GET. `rust-chatgpt-status` (cargo
 /// feature of that name): it answers `GET /api/providers/chatgpt` under NOEVIA_RUST_CHATGPT_STATUS
 /// (#1373); the supervisor confirms it to Node (NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED), which then
 /// refuses that GET. `rust-project-writes` (cargo feature of that name): it answers the project
 /// writes ported for sbstndalton/noevia#1264 (so far `GET`/`POST /api/chats/{chatId}/context`)
-/// under NOEVIA_RUST_PROJECT_WRITES, with NOEVIA_RUST_PROJECTS; the supervisor confirms it to Node
+/// under NOEVIA_RUST_PROJECT_WRITES; the supervisor confirms it to Node
 /// (NOEVIA_RUST_PROJECT_WRITES_CONFIRMED), which then refuses those writes.
 ///
 /// `project-store`: this build serves the internal project store Node writes projects.json and

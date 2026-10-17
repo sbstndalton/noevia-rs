@@ -62,7 +62,7 @@ fn every_case_answers_and_writes_as_node() {
         let ctx = Ctx {
             data_dir: root.path(),
             user_id: user,
-            switch: RustProjects::from_env_value(Some("1")).unwrap(),
+            switch: RustProjects::owned(),
             now_ms: c["now"].as_i64().unwrap(),
         };
         let project = c["project"].as_str().unwrap();

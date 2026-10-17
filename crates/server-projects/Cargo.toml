@@ -1,7 +1,7 @@
 [package]
 name = "server-projects"
 version = "0.1.0"
-description = "Full-Rust migration M4: the project routes Rust owns behind NOEVIA_RUST_PROJECTS (a project's images and its chat list), over the projects.json Node shares under one lock"
+description = "Full-Rust migration M4: the project routes Rust owns (a project's images, its chat list and the free-chat list; permanent since noevia#1071), over projects.json and free-chats.json, which Rust alone writes"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

@@ -9,7 +9,9 @@
 //! Rust always owns sign-in and the account and the tables they write (M3; Node always refuses
 //! those writes), and the front read routes (sbstndalton/noevia#1071): their old deployment
 //! switch NOEVIA_RUST_AUTH is retired, so UI_DATA_DIR and a valid auth environment are startup
-//! requirements, and a leftover NOEVIA_RUST_AUTH value only earns a warning.
+//! requirements, and a leftover NOEVIA_RUST_AUTH value only earns a warning. The same holds for
+//! the M4 project routes, the conversation export and the project store: their switch
+//! NOEVIA_RUST_PROJECTS is retired too (sbstndalton/noevia#1071).
 
 use std::net::IpAddr;
 use std::path::PathBuf;
@@ -31,10 +33,10 @@ pub struct Config {
     pub auth: Result<server_auth::AuthConfig, String>,
     /// Rust's ownership of sign-in and the account (M3), permanent since sbstndalton/noevia#1071.
     pub rust_auth: server_store::RustAuth,
-    /// NOEVIA_RUST_PROJECTS=1 (M4).
-    pub rust_projects: Option<server_store::RustProjects>,
-    /// The permanent front read routes (sbstndalton/noevia#1071): always on (export: with
-    /// NOEVIA_RUST_PROJECTS=1), and every prerequisite (UI_DATA_DIR, valid native auth, the
+    /// Rust's ownership of the M4 project routes and of projects.json / free-chats.json,
+    /// permanent since sbstndalton/noevia#1071 (it was NOEVIA_RUST_PROJECTS=1).
+    pub rust_projects: server_store::RustProjects,
+    /// The permanent front read routes (sbstndalton/noevia#1071): always on, and every prerequisite (UI_DATA_DIR, valid native auth, the
     /// compiled feature, a stats engine the front can read) is a startup requirement. Their old
     /// switches (RETIRED_SWITCHES) are not read.
     pub rust_usage: bool,
@@ -54,21 +56,19 @@ pub struct Config {
     /// response" fallback was kept in Node's memory.
     pub rust_stats: Option<std::sync::Arc<server_stats::Engine>>,
     /// GET /api/export/conversations (M4, sbstndalton/noevia#1315), read from the user's files on
-    /// disk: on with NOEVIA_RUST_PROJECTS=1, the free-chat list Node re-reads from disk (the
-    /// owner's 2026-10-12 condition).
+    /// disk: always on (#1071), since free-chats.json on disk is the list (Rust is its only writer,
+    /// the owner's 2026-10-12 condition).
     pub rust_export: bool,
     /// NOEVIA_RUST_PROJECT_WRITES=1 (sbstndalton/noevia#1264): the project writes ported from
-    /// Node so far. Refused without NOEVIA_RUST_PROJECTS=1 (they share its projects.json lock and
-    /// write switch), without the compiled rust-project-writes feature and without UI_DATA_DIR;
-    /// any other value is off.
+    /// Node so far. Refused without the compiled rust-project-writes feature and without
+    /// UI_DATA_DIR; any other value is off.
     pub rust_project_writes: bool,
     /// The internal store Node writes projects.json and free-chats.json through
     /// (src/project_store.rs, sbstndalton/noevia#1264), on 127.0.0.1 at NOEVIA_PROJECT_STORE_PORT
     /// with the secret NOEVIA_PROJECT_STORE_TOKEN (at least 32 bytes). Permanent: the
     /// NOEVIA_RUST_PROJECT_STORE switch is retired and not read; the store runs whenever the
-    /// supervisor hands over a port (it does whenever NOEVIA_RUST_PROJECTS is on, and Node refuses
-    /// to start projects without it). Refused without NOEVIA_RUST_PROJECTS=1, UI_DATA_DIR or the
-    /// secret.
+    /// supervisor hands over a port (it always does, and Node refuses to start without it). Refused
+    /// without UI_DATA_DIR or the secret.
     pub project_store: Option<ProjectStoreConfig>,
     /// GET /api/providers/chatgpt (M6, sbstndalton/noevia#1373). An invalid
     /// NOEVIA_FEATURE_CHATGPT_OAUTH refuses startup (Node does not start with one either).
@@ -179,7 +179,6 @@ impl Config {
     /// The deployment switches that are on.
     pub fn switches(&self) -> crate::routes::Switches {
         crate::routes::Switches {
-            rust_projects: self.rust_projects.is_some(),
             rust_project_writes: self.rust_project_writes,
         }
     }
@@ -200,9 +199,7 @@ impl Config {
         // startup requirement: a build without one of them, or an environment they cannot serve
         // from, refuses to start instead of leaving the route unanswered.
         let rust_auth = server_store::RustAuth::owned();
-        let rust_projects = server_store::RustProjects::from_env_value(
-            get(server_store::RustProjects::ENV).as_deref(),
-        );
+        let rust_projects = server_store::RustProjects::owned();
         let retired = retired_flags(&get);
         let rust_usage = true;
         let rust_storage_reads = true;
@@ -219,14 +216,10 @@ impl Config {
             return Err("GET /api/stats is not available with the Lemonade model manager (its MTP last-response fallback was recorded in Node)".into());
         }
         let rust_stats = Some(std::sync::Arc::new(engine));
-        // GET /api/export/conversations reads the free-chat list from disk, which is only the
-        // list Node re-reads under NOEVIA_RUST_PROJECTS (the owner's 2026-10-12 condition): it is
-        // the front's whenever that switch is on (the web supervisor requires it).
-        let rust_export = rust_projects.is_some();
+        // GET /api/export/conversations reads the free-chat list from disk, which Rust alone
+        // writes (the owner's 2026-10-12 condition): always the front's (#1071).
+        let rust_export = true;
         let rust_project_writes = if get("NOEVIA_RUST_PROJECT_WRITES").as_deref() == Some("1") {
-            if rust_projects.is_none() {
-                return Err("NOEVIA_RUST_PROJECT_WRITES=1 needs NOEVIA_RUST_PROJECTS=1".into());
-            }
             if !cfg!(feature = "rust-project-writes") {
                 return Err(
                     "NOEVIA_RUST_PROJECT_WRITES=1 needs compiled rust-project-writes".into(),
@@ -240,12 +233,6 @@ impl Config {
             false
         };
         let project_store = if get("NOEVIA_PROJECT_STORE_PORT").is_some_and(|p| !p.is_empty()) {
-            if rust_projects.is_none() {
-                return Err(
-                    "NOEVIA_PROJECT_STORE_PORT (the project store) needs NOEVIA_RUST_PROJECTS=1"
-                        .into(),
-                );
-            }
             if get("UI_DATA_DIR").filter(|d| !d.is_empty()).is_none() {
                 return Err(
                     "NOEVIA_PROJECT_STORE_PORT (the project store) needs UI_DATA_DIR".into(),
@@ -348,6 +335,7 @@ pub const RETIRED_SWITCHES: &[&str] = &[
     "NOEVIA_RUST_SAMPLING_SETTINGS",
     "NOEVIA_RUST_REASONING_SETTINGS",
     "NOEVIA_RUST_ROUTING_MODE",
+    "NOEVIA_RUST_PROJECTS",
 ];
 
 /// The cargo features the permanent front routes need, and whether this build has each. The
@@ -358,6 +346,8 @@ pub const FRONT_ROUTE_FEATURES: &[(&str, bool)] = &[
     ("rust-storage-browse", cfg!(feature = "rust-storage-browse")),
     ("rust-export", cfg!(feature = "rust-export")),
     ("rust-free-chats", cfg!(feature = "rust-free-chats")),
+    // The M4 project chat list (#1071): Node no longer answers it either.
+    ("rust-project-chats", cfg!(feature = "rust-project-chats")),
     (
         "rust-routing-default",
         cfg!(feature = "rust-routing-default"),
@@ -468,14 +458,31 @@ mod tests {
         assert!(err.contains("invalid native auth environment"), "{err}");
     }
 
+    /// sbstndalton/noevia#1071: Rust always owns the M4 project routes, the export and the
+    /// project files. NOEVIA_RUST_PROJECTS is retired: whatever it says (or when it is unset) the
+    /// ownership is the same, the front starts, and a leftover value is only reported.
     #[test]
-    fn rust_projects_no_longer_needs_the_retired_auth_switch() {
+    fn rust_projects_is_unconditional_and_its_old_switch_is_retired() {
         let up = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9021");
-        let c = cfg(&[up, DATA, ("NOEVIA_RUST_PROJECTS", "1")]).unwrap();
-        assert!(c.switches().rust_projects);
-        for v in ["", "0", "true"] {
-            let c = cfg(&[up, DATA, ("NOEVIA_RUST_PROJECTS", v)]).unwrap();
-            assert!(!c.switches().rust_projects, "{v:?}");
+        for v in [None, Some("1"), Some("0"), Some(""), Some("true")] {
+            let mut pairs = vec![up, DATA];
+            if let Some(v) = v {
+                pairs.push(("NOEVIA_RUST_PROJECTS", v));
+            }
+            let c = cfg(&pairs).unwrap();
+            assert_eq!(
+                c.rust_projects,
+                server_store::RustProjects::owned(),
+                "{v:?}"
+            );
+            assert!(c.rust_export, "{v:?}");
+            assert_eq!(c.switches(), crate::routes::Switches::default(), "{v:?}");
+            assert_eq!(
+                c.retired.contains(&"NOEVIA_RUST_PROJECTS"),
+                v.is_some(),
+                "{v:?}"
+            );
+            assert!(crate::FEATURES.contains(&"rust-projects"));
         }
     }
 
@@ -505,9 +512,8 @@ mod tests {
     }
 }
 
-/// sbstndalton/noevia#1071: the front read routes have no switch of their own. They are always
-/// the front's (the export: with NOEVIA_RUST_PROJECTS=1), and everything they need is a startup
-/// requirement.
+/// sbstndalton/noevia#1071: the front read routes and the export have no switch of their own.
+/// They are always the front's, and everything they need is a startup requirement.
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod front_routes_tests {
@@ -522,7 +528,6 @@ mod front_routes_tests {
     }
 
     const UP: (&str, &str) = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9");
-    const PROJECTS: (&str, &str) = ("NOEVIA_RUST_PROJECTS", "1");
     const DATA: (&str, &str) = ("UI_DATA_DIR", "/data");
 
     fn all_compiled() -> bool {
@@ -557,7 +562,7 @@ mod front_routes_tests {
 
     #[test]
     fn the_front_owns_every_read_route_without_any_switch() {
-        let enabled = lookup(&[UP, PROJECTS, DATA]);
+        let enabled = lookup(&[UP, DATA]);
         if !all_compiled() {
             let err = enabled.unwrap_err();
             for (name, compiled) in FRONT_ROUTE_FEATURES {
@@ -576,10 +581,6 @@ mod front_routes_tests {
             c.rust_stats.as_ref().unwrap().kind(),
             server_stats::Kind::None
         );
-        // Without NOEVIA_RUST_PROJECTS the export stays off; the rest is unchanged.
-        let c = lookup(&[UP, DATA]).unwrap();
-        assert_eq!(owned(&c)[..8], [true; 8]);
-        assert!(!c.rust_export && c.rust_chatgpt_status.is_some());
     }
 
     #[test]
@@ -588,7 +589,7 @@ mod front_routes_tests {
             return;
         }
         for value in ["0", "1", "", "true"] {
-            let mut on = vec![UP, PROJECTS, DATA];
+            let mut on = vec![UP, DATA];
             for name in RETIRED_SWITCHES {
                 on.push((name, value));
             }
@@ -708,7 +709,6 @@ mod export_tests {
     }
 
     const UP: (&str, &str) = ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9");
-    const PROJECTS: (&str, &str) = ("NOEVIA_RUST_PROJECTS", "1");
     const DATA: (&str, &str) = ("UI_DATA_DIR", "/data");
     const STORE_PORT: (&str, &str) = ("NOEVIA_PROJECT_STORE_PORT", "19021");
     const STORE_TOKEN: (&str, &str) = (
@@ -720,14 +720,14 @@ mod export_tests {
     fn project_store_runs_with_a_port_and_never_reads_the_retired_switch() {
         // No port: no store, whatever the retired switch says.
         for v in [None, Some("1"), Some("0")] {
-            let mut pairs = vec![UP, PROJECTS, DATA, STORE_TOKEN];
+            let mut pairs = vec![UP, DATA, STORE_TOKEN];
             if let Some(v) = v {
                 pairs.push(("NOEVIA_RUST_PROJECT_STORE", v));
             }
             assert!(lookup(&pairs).unwrap().project_store.is_none(), "{v:?}");
         }
         for extra in [None, Some(("NOEVIA_RUST_PROJECT_STORE", "0"))] {
-            let mut pairs = vec![UP, PROJECTS, DATA, STORE_PORT, STORE_TOKEN];
+            let mut pairs = vec![UP, DATA, STORE_PORT, STORE_TOKEN];
             pairs.extend(extra);
             let c = lookup(&pairs).unwrap();
             assert_eq!(c.project_store.as_ref().unwrap().port, 19021);
@@ -736,31 +736,29 @@ mod export_tests {
                 "the secret is never printed"
             );
         }
+        // #1071: the retired projects switch is not needed (nor read) for the store.
+        for v in ["0", "", "true"] {
+            let c = lookup(&[
+                UP,
+                DATA,
+                STORE_PORT,
+                STORE_TOKEN,
+                ("NOEVIA_RUST_PROJECTS", v),
+            ])
+            .unwrap();
+            assert_eq!(c.project_store.as_ref().unwrap().port, 19021, "{v:?}");
+        }
         for (missing, pairs) in [
-            (
-                "NOEVIA_RUST_PROJECTS=1",
-                vec![UP, DATA, STORE_PORT, STORE_TOKEN],
-            ),
-            ("UI_DATA_DIR", vec![UP, PROJECTS, STORE_PORT, STORE_TOKEN]),
+            ("UI_DATA_DIR", vec![UP, STORE_PORT, STORE_TOKEN]),
             (
                 "NOEVIA_PROJECT_STORE_PORT",
-                vec![
-                    UP,
-                    PROJECTS,
-                    DATA,
-                    STORE_TOKEN,
-                    ("NOEVIA_PROJECT_STORE_PORT", "0"),
-                ],
+                vec![UP, DATA, STORE_TOKEN, ("NOEVIA_PROJECT_STORE_PORT", "0")],
             ),
-            (
-                "NOEVIA_PROJECT_STORE_TOKEN",
-                vec![UP, PROJECTS, DATA, STORE_PORT],
-            ),
+            ("NOEVIA_PROJECT_STORE_TOKEN", vec![UP, DATA, STORE_PORT]),
             (
                 "NOEVIA_PROJECT_STORE_TOKEN",
                 vec![
                     UP,
-                    PROJECTS,
                     DATA,
                     STORE_PORT,
                     ("NOEVIA_PROJECT_STORE_TOKEN", "short"),
@@ -774,7 +772,7 @@ mod export_tests {
 
     const WRITES: (&str, &str) = ("NOEVIA_RUST_PROJECT_WRITES", "1");
 
-    // #1264: NOEVIA_RUST_PROJECTS=1 (live) never moves the ported writes; only this switch does.
+    // #1264: the ported writes are Node's by default; only this switch moves them.
     #[test]
     fn project_writes_switch_is_exact_default_off_and_separate_from_projects() {
         for value in [
@@ -785,12 +783,11 @@ mod export_tests {
             Some("1 "),
             Some(""),
         ] {
-            let mut pairs = vec![UP, PROJECTS, DATA];
+            let mut pairs = vec![UP, DATA];
             if let Some(v) = value {
                 pairs.push(("NOEVIA_RUST_PROJECT_WRITES", v));
             }
             let c = lookup(&pairs).unwrap();
-            assert!(c.switches().rust_projects);
             assert!(!c.rust_project_writes);
             assert!(!c.switches().on("NOEVIA_RUST_PROJECT_WRITES"));
         }
@@ -798,12 +795,9 @@ mod export_tests {
     }
 
     #[test]
-    fn project_writes_need_projects_the_compiled_slice_and_a_data_dir() {
-        let err = lookup(&[UP, WRITES, DATA]).unwrap_err();
-        assert!(err.contains("NOEVIA_RUST_PROJECTS=1"), "{err}");
-        let err = lookup(&[UP, WRITES, DATA]).unwrap_err();
-        assert!(err.contains("NOEVIA_RUST_PROJECTS=1"), "{err}");
-        let enabled = lookup(&[UP, PROJECTS, WRITES, DATA]);
+    fn project_writes_need_the_compiled_slice_and_a_data_dir() {
+        // #1071: no longer the retired projects switch.
+        let enabled = lookup(&[UP, WRITES, DATA]);
         assert_eq!(
             crate::FEATURES.contains(&"rust-project-writes"),
             cfg!(feature = "rust-project-writes")
@@ -816,7 +810,7 @@ mod export_tests {
         }
         let c = enabled.unwrap();
         assert!(c.rust_project_writes && c.switches().on("NOEVIA_RUST_PROJECT_WRITES"));
-        let err = lookup(&[UP, PROJECTS, WRITES]).unwrap_err();
+        let err = lookup(&[UP, WRITES]).unwrap_err();
         assert!(err.contains("UI_DATA_DIR"), "{err}");
     }
 }

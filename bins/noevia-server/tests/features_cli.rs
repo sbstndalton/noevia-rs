@@ -67,7 +67,6 @@ fn replay_probe(front: &str) -> std::process::Output {
         .args(["/nonexistent-synthetic-core", front])
         .env("UI_PORT", "18021")
         .env("NOEVIA_RUST_AUTH", "1")
-        .env("NOEVIA_RUST_PROJECTS", "1")
         .env("NOEVIA_RUST_USAGE", "1")
         .env("NOEVIA_RUST_SAMPLING_SETTINGS", "1")
         .env("NOEVIA_RUST_REASONING_SETTINGS", "1")
