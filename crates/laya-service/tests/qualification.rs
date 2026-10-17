@@ -21,6 +21,16 @@ fn config(directory: &std::path::Path, size: usize) -> Config {
     ];
     config
 }
+/// Configuration for tests whose setup call spawns a descendant from inside the
+/// engine (directory listing plus an interpreter launch). That work is not
+/// part of the behavior under test and exceeds the tight production-shaped
+/// decision budget on a loaded machine, so the setup call gets a realistic
+/// budget. Assertions about budgets use `config` directly.
+fn setup_config(directory: &std::path::Path, size: usize) -> Config {
+    let mut config = config(directory, size);
+    config.decision = Duration::from_secs(3);
+    config
+}
 #[test]
 fn actual_python_environment_parser_parity() {
     let directory = prepare();
@@ -413,7 +423,7 @@ async fn startup_refusal_and_shutdown_cleanup() {
     std::fs::write(dir.path().join("fail-startup"), b"").unwrap();
     assert!(Pool::start(config(dir.path(), 2)).await.is_err());
     std::fs::remove_file(dir.path().join("fail-startup")).unwrap();
-    let pool = Pool::start(config(dir.path(), 1)).await.unwrap();
+    let pool = Pool::start(setup_config(dir.path(), 1)).await.unwrap();
     assert!(pool.decide(oracle::body("__child")).await.is_ok());
     let pid: i32 = std::fs::read_to_string(dir.path().join("child-pid"))
         .unwrap()
@@ -428,20 +438,32 @@ async fn startup_refusal_and_shutdown_cleanup() {
             "owned engine process survived"
         );
     }
-    tokio::time::sleep(Duration::from_millis(50)).await;
     #[cfg(target_os = "linux")]
     {
-        let status = std::fs::read_to_string(format!("/proc/{pid}/stat"));
+        // The kill is delivered by the kernel; give it a bounded time to land
+        // on a loaded machine and fail if the grandchild is still running.
+        let gone = |status: std::io::Result<String>| {
+            status.is_err() || status.unwrap().split_whitespace().nth(2) == Some("Z")
+        };
+        let end = std::time::Instant::now() + Duration::from_secs(3);
+        while !gone(std::fs::read_to_string(format!("/proc/{pid}/stat")))
+            && std::time::Instant::now() < end
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         assert!(
-            status.is_err() || status.unwrap().split_whitespace().nth(2) == Some("Z"),
+            gone(std::fs::read_to_string(format!("/proc/{pid}/stat"))),
             "owned grandchild survived"
         );
     }
     #[cfg(not(target_os = "linux"))]
-    assert!(
-        nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_err(),
-        "owned grandchild survived"
-    );
+    {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_err(),
+            "owned grandchild survived"
+        );
+    }
 }
 proptest::proptest! {
     #[test]
@@ -453,7 +475,12 @@ proptest::proptest! {
 #[tokio::test]
 async fn idle_leader_exit_with_descendant_retaining_framed_pipe_is_recovered() {
     let dir = prepare();
-    let pool = Pool::start(config(dir.path(), 1)).await.unwrap();
+    let settings = setup_config(dir.path(), 1);
+    // The replacement must be started, and its start recorded, within the
+    // configured startup budget plus a margin; a retained pipe hiding the
+    // leader death would never produce the second start.
+    let restart = settings.startup + Duration::from_secs(2);
+    let pool = Pool::start(settings).await.unwrap();
     assert!(pool.decide(oracle::body("__pipe_child")).await.is_ok());
     let leader: i32 = std::fs::read_to_string(dir.path().join("starts"))
         .unwrap()
@@ -501,7 +528,7 @@ async fn idle_leader_exit_with_descendant_retaining_framed_pipe_is_recovered() {
         nix::sys::signal::Signal::SIGKILL,
     )
     .unwrap();
-    tokio::time::timeout(Duration::from_millis(600), async {
+    tokio::time::timeout(restart, async {
         while std::fs::read_to_string(dir.path().join("starts"))
             .unwrap()
             .lines()
