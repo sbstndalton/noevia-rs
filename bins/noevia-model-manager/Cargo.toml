@@ -31,6 +31,9 @@ native-downloads = ["native-check-updates"]
 # noevia#1318: model deletion (snapshot shared with model detail, FastAPI dict bodies).
 # noevia#1966: it refuses while a native download writes into the model's folder.
 native-model-delete = ["native-model-detail", "native-prompts", "native-downloads"]
+# noevia#1318 slice 12: GET /api/v1/sections/{name}/draft-heads (the model-detail snapshot and ini
+# reader, the Hub client and token of the update check).
+native-draft-heads = ["native-model-detail", "native-check-updates"]
 [lints]
 workspace = true
 [dependencies]

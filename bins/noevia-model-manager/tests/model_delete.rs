@@ -140,6 +140,8 @@ fn state(
         #[cfg(feature = "native-downloads")]
         downloads: None,
         model_delete: delete.map(Arc::new),
+        #[cfg(feature = "native-draft-heads")]
+        draft_heads: None,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner: None,
         #[cfg(feature = "native-backend-control")]

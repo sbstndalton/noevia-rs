@@ -92,6 +92,8 @@ fn state(runner: Arc<Runner>) -> Arc<StateData> {
         downloads: None,
         #[cfg(feature = "native-model-delete")]
         model_delete: None,
+        #[cfg(feature = "native-draft-heads")]
+        draft_heads: None,
         bench_runner: Some(runner),
         backends: None,
         sections: None,

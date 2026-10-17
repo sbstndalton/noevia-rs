@@ -1,0 +1,1458 @@
+{
+ "cases": [
+  {
+   "files": [
+    {
+     "name": "other.txt",
+     "size": 16
+    }
+   ],
+   "id": "no-file",
+   "names": [
+    "missing",
+    "m"
+   ],
+   "results": [
+    {
+     "body": "{\"detail\":\"no model file for this section\"}",
+     "content_type": "application/json",
+     "name": "missing",
+     "requests": [],
+     "status": 404
+    },
+    {
+     "body": "{\"detail\":\"no model file for this section\"}",
+     "content_type": "application/json",
+     "name": "m",
+     "requests": [],
+     "status": 404
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "m.gguf"
+    }
+   ],
+   "id": "flat-no-repo",
+   "names": [
+    "m"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "m-Q4.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "m-Q4-mtp-Q8_0.gguf"
+    },
+    {
+     "name": "m-Q4-mtp-BF16.gguf",
+     "size": 64
+    },
+    {
+     "name": "other-mtp-Q8_0.gguf",
+     "size": 4
+    },
+    {
+     "name": "mmproj-m-Q4-mtp.gguf",
+     "size": 2
+    }
+   ],
+   "id": "flat-head-beside",
+   "names": [
+    "m-Q4"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m-Q4\",\"local\":\"/models/m-Q4-mtp-BF16.gguf\",\"builtinLayers\":0,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m-Q4",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "org/m-Q4_K_M.gguf"
+    },
+    {
+     "name": "org/MTP/m-mtp-BF16.gguf",
+     "size": 300
+    },
+    {
+     "name": "org/MTP/m-mtp-Q8_0.gguf",
+     "size": 160
+    },
+    {
+     "name": "org/MTP/m-mtp-Q4_0.gguf",
+     "size": 160
+    },
+    {
+     "name": "org/MTP/mmproj-mtp.gguf",
+     "size": 10
+    },
+    {
+     "name": "org/m-mtp-Q2.gguf",
+     "size": 50
+    }
+   ],
+   "id": "subdir-mtp-folder",
+   "names": [
+    "m-Q4_K_M"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m-Q4_K_M\",\"local\":\"/models/org/MTP/m-mtp-Q4_0.gguf\",\"builtinLayers\":0,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m-Q4_K_M",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "org/m-Q4_K_M.gguf"
+    },
+    {
+     "name": "org/m-Q4_K_M-mtp-Q8_0.gguf",
+     "size": 50
+    },
+    {
+     "name": "org/m-Q4_K_M-mtp-huge.gguf",
+     "size": 2147483649
+    },
+    {
+     "name": "org/m-Q4_K_M-mtp-edge.gguf",
+     "size": 2147483648
+    }
+   ],
+   "id": "subdir-beside",
+   "names": [
+    "m-Q4_K_M"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m-Q4_K_M\",\"local\":\"/models/org/m-Q4_K_M-mtp-Q8_0.gguf\",\"builtinLayers\":0,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m-Q4_K_M",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       1
+      ]
+     },
+     "name": "nx/n-Q4.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       3
+      ]
+     },
+     "name": "fl.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       0
+      ]
+     },
+     "name": "zero.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "i32",
+       -2
+      ]
+     },
+     "name": "neg.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u64",
+       1099511627776
+      ]
+     },
+     "name": "big.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "f32",
+       2.75
+      ]
+     },
+     "name": "flt.gguf"
+    }
+   ],
+   "id": "builtin-layers",
+   "names": [
+    "n-Q4",
+    "fl",
+    "zero",
+    "neg",
+    "big",
+    "flt"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"n-Q4\",\"local\":\"\",\"builtinLayers\":1,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "n-Q4",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"fl\",\"local\":\"\",\"builtinLayers\":3,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "fl",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"zero\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "zero",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"neg\",\"local\":\"\",\"builtinLayers\":-2,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "neg",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"big\",\"local\":\"\",\"builtinLayers\":1099511627776,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "big",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"flt\",\"local\":\"\",\"builtinLayers\":2,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "flt",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "name": "broken.gguf",
+     "size": 64
+    },
+    {
+     "name": "sub/broken2.gguf",
+     "size": 3
+    }
+   ],
+   "id": "bad-header",
+   "names": [
+    "broken",
+    "broken2"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"broken\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "broken",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"broken2\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "broken2",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       0
+      ]
+     },
+     "name": "sub/a.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       2
+      ]
+     },
+     "name": "sub/b.gguf"
+    },
+    {
+     "name": "sub/mmproj-b.gguf",
+     "size": 8
+    }
+   ],
+   "id": "explicit-model-in-shared-folder",
+   "ini": "[b]\nmodel = /models/sub/b.gguf\n\n[c]\nmodel = sub/b.gguf\n\n[d]\nmodel = /models/sub/missing.gguf\n",
+   "names": [
+    "b",
+    "c",
+    "d",
+    "a"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"b\",\"local\":\"\",\"builtinLayers\":2,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "b",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"c\",\"local\":\"\",\"builtinLayers\":2,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "c",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"no model file for this section\"}",
+     "content_type": "application/json",
+     "name": "d",
+     "requests": [],
+     "status": 404
+    },
+    {
+     "body": "{\"section\":\"a\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "a",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       4
+      ]
+     },
+     "name": "sub/b.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       0
+      ]
+     },
+     "name": "sub/a.gguf"
+    }
+   ],
+   "id": "first-sorted-in-folder",
+   "names": [
+    "b"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"b\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "b",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       5
+      ]
+     },
+     "name": "x.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "y.gguf"
+    }
+   ],
+   "id": "default-section-model",
+   "ini": "[DEFAULT]\nmodel = /models/x.gguf\n\n[y]\nctx-size = 4096\n",
+   "names": [
+    "y",
+    "x",
+    "DEFAULT"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"y\",\"local\":\"\",\"builtinLayers\":5,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "y",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"x\",\"local\":\"\",\"builtinLayers\":5,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "x",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"no model file for this section\"}",
+     "content_type": "application/json",
+     "name": "DEFAULT",
+     "requests": [],
+     "status": 404
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "m.gguf"
+    }
+   ],
+   "id": "ini-preamble-only",
+   "ini": "no header line\n",
+   "names": [
+    "m"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "m.gguf"
+    }
+   ],
+   "id": "ini-duplicate-option",
+   "ini": "[m]\nk = 1\nk = 2\n",
+   "names": [
+    "m"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       1
+      ]
+     },
+     "name": "m.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "n.gguf"
+    }
+   ],
+   "id": "ini-duplicate-section",
+   "ini": "[m]\nmodel = /models/n.gguf\n\n[m]\nctx-size = 1\n",
+   "names": [
+    "m"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       2
+      ]
+     },
+     "name": "m.gguf"
+    },
+    {
+     "name": "dir.gguf/inner.txt",
+     "size": 1
+    }
+   ],
+   "id": "explicit-model-not-a-file",
+   "ini": "[m]\nmodel = /models/dir.gguf\n\n[n]\nmodel = /models/m.gguf\n",
+   "names": [
+    "m",
+    "n"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m\",\"local\":\"\",\"builtinLayers\":2,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"n\",\"local\":\"\",\"builtinLayers\":2,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "n",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       1
+      ]
+     },
+     "name": "sh/s-00001-of-00002.gguf"
+    },
+    {
+     "name": "sh/s-00002-of-00002.gguf",
+     "size": 8
+    },
+    {
+     "name": "sh/MTP/s-mtp-Q8_0.gguf",
+     "size": 12
+    }
+   ],
+   "id": "sharded",
+   "names": [
+    "s"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"s\",\"local\":\"/models/sh/MTP/s-mtp-Q8_0.gguf\",\"builtinLayers\":1,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "s",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "o/m.gguf"
+    },
+    {
+     "name": "o/MTP/sub-mtp-x.gguf/inner",
+     "size": 1
+    },
+    {
+     "name": "o/MTP/m-mtp-a.gguf",
+     "size": 30
+    }
+   ],
+   "id": "mtp-folder-other-entries",
+   "links": [
+    [
+     "o/MTP/m-mtp-b.gguf",
+     "missing-target"
+    ],
+    [
+     "o/MTP/m-mtp-c.gguf",
+     "m-mtp-a.gguf"
+    ]
+   ],
+   "names": [
+    "m"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m\",\"local\":\"/models/o/MTP/m-mtp-a.gguf\",\"builtinLayers\":0,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "a b.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "\u00fc-mtp-x.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "q.gguf"
+    }
+   ],
+   "id": "odd-names",
+   "names": [
+    "a%20b",
+    "%C3%BC",
+    "q"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"a b\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "a%20b",
+     "requests": [],
+     "status": 200
+    },
+    {
+     "body": "{\"detail\":\"no model file for this section\"}",
+     "content_type": "application/json",
+     "name": "%C3%BC",
+     "requests": [],
+     "status": 404
+    },
+    {
+     "body": "{\"section\":\"q\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "q",
+     "requests": [],
+     "status": 200
+    }
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "org/m-Q4_K_M.gguf"
+    }
+   ],
+   "hub": {
+    "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true": {
+     "body": "5b7b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a2022524541444d452e6d64222c202273697a65223a203130307d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d2d51345f4b5f4d2e67677566222c202273697a65223a20353336383730393132302c20226c6673223a207b2273697a65223a20353336383730393132302c2022736861323536223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030227d7d2c207b2274797065223a20226469726563746f7279222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20224d5450227d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20224d54502f6d2d6d74702d424631362e67677566222c202273697a65223a203330302c20226c6673223a207b2273697a65223a203330307d7d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20224d54502f6d2d6d74702d51385f302e67677566222c202273697a65223a20302c20226c6673223a207b2273697a65223a203136307d7d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d2d6d74702d4631362e67677566222c202273697a65223a203330307d5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ],
+      [
+       "link",
+       "<@HUB@/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true&cursor=p2>; rel=\"next\""
+      ]
+     ],
+     "status": 200
+    },
+    "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true&cursor=p2": {
+     "body": "5b7b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d2d64726166742d51345f302e67677566222c202273697a65223a2039307d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d6d70726f6a2d6d2d6d74702d4631362e67677566222c202273697a65223a2035307d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d2d6e6f4d54502d51345f4b5f4d2e67677566222c202273697a65223a2034307d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d2d6d74702d7a65726f2e67677566222c202273697a65223a20307d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d2d6d74702d687567652e67677566222c202273697a65223a20323134373438333634397d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d2d6d74702d656467652e67677566222c202273697a65223a20323134373438333634387d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a202264726166742d74696e792e47475546222c202273697a65223a20377d2c207b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226e6f7465732d6d74702d2e747874222c202273697a65223a20357d5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    }
+   },
+   "id": "repo-remote-two-pages",
+   "names": [
+    "m-Q4_K_M"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m-Q4_K_M\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[{\"repo\":\"acme/m-GGUF\",\"path\":\"draft-tiny.GGUF\",\"size\":7},{\"repo\":\"acme/m-GGUF\",\"path\":\"m-draft-Q4_0.gguf\",\"size\":90},{\"repo\":\"acme/m-GGUF\",\"path\":\"MTP/m-mtp-Q8_0.gguf\",\"size\":160},{\"repo\":\"acme/m-GGUF\",\"path\":\"m-mtp-F16.gguf\",\"size\":300},{\"repo\":\"acme/m-GGUF\",\"path\":\"MTP/m-mtp-BF16.gguf\",\"size\":300},{\"repo\":\"acme/m-GGUF\",\"path\":\"m-mtp-edge.gguf\",\"size\":2147483648}],\"mtpBuild\":null,\"repo\":\"acme/m-GGUF\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m-Q4_K_M",
+     "requests": [
+      {
+       "authorization": "Bearer hf_synthetic_draft_token_0123456789",
+       "path": "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true"
+      },
+      {
+       "authorization": "Bearer hf_synthetic_draft_token_0123456789",
+       "path": "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true&cursor=p2"
+      }
+     ],
+     "status": 200
+    }
+   ],
+   "seed": [
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/m-GGUF', 'org/m-Q4_K_M.gguf', '/models/org/m-Q4_K_M.gguf', 1, 'done', 1.0)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 'hf_synthetic_draft_token_0123456789')"
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "org/m-Q4_K_M.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "n.gguf"
+    }
+   ],
+   "hub": {
+    "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true": {
+     "body": "5b7b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d2d6d74702d51382e67677566222c202273697a65223a2031307d5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    },
+    "/api/models/acme/n/tree/main?recursive=true&expand=true": {
+     "body": "5b5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    }
+   },
+   "id": "repo-like-and-status",
+   "names": [
+    "m-Q4_K_M",
+    "n"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m-Q4_K_M\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[{\"repo\":\"acme/m-GGUF\",\"path\":\"m-mtp-Q8.gguf\",\"size\":10}],\"mtpBuild\":null,\"repo\":\"acme/m-GGUF\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m-Q4_K_M",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"n\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":null,\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "n",
+     "requests": [],
+     "status": 200
+    }
+   ],
+   "seed": [
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/old-GGUF', 'deep/org/m-Q4_K_M.gguf', '/models/deep/org/m-Q4_K_M.gguf', 1, 'done', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/m-GGUF', 'org/m-Q4_K_M.gguf', '/models/org/m-Q4_K_M.gguf', 1, 'done', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/err-GGUF', 'org/m-Q4_K_M.gguf', '/models/org/m-Q4_K_M.gguf', 1, 'error', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('url.example', 'org/m-Q4_K_M.gguf', '/models/org/m-Q4_K_M.gguf', 1, 'done', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/n', 'N.GGUF', '/models/N.GGUF', 1, 'done', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/xn', 'xn.gguf', '/models/xn.gguf', 1, 'done', 1.0)"
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "org/m-Q4_K_M.gguf"
+    }
+   ],
+   "hub": {
+    "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true": {
+     "body": "5b7b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d2d51345f4b5f4d2e67677566222c202273697a65223a203130307d5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    },
+    "/api/models/acme/m-MTP-GGUF/tree/main?recursive=true&expand=true": {
+     "body": "5b7b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a20226d2d4d54502d51345f4b5f4d2e67677566222c202273697a65223a203130307d5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    }
+   },
+   "id": "sibling-mtp-build",
+   "names": [
+    "m-Q4_K_M"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m-Q4_K_M\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":\"acme/m-MTP-GGUF\",\"repo\":\"acme/m-GGUF\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m-Q4_K_M",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true"
+      },
+      {
+       "authorization": null,
+       "path": "/api/models/acme/m-MTP-GGUF/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    }
+   ],
+   "seed": [
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/m-GGUF', 'org/m-Q4_K_M.gguf', '/models/org/m-Q4_K_M.gguf', 1, 'done', 1.0)"
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "org/m-Q4_K_M.gguf"
+    }
+   ],
+   "hub": {
+    "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true": {
+     "body": "5b5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    }
+   },
+   "id": "sibling-missing",
+   "names": [
+    "m-Q4_K_M"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m-Q4_K_M\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":\"acme/m-GGUF\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m-Q4_K_M",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true"
+      },
+      {
+       "authorization": null,
+       "path": "/api/models/acme/m-MTP-GGUF/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    }
+   ],
+   "seed": [
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/m-GGUF', 'org/m-Q4_K_M.gguf', '/models/org/m-Q4_K_M.gguf', 1, 'done', 1.0)"
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ],
+      "llama.nextn_predict_layers": [
+       "u32",
+       1
+      ]
+     },
+     "name": "org/m-Q4_K_M.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "p.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "q.gguf"
+    }
+   ],
+   "hub": {
+    "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true": {
+     "body": "5b5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    },
+    "/api/models/acme/p-MTP-GGUF/tree/main?recursive=true&expand=true": {
+     "body": "5b5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    },
+    "/api/models/acme/q-MTP-GGUF/tree/main?recursive=true&expand=true": {
+     "body": "5b5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 404
+    },
+    "/api/models/acme/q-gguf/tree/main?recursive=true&expand=true": {
+     "body": "5b5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    }
+   },
+   "id": "sibling-not-asked",
+   "names": [
+    "m-Q4_K_M",
+    "p",
+    "q"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"m-Q4_K_M\",\"local\":\"\",\"builtinLayers\":1,\"available\":true,\"remote\":[],\"mtpBuild\":null,\"repo\":\"acme/m-GGUF\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "m-Q4_K_M",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/m-GGUF/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"p\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":\"acme/p-MTP-GGUF\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "p",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/p-MTP-GGUF/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"q\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":\"acme/q-gguf\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "q",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/q-gguf/tree/main?recursive=true&expand=true"
+      },
+      {
+       "authorization": null,
+       "path": "/api/models/acme/q-MTP-GGUF/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    }
+   ],
+   "seed": [
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/m-GGUF', 'org/m-Q4_K_M.gguf', '/models/org/m-Q4_K_M.gguf', 1, 'done', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/p-MTP-GGUF', 'p.gguf', '/models/p.gguf', 1, 'done', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/q-gguf', 'q.gguf', '/models/q.gguf', 1, 'done', 1.0)"
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "e1.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "e2.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "e3.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "e4.gguf"
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "e5.gguf"
+    }
+   ],
+   "hub": {
+    "/api/models/acme/e1/tree/main?recursive=true&expand=true": {
+     "body": "5b5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 500
+    },
+    "/api/models/acme/e2/tree/main?recursive=true&expand=true": {
+     "body": "6e6f74206a736f6e",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    },
+    "/api/models/acme/e3/tree/main?recursive=true&expand=true": {
+     "body": "7b226572726f72223a20226120646963742c206e6f742061206c697374227d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    },
+    "/api/models/acme/e4/tree/main?recursive=true&expand=true": {
+     "body": "5b7b2274797065223a202266696c65222c202270617468223a205b226e6f74222c202261222c2022737472225d7d5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    },
+    "/api/models/acme/e5/tree/main?recursive=true&expand=true": {
+     "body": "5b7b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a202265352d6d74702d782e67677566222c202273697a65223a20337d5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ],
+      [
+       "link",
+       "<@HUB@/api/models/acme/e5/tree/main?recursive=true&expand=true&cursor=gone>; rel=\"next\""
+      ]
+     ],
+     "status": 200
+    }
+   },
+   "id": "hub-errors",
+   "names": [
+    "e1",
+    "e2",
+    "e3",
+    "e4",
+    "e5"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"e1\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":\"acme/e1\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"},\"remoteError\":\"Could not reach Hugging Face to list draft models.\"}",
+     "content_type": "application/json",
+     "name": "e1",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/e1/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"e2\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":\"acme/e2\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"},\"remoteError\":\"Could not reach Hugging Face to list draft models.\"}",
+     "content_type": "application/json",
+     "name": "e2",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/e2/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"e3\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":\"acme/e3\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "e3",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/e3/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"e4\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":\"acme/e4\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"},\"remoteError\":\"Could not reach Hugging Face to list draft models.\"}",
+     "content_type": "application/json",
+     "name": "e4",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/e4/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    },
+    {
+     "body": "{\"section\":\"e5\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[],\"mtpBuild\":null,\"repo\":\"acme/e5\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"},\"remoteError\":\"Could not reach Hugging Face to list draft models.\"}",
+     "content_type": "application/json",
+     "name": "e5",
+     "requests": [
+      {
+       "authorization": null,
+       "path": "/api/models/acme/e5/tree/main?recursive=true&expand=true"
+      },
+      {
+       "authorization": null,
+       "path": "/api/models/acme/e5/tree/main?recursive=true&expand=true&cursor=gone"
+      }
+     ],
+     "status": 200
+    }
+   ],
+   "seed": [
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/e1', 'e1.gguf', '/models/e1.gguf', 1, 'done', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/e2', 'e2.gguf', '/models/e2.gguf', 1, 'done', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/e3', 'e3.gguf', '/models/e3.gguf', 1, 'done', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/e4', 'e4.gguf', '/models/e4.gguf', 1, 'done', 1.0)",
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/e5', 'e5.gguf', '/models/e5.gguf', 1, 'done', 1.0)"
+   ]
+  },
+  {
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "llama"
+      ]
+     },
+     "name": "t.gguf"
+    }
+   ],
+   "hub": {
+    "/api/models/acme/t/tree/main?recursive=true&expand=true": {
+     "body": "5b7b2274797065223a202266696c65222c20226f6964223a202230303030303030303030303030303030303030303030303030303030303030303030303030303030222c202270617468223a2022742d64726166742d782e67677566222c202273697a65223a20327d5d",
+     "headers": [
+      [
+       "content-type",
+       "application/json"
+      ]
+     ],
+     "status": 200
+    }
+   },
+   "id": "token-int",
+   "names": [
+    "t"
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"t\",\"local\":\"\",\"builtinLayers\":0,\"available\":false,\"remote\":[{\"repo\":\"acme/t\",\"path\":\"t-draft-x.gguf\",\"size\":2}],\"mtpBuild\":null,\"repo\":\"acme/t\",\"modes\":{\"chat\":\"balanced\",\"code\":\"coding\",\"agent\":\"coding\",\"writing\":\"writing\"}}",
+     "content_type": "application/json",
+     "name": "t",
+     "requests": [
+      {
+       "authorization": "Bearer 7",
+       "path": "/api/models/acme/t/tree/main?recursive=true&expand=true"
+      }
+     ],
+     "status": 200
+    }
+   ],
+   "seed": [
+    "INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, started_at) VALUES('acme/t', 't.gguf', '/models/t.gguf', 1, 'done', 1.0)",
+    "INSERT INTO kv(key, value) VALUES('hf_token', 7)"
+   ]
+  }
+ ],
+ "oracle": {
+  "api.py": "55651c96d06267840dfcbdbe9c167919ebb81cb4d65b0b595728b27d37949e22",
+  "autoconfig.py": "15cc464f19cb43a68752572f6fa91046fe34c37296decef348a84dcbe75dc1c6",
+  "autoconfig_core.py": "d9da1c88fe6ef8db5a0f3784ca5e024436c110d338deed9ea04bffb7870e15ac",
+  "config.py": "4708a112769dbc3b9da6c49eeb7057e02d06868ca4af0e0bf4567971a267581a",
+  "db.py": "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478",
+  "gguf_meta.py": "8ac984794fb9087fcd774cfe1a4e83eac847c1675224c8c09029fb9dcbd43b0a",
+  "helpers.py": "fcf2ccb14e5e068f97bb7a4b7985ab7f4f4855b940eb6d9e3838f239ad97918d",
+  "hf.py": "c6edefbb070295a4ed0137679d25dfe9d46723bec14f1c1c6f418c207bb08df9",
+  "ini.py": "b3cb05fd382b5f408ad16430db8841d40c82a3714115233f2e35b2f7f3b61740",
+  "main.py": "fd18fc7da574a02a72795c242266c1c9880cd348cde17a4642d32140b75c8fdf",
+  "model_files.py": "37d296e39be3d3c4bdc3679722f8768b18075e5bf517045d51f8a60d7efc44eb",
+  "utils.py": "3f56fb6b04094ec19c09c191a0d4267e2d233e3461884be0648e4875e6ef6426"
+ },
+ "schema": [
+  "CREATE TABLE kv (\n                key   TEXT PRIMARY KEY,\n                value TEXT NOT NULL\n            )",
+  "CREATE TABLE download_history (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                repo_id      TEXT NOT NULL,\n                filename     TEXT NOT NULL,\n                dest_path    TEXT NOT NULL,\n                total_bytes  INTEGER NOT NULL,\n                status       TEXT NOT NULL,\n                error        TEXT,\n                started_at   REAL NOT NULL,\n                completed_at REAL\n            )",
+  "CREATE TABLE avatar_cache (\n                owner       TEXT PRIMARY KEY,\n                url         TEXT NOT NULL,\n                fetched_at  REAL NOT NULL\n            )",
+  "CREATE TABLE update_check (\n                filename          TEXT PRIMARY KEY,\n                repo_id           TEXT NOT NULL,\n                hf_last_modified  TEXT,\n                checked_at        REAL NOT NULL\n            )",
+  "CREATE TABLE req_timing (\n                id            INTEGER PRIMARY KEY AUTOINCREMENT,\n                ts            REAL NOT NULL,\n                backend       TEXT NOT NULL,\n                instance      TEXT NOT NULL,\n                task          INTEGER NOT NULL,\n                model_path    TEXT NOT NULL DEFAULT '',\n                alias         TEXT NOT NULL DEFAULT '',\n                spec_type     TEXT NOT NULL DEFAULT '',\n                prompt_tokens INTEGER NOT NULL DEFAULT 0,\n                prompt_tps    REAL    NOT NULL DEFAULT 0,\n                gen_tokens    INTEGER NOT NULL DEFAULT 0,\n                gen_tps       REAL    NOT NULL DEFAULT 0,\n                draft_acc     REAL,\n                draft_len     REAL,\n                UNIQUE(backend, instance, task)\n            )",
+  "CREATE INDEX req_timing_model\n                ON req_timing(model_path, ts DESC)",
+  "CREATE INDEX req_timing_alias\n                ON req_timing(alias, ts DESC)",
+  "CREATE INDEX req_timing_dedupe\n                ON req_timing(backend, task, ts)",
+  "CREATE TABLE bench_run (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                backend     TEXT NOT NULL,\n                status      TEXT NOT NULL,           -- running | done | cancelled | error\n                started_at  REAL NOT NULL,\n                finished_at REAL,\n                reps        INTEGER NOT NULL DEFAULT 1,\n                max_tokens  INTEGER NOT NULL DEFAULT 256,\n                note        TEXT NOT NULL DEFAULT ''\n            )",
+  "CREATE TABLE bench_variant (\n                id       INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id   INTEGER NOT NULL,\n                alias    TEXT NOT NULL,\n                argv_json TEXT NOT NULL DEFAULT '{}',\n                load_ms  REAL,\n                UNIQUE(run_id, alias)\n            )",
+  "CREATE TABLE bench_result (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                variant_id  INTEGER NOT NULL,\n                prompt_name TEXT NOT NULL,\n                rep         INTEGER NOT NULL,\n                cold        INTEGER NOT NULL DEFAULT 0,\n                ttft_ms     REAL,\n                ttft_answer_ms REAL,\n                truncated   INTEGER NOT NULL DEFAULT 0,\n                total_ms    REAL,\n                prompt_n    INTEGER,\n                prompt_tps  REAL,\n                gen_n       INTEGER,\n                gen_tps     REAL,\n                draft_n     INTEGER,\n                draft_acc   REAL,\n                peak_vram_json TEXT NOT NULL DEFAULT '[]',\n                contended   INTEGER NOT NULL DEFAULT 0,\n                err         TEXT NOT NULL DEFAULT '',\n                -- The generated text itself. Timings alone cannot answer \"is this model any\n                -- good at this\", and a run that keeps only timings destroys the one artifact\n                -- that could ever be graded. Keeping it makes scoring an OFFLINE pass over\n                -- stored rows: a rubric can change and re-score history without spending GPU\n                -- time again. Reasoning is deliberately not kept - the answer is what gets\n                -- graded, and thinking would multiply row size for text no rubric reads.\n                response_text TEXT NOT NULL DEFAULT ''\n            )",
+  "CREATE INDEX bench_result_variant ON bench_result(variant_id)",
+  "CREATE TABLE bench_sweep (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id       INTEGER NOT NULL,\n                alias        TEXT NOT NULL DEFAULT '',\n                model_type   TEXT NOT NULL DEFAULT '',\n                test         TEXT NOT NULL DEFAULT '',\n                n_prompt     INTEGER, n_gen INTEGER, n_depth INTEGER,\n                avg_ts       REAL,    stddev_ts REAL,\n                n_gpu_layers INTEGER, n_cpu_moe INTEGER, n_ubatch INTEGER,\n                type_k       TEXT,    type_v TEXT, flash_attn INTEGER,\n                split_mode   TEXT,\n                raw_json     TEXT NOT NULL DEFAULT '{}'\n            )",
+  "CREATE INDEX bench_sweep_run ON bench_sweep(run_id)",
+  "CREATE TABLE server_config (\n                backend    TEXT NOT NULL,\n                instance   TEXT NOT NULL,\n                alias      TEXT NOT NULL DEFAULT '',\n                model_path TEXT NOT NULL DEFAULT '',\n                argv_json  TEXT NOT NULL DEFAULT '{}',\n                first_seen REAL NOT NULL DEFAULT 0,\n                PRIMARY KEY (backend, instance)\n            )",
+  "CREATE TABLE prompts (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                name        TEXT NOT NULL,\n                body        TEXT NOT NULL,\n                created_at  REAL NOT NULL\n            )",
+  "CREATE TABLE model_badge (\n                id         INTEGER PRIMARY KEY AUTOINCREMENT,\n                alias      TEXT NOT NULL,\n                category   TEXT NOT NULL,\n                rating     INTEGER NOT NULL,\n                note       TEXT NOT NULL DEFAULT '',\n                run_id     INTEGER,\n                created_at REAL NOT NULL,\n                -- One rating per category per model. Re-rating updates in place, so the\n                -- badge always reflects your latest opinion instead of accumulating a\n                -- history nothing reads.\n                UNIQUE(alias, category)\n            )",
+  "CREATE INDEX model_badge_alias ON model_badge(alias)"
+ ]
+}
