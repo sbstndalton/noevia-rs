@@ -1184,3 +1184,63 @@ async fn a_loaded_image_preset_does_not_hold_back_releasing_the_old_model() {
     settle(&f).await;
     assert!(f.service.saved().unwrap().unwrap().previous.is_empty());
 }
+
+/// noevia#1984/#1994: with native downloads, the embedding-guarded Python delete also holds the
+/// whole download table while it is forwarded, and lets go when the child answers.
+#[cfg(feature = "native-downloads")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_guarded_python_delete_holds_the_download_table_while_forwarded() {
+    use noevia_model_manager::downloads::{Config, Downloads};
+    let f = fixture();
+    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let (arrived, arrived_rx) = tokio::sync::oneshot::channel::<()>();
+    let (release, released) = tokio::sync::oneshot::channel::<()>();
+    let hooks = Arc::new(Mutex::new(Some((arrived, released))));
+    let app = axum::Router::new().route(
+        "/api/v1/models/delete",
+        axum::routing::post(move || {
+            let hooks = hooks.clone();
+            async move {
+                let (arrived, released) = hooks.lock().unwrap().take().unwrap();
+                let _ = arrived.send(());
+                let _ = released.await;
+                axum::Json(serde_json::json!({"results": [{"ok": true}]}))
+            }
+        }),
+    );
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let data = f.dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let models = f.dir.path().join("models");
+    let table = Downloads::new(Config::production(
+        models.to_str().unwrap().to_owned(),
+        data.to_str().unwrap(),
+        1,
+    ))
+    .unwrap();
+    let mut s = Arc::try_unwrap(state_at(f.service.clone(), &base))
+        .ok()
+        .unwrap();
+    s.downloads = Some(table.clone());
+    let delete = tokio::spawn(call(
+        Arc::new(s),
+        "POST",
+        "/api/v1/models/delete",
+        r#"{"models":["embeddinggemma-2/embeddinggemma-2-Q8_0.gguf"]}"#,
+    ));
+    tokio::time::timeout(Duration::from_secs(20), arrived_rx)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(table.whole_reservations(), 1, "not held while forwarded");
+    release.send(()).unwrap();
+    let (status, body) = delete.await.unwrap();
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body, serde_json::json!({"results": [{"ok": true}]}));
+    assert_eq!(table.whole_reservations(), 0);
+    server.abort();
+}

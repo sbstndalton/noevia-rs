@@ -2072,13 +2072,22 @@ fn python_delete_table(state: &StateData) -> Option<Arc<downloads::Downloads>> {
 /// `Deleting` until the forwarded request has ended. The forward runs in its own task that owns
 /// the reservation: a request dropped mid-forward (client gone, route timeout) does not release
 /// it while Python may still be deleting, only once the child has answered or the forward has
-/// failed or hit its own timeout ([`LEGACY_TIMEOUT`]).
+/// failed or hit its own timeout ([`LEGACY_TIMEOUT`], 600 s). At that timeout it is released
+/// even if Python is still deleting: this side cannot see past it.
+///
+/// noevia#1994: the request body is read before the reservation is taken (as `guarded_delete`
+/// does), so a client whose body stalls holds nothing; only the forward itself runs under it.
 #[cfg(feature = "native-downloads")]
 async fn forward_python_delete(
     state: Arc<StateData>,
     table: Arc<downloads::Downloads>,
     req: Request,
 ) -> Response {
+    let (parts, body) = req.into_parts();
+    let Ok(raw) = to_bytes(body, REQUEST_CAP).await else {
+        return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+    };
+    let req = Request::from_parts(parts, Body::from(raw));
     let held = table.reserve_all();
     if table.active() > 0 {
         return detail(StatusCode::CONFLICT, PYTHON_DELETE_WHILE_DOWNLOADING);

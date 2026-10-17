@@ -1486,3 +1486,89 @@ async fn python_delete_forward_reserves_the_whole_table() {
     assert_eq!(child.arrived().await, "plan");
     cancel_all(state.clone()).await;
 }
+
+/// noevia#1994: the delete's body is read before the whole table is held. A client whose body
+/// never completes holds nothing while it stalls, and nothing once it is dropped; a start in the
+/// meantime queues.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_stalled_python_delete_body_never_holds_the_table() {
+    use futures_util::StreamExt as _;
+    let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let hang = silent.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((sock, _)) = silent.accept().await {
+            held.push(sock);
+        }
+    });
+    let mut child = turn_based_child().await;
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let models = root.join("models");
+    std::fs::create_dir(&models).unwrap();
+    let db = Connection::open(root.join("model_loader.db")).unwrap();
+    for sql in fixture()["schema"].as_array().unwrap() {
+        db.execute_batch(sql.as_str().unwrap()).unwrap();
+    }
+    let table = Downloads::new(Config {
+        models_dir: models.to_str().unwrap().to_owned(),
+        database: root.join("model_loader.db"),
+        max_concurrent: 2,
+        token_origin: TokenOrigin::hub(),
+        parallel_min: 64 * 1024,
+        unknown_cap: noevia_model_manager::downloads::UNKNOWN_SIZE_CAP,
+        clock: wall,
+    })
+    .unwrap();
+    let state = state(table.clone(), child.port);
+    // The first part of the body arrives; the rest never does.
+    let (polled, was_polled) = tokio::sync::oneshot::channel::<()>();
+    let body = futures_util::stream::iter([Ok::<_, std::io::Error>(bytes::Bytes::from_static(
+        b"{\"models\":",
+    ))])
+    .chain(futures_util::stream::once(async move {
+        let _ = polled.send(());
+        std::future::pending::<Result<bytes::Bytes, std::io::Error>>().await
+    }));
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/models/delete")
+        .header("x-model-loader-token", TOKEN)
+        .header("content-type", "application/json")
+        .body(Body::from_stream(body))
+        .unwrap();
+    let router = noevia_model_manager::router(state.clone());
+    let stalled = tokio::spawn(async move { router.oneshot(request).await });
+    tokio::time::timeout(Duration::from_secs(20), was_polled)
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(table.whole_reservations(), 0, "held while the body stalls");
+    child
+        .plans
+        .send(one_file_plan("hang/x.gguf", hang))
+        .unwrap();
+    let (status, body) = send(&state, "POST", URL_START, Some(r#"{"url": "x"}"#.into())).await;
+    assert_eq!(child.arrived().await, "plan");
+    assert_eq!(status, 200, "{body}");
+    stalled.abort();
+    assert!(stalled.await.unwrap_err().is_cancelled());
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(
+        table.whole_reservations(),
+        0,
+        "held after the request was dropped"
+    );
+    for job in jobs(&state).await {
+        let id = job["id"].as_str().unwrap().to_owned();
+        send(
+            &state,
+            "POST",
+            &format!("/api/v1/downloads/{id}/cancel"),
+            None,
+        )
+        .await;
+    }
+    wait(&state, idle).await;
+}
