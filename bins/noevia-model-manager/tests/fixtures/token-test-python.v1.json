@@ -1,0 +1,97 @@
+{
+ "cases": [
+  {
+   "body": "{}",
+   "expected": {
+    "message": "anonymous (no token)",
+    "ok": true
+   },
+   "id": "empty",
+   "status": 200,
+   "token": ""
+  },
+  {
+   "body": "{\"name\":\"synthetic-user\",\"fullname\":\"Full Name\"}",
+   "expected": {
+    "message": "authenticated as synthetic-user",
+    "ok": true
+   },
+   "id": "name",
+   "status": 200,
+   "token": "synthetic-token"
+  },
+  {
+   "body": "{\"name\":\"\",\"fullname\":\"Full Name\"}",
+   "expected": {
+    "message": "authenticated as Full Name",
+    "ok": true
+   },
+   "id": "fullname",
+   "status": 200,
+   "token": "synthetic-token"
+  },
+  {
+   "body": "{}",
+   "expected": {
+    "message": "authenticated as unknown",
+    "ok": true
+   },
+   "id": "unknown",
+   "status": 200,
+   "token": "synthetic-token"
+  },
+  {
+   "body": "{\"name\":42}",
+   "expected": {
+    "message": "authenticated as 42",
+    "ok": true
+   },
+   "id": "numeric-name",
+   "status": 200,
+   "token": "synthetic-token"
+  },
+  {
+   "body": "{\"name\":[\"a\",1]}",
+   "expected": {
+    "message": "authenticated as ['a', 1]",
+    "ok": true
+   },
+   "id": "compound-name",
+   "status": 200,
+   "token": "synthetic-token"
+  },
+  {
+   "body": "invalid token",
+   "expected": {
+    "message": "HTTP 401: invalid token",
+    "ok": false
+   },
+   "id": "rejected",
+   "status": 401,
+   "token": "synthetic-token"
+  },
+  {
+   "body": "redirect",
+   "expected": {
+    "message": "HTTP 302: redirect",
+    "ok": false
+   },
+   "id": "redirect",
+   "status": 302,
+   "token": "synthetic-token"
+  },
+  {
+   "body": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+   "expected": {
+    "message": "HTTP 403: éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+    "ok": false
+   },
+   "id": "unicode-prefix",
+   "status": 403,
+   "token": "synthetic-token"
+  }
+ ],
+ "oracle": {
+  "source": "c6edefbb070295a4ed0137679d25dfe9d46723bec14f1c1c6f418c207bb08df9"
+ }
+}

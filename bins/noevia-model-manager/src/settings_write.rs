@@ -15,9 +15,9 @@
 //!
 //! The write is native: one upsert into `kv` on a read-write connection that never creates the
 //! store or changes its journal mode. The answer is the native settings read. The token test
-//! calls Hugging Face, which this side does not do yet, so it is asked of the Python child's
-//! private `GET /api/v1/internal/hf-token-test` (which reads the stored token itself) and placed
-//! verbatim. The token never appears in an answer or a log.
+//! is native under the separate token-test selector, or otherwise asked of the Python child's
+//! private `GET /api/v1/internal/hf-token-test` (which reads the stored token itself).
+//! Native transport errors are input-free; token echoes in upstream messages are redacted.
 use crate::prompts::JsonValue as Json;
 use rusqlite::{Connection, OpenFlags};
 use std::{
@@ -43,6 +43,8 @@ pub enum Outcome {
 
 pub struct SettingsWrite {
     root: PathBuf,
+    #[cfg(feature = "native-token-test")]
+    token_test: Option<crate::token_test::TokenTest>,
     lock: tokio::sync::Mutex<()>,
 }
 
@@ -80,8 +82,25 @@ impl SettingsWrite {
     pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_owned(),
+            #[cfg(feature = "native-token-test")]
+            token_test: None,
             lock: tokio::sync::Mutex::new(()),
         }
+    }
+
+    #[cfg(feature = "native-token-test")]
+    pub fn with_native_token_test(mut self) -> Result<Self, &'static str> {
+        self.token_test = Some(crate::token_test::TokenTest::new()?);
+        Ok(self)
+    }
+
+    /// None means the compatibility child owns validation. Native failures never fall back.
+    pub async fn token_test(&self) -> Option<Vec<u8>> {
+        #[cfg(feature = "native-token-test")]
+        if let Some(test) = &self.token_test {
+            return Some(test.run(&self.root.join("model_loader.db")).await);
+        }
+        None
     }
 
     pub async fn put(&self, body: &Json) -> Outcome {
@@ -150,11 +169,43 @@ pub fn valid_test(bytes: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
     use super::*;
 
     fn json(t: &str) -> Json {
         crate::prompts::parse_json(t).unwrap()
+    }
+
+    #[cfg(feature = "native-token-test")]
+    #[tokio::test]
+    async fn native_token_test_answers_with_the_child_unavailable() {
+        use tower::ServiceExt;
+        let dir = tempfile::tempdir().unwrap();
+        let db = rusqlite::Connection::open(dir.path().join("model_loader.db")).unwrap();
+        db.execute_batch("CREATE TABLE kv(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+            .unwrap();
+        let mut state = crate::test_support::test_state("http://127.0.0.1:9");
+        state.settings_write = Some(std::sync::Arc::new(
+            SettingsWrite::new(dir.path())
+                .with_native_token_test()
+                .unwrap(),
+        ));
+        let response = crate::router(std::sync::Arc::new(state))
+            .oneshot(
+                axum::http::Request::put("/api/v1/settings")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(r#"{"test":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let body = axum::body::to_bytes(response.into_body(), 65536)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["test"]["ok"], true);
+        assert_eq!(body["test"]["message"], "anonymous (no token)");
     }
 
     #[test]
