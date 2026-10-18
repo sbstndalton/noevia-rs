@@ -972,6 +972,8 @@ mod tests {
             legacy: crate::legacy_client().unwrap(),
             legacy_base: crate::LEGACY_BASE.to_owned(),
             idle_unload: None,
+            #[cfg(feature = "native-section-autoconfig")]
+            section_autoconfig: None,
             #[cfg(feature = "native-download-targets")]
             download_targets: None,
             #[cfg(feature = "native-badges")]

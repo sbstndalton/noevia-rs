@@ -482,6 +482,8 @@ fn state_at(service: Arc<EmbeddingService>, legacy_base: &str) -> Arc<StateData>
         legacy: noevia_model_manager::legacy_client().unwrap(),
         legacy_base: legacy_base.to_owned(),
         idle_unload: None,
+        #[cfg(feature = "native-section-autoconfig")]
+        section_autoconfig: None,
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
         #[cfg(feature = "native-badges")]

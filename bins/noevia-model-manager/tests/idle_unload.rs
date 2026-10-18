@@ -96,6 +96,8 @@ fn state(base: &str, reconciler: Option<Arc<Reconciler>>) -> Arc<StateData> {
         legacy: noevia_model_manager::legacy_client().unwrap(),
         legacy_base: base.to_owned(),
         idle_unload: reconciler,
+        #[cfg(feature = "native-section-autoconfig")]
+        section_autoconfig: None,
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
         #[cfg(feature = "native-badges")]

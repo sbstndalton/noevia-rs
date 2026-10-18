@@ -811,7 +811,7 @@ fn locate(
 }
 
 /// A models-relative path as pathlib joins it (`""` and `.` segments dropped); `..` refuses.
-fn normal(rel: &str) -> Result<String, Stop> {
+pub(crate) fn normal(rel: &str) -> Result<String, Stop> {
     let mut segments = Vec::new();
     for segment in rel.split('/') {
         match segment {
@@ -828,7 +828,7 @@ fn normal(rel: &str) -> Result<String, Stop> {
 }
 
 /// `stat()` following links, inside the models folder; `None` when it does not exist.
-fn stat(root: &Root, base: &Path, rel: &str) -> Result<Option<std::fs::Metadata>, Stop> {
+pub(crate) fn stat(root: &Root, base: &Path, rel: &str) -> Result<Option<std::fs::Metadata>, Stop> {
     let rel = normal(rel)?;
     if rel == "." {
         return std::fs::metadata(base).map(Some).map_err(|_| Stop::Refused);
@@ -841,16 +841,16 @@ fn stat(root: &Root, base: &Path, rel: &str) -> Result<Option<std::fs::Metadata>
     }
 }
 
-fn is_dir(root: &Root, base: &Path, rel: &str) -> Result<bool, Stop> {
+pub(crate) fn is_dir(root: &Root, base: &Path, rel: &str) -> Result<bool, Stop> {
     Ok(stat(root, base, rel)?.is_some_and(|m| m.is_dir()))
 }
 
-fn stat_file(root: &Root, base: &Path, rel: &str) -> Result<bool, Stop> {
+pub(crate) fn stat_file(root: &Root, base: &Path, rel: &str) -> Result<bool, Stop> {
     Ok(stat(root, base, rel)?.is_some_and(|m| m.is_file()))
 }
 
 /// `autoconfig._listing(folder)` as the name rules read it; `Null` when it cannot be listed.
-fn rule_listing(root: &Root, base: &Path, folder: &str) -> Result<Value, Stop> {
+pub(crate) fn rule_listing(root: &Root, base: &Path, folder: &str) -> Result<Value, Stop> {
     let folder = normal(folder)?;
     let mut budget = Budget::default();
     let Some(mut entries) = root
@@ -885,7 +885,12 @@ fn rule_listing(root: &Root, base: &Path, folder: &str) -> Result<Value, Stop> {
 }
 
 /// `autoconfig._find_mtp(settings.models_dir, section_name, subdir)`.
-fn find_mtp(root: &Root, base: &Path, section: &str, subdir: &str) -> Result<String, Stop> {
+pub(crate) fn find_mtp(
+    root: &Root,
+    base: &Path,
+    section: &str,
+    subdir: &str,
+) -> Result<String, Stop> {
     let pick = |call: Value| -> Result<String, Stop> {
         let mut work = model_autoconfig::Work::new(RULE_WORK);
         match model_autoconfig::files::pick(&call, &mut work) {

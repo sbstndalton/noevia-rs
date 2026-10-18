@@ -40,6 +40,9 @@ native-backends = ["native-backend-control"]
 # noevia#1318: GET /api/v1/models and GET /api/v1/overview (model detail's snapshot and entry
 # fields, the benchmark runs' store rows); their live fields are asked of the child.
 native-model-list = ["native-model-detail", "native-bench-runs"]
+# noevia#1318: GET /api/v1/sections/{name}/autoconfig (the draft-head read's file reader and the
+# model-autoconfig crate; the telemetry and the backend inventory are asked of the child).
+native-section-autoconfig = ["native-draft-heads"]
 [lints]
 workspace = true
 [dependencies]
