@@ -23,6 +23,8 @@
 //! Deliberate refusals (the native 503) where Python cannot be followed exactly are listed in
 //! `docs/native-section-autoconfig.md`.
 pub(crate) mod analyze;
+#[cfg(feature = "native-backends")]
+mod charts;
 mod files;
 #[cfg(feature = "native-backends")]
 mod inventory;

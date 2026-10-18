@@ -621,6 +621,11 @@ pub fn build(stored: &Stored) -> Option<Located> {
     })
 }
 
+/// Aliases whose chart predictions are needed, in response order.
+pub fn prediction_aliases(located: &Located) -> &[String] {
+    &located.vram_aliases
+}
+
 /// The runtime call's query: every alias whose prediction is needed, in order.
 pub fn runtime_query(located: &Located) -> String {
     let mut query = form_urlencoded::Serializer::new(String::new());
