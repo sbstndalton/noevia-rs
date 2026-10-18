@@ -2331,8 +2331,14 @@ jobs:
           cmp bins/noevia-model-manager/tests/fixtures/routing-python.v1.json "$RUNNER_TEMP/routing.json"
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-routing -- -D warnings
+      - name: Actual repository runtime, metadata failures and Docker fault oracle (#214)
+        run: |
+          python3 -I tools/gen-repo-runtime-oracle.py routing-services/model-manager/app > "$RUNNER_TEMP/repo-runtime.json"
+          cmp bins/noevia-model-manager/tests/fixtures/repo-runtime-python.v1.json "$RUNNER_TEMP/repo-runtime.json"
       - name: Framework routing, startup controls, compatibility and omission
         run: |
+          cargo test --locked -p noevia-model-manager --features native-routing --lib search::estimates::tests
+          cargo test --locked -p noevia-model-manager --features native-routing --lib backend_stats::fit::tests
           cargo test --locked -p noevia-model-manager --features native-routing --lib routing
           cargo test --locked -p noevia-model-manager --features native-routing --test routing_capability --test backends --test lifecycle --test validation_order --test bench_runs
           cargo test --locked -p noevia-model-manager --no-default-features --test routing_capability

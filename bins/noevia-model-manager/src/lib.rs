@@ -1389,7 +1389,20 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             let query = req.uri().query().unwrap_or_default();
             let outcome = match route {
                 SearchRoute::Search => search.search(query).await,
-                SearchRoute::Repo => search.repo(query).await,
+                SearchRoute::Repo => {
+                    #[cfg(feature = "native-routing")]
+                    let strict = req.extensions().get::<routing::Enabled>().is_some();
+                    #[cfg(feature = "native-routing")]
+                    if strict {
+                        search.repo_owned(query).await
+                    } else {
+                        search.repo(query).await
+                    }
+                    #[cfg(not(feature = "native-routing"))]
+                    {
+                        search.repo(query).await
+                    }
+                }
             };
             return match outcome {
                 search::Outcome::Json(status, bytes) => (
