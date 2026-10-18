@@ -285,7 +285,10 @@ pub struct Reconciler {
     fallback: Current,
     store: Option<PathBuf>,
     current: std::sync::Mutex<Current>,
-    lock: tokio::sync::Mutex<()>,
+    /// Serialises the setting's saves and the preset reconciles. noevia#2015: the guard moves
+    /// into each blocking job (the #1909 rule), so a request dropped mid-job keeps the lock until
+    /// that job has returned and a second write cannot rewrite the same file meanwhile.
+    lock: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 impl Reconciler {
@@ -316,7 +319,7 @@ impl Reconciler {
             fallback,
             store,
             current: std::sync::Mutex::new(current),
-            lock: tokio::sync::Mutex::new(()),
+            lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         }
     }
     fn now(&self) -> Current {
@@ -344,15 +347,18 @@ impl Reconciler {
     /// noevia#1863: saves an admin choice (`Some`) or clears it (`None`, back to the
     /// environment), then rewrites the chat preset. Nothing changes when the save fails.
     pub async fn update(&self, value: Option<Option<u32>>) -> Result<(View, Preset), &'static str> {
-        let _guard = self.lock.lock().await;
+        let guard = self.lock.clone().lock_owned().await;
         let store = self
             .store
             .clone()
             .ok_or("idle unload setting has no store")?;
         // noevia#2006: admitted (as the reconcile below) when it runs inside a request.
-        crate::docker::spawn_blocking_admitted(move || write_store(&store, value))
-            .await
-            .map_err(|_| "idle unload setting write failed")??;
+        // noevia#2015: the job owns the lock guard and hands it back with its answer.
+        let (written, guard) =
+            crate::docker::spawn_blocking_admitted(move || (write_store(&store, value), guard))
+                .await
+                .map_err(|_| "idle unload setting write failed")?;
+        written?;
         let next = match value {
             Some(setting) => Current {
                 setting,
@@ -364,7 +370,10 @@ impl Reconciler {
             .current
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = next;
-        let preset = match self.reconcile_locked().await {
+        // noevia#2015 review: the view is taken while the guard is still held, so a write that
+        // follows once the reconcile drops it cannot show up in this request's answer.
+        let view = self.view();
+        let preset = match self.reconcile_locked(guard).await {
             Ok(Some(_)) => Preset::Written,
             Ok(None) => Preset::Unchanged,
             Err(error) => {
@@ -372,22 +381,30 @@ impl Reconciler {
                 Preset::Failed(error)
             }
         };
-        Ok((self.view(), preset))
+        Ok((view, preset))
     }
     /// `Ok(Some(revision))` when the file was rewritten (sha256 hex of the new bytes, the same
     /// revision the Python editor reports), `Ok(None)` when nothing changed or no preset exists.
     pub async fn reconcile(&self) -> Result<Option<String>, &'static str> {
-        let _guard = self.lock.lock().await;
-        self.reconcile_locked().await
+        let guard = self.lock.clone().lock_owned().await;
+        self.reconcile_locked(guard).await
     }
-    async fn reconcile_locked(&self) -> Result<Option<String>, &'static str> {
+    async fn reconcile_locked(
+        &self,
+        guard: tokio::sync::OwnedMutexGuard<()>,
+    ) -> Result<Option<String>, &'static str> {
         let path = self.path.clone();
         let setting = self.setting();
         // noevia#2006: admitted inside a request (a preset write, the setting's PUT); at startup
-        // there is no request and it is only detached.
-        crate::docker::spawn_blocking_admitted(move || reconcile_file(&path, setting))
-            .await
-            .map_err(|_| "idle unload reconcile failed")?
+        // there is no request and it is only detached. noevia#2015: the job owns the lock guard
+        // and drops it once the file is reconciled.
+        crate::docker::spawn_blocking_admitted(move || {
+            let reconciled = reconcile_file(&path, setting);
+            drop(guard);
+            reconciled
+        })
+        .await
+        .map_err(|_| "idle unload reconcile failed")?
     }
 }
 
@@ -935,5 +952,58 @@ mod tests {
         open.send(()).unwrap();
         all_permits_back(&state).await;
         assert_eq!(read_store(&store), Ok(Some(Some(3600))));
+    }
+
+    /// noevia#2015: a reconcile or a setting save dropped mid-job (the client went away) keeps
+    /// the reconcile lock until its blocking job has returned, so a second write cannot reconcile
+    /// the same preset file at the same time.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_dropped_write_keeps_the_reconcile_lock_until_its_job_ends() {
+        use crate::test_support::Gate;
+        for save in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let preset = dir.path().join("preset.ini");
+            std::fs::write(&preset, "[synthetic]\n").unwrap();
+            let reconciler = std::sync::Arc::new(Reconciler::with_store(
+                preset,
+                (Some(DEFAULT_SECONDS), Source::Default),
+                Some(dir.path().join(STORE_FILE)),
+            ));
+            let gate = Gate::new();
+            let first = {
+                let reconciler = reconciler.clone();
+                tokio::spawn(
+                    crate::docker::BLOCKING_HOOK.scope(gate.hook.clone(), async move {
+                        if save {
+                            reconciler.update(Some(Some(3600))).await.map(|_| ())
+                        } else {
+                            reconciler.reconcile().await.map(|_| ())
+                        }
+                    }),
+                )
+            };
+            let open = gate.entered().await;
+            first.abort();
+            assert!(first.await.unwrap_err().is_cancelled());
+            assert!(
+                reconciler.lock.try_lock().is_err(),
+                "the reconcile lock went back with the dropped request (save: {save})"
+            );
+            let second = {
+                let reconciler = reconciler.clone();
+                tokio::spawn(async move { reconciler.reconcile().await })
+            };
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            assert!(
+                !second.is_finished(),
+                "a second reconcile ran while a dropped job held the file (save: {save})"
+            );
+            open.send(()).unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(30), second)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+        }
     }
 }

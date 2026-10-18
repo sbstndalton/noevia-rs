@@ -24,3 +24,7 @@ Nothing is written. Other methods keep the existing 405, and `POST /api/v1/downl
 
 - More than 65,536 top-level entries in the models folder, or a mount table over 4 MiB, answer FastAPI's `500 text/plain Internal Server Error` instead of being read in full.
 - The resolved-path match uses the resolved models folder joined with the entry name (the entry is known not to be a symlink), which is what `os.path.realpath` returns for it.
+
+## A dropped request (noevia#2006, #2015)
+
+The mount table read and the folder checks run on one blocking task that is registered with the request's admission. A request that is dropped (the client went away) or that runs past its 5 s budget keeps its permit (one of the front's 4) until that task has returned, and a request that timed out sends its 504 only then. The task has no deadline of its own, and a filesystem call that has started cannot be interrupted. So on a hung mount (for example a network share that stops answering) neither the 504 nor the permit comes back until the call returns, and there is no bound on that. After four such requests, every admitted route answers 503 `service is busy`. Before noevia#2006 the hung threads instead piled up without limit.

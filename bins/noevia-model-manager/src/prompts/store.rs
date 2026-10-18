@@ -29,6 +29,11 @@ struct Job {
     deadline: Instant,
     cancel: Arc<AtomicBool>,
     _permit: OwnedSemaphorePermit,
+    /// noevia#2014: a dropped request only sets `cancel`; this keeps its admission permit until
+    /// the worker has finished the job or the job is dropped unrun.
+    _admitted: crate::docker::Registration,
+    #[cfg(test)]
+    hook: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 pub struct Prompts {
     send: Option<mpsc::Sender<Job>>,
@@ -85,10 +90,15 @@ impl Prompts {
                     return;
                 }
                 while let Some(job) = receive.blocking_recv() {
+                    #[cfg(test)]
+                    if let Some(hook) = &job.hook {
+                        hook();
+                    }
                     let answer = store
                         .budget(job.deadline, job.cancel.clone())
                         .and_then(|()| store.run(job.operation, job.deadline, &job.cancel));
                     let _ = job.reply.send(answer);
+                    // The rest of the job, its admission registration included, drops here.
                 }
             })
             .map_err(|_| Error::Store)?;
@@ -126,6 +136,9 @@ impl Prompts {
                 deadline,
                 cancel: cancel.0.clone(),
                 _permit: permit,
+                _admitted: crate::docker::Registration::new(),
+                #[cfg(test)]
+                hook: crate::docker::BLOCKING_HOOK.try_with(Clone::clone).ok(),
             })
             .map_err(|_| Error::Busy)?;
         tokio::time::timeout_at(deadline.into(), receive)
