@@ -16,6 +16,11 @@ use std::{io::Write, sync::Mutex};
 
 const TOKEN: &str = "synthetic-section-autoconfig-token";
 
+/// Cases the native route refuses by design where Python answers 200
+/// (`docs/native-section-autoconfig.md`): a relative saved projector path, which Python resolves
+/// against its own working directory.
+pub(crate) const DELIBERATE_REFUSALS: &[&str] = &["saved-relative-projector"];
+
 pub(crate) fn fixture() -> Json {
     serde_json::from_str(include_str!(
         "../../tests/fixtures/section-autoconfig-python.v1.json"
@@ -176,6 +181,12 @@ async fn every_case_matches_the_actual_python_route() {
                 u16::try_from(result["status"].as_u64().unwrap()).unwrap(),
                 result["body"].as_str().unwrap().to_owned(),
             );
+            let want = if DELIBERATE_REFUSALS.contains(&case["id"].as_str().unwrap()) {
+                assert_eq!(want.0, 200, "case {} {path}", case["id"]);
+                (503, REFUSAL.to_owned())
+            } else {
+                want
+            };
             if got != want {
                 failures.push(format!(
                     "case {} {path}\n  got  {} {}\n  want {} {}",

@@ -72,8 +72,13 @@ FastAPI's plain 500; a refusing, missing or oversized (over 16 MiB) answer is th
 route's `502 {"detail":"Python-owned endpoint unavailable"}`; an answer of the wrong shape
 refuses (below).
 
-`MODEL_AUTOCONFIG` (the child's choice between its Python and binary analysis) is not read here:
-the native route always uses the crate, whose answers the binary analysis already matches.
+`MODEL_AUTOCONFIG` (the child's choice between its Python analysis, the default, and the
+crate's binary) is not read here: the native route always answers the crate's plan. That is
+justified because the crate matches Python's default analysis: the oracle records the child under
+its default, and every native answer equals it byte for byte. The one behaviour that differs is
+the child's `MODEL_AUTOCONFIG=rust` mode, where Python computes its own plan, has the crate confirm
+it, and fails closed with an error when the two disagree; the native route has no second plan to
+compare with and answers the crate's.
 
 ## Bounds and deliberate differences
 
@@ -85,6 +90,9 @@ for:
 - a model file or folder that leaves the models folder through a link (Python would follow it), a
   file that vanishes between the check and the read, or a read error (Python's error text is not
   reproduced);
+- a saved projector or draft-head path that is not under `/models` (a relative `mmproj =` is
+  resolved by Python against its own working directory, which this process cannot reproduce; the
+  oracle pins Python's 200 and the native 503 for it);
 - a header past the reader's bounds, a non-finite float in the header, or a header the summary
   step refuses;
 - a roles file over 1 MiB, or a models.ini the section parser refuses;

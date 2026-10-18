@@ -1336,6 +1336,92 @@
      "baseline": {},
      "baseline_args": [],
      "card_vram_gb": [
+      24.0
+     ],
+     "gpu_count": 1,
+     "host_ram_gb": 64.0,
+     "name": "synthetic-gpu",
+     "vendor": "cuda",
+     "vram_gb": 24.0
+    }
+   ],
+   "cache_cap": 1024,
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "synth"
+      ],
+      "general.file_type": [
+       "u32",
+       15
+      ],
+      "synth.attention.head_count": [
+       "u32",
+       32
+      ],
+      "synth.attention.head_count_kv": [
+       "u32",
+       8
+      ],
+      "synth.block_count": [
+       "u32",
+       32
+      ],
+      "synth.context_length": [
+       "u32",
+       32768
+      ],
+      "synth.embedding_length": [
+       "u32",
+       4096
+      ],
+      "tokenizer.chat_template": [
+       "str",
+       "{% for m in messages %}{{ m.content }}{% endfor %}"
+      ]
+     },
+     "header": "474755460300000000000000000000000800000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468110000000000000067656e6572616c2e66696c655f74797065040000000f000000110000000000000073796e74682e626c6f636b5f636f756e740400000020000000140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000160000000000000073796e74682e656d62656464696e675f6c656e67746804000000001000001a0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e7404000000200000001d0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e745f6b7604000000080000001700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000032000000000000007b2520666f72206d20696e206d6573736167657320257d7b7b206d2e636f6e74656e74207d7d7b2520656e64666f7220257d",
+     "name": "sub/m.gguf",
+     "size": 4294967296
+    },
+    {
+     "name": "sub/p.gguf",
+     "size": 67108864
+    }
+   ],
+   "id": "saved-relative-projector",
+   "ini": "[r]\nmodel = /models/sub/m.gguf\nmmproj = sub/p.gguf\n",
+   "requests": [
+    [
+     "r",
+     ""
+    ]
+   ],
+   "results": [
+    {
+     "body": "{\"section\":\"r\",\"arch\":\"synth\",\"params\":null,\"fileBytes\":4362076160,\"model\":\"/models/sub/m.gguf\",\"recommendation\":{\"plans\":[{\"name\":\"synthetic-gpu\",\"vendor\":\"cuda\",\"vram_gb\":24.0,\"rows\":[{\"ctx\":4096,\"total_ctx\":4096,\"model_gb\":4.06,\"kv_gb\":0.27,\"total_gb\":4.33,\"fits\":true,\"free_gb\":19.67,\"offload_kind\":\"\",\"n_cpu_moe\":0,\"gpu_pct\":100},{\"ctx\":8192,\"total_ctx\":8192,\"model_gb\":4.06,\"kv_gb\":0.53,\"total_gb\":4.59,\"fits\":true,\"free_gb\":19.41,\"offload_kind\":\"\",\"n_cpu_moe\":0,\"gpu_pct\":100},{\"ctx\":12288,\"total_ctx\":12288,\"model_gb\":4.06,\"kv_gb\":0.8,\"total_gb\":4.86,\"fits\":true,\"free_gb\":19.14,\"offload_kind\":\"\",\"n_cpu_moe\":0,\"gpu_pct\":100},{\"ctx\":16384,\"total_ctx\":16384,\"model_gb\":4.06,\"kv_gb\":1.06,\"total_gb\":5.12,\"fits\":true,\"free_gb\":18.88,\"offload_kind\":\"\",\"n_cpu_moe\":0,\"gpu_pct\":100},{\"ctx\":24576,\"total_ctx\":24576,\"model_gb\":4.06,\"kv_gb\":1.59,\"total_gb\":5.66,\"fits\":true,\"free_gb\":18.34,\"offload_kind\":\"\",\"n_cpu_moe\":0,\"gpu_pct\":100},{\"ctx\":32768,\"total_ctx\":32768,\"model_gb\":4.06,\"kv_gb\":2.12,\"total_gb\":6.19,\"fits\":true,\"free_gb\":17.81,\"offload_kind\":\"\",\"n_cpu_moe\":0,\"gpu_pct\":100}],\"max_ctx\":32768,\"fits_at_all\":true}],\"recommended_backend\":\"synthetic-gpu\",\"recommended_ctx\":32768,\"recommended_total_ctx\":32768,\"n_sessions\":1,\"values\":{\"model\":\"/models/sub/m.gguf\",\"ctx-size\":\"32768\",\"parallel\":\"1\",\"ngl\":\"999\",\"flash-attn\":\"on\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"q8_0\",\"cache-reuse\":\"1\",\"jinja\":\"true\",\"mmproj\":\"sub/p.gguf\",\"spec-type\":\"\",\"spec-draft-n-max\":\"\",\"spec-draft-n-min\":\"\",\"spec-draft-p-min\":\"\",\"spec-draft-model\":\"\",\"spec-draft-ngl\":\"\",\"cache-ram\":\"1024\",\"mmproj-offload\":\"on\",\"image-max-tokens\":\"1024\",\"ubatch-size\":\"1024\"},\"values_minimal\":{\"model\":\"/models/sub/m.gguf\",\"ctx-size\":\"32768\",\"parallel\":\"1\",\"ngl\":\"999\",\"flash-attn\":\"on\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"q8_0\",\"cache-reuse\":\"1\",\"jinja\":\"true\",\"mmproj\":\"sub/p.gguf\",\"spec-type\":\"\",\"spec-draft-n-max\":\"\",\"spec-draft-n-min\":\"\",\"spec-draft-p-min\":\"\",\"spec-draft-model\":\"\",\"spec-draft-ngl\":\"\",\"cache-ram\":\"1024\",\"mmproj-offload\":\"on\",\"image-max-tokens\":\"1024\",\"ubatch-size\":\"1024\"},\"baseline_redundant\":{},\"quirks\":[\"Multimodal model (mmproj companion present \u2014 vision, audio, or other modality). Reserved 0.97 GB for the projector (0.00 GB weights + 0.5 GB encoder scratch). If several projector precisions ship in the directory the smallest is chosen, since it competes directly with the KV cache.\\nTREAT THIS CTX AS OPTIMISTIC AND VERIFY IT LOADS. The projector and its encoder buffer are NOT layer-split \u2014 both land entirely on the main GPU \u2014 so the real limit is that one card, not the pooled total this estimate is based on. Worse, measured encoder scratch varies ~4x between models (0.55 GB on a 27B with a 0.87 GB projector vs 2.3 GB on Qwen3-VL-4B with a 0.78 GB one) and is not derivable from GGUF metadata, so no single constant fits all. If it OOMs on device 0 while the other card still shows free VRAM, that is exactly this limitation \u2014 step ctx-size down until it loads.\"],\"unavailable\":[\"cpu-moe / n-cpu-moe (not MoE)\",\"rope-scaling (model doesn't declare one)\"],\"current_diff\":[\"ctx-size: unset \u2192 '32768'\",\"parallel: unset \u2192 '1'\",\"ngl: unset \u2192 '999'\",\"flash-attn: unset \u2192 'on'\",\"cache-type-k: unset \u2192 'q8_0'\",\"cache-type-v: unset \u2192 'q8_0'\",\"cache-reuse: unset \u2192 '1'\",\"jinja: unset \u2192 'true'\",\"cache-ram: unset \u2192 '1024'\",\"mmproj-offload: unset \u2192 'on'\",\"image-max-tokens: unset \u2192 '1024'\",\"ubatch-size: unset \u2192 '1024'\"],\"displaced\":[\"batch-size\",\"chat-template-kwargs\",\"cont-batching\",\"context-shift\",\"cpu-moe\",\"fit\",\"keep\",\"n-cpu-moe\",\"reasoning\",\"reasoning-format\",\"reasoning-preserve\",\"rope-scale\",\"rope-scaling\",\"split-mode\",\"tensor-split\"],\"presets\":[{\"key\":\"fast\",\"label\":\"Fast\",\"icon\":\"gauge\",\"backend\":\"synthetic-gpu\",\"ctx\":32768,\"n_cpu_moe\":0,\"offload_kind\":\"\",\"gpu_layers\":32,\"total_layers\":32,\"gpu_gb\":4.06,\"kv_gb\":2.12,\"speed_score\":1.0,\"ngl\":999}],\"frontier\":[{\"key\":\"pt0\",\"label\":\"32/32 layers\",\"icon\":\"sliders\",\"backend\":\"synthetic-gpu\",\"ctx\":32768,\"n_cpu_moe\":0,\"offload_kind\":\"\",\"gpu_layers\":32,\"total_layers\":32,\"gpu_gb\":4.06,\"kv_gb\":2.12,\"speed_score\":1.0,\"ngl\":999}],\"fits_full_gpu\":true,\"native_ctx\":32768,\"estimated_ctx\":32768,\"ctx_cap_reason\":\"\",\"warnings\":[],\"current_preset\":\"\",\"has_unsaved\":true,\"active_preset\":\"fast\",\"spec_profiles\":[{\"key\":\"off\",\"label\":\"Off\",\"icon\":\"x\",\"blurb\":\"No speculation. Always correct, never slower than the model itself.\",\"spec_type\":\"\",\"needs_head\":false,\"knobs\":{}},{\"key\":\"balanced\",\"label\":\"Balanced\",\"icon\":\"gauge\",\"blurb\":\"Mixed use. Barely above llama.cpp's own defaults, with a mild confidence gate.\",\"spec_type\":\"draft-mtp\",\"needs_head\":true,\"knobs\":{\"spec-draft-n-max\":\"4\",\"spec-draft-p-min\":\"0.25\"}},{\"key\":\"coding\",\"label\":\"Coding\",\"icon\":\"terminal\",\"blurb\":\"Deep drafts, loose gate. Code repeats itself, so guesses land and guessing further pays.\",\"spec_type\":\"draft-mtp,ngram-simple\",\"needs_head\":true,\"knobs\":{\"spec-draft-n-max\":\"8\",\"spec-draft-n-min\":\"1\",\"spec-draft-p-min\":\"0.05\"}},{\"key\":\"writing\",\"label\":\"Creative writing\",\"icon\":\"pencil\",\"blurb\":\"Shallow drafts, tight gate. Prose is unpredictable, so bad bets cost more than good ones pay.\",\"spec_type\":\"draft-mtp\",\"needs_head\":true,\"knobs\":{\"spec-draft-n-max\":\"2\",\"spec-draft-p-min\":\"0.60\"}},{\"key\":\"ngram\",\"label\":\"N-gram only\",\"icon\":\"hash\",\"blurb\":\"No draft head required. Replays literal repeats from the prompt: strong on edits and refactors, inert on new prose.\",\"spec_type\":\"ngram-simple\",\"needs_head\":false,\"knobs\":{}}],\"active_spec_profile\":\"off\",\"current_spec_profile\":\"off\",\"spec_head_rel\":\"\",\"error\":\"\",\"vision_available\":\"sub/p.gguf\",\"vision\":true},\"measured\":{\"n\":9,\"gen_p50\":141.5,\"gen_p25\":120.25,\"gen_p75\":150.0,\"prompt_p50\":900.0,\"draft_acc_p50\":0.62963,\"draft_len_p50\":2.13,\"draft_n\":3,\"last_ts\":1700000000.5,\"spec_types\":[\"draft-mtp (max=4)\"],\"single_config\":false,\"config_count\":2},\"history\":[{\"instance\":\"8080@1700000000\",\"n\":5,\"gen_p50\":141.5,\"gen_p25\":0.0,\"gen_p75\":0.0,\"prompt_p50\":900.0,\"draft_acc_p50\":null,\"draft_len_p50\":null,\"last_ts\":1700000000.5,\"argv\":{\"--model\":\"/models/s/m.gguf\",\"--ctx-size\":\"8192\"},\"is_current\":true,\"diff\":{\"--ctx-size\":\"8192\"},\"rel_pct\":100},{\"instance\":\"8080@1690000000\",\"n\":3,\"gen_p50\":99.0,\"gen_p25\":0.0,\"gen_p75\":0.0,\"prompt_p50\":0.0,\"draft_acc_p50\":null,\"draft_len_p50\":null,\"last_ts\":1690000000.0,\"argv\":{\"--model\":\"/models/s/m.gguf\"},\"is_current\":false,\"diff\":{\"--ctx-size\":\"unset\"},\"rel_pct\":70}],\"revision\":\"71cd6d77e5488f9a930684d696d722b9a3810bf6df1c9044804d96f5ac33a04e\"}",
+     "content_type": "application/json",
+     "path": "/api/v1/sections/r/autoconfig",
+     "runtime": {
+      "body": "{\"measured\":{\"n\":9,\"gen_p50\":141.5,\"gen_p25\":120.25,\"gen_p75\":150.0,\"prompt_p50\":900.0,\"draft_acc_p50\":0.62963,\"draft_len_p50\":2.13,\"draft_n\":3,\"last_ts\":1700000000.5,\"spec_types\":[\"draft-mtp (max=4)\"],\"single_config\":false,\"config_count\":2},\"history\":[{\"instance\":\"8080@1700000000\",\"n\":5,\"gen_p50\":141.5,\"gen_p25\":0.0,\"gen_p75\":0.0,\"prompt_p50\":900.0,\"draft_acc_p50\":null,\"draft_len_p50\":null,\"last_ts\":1700000000.5,\"argv\":{\"--model\":\"/models/s/m.gguf\",\"--ctx-size\":\"8192\"},\"is_current\":true,\"diff\":{\"--ctx-size\":\"8192\"},\"rel_pct\":100},{\"instance\":\"8080@1690000000\",\"n\":3,\"gen_p50\":99.0,\"gen_p25\":0.0,\"gen_p75\":0.0,\"prompt_p50\":0.0,\"draft_acc_p50\":null,\"draft_len_p50\":null,\"last_ts\":1690000000.0,\"argv\":{\"--model\":\"/models/s/m.gguf\"},\"is_current\":false,\"diff\":{\"--ctx-size\":\"unset\"},\"rel_pct\":70}],\"promptTps\":\"900.0\",\"backends\":\"[{\\\"name\\\":\\\"synthetic-gpu\\\",\\\"vendor\\\":\\\"cuda\\\",\\\"vram_gb\\\":24.0,\\\"gpu_count\\\":1,\\\"card_vram_gb\\\":[24.0],\\\"host_ram_gb\\\":64.0,\\\"baseline\\\":{},\\\"baseline_args\\\":[]}]\"}",
+      "request": {
+       "model": "/models/sub/m.gguf",
+       "section": "r"
+      },
+      "status": 200
+     },
+     "status": 200
+    }
+   ]
+  },
+  {
+   "backends": [
+    {
+     "baseline": {},
+     "baseline_args": [],
+     "card_vram_gb": [
       8.0
      ],
      "gpu_count": 1,
@@ -2907,6 +2993,14 @@
      ""
     ],
     [
+     "a%3Fb",
+     ""
+    ],
+    [
+     "a%23b",
+     ""
+    ],
+    [
      "missing",
      "?vision=maybe"
     ]
@@ -2944,6 +3038,20 @@
      "body": "{\"error\":\"No model file found for '\u00fc'.\"}",
      "content_type": "application/json",
      "path": "/api/v1/sections/%C3%BC/autoconfig",
+     "runtime": null,
+     "status": 200
+    },
+    {
+     "body": "{\"error\":\"No model file found for 'a?b'.\"}",
+     "content_type": "application/json",
+     "path": "/api/v1/sections/a%3Fb/autoconfig",
+     "runtime": null,
+     "status": 200
+    },
+    {
+     "body": "{\"error\":\"No model file found for 'a#b'.\"}",
+     "content_type": "application/json",
+     "path": "/api/v1/sections/a%23b/autoconfig",
      "runtime": null,
      "status": 200
     },
@@ -4200,7 +4308,7 @@
   "gguf_meta.py": "8ac984794fb9087fcd774cfe1a4e83eac847c1675224c8c09029fb9dcbd43b0a",
   "helpers.py": "fcf2ccb14e5e068f97bb7a4b7985ab7f4f4855b940eb6d9e3838f239ad97918d",
   "ini.py": "b3cb05fd382b5f408ad16430db8841d40c82a3714115233f2e35b2f7f3b61740",
-  "main.py": "3efcb98651b8040aa1c54990dde337edec3d0788b38f824a9c2f6c2ee4ad9eb2",
+  "main.py": "b263350667c109e68ba3b9a073fc9070fdbdbc51154611f9d12299100f44f89d",
   "telemetry.py": "5f390933bc0c734f1223229ddd7e19b73ed6f7abc8b382b2b228ddf81bb344bd",
   "utils.py": "3f56fb6b04094ec19c09c191a0d4267e2d233e3461884be0648e4875e6ef6426"
  }

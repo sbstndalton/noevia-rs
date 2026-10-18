@@ -340,6 +340,18 @@ mod linux {
                 };
                 let answer = send(state(Some(on.clone()), &base), "GET", path, true).await;
                 let label = format!("case {} {path}", case["id"]);
+                // The lib test's deliberate refusals: Python answers 200, the native route 503.
+                if case["id"] == "saved-relative-projector" {
+                    assert_eq!(result["status"], 200, "{label}");
+                    assert_eq!(
+                        (answer.status, answer.body.as_slice()),
+                        (503, REFUSED),
+                        "{label}"
+                    );
+                    seen.unwrap().await.unwrap();
+                    checked += 1;
+                    continue;
+                }
                 assert_eq!(
                     (answer.status, String::from_utf8(answer.body).unwrap()),
                     (

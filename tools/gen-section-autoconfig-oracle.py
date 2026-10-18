@@ -153,6 +153,12 @@ CASES: list[dict] = [
             "[z]\nmodel = x/x.gguf\nmmproj =   \nn-cpu-moe = 4\nsome-extra = 1\n",
      "backends": [gpu(vram=16.0)],
      "requests": [("x", ""), ("x", "?spec=coding"), ("x", "?preset=long-ctx"), ("y", ""), ("z", "")]},
+    # A relative saved projector path: Python resolves it against its working directory (where it
+    # does not exist); the native route refuses it (see the lib test's deliberate refusals).
+    {"id": "saved-relative-projector",
+     "files": [g("sub/m.gguf", 4 * GIB), f("sub/p.gguf", 64 * 1024 ** 2)],
+     "ini": "[r]\nmodel = /models/sub/m.gguf\nmmproj = sub/p.gguf\n", "backends": [gpu()],
+     "requests": [("r", "")]},
     {"id": "sharded",
      "files": [g("sh/s-00001-of-00002.gguf", 3 * GIB), f("sh/s-00002-of-00002.gguf", 3 * GIB),
                f("sh/mmproj-s.gguf", 100 * 1024 ** 2), f("sh/s-imatrix.gguf", 5 * 1024 ** 2), f("sh/readme.md", 7)],
@@ -197,7 +203,7 @@ CASES += [
      "roles": "{not json", "backends": [gpu()], "requests": [(f"{ROLE}-y", "")]},
     {"id": "no-file", "files": [f("other.txt"), g("dir/inner.gguf", GIB)],
      "ini": "[ghost]\nmodel = /models/nowhere.gguf\n\n[folder]\nmodel = /models/dir\n",
-     "backends": [gpu()], "requests": [("missing", ""), ("ghost", ""), ("folder", ""), ("a%20b", ""), ("%C3%BC", ""),
+     "backends": [gpu()], "requests": [("missing", ""), ("ghost", ""), ("folder", ""), ("a%20b", ""), ("%C3%BC", ""), ("a%3Fb", ""), ("a%23b", ""),
                                         ("missing", "?vision=maybe")]},
     {"id": "no-models-folder", "files": None, "backends": [gpu()], "requests": [("m", "")]},
     {"id": "bad-header", "files": [f("broken.gguf", 64), f("tiny.gguf", 3), f("sub/broken2.gguf", 30)],
