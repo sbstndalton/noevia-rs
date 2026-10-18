@@ -1,0 +1,646 @@
+{
+  "version": 1,
+  "oracle": {
+    "core": "62abda5fbaeaa62d309a3fc8e19f1096afb5591b",
+    "sources": {
+      "server/workspace.cjs": "a8e4c57fb8c04f34722a4b012d18bddf3956870b623cf3151f796ac9dbb70095",
+      "server/source-text.cjs": "a5ff4a4b97be8e8173fc41279e03bb3ccae0bf234fb7458d489860737879e3cb"
+    }
+  },
+  "cases": [
+    {
+      "name": "ordinary",
+      "user": "11111111-1111-4111-8111-111111111111",
+      "files": [
+        {
+          "path": "projects.json",
+          "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+        },
+        {
+          "path": "providers.json",
+          "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+        },
+        {
+          "path": "free-chats.json",
+          "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+        },
+        {
+          "path": "auto-roles.json",
+          "hex": "7b2264656661756c74223a2263686174227d"
+        },
+        {
+          "path": "history-room.json",
+          "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+        },
+        {
+          "path": "rag/nested/index.bin",
+          "hex": "000102ff"
+        }
+      ],
+      "owner": null,
+      "prior": [],
+      "expected": {
+        "result": true,
+        "tree": [
+          {
+            "path": "auto-roles.json",
+            "type": "file",
+            "hex": "7b2264656661756c74223a2263686174227d"
+          },
+          {
+            "path": "free-chats.json",
+            "type": "file",
+            "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+          },
+          {
+            "path": "history-room.json",
+            "type": "file",
+            "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+          },
+          {
+            "path": "legacy-owner.json",
+            "type": "file",
+            "json": {
+              "userId": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "path": "migration-backups",
+            "type": "dir"
+          },
+          {
+            "path": "migration-backups/legacy",
+            "type": "dir"
+          },
+          {
+            "path": "migration-backups/legacy/auto-roles.json",
+            "type": "file",
+            "hex": "7b2264656661756c74223a2263686174227d"
+          },
+          {
+            "path": "migration-backups/legacy/free-chats.json",
+            "type": "file",
+            "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+          },
+          {
+            "path": "migration-backups/legacy/history-room.json",
+            "type": "file",
+            "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+          },
+          {
+            "path": "migration-backups/legacy/projects.json",
+            "type": "file",
+            "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+          },
+          {
+            "path": "migration-backups/legacy/providers.json",
+            "type": "file",
+            "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+          },
+          {
+            "path": "migration-backups/legacy/rag",
+            "type": "dir"
+          },
+          {
+            "path": "migration-backups/legacy/rag/nested",
+            "type": "dir"
+          },
+          {
+            "path": "migration-backups/legacy/rag/nested/index.bin",
+            "type": "file",
+            "hex": "000102ff"
+          },
+          {
+            "path": "projects.json",
+            "type": "file",
+            "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+          },
+          {
+            "path": "providers.json",
+            "type": "file",
+            "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+          },
+          {
+            "path": "rag",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested/index.bin",
+            "type": "file",
+            "hex": "000102ff"
+          },
+          {
+            "path": "users",
+            "type": "dir"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111",
+            "type": "dir"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111/auto-roles.json",
+            "type": "file",
+            "hex": "7b2264656661756c74223a2263686174227d"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111/free-chats.json",
+            "type": "file",
+            "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111/history-room.json",
+            "type": "file",
+            "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111/migration.json",
+            "type": "file",
+            "json": {
+              "version": 1,
+              "source": "legacy-root",
+              "backup": "migration-backups/legacy"
+            }
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111/projects.json",
+            "type": "file",
+            "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111/providers.json",
+            "type": "file",
+            "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111/rag",
+            "type": "dir"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111/rag/nested",
+            "type": "dir"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111/rag/nested/index.bin",
+            "type": "file",
+            "hex": "000102ff"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no-trigger",
+      "user": "11111111-1111-4111-8111-111111111111",
+      "files": [
+        {
+          "path": "free-chats.json",
+          "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+        },
+        {
+          "path": "auto-roles.json",
+          "hex": "7b2264656661756c74223a2263686174227d"
+        },
+        {
+          "path": "rag/nested/index.bin",
+          "hex": "000102ff"
+        }
+      ],
+      "owner": null,
+      "prior": [],
+      "expected": {
+        "result": false,
+        "tree": [
+          {
+            "path": "auto-roles.json",
+            "type": "file",
+            "hex": "7b2264656661756c74223a2263686174227d"
+          },
+          {
+            "path": "free-chats.json",
+            "type": "file",
+            "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+          },
+          {
+            "path": "rag",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested/index.bin",
+            "type": "file",
+            "hex": "000102ff"
+          }
+        ]
+      }
+    },
+    {
+      "name": "previous-owner",
+      "user": "11111111-1111-4111-8111-111111111111",
+      "files": [
+        {
+          "path": "projects.json",
+          "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+        },
+        {
+          "path": "providers.json",
+          "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+        },
+        {
+          "path": "free-chats.json",
+          "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+        },
+        {
+          "path": "auto-roles.json",
+          "hex": "7b2264656661756c74223a2263686174227d"
+        },
+        {
+          "path": "history-room.json",
+          "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+        },
+        {
+          "path": "rag/nested/index.bin",
+          "hex": "000102ff"
+        }
+      ],
+      "owner": null,
+      "prior": [
+        "00000000-0000-4000-8000-000000000000",
+        "22222222-2222-4222-8222-222222222222"
+      ],
+      "expected": {
+        "result": false,
+        "tree": [
+          {
+            "path": "auto-roles.json",
+            "type": "file",
+            "hex": "7b2264656661756c74223a2263686174227d"
+          },
+          {
+            "path": "free-chats.json",
+            "type": "file",
+            "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+          },
+          {
+            "path": "history-room.json",
+            "type": "file",
+            "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+          },
+          {
+            "path": "legacy-owner.json",
+            "type": "file",
+            "json": {
+              "userId": "00000000-0000-4000-8000-000000000000"
+            }
+          },
+          {
+            "path": "projects.json",
+            "type": "file",
+            "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+          },
+          {
+            "path": "providers.json",
+            "type": "file",
+            "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+          },
+          {
+            "path": "rag",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested/index.bin",
+            "type": "file",
+            "hex": "000102ff"
+          },
+          {
+            "path": "users",
+            "type": "dir"
+          },
+          {
+            "path": "users/00000000-0000-4000-8000-000000000000",
+            "type": "dir"
+          },
+          {
+            "path": "users/00000000-0000-4000-8000-000000000000/migration.json",
+            "type": "file",
+            "json": {
+              "version": 1
+            }
+          },
+          {
+            "path": "users/22222222-2222-4222-8222-222222222222",
+            "type": "dir"
+          },
+          {
+            "path": "users/22222222-2222-4222-8222-222222222222/migration.json",
+            "type": "file",
+            "json": {
+              "version": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "previous-owner-reverse",
+      "user": "11111111-1111-4111-8111-111111111111",
+      "files": [
+        {
+          "path": "projects.json",
+          "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+        },
+        {
+          "path": "providers.json",
+          "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+        },
+        {
+          "path": "free-chats.json",
+          "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+        },
+        {
+          "path": "auto-roles.json",
+          "hex": "7b2264656661756c74223a2263686174227d"
+        },
+        {
+          "path": "history-room.json",
+          "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+        },
+        {
+          "path": "rag/nested/index.bin",
+          "hex": "000102ff"
+        }
+      ],
+      "owner": null,
+      "prior": [
+        "22222222-2222-4222-8222-222222222222",
+        "00000000-0000-4000-8000-000000000000"
+      ],
+      "expected": {
+        "result": false,
+        "tree": [
+          {
+            "path": "auto-roles.json",
+            "type": "file",
+            "hex": "7b2264656661756c74223a2263686174227d"
+          },
+          {
+            "path": "free-chats.json",
+            "type": "file",
+            "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+          },
+          {
+            "path": "history-room.json",
+            "type": "file",
+            "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+          },
+          {
+            "path": "legacy-owner.json",
+            "type": "file",
+            "json": {
+              "userId": "00000000-0000-4000-8000-000000000000"
+            }
+          },
+          {
+            "path": "projects.json",
+            "type": "file",
+            "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+          },
+          {
+            "path": "providers.json",
+            "type": "file",
+            "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+          },
+          {
+            "path": "rag",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested/index.bin",
+            "type": "file",
+            "hex": "000102ff"
+          },
+          {
+            "path": "users",
+            "type": "dir"
+          },
+          {
+            "path": "users/00000000-0000-4000-8000-000000000000",
+            "type": "dir"
+          },
+          {
+            "path": "users/00000000-0000-4000-8000-000000000000/migration.json",
+            "type": "file",
+            "json": {
+              "version": 1
+            }
+          },
+          {
+            "path": "users/22222222-2222-4222-8222-222222222222",
+            "type": "dir"
+          },
+          {
+            "path": "users/22222222-2222-4222-8222-222222222222/migration.json",
+            "type": "file",
+            "json": {
+              "version": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "target-exists",
+      "user": "11111111-1111-4111-8111-111111111111",
+      "files": [
+        {
+          "path": "projects.json",
+          "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+        },
+        {
+          "path": "providers.json",
+          "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+        },
+        {
+          "path": "free-chats.json",
+          "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+        },
+        {
+          "path": "auto-roles.json",
+          "hex": "7b2264656661756c74223a2263686174227d"
+        },
+        {
+          "path": "history-room.json",
+          "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+        },
+        {
+          "path": "rag/nested/index.bin",
+          "hex": "000102ff"
+        },
+        {
+          "path": "users/11111111-1111-4111-8111-111111111111/keep.txt",
+          "hex": "7461726765742d707265736572766564"
+        }
+      ],
+      "owner": {
+        "userId": "11111111-1111-4111-8111-111111111111"
+      },
+      "prior": [],
+      "expected": {
+        "result": false,
+        "tree": [
+          {
+            "path": "auto-roles.json",
+            "type": "file",
+            "hex": "7b2264656661756c74223a2263686174227d"
+          },
+          {
+            "path": "free-chats.json",
+            "type": "file",
+            "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+          },
+          {
+            "path": "history-room.json",
+            "type": "file",
+            "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+          },
+          {
+            "path": "legacy-owner.json",
+            "type": "file",
+            "json": {
+              "userId": "11111111-1111-4111-8111-111111111111"
+            }
+          },
+          {
+            "path": "projects.json",
+            "type": "file",
+            "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+          },
+          {
+            "path": "providers.json",
+            "type": "file",
+            "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+          },
+          {
+            "path": "rag",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested/index.bin",
+            "type": "file",
+            "hex": "000102ff"
+          },
+          {
+            "path": "users",
+            "type": "dir"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111",
+            "type": "dir"
+          },
+          {
+            "path": "users/11111111-1111-4111-8111-111111111111/keep.txt",
+            "type": "file",
+            "hex": "7461726765742d707265736572766564"
+          }
+        ]
+      }
+    },
+    {
+      "name": "malformed-owner",
+      "user": "11111111-1111-4111-8111-111111111111",
+      "files": [
+        {
+          "path": "projects.json",
+          "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+        },
+        {
+          "path": "providers.json",
+          "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+        },
+        {
+          "path": "free-chats.json",
+          "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+        },
+        {
+          "path": "auto-roles.json",
+          "hex": "7b2264656661756c74223a2263686174227d"
+        },
+        {
+          "path": "history-room.json",
+          "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+        },
+        {
+          "path": "rag/nested/index.bin",
+          "hex": "000102ff"
+        }
+      ],
+      "owner": "{",
+      "prior": [],
+      "expected": {
+        "result": false,
+        "tree": [
+          {
+            "path": "auto-roles.json",
+            "type": "file",
+            "hex": "7b2264656661756c74223a2263686174227d"
+          },
+          {
+            "path": "free-chats.json",
+            "type": "file",
+            "hex": "5b7b226964223a2266222c227469746c65223a2266726565227d5d"
+          },
+          {
+            "path": "history-room.json",
+            "type": "file",
+            "hex": "7b226d65737361676573223a5b7b22726f6c65223a2275736572222c2274657874223a2273796e746865746963227d5d7d"
+          },
+          {
+            "path": "legacy-owner.json",
+            "type": "file",
+            "hex": "7b"
+          },
+          {
+            "path": "projects.json",
+            "type": "file",
+            "hex": "7b2270726f6a65637473223a5b7b226964223a2270222c226e616d65223a226c6567616379227d5d7d"
+          },
+          {
+            "path": "providers.json",
+            "type": "file",
+            "hex": "7b2270726f766964657273223a5b7b226964223a2270726976617465222c226170694b6579223a2273796e7468657469632d736563726574227d5d7d"
+          },
+          {
+            "path": "rag",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested",
+            "type": "dir"
+          },
+          {
+            "path": "rag/nested/index.bin",
+            "type": "file",
+            "hex": "000102ff"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -62,6 +62,7 @@ use std::sync::Arc;
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
 ///
+/// `legacy-root-claim`: this binary exposes the filesystem-only legacy claim helper before server startup.
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
@@ -70,6 +71,7 @@ pub const FEATURES: &[&str] = &[
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
+    "legacy-root-claim",
     "project-store",
     "rust-auth",
     "rust-projects",

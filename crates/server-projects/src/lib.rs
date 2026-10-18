@@ -36,6 +36,7 @@ pub mod context;
 pub mod frame;
 pub mod free_chats;
 pub mod js;
+pub mod legacy_claim;
 pub mod lock;
 pub mod skills;
 pub mod store;

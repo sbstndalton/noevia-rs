@@ -211,6 +211,33 @@ async fn front() -> Front {
     f
 }
 
+async fn front_with_legacy_root() -> Front {
+    let f = front().await;
+    std::fs::remove_dir_all(f.user_dir()).unwrap();
+    std::fs::write(
+        f.data.join("projects.json"),
+        r#"{"projects":[{"id":"proj-legacy","name":"Old","chats":[]}]}"#,
+    )
+    .unwrap();
+    f
+}
+
+async fn get(addr: SocketAddr, path: &str, headers: &[(&str, &str)]) -> (u16, String) {
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    let mut req = format!("GET {path} HTTP/1.1\r\nhost: front.test\r\nconnection: close\r\n");
+    for (k, v) in headers {
+        req.push_str(&format!("{k}: {v}\r\n"));
+    }
+    req.push_str("\r\n");
+    s.write_all(req.as_bytes()).await.unwrap();
+    let mut out = Vec::new();
+    s.read_to_end(&mut out).await.unwrap();
+    let text = String::from_utf8(out).unwrap();
+    let status = text[9..12].parse().unwrap();
+    let body = text.split_once("\r\n\r\n").unwrap().1.to_string();
+    (status, body)
+}
+
 fn write_headers(f: &Front) -> Vec<(&str, &str)> {
     vec![
         ("cookie", f.jar.as_str()),
@@ -236,6 +263,29 @@ fn seed_project(f: &Front) {
 
 /// The account is removed (its sessions and its directory, as core's admin delete does) while an
 /// image upload's body is in flight: Node's 410, nothing recreated.
+#[tokio::test]
+async fn the_first_live_admin_request_claims_the_legacy_root_inside_the_auth_writer_transaction() {
+    let f = front_with_legacy_root().await;
+    let (status, _) = get(
+        f.addr,
+        "/api/projects/proj-legacy/assets/missing",
+        &write_headers(&f),
+    )
+    .await;
+    assert_eq!(status, 404);
+    let target = f.user_dir();
+    assert!(target.join("migration.json").is_file());
+    assert_eq!(
+        std::fs::read_to_string(target.join("projects.json")).unwrap(),
+        r#"{"projects":[{"id":"proj-legacy","name":"Old","chats":[]}]}"#
+    );
+    assert!(f.data.join("migration-backups").is_dir());
+    assert!(
+        f.data.join("projects.json").is_file(),
+        "legacy source remains for recovery"
+    );
+}
+
 #[tokio::test]
 async fn an_upload_for_an_account_removed_mid_body_is_gone() {
     let f = front().await;
