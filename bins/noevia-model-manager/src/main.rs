@@ -1071,7 +1071,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "native-search")]
         search,
         #[cfg(feature = "native-backends")]
-        backend_stats,
+        backend_stats: backend_stats.clone(),
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner,
         sections,
@@ -1086,7 +1086,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
         idle_unload: Some(idle_unload),
         #[cfg(feature = "native-section-autoconfig")]
-        section_autoconfig: section_autoconfig_cmd::state(&section_autoconfig),
+        section_autoconfig: {
+            let native = section_autoconfig_cmd::state(&section_autoconfig);
+            // noevia#1318 step 3b: the inventory from this process's own sampler.
+            #[cfg(feature = "native-backends")]
+            if let (Some(native), Some(stats)) = (native.as_ref(), backend_stats.as_ref()) {
+                native.set_stats(stats.clone());
+            }
+            native
+        },
     });
     // Retain native stores and their lifetime writer locks until the child is reaped.
     let serve = axum::serve(listener, router(state.clone()));

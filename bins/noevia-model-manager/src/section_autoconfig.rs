@@ -24,6 +24,8 @@
 //! `docs/native-section-autoconfig.md`.
 pub(crate) mod analyze;
 mod files;
+#[cfg(feature = "native-backends")]
+mod inventory;
 pub mod query;
 mod render;
 
@@ -87,6 +89,9 @@ pub struct SectionAutoconfig {
     settings: Settings,
     reads: Arc<tokio::sync::Semaphore>,
     open: fn(&Path) -> Result<Root, WalkError>,
+    /// noevia#1318 step 3b: the native sampler, when this process samples the backends.
+    #[cfg(feature = "native-backends")]
+    stats: std::sync::OnceLock<Arc<crate::backend_stats::BackendStats>>,
 }
 
 /// `GET /api/v1/sections/{name}/autoconfig`, the name segment percent-decoded as uvicorn does;
@@ -132,8 +137,36 @@ impl SectionAutoconfig {
             settings,
             reads: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_READS)),
             open,
+            #[cfg(feature = "native-backends")]
+            stats: std::sync::OnceLock::new(),
         }
     }
+
+    /// noevia#1318 step 3b: the backend inventory comes from this sampler (once; later calls are
+    /// ignored).
+    #[cfg(feature = "native-backends")]
+    pub fn set_stats(&self, stats: Arc<crate::backend_stats::BackendStats>) {
+        let _ = self.stats.set(stats);
+    }
+
+    /// The child's backend list, replaced by the native one when this side samples the backends
+    /// and can build it exactly.
+    #[cfg(feature = "native-backends")]
+    async fn inventory(&self, runtime: &mut Runtime) {
+        let Some(stats) = self.stats.get() else {
+            return;
+        };
+        match stats.descriptors().await {
+            Ok(descriptors) => match inventory::backend_list(&descriptors) {
+                Some(list) => runtime.backends = list,
+                None => inventory::fell_back("a baseline this side does not parse"),
+            },
+            Err(_) => inventory::fell_back("a container command this side does not render"),
+        }
+    }
+
+    #[cfg(not(feature = "native-backends"))]
+    async fn inventory(&self, _: &mut Runtime) {}
 
     /// Runs `work` on a blocking thread once a read slot is free (waiting counts against the
     /// deadline). The slot and the request's admission are held as long as the work runs.
@@ -180,10 +213,11 @@ impl SectionAutoconfig {
             Ok(files::Part::Located(located)) => located,
             Err(outcome) => return outcome,
         };
-        let runtime = match ask(&child, name, &located.model_rel).await {
+        let mut runtime = match ask(&child, name, &located.model_rel).await {
             Ok(runtime) => runtime,
             Err(outcome) => return outcome,
         };
+        self.inventory(&mut runtime).await;
         let (settings, open, section) = (self.settings.clone(), self.open, name.to_owned());
         match self
             .blocking(move || answer(&settings, open, &section, &params, &located, runtime))

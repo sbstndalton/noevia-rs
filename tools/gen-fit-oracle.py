@@ -165,6 +165,17 @@ def cases():
                           "llama-cuda": ok(gpu(48, vendor="nvidia", count=2, cards=[card(0, 24), card(1, 24.0)])),
                           "llama-unknown": ok(gpu(0.0))},
                 "sizes": [0, 3 * GIB, 7 * GIB, 11 * GIB, 30 * GIB, 47 * GIB, 60 * GIB, 95 * GIB, 200 * GIB]})
+    # 10. Step 3b: a command line with short and long ini keys, a flag without a value, an option
+    # that is not an ini key, and a trailing flag; a second backend whose command is empty.
+    w = world([container(18, "llama-cuda", 18, cmd=["-m", "/models/s/m.gguf", "--ctx-size", "8192", "-ngl", "99",
+                                                    "--flash-attn", "on", "--jinja", "--synthetic-flag", "v",
+                                                    "-ctk", "q8_0", "--no-mmap", "-c"]),
+               container(19, "llama-rocm", 19, cmd=[])],
+              [image(18, [CUDA]), image(19, [ROCM])])
+    out.append({"id": "baselines", "env": {}, "meminfo": meminfo(gib_kib(64)), "docker": w,
+                "cache": {"llama-cuda": ok(gpu(24.0, vendor="nvidia", cards=[card(0, 24.0)])),
+                          "llama-rocm": ok(gpu(16, vendor="amd"))},
+                "sizes": [GIB]})
     return out
 
 
@@ -336,7 +347,7 @@ def main() -> None:
     from fastapi.responses import JSONResponse
     from pydantic import TypeAdapter
 
-    from app import helpers, hw, services
+    from app import helpers, hw, ini, services
     from app.config import settings
 
     server = bo.UnixServer(str(sock_path), bo.Daemon)
@@ -391,6 +402,9 @@ def main() -> None:
             "inventory": {"gpu": [[k, repr(v)] for k, v in services._fit_backends().items()],
                           "cpu": services._cpu_backends(), "ram": repr(hw.usable_ram_gb())},
             "chips": chips, "descriptors": render(descriptors, "detail"), "budget": repr(budget),
+            # Step 3b: the whole list, baseline included, as the autoconfig runtime carries it.
+            "backend_list": json.dumps(helpers._backend_list(), ensure_ascii=False, allow_nan=True,
+                                       separators=(",", ":")),
         })
     os.environ.update(NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED="1",
                       NOEVIA_NATIVE_MODEL_MANAGER_MODELS_CONFIRMED="1",
@@ -542,8 +556,8 @@ def main() -> None:
     shutil.rmtree(root, ignore_errors=True)
     sources = {name: hashlib.sha256((app_dir / name).read_bytes()).hexdigest()
                for name in ("api.py", "autoconfig.py", "autoconfig_core.py", "config.py", "db.py", "discover.py",
-                            "gguf_meta.py", "helpers.py", "hw.py", "main.py", "services.py")}
-    json.dump({"sources": sources, "cases": out_cases, "runtime": runtime_out, "search": search_out, "repo": repo_out, "trust": trust,
+                            "gguf_meta.py", "helpers.py", "hw.py", "ini.py", "main.py", "services.py")}
+    json.dump({"sources": sources, "cases": out_cases, "runtime": runtime_out, "search": search_out, "repo": repo_out, "trust": trust, "known_keys": sorted(ini.ALL_KNOWN_KEYS),
                "reserve_forms": reserve_forms}, sys.stdout, indent=1, sort_keys=True, ensure_ascii=True)
     sys.stdout.write("\n")
 

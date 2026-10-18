@@ -14,7 +14,7 @@ use super::*;
 use serde_json::Value as Json;
 use std::{io::Write, sync::Mutex};
 
-const TOKEN: &str = "synthetic-section-autoconfig-token";
+pub(crate) const TOKEN: &str = "synthetic-section-autoconfig-token";
 
 /// Cases the native route refuses by design where Python answers 200
 /// (`docs/native-section-autoconfig.md`): a relative saved projector path, which Python resolves
@@ -104,7 +104,7 @@ pub(crate) async fn stand_in() -> (String, Arc<Mutex<Stand>>) {
     (base, shared)
 }
 
-fn shown(outcome: Outcome) -> (u16, String) {
+pub(crate) fn shown(outcome: Outcome) -> (u16, String) {
     match outcome {
         Outcome::Json(status, body) => (status, String::from_utf8(body).unwrap()),
         Outcome::Failed => (500, "Internal Server Error".to_owned()),
@@ -113,7 +113,7 @@ fn shown(outcome: Outcome) -> (u16, String) {
     }
 }
 
-async fn run(
+pub(crate) async fn run(
     autoconfig: &SectionAutoconfig,
     path: &str,
     base: &str,
@@ -219,7 +219,7 @@ async fn every_case_matches_the_actual_python_route() {
 }
 
 /// The first case's folder and its first request's recorded child answer.
-fn first_case(dir: &Path) -> (SectionAutoconfig, String) {
+pub(crate) fn first_case(dir: &Path) -> (SectionAutoconfig, String) {
     let fixture = fixture();
     let case = &fixture["cases"][0];
     let models = build(dir, case);
