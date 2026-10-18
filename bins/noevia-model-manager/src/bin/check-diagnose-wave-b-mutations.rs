@@ -85,7 +85,8 @@ fn cases() -> [Case; 5] {
             target: "noevia-model-manager",
             test: "diagnosis_command_tests::native_child_confirmation_semantics",
             assertion: "assert_eq!(marker, if selected { \"1\" } else { \"0\" });",
-            filtered: 2,
+            // This feature set compiles two lifecycle tests and three DB-selector tests.
+            filtered: 5,
             replay: false,
         },
     ]
@@ -511,7 +512,7 @@ mod tests {
             .last()
             .ok_or("fixed final case absent")?;
         let out = format!(
-            "\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:100:13:\nassertion `left == right` failed\n  left: \"0\"\n right: \"1\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.01s\n\n",
+            "\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:100:13:\nassertion `left == right` failed\n  left: \"0\"\n right: \"1\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.01s\n\n",
             t = case.test,
             p = case.test_path
         );
@@ -529,9 +530,10 @@ mod tests {
         };
         assert!(check(&out, err));
         for bad in [
-            out.replace("2 filtered out", "3 filtered out"),
-            out.replace("2 filtered out", "4 filtered out"),
-            out.replace("2 filtered out", "5 filtered out"),
+            out.replace("5 filtered out", "2 filtered out"),
+            out.replace("5 filtered out", "3 filtered out"),
+            out.replace("5 filtered out", "4 filtered out"),
+            out.replace("5 filtered out", "6 filtered out"),
             out.replace("running 1 test", "running 2 tests"),
             format!("{out}extra test ... FAILED\n"),
         ] {
@@ -586,6 +588,72 @@ mod tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn child_confirmation_qualifies_the_actual_six_test_harness_inventory() -> Result<(), String> {
+        let case = cases()
+            .into_iter()
+            .find(|c| c.id == "child-confirmation")
+            .ok_or("child confirmation case absent")?;
+        let (line, column) = location(include_str!("../main.rs"), &case)?;
+        // Captured failure shape from the PR#204 CI artifact: this is an assertion kill,
+        // with three additional always-compiled DB selector tests, not a setup failure.
+        let out = format!(
+            r#"
+running 1 test
+test {t} ... FAILED
+
+failures:
+
+---- {t} stdout ----
+
+thread '{t}' (11394) panicked at {p}:{line}:{column}:
+assertion `left == right` failed
+  left: "0"
+ right: "1"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    {t}
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+"#,
+            t = case.test,
+            p = case.test_path
+        );
+        let err = "   Compiling noevia-model-manager v0.1.0 (/owned/bins/noevia-model-manager)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.12s\n     Running unittests src/main.rs (/target/debug/deps/noevia_model_manager-0123456789abcdef)\nerror: test failed, to rerun pass `-p noevia-model-manager --bin noevia-model-manager`\n";
+        let check = |out: &str, err: &str| {
+            semantic(
+                Some(101),
+                out,
+                err,
+                &case,
+                (line, column),
+                Path::new("/owned"),
+                Path::new("/target"),
+            )
+        };
+        assert!(check(&out, err));
+        for count in [2, 4, 6] {
+            assert!(!check(
+                &out.replace("5 filtered out", &format!("{count} filtered out")),
+                err
+            ));
+        }
+        assert!(!check(&format!("{out}SETUP\n"), err));
+        assert!(!check(
+            &out,
+            &err.replace("    Finished", "deadline cap\n    Finished")
+        ));
+        assert!(!check(
+            &out,
+            &err.replace("error: test failed", "error: could not compile")
+        ));
+        Ok(())
+    }
+
     #[test]
     fn strict_complete_transcript_rejects_setup_caps_and_wrong_locations() -> Result<(), String> {
         let case = cases()
