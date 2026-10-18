@@ -1,0 +1,3631 @@
+{
+  "cases": [
+    {
+      "input_sql": "",
+      "name": "fresh",
+      "rows": {
+        "avatar_cache": [],
+        "bench_result": [],
+        "bench_run": [],
+        "bench_sweep": [],
+        "bench_variant": [],
+        "download_history": [],
+        "kv": [],
+        "model_badge": [],
+        "prompts": [],
+        "req_timing": [],
+        "server_config": [],
+        "sqlite_sequence": [],
+        "update_check": []
+      },
+      "schema": {
+        "avatar_cache": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "owner",
+              "TEXT",
+              0,
+              null,
+              1
+            ],
+            [
+              "url",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "fetched_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_avatar_cache_1": {
+              "columns": [
+                [
+                  "owner",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "bench_result": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "variant_id",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "prompt_name",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "rep",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "cold",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "ttft_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "ttft_answer_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "truncated",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "total_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "prompt_n",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "prompt_tps",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "gen_n",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "gen_tps",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "draft_n",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "draft_acc",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "peak_vram_json",
+              "TEXT",
+              1,
+              "'[]'",
+              0
+            ],
+            [
+              "contended",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "err",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "response_text",
+              "TEXT",
+              1,
+              "''",
+              0
+            ]
+          ],
+          "indexes": {
+            "bench_result_variant": {
+              "columns": [
+                [
+                  "variant_id",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            }
+          }
+        },
+        "bench_run": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "backend",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "status",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "started_at",
+              "REAL",
+              1,
+              null,
+              0
+            ],
+            [
+              "finished_at",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "reps",
+              "INTEGER",
+              1,
+              "1",
+              0
+            ],
+            [
+              "max_tokens",
+              "INTEGER",
+              1,
+              "256",
+              0
+            ],
+            [
+              "note",
+              "TEXT",
+              1,
+              "''",
+              0
+            ]
+          ],
+          "indexes": {}
+        },
+        "bench_sweep": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "run_id",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "model_type",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "test",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "n_prompt",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_gen",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_depth",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "avg_ts",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "stddev_ts",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_gpu_layers",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_cpu_moe",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_ubatch",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "type_k",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "type_v",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "flash_attn",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "split_mode",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "raw_json",
+              "TEXT",
+              1,
+              "'{}'",
+              0
+            ]
+          ],
+          "indexes": {
+            "bench_sweep_run": {
+              "columns": [
+                [
+                  "run_id",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            }
+          }
+        },
+        "bench_variant": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "run_id",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "argv_json",
+              "TEXT",
+              1,
+              "'{}'",
+              0
+            ],
+            [
+              "load_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_bench_variant_1": {
+              "columns": [
+                [
+                  "run_id",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "u",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "download_history": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "repo_id",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "filename",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "dest_path",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "total_bytes",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "status",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "error",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "started_at",
+              "REAL",
+              1,
+              null,
+              0
+            ],
+            [
+              "completed_at",
+              "REAL",
+              0,
+              null,
+              0
+            ]
+          ],
+          "indexes": {}
+        },
+        "kv": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "key",
+              "TEXT",
+              0,
+              null,
+              1
+            ],
+            [
+              "value",
+              "TEXT",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_kv_1": {
+              "columns": [
+                [
+                  "key",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "model_badge": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "category",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "rating",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "note",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "run_id",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "created_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "model_badge_alias": {
+              "columns": [
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "sqlite_autoindex_model_badge_1": {
+              "columns": [
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "category",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "u",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "prompts": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "name",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "body",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "created_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {}
+        },
+        "req_timing": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "ts",
+              "REAL",
+              1,
+              null,
+              0
+            ],
+            [
+              "backend",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "instance",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "task",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "model_path",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "spec_type",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "prompt_tokens",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "prompt_tps",
+              "REAL",
+              1,
+              "0",
+              0
+            ],
+            [
+              "gen_tokens",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "gen_tps",
+              "REAL",
+              1,
+              "0",
+              0
+            ],
+            [
+              "draft_acc",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "draft_len",
+              "REAL",
+              0,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "req_timing_alias": {
+              "columns": [
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "ts",
+                  1,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "req_timing_dedupe": {
+              "columns": [
+                [
+                  "backend",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "task",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "ts",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "req_timing_model": {
+              "columns": [
+                [
+                  "model_path",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "ts",
+                  1,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "sqlite_autoindex_req_timing_1": {
+              "columns": [
+                [
+                  "backend",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "instance",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "task",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "u",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "server_config": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "backend",
+              "TEXT",
+              1,
+              null,
+              1
+            ],
+            [
+              "instance",
+              "TEXT",
+              1,
+              null,
+              2
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "model_path",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "argv_json",
+              "TEXT",
+              1,
+              "'{}'",
+              0
+            ],
+            [
+              "first_seen",
+              "REAL",
+              1,
+              "0",
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_server_config_1": {
+              "columns": [
+                [
+                  "backend",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "instance",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "update_check": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "filename",
+              "TEXT",
+              0,
+              null,
+              1
+            ],
+            [
+              "repo_id",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "hf_last_modified",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "checked_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_update_check_1": {
+              "columns": [
+                [
+                  "filename",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "input_sql": "CREATE TABLE avatar_cache (\n                owner       TEXT PRIMARY KEY,\n                url         TEXT NOT NULL,\n                fetched_at  REAL NOT NULL\n            );\nINSERT INTO \"avatar_cache\" VALUES('qa-avatar_cache-owner','qa-avatar_cache-url',1.25);\nCREATE TABLE bench_result (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                variant_id  INTEGER NOT NULL,\n                prompt_name TEXT NOT NULL,\n                rep         INTEGER NOT NULL,\n                cold        INTEGER NOT NULL DEFAULT 0,\n                ttft_ms     REAL,\n                total_ms    REAL,\n                prompt_n    INTEGER,\n                prompt_tps  REAL,\n                gen_n       INTEGER,\n                gen_tps     REAL,\n                draft_n     INTEGER,\n                draft_acc   REAL,\n                peak_vram_json TEXT NOT NULL DEFAULT '[]',\n                contended   INTEGER NOT NULL DEFAULT 0,\n                err         TEXT NOT NULL DEFAULT ''\n            );\nINSERT INTO \"bench_result\" VALUES(1,7,'qa-bench_result-prompt_name',7,7,1.25,1.25,7,1.25,7,1.25,7,1.25,'qa-bench_result-peak_vram_json',7,'qa-bench_result-err');\nCREATE TABLE bench_run (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                backend     TEXT NOT NULL,\n                status      TEXT NOT NULL,\n                started_at  REAL NOT NULL,\n                finished_at REAL,\n                reps        INTEGER NOT NULL DEFAULT 1,\n                max_tokens  INTEGER NOT NULL DEFAULT 256,\n                note        TEXT NOT NULL DEFAULT ''\n            );\nINSERT INTO \"bench_run\" VALUES(1,'qa-bench_run-backend','qa-bench_run-status',1.25,1.25,7,7,'qa-bench_run-note');\nCREATE TABLE bench_sweep (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id       INTEGER NOT NULL,\n                alias        TEXT NOT NULL DEFAULT '',\n                model_type   TEXT NOT NULL DEFAULT '',\n                test         TEXT NOT NULL DEFAULT '',\n                n_prompt     INTEGER, n_gen INTEGER, n_depth INTEGER,\n                avg_ts       REAL,    stddev_ts REAL,\n                n_gpu_layers INTEGER, n_cpu_moe INTEGER, n_ubatch INTEGER,\n                type_k       TEXT,    type_v TEXT, flash_attn INTEGER,\n                split_mode   TEXT,\n                raw_json     TEXT NOT NULL DEFAULT '{}'\n            );\nINSERT INTO \"bench_sweep\" VALUES(1,7,'qa-bench_sweep-alias','qa-bench_sweep-model_type','qa-bench_sweep-test',7,7,7,1.25,1.25,7,7,7,'qa-bench_sweep-type_k','qa-bench_sweep-type_v',7,'qa-bench_sweep-split_mode','qa-bench_sweep-raw_json');\nCREATE TABLE bench_variant (\n                id       INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id   INTEGER NOT NULL,\n                alias    TEXT NOT NULL,\n                argv_json TEXT NOT NULL DEFAULT '{}',\n                load_ms  REAL,\n                UNIQUE(run_id, alias)\n            );\nINSERT INTO \"bench_variant\" VALUES(1,7,'qa-bench_variant-alias','qa-bench_variant-argv_json',1.25);\nCREATE TABLE download_history (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                repo_id      TEXT NOT NULL,\n                filename     TEXT NOT NULL,\n                dest_path    TEXT NOT NULL,\n                total_bytes  INTEGER NOT NULL,\n                status       TEXT NOT NULL,\n                error        TEXT,\n                started_at   REAL NOT NULL,\n                completed_at REAL\n            );\nINSERT INTO \"download_history\" VALUES(1,'qa-download_history-repo_id','qa-download_history-filename','qa-download_history-dest_path',7,'qa-download_history-status','qa-download_history-error',1.25,1.25);\nCREATE TABLE kv (\n                key   TEXT PRIMARY KEY,\n                value TEXT NOT NULL\n            );\nINSERT INTO \"kv\" VALUES('qa-kv-key','qa-kv-value');\nCREATE TABLE model_badge (\n                id         INTEGER PRIMARY KEY AUTOINCREMENT,\n                alias      TEXT NOT NULL,\n                category   TEXT NOT NULL,\n                rating     INTEGER NOT NULL,\n                note       TEXT NOT NULL DEFAULT '',\n                run_id     INTEGER,\n                created_at REAL NOT NULL,\n                UNIQUE(alias, category)\n            );\nINSERT INTO \"model_badge\" VALUES(1,'qa-model_badge-alias','qa-model_badge-category',7,'qa-model_badge-note',7,1.25);\nCREATE TABLE prompts (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                name        TEXT NOT NULL,\n                body        TEXT NOT NULL,\n                created_at  REAL NOT NULL\n            );\nINSERT INTO \"prompts\" VALUES(1,'qa-prompts-name','qa-prompts-body',1.25);\nCREATE TABLE req_timing (\n                id            INTEGER PRIMARY KEY AUTOINCREMENT,\n                ts            REAL NOT NULL,\n                backend       TEXT NOT NULL,\n                instance      TEXT NOT NULL,\n                task          INTEGER NOT NULL,\n                model_path    TEXT NOT NULL DEFAULT '',\n                alias         TEXT NOT NULL DEFAULT '',\n                spec_type     TEXT NOT NULL DEFAULT '',\n                prompt_tokens INTEGER NOT NULL DEFAULT 0,\n                prompt_tps    REAL    NOT NULL DEFAULT 0,\n                gen_tokens    INTEGER NOT NULL DEFAULT 0,\n                gen_tps       REAL    NOT NULL DEFAULT 0,\n                draft_acc     REAL,\n                draft_len     REAL,\n                UNIQUE(backend, instance, task)\n            );\nINSERT INTO \"req_timing\" VALUES(1,1.25,'qa-req_timing-backend','qa-req_timing-instance',7,'qa-req_timing-model_path','qa-req_timing-alias','qa-req_timing-spec_type',7,1.25,7,1.25,1.25,1.25);\nCREATE TABLE server_config (\n                backend    TEXT NOT NULL,\n                instance   TEXT NOT NULL,\n                alias      TEXT NOT NULL DEFAULT '',\n                model_path TEXT NOT NULL DEFAULT '',\n                argv_json  TEXT NOT NULL DEFAULT '{}',\n                first_seen REAL NOT NULL DEFAULT 0,\n                PRIMARY KEY (backend, instance)\n            );\nINSERT INTO \"server_config\" VALUES('qa-server_config-backend','qa-server_config-instance','qa-server_config-alias','qa-server_config-model_path','qa-server_config-argv_json',1.25);\nCREATE TABLE update_check (\n                filename          TEXT PRIMARY KEY,\n                repo_id           TEXT NOT NULL,\n                hf_last_modified  TEXT,\n                checked_at        REAL NOT NULL\n            );\nINSERT INTO \"update_check\" VALUES('qa-update_check-filename','qa-update_check-repo_id','qa-update_check-hf_last_modified',1.25);\nCREATE INDEX req_timing_model\n                ON req_timing(model_path, ts DESC);\nCREATE INDEX req_timing_alias\n                ON req_timing(alias, ts DESC);\nCREATE INDEX req_timing_dedupe\n                ON req_timing(backend, task, ts);\nCREATE INDEX bench_result_variant ON bench_result(variant_id);\nCREATE INDEX bench_sweep_run ON bench_sweep(run_id);\nCREATE INDEX model_badge_alias ON model_badge(alias);\nDELETE FROM \"sqlite_sequence\";\nINSERT INTO \"sqlite_sequence\" VALUES('bench_result',1);\nINSERT INTO \"sqlite_sequence\" VALUES('bench_run',1);\nINSERT INTO \"sqlite_sequence\" VALUES('bench_sweep',1);\nINSERT INTO \"sqlite_sequence\" VALUES('bench_variant',1);\nINSERT INTO \"sqlite_sequence\" VALUES('download_history',1);\nINSERT INTO \"sqlite_sequence\" VALUES('model_badge',1);\nINSERT INTO \"sqlite_sequence\" VALUES('prompts',1);\nINSERT INTO \"sqlite_sequence\" VALUES('req_timing',1);",
+      "name": "legacy",
+      "rows": {
+        "avatar_cache": [
+          [
+            "qa-avatar_cache-owner",
+            "qa-avatar_cache-url",
+            1.25
+          ]
+        ],
+        "bench_result": [
+          [
+            1,
+            7,
+            "qa-bench_result-prompt_name",
+            7,
+            7,
+            1.25,
+            1.25,
+            7,
+            1.25,
+            7,
+            1.25,
+            7,
+            1.25,
+            "qa-bench_result-peak_vram_json",
+            7,
+            "qa-bench_result-err",
+            null,
+            0,
+            ""
+          ]
+        ],
+        "bench_run": [
+          [
+            1,
+            "qa-bench_run-backend",
+            "qa-bench_run-status",
+            1.25,
+            1.25,
+            7,
+            7,
+            "qa-bench_run-note"
+          ]
+        ],
+        "bench_sweep": [
+          [
+            1,
+            7,
+            "qa-bench_sweep-alias",
+            "qa-bench_sweep-model_type",
+            "qa-bench_sweep-test",
+            7,
+            7,
+            7,
+            1.25,
+            1.25,
+            7,
+            7,
+            7,
+            "qa-bench_sweep-type_k",
+            "qa-bench_sweep-type_v",
+            7,
+            "qa-bench_sweep-split_mode",
+            "qa-bench_sweep-raw_json"
+          ]
+        ],
+        "bench_variant": [
+          [
+            1,
+            7,
+            "qa-bench_variant-alias",
+            "qa-bench_variant-argv_json",
+            1.25
+          ]
+        ],
+        "download_history": [
+          [
+            1,
+            "qa-download_history-repo_id",
+            "qa-download_history-filename",
+            "qa-download_history-dest_path",
+            7,
+            "qa-download_history-status",
+            "qa-download_history-error",
+            1.25,
+            1.25
+          ]
+        ],
+        "kv": [
+          [
+            "qa-kv-key",
+            "qa-kv-value"
+          ]
+        ],
+        "model_badge": [
+          [
+            1,
+            "qa-model_badge-alias",
+            "qa-model_badge-category",
+            7,
+            "qa-model_badge-note",
+            7,
+            1.25
+          ]
+        ],
+        "prompts": [
+          [
+            1,
+            "qa-prompts-name",
+            "qa-prompts-body",
+            1.25
+          ]
+        ],
+        "req_timing": [
+          [
+            1,
+            1.25,
+            "qa-req_timing-backend",
+            "qa-req_timing-instance",
+            7,
+            "qa-req_timing-model_path",
+            "qa-req_timing-alias",
+            "qa-req_timing-spec_type",
+            7,
+            1.25,
+            7,
+            1.25,
+            1.25,
+            1.25
+          ]
+        ],
+        "server_config": [
+          [
+            "qa-server_config-backend",
+            "qa-server_config-instance",
+            "qa-server_config-alias",
+            "qa-server_config-model_path",
+            "qa-server_config-argv_json",
+            1.25
+          ]
+        ],
+        "sqlite_sequence": [
+          [
+            "bench_result",
+            1
+          ],
+          [
+            "bench_run",
+            1
+          ],
+          [
+            "bench_sweep",
+            1
+          ],
+          [
+            "bench_variant",
+            1
+          ],
+          [
+            "download_history",
+            1
+          ],
+          [
+            "model_badge",
+            1
+          ],
+          [
+            "prompts",
+            1
+          ],
+          [
+            "req_timing",
+            1
+          ]
+        ],
+        "update_check": [
+          [
+            "qa-update_check-filename",
+            "qa-update_check-repo_id",
+            "qa-update_check-hf_last_modified",
+            1.25
+          ]
+        ]
+      },
+      "schema": {
+        "avatar_cache": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "owner",
+              "TEXT",
+              0,
+              null,
+              1
+            ],
+            [
+              "url",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "fetched_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_avatar_cache_1": {
+              "columns": [
+                [
+                  "owner",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "bench_result": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "variant_id",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "prompt_name",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "rep",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "cold",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "ttft_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "total_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "prompt_n",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "prompt_tps",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "gen_n",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "gen_tps",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "draft_n",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "draft_acc",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "peak_vram_json",
+              "TEXT",
+              1,
+              "'[]'",
+              0
+            ],
+            [
+              "contended",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "err",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "ttft_answer_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "truncated",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "response_text",
+              "TEXT",
+              1,
+              "''",
+              0
+            ]
+          ],
+          "indexes": {
+            "bench_result_variant": {
+              "columns": [
+                [
+                  "variant_id",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            }
+          }
+        },
+        "bench_run": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "backend",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "status",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "started_at",
+              "REAL",
+              1,
+              null,
+              0
+            ],
+            [
+              "finished_at",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "reps",
+              "INTEGER",
+              1,
+              "1",
+              0
+            ],
+            [
+              "max_tokens",
+              "INTEGER",
+              1,
+              "256",
+              0
+            ],
+            [
+              "note",
+              "TEXT",
+              1,
+              "''",
+              0
+            ]
+          ],
+          "indexes": {}
+        },
+        "bench_sweep": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "run_id",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "model_type",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "test",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "n_prompt",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_gen",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_depth",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "avg_ts",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "stddev_ts",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_gpu_layers",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_cpu_moe",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_ubatch",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "type_k",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "type_v",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "flash_attn",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "split_mode",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "raw_json",
+              "TEXT",
+              1,
+              "'{}'",
+              0
+            ]
+          ],
+          "indexes": {
+            "bench_sweep_run": {
+              "columns": [
+                [
+                  "run_id",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            }
+          }
+        },
+        "bench_variant": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "run_id",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "argv_json",
+              "TEXT",
+              1,
+              "'{}'",
+              0
+            ],
+            [
+              "load_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_bench_variant_1": {
+              "columns": [
+                [
+                  "run_id",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "u",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "download_history": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "repo_id",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "filename",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "dest_path",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "total_bytes",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "status",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "error",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "started_at",
+              "REAL",
+              1,
+              null,
+              0
+            ],
+            [
+              "completed_at",
+              "REAL",
+              0,
+              null,
+              0
+            ]
+          ],
+          "indexes": {}
+        },
+        "kv": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "key",
+              "TEXT",
+              0,
+              null,
+              1
+            ],
+            [
+              "value",
+              "TEXT",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_kv_1": {
+              "columns": [
+                [
+                  "key",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "model_badge": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "category",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "rating",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "note",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "run_id",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "created_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "model_badge_alias": {
+              "columns": [
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "sqlite_autoindex_model_badge_1": {
+              "columns": [
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "category",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "u",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "prompts": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "name",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "body",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "created_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {}
+        },
+        "req_timing": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "ts",
+              "REAL",
+              1,
+              null,
+              0
+            ],
+            [
+              "backend",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "instance",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "task",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "model_path",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "spec_type",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "prompt_tokens",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "prompt_tps",
+              "REAL",
+              1,
+              "0",
+              0
+            ],
+            [
+              "gen_tokens",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "gen_tps",
+              "REAL",
+              1,
+              "0",
+              0
+            ],
+            [
+              "draft_acc",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "draft_len",
+              "REAL",
+              0,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "req_timing_alias": {
+              "columns": [
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "ts",
+                  1,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "req_timing_dedupe": {
+              "columns": [
+                [
+                  "backend",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "task",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "ts",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "req_timing_model": {
+              "columns": [
+                [
+                  "model_path",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "ts",
+                  1,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "sqlite_autoindex_req_timing_1": {
+              "columns": [
+                [
+                  "backend",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "instance",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "task",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "u",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "server_config": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "backend",
+              "TEXT",
+              1,
+              null,
+              1
+            ],
+            [
+              "instance",
+              "TEXT",
+              1,
+              null,
+              2
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "model_path",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "argv_json",
+              "TEXT",
+              1,
+              "'{}'",
+              0
+            ],
+            [
+              "first_seen",
+              "REAL",
+              1,
+              "0",
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_server_config_1": {
+              "columns": [
+                [
+                  "backend",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "instance",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "update_check": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "filename",
+              "TEXT",
+              0,
+              null,
+              1
+            ],
+            [
+              "repo_id",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "hf_last_modified",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "checked_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_update_check_1": {
+              "columns": [
+                [
+                  "filename",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "input_sql": "CREATE TABLE avatar_cache (\n                owner       TEXT PRIMARY KEY,\n                url         TEXT NOT NULL,\n                fetched_at  REAL NOT NULL\n            );\nINSERT INTO \"avatar_cache\" VALUES('qa-avatar_cache-owner','qa-avatar_cache-url',1.25);\nCREATE TABLE bench_result (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                variant_id  INTEGER NOT NULL,\n                prompt_name TEXT NOT NULL,\n                rep         INTEGER NOT NULL,\n                cold        INTEGER NOT NULL DEFAULT 0,\n                ttft_ms     REAL,\n                ttft_answer_ms REAL,\n                truncated   INTEGER NOT NULL DEFAULT 0,\n                total_ms    REAL,\n                prompt_n    INTEGER,\n                prompt_tps  REAL,\n                gen_n       INTEGER,\n                gen_tps     REAL,\n                draft_n     INTEGER,\n                draft_acc   REAL,\n                peak_vram_json TEXT NOT NULL DEFAULT '[]',\n                contended   INTEGER NOT NULL DEFAULT 0,\n                err         TEXT NOT NULL DEFAULT '',\n                response_text TEXT NOT NULL DEFAULT ''\n            );\nINSERT INTO \"bench_result\" VALUES(1,7,'qa-bench_result-prompt_name',7,7,1.25,1.25,7,1.25,7,1.25,7,1.25,7,1.25,'qa-bench_result-peak_vram_json',7,'qa-bench_result-err','qa-bench_result-response_text');\nCREATE TABLE bench_run (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                backend     TEXT NOT NULL,\n                status      TEXT NOT NULL,\n                started_at  REAL NOT NULL,\n                finished_at REAL,\n                reps        INTEGER NOT NULL DEFAULT 1,\n                max_tokens  INTEGER NOT NULL DEFAULT 256,\n                note        TEXT NOT NULL DEFAULT ''\n            );\nINSERT INTO \"bench_run\" VALUES(1,'qa-bench_run-backend','qa-bench_run-status',1.25,1.25,7,7,'qa-bench_run-note');\nCREATE TABLE bench_sweep (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id       INTEGER NOT NULL,\n                alias        TEXT NOT NULL DEFAULT '',\n                model_type   TEXT NOT NULL DEFAULT '',\n                test         TEXT NOT NULL DEFAULT '',\n                n_prompt     INTEGER, n_gen INTEGER, n_depth INTEGER,\n                avg_ts       REAL,    stddev_ts REAL,\n                n_gpu_layers INTEGER, n_cpu_moe INTEGER, n_ubatch INTEGER,\n                type_k       TEXT,    type_v TEXT, flash_attn INTEGER,\n                split_mode   TEXT,\n                raw_json     TEXT NOT NULL DEFAULT '{}'\n            );\nINSERT INTO \"bench_sweep\" VALUES(1,7,'qa-bench_sweep-alias','qa-bench_sweep-model_type','qa-bench_sweep-test',7,7,7,1.25,1.25,7,7,7,'qa-bench_sweep-type_k','qa-bench_sweep-type_v',7,'qa-bench_sweep-split_mode','qa-bench_sweep-raw_json');\nCREATE TABLE bench_variant (\n                id       INTEGER PRIMARY KEY AUTOINCREMENT,\n                run_id   INTEGER NOT NULL,\n                alias    TEXT NOT NULL,\n                argv_json TEXT NOT NULL DEFAULT '{}',\n                load_ms  REAL,\n                UNIQUE(run_id, alias)\n            );\nINSERT INTO \"bench_variant\" VALUES(1,7,'qa-bench_variant-alias','qa-bench_variant-argv_json',1.25);\nCREATE TABLE download_history (\n                id           INTEGER PRIMARY KEY AUTOINCREMENT,\n                repo_id      TEXT NOT NULL,\n                filename     TEXT NOT NULL,\n                dest_path    TEXT NOT NULL,\n                total_bytes  INTEGER NOT NULL,\n                status       TEXT NOT NULL,\n                error        TEXT,\n                started_at   REAL NOT NULL,\n                completed_at REAL\n            );\nINSERT INTO \"download_history\" VALUES(1,'qa-download_history-repo_id','qa-download_history-filename','qa-download_history-dest_path',7,'qa-download_history-status','qa-download_history-error',1.25,1.25);\nCREATE TABLE kv (\n                key   TEXT PRIMARY KEY,\n                value TEXT NOT NULL\n            );\nINSERT INTO \"kv\" VALUES('qa-kv-key','qa-kv-value');\nCREATE TABLE model_badge (\n                id         INTEGER PRIMARY KEY AUTOINCREMENT,\n                alias      TEXT NOT NULL,\n                category   TEXT NOT NULL,\n                rating     INTEGER NOT NULL,\n                note       TEXT NOT NULL DEFAULT '',\n                run_id     INTEGER,\n                created_at REAL NOT NULL,\n                UNIQUE(alias, category)\n            );\nINSERT INTO \"model_badge\" VALUES(1,'qa-model_badge-alias','qa-model_badge-category',7,'qa-model_badge-note',7,1.25);\nCREATE TABLE prompts (\n                id          INTEGER PRIMARY KEY AUTOINCREMENT,\n                name        TEXT NOT NULL,\n                body        TEXT NOT NULL,\n                created_at  REAL NOT NULL\n            );\nINSERT INTO \"prompts\" VALUES(1,'qa-prompts-name','qa-prompts-body',1.25);\nCREATE TABLE req_timing (\n                id            INTEGER PRIMARY KEY AUTOINCREMENT,\n                ts            REAL NOT NULL,\n                backend       TEXT NOT NULL,\n                instance      TEXT NOT NULL,\n                task          INTEGER NOT NULL,\n                model_path    TEXT NOT NULL DEFAULT '',\n                alias         TEXT NOT NULL DEFAULT '',\n                spec_type     TEXT NOT NULL DEFAULT '',\n                prompt_tokens INTEGER NOT NULL DEFAULT 0,\n                prompt_tps    REAL    NOT NULL DEFAULT 0,\n                gen_tokens    INTEGER NOT NULL DEFAULT 0,\n                gen_tps       REAL    NOT NULL DEFAULT 0,\n                draft_acc     REAL,\n                draft_len     REAL,\n                UNIQUE(backend, instance, task)\n            );\nINSERT INTO \"req_timing\" VALUES(1,1.25,'qa-req_timing-backend','qa-req_timing-instance',7,'qa-req_timing-model_path','qa-req_timing-alias','qa-req_timing-spec_type',7,1.25,7,1.25,1.25,1.25);\nCREATE TABLE server_config (\n                backend    TEXT NOT NULL,\n                instance   TEXT NOT NULL,\n                alias      TEXT NOT NULL DEFAULT '',\n                model_path TEXT NOT NULL DEFAULT '',\n                argv_json  TEXT NOT NULL DEFAULT '{}',\n                first_seen REAL NOT NULL DEFAULT 0,\n                PRIMARY KEY (backend, instance)\n            );\nINSERT INTO \"server_config\" VALUES('qa-server_config-backend','qa-server_config-instance','qa-server_config-alias','qa-server_config-model_path','qa-server_config-argv_json',1.25);\nCREATE TABLE update_check (\n                filename          TEXT PRIMARY KEY,\n                repo_id           TEXT NOT NULL,\n                hf_last_modified  TEXT,\n                checked_at        REAL NOT NULL\n            );\nINSERT INTO \"update_check\" VALUES('qa-update_check-filename','qa-update_check-repo_id','qa-update_check-hf_last_modified',1.25);\nCREATE INDEX req_timing_model\n                ON req_timing(model_path, ts DESC);\nCREATE INDEX req_timing_alias\n                ON req_timing(alias, ts DESC);\nCREATE INDEX req_timing_dedupe\n                ON req_timing(backend, task, ts);\nCREATE INDEX bench_result_variant ON bench_result(variant_id);\nCREATE INDEX bench_sweep_run ON bench_sweep(run_id);\nCREATE INDEX model_badge_alias ON model_badge(alias);\nDELETE FROM \"sqlite_sequence\";\nINSERT INTO \"sqlite_sequence\" VALUES('bench_result',1);\nINSERT INTO \"sqlite_sequence\" VALUES('bench_run',1);\nINSERT INTO \"sqlite_sequence\" VALUES('bench_sweep',1);\nINSERT INTO \"sqlite_sequence\" VALUES('bench_variant',1);\nINSERT INTO \"sqlite_sequence\" VALUES('download_history',1);\nINSERT INTO \"sqlite_sequence\" VALUES('model_badge',1);\nINSERT INTO \"sqlite_sequence\" VALUES('prompts',1);\nINSERT INTO \"sqlite_sequence\" VALUES('req_timing',1);",
+      "name": "repeated",
+      "rows": {
+        "avatar_cache": [
+          [
+            "qa-avatar_cache-owner",
+            "qa-avatar_cache-url",
+            1.25
+          ]
+        ],
+        "bench_result": [
+          [
+            1,
+            7,
+            "qa-bench_result-prompt_name",
+            7,
+            7,
+            1.25,
+            1.25,
+            7,
+            1.25,
+            7,
+            1.25,
+            7,
+            1.25,
+            7,
+            1.25,
+            "qa-bench_result-peak_vram_json",
+            7,
+            "qa-bench_result-err",
+            "qa-bench_result-response_text"
+          ]
+        ],
+        "bench_run": [
+          [
+            1,
+            "qa-bench_run-backend",
+            "qa-bench_run-status",
+            1.25,
+            1.25,
+            7,
+            7,
+            "qa-bench_run-note"
+          ]
+        ],
+        "bench_sweep": [
+          [
+            1,
+            7,
+            "qa-bench_sweep-alias",
+            "qa-bench_sweep-model_type",
+            "qa-bench_sweep-test",
+            7,
+            7,
+            7,
+            1.25,
+            1.25,
+            7,
+            7,
+            7,
+            "qa-bench_sweep-type_k",
+            "qa-bench_sweep-type_v",
+            7,
+            "qa-bench_sweep-split_mode",
+            "qa-bench_sweep-raw_json"
+          ]
+        ],
+        "bench_variant": [
+          [
+            1,
+            7,
+            "qa-bench_variant-alias",
+            "qa-bench_variant-argv_json",
+            1.25
+          ]
+        ],
+        "download_history": [
+          [
+            1,
+            "qa-download_history-repo_id",
+            "qa-download_history-filename",
+            "qa-download_history-dest_path",
+            7,
+            "qa-download_history-status",
+            "qa-download_history-error",
+            1.25,
+            1.25
+          ]
+        ],
+        "kv": [
+          [
+            "qa-kv-key",
+            "qa-kv-value"
+          ]
+        ],
+        "model_badge": [
+          [
+            1,
+            "qa-model_badge-alias",
+            "qa-model_badge-category",
+            7,
+            "qa-model_badge-note",
+            7,
+            1.25
+          ]
+        ],
+        "prompts": [
+          [
+            1,
+            "qa-prompts-name",
+            "qa-prompts-body",
+            1.25
+          ]
+        ],
+        "req_timing": [
+          [
+            1,
+            1.25,
+            "qa-req_timing-backend",
+            "qa-req_timing-instance",
+            7,
+            "qa-req_timing-model_path",
+            "qa-req_timing-alias",
+            "qa-req_timing-spec_type",
+            7,
+            1.25,
+            7,
+            1.25,
+            1.25,
+            1.25
+          ]
+        ],
+        "server_config": [
+          [
+            "qa-server_config-backend",
+            "qa-server_config-instance",
+            "qa-server_config-alias",
+            "qa-server_config-model_path",
+            "qa-server_config-argv_json",
+            1.25
+          ]
+        ],
+        "sqlite_sequence": [
+          [
+            "bench_result",
+            1
+          ],
+          [
+            "bench_run",
+            1
+          ],
+          [
+            "bench_sweep",
+            1
+          ],
+          [
+            "bench_variant",
+            1
+          ],
+          [
+            "download_history",
+            1
+          ],
+          [
+            "model_badge",
+            1
+          ],
+          [
+            "prompts",
+            1
+          ],
+          [
+            "req_timing",
+            1
+          ]
+        ],
+        "update_check": [
+          [
+            "qa-update_check-filename",
+            "qa-update_check-repo_id",
+            "qa-update_check-hf_last_modified",
+            1.25
+          ]
+        ]
+      },
+      "schema": {
+        "avatar_cache": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "owner",
+              "TEXT",
+              0,
+              null,
+              1
+            ],
+            [
+              "url",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "fetched_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_avatar_cache_1": {
+              "columns": [
+                [
+                  "owner",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "bench_result": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "variant_id",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "prompt_name",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "rep",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "cold",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "ttft_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "ttft_answer_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "truncated",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "total_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "prompt_n",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "prompt_tps",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "gen_n",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "gen_tps",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "draft_n",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "draft_acc",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "peak_vram_json",
+              "TEXT",
+              1,
+              "'[]'",
+              0
+            ],
+            [
+              "contended",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "err",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "response_text",
+              "TEXT",
+              1,
+              "''",
+              0
+            ]
+          ],
+          "indexes": {
+            "bench_result_variant": {
+              "columns": [
+                [
+                  "variant_id",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            }
+          }
+        },
+        "bench_run": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "backend",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "status",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "started_at",
+              "REAL",
+              1,
+              null,
+              0
+            ],
+            [
+              "finished_at",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "reps",
+              "INTEGER",
+              1,
+              "1",
+              0
+            ],
+            [
+              "max_tokens",
+              "INTEGER",
+              1,
+              "256",
+              0
+            ],
+            [
+              "note",
+              "TEXT",
+              1,
+              "''",
+              0
+            ]
+          ],
+          "indexes": {}
+        },
+        "bench_sweep": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "run_id",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "model_type",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "test",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "n_prompt",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_gen",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_depth",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "avg_ts",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "stddev_ts",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_gpu_layers",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_cpu_moe",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "n_ubatch",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "type_k",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "type_v",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "flash_attn",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "split_mode",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "raw_json",
+              "TEXT",
+              1,
+              "'{}'",
+              0
+            ]
+          ],
+          "indexes": {
+            "bench_sweep_run": {
+              "columns": [
+                [
+                  "run_id",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            }
+          }
+        },
+        "bench_variant": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "run_id",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "argv_json",
+              "TEXT",
+              1,
+              "'{}'",
+              0
+            ],
+            [
+              "load_ms",
+              "REAL",
+              0,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_bench_variant_1": {
+              "columns": [
+                [
+                  "run_id",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "u",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "download_history": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "repo_id",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "filename",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "dest_path",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "total_bytes",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "status",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "error",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "started_at",
+              "REAL",
+              1,
+              null,
+              0
+            ],
+            [
+              "completed_at",
+              "REAL",
+              0,
+              null,
+              0
+            ]
+          ],
+          "indexes": {}
+        },
+        "kv": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "key",
+              "TEXT",
+              0,
+              null,
+              1
+            ],
+            [
+              "value",
+              "TEXT",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_kv_1": {
+              "columns": [
+                [
+                  "key",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "model_badge": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "category",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "rating",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "note",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "run_id",
+              "INTEGER",
+              0,
+              null,
+              0
+            ],
+            [
+              "created_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "model_badge_alias": {
+              "columns": [
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "sqlite_autoindex_model_badge_1": {
+              "columns": [
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "category",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "u",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "prompts": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "name",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "body",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "created_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {}
+        },
+        "req_timing": {
+          "autoincrement": true,
+          "columns": [
+            [
+              "id",
+              "INTEGER",
+              0,
+              null,
+              1
+            ],
+            [
+              "ts",
+              "REAL",
+              1,
+              null,
+              0
+            ],
+            [
+              "backend",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "instance",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "task",
+              "INTEGER",
+              1,
+              null,
+              0
+            ],
+            [
+              "model_path",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "spec_type",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "prompt_tokens",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "prompt_tps",
+              "REAL",
+              1,
+              "0",
+              0
+            ],
+            [
+              "gen_tokens",
+              "INTEGER",
+              1,
+              "0",
+              0
+            ],
+            [
+              "gen_tps",
+              "REAL",
+              1,
+              "0",
+              0
+            ],
+            [
+              "draft_acc",
+              "REAL",
+              0,
+              null,
+              0
+            ],
+            [
+              "draft_len",
+              "REAL",
+              0,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "req_timing_alias": {
+              "columns": [
+                [
+                  "alias",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "ts",
+                  1,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "req_timing_dedupe": {
+              "columns": [
+                [
+                  "backend",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "task",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "ts",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "req_timing_model": {
+              "columns": [
+                [
+                  "model_path",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "ts",
+                  1,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "c",
+              "partial": 0,
+              "unique": 0
+            },
+            "sqlite_autoindex_req_timing_1": {
+              "columns": [
+                [
+                  "backend",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "instance",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "task",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "u",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "server_config": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "backend",
+              "TEXT",
+              1,
+              null,
+              1
+            ],
+            [
+              "instance",
+              "TEXT",
+              1,
+              null,
+              2
+            ],
+            [
+              "alias",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "model_path",
+              "TEXT",
+              1,
+              "''",
+              0
+            ],
+            [
+              "argv_json",
+              "TEXT",
+              1,
+              "'{}'",
+              0
+            ],
+            [
+              "first_seen",
+              "REAL",
+              1,
+              "0",
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_server_config_1": {
+              "columns": [
+                [
+                  "backend",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  "instance",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        },
+        "update_check": {
+          "autoincrement": false,
+          "columns": [
+            [
+              "filename",
+              "TEXT",
+              0,
+              null,
+              1
+            ],
+            [
+              "repo_id",
+              "TEXT",
+              1,
+              null,
+              0
+            ],
+            [
+              "hf_last_modified",
+              "TEXT",
+              0,
+              null,
+              0
+            ],
+            [
+              "checked_at",
+              "REAL",
+              1,
+              null,
+              0
+            ]
+          ],
+          "indexes": {
+            "sqlite_autoindex_update_check_1": {
+              "columns": [
+                [
+                  "filename",
+                  0,
+                  "BINARY",
+                  1
+                ],
+                [
+                  null,
+                  0,
+                  "BINARY",
+                  0
+                ]
+              ],
+              "origin": "pk",
+              "partial": 0,
+              "unique": 1
+            }
+          }
+        }
+      }
+    }
+  ],
+  "generator_sha256": "03863cce190fe853c98df869a42ff2e5ed321e816b2abe93b82a932be2afb336",
+  "services_ref": "eefbcbaeebd3f806c62dd5aea48036da8b20bfbf",
+  "source_sha256": "6733da40e0ade14cf64ffed68814aa5dba5cb2d48e9bbeea91d2691c1186929a"
+}

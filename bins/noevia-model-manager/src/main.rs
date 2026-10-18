@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 mod child_lifecycle;
+mod db_init_cmd;
 mod model_list_cmd;
 mod section_autoconfig_cmd;
 use noevia_model_manager::{
@@ -19,6 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if cfg!(feature = "native-sections") {
                 output.write_all(b"native-sections\n")?;
+            }
+            if cfg!(feature = "native-db-init") {
+                output.write_all(b"native-db-init\n")?;
             }
             if cfg!(feature = "native-prompts") {
                 output.write_all(b"native-prompts\n")?;
@@ -101,6 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
     let sections_mode = environment("MODEL_MANAGER_SECTIONS_IMPL", "python")?;
     let prompts_mode = environment("MODEL_MANAGER_PROMPTS_IMPL", "python")?;
+    let db_init = db_init_cmd::select(&std::env::vars_os().collect::<Vec<_>>())?;
     let diagnose_mode = environment("MODEL_MANAGER_DIAGNOSE_IMPL", "python")?;
     let settings_mode = environment("MODEL_MANAGER_SETTINGS_IMPL", "python")?;
     if !matches!(settings_mode.as_str(), "python" | "rust") {
@@ -694,7 +699,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let prompts = if prompts_mode == "rust" {
         let data = prompt_root.as_deref().ok_or("native prompt root missing")?;
         Some(Arc::new(
-            noevia_model_manager::prompts::Prompts::open(std::path::Path::new(&data)).await?,
+            noevia_model_manager::prompts::Prompts::open_with_schema(
+                std::path::Path::new(&data),
+                db_init,
+            )
+            .await?,
         ))
     } else {
         None
@@ -807,6 +816,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "native-prompts")]
         prompt_root.as_deref(),
     );
+    // Native schema initialization and seeding have completed before confirming ownership.
+    db_init_cmd::child(&mut child_command, db_init);
     settings_child(
         &mut child_command,
         &settings_mode,
