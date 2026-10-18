@@ -304,8 +304,12 @@ fn fixture_provenance() {
     assert!(f["cases"].as_array().unwrap().len() >= 9);
 }
 
+// Both complete replays use the frozen backend ports; unrelated sampler tests stay parallel.
+static ORACLE_PORTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn native_cache_and_public_responses_match_actual_python_without_mirrors() {
+    let _ports = ORACLE_PORTS.lock().await;
     let f = fixture();
     let mut ticks = 0;
     let mut gets = 0;
@@ -633,6 +637,12 @@ mod historical_backend_stats {
     }
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn actual_python_differential() {
+        let _ports = super::ORACLE_PORTS.lock().await;
+        frozen_original_differential().await;
+    }
+
+    // Original child-era assertions are kept byte-for-byte behind the synchronized wrapper.
+    async fn frozen_original_differential() {
         let f = fixture();
         let mut ticks = 0;
         let mut gets = 0;

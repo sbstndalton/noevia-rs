@@ -70,7 +70,9 @@ retirement-test-mapping.json records every original integration source hash and
 selected historical test name. The 57 archived integration contracts live in
 tests/historical_oracles; the additional backend sampler contract lives in
 src/backend_stats/tests.rs::historical_backend_stats. All58 compile only into the
-library's cfg(test) build.
+library's cfg(test) build. The two sampler replays share a test-only async lock
+for their complete fixed-port fixture lifetimes, including awaited listener teardown.
+The historical named wrapper calls the preserved original body in an inner helper.
 Their recorded API response, file-tree, revision and source-fixture assertions
 remain unchanged. The required combined-runtime runner compares the exact named
 inventory against this manifest before running all emitted harnesses. No
