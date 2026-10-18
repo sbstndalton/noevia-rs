@@ -163,6 +163,7 @@ name = "backend-telemetry"
 version = "0.1.0"
 dependencies = [
  "gguf",
+ "indexmap",
  "regex",
  "serde_json",
 ]

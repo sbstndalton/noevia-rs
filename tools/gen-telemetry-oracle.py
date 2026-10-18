@@ -108,7 +108,8 @@ def logs():
     # Timestamps: offsets, a comma fraction, no fraction, out-of-range values (0.0), a short one.
     stamps = ["2026-10-18T10:00:00Z", "2026-10-18T10:00:00.5+02:00", "2026-10-18T10:00:00,25-01:30",
               "2026-10-18T10:00Z", "2026-02-30T10:00:00Z", "2026-10-18T24:00:00Z", "2024-02-29T23:59:59.9999999Z",
-              "0000-01-01T00:00:00Z", "2026-10-18T10:00:60Z", "1969-12-31T23:59:59.5Z", "2026-13-01T00:00:00+0000"]
+              "0000-01-01T00:00:00Z", "2026-10-18T10:00:60Z", "1969-12-31T23:59:59.5Z", "2026-13-01T00:00:00+0000",
+              "2026-10-18T10:00:00+0130", "2026-10-18T10:00:00.000001-0045"]
     out["stamps"] = "\n".join(s + f" [18007] x slot print_timing: id 0 | task {i} |  eval time = 1 ms / 20 tokens "
                               f"(1 ms per token, 10.5 tokens per second)" for i, s in enumerate(stamps))
     # Whitespace Python's \\s matches and the regex crate's would not (\\x1f), and Unicode spaces.
@@ -116,7 +117,30 @@ def logs():
                          + ts(0, 1) + "srv　load:  --model /models/syn/f.gguf\n"
                          + ts(0, 2) + "[18008] x slot print_timing: id  0 | task 1 | eval time = 1 ms /"
                          " 20 tokens (1 ms per token, 11.0 tokens per second)\n")
+    # \S stops at \x1c-\x1f in Python (they are whitespace there): this spawn line does not match.
+    out["unit-separator"] = (ts(0, 1) + "srv    load: spawning server instance with name=syn-q\x1fz on port 18020\n"
+                             + "\n".join(timing(0, 2, 18020, 1)))
+    # Empty, whitespace-only, and a last line without a newline.
+    out["empty"] = ""
+    out["blank"] = "  \n\t\n \u3000 "
+    out["no-newline"] = "\n".join(spawn(0, 1, "syn-r", 18021, ARGV_B) + timing(0, 2, 18021, 1))
+    # Two spawns on one port within the same second: one instance key, the second block wins.
+    out["same-second"] = "\n".join(spawn(0, 1, "syn-s", 18022, ARGV_A) + spawn(0, 1, "syn-t", 18022, ARGV_B)
+                                   + timing(0, 2, 18022, 1))
+    # A repeated eval line for one task (the last wins), a draft line before the prompt, and a
+    # near-miss print_timing line that matches no pattern.
+    lines = spawn(0, 1, "syn-u", 18023, ARGV_A)
+    lines += timing(0, 2, 18023, 1, prompt=None, gen=(1.0, 20, 10.0)) + timing(0, 3, 18023, 1, prompt=None,
+                                                                              gen=(2.0, 40, 20.0))
+    lines += timing(0, 4, 18023, 2, prompt=None, gen=None, draft=(0.5, 1, 2, 1.5)) + timing(0, 5, 18023, 2)
+    lines.append(ts(0, 6) + "[18023] x slot print_timing: id  0 | task 3 |        eval time =  1 ms / 20 tokens "
+                 "(1 ms per token, 10.0 tokens per sec)")
+    out["repeats"] = "\n".join(lines)
     return out
+
+
+# Timestamps on either side of 2**53 microseconds since the epoch (the native side refuses past it).
+FAR = ["2255-06-05T23:47:34.740991Z", "2255-06-05T23:47:34.740993Z"]
 
 
 RAISING = {"bad-float": ts(0, 1) + "[18009] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens "
@@ -144,7 +168,7 @@ def attributed():
             "model-veto": (load(0, 0, 18010, "/models/syn/other.gguf") + "\n" + base, first + 1, 0.0)}
 
 
-ARGVS = [[], ["--model"], ["-m", "/m.gguf", "--port", "1", "-p", "2", "--host", "h", "-a", "x", "--alias", "y"],
+ARGVS = [[], ["--model"], ["-m", "", "--model", ""], ["-m", "", "-c"], ["-m", "/m.gguf", "--port", "1", "-p", "2", "--host", "h", "-a", "x", "--alias", "y"],
          ["pos", "--a", "1", "--a", "2", "--b", "-c", "--d", "-", "--e", "--x=y", "--"], ["--z", "", "--y"]]
 KEY_SETS = [[], [{"--a": "1"}], [{"--a": "1"}, {"--a": "1"}], [{"--a": "1"}, {"--a": "2", "--b": "x"}],
             [{"--b": "—"}, {}], [{"--z": "1", "-a": "1", "--é": "1"}, {"--z": "2"}, {"--z": "2", "Z": "1"}]]
@@ -215,13 +239,30 @@ def main() -> None:
     out["differing"] = [{"configs": [list(c.items()) for c in cs], "keys": telemetry.differing_keys(cs)}
                         for cs in KEY_SETS]
     out["pct"] = [{"values": r(v), "q": repr(q), "out": repr(telemetry._pct(v, q))} for v, q in PCTS]
+    out["far"] = [{"stamp": s, "ts": repr(telemetry._parse_ts(s + " x"))} for s in FAR]
+    import time as _time
+    real_time = _time.time
+    ages = []
+    for last, now in [(0.0, 5.0), (100.0, 100.0), (100.0, 50.0), (100.0, 189.9), (100.0, 190.0), (0.5, 3600.4),
+                      (0.5, 3600.5), (1.0, 7201.0), (1.0, 86400.0), (1.0, 86401.0), (1.0, 172801.0),
+                      (1792317600.5, 1792404000.25), (1.0, float("nan")), (float("nan"), 5.0)]:
+        _time.time = lambda now=now: now
+        ages.append({"last_ts": repr(last), "now": repr(now), "age": telemetry.Stats(last_ts=last).age_str,
+                     "run_age": telemetry.ConfigRun(instance="x", last_ts=last).age_str})
+    _time.time = real_time
+    out["ages"] = ages
+    out["n_max"] = [{"spec_types": st, "max": telemetry.Stats(spec_types=st).draft_n_max}
+                    for st in [[], ["ngram-simple"], ["a (max=4)", "b (max=8)"], ["x (min=1)", "y (max=007 min=2)"],
+                               ["max=", "z (xmax=12)"]]]
     out["keys"] = [{"port": p, "ts": repr(t), "key": telemetry.instance_key(p, t)}
                    for p, t in [("8080", 0.0), ("8080", 1792317600.9), ("1", -0.5), ("1", -1.5)]]
 
     def stats(s):
-        return {k: r(getattr(s, k)) for k in ("n", "gen_p50", "gen_p25", "gen_p75", "prompt_p50", "draft_acc_p50",
-                                              "draft_len_p50", "draft_n", "last_ts", "spec_types", "single_config",
-                                              "config_count")}
+        out = {k: r(getattr(s, k)) for k in ("n", "gen_p50", "gen_p25", "gen_p75", "prompt_p50", "draft_acc_p50",
+                                             "draft_len_p50", "draft_n", "last_ts", "spec_types", "single_config",
+                                             "config_count")}
+        out["draft_n_max"] = s.draft_n_max
+        return out
 
     state = {}
     db.recent_timings = lambda **_: [dict(x) for x in state["rows"]]
