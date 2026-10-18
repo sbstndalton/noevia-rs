@@ -16,21 +16,21 @@ one slice at a time.
 
 ## Slices
 
-- `crates/gguf` + `bins/gguf-meta` (sbstndalton/noevia#896): bounded GGUF metadata
-  reader. `gguf-meta <path>` prints the same summary JSON as model-manager's
-  `gguf_meta.py`. Its differential corpus is regenerated from the Python reference with
-  `NOEVIA_GGUF_META=<noevia>/services/model-manager/app/gguf_meta.py python3 tools/gen-fixtures.py`.
-  `gguf::node` is noevia-core's gguf-meta.cjs instead (`summarize(readGguf(file))`, its own
-  caps and thrown errors): the host passes the file's size and the byte ranges it has read and
-  is told the next range to read; bytes the JS skips (long strings, the rest of big arrays) are
-  never read or passed. Same summary
-  as the JS byte for byte (numbers as `Number#toString`, NaN/±Infinity/-0 tagged, mode() ties,
-  `kv[null]`). Stricter than the JS, as refusals: arrays nested past 64, more than 262,144 kept
-  values, more than 24 MiB of read (not skipped) header bytes in 512 ranges. In `dav-parse.wasm` as `gguf_summary`
-  (GGUF_META_IMPL, retired in noevia-core#184: the host always uses it). Table printed once from noevia-core's former JS reader
-  (its generator was deleted with it; the file is frozen), synthetic
-  headers incl. truncated at every byte, huge counts and lengths, odd types), copied
-  byte-for-byte to `crates/gguf/tests/fixtures/gguf-meta.v1.json`.
+- `crates/gguf` + `bins/gguf-meta` (sbstndalton/noevia#896): bounded GGUF metadata reader.
+  `gguf-meta <path>` prints the same summary JSON as model-manager's `gguf_meta.py`. Its
+  differential corpus is regenerated from the Python reference with
+  `NOEVIA_GGUF_META=<noevia-services>/model-manager/app/gguf_meta.py python3 tools/gen-fixtures.py`.
+  `gguf::node` was the noevia-core gguf-meta.cjs reader instead (`summarize(readGguf(file))`, its
+  own caps and thrown errors): the host passed the file's size and the byte ranges it had read and
+  was told the next range to read; bytes the former JS skipped (long strings, the rest of big
+  arrays) were never read or passed. Same summary as the former JS, byte for byte (numbers as
+  `Number#toString`, NaN/±Infinity/-0 tagged, mode() ties, `kv[null]`). Stricter than the former JS,
+  as refusals: arrays nested past 64, more than 262,144 kept values, more than 24 MiB of read (not
+  skipped) header bytes in 512 ranges. In `dav-parse.wasm` as `gguf_summary` (GGUF_META_IMPL,
+  retired in noevia-core#184: the host always uses it). Table printed once from noevia-core's former
+  JS reader (its generator was deleted with it; the file is frozen), synthetic headers incl.
+  truncated at every byte, huge counts and lengths, odd types), copied byte-for-byte to
+  `crates/gguf/tests/fixtures/gguf-meta.v1.json`.
 - `crates/policy-leaves`: noevia-core's auth-tokens.cjs (`resolveAuthTokens`, #294: both tokens
   trimmed as `String#trim` over UTF-16 units, no fallback between them, the two warnings) and
   tool-policy.cjs's per-tool decision and `set()` checks (the table stays in the JS). Never
@@ -125,19 +125,19 @@ one slice at a time.
   `dav-parse.wasm` as `llamacpp_autoconfig` (LLAMACPP_AUTOCONFIG_IMPL). Table from noevia-core
   (`node tools/gen-llamacpp-autoconfig-fixtures.cjs`), copied byte-for-byte to
   `crates/llamacpp-autoconfig/tests/fixtures/llamacpp-autoconfig.v1.json`.
-- `crates/code-actions`: noevia-core's code-actions.cjs (CodeHarness contract v0): one ACP tool
-  call of a coding agent read into noevia's action classes (the shell reader, wrappers, `sh -c`,
+- `crates/code-actions`: noevia-core's code-actions.cjs (CodeHarness contract v0): one ACP tool call
+  of a coding agent read into noevia's action classes (the shell reader, wrappers, `sh -c`,
   interpreters, `find -exec`, git, installers, publishers, curl/wget/httpie flags, redirects),
   failing closed; `decide` (allow / ask / deny with the domain allow-list over every URL host) and
-  `pickOption`. The host (CODE_ACTIONS_IMPL) keeps the JS answer only when the port's reply is
-  byte-identical; otherwise a call is never auto-allowed or standing, a decision is at least `ask`,
-  an option `cancelled`. Stricter: command array elements `String()` reads unpredictably, URL hosts
-  outside plain ASCII labels or a canonical dotted quad (in `decide`'s network branch), more than
-  `MAX_WORK` reading work (every refusal well under 10 ms), inputs over 2 MiB. More than 64
-  `-exec`s in one find is every class, never standing, as in the JS (noevia#1212). In
-  `dav-parse.wasm` as `code_actions`. Table from noevia-core
-  (`node tools/gen-code-actions-fixtures.cjs`), copied byte-for-byte to
-  `crates/code-actions/tests/fixtures/code-actions.v1.json`.
+  `pickOption`. The host applies its answer alone (CODE_ACTIONS_IMPL, retired in noevia-core#189;
+  the JS classifier was deleted): a call the crate cannot classify is never auto-allowed or
+  standing, a decision it cannot give asks a person, an option is `cancelled`. Stricter: command
+  array elements `String()` reads unpredictably, URL hosts outside plain ASCII labels or a canonical
+  dotted quad (in `decide`'s network branch), more than `MAX_WORK` reading work (every refusal well
+  under 10 ms), inputs over 2 MiB. More than 64 `-exec`s in one find is every class, never standing,
+  as in the former JS (noevia#1212). In `dav-parse.wasm` as `code_actions`. Table printed once from
+  noevia-core's former JS classifier (its generator was deleted with it; the file is frozen), copied
+  byte-for-byte to `crates/code-actions/tests/fixtures/code-actions.v1.json`.
 - `crates/project-file-names`: noevia-core's project-file-names.cjs (#642): a model-given file
   name resolved to exactly one file of the requesting project (verbatim or a unique trailing part),
   traversal-shaped names refused. No normalization tables: a name outside the NFC-inert set is
@@ -152,15 +152,15 @@ one slice at a time.
   a path outside the NFC-inert set is treated as possibly in the Diary. In `dav-parse.wasm` as
   `provider_egress`. Table printed once from noevia-core's former JS rules (their generator was deleted with them; the file is frozen), copied
   byte-for-byte to `crates/provider-egress/tests/fixtures/provider-egress.v1.json`.
-- `crates/browser-policy`: noevia-core's browser-policy.cjs (spec-agent-execution §6): allow,
-  needs approval or blocked for each browser action from the facts the executor read off the page,
-  where the browser may go, and which `{{secret:name}}` placeholders may be filled on an origin
-  (names and domains only, never a value). The host never weakens the JS answer with it
-  (BROWSER_POLICY_IMPL=wasm): both must allow, either asking or blocking wins, any doubt asks. Folds
-  labels with ICU4X NFKD over a table of code points; anything outside it is unknown. In
-  `dav-parse.wasm` as `browser_policy`. Table from noevia-core
-  (`node tools/gen-browser-policy-fixtures.cjs`), copied byte-for-byte to
-  `crates/browser-policy/tests/fixtures/browser-policy.v1.json`.
+- `crates/browser-policy`: noevia-core's browser-policy.cjs (spec-agent-execution §6): allow, needs
+  approval or blocked for each browser action from the facts the executor read off the page, where
+  the browser may go, and which `{{secret:name}}` placeholders may be filled on an origin (names and
+  domains only, never a value). The host applies its answer alone (BROWSER_POLICY_IMPL, retired in
+  noevia-core#188; the JS rules were deleted): an unknown, a refusal or a fault asks, and a
+  navigation is then not opened. Folds labels with ICU4X NFKD over a table of code points; anything
+  outside it is unknown. In `dav-parse.wasm` as `browser_policy`. Table printed once from
+  noevia-core's former JS rules (their generator was deleted with them; the file is frozen), copied
+  byte-for-byte to `crates/browser-policy/tests/fixtures/browser-policy.v1.json`.
 - `crates/tool-gate`: noevia-core's tool-gate.cjs rules: whether one message makes the chat loop
   prefetch a read-only tool (run it on arguments taken from the message) or require it, what the
   Stage 2 decision service is shown, and how its answer is read (the service call stays in JS).
