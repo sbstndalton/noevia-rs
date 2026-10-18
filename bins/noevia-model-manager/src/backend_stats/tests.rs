@@ -206,6 +206,14 @@ pub(super) async fn llama(port: u32, status: u64, body: String) -> tokio::task::
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port as u16))
         .await
         .unwrap_or_else(|e| panic!("port {port}: {e}"));
+    serve_llama(listener, status, body)
+}
+
+fn serve_llama(
+    listener: tokio::net::TcpListener,
+    status: u64,
+    body: String,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Ok((mut sock, _)) = listener.accept().await {
             let body = body.clone();
@@ -226,6 +234,39 @@ pub(super) async fn llama(port: u32, status: u64, body: String) -> tokio::task::
             });
         }
     })
+}
+
+/// abort requests cancellation; awaiting it releases the listener before a fixture rebinds.
+pub(super) async fn stop_llamas(servers: Vec<tokio::task::JoinHandle<()>>) {
+    for server in &servers {
+        server.abort();
+    }
+    for server in servers {
+        if let Err(error) = tokio::time::timeout(std::time::Duration::from_secs(2), server)
+            .await
+            .expect("fake backend listener did not stop")
+        {
+            assert!(
+                error.is_cancelled(),
+                "fake backend listener failed: {error}"
+            );
+        }
+    }
+}
+
+/// Keep the listener owned from allocation through cancellation: no free-port discovery race.
+/// On a current-thread runtime, abort without awaiting its completion cannot pass this rebind.
+#[tokio::test]
+async fn fixture_listener_is_released_before_the_same_port_is_reused() {
+    let mut listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    let address = listener.local_addr().unwrap();
+    for _ in 0..32 {
+        let server = serve_llama(listener, 200, "{}".into());
+        stop_llamas(vec![server]).await;
+        listener = tokio::net::TcpListener::bind(address).await.unwrap();
+    }
 }
 
 fn write_sysfs(root: &Path, files: &V) {
@@ -335,9 +376,7 @@ async fn actual_python_differential() {
                     }
                 }
                 let outcome = stats.get().await;
-                for s in servers {
-                    s.abort();
-                }
+                stop_llamas(servers).await;
                 match outcome {
                     Outcome::Json(body) => {
                         assert_eq!(step["status"], 200, "{ctx}");
