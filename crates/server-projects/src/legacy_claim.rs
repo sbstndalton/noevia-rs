@@ -1,7 +1,11 @@
-//! Bounded, recoverable copy of the pre-multi-user workspace root for its first admin.
+use rustix::fs::{fstat, openat, openat2, FileType, Mode, OFlags, RawDir, ResolveFlags, CWD};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
+use std::mem::MaybeUninit;
+use std::os::fd::{AsFd, OwnedFd};
+use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -23,6 +27,18 @@ impl From<std::io::Error> for ClaimError {
         Self::Io(e.to_string())
     }
 }
+fn rustix_error(e: rustix::io::Errno) -> ClaimError {
+    if e == rustix::io::Errno::LOOP
+        || e == rustix::io::Errno::XDEV
+        || e == rustix::io::Errno::NOSYS
+        || e == rustix::io::Errno::NOTSUP
+        || e == rustix::io::Errno::INVAL
+    {
+        ClaimError::Unsafe
+    } else {
+        ClaimError::Io(e.to_string())
+    }
+}
 fn check_time(start: Instant) -> Result<(), ClaimError> {
     if start.elapsed() > std::time::Duration::from_millis(MAX_MS as u64) {
         Err(ClaimError::Limit)
@@ -35,14 +51,14 @@ fn uuid(id: &str) -> bool {
 }
 fn lstat(path: &Path) -> Result<Option<fs::Metadata>, ClaimError> {
     match fs::symlink_metadata(path) {
-        Ok(m) => Ok(Some(m)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e.into()),
+        Ok(meta) => Ok(Some(meta)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
     }
 }
 fn dir(path: &Path) -> Result<(), ClaimError> {
     match lstat(path)? {
-        Some(m) if m.is_dir() && !m.file_type().is_symlink() => Ok(()),
+        Some(meta) if meta.is_dir() && !meta.file_type().is_symlink() => Ok(()),
         Some(_) => Err(ClaimError::Unsafe),
         None => {
             fs::create_dir(path)?;
@@ -62,51 +78,140 @@ fn set_mode(_path: &Path, _mode: u32) -> Result<(), ClaimError> {
     Ok(())
 }
 
-fn has_legacy(root: &Path, start: Instant) -> Result<bool, ClaimError> {
+fn open_root(path: &Path) -> Result<OwnedFd, ClaimError> {
+    openat(
+        CWD,
+        path,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+        Mode::empty(),
+    )
+    .map_err(rustix_error)
+}
+fn source_fd(root: &OwnedFd, rel: &Path, flags: OFlags) -> Result<OwnedFd, ClaimError> {
+    if rel.is_absolute()
+        || rel
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err(ClaimError::Unsafe);
+    }
+    openat2(
+        root.as_fd(),
+        rel,
+        flags | OFlags::CLOEXEC,
+        Mode::empty(),
+        ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
+    )
+    .map_err(rustix_error)
+}
+fn source_stat(root: &OwnedFd, rel: &Path) -> Result<Option<rustix::fs::Stat>, ClaimError> {
+    if rel.is_absolute()
+        || rel
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err(ClaimError::Unsafe);
+    }
+    let fd = match openat2(
+        root.as_fd(),
+        rel,
+        OFlags::PATH | OFlags::CLOEXEC,
+        Mode::empty(),
+        ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
+    ) {
+        Ok(fd) => fd,
+        Err(e) if e == rustix::io::Errno::NOENT => return Ok(None),
+        Err(e) => return Err(rustix_error(e)),
+    };
+    fstat(&fd).map(Some).map_err(rustix_error)
+}
+fn directory_names(
+    root: &OwnedFd,
+    rel: &Path,
+    start: Instant,
+    cap: usize,
+) -> Result<Vec<std::ffi::OsString>, ClaimError> {
+    let dirfd = if rel.as_os_str().is_empty() || rel == Path::new(".") {
+        openat(
+            root.as_fd(),
+            ".",
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+            Mode::empty(),
+        )
+        .map_err(rustix_error)?
+    } else {
+        source_fd(root, rel, OFlags::RDONLY | OFlags::DIRECTORY)?
+    };
+    let mut buffer = [MaybeUninit::<u8>::uninit(); 8192];
+    let mut entries = RawDir::new(dirfd, &mut buffer);
+    let mut names = Vec::new();
+    while let Some(entry) = entries.next() {
+        check_time(start)?;
+        let entry = entry.map_err(rustix_error)?;
+        let bytes = entry.file_name().to_bytes();
+        if bytes == b"." || bytes == b".." {
+            continue;
+        }
+        if names.len() >= cap {
+            return Err(ClaimError::Limit);
+        }
+        names.push(std::ffi::OsString::from_vec(bytes.to_vec()));
+    }
+    names.sort();
+    Ok(names)
+}
+fn has_legacy(root: &OwnedFd, start: Instant) -> Result<bool, ClaimError> {
     for name in ["projects.json", "providers.json"] {
-        if lstat(&root.join(name))?.is_some() {
+        if source_stat(root, Path::new(name))?.is_some() {
             return Ok(true);
         }
     }
-    for entry in fs::read_dir(root)? {
+    for name in directory_names(root, Path::new("."), start, MAX_ENTRIES)? {
         check_time(start)?;
-        let name = entry?.file_name().to_string_lossy().into_owned();
+        let Some(name) = name.to_str() else { continue };
         if name.starts_with("history-") && name.ends_with(".json") {
             return Ok(true);
         }
     }
     Ok(false)
 }
-fn names(root: &Path, start: Instant) -> Result<Vec<String>, ClaimError> {
+fn names(root: &OwnedFd, start: Instant) -> Result<Vec<String>, ClaimError> {
     let mut out = Vec::new();
-    for entry in fs::read_dir(root)? {
+    for name in directory_names(root, Path::new("."), start, MAX_ENTRIES)? {
         check_time(start)?;
-        let name = entry?.file_name().to_string_lossy().into_owned();
+        let Some(name) = name.to_str() else { continue };
         if [
             "projects.json",
             "providers.json",
             "free-chats.json",
             "auto-roles.json",
         ]
-        .contains(&name.as_str())
+        .contains(&name)
             || (name.starts_with("history-") && name.ends_with(".json"))
             || name == "rag"
         {
-            out.push(name);
+            out.push(name.to_owned());
         }
     }
     out.sort();
     Ok(out)
 }
-fn owner(root: &Path) -> Result<Option<String>, ClaimError> {
-    let path = root.join(OWNER);
-    let Some(meta) = lstat(&path)? else {
+fn owner(root: &OwnedFd) -> Result<Option<String>, ClaimError> {
+    let path = Path::new(OWNER);
+    let Some(meta) = source_stat(root, path)? else {
         return Ok(None);
     };
-    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > 4096 {
+    if FileType::from_raw_mode(meta.st_mode) != FileType::RegularFile || meta.st_size > 4096 {
         return Ok(Some(String::new()));
     }
-    let text = fs::read_to_string(path)?;
+    let fd = source_fd(root, path, OFlags::RDONLY)?;
+    let file = File::from(fd);
+    let mut bytes = Vec::with_capacity(4097);
+    file.take(4097).read_to_end(&mut bytes)?;
+    if bytes.len() > 4096 {
+        return Ok(Some(String::new()));
+    }
+    let text = String::from_utf8_lossy(&bytes);
     let parsed: serde_json::Value = match serde_json::from_str(&text) {
         Ok(v) => v,
         Err(_) => return Ok(Some(String::new())),
@@ -119,40 +224,30 @@ fn owner(root: &Path) -> Result<Option<String>, ClaimError> {
             .to_string(),
     ))
 }
-fn previous_owner(root: &Path, start: Instant) -> Result<Option<String>, ClaimError> {
-    let users = root.join("users");
-    let Some(meta) = lstat(&users)? else {
+fn previous_owner(root: &OwnedFd, start: Instant) -> Result<Option<String>, ClaimError> {
+    let Some(meta) = source_stat(root, Path::new("users"))? else {
         return Ok(None);
     };
-    if !meta.is_dir() || meta.file_type().is_symlink() {
+    if FileType::from_raw_mode(meta.st_mode) != FileType::Directory {
         return Err(ClaimError::Unsafe);
     }
-    let mut scanned = 0usize;
     let mut ids = Vec::new();
-    for entry in fs::read_dir(&users)? {
+    for entry in directory_names(root, Path::new("users"), start, MAX_ENTRIES)? {
         check_time(start)?;
-        scanned += 1;
-        if scanned > MAX_ENTRIES {
-            return Err(ClaimError::Limit);
-        }
-        let entry = entry?;
-        let id = entry.file_name().to_string_lossy().into_owned();
-        if uuid(&id) {
-            ids.push(id);
+        let Some(id) = entry.to_str() else { continue };
+        if uuid(id) {
+            ids.push(id.to_owned());
         }
     }
-    // Node sorts readdirSync results before examining migration records. Preserve
-    // that first-owner choice independently of filesystem iteration order.
+    // Node sorts readdirSync results before examining migration records.
     ids.sort();
     for id in ids {
         check_time(start)?;
-        let d = users.join(&id);
+        let d = Path::new("users").join(&id);
         let migration = d.join("migration.json");
-        if let (Some(ds), Some(ms)) = (lstat(&d)?, lstat(&migration)?) {
-            if ds.is_dir()
-                && !ds.file_type().is_symlink()
-                && ms.is_file()
-                && !ms.file_type().is_symlink()
+        if let (Some(ds), Some(ms)) = (source_stat(root, &d)?, source_stat(root, &migration)?) {
+            if FileType::from_raw_mode(ds.st_mode) == FileType::Directory
+                && FileType::from_raw_mode(ms.st_mode) == FileType::RegularFile
             {
                 return Ok(Some(id));
             }
@@ -165,10 +260,11 @@ struct Item {
     rel: PathBuf,
     dir: bool,
     size: u64,
+    digest: Option<[u8; 32]>,
 }
-fn inspect(root: &Path, candidates: &[String], start: Instant) -> Result<Vec<Item>, ClaimError> {
+fn inspect(root: &OwnedFd, candidates: &[String], start: Instant) -> Result<Vec<Item>, ClaimError> {
     fn visit(
-        root: &Path,
+        root: &OwnedFd,
         rel: &Path,
         depth: usize,
         start: Instant,
@@ -179,37 +275,62 @@ fn inspect(root: &Path, candidates: &[String], start: Instant) -> Result<Vec<Ite
         if depth > MAX_DEPTH {
             return Err(ClaimError::Limit);
         }
-        let path = root.join(rel);
-        let meta = fs::symlink_metadata(&path)?;
-        if meta.file_type().is_symlink() || (!meta.is_file() && !meta.is_dir()) {
-            return Err(ClaimError::Unsafe);
-        }
+        let meta = source_stat(root, rel)?.ok_or(ClaimError::Unsafe)?;
+        let kind = FileType::from_raw_mode(meta.st_mode);
         if out.len() >= MAX_ENTRIES {
             return Err(ClaimError::Limit);
         }
-        if meta.is_file() {
-            *bytes = bytes.checked_add(meta.len()).ok_or(ClaimError::Limit)?;
+        if kind == FileType::RegularFile {
+            let size = u64::try_from(meta.st_size).map_err(|_| ClaimError::Unsafe)?;
+            *bytes = bytes.checked_add(size).ok_or(ClaimError::Limit)?;
             if *bytes > MAX_BYTES {
                 return Err(ClaimError::Limit);
+            }
+            let fd = source_fd(root, rel, OFlags::RDONLY)?;
+            let opened = fstat(&fd).map_err(rustix_error)?;
+            if FileType::from_raw_mode(opened.st_mode) != FileType::RegularFile
+                || opened.st_size != meta.st_size
+            {
+                return Err(ClaimError::Unsafe);
+            }
+            let mut input = File::from(fd);
+            let mut hash = Sha256::new();
+            let mut read = 0u64;
+            let mut buffer = [0u8; 32 * 1024];
+            loop {
+                check_time(start)?;
+                let count = input.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                read = read.checked_add(count as u64).ok_or(ClaimError::Limit)?;
+                if read > size {
+                    return Err(ClaimError::Unsafe);
+                }
+                hash.update(&buffer[..count]);
+            }
+            if read != size {
+                return Err(ClaimError::Unsafe);
             }
             out.push(Item {
                 rel: rel.to_path_buf(),
                 dir: false,
-                size: meta.len(),
+                size,
+                digest: Some(hash.finalize().into()),
             });
-        } else {
+        } else if kind == FileType::Directory {
             out.push(Item {
                 rel: rel.to_path_buf(),
                 dir: true,
                 size: 0,
+                digest: None,
             });
-            let mut children = fs::read_dir(path)?
-                .map(|e| e.map(|x| x.file_name()))
-                .collect::<Result<Vec<_>, _>>()?;
-            children.sort();
-            for child in children {
+            let cap = MAX_ENTRIES.saturating_sub(out.len());
+            for child in directory_names(root, rel, start, cap)? {
                 visit(root, &rel.join(child), depth + 1, start, out, bytes)?;
             }
+        } else {
+            return Err(ClaimError::Unsafe);
         }
         Ok(())
     }
@@ -235,58 +356,83 @@ fn create_stage(parent: &Path, suffix: &str) -> Result<PathBuf, ClaimError> {
     set_mode(&path, 0o700)?;
     Ok(path)
 }
-fn open_read_nofollow(path: &Path) -> Result<File, ClaimError> {
-    let mut options = OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(libc::O_NOFOLLOW);
-    }
-    let f = options.open(path)?;
-    if !f.metadata()?.is_file() {
-        return Err(ClaimError::Unsafe);
-    }
-    Ok(f)
-}
 fn copy_tree(
-    root: &Path,
+    root: &OwnedFd,
     rel: &Path,
     dest: &Path,
     start: Instant,
     bytes: &mut u64,
+    entries: &mut usize,
+    depth: usize,
+    expected: &BTreeMap<PathBuf, &Item>,
 ) -> Result<(), ClaimError> {
     check_time(start)?;
-    let source = root.join(rel);
-    let meta = fs::symlink_metadata(&source)?;
-    if meta.file_type().is_symlink() {
-        return Err(ClaimError::Unsafe);
+    if depth > MAX_DEPTH {
+        return Err(ClaimError::Limit);
     }
-    if meta.is_dir() {
+    *entries = entries.checked_add(1).ok_or(ClaimError::Limit)?;
+    if *entries > MAX_ENTRIES {
+        return Err(ClaimError::Limit);
+    }
+    let item = expected.get(rel).ok_or(ClaimError::Unsafe)?;
+    let meta = source_stat(root, rel)?.ok_or(ClaimError::Unsafe)?;
+    let kind = FileType::from_raw_mode(meta.st_mode);
+    if kind == FileType::Directory && item.dir {
         fs::create_dir(dest)?;
         set_mode(dest, 0o700)?;
-        let mut children = fs::read_dir(source)?
-            .map(|e| e.map(|x| x.file_name()))
-            .collect::<Result<Vec<_>, _>>()?;
-        children.sort();
+        let child_count = expected
+            .keys()
+            .filter(|path| path.parent() == Some(rel))
+            .count();
+        let children = directory_names(root, rel, start, child_count)?;
         for child in children {
-            copy_tree(root, &rel.join(&child), &dest.join(child), start, bytes)?;
+            let child_rel = rel.join(&child);
+            if !expected.contains_key(&child_rel) {
+                return Err(ClaimError::Unsafe);
+            }
+            copy_tree(
+                root,
+                &child_rel,
+                &dest.join(child),
+                start,
+                bytes,
+                entries,
+                depth + 1,
+                expected,
+            )?;
         }
-    } else if meta.is_file() {
-        let mut input = open_read_nofollow(&source)?;
+    } else if kind == FileType::RegularFile && !item.dir {
+        if u64::try_from(meta.st_size).map_err(|_| ClaimError::Unsafe)? != item.size {
+            return Err(ClaimError::Unsafe);
+        }
+        let fd = source_fd(root, rel, OFlags::RDONLY)?;
+        let opened = fstat(&fd).map_err(rustix_error)?;
+        if FileType::from_raw_mode(opened.st_mode) != FileType::RegularFile
+            || opened.st_size != meta.st_size
+        {
+            return Err(ClaimError::Unsafe);
+        }
+        let mut input = File::from(fd);
         let mut output = OpenOptions::new().write(true).create_new(true).open(dest)?;
-        let mut buf = [0u8; 32 * 1024];
+        let mut buffer = [0u8; 32 * 1024];
+        let mut copied = 0u64;
+        let mut hash = Sha256::new();
         loop {
             check_time(start)?;
-            let n = input.read(&mut buf)?;
-            if n == 0 {
+            let count = input.read(&mut buffer)?;
+            if count == 0 {
                 break;
             }
-            *bytes = bytes.checked_add(n as u64).ok_or(ClaimError::Limit)?;
-            if *bytes > MAX_BYTES {
+            copied = copied.checked_add(count as u64).ok_or(ClaimError::Limit)?;
+            *bytes = bytes.checked_add(count as u64).ok_or(ClaimError::Limit)?;
+            if *bytes > MAX_BYTES || copied > item.size {
                 return Err(ClaimError::Limit);
             }
-            output.write_all(&buf[..n])?;
+            hash.update(&buffer[..count]);
+            output.write_all(&buffer[..count])?;
+        }
+        if copied != item.size || Some(<[u8; 32]>::from(hash.finalize())) != item.digest {
+            return Err(ClaimError::Unsafe);
         }
         output.sync_all()?;
         set_mode(dest, 0o600)?;
@@ -295,34 +441,57 @@ fn copy_tree(
     }
     Ok(())
 }
-fn validate(stage: &Path, manifest: &[Item]) -> Result<(), ClaimError> {
+fn stage_names(
+    path: &Path,
+    start: Instant,
+    cap: usize,
+) -> Result<Vec<std::ffi::OsString>, ClaimError> {
+    let mut names = Vec::new();
+    for entry in fs::read_dir(path)? {
+        check_time(start)?;
+        if names.len() >= cap {
+            return Err(ClaimError::Limit);
+        }
+        names.push(entry?.file_name());
+    }
+    names.sort();
+    Ok(names)
+}
+fn validate(stage: &Path, manifest: &[Item], start: Instant) -> Result<(), ClaimError> {
     let expected: BTreeMap<PathBuf, &Item> = manifest.iter().map(|i| (i.rel.clone(), i)).collect();
     let mut seen = BTreeSet::new();
     fn visit(
         stage: &Path,
         rel: &Path,
+        depth: usize,
+        start: Instant,
         expected: &BTreeMap<PathBuf, &Item>,
         seen: &mut BTreeSet<PathBuf>,
     ) -> Result<(), ClaimError> {
+        check_time(start)?;
+        if depth > MAX_DEPTH || seen.len() >= MAX_ENTRIES {
+            return Err(ClaimError::Limit);
+        }
         let path = stage.join(rel);
-        let m = fs::symlink_metadata(&path)?;
+        let meta = fs::symlink_metadata(&path)?;
         let item = expected.get(rel).ok_or(ClaimError::Unsafe)?;
-        if m.file_type().is_symlink()
-            || m.is_dir() != item.dir
-            || m.is_file() == item.dir
-            || (!item.dir && m.len() != item.size)
+        if meta.file_type().is_symlink()
+            || meta.is_dir() != item.dir
+            || meta.is_file() == item.dir
+            || (!item.dir && meta.len() != item.size)
         {
             return Err(ClaimError::Unsafe);
         }
         seen.insert(rel.to_path_buf());
         if item.dir {
             set_mode(&path, 0o700)?;
-            let mut children = fs::read_dir(path)?
-                .map(|e| e.map(|x| x.file_name()))
-                .collect::<Result<Vec<_>, _>>()?;
-            children.sort();
-            for child in children {
-                visit(stage, &rel.join(child), expected, seen)?;
+            let child_count = expected
+                .keys()
+                .filter(|child| child.parent() == Some(rel))
+                .count();
+            for child in stage_names(&path, start, child_count)? {
+                let child_rel = rel.join(child);
+                visit(stage, &child_rel, depth + 1, start, expected, seen)?;
             }
         } else {
             set_mode(&path, 0o600)?;
@@ -330,7 +499,7 @@ fn validate(stage: &Path, manifest: &[Item]) -> Result<(), ClaimError> {
         Ok(())
     }
     for item in manifest.iter().filter(|i| i.rel.components().count() == 1) {
-        visit(stage, &item.rel, &expected, &mut seen)?;
+        visit(stage, &item.rel, 0, start, &expected, &mut seen)?;
     }
     if seen.len() != expected.len() {
         return Err(ClaimError::Unsafe);
@@ -344,15 +513,17 @@ fn cleanup_stage(path: &Path) {
         }
     }
 }
-fn write_owner(root: &Path, id: &str) -> Result<(), ClaimError> {
-    let path = root.join(OWNER);
-    let mut f = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)?;
-    f.write_all(format!(r#"{{"userId":"{id}"}}"#).as_bytes())?;
-    f.sync_all()?;
-    set_mode(&path, 0o600)?;
+fn write_owner(root: &OwnedFd, id: &str) -> Result<(), ClaimError> {
+    let fd = openat(
+        root.as_fd(),
+        OWNER,
+        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::CLOEXEC,
+        Mode::from_raw_mode(0o600),
+    )
+    .map_err(rustix_error)?;
+    let mut file = File::from(fd);
+    file.write_all(format!(r#"{{"userId":"{id}"}}"#).as_bytes())?;
+    file.sync_all()?;
     Ok(())
 }
 
@@ -363,28 +534,39 @@ pub fn claim_root(root: &Path, user_id: &str) -> Result<bool, ClaimError> {
         return Err(ClaimError::InvalidUser);
     }
     let start = Instant::now();
-    if !has_legacy(root, start)? {
+    let root_fd = open_root(root)?;
+    if !has_legacy(&root_fd, start)? {
         return Ok(false);
     }
     check_time(start)?;
-    let stored = owner(root)?;
+    let stored = owner(&root_fd)?;
     if stored.as_deref() == Some("") {
         return Ok(false);
     }
     let owner_id = match stored.as_ref() {
         Some(id) => id.clone(),
-        None => previous_owner(root, start)?.unwrap_or_else(|| user_id.to_string()),
+        None => previous_owner(&root_fd, start)?.unwrap_or_else(|| user_id.to_string()),
     };
-    let target = root.join("users").join(user_id);
-    if owner_id != user_id || lstat(&target)?.is_some() {
-        if lstat(&root.join(OWNER))?.is_none() {
-            let _ = write_owner(root, &owner_id);
+    let target_rel = Path::new("users").join(user_id);
+    let target = root.join(&target_rel);
+    if owner_id != user_id || source_stat(&root_fd, &target_rel)?.is_some() {
+        if source_stat(&root_fd, Path::new(OWNER))?.is_none() {
+            let _ = write_owner(&root_fd, &owner_id);
         }
         return Ok(false);
     }
-    let candidates = names(root, start)?;
+    let candidates = names(&root_fd, start)?;
     check_time(start)?;
-    let manifest = inspect(root, &candidates, start)?;
+    let manifest = inspect(&root_fd, &candidates, start)?;
+    // Re-scan the root before any output is created. A new candidate added after
+    // preflight is a refusal instead of a partial migration.
+    if names(&root_fd, start)? != candidates {
+        return Err(ClaimError::Unsafe);
+    }
+    let expected: BTreeMap<PathBuf, &Item> = manifest
+        .iter()
+        .map(|item| (item.rel.clone(), item))
+        .collect();
     let users = root.join("users");
     let backups = root.join("migration-backups");
     dir(&users)?;
@@ -412,25 +594,33 @@ pub fn claim_root(root: &Path, user_id: &str) -> Result<bool, ClaimError> {
     let result = (|| {
         let mut backup_bytes = 0u64;
         let mut target_bytes = 0u64;
+        let mut backup_entries = 0usize;
+        let mut target_entries = 0usize;
         for name in &candidates {
             check_time(start)?;
             copy_tree(
-                root,
+                &root_fd,
                 Path::new(name),
                 &backup_stage.join(name),
                 start,
                 &mut backup_bytes,
+                &mut backup_entries,
+                0,
+                &expected,
             )?;
             copy_tree(
-                root,
+                &root_fd,
                 Path::new(name),
                 &target_stage.join(name),
                 start,
                 &mut target_bytes,
+                &mut target_entries,
+                0,
+                &expected,
             )?;
         }
-        validate(&backup_stage, &manifest)?;
-        validate(&target_stage, &manifest)?;
+        validate(&backup_stage, &manifest, start)?;
+        validate(&target_stage, &manifest, start)?;
         let marker = serde_json::json!({ "version": 1, "source": "legacy-root", "backup": backup.to_string_lossy(), "migratedAt": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() });
         let marker_path = target_stage.join("migration.json");
         let mut f = OpenOptions::new()
@@ -450,7 +640,7 @@ pub fn claim_root(root: &Path, user_id: &str) -> Result<bool, ClaimError> {
         fs::rename(&target_stage, &target)?;
         target_published = true;
         if stored.is_none() {
-            write_owner(root, &owner_id)?;
+            write_owner(&root_fd, &owner_id)?;
         }
         check_time(start)?;
         Ok(true)
@@ -462,4 +652,101 @@ pub fn claim_root(root: &Path, user_id: &str) -> Result<bool, ClaimError> {
         cleanup_stage(&target_stage);
     }
     result
+}
+
+#[cfg(test)]
+mod security_tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing
+    )]
+
+    use super::*;
+    use tempfile::tempdir;
+
+    fn expected(manifest: &[Item]) -> BTreeMap<PathBuf, &Item> {
+        manifest
+            .iter()
+            .map(|item| (item.rel.clone(), item))
+            .collect()
+    }
+
+    #[test]
+    fn growth_after_preflight_is_bounded_and_refused() {
+        let root = tempdir().unwrap();
+        fs::create_dir(root.path().join("rag")).unwrap();
+        fs::write(root.path().join("rag/first"), b"first").unwrap();
+        let fd = open_root(root.path()).unwrap();
+        let start = Instant::now();
+        let manifest = inspect(&fd, &["rag".to_owned()], start).unwrap();
+        let expected = expected(&manifest);
+
+        fs::write(
+            root.path().join("rag/added-after-preflight"),
+            vec![0u8; 128],
+        )
+        .unwrap();
+        let stage = tempdir().unwrap();
+        let mut bytes = 0;
+        let mut entries = 0;
+        let result = copy_tree(
+            &fd,
+            Path::new("rag"),
+            &stage.path().join("rag"),
+            start,
+            &mut bytes,
+            &mut entries,
+            0,
+            &expected,
+        );
+        assert!(matches!(
+            result,
+            Err(ClaimError::Limit | ClaimError::Unsafe)
+        ));
+        assert!(!stage.path().join("rag/added-after-preflight").exists());
+        assert_eq!(
+            fs::read(root.path().join("rag/added-after-preflight")).unwrap(),
+            vec![0u8; 128]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ancestor_symlink_swap_after_preflight_cannot_escape_root() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        fs::create_dir(root.path().join("rag")).unwrap();
+        fs::write(root.path().join("rag/original"), b"inside").unwrap();
+        fs::write(outside.path().join("original"), b"outside-secret").unwrap();
+        let fd = open_root(root.path()).unwrap();
+        let start = Instant::now();
+        let manifest = inspect(&fd, &["rag".to_owned()], start).unwrap();
+        let expected = expected(&manifest);
+
+        fs::rename(root.path().join("rag"), root.path().join("rag-saved")).unwrap();
+        symlink(outside.path(), root.path().join("rag")).unwrap();
+        let stage = tempdir().unwrap();
+        let mut bytes = 0;
+        let mut entries = 0;
+        let result = copy_tree(
+            &fd,
+            Path::new("rag"),
+            &stage.path().join("rag"),
+            start,
+            &mut bytes,
+            &mut entries,
+            0,
+            &expected,
+        );
+        assert!(matches!(result, Err(ClaimError::Unsafe)));
+        assert!(!stage.path().join("rag/original").exists());
+        assert_eq!(
+            fs::read(outside.path().join("original")).unwrap(),
+            b"outside-secret"
+        );
+    }
 }

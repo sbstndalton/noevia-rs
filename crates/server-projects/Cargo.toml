@@ -16,6 +16,7 @@ js-json = { path = "../js-json" }
 sha2 = "0.10"
 rand_core = { version = "0.6", features = ["getrandom"] }
 libc = "0.2"
+rustix = { version = "=1.1.5", features = ["fs"] }
 serde_json = "1"
 
 [dev-dependencies]

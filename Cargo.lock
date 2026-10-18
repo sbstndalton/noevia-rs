@@ -2677,6 +2677,7 @@ dependencies = [
  "libc",
  "proptest",
  "rand_core 0.6.4",
+ "rustix",
  "serde_json",
  "server-store",
  "sha2",
