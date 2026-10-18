@@ -1576,6 +1576,8 @@ jobs:
         run: |
           cargo test --locked -p noevia-model-manager --features native-section-writes --test section_writes --test lifecycle --bin noevia-model-manager
           cargo test --locked -p noevia-model-manager --features native-section-writes --lib section_writes::
+          # The idle-unload header rule is cross-checked against the section parser only with this feature (#2019).
+          cargo test --locked -p noevia-model-manager --features native-section-writes --lib idle_unload::
       - name: Combined native features keep every existing test
         # Prompt store tests need the prompt oracle env; the native-prompts job runs them.
         run: |

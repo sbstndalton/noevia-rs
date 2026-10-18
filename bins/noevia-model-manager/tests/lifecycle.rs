@@ -532,11 +532,11 @@ fn native_writer_migrates_after_the_reconcile_and_before_the_child_starts() {
     let old_ini = old.path().join("models.ini");
     for (original, refused) in [
         ("[chat]\nmodel = /models/synthetic.gguf\n", false),
-        // The reconcile does not recognise this `[*]` header and adds a second `[*]`, so the
-        // migration then refuses the repeated section (as Python's does).
+        // noevia#2019: the reconcile recognises a `[*]` header with an inline comment, so it edits
+        // that one section and the migration then runs on it (no repeated `[*]` to refuse).
         (
             "version = 1\n[*] ; shared\ncache-ram = -1\n\n[chat]\nmodel = m\n\n[my-embed]\n",
-            true,
+            false,
         ),
         (
             "[*]trailing\nsleep-idle-seconds = 60\ncache-ram = 99999\n[chat]\n",
