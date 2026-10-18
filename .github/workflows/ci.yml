@@ -1237,6 +1237,11 @@ jobs:
           repository: sbstndalton/noevia-services
           ref: 0a885dbb491af663279b5852b977f57c24103019
           path: backends-services
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 03ace5835f86b4457baef8c60510e9eb0e95bfbd
+          path: fit-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
@@ -1252,6 +1257,10 @@ jobs:
         run: |
           python3 -I tools/gen-backends-oracle.py backends-services/model-manager/app > "$RUNNER_TEMP/backends.json"
           cmp bins/noevia-model-manager/tests/fixtures/backends-python.v1.json "$RUNNER_TEMP/backends.json"
+      - name: Regenerate the actual Python fit primitives oracle (#1318 step 1)
+        run: |
+          python3 -I tools/gen-fit-oracle.py fit-services/model-manager/app > "$RUNNER_TEMP/fit.json"
+          cmp bins/noevia-model-manager/tests/fixtures/fit-python.v1.json "$RUNNER_TEMP/fit.json"
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-backends -- -D warnings
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-settings,native-backend-control,native-backends -- -D warnings

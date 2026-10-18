@@ -74,3 +74,31 @@ Moving `nvidia-smi`/`rocm-smi` into the native process means allowing `docker ex
 There are 9 cases: Vulkan on an APU from sysfs, configured names and ROCm with its sysfs fallback, NVIDIA with equal, mixed and failing cards, Vulkan fallbacks to exec and to `GPU_VRAM`, Docker errors (image 404 and 500, inspect 500, stats 500), Docker down, probe outcomes and uptimes, 125 ticks of history with the vendor kept and a prune, and container-stats edges. The fixture records each tick's cache (what the push carries), the GPU reads the child would answer, and each GET's status and body.
 
 The lib test replays every case on every platform with a fake Docker API. The integration test replays five cases through the router and the real `UnixDocker` transport against a fake daemon on a Unix socket, and checks that only allowlisted read-only GETs reached it. CI regenerates the fixture and compares it byte for byte.
+
+## Fit primitives (noevia#1318 step 1)
+
+`backend_stats::fit` ports what the model reads judge a file size against, reading this
+process's own sampler cache (the values it pushes to the child, which `hw.stats_for` answers
+there) and the sampler's read-only Docker discovery:
+
+| Python | Native |
+| --- | --- |
+| `services._fit_backends` | `Inventory::gpu`: a positive `GPU_VRAM` declaration, else the sampled `vram_total_gb` of an `ok` sample |
+| `services._cpu_backends` | `Inventory::cpu`: discovered backends whose first image tag names no GPU vendor (`cpu`, `unknown`) and whose sample has no VRAM |
+| `hw.host_ram_gb`, `hw.usable_ram_gb` | `fit::host_ram_gb` (`MemTotal` of `/proc/meminfo`), `fit::usable_ram_gb` less HOST_RAM_RESERVE_GB |
+| `services.vram_fit_chips` | `fit::chips`: the machine-level `impossible` chip, then the VRAM chips (65 % / 90 %), then the CPU chips (100 %, 30 GiB, 75 %) |
+| `helpers._backend_list` (without `baseline`) | `BackendStats::descriptors`; `fit::budget` is the search budget |
+
+Thresholds, ordering, `round()` (ties to even, exact integers however large) and `round(x, 1)`
+are Python's. Differential-tested against the pinned services app by `tools/gen-fit-oracle.py`
+(`tests/fixtures/fit-python.v1.json`): fit boundaries, CPU-only, insufficient RAM, unreadable
+meminfo, an impossible machine, and empty and mixed stores.
+
+Deliberate differences: Python rediscovers the containers up to four times for one chip list
+(and again for every model of a list); this side makes one Docker discovery per answer.
+HOST_RAM_RESERVE_GB is read as a strict subset of what pydantic reads: a plain decimal under its
+exact name. Other forms, including some pydantic accepts, leave the inventory unavailable
+(`None`), so a reader refuses rather than guessing the reserve. A case-variant key (for example
+`host_ram_reserve_gb`), which the child's settings would also read, makes the chips refuse too.
+The oracle records pydantic's own reading of every accepted form, and the native value must
+equal it. A container command holding anything but strings refuses the descriptors.
