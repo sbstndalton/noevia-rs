@@ -248,6 +248,14 @@ pub struct View {
 }
 
 impl View {
+    fn of(now: Current, fallback: Current) -> Self {
+        Self {
+            setting: now.setting,
+            source: now.source,
+            fallback: fallback.setting,
+            fallback_source: fallback.source,
+        }
+    }
     pub fn json(&self) -> serde_json::Value {
         serde_json::json!({
             "seconds": self.setting.unwrap_or(0),
@@ -284,7 +292,9 @@ pub struct Reconciler {
     path: PathBuf,
     fallback: Current,
     store: Option<PathBuf>,
-    current: std::sync::Mutex<Current>,
+    /// Shared with the save's blocking job (noevia#2018), which sets it once the store write has
+    /// committed, whether or not the request that started the save is still there.
+    current: std::sync::Arc<std::sync::Mutex<Current>>,
     /// Serialises the setting's saves and the preset reconciles. noevia#2015: the guard moves
     /// into each blocking job (the #1909 rule), so a request dropped mid-job keeps the lock until
     /// that job has returned and a second write cannot rewrite the same file meanwhile.
@@ -318,7 +328,7 @@ impl Reconciler {
             path,
             fallback,
             store,
-            current: std::sync::Mutex::new(current),
+            current: std::sync::Arc::new(std::sync::Mutex::new(current)),
             lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         }
     }
@@ -332,13 +342,7 @@ impl Reconciler {
         self.now().setting
     }
     pub fn view(&self) -> View {
-        let now = self.now();
-        View {
-            setting: now.setting,
-            source: now.source,
-            fallback: self.fallback.setting,
-            fallback_source: self.fallback.source,
-        }
+        View::of(self.now(), self.fallback)
     }
     /// Whether an admin choice can be saved (there is a store).
     pub fn writable(&self) -> bool {
@@ -346,42 +350,54 @@ impl Reconciler {
     }
     /// noevia#1863: saves an admin choice (`Some`) or clears it (`None`, back to the
     /// environment), then rewrites the chat preset. Nothing changes when the save fails.
+    ///
+    /// noevia#2018: the store write, the update of the in-memory setting and the preset
+    /// reconcile are one admitted blocking job that owns the lock guard. A request dropped
+    /// (the client went away, the route's timeout) after the store write has committed cannot
+    /// leave the setting or the preset behind the store: the job finishes without it.
     pub async fn update(&self, value: Option<Option<u32>>) -> Result<(View, Preset), &'static str> {
         let guard = self.lock.clone().lock_owned().await;
         let store = self
             .store
             .clone()
             .ok_or("idle unload setting has no store")?;
-        // noevia#2006: admitted (as the reconcile below) when it runs inside a request.
-        // noevia#2015: the job owns the lock guard and hands it back with its answer.
-        let (written, guard) =
-            crate::docker::spawn_blocking_admitted(move || (write_store(&store, value), guard))
-                .await
-                .map_err(|_| "idle unload setting write failed")?;
-        written?;
-        let next = match value {
-            Some(setting) => Current {
-                setting,
-                source: Source::Setting,
-            },
-            None => self.fallback,
-        };
-        *self
-            .current
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = next;
-        // noevia#2015 review: the view is taken while the guard is still held, so a write that
-        // follows once the reconcile drops it cannot show up in this request's answer.
-        let view = self.view();
-        let preset = match self.reconcile_locked(guard).await {
-            Ok(Some(_)) => Preset::Written,
-            Ok(None) => Preset::Unchanged,
-            Err(error) => {
-                eprintln!("WARN idle unload: {error}");
-                Preset::Failed(error)
+        let path = self.path.clone();
+        let fallback = self.fallback;
+        let current = self.current.clone();
+        // noevia#2006: admitted (as the reconcile in it) when it runs inside a request.
+        crate::docker::spawn_blocking_admitted(move || {
+            let saved = write_store(&store, value);
+            if let Err(error) = saved {
+                drop(guard);
+                return Err(error);
             }
-        };
-        Ok((view, preset))
+            let next = match value {
+                Some(setting) => Current {
+                    setting,
+                    source: Source::Setting,
+                },
+                None => fallback,
+            };
+            *current
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = next;
+            // noevia#2015 review: the view is taken while the guard is still held, so a write
+            // that follows once the reconcile drops it cannot show up in this request's answer.
+            let view = View::of(next, fallback);
+            let reconciled = reconcile_guarded(&path, next.setting);
+            drop(guard);
+            let preset = match reconciled {
+                Ok(Some(_)) => Preset::Written,
+                Ok(None) => Preset::Unchanged,
+                Err(error) => {
+                    eprintln!("WARN idle unload: {error}");
+                    Preset::Failed(error)
+                }
+            };
+            Ok((view, preset))
+        })
+        .await
+        .map_err(|_| "idle unload setting write failed")?
     }
     /// `Ok(Some(revision))` when the file was rewritten (sha256 hex of the new bytes, the same
     /// revision the Python editor reports), `Ok(None)` when nothing changed or no preset exists.
@@ -406,6 +422,15 @@ impl Reconciler {
         .await
         .map_err(|_| "idle unload reconcile failed")?
     }
+}
+
+/// [`reconcile_file`] inside a save's job: a panic there is the reconcile's failure, as it was
+/// when the reconcile was a job of its own, and the save (already committed) still answers.
+fn reconcile_guarded(path: &Path, setting: Option<u32>) -> Result<Option<String>, &'static str> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        reconcile_file(path, setting)
+    }))
+    .unwrap_or(Err("idle unload reconcile failed"))
 }
 
 fn read_capped(path: &Path) -> Result<Option<Vec<u8>>, &'static str> {
@@ -1004,6 +1029,77 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .unwrap();
+        }
+    }
+
+    /// noevia#2018: a save dropped right after its store write returned (the client went away,
+    /// the route's timeout) still takes effect: the in-memory setting and the preset follow the
+    /// store, so a GET does not report the old value until some later write or a restart.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_save_dropped_after_its_store_write_still_updates_the_setting_and_the_preset() {
+        use crate::test_support::Gate;
+        let dir = tempfile::tempdir().unwrap();
+        let preset = dir.path().join("preset.ini");
+        let store = dir.path().join(STORE_FILE);
+        std::fs::write(
+            &preset,
+            "[*]
+sleep-idle-seconds = 1800
+
+[synthetic]
+",
+        )
+        .unwrap();
+        let reconciler = std::sync::Arc::new(Reconciler::with_store(
+            preset.clone(),
+            (Some(DEFAULT_SECONDS), Source::Default),
+            Some(store.clone()),
+        ));
+        // Save 3600, then clear the choice (back to the default seed).
+        for (value, stored, line) in [
+            (
+                Some(Some(3600)),
+                Some(Some(3600)),
+                "sleep-idle-seconds = 3600",
+            ),
+            (None, None, "sleep-idle-seconds = 1800"),
+        ] {
+            let gate = Gate::new();
+            let request = {
+                let reconciler = reconciler.clone();
+                tokio::spawn(
+                    crate::docker::BLOCKING_AFTER_HOOK.scope(gate.hook.clone(), async move {
+                        reconciler.update(value).await.map(|_| ())
+                    }),
+                )
+            };
+            // The job's work has returned; its answer is not sent yet. Drop the request there.
+            let open = gate.entered().await;
+            request.abort();
+            assert!(request.await.unwrap_err().is_cancelled());
+            assert_eq!(read_store(&store), Ok(stored));
+            open.send(()).unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(30), async {
+                while reconciler.lock.try_lock().is_err() {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .unwrap();
+            let view = reconciler.view();
+            assert_eq!(
+                (view.setting, view.source),
+                match value {
+                    Some(Some(n)) => (Some(n), Source::Setting),
+                    _ => (Some(DEFAULT_SECONDS), Source::Default),
+                },
+                "the setting is stale after a dropped save ({value:?})"
+            );
+            let text = std::fs::read_to_string(&preset).unwrap();
+            assert!(
+                text.lines().any(|l| l == line) && text.matches(KEY).count() == 1,
+                "the preset is stale after a dropped save ({value:?}): {text}"
+            );
         }
     }
 }
