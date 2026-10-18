@@ -1,0 +1,676 @@
+{
+ "cases": [
+  {
+   "aliases": [
+    "syn",
+    "missing"
+   ],
+   "backends": [
+    {
+     "baseline": {},
+     "baseline_args": [],
+     "card_vram_gb": [
+      24.0
+     ],
+     "gpu_count": 1,
+     "host_ram_gb": 64.0,
+     "name": "synthetic-gpu",
+     "vendor": "cuda",
+     "vram_gb": 24.0
+    }
+   ],
+   "cache_cap": 1024,
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "synth"
+      ],
+      "general.file_type": [
+       "u32",
+       15
+      ],
+      "synth.attention.head_count": [
+       "u32",
+       32
+      ],
+      "synth.attention.head_count_kv": [
+       "u32",
+       8
+      ],
+      "synth.block_count": [
+       "u32",
+       32
+      ],
+      "synth.context_length": [
+       "u32",
+       32768
+      ],
+      "synth.embedding_length": [
+       "u32",
+       4096
+      ],
+      "tokenizer.chat_template": [
+       "str",
+       "{% for m in messages %}{{ m.content }}{% endfor %}"
+      ]
+     },
+     "header": "474755460300000000000000000000000800000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468110000000000000067656e6572616c2e66696c655f74797065040000000f000000110000000000000073796e74682e626c6f636b5f636f756e740400000020000000140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000160000000000000073796e74682e656d62656464696e675f6c656e67746804000000001000001a0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e7404000000200000001d0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e745f6b7604000000080000001700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000032000000000000007b2520666f72206d20696e206d6573736167657320257d7b7b206d2e636f6e74656e74207d7d7b2520656e64666f7220257d",
+     "name": "syn.gguf",
+     "size": 2147483648
+    }
+   ],
+   "id": "flat",
+   "ini": "",
+   "runtime": {
+    "capacity_gb": 24.0,
+    "predicted": {
+     "missing": null,
+     "syn": 4.12
+    }
+   }
+  },
+  {
+   "aliases": [
+    "syn"
+   ],
+   "backends": [
+    {
+     "baseline": {},
+     "baseline_args": [],
+     "card_vram_gb": [
+      24.0
+     ],
+     "gpu_count": 1,
+     "host_ram_gb": 64.0,
+     "name": "synthetic-gpu",
+     "vendor": "cuda",
+     "vram_gb": 24.0
+    }
+   ],
+   "cache_cap": 1024,
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "synth"
+      ],
+      "general.file_type": [
+       "u32",
+       15
+      ],
+      "synth.attention.head_count": [
+       "u32",
+       32
+      ],
+      "synth.attention.head_count_kv": [
+       "u32",
+       8
+      ],
+      "synth.block_count": [
+       "u32",
+       32
+      ],
+      "synth.context_length": [
+       "u32",
+       32768
+      ],
+      "synth.embedding_length": [
+       "u32",
+       4096
+      ],
+      "tokenizer.chat_template": [
+       "str",
+       "{% for m in messages %}{{ m.content }}{% endfor %}"
+      ]
+     },
+     "header": "474755460300000000000000000000000800000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468110000000000000067656e6572616c2e66696c655f74797065040000000f000000110000000000000073796e74682e626c6f636b5f636f756e740400000020000000140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000160000000000000073796e74682e656d62656464696e675f6c656e67746804000000001000001a0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e7404000000200000001d0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e745f6b7604000000080000001700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000032000000000000007b2520666f72206d20696e206d6573736167657320257d7b7b206d2e636f6e74656e74207d7d7b2520656e64666f7220257d",
+     "name": "folder/syn-00001-of-00002.gguf",
+     "size": 1073741824
+    },
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "synth"
+      ],
+      "general.file_type": [
+       "u32",
+       15
+      ],
+      "synth.attention.head_count": [
+       "u32",
+       32
+      ],
+      "synth.attention.head_count_kv": [
+       "u32",
+       8
+      ],
+      "synth.block_count": [
+       "u32",
+       32
+      ],
+      "synth.context_length": [
+       "u32",
+       32768
+      ],
+      "synth.embedding_length": [
+       "u32",
+       4096
+      ],
+      "tokenizer.chat_template": [
+       "str",
+       "{% for m in messages %}{{ m.content }}{% endfor %}"
+      ]
+     },
+     "header": "474755460300000000000000000000000800000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468110000000000000067656e6572616c2e66696c655f74797065040000000f000000110000000000000073796e74682e626c6f636b5f636f756e740400000020000000140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000160000000000000073796e74682e656d62656464696e675f6c656e67746804000000001000001a0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e7404000000200000001d0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e745f6b7604000000080000001700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000032000000000000007b2520666f72206d20696e206d6573736167657320257d7b7b206d2e636f6e74656e74207d7d7b2520656e64666f7220257d",
+     "name": "folder/syn-00002-of-00002.gguf",
+     "size": 32212254720
+    }
+   ],
+   "id": "folder-single-file",
+   "ini": "[syn]\nmodel = /models/folder/syn-00001-of-00002.gguf\nctx-size = 12288\n",
+   "runtime": {
+    "capacity_gb": 24.0,
+    "predicted": {
+     "syn": 3.12
+    }
+   }
+  },
+  {
+   "aliases": [
+    "syn"
+   ],
+   "backends": [],
+   "cache_cap": 1024,
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "synth"
+      ],
+      "general.file_type": [
+       "u32",
+       15
+      ],
+      "synth.attention.head_count": [
+       "u32",
+       32
+      ],
+      "synth.attention.head_count_kv": [
+       "u32",
+       8
+      ],
+      "synth.block_count": [
+       "u32",
+       32
+      ],
+      "synth.context_length": [
+       "u32",
+       32768
+      ],
+      "synth.embedding_length": [
+       "u32",
+       4096
+      ],
+      "tokenizer.chat_template": [
+       "str",
+       "{% for m in messages %}{{ m.content }}{% endfor %}"
+      ]
+     },
+     "header": "474755460300000000000000000000000800000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468110000000000000067656e6572616c2e66696c655f74797065040000000f000000110000000000000073796e74682e626c6f636b5f636f756e740400000020000000140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000160000000000000073796e74682e656d62656464696e675f6c656e67746804000000001000001a0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e7404000000200000001d0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e745f6b7604000000080000001700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000032000000000000007b2520666f72206d20696e206d6573736167657320257d7b7b206d2e636f6e74656e74207d7d7b2520656e64666f7220257d",
+     "name": "syn.gguf",
+     "size": 1073741824
+    }
+   ],
+   "id": "no-backends",
+   "ini": "",
+   "runtime": {
+    "capacity_gb": 0.0,
+    "predicted": {
+     "syn": null
+    }
+   }
+  },
+  {
+   "aliases": [
+    "syn"
+   ],
+   "backends": [
+    {
+     "baseline": {},
+     "baseline_args": [],
+     "card_vram_gb": [
+      24.0
+     ],
+     "gpu_count": 1,
+     "host_ram_gb": 64.0,
+     "name": "synthetic-gpu",
+     "vendor": "cuda",
+     "vram_gb": 24.0
+    }
+   ],
+   "cache_cap": 1024,
+   "files": [
+    {
+     "name": "syn.gguf",
+     "size": 16
+    }
+   ],
+   "id": "invalid-header",
+   "ini": "",
+   "runtime": {
+    "capacity_gb": 24.0,
+    "predicted": {
+     "syn": null
+    }
+   }
+  },
+  {
+   "aliases": [
+    "syn"
+   ],
+   "backends": [
+    {
+     "baseline": {},
+     "baseline_args": [],
+     "card_vram_gb": [
+      18.125
+     ],
+     "gpu_count": 1,
+     "host_ram_gb": 64.0,
+     "name": "synthetic-gpu",
+     "vendor": "cuda",
+     "vram_gb": 18.125
+    }
+   ],
+   "cache_cap": 1024,
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "synth"
+      ],
+      "general.file_type": [
+       "u32",
+       15
+      ],
+      "synth.attention.head_count": [
+       "u32",
+       32
+      ],
+      "synth.attention.head_count_kv": [
+       "u32",
+       8
+      ],
+      "synth.block_count": [
+       "u32",
+       32
+      ],
+      "synth.context_length": [
+       "u32",
+       32768
+      ],
+      "synth.embedding_length": [
+       "u32",
+       4096
+      ],
+      "tokenizer.chat_template": [
+       "str",
+       "{% for m in messages %}{{ m.content }}{% endfor %}"
+      ]
+     },
+     "header": "474755460300000000000000000000000800000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468110000000000000067656e6572616c2e66696c655f74797065040000000f000000110000000000000073796e74682e626c6f636b5f636f756e740400000020000000140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000160000000000000073796e74682e656d62656464696e675f6c656e67746804000000001000001a0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e7404000000200000001d0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e745f6b7604000000080000001700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000032000000000000007b2520666f72206d20696e206d6573736167657320257d7b7b206d2e636f6e74656e74207d7d7b2520656e64666f7220257d",
+     "name": "syn.gguf",
+     "size": 1073741824
+    }
+   ],
+   "id": "context-absent",
+   "ini": "[syn]\n",
+   "runtime": {
+    "capacity_gb": 18.12,
+    "predicted": {
+     "syn": 3.12
+    }
+   }
+  },
+  {
+   "aliases": [
+    "syn"
+   ],
+   "backends": [
+    {
+     "baseline": {},
+     "baseline_args": [],
+     "card_vram_gb": [
+      24.0
+     ],
+     "gpu_count": 1,
+     "host_ram_gb": 64.0,
+     "name": "synthetic-gpu",
+     "vendor": "cuda",
+     "vram_gb": 24.0
+    }
+   ],
+   "cache_cap": 1024,
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "synth"
+      ],
+      "general.file_type": [
+       "u32",
+       15
+      ],
+      "synth.attention.head_count": [
+       "u32",
+       32
+      ],
+      "synth.attention.head_count_kv": [
+       "u32",
+       8
+      ],
+      "synth.block_count": [
+       "u32",
+       32
+      ],
+      "synth.context_length": [
+       "u32",
+       32768
+      ],
+      "synth.embedding_length": [
+       "u32",
+       4096
+      ],
+      "tokenizer.chat_template": [
+       "str",
+       "{% for m in messages %}{{ m.content }}{% endfor %}"
+      ]
+     },
+     "header": "474755460300000000000000000000000800000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468110000000000000067656e6572616c2e66696c655f74797065040000000f000000110000000000000073796e74682e626c6f636b5f636f756e740400000020000000140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000160000000000000073796e74682e656d62656464696e675f6c656e67746804000000001000001a0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e7404000000200000001d0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e745f6b7604000000080000001700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000032000000000000007b2520666f72206d20696e206d6573736167657320257d7b7b206d2e636f6e74656e74207d7d7b2520656e64666f7220257d",
+     "name": "syn.gguf",
+     "size": 1073741824
+    }
+   ],
+   "id": "context-invalid",
+   "ini": "[syn]\nctx-size = invalid\n",
+   "runtime": {
+    "capacity_gb": 24.0,
+    "predicted": {
+     "syn": 3.12
+    }
+   }
+  },
+  {
+   "aliases": [
+    "syn"
+   ],
+   "backends": [
+    {
+     "baseline": {},
+     "baseline_args": [],
+     "card_vram_gb": [
+      24.0
+     ],
+     "gpu_count": 1,
+     "host_ram_gb": 64.0,
+     "name": "synthetic-gpu",
+     "vendor": "cuda",
+     "vram_gb": 24.0
+    }
+   ],
+   "cache_cap": 1024,
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "synth"
+      ],
+      "general.file_type": [
+       "u32",
+       15
+      ],
+      "synth.attention.head_count": [
+       "u32",
+       32
+      ],
+      "synth.attention.head_count_kv": [
+       "u32",
+       8
+      ],
+      "synth.block_count": [
+       "u32",
+       32
+      ],
+      "synth.context_length": [
+       "u32",
+       32768
+      ],
+      "synth.embedding_length": [
+       "u32",
+       4096
+      ],
+      "tokenizer.chat_template": [
+       "str",
+       "{% for m in messages %}{{ m.content }}{% endfor %}"
+      ]
+     },
+     "header": "474755460300000000000000000000000800000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468110000000000000067656e6572616c2e66696c655f74797065040000000f000000110000000000000073796e74682e626c6f636b5f636f756e740400000020000000140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000160000000000000073796e74682e656d62656464696e675f6c656e67746804000000001000001a0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e7404000000200000001d0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e745f6b7604000000080000001700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000032000000000000007b2520666f72206d20696e206d6573736167657320257d7b7b206d2e636f6e74656e74207d7d7b2520656e64666f7220257d",
+     "name": "syn.gguf",
+     "size": 1073741824
+    }
+   ],
+   "id": "context-negative",
+   "ini": "[syn]\nctx-size = -4096\n",
+   "runtime": {
+    "capacity_gb": 24.0,
+    "predicted": {
+     "syn": 3.12
+    }
+   }
+  },
+  {
+   "aliases": [
+    "syn"
+   ],
+   "backends": [
+    {
+     "baseline": {},
+     "baseline_args": [],
+     "card_vram_gb": [
+      24.0
+     ],
+     "gpu_count": 1,
+     "host_ram_gb": 64.0,
+     "name": "synthetic-gpu",
+     "vendor": "cuda",
+     "vram_gb": 24.0
+    }
+   ],
+   "cache_cap": 1024,
+   "files": [
+    {
+     "gguf": {
+      "general.architecture": [
+       "str",
+       "synth"
+      ],
+      "general.file_type": [
+       "u32",
+       15
+      ],
+      "synth.attention.head_count": [
+       "u32",
+       32
+      ],
+      "synth.attention.head_count_kv": [
+       "u32",
+       8
+      ],
+      "synth.block_count": [
+       "u32",
+       32
+      ],
+      "synth.context_length": [
+       "u32",
+       32768
+      ],
+      "synth.embedding_length": [
+       "u32",
+       4096
+      ],
+      "tokenizer.chat_template": [
+       "str",
+       "{% for m in messages %}{{ m.content }}{% endfor %}"
+      ]
+     },
+     "header": "474755460300000000000000000000000800000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468110000000000000067656e6572616c2e66696c655f74797065040000000f000000110000000000000073796e74682e626c6f636b5f636f756e740400000020000000140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000160000000000000073796e74682e656d62656464696e675f6c656e67746804000000001000001a0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e7404000000200000001d0000000000000073796e74682e617474656e74696f6e2e686561645f636f756e745f6b7604000000080000001700000000000000746f6b656e697a65722e636861745f74656d706c6174650800000032000000000000007b2520666f72206d20696e206d6573736167657320257d7b7b206d2e636f6e74656e74207d7d7b2520656e64666f7220257d",
+     "name": "syn.gguf",
+     "size": 1073741824
+    }
+   ],
+   "id": "context-underscores",
+   "ini": "[syn]\nctx-size = 8_192\n",
+   "runtime": {
+    "capacity_gb": 24.0,
+    "predicted": {
+     "syn": 3.12
+    }
+   }
+  }
+ ],
+ "oracle": {
+  "autoconfig.py": "15cc464f19cb43a68752572f6fa91046fe34c37296decef348a84dcbe75dc1c6",
+  "helpers.py": "fcf2ccb14e5e068f97bb7a4b7985ab7f4f4855b940eb6d9e3838f239ad97918d",
+  "ini.py": "b3cb05fd382b5f408ad16430db8841d40c82a3714115233f2e35b2f7f3b61740"
+ },
+ "selections": [
+  {
+   "ctx": "8192",
+   "expected": 1.12,
+   "plan": {
+    "frontier": [
+     {
+      "ctx": 4096,
+      "gpu_gb": 1.125,
+      "kv_gb": 0.0
+     },
+     {
+      "ctx": 12288,
+      "gpu_gb": 2.0,
+      "kv_gb": 0.125
+     }
+    ],
+    "recommended_ctx": 4096,
+    "recommended_total_ctx": 12288
+   }
+  },
+  {
+   "ctx": "0",
+   "expected": 2.12,
+   "plan": {
+    "frontier": [
+     {
+      "ctx": 4096,
+      "gpu_gb": 1.125,
+      "kv_gb": 0.0
+     },
+     {
+      "ctx": 12288,
+      "gpu_gb": 2.0,
+      "kv_gb": 0.125
+     }
+    ],
+    "recommended_ctx": 4096,
+    "recommended_total_ctx": 12288
+   }
+  },
+  {
+   "ctx": "invalid",
+   "expected": 2.12,
+   "plan": {
+    "frontier": [
+     {
+      "ctx": 4096,
+      "gpu_gb": 1.125,
+      "kv_gb": 0.0
+     },
+     {
+      "ctx": 12288,
+      "gpu_gb": 2.0,
+      "kv_gb": 0.125
+     }
+    ],
+    "recommended_ctx": 4096,
+    "recommended_total_ctx": 12288
+   }
+  },
+  {
+   "ctx": "",
+   "expected": 2.12,
+   "plan": {
+    "frontier": [
+     {
+      "ctx": 4096,
+      "gpu_gb": 1.125,
+      "kv_gb": 0.0
+     },
+     {
+      "ctx": 12288,
+      "gpu_gb": 2.0,
+      "kv_gb": 0.125
+     }
+    ],
+    "recommended_ctx": 4096,
+    "recommended_total_ctx": 12288
+   }
+  },
+  {
+   "ctx": "8_192",
+   "expected": 1.12,
+   "plan": {
+    "frontier": [
+     {
+      "ctx": 4096,
+      "gpu_gb": 1.125,
+      "kv_gb": 0.0
+     },
+     {
+      "ctx": 12288,
+      "gpu_gb": 2.0,
+      "kv_gb": 0.125
+     }
+    ],
+    "recommended_ctx": 4096,
+    "recommended_total_ctx": 12288
+   }
+  },
+  {
+   "ctx": "-1",
+   "expected": 1.12,
+   "plan": {
+    "frontier": [
+     {
+      "ctx": 4096,
+      "gpu_gb": 1.125,
+      "kv_gb": 0.0
+     },
+     {
+      "ctx": 12288,
+      "gpu_gb": 2.0,
+      "kv_gb": 0.125
+     }
+    ],
+    "recommended_ctx": 4096,
+    "recommended_total_ctx": 12288
+   }
+  }
+ ]
+}

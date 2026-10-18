@@ -371,3 +371,54 @@ async fn missing_store_is_500_and_not_created() {
     assert_eq!(answer.status, 500);
     assert!(!dir.path().join("model_loader.db").exists());
 }
+
+#[cfg(all(feature = "native-section-autoconfig", feature = "native-backends"))]
+#[tokio::test]
+async fn native_chart_runtime_answers_without_any_child() {
+    use noevia_model_manager::{backend_stats, section_autoconfig};
+    struct EmptyDocker;
+    impl backend_stats::DockerApi for EmptyDocker {
+        fn get<'a>(&'a self, _: &'a str) -> noevia_model_manager::Job<'a, backend_stats::Raw> {
+            Box::pin(async { Err("synthetic unavailable daemon") })
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    build(dir.path(), &full_case());
+    let models = dir.path().join("models");
+    std::fs::create_dir(&models).unwrap();
+    let stats = Arc::new(
+        backend_stats::BackendStats::new(
+            backend_stats::Config {
+                configured: vec![],
+                gpu_vram: vec![],
+                default_port: Some(8080),
+                drm_root: dir.path().join("drm"),
+                legacy_base: DEAD.into(),
+                token: TOKEN.into(),
+                meminfo: dir.path().join("meminfo"),
+                ram_reserve_gb: Some(32.0),
+            },
+            Arc::new(EmptyDocker),
+        )
+        .unwrap(),
+    );
+    let charts = Arc::new(section_autoconfig::SectionAutoconfig::new(
+        section_autoconfig::Settings {
+            models: models.to_str().unwrap().into(),
+            ini: models.join("models.ini").to_str().unwrap().into(),
+            cache_ram_cap_mib: 1024,
+        },
+    ));
+    charts.set_stats(stats);
+    let mut state = state(Some(dir.path()), DEAD);
+    Arc::get_mut(&mut state).unwrap().section_autoconfig = Some(charts);
+    let answer = send(state, "GET", "/api/v1/benchmark/runs/1").await;
+    assert_eq!(answer.status, 200, "{}", answer.body);
+    let body: Value = serde_json::from_str(&answer.body).unwrap();
+    assert_eq!(body["charts"]["capacity_gb"], 0.0);
+    assert!(body["charts"]["vram_predicted"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(Value::is_null));
+}
