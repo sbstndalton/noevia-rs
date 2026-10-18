@@ -903,7 +903,7 @@ async fn a_read_that_ends_late_does_not_move_the_token_back() {
     // A read that began before the newest one (its ticket is lower) ends now, having seen the
     // old token: it neither clears nor moves the ledger, and stores nothing.
     lock(&r.search.last_auth).applied = 1_000;
-    *lock(&r.search.tickets) = 10;
+    *r.search.tickets.lock().await = 10;
     set_token(&r, "old-token");
     let (_, epoch) = r.search.auth().await.unwrap();
     assert!(epoch.0.is_none());
@@ -916,25 +916,41 @@ async fn a_read_that_ends_late_does_not_move_the_token_back() {
     assert_eq!(epoch.0, Some(generation));
 }
 
-/// Tickets are issued in the order of the sqlite reads: a read waiting for the lock is behind
-/// the one that holds it, whatever started first.
-#[allow(clippy::await_holding_lock)]
+/// Tickets are issued in the order of the sqlite reads: a read waiting for its turn is behind the
+/// one that holds it, whatever started first, and waits as a task: no blocking job exists yet.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn tickets_follow_the_order_of_the_reads() {
+async fn tickets_follow_the_order_of_the_reads_and_waiters_hold_no_blocking_slot() {
+    use crate::docker::BLOCKING_HOOK;
     let r = rig(one_model(&[file("a-Q4_K_M.gguf", GB)])).await;
     set_token(&r, "first-token");
-    let held = r.search.tickets.clone();
-    let guard = lock(&held);
-    let search = r.search.clone();
-    let waiting = tokio::spawn(async move { search.auth().await });
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(!waiting.is_finished(), "the read waits for its turn");
-    // The token changes while it waits: it reads what is stored when its turn comes.
-    set_token(&r, "second-token");
-    drop(guard);
-    let (auth, _) = waiting.await.unwrap().unwrap();
-    assert!(matches!(auth, Auth::Header(v) if v.as_bytes() == b"Bearer second-token"));
-    assert_eq!(*lock(&r.search.tickets), 1);
+    let started = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = started.clone();
+    let hook: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        counted.fetch_add(1, Ordering::SeqCst);
+    });
+    BLOCKING_HOOK
+        .scope(hook, async {
+            let guard = r.search.tickets.lock().await;
+            // Many reads wait for their turn ...
+            let waiting = futures_util::future::join_all((0..64).map(|_| r.search.auth()));
+            assert!(
+                tokio::time::timeout(Duration::from_millis(200), waiting)
+                    .await
+                    .is_err(),
+                "the reads wait for their turn"
+            );
+            // ... and none of them has taken a blocking slot.
+            assert_eq!(started.load(Ordering::SeqCst), 0);
+            // The token changes while they wait: a read sees what is stored in its turn.
+            set_token(&r, "second-token");
+            drop(guard);
+            let (auth, _) = r.search.auth().await.unwrap();
+            assert!(matches!(auth, Auth::Header(v) if v.as_bytes() == b"Bearer second-token"));
+            assert_eq!(started.load(Ordering::SeqCst), 1);
+            // The reads dropped while they waited took no number.
+            assert_eq!(*r.search.tickets.lock().await, 1);
+        })
+        .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

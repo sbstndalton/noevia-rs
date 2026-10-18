@@ -310,8 +310,10 @@ pub struct Search {
     /// listing or a header may be private to a token.
     last_auth: Mutex<Ledger>,
     /// Numbers the token reads. The number is taken, and the sqlite read made, under this lock,
-    /// so that ticket order is read order.
-    tickets: Arc<Mutex<u64>>,
+    /// so that ticket order is read order. An async lock, taken before the blocking job is
+    /// spawned: those who wait for their turn wait as tasks and hold no blocking slot, and a
+    /// request dropped meanwhile leaves at most a gap in the numbers.
+    tickets: tokio::sync::Mutex<u64>,
     /// Bumped, before the caches are cleared, whenever the token changes: a request that read
     /// the token under an older generation does not store what it learnt.
     generation: AtomicU64,
@@ -381,7 +383,7 @@ impl Search {
             lookups: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_LOOKUPS)),
             listing_deadline: timeouts.listings,
             last_auth: Mutex::new(Ledger::default()),
-            tickets: Arc::new(Mutex::new(0)),
+            tickets: tokio::sync::Mutex::new(0),
             generation: AtomicU64::new(0),
             files: Mutex::new(FilesCache::default()),
             headers: Mutex::new(HeaderCache::default()),
@@ -443,14 +445,15 @@ impl Search {
     /// request's results may be stored under.
     async fn auth(&self) -> Result<(Auth, Epoch), Stop> {
         let database = self.database.clone();
-        let tickets = self.tickets.clone();
-        let (ticket, read) = self
-            .blocking(move || {
-                let mut issued = lock(&tickets);
-                *issued += 1;
-                (*issued, hub_auth(&database))
-            })
-            .await?;
+        let (ticket, read) = {
+            let mut issued = self.tickets.lock().await;
+            *issued += 1;
+            let ticket = *issued;
+            // The turn is kept until the read is done.
+            let read = self.blocking(move || hub_auth(&database)).await;
+            (ticket, read)
+        };
+        let read = read?;
         let seen = match &read {
             HubAuth::Absent => Token::Absent,
             HubAuth::Value(value) => Token::Value(value.as_bytes().to_vec()),
