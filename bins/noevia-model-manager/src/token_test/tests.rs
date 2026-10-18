@@ -35,6 +35,15 @@ fn ordinary_response_shapes_and_secret_redaction() {
             expected
         );
     }
+    let boundary = format!("{}synthetic-secret echoed", "x".repeat(115));
+    let redacted: serde_json::Value =
+        serde_json::from_slice(&render(401, boundary.as_bytes(), "synthetic-secret").unwrap())
+            .unwrap();
+    assert_eq!(
+        redacted["message"],
+        format!("HTTP 401: {}[reda", "x".repeat(115))
+    );
+    assert!(!redacted["message"].as_str().unwrap().contains("synt"));
     assert!(render(200, b"not JSON", "secret").is_none());
     assert!(render(200, b"[]", "secret").is_none());
     let text = "é".repeat(121);
@@ -118,6 +127,15 @@ async fn actual_python_oracle_over_real_local_http_and_bounded_failures() {
         assert_eq!(got, case["expected"], "{}", case["id"]);
         peer.await.unwrap();
     }
+    let boundary = format!("{}synthetic-token echoed", "x".repeat(115));
+    let (endpoint, peer) = serve(401, "text/plain", boundary.into_bytes()).await;
+    let result = TokenTest::with(&endpoint).unwrap().run(&path).await;
+    let result: serde_json::Value = serde_json::from_slice(&result).unwrap();
+    assert_eq!(
+        result["message"],
+        format!("HTTP 401: {}[reda", "x".repeat(115))
+    );
+    peer.await.unwrap();
     for (content, body) in [
         ("application/json", vec![b'a'; CAP + 1]),
         ("application/json", b"not json".to_vec()),

@@ -121,7 +121,13 @@ fn render(status: u16, bytes: &[u8], token: &str) -> Option<Vec<u8>> {
             .ok()?;
         format!("authenticated as {name}")
     } else {
-        let prefix: String = text.chars().take(120).collect();
+        // Redact before truncating: clipping can otherwise leave a credential prefix.
+        let redacted = if token.is_empty() {
+            text.into_owned()
+        } else {
+            text.replace(token, "[redacted]")
+        };
+        let prefix: String = redacted.chars().take(120).collect();
         format!("HTTP {status}: {prefix}")
     };
     // The upstream error body is untrusted and may echo the header; never return the token.
