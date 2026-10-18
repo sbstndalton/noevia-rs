@@ -1488,6 +1488,12 @@ jobs:
             diff bins/noevia-model-manager/tests/fixtures/section-autoconfig-python.v1.json "$RUNNER_TEMP/section-autoconfig.json" | head -40
             exit 1
           }
+      - name: Regenerate chart prediction oracle from the actual helper
+        run: |
+          python3 -I tools/gen-bench-chart-oracle.py section-autoconfig-services/model-manager/app > "$RUNNER_TEMP/bench-chart.json"
+          cmp bins/noevia-model-manager/tests/fixtures/bench-chart-python.v1.json "$RUNNER_TEMP/bench-chart.json"
+      - run: cargo test --locked -p noevia-model-manager --features native-section-autoconfig,native-backends,native-bench-runs --lib section_autoconfig::charts
+      - run: cargo test --locked -p noevia-model-manager --features native-section-autoconfig,native-backends,native-bench-runs --test bench_runs
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-section-autoconfig -- -D warnings
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes,native-settings-write,native-backend-control,native-benchmark-overview,native-check-updates,native-benchmark-runner,native-downloads,native-model-delete,native-draft-heads,native-backends,native-search,native-model-list,native-section-autoconfig -- -D warnings

@@ -247,10 +247,30 @@ pub(super) fn locate(
     name: &str,
     open: fn(&Path) -> Result<Root, WalkError>,
 ) -> Result<Part, Stop> {
-    // The role check reads models.ini first (a file it cannot parse raises).
+    locate_mode(models, ini_path, name, open, true)
+}
+
+/// Chart estimates resolve the same file, without the route's role refusal or folder sum.
+#[cfg(feature = "native-backends")]
+pub(super) fn locate_prediction(
+    models: &Path,
+    ini_path: &Path,
+    name: &str,
+    open: fn(&Path) -> Result<Root, WalkError>,
+) -> Result<Part, Stop> {
+    locate_mode(models, ini_path, name, open, false)
+}
+
+fn locate_mode(
+    models: &Path,
+    ini_path: &Path,
+    name: &str,
+    open: fn(&Path) -> Result<Root, WalkError>,
+    route: bool,
+) -> Result<Part, Stop> {
     let parsed = read_ini(ini_path)?;
     if let Some((_, parsed)) = &parsed {
-        if routing_section(parsed, ini_path, name)? {
+        if route && routing_section(parsed, ini_path, name)? {
             return Ok(Part::Answer(routing_answer(name)));
         }
     }
@@ -367,7 +387,7 @@ pub(super) fn locate(
     let summary = gguf::summarize(&raw).map_err(|_| Stop::Refused)?;
     drop(raw);
     let mut file_size = u128::from(stat(&root, &base, &gguf_rel)?.ok_or(Stop::Refused)?.len());
-    if rel.as_deref().is_some_and(|r| r.contains('/')) {
+    if route && rel.as_deref().is_some_and(|r| r.contains('/')) {
         if let Some(sum) = folder_parts(&root, &base, &gguf_rel)? {
             file_size = sum;
         }

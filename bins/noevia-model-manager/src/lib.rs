@@ -1623,6 +1623,15 @@ async fn native_bench_run(
     let outcome = match runs.locate(run_id).await {
         bench_runs::Step::Done(outcome) => outcome,
         bench_runs::Step::Located(located) => {
+            #[cfg(all(feature = "native-section-autoconfig", feature = "native-backends"))]
+            if let Some(charts) = &state.section_autoconfig {
+                if let Some(body) = charts
+                    .chart_runtime(bench_runs::prediction_aliases(&located))
+                    .await
+                {
+                    return bench_run_response(bench_runs::splice(&located, &body));
+                }
+            }
             let query = bench_runs::runtime_query(&located);
             match child_runtime(
                 state,
@@ -1638,6 +1647,11 @@ async fn native_bench_run(
             }
         }
     };
+    bench_run_response(outcome)
+}
+
+#[cfg(feature = "native-bench-runs")]
+fn bench_run_response(outcome: bench_runs::Outcome) -> Response {
     match outcome {
         bench_runs::Outcome::Json(status, bytes) => (
             StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
