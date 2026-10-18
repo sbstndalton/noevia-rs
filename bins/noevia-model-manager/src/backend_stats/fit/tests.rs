@@ -199,3 +199,39 @@ fn non_finite_floats_follow_each_rendering() {
         "[{\"name\":\"llama-a\",\"vram_gb\":null,\"verdict\":\"fits\",\"ratio_pct\":0}]"
     );
 }
+
+/// A real Unix HTTP peer that accepts the native Docker request but never answers it.
+#[cfg(feature = "native-section-autoconfig")]
+pub(crate) fn hung_stats(
+    dir: &Path,
+) -> (
+    BackendStats,
+    Arc<std::sync::atomic::AtomicUsize>,
+    tokio::task::JoinHandle<()>,
+) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::AsyncReadExt;
+    let socket = dir.join("qa-docker.sock");
+    let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    let server = tokio::spawn(async move {
+        let mut peers = tokio::task::JoinSet::new();
+        loop {
+            tokio::select! {
+                connection = listener.accept() => {
+                    let (mut stream, _) = connection.unwrap();
+                    seen.fetch_add(1, Ordering::Relaxed);
+                    peers.spawn(async move {
+                        let mut bytes = [0; 1024];
+                        while matches!(stream.read(&mut bytes).await, Ok(n) if n > 0) {}
+                    });
+                }
+                _ = peers.join_next(), if !peers.is_empty() => {}
+            }
+        }
+    });
+    let mut stats = stats_for(&fixture()["repo"][0], dir);
+    stats.docker = Arc::new(crate::docker::UnixDocker { socket });
+    (stats, calls, server)
+}

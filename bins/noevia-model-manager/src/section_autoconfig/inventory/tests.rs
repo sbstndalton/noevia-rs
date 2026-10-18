@@ -143,6 +143,12 @@ async fn the_route_keeps_the_child_list_when_it_cannot_build_its_own() {
     };
     let child_only = answer(None).await;
     assert_eq!(child_only.0, 200);
+    let positive_dir = tempfile::tempdir().unwrap();
+    assert_ne!(
+        answer(Some(Arc::new(stats_for(fit_case, positive_dir.path())))).await,
+        child_only,
+        "the unmodified baseline must actually replace the child list"
+    );
     let long: Vec<serde_json::Value> = (0..=model_autoconfig::baseline::MAX_ARGS)
         .map(|i| serde_json::Value::String(format!("--synthetic-{i}")))
         .collect();
@@ -159,8 +165,52 @@ async fn the_route_keeps_the_child_list_when_it_cannot_build_its_own() {
 }
 
 #[test]
-fn each_fallback_reason_is_logged_once() {
+fn fallback_reasons_log_again_at_powers_of_ten() {
     assert!(fell_back("a synthetic reason for this test"));
-    assert!(!fell_back("a synthetic reason for this test"));
+    for _ in 2..10 {
+        assert!(!fell_back("a synthetic reason for this test"));
+    }
+    assert!(fell_back("a synthetic reason for this test"));
     assert!(fell_back("another synthetic reason for this test"));
+}
+
+#[tokio::test]
+async fn a_hung_docker_socket_keeps_the_child_inventory_and_repeated_reads_return_promptly() {
+    use crate::backend_stats::fit::tests::hung_stats;
+    use crate::section_autoconfig::{tests::first_case, Runtime};
+    use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
+    let dir = tempfile::tempdir().unwrap();
+    let (stats, calls, peer) = hung_stats(dir.path());
+    let models = tempfile::tempdir().unwrap();
+    let (autoconfig, _) = first_case(models.path());
+    autoconfig.set_stats(Arc::new(stats));
+    let child_backends = model_files::json::parse(r#"[{"name":"qa-child"}]"#).unwrap();
+    let mut runtime = Runtime {
+        measured: "{}".into(),
+        history: "[]".into(),
+        prompt_tps: 0.0,
+        backends: child_backends.clone(),
+    };
+    let started = Instant::now();
+    tokio::time::timeout(Duration::from_secs(20), autoconfig.inventory(&mut runtime))
+        .await
+        .unwrap();
+    assert!(started.elapsed() >= Duration::from_secs(9));
+    assert!(started.elapsed() < Duration::from_secs(20));
+    assert_eq!(shown_json(&runtime.backends), shown_json(&child_backends));
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    let retry = Instant::now();
+    for _ in 0..10 {
+        tokio::time::timeout(Duration::from_secs(20), autoconfig.inventory(&mut runtime))
+            .await
+            .unwrap();
+        assert_eq!(shown_json(&runtime.backends), shown_json(&child_backends));
+    }
+    assert!(
+        retry.elapsed() < Duration::from_secs(2),
+        "cooldown must not repeat the ten-second read"
+    );
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    peer.abort();
 }

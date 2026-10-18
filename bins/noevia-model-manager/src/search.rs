@@ -1379,28 +1379,35 @@ impl Search {
         else {
             return back("a negative projector size");
         };
-        let inventory = match tokio::time::timeout(
-            estimates::INVENTORY_TIMEOUT,
-            source.stats.inventory(),
-        )
-        .await
+        // Reject an unreadable summary before Docker discovery can spend the inventory deadline.
+        // The summary (up to 8 MiB) stays on the blocking worker.
+        let text = summary.map(str::to_owned);
+        let parsed = self
+            .blocking(move || match text.as_deref() {
+                Some(text) => estimates::summary(text)
+                    .map(Some)
+                    .ok_or("a summary this side does not read"),
+                None => Ok(None),
+            })
+            .await;
+        let summary = match parsed {
+            Ok(Ok(summary)) => summary,
+            Ok(Err(class)) => return back(class),
+            Err(_) => return back("the blocking work failed or was cancelled"),
+        };
+        let inventory = match source
+            .stats
+            .fallback_reads
+            .run(source.stats.inventory())
+            .await
         {
             Ok(Some(inventory)) => inventory,
             Ok(None) => return back("HOST_RAM_RESERVE_GB is not a value this side reads"),
             Err(_) => return back("Docker did not answer in time"),
         };
         let descriptors = source.stats.estimate_descriptors(&inventory);
-        let text = summary.map(str::to_owned);
-        // The summary (up to 8 MiB) is parsed on the blocking thread with the analysis.
         let answer = self
             .blocking(move || {
-                let summary = match text.as_deref() {
-                    Some(text) => match estimates::summary(text) {
-                        Some(v) => Some(v),
-                        None => return Err("a summary this side does not read"),
-                    },
-                    None => None,
-                };
                 estimates::groups(
                     &asks,
                     mmproj,

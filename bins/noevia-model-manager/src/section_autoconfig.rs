@@ -221,7 +221,7 @@ impl SectionAutoconfig {
         let Some(stats) = self.stats.get() else {
             return;
         };
-        match tokio::time::timeout(inventory::TIMEOUT, stats.descriptors()).await {
+        match stats.fallback_reads.run(stats.descriptors()).await {
             Ok(Ok(descriptors)) => match inventory::backend_list(&descriptors) {
                 Some(list) => runtime.backends = list,
                 None => {
