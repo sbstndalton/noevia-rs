@@ -140,7 +140,7 @@ pub(crate) fn child(command: &mut tokio::process::Command, selection: &Selection
 }
 
 /// The native route, when it is native.
-#[cfg(feature = "native-section-autoconfig")]
+#[cfg(all(feature = "native-section-autoconfig", feature = "native-routing"))]
 pub(crate) fn state(
     selection: &Selection,
 ) -> Option<std::sync::Arc<noevia_model_manager::section_autoconfig::SectionAutoconfig>> {
