@@ -86,15 +86,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json, Router,
 };
-#[cfg(any(
-    test,
-    feature = "native-model-detail",
-    feature = "native-bench-runs",
-    feature = "native-benchmark-overview",
-    feature = "native-downloads",
-    feature = "native-section-writes",
-    feature = "native-settings-write"
-))]
+#[cfg(test)]
 use futures_util::StreamExt;
 use regex::Regex;
 use serde_json::json;
@@ -1730,33 +1722,41 @@ async fn model_detail_runtime(
                 backend_stats::Fail::Refused => model_detail::Outcome::Refused,
             });
     }
-    let query = model_detail::runtime_query(located);
-    let mut request = state.legacy.get(format!(
-        "{}{}?{query}",
-        state.legacy_base,
-        model_detail::RUNTIME_PATH
-    ));
-    if !state.token.is_empty() {
-        request = request.header("x-model-loader-token", &state.token);
-    }
-    let response = request
-        .send()
-        .await
-        .map_err(|_| model_detail::Outcome::Unavailable)?;
-    let status = response.status();
-    let mut chunks = response.bytes_stream();
-    let mut bytes = Vec::new();
-    while let Some(chunk) = chunks.next().await {
-        let chunk = chunk.map_err(|_| model_detail::Outcome::Unavailable)?;
-        if bytes.len().saturating_add(chunk.len()) > model_detail::RUNTIME_CAP {
-            return Err(model_detail::Outcome::Unavailable);
+    #[cfg(test)]
+    {
+        let query = model_detail::runtime_query(located);
+        let mut request = state.legacy.get(format!(
+            "{}{}?{query}",
+            state.legacy_base,
+            model_detail::RUNTIME_PATH
+        ));
+        if !state.token.is_empty() {
+            request = request.header("x-model-loader-token", &state.token);
         }
-        bytes.extend_from_slice(&chunk);
+        let response = request
+            .send()
+            .await
+            .map_err(|_| model_detail::Outcome::Unavailable)?;
+        let status = response.status();
+        let mut chunks = response.bytes_stream();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = chunks.next().await {
+            let chunk = chunk.map_err(|_| model_detail::Outcome::Unavailable)?;
+            if bytes.len().saturating_add(chunk.len()) > model_detail::RUNTIME_CAP {
+                return Err(model_detail::Outcome::Unavailable);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        match status {
+            StatusCode::OK => Ok(bytes),
+            StatusCode::INTERNAL_SERVER_ERROR => Err(model_detail::Outcome::Failed),
+            _ => Err(model_detail::Outcome::Unavailable),
+        }
     }
-    match status {
-        StatusCode::OK => Ok(bytes),
-        StatusCode::INTERNAL_SERVER_ERROR => Err(model_detail::Outcome::Failed),
-        _ => Err(model_detail::Outcome::Unavailable),
+    #[cfg(not(test))]
+    {
+        let _ = (state, located);
+        Err(model_detail::Outcome::Refused)
     }
 }
 
@@ -2412,6 +2412,12 @@ async fn forward(_state: Arc<StateData>, req: Request) -> Response {
             "Native route owner is unavailable",
         );
     }
+    if ["GET", "POST", "PUT", "DELETE"]
+        .iter()
+        .any(|method| python_owned(method, req.uri().path()))
+    {
+        return detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed");
+    }
     detail(StatusCode::NOT_FOUND, "Not Found")
 }
 
@@ -2793,7 +2799,15 @@ async fn native_benchmark_overview(
     {
         Ok(job) if benchmark_overview::job_object(&job) => job,
         Ok(_) | Err(true) => return internal_error(),
-        Err(false) => return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable"),
+        Err(false) => {
+            #[cfg(test)]
+            return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable");
+            #[cfg(not(test))]
+            return detail(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Native benchmark runtime is unavailable",
+            );
+        }
     };
     match benchmark_overview::render(&local, &backends, &job) {
         Some(bytes) => (
@@ -3161,48 +3175,64 @@ async fn native_downloads(
                     ),
                 };
             }
-            let (parts, body) = req.into_parts();
-            let Ok(bytes) = to_bytes(body, REQUEST_CAP).await else {
-                return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
-            };
-            let target = parts.uri.path_and_query().map_or("/", |p| p.as_str());
-            let mut request = state
-                .legacy
-                .post(format!("{}{target}", state.legacy_base))
-                .header(downloads::PLAN_HEADER, "1")
-                .body(bytes);
-            if let Some(content_type) = parts.headers.get("content-type") {
-                request = request.header("content-type", content_type);
-            }
-            if !state.token.is_empty() {
-                request = request.header("x-model-loader-token", &state.token);
-            }
-            let Ok(response) = request.send().await else {
-                return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable");
-            };
-            let status = response.status();
-            let mut chunks = response.bytes_stream();
-            let mut answer = Vec::new();
-            while let Some(chunk) = chunks.next().await {
-                let Ok(chunk) = chunk else {
-                    return detail(StatusCode::BAD_GATEWAY, "Python-owned response unavailable");
+            #[cfg(test)]
+            {
+                let (parts, body) = req.into_parts();
+                let Ok(bytes) = to_bytes(body, REQUEST_CAP).await else {
+                    return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
                 };
-                if answer.len().saturating_add(chunk.len()) > downloads::PLAN_CAP {
-                    return detail(
-                        StatusCode::BAD_GATEWAY,
-                        "Python-owned response exceeded limit",
-                    );
+                let target = parts.uri.path_and_query().map_or("/", |p| p.as_str());
+                let mut request = state
+                    .legacy
+                    .post(format!("{}{target}", state.legacy_base))
+                    .header(downloads::PLAN_HEADER, "1")
+                    .body(bytes);
+                if let Some(content_type) = parts.headers.get("content-type") {
+                    request = request.header("content-type", content_type);
                 }
-                answer.extend_from_slice(&chunk);
+                if !state.token.is_empty() {
+                    request = request.header("x-model-loader-token", &state.token);
+                }
+                let Ok(response) = request.send().await else {
+                    return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable");
+                };
+                let status = response.status();
+                let mut chunks = response.bytes_stream();
+                let mut answer = Vec::new();
+                while let Some(chunk) = chunks.next().await {
+                    let Ok(chunk) = chunk else {
+                        return detail(
+                            StatusCode::BAD_GATEWAY,
+                            "Python-owned response unavailable",
+                        );
+                    };
+                    if answer.len().saturating_add(chunk.len()) > downloads::PLAN_CAP {
+                        return detail(
+                            StatusCode::BAD_GATEWAY,
+                            "Python-owned response exceeded limit",
+                        );
+                    }
+                    answer.extend_from_slice(&chunk);
+                }
+                if status == StatusCode::INTERNAL_SERVER_ERROR {
+                    return internal_error();
+                }
+                let plan = match (status, downloads::parse_plan(&answer)) {
+                    (StatusCode::OK, Some(plan)) => plan,
+                    _ => {
+                        return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable")
+                    }
+                };
+                download_plan_response(table, plan)
             }
-            if status == StatusCode::INTERNAL_SERVER_ERROR {
-                return internal_error();
+            #[cfg(not(test))]
+            {
+                let _ = (state, req);
+                detail(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Native download plan is unavailable",
+                )
             }
-            let plan = match (status, downloads::parse_plan(&answer)) {
-                (StatusCode::OK, Some(plan)) => plan,
-                _ => return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable"),
-            };
-            download_plan_response(table, plan)
         }
     }
 }
