@@ -93,6 +93,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-section-autoconfig") {
                 output.write_all(b"native-section-autoconfig\n")?;
             }
+            if cfg!(feature = "native-telemetry") {
+                output.write_all(b"native-telemetry\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }

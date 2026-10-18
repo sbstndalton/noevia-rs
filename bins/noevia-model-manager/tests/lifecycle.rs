@@ -1103,6 +1103,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         if cfg!(feature = "native-sections") {
             expected.push_str("native-sections\n");
         }
+        if cfg!(feature = "native-db-init") {
+            expected.push_str("native-db-init\n");
+        }
         if cfg!(feature = "native-prompts") {
             expected.push_str("native-prompts\n");
         }
@@ -1130,6 +1133,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         if cfg!(feature = "native-settings-write") {
             expected.push_str("native-settings-write\n");
         }
+        if cfg!(feature = "native-token-test") {
+            expected.push_str("native-token-test\n");
+        }
         if cfg!(feature = "native-backend-control") {
             expected.push_str("native-backend-control\n");
         }
@@ -1151,6 +1157,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         if cfg!(feature = "native-draft-heads") {
             expected.push_str("native-draft-heads\n");
         }
+        if cfg!(feature = "native-bench-observe") {
+            expected.push_str("native-bench-observe\n");
+        }
         if cfg!(feature = "native-backends") {
             expected.push_str("native-backends\n");
         }
@@ -1160,8 +1169,14 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         if cfg!(feature = "native-model-list") {
             expected.push_str("native-model-list\n");
         }
+        if cfg!(feature = "native-safe-defaults") {
+            expected.push_str("native-safe-defaults\n");
+        }
         if cfg!(feature = "native-section-autoconfig") {
             expected.push_str("native-section-autoconfig\n");
+        }
+        if cfg!(feature = "native-telemetry") {
+            expected.push_str("native-telemetry\n");
         }
         // noevia#1925: the production image also advertises native-diagnose (printed last).
         if cfg!(feature = "native-diagnose") {
