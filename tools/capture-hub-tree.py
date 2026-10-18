@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Capture the public `expand=true` tree listing of one Hub repository (noevia#1999).
+"""Capture the public `expand=true` tree listing of one model-hub repository (noevia#1999).
 
     python3 -I tools/capture-hub-tree.py <repo-id> <out.json> [max-pages]
 
-Sends the request the native model manager sends (`GET {HF_API}/models/<repo>/tree/main?recursive=true&expand=true`) and
+Sends the request the native model manager sends (`GET {API}/models/<repo>/tree/main?recursive=true&expand=true`) and
 follows each `Link: <...>; rel="next"` header like `hf.repo_detail`, at most `max-pages` pages (default 40, the
 manager's `_TREE_MAX_PAGES`). Public metadata only: no token or other credential is ever sent, and no model file
 is requested. The pages are written verbatim, as the Hub sent them, inside a small wrapper object
@@ -18,6 +18,7 @@ import sys
 import time
 import urllib.request
 
+# The model-hub API endpoint: the same value as HUB_API in bins/noevia-model-manager/src/hub_page.rs.
 API = "https://huggingface.co/api"
 NEXT = re.compile(r'<([^>]+)>\s*;\s*rel="next"')
 

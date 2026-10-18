@@ -60,7 +60,7 @@ pub const REFUSAL: &str = "Native search is unavailable";
 pub const RUNTIME_PATH: &str = "/api/v1/internal/search-runtime";
 pub const REPO_RUNTIME_PATH: &str = "/api/v1/internal/search-repo-runtime";
 /// `hf.HF_API` and `hf.HF_RESOLVE`.
-pub const HF_API: &str = "https://huggingface.co/api";
+pub const HF_API: &str = crate::hub_page::HUB_API;
 pub const HF_RESOLVE: &str = "https://huggingface.co";
 /// The child's private-call answers are read up to this size.
 const CHILD_CAP: usize = 16 * 1024 * 1024;

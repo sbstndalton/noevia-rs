@@ -26,7 +26,7 @@ use std::{
 };
 
 /// `hf.HF_API`.
-pub const HF_API: &str = "https://huggingface.co/api";
+pub const HF_API: &str = crate::hub_page::HUB_API;
 /// Most download records handled; more answers 500 instead of thousands of Hub requests.
 pub const RECORD_CAP: usize = 4096;
 /// httpx's `timeout=15.0` (connect and each read).
@@ -564,8 +564,8 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
     use super::*;
     use crate::hub_page::measure::{
-        charged, filled, fixture_pages, heap, peak_bound, read_page, GGUF_LARGE, MIB,
-        PICKLE_IMPORTS,
+        bound, charged, filled, fixture_pages, heap, nodes, peak_bound, read_page, tree_bound_of,
+        tree_per_node, GGUF_LARGE, MIB, PICKLE_IMPORTS,
     };
     use crate::hub_page::PAGE_NODES;
 
@@ -725,8 +725,9 @@ mod tests {
     /// are copied whole. Measured by buffer capacities, with the output vector's previous buffer
     /// (kept while it grows), the shapes below hold 13 to 88 MiB, the worst being the page that
     /// combines both (a date of nested arrays beside long paths). The test bounds each shape at
-    /// 90 MiB, and every shape (so every admitted page) under `peak_bound()`, 110.7 MiB, derived
-    /// from the limits (noevia#2013) and reported in `docs/native-check-updates.md`.
+    /// 90 MiB as a sanity check. The general bound (`peak_bound()`, under 111 MiB) is derived in
+    /// `hub_page/measure.rs` (noevia#2013), not established by these shapes; see
+    /// `the_derived_bound_holds_per_page`.
     #[tokio::test]
     async fn entries_beside_the_tree_are_bounded() {
         let nested_unit = format!("{}1{}, ", "[".repeat(500), "]".repeat(500));
@@ -792,18 +793,88 @@ mod tests {
                 together as f64 / MIB as f64
             );
             assert!(together <= 90 * MIB, "{name}: {together}");
-            // And the general bound, derived from the limits rather than from these shapes.
-            assert!(
-                together <= peak_bound(),
-                "{name}: {together} > {}",
-                peak_bound()
-            );
             worst = worst.max(together);
         }
-        eprintln!("general bound: {:.1} MiB", peak_bound() as f64 / MIB as f64);
         // The worst shape measured 88.3 MiB, past the 84 MiB of the parse (page + tree), which
         // left the output out. No lower bound is asserted: a leaner parser must not fail this.
         eprintln!("worst: {:.1} MiB", worst as f64 / MIB as f64);
+    }
+
+    /// noevia#2013: the derived bound, `bound(nodes, string bytes)`, holds for each of these
+    /// small pages with its own node count, so a wrong per-node constant fails here and not only
+    /// at the limits. Each shape is checked bare and as the `date` of a file entry (the output
+    /// then copies it). The tree term is also checked from below on the shapes that stress it.
+    #[tokio::test]
+    async fn the_derived_bound_holds_per_page() {
+        let nested =
+            |depth: usize, leaf: &str| format!("{}{leaf}{}", "[".repeat(depth), "]".repeat(depth));
+        let deep_obj = |depth: usize| format!("{}1{}", "{\"k\":".repeat(depth), "}".repeat(depth));
+        let list = |item: String, n: usize| format!("[{}]", vec![item; n].join(","));
+        // (name, page, the tree must come within 10 % of the bound's node term)
+        let shapes: Vec<(&str, String, bool)> = vec![
+            ("[1] repeated", list("[1]".into(), 5000), false),
+            ("{\"\":1} repeated", list("{\"\":1}".into(), 5000), false),
+            ("{\"k\":1} repeated", list("{\"k\":1}".into(), 5000), false),
+            ("deep arrays", list(nested(500, "1"), 20), true),
+            ("deep single-child arrays, one item", nested(500, "1"), true),
+            ("deep objects", list(deep_obj(500), 20), false),
+            ("numbers", list("1".into(), 20_000), false),
+            (
+                "long strings",
+                list(format!("\"{}\"", "a".repeat(4097)), 50),
+                false,
+            ),
+            (
+                "escaped strings",
+                list(format!("\"{}\"", "\\u00e9".repeat(300)), 50),
+                false,
+            ),
+        ];
+        let mut pages: Vec<(String, String, bool)> = Vec::new();
+        for (name, shape, tight) in shapes {
+            pages.push((name.to_owned(), shape.clone(), tight));
+            pages.push((
+                format!("{name} as a date"),
+                format!("[{}]", file("\"a\"", &shape)),
+                false,
+            ));
+        }
+        for (name, fixture) in [("gguf", GGUF_LARGE), ("pickle", PICKLE_IMPORTS)] {
+            for (i, page) in fixture_pages(fixture).into_iter().enumerate() {
+                pages.push((
+                    format!("{name} page {i}"),
+                    String::from_utf8(page).unwrap(),
+                    false,
+                ));
+            }
+        }
+        for (name, page, tight) in pages {
+            let body = read_page(page.as_bytes()).await.unwrap();
+            let tree = parse_page(body).unwrap_or_else(|| panic!("{name} was refused"));
+            let n = nodes(&tree);
+            let held = heap(&tree);
+            let out = match &tree {
+                Json::Arr(list) => collect(list).unwrap_or_default(),
+                _ => Vec::new(),
+            };
+            let growing = charged(out.capacity() / 2 * std::mem::size_of::<(String, Json)>());
+            let together = held + output_heap(&out) + growing;
+            let limit = bound(n, page.len());
+            assert!(held <= tree_bound_of(n, page.len()), "{name}: tree {held}");
+            assert!(
+                together <= limit,
+                "{name}: {together} > {limit} ({n} nodes)"
+            );
+            if tight {
+                // Single-child arrays are the shape the per-node term is derived from.
+                assert!(
+                    held * 10 >= n * tree_per_node() * 9,
+                    "{name}: {held} for {n} nodes"
+                );
+            }
+        }
+        // The figure `docs/native-check-updates.md` states.
+        assert!(peak_bound() > 110 * MIB && peak_bound() < 111 * MIB);
     }
 
     /// noevia#1999: every file entry of the real Hub pages (`tests/fixtures/hub-tree`) gives one

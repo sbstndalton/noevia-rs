@@ -54,7 +54,7 @@ use std::{
 /// Body of the native refusal (503) when the bounded reader cannot answer exactly.
 pub const REFUSAL: &str = "Native draft-head read is unavailable";
 /// `hf.HF_API`.
-pub const HF_API: &str = "https://huggingface.co/api";
+pub const HF_API: &str = crate::hub_page::HUB_API;
 const NOT_FOUND: &str = "no model file for this section";
 const REMOTE_ERROR: &str = "Could not reach Hugging Face to list draft models.";
 /// `autoconfig_core.MODE_SPEC_PROFILE` as FastAPI writes it.
