@@ -17,6 +17,8 @@ pub mod diagnose;
 #[cfg(feature = "native-diagnose")]
 pub mod diagnose_docker;
 pub mod docker;
+#[cfg(feature = "native-download-plan")]
+pub mod download_plan;
 #[cfg(feature = "native-download-targets")]
 pub mod download_targets;
 #[cfg(feature = "native-downloads")]
@@ -2608,6 +2610,7 @@ async fn native_benchmark_overview(
 /// A FastAPI `dict` body read exactly as the prompt writer reads it (content type, CPython JSON
 /// encodings, the 1 MiB cap and the same 422 bodies).
 #[cfg(any(
+    feature = "native-download-plan",
     feature = "native-badges",
     feature = "native-section-writes",
     feature = "native-settings-write",
@@ -2622,6 +2625,7 @@ async fn fastapi_dict_body(req: Request) -> Result<prompts::JsonValue, Response>
 /// [`fastapi_dict_body`] with a larger read cap; a body over `over.0` bytes answers `over.1`
 /// (the route's own size refusal) before it is parsed.
 #[cfg(any(
+    feature = "native-download-plan",
     feature = "native-badges",
     feature = "native-section-writes",
     feature = "native-settings-write",
@@ -2938,6 +2942,27 @@ async fn native_downloads(
             json_bytes(StatusCode::OK, format!("{{\"cleared\":{}}}", table.clear()))
         }
         DownloadRoute::Start => {
+            #[cfg(feature = "native-download-plan")]
+            if let Some(planner) = table.planner() {
+                let section = req
+                    .uri()
+                    .path()
+                    .strip_prefix("/api/v1/sections/")
+                    .and_then(|p| p.strip_suffix("/draft-heads/download"))
+                    .map(py_unquote);
+                let body = match fastapi_dict_body(req).await {
+                    Ok(body) => body,
+                    Err(response) => return response,
+                };
+                return match planner.plan(section, body).await {
+                    Ok(plan) => download_plan_response(table, plan),
+                    Err(download_plan::Error::Failed) => internal_error(),
+                    Err(download_plan::Error::Refused) => detail(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Native download plan is unavailable",
+                    ),
+                };
+            }
             let (parts, body) = req.into_parts();
             let Ok(bytes) = to_bytes(body, REQUEST_CAP).await else {
                 return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
@@ -2979,27 +3004,32 @@ async fn native_downloads(
                 (StatusCode::OK, Some(plan)) => plan,
                 _ => return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable"),
             };
-            let Ok(code) = StatusCode::from_u16(plan.status) else {
-                return internal_error();
-            };
-            if code == StatusCode::OK {
-                match table.queue(plan.jobs) {
-                    downloads::Queued::Done => {}
-                    downloads::Queued::Raised => return internal_error(),
-                    downloads::Queued::Deleting => {
-                        return detail(StatusCode::CONFLICT, downloads::DELETE_IN_PROGRESS)
-                    }
-                    downloads::Queued::Full => {
-                        return detail(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "too many downloads are held; clear the finished ones",
-                        )
-                    }
-                }
-            }
-            json_bytes(code, plan.body)
+            download_plan_response(table, plan)
         }
     }
+}
+
+#[cfg(feature = "native-downloads")]
+fn download_plan_response(table: &Arc<downloads::Downloads>, plan: downloads::Plan) -> Response {
+    let Ok(code) = StatusCode::from_u16(plan.status) else {
+        return internal_error();
+    };
+    if code == StatusCode::OK {
+        match table.queue(plan.jobs) {
+            downloads::Queued::Done => {}
+            downloads::Queued::Raised => return internal_error(),
+            downloads::Queued::Deleting => {
+                return detail(StatusCode::CONFLICT, downloads::DELETE_IN_PROGRESS)
+            }
+            downloads::Queued::Full => {
+                return detail(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "too many downloads are held; clear the finished ones",
+                )
+            }
+        }
+    }
+    json_bytes(code, plan.body)
 }
 
 /// Explicit Python-owned endpoint/method table. Native-owned paths never enter this table.

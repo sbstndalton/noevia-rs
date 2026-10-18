@@ -49,6 +49,7 @@ native-section-autoconfig = ["native-draft-heads"]
 # noevia#1318 step 3d: the section autoconfig's telemetry (log ingest and the telemetry store)
 # natively, so the route no longer asks the child; this process is then the only telemetry writer.
 native-telemetry = ["native-section-autoconfig", "native-backends", "dep:backend-telemetry", "dep:indexmap"]
+native-download-plan = ["native-downloads", "native-download-targets", "native-draft-heads"]
 [lints]
 workspace = true
 [dependencies]
