@@ -265,12 +265,12 @@
     "original_count": 6,
     "archived": [
       "unowned_requests_are_not_answered_natively",
-      "without_the_native_search_the_routes_are_forwarded"
+      "without_the_native_search_the_routes_are_forwarded",
+      "actual_python_differential_through_the_router",
+      "refusal_bad_gateway_and_failure_answers"
     ],
     "integration_remaining": [
       "route_shapes",
-      "actual_python_differential_through_the_router",
-      "refusal_bad_gateway_and_failure_answers",
       "a_client_cannot_reach_the_private_search_calls"
     ],
     "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",

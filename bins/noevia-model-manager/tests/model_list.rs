@@ -394,8 +394,7 @@ mod linux {
     // While this process owns the download table, the overview counts its jobs, not the child's.
 
     // noevia#1318 step 1b: while this process samples the backends, the live fields are its own
-    // (no private runtime call reaches the child); the list still waits once for the child's
-    // readiness (its startup creates the badge store) and the overview counts the native table.
+    // (no private runtime or readiness call reaches the child), and the overview counts the native table.
     #[cfg(all(feature = "native-backends", feature = "native-downloads"))]
     #[tokio::test]
     async fn native_live_fields_replace_the_private_calls() {
@@ -447,9 +446,10 @@ mod linux {
         };
         let chips = r#""loadedOn":[],"fit":[{"name":"llama-a","vram_gb":12.0,"verdict":"fits","ratio_pct":0}]"#;
 
-        // The list asks the child only for startup readiness, once per instance.
+        // Ready owns schema/seed initialization. Every native list instance needs no child.
         let native = list(&models, &ini, &data, "", (1, 0));
-        let (base, seen) = child(200, r#"{"startup_ready":1}"#.into()).await;
+        let trap = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", trap.local_addr().unwrap());
         let answer = send(
             with(native.clone(), &base, false),
             "GET",
@@ -464,19 +464,20 @@ mod linux {
             String::from_utf8_lossy(&answer.body)
         );
         assert!(String::from_utf8_lossy(&answer.body).contains(chips));
-        let (head, _) = seen.await.unwrap();
         assert!(
-            head.starts_with("GET /api/v1/internal/startup-ready "),
-            "{head}"
+            tokio::time::timeout(std::time::Duration::from_millis(30), trap.accept())
+                .await
+                .is_err(),
+            "native list attempted a startup-ready RPC"
         );
         let again = send(with(native, &closed, false), "GET", "/api/v1/models", true).await;
         assert_eq!(again.status, 200);
         assert!(String::from_utf8_lossy(&again.body).contains(chips));
-        // Before the child has ever answered, the list keeps the forwarded route's 502.
+        // A fresh list also answers from native state with a permanently closed child port.
         let fresh = list(&models, &ini, &data, "", (1, 0));
         let answer = send(with(fresh, &closed, false), "GET", "/api/v1/models", true).await;
-        assert_eq!(answer.status, 502);
-        assert_eq!(answer.body, UNAVAILABLE);
+        assert_eq!(answer.status, 200);
+        assert!(String::from_utf8_lossy(&answer.body).contains(chips));
 
         // The overview needs no child at all while the download table is native.
         let answer = send(
@@ -492,8 +493,7 @@ mod linux {
         assert_eq!(body["backends"][0]["name"], "llama-a");
         assert_eq!(body["backends"][0]["status"], "docker unreachable");
         assert_eq!(body["backends"][0].as_object().unwrap().len(), 14);
-        // Without the native table the child's count (its overview call) is still asked.
-        let (base, seen) = child(200, r#"{"backends":[],"activeDownloads":3}"#.into()).await;
+        // A missing native download owner refuses instead of asking for a child count.
         let answer = send(
             with(list(&models, &ini, &data, "", (1, 0)), &base, false),
             "GET",
@@ -501,9 +501,12 @@ mod linux {
             true,
         )
         .await;
-        let body: Value = serde_json::from_slice(&answer.body).unwrap();
-        assert_eq!(body["activeDownloads"], 3);
-        let (head, _) = seen.await.unwrap();
-        assert!(head.starts_with(&format!("GET {OVERVIEW_RUNTIME} ")));
+        assert_eq!(answer.status, 503);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(30), trap.accept())
+                .await
+                .is_err(),
+            "missing native download table attempted a private overview RPC"
+        );
     }
 }

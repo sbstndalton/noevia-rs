@@ -173,6 +173,26 @@ fn start_config(
     }
     child
 }
+
+fn assert_no_children(pid: u32) {
+    let mut observed = 0;
+    for task in fs::read_dir(format!("/proc/{pid}/task")).unwrap() {
+        let task = task.unwrap();
+        match fs::read_to_string(task.path().join("children")) {
+            Ok(children) => {
+                observed += 1;
+                assert!(
+                    children.trim().is_empty(),
+                    "native service spawned a subprocess: {children}"
+                );
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            Err(error) => panic!("cannot inspect process children: {error}"),
+        }
+    }
+    assert!(observed > 0, "no service thread was inspected");
+}
+
 fn assert_lock_held(root: &std::path::Path) {
     let lock = fs::File::options()
         .read(true)
@@ -245,16 +265,7 @@ Connection: close
     assert!(request("GET", "/api/v1/prompts", "", true).starts_with("HTTP/1.1 200"));
     assert!(request("GET", "/api/v1/%70rompts/", "", true).starts_with("HTTP/1.1 307"));
     assert!(request("PATCH", "/api/v1/prompts", "", true).contains("allow: GET"));
-    let children = fs::read_to_string(format!(
-        "/proc/{}/task/{}/children",
-        child.0.id(),
-        child.0.id()
-    ))
-    .unwrap();
-    assert!(
-        children.trim().is_empty(),
-        "native service spawned a subprocess"
-    );
+    assert_no_children(child.0.id());
     assert!(
         !root.path().join("models/models.ini").exists(),
         "bootstrap fabricated a preset"

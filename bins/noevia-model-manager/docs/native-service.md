@@ -61,7 +61,7 @@ Compose/pins remain release-preparation scope. N5 remains sysfs-only; no real jo
 ## Preserved qualification
 
 retirement-test-mapping.json records every original integration source hash and
-selected historical test name. The 52 private-input/forwarding contracts live in
+selected historical test name. The 54 private-input/forwarding contracts live in
 tests/historical_oracles and compile only into the library's cfg(test) build.
 Their recorded API response, file-tree, revision and source-fixture assertions
 remain unchanged. The required combined-runtime runner compares the exact named

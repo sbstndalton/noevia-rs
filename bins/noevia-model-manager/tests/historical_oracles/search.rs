@@ -1,4 +1,4 @@
-// Archived pre-retirement private-input oracle; cfg(test) library only.
+// Frozen private-input source oracle; library cfg(test) only.
 //! noevia#1318 slice 14: native `GET /api/v1/search` and `GET /api/v1/search/repo` through the
 //! real router.
 //!
@@ -9,8 +9,8 @@
 //! unreachable child and a failed handler are checked beside it. Every name is synthetic.
 #![cfg(feature = "native-search")]
 #![allow(
-    unused_imports,
     dead_code,
+    unused_imports,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -392,8 +392,169 @@ fn sorted(seen: &Seen) -> Value {
     Value::Array(rows)
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn actual_python_differential_through_the_router() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("../fixtures/search-python.v1.json")).unwrap();
+    let mut compared = 0;
+    for case in fixture["cases"].as_array().unwrap() {
+        let id = case["id"].as_str().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        store(dir.path(), &fixture["schema"], &case["seed"]);
+        let answers: Answers = Arc::new(Mutex::new(case["hub"].clone()));
+        let cdn_answers: Answers = Arc::new(Mutex::new(case["cdn"].clone()));
+        let (cdn_base, cdn_seen, cdn_task) = hub(cdn_answers, String::new()).await;
+        let (base, seen, hub_task) = hub(answers.clone(), cdn_base).await;
+        let (child_base, script, child_task) = child().await;
+        let hub_base = if case["hub_down"].as_bool() == Some(true) {
+            closed_port()
+        } else {
+            base
+        };
+        let wait = Duration::from_millis(1000);
+        let search = Search::with(
+            dir.path(),
+            Hub {
+                api: format!("{hub_base}/api"),
+                resolve: hub_base.clone(),
+            },
+            &child_base,
+            TOKEN,
+            clock,
+            Timeouts {
+                search: wait,
+                tree: wait,
+                header: wait,
+                avatar: wait,
+                listings: Duration::from_secs(60),
+            },
+        )
+        .unwrap();
+        let shared = state(Some(search), &closed_port());
+        for (index, step) in case["results"].as_array().unwrap().iter().enumerate() {
+            let get = step["get"].as_str().unwrap();
+            CLOCK.store(step["now"].as_f64().unwrap().to_bits(), Ordering::SeqCst);
+            seen.lock().unwrap().clear();
+            cdn_seen.lock().unwrap().clear();
+            if index > 0 {
+                if let Some(more) = case["then_hub"].as_object() {
+                    let mut all = answers.lock().unwrap();
+                    for (k, v) in more {
+                        all[k.as_str()] = v.clone();
+                    }
+                }
+            }
+            {
+                let mut script = script.lock().unwrap();
+                script.problems.clear();
+                let runtime = &step["runtime"];
+                let slot = (!runtime.is_null()).then(|| runtime.clone());
+                if get.starts_with("/api/v1/search/repo") {
+                    (script.search, script.repo) = (None, slot);
+                } else {
+                    (script.search, script.repo) = (slot, None);
+                }
+            }
+            let (status, kind, body) = call(shared.clone(), "GET", get, true).await;
+            let ctx = format!("{id} {get}");
+            if case["native"] == "refused" {
+                assert_eq!(status, 503, "{ctx}: {body}");
+                assert_eq!(body, json!({ "detail": REFUSAL }).to_string(), "{ctx}");
+                continue;
+            }
+            assert_eq!(
+                u64::from(status),
+                step["status"].as_u64().unwrap(),
+                "{ctx}: {body}"
+            );
+            assert_eq!(kind.as_deref(), step["content_type"].as_str(), "{ctx}");
+            assert_eq!(body, step["body"].as_str().unwrap(), "{ctx}");
+            if case["native_requests"] != "unchecked" {
+                assert_eq!(sorted(&seen), step["requests"], "{ctx}: Hub requests");
+            }
+            if case["cdn"].is_object() {
+                assert_eq!(
+                    sorted(&cdn_seen),
+                    step["cdn_requests"],
+                    "{ctx}: CDN requests"
+                );
+            }
+            assert_eq!(avatars(dir.path()), step["avatars"], "{ctx}: avatar cache");
+            let script = script.lock().unwrap();
+            assert!(script.problems.is_empty(), "{ctx}: {:?}", script.problems);
+            compared += 1;
+        }
+        hub_task.abort();
+        cdn_task.abort();
+        child_task.abort();
+    }
+    assert!(compared >= 150, "{compared}");
+}
+
 // A refusal is the native 503, an unreachable child the forwarded 502, a failed handler the plain
 // 500, and the 422 FastAPI's.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn refusal_bad_gateway_and_failure_answers() {
+    let dir = tempfile::tempdir().unwrap();
+    let fixture: Value =
+        serde_json::from_str(include_str!("../fixtures/search-python.v1.json")).unwrap();
+    store(dir.path(), &fixture["schema"], &Value::Null);
+    let item = json!({"id": "lab-one/m-GGUF", "downloads": 1, "likes": 0, "tags": ["gguf"]});
+    let answer = |body: &Value| {
+        json!({"status": 200, "headers": [["content-type", "application/json"]],
+               "body": body.to_string().bytes().map(|b| format!("{b:02x}")).collect::<String>()})
+    };
+    let models = "/api/models?limit=30&sort=trendingScore&direction=-1&filter=gguf";
+    let answers: Answers = Arc::new(Mutex::new(json!({models: answer(&json!([item]))})));
+    let (base, _, hub_task) = hub(answers, String::new()).await;
+    let search = Search::with(
+        dir.path(),
+        Hub {
+            api: format!("{base}/api"),
+            resolve: base.clone(),
+        },
+        &closed_port(),
+        TOKEN,
+        clock,
+        Timeouts::default(),
+    )
+    .unwrap();
+    let shared = state(Some(search), &closed_port());
+    // The child is down: after the Hub answered, 502.
+    let (status, kind, body) = call(shared.clone(), "GET", "/api/v1/search", true).await;
+    assert_eq!(status, 502, "{body}");
+    assert_eq!(kind.as_deref(), Some("application/json"));
+    assert_eq!(body, r#"{"detail":"Python-owned endpoint unavailable"}"#);
+    // A value pydantic reads in a way this side does not reproduce: the refusal.
+    let (status, kind, body) = call(shared.clone(), "GET", "/api/v1/search?limit=3_0", true).await;
+    assert_eq!(status, 503);
+    assert_eq!(kind.as_deref(), Some("application/json"));
+    assert_eq!(body, json!({ "detail": REFUSAL }).to_string());
+    // FastAPI's 422, and the missing repo.
+    let (status, kind, body) = call(shared.clone(), "GET", "/api/v1/search?vision=zz", true).await;
+    assert_eq!(status, 422);
+    assert_eq!(kind.as_deref(), Some("application/json"));
+    assert!(
+        body.starts_with(r#"{"detail":[{"type":"bool_parsing""#),
+        "{body}"
+    );
+    let (status, _, body) = call(shared.clone(), "GET", "/api/v1/search/repo", true).await;
+    assert_eq!(status, 422, "{body}");
+    // The Hub's own failure for the repository is a 200 with the error (Python's answer).
+    let (status, _, body) = call(
+        shared,
+        "GET",
+        "/api/v1/search/repo?repo=lab-one%2Fm-GGUF",
+        true,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body,
+        r#"{"repo":"lab-one/m-GGUF","error":"Hugging Face returned HTTP 404","groups":[]}"#
+    );
+    hub_task.abort();
+}
 
 // With no native search (the default) the paths are forwarded to the child like any other.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
