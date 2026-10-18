@@ -808,19 +808,25 @@ async fn hub_asked(r: &Rig, needle: &str, count: usize) {
     panic!("the Hub was not asked for {needle}");
 }
 
+fn held(mut answer: J) -> J {
+    answer["hold"] = json!(true);
+    answer
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_listing_fetched_under_the_old_token_is_not_remembered_after_a_change() {
     let mut hub = one_model(&[file("a-Q4_K_M.gguf", GB)]);
-    hub[tree("lab-one/m-GGUF")]["delay"] = json!(2.0);
+    hub[tree("lab-one/m-GGUF")]["hold"] = json!(true);
     let r = rig(hub).await;
     set_token(&r, "first-token");
     let search = r.search.clone();
     let slow = tokio::spawn(async move { search.search(ALL).await });
-    // The listing is on its way under the first token.
+    // The listing is on its way under the first token, and the Hub holds its answer.
     hub_asked(&r, "/tree/", 1).await;
     set_token(&r, "second-token");
-    // A request under the second token moves the generation on.
+    // A request under the second token moves the generation on; only then is the answer let go.
     r.search.gguf_header("o/r", "other.gguf").await.unwrap();
+    r.gauge.released.store(true, Ordering::SeqCst);
     let body = body_of(slow.await.unwrap());
     // The caller still gets what it fetched ...
     assert!(body.contains(r#""path":"a-Q4_K_M.gguf""#), "{body}");
@@ -840,8 +846,8 @@ async fn a_listing_fetched_under_the_old_token_is_not_remembered_after_a_change(
 async fn a_header_fetched_under_the_old_token_is_not_remembered_after_a_change() {
     let header = gguf(&[("arch.context_length", 4, 4096u32.to_le_bytes().to_vec())]);
     let hub = json!({
-        "/o/r/resolve/main/slow.gguf": padded_delay(ans(206, &header), 2.0),
-        "/o/gate/resolve/main/slow.gguf": padded_delay(ans(401, b"{}"), 2.0),
+        "/o/r/resolve/main/slow.gguf": held(ans(206, &header)),
+        "/o/gate/resolve/main/slow.gguf": held(ans(401, b"{}")),
     });
     let r = rig(hub).await;
     set_token(&r, "first-token");
@@ -851,6 +857,7 @@ async fn a_header_fetched_under_the_old_token_is_not_remembered_after_a_change()
     hub_asked(&r, "/resolve/", 2).await;
     set_token(&r, "second-token");
     r.search.gguf_header("o/r", "fast.gguf").await.unwrap();
+    r.gauge.released.store(true, Ordering::SeqCst);
     assert!(
         slow.await.unwrap().unwrap().is_some(),
         "the caller still gets it"
@@ -860,6 +867,30 @@ async fn a_header_fetched_under_the_old_token_is_not_remembered_after_a_change()
     assert!(!cache.map.contains_key("o/r/slow.gguf"));
     assert!(cache.gated.is_empty(), "{:?}", cache.gated);
     assert!(cache.map.contains_key("o/r/fast.gguf"));
+}
+
+/// The answer says what the Hub said even when the cache kept nothing of it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_gated_repository_is_reported_when_its_read_raced_a_token_change() {
+    let hub = json!({
+        tree("lab-one/m-GGUF"): ok(&json!([file("m-Q4_K_M.gguf", GB)])),
+        "/lab-one/m-GGUF/resolve/main/m-Q4_K_M.gguf": held(ans(401, b"{}")),
+    });
+    let r = rig(hub).await;
+    repo_script(&r, 200, r#"{"groups":[{"fit":[]}]}"#);
+    set_token(&r, "first-token");
+    let search = r.search.clone();
+    let slow = tokio::spawn(async move { search.repo("repo=lab-one%2Fm-GGUF").await });
+    hub_asked(&r, "/resolve/", 1).await;
+    set_token(&r, "second-token");
+    r.search.gguf_header("o/r", "other.gguf").await.unwrap();
+    r.gauge.released.store(true, Ordering::SeqCst);
+    let body = body_of(slow.await.unwrap());
+    assert!(
+        body.ends_with(r#""gated":"needs a Hugging Face token (set one in Settings)"}"#),
+        "{body}"
+    );
+    assert!(lock(&r.search.headers).gated.is_empty(), "nothing is kept");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -872,7 +903,7 @@ async fn a_read_that_ends_late_does_not_move_the_token_back() {
     // A read that began before the newest one (its ticket is lower) ends now, having seen the
     // old token: it neither clears nor moves the ledger, and stores nothing.
     lock(&r.search.last_auth).applied = 1_000;
-    r.search.tickets.store(10, Ordering::SeqCst);
+    *r.search.tickets.lock().await = 10;
     set_token(&r, "old-token");
     let (_, epoch) = r.search.auth().await.unwrap();
     assert!(epoch.0.is_none());
@@ -883,6 +914,43 @@ async fn a_read_that_ends_late_does_not_move_the_token_back() {
     set_token(&r, "new-token");
     let (_, epoch) = r.search.auth().await.unwrap();
     assert_eq!(epoch.0, Some(generation));
+}
+
+/// Tickets are issued in the order of the sqlite reads: a read waiting for its turn is behind the
+/// one that holds it, whatever started first, and waits as a task: no blocking job exists yet.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn tickets_follow_the_order_of_the_reads_and_waiters_hold_no_blocking_slot() {
+    use crate::docker::BLOCKING_HOOK;
+    let r = rig(one_model(&[file("a-Q4_K_M.gguf", GB)])).await;
+    set_token(&r, "first-token");
+    let started = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = started.clone();
+    let hook: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        counted.fetch_add(1, Ordering::SeqCst);
+    });
+    BLOCKING_HOOK
+        .scope(hook, async {
+            let guard = r.search.tickets.lock().await;
+            // Many reads wait for their turn ...
+            let waiting = futures_util::future::join_all((0..64).map(|_| r.search.auth()));
+            assert!(
+                tokio::time::timeout(Duration::from_millis(200), waiting)
+                    .await
+                    .is_err(),
+                "the reads wait for their turn"
+            );
+            // ... and none of them has taken a blocking slot.
+            assert_eq!(started.load(Ordering::SeqCst), 0);
+            // The token changes while they wait: a read sees what is stored in its turn.
+            set_token(&r, "second-token");
+            drop(guard);
+            let (auth, _) = r.search.auth().await.unwrap();
+            assert!(matches!(auth, Auth::Header(v) if v.as_bytes() == b"Bearer second-token"));
+            assert_eq!(started.load(Ordering::SeqCst), 1);
+            // The reads dropped while they waited took no number.
+            assert_eq!(*r.search.tickets.lock().await, 1);
+        })
+        .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
