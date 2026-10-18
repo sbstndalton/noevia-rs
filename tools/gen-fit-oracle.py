@@ -224,7 +224,23 @@ def search_cases():
          "meminfo": meminfo(gib_kib(64)), "docker": None, "cache": {}, "files": ["z.gguf"],
          "rows": [("org/z", "z/z.gguf", "done")]},
         {"id": "empty", "env": {}, "meminfo": None, "docker": None, "cache": {}, "files": [], "rows": []},
+        # Budget ties (a declaration and a sample of the same figure) and sub-0.1 figures.
+        {"id": "budget-tie", "env": {"GPU_VRAM": "llama-a:16"}, "meminfo": None,
+         "docker": world([container(52, "llama-a", 52), container(53, "llama-b", 53)],
+                         [image(52, [VULKAN]), image(53, [VULKAN])]),
+         "cache": {"llama-b": ok(gpu(16.0))}, "files": [], "rows": []},
+        {"id": "budget-tiny", "env": {}, "meminfo": None,
+         "docker": world([container(54, "llama-a", 54), container(55, "llama-b", 55)],
+                         [image(54, [VULKAN]), image(55, [VULKAN])]),
+         "cache": {"llama-a": ok(gpu(0.05)), "llama-b": ok(gpu(0.04))}, "files": [], "rows": []},
     ]
+
+
+TRUST_QUANTISERS = ["Synthetic-Mixed", "synthetic-quant-a"]
+TRUST_LABS = ["synthetic-lab-a"]
+TRUST_OWNERS = ["synthetic-quant-a", "Synthetic-Quant-A", "synthetic-mixed", "Synthetic-Mixed",
+                "synthetic-quant-ab", "synthetic-quant", "synthetic-lab-a", "SYNTHETIC-LAB-A", "other"]
+TRUST_MODIFIED = "2026-10-01T00:00:00.000Z"
 
 
 def main() -> None:
@@ -395,13 +411,19 @@ def main() -> None:
                            "rows": [list(row) for row in case["rows"]],
                            "trusted": {"quantisers": SEARCH_QUANTISERS, "labs": SEARCH_LABS},
                            "status": r.status_code, "body": r.text})
+    discover.TRUSTED_LABS = set(TRUST_LABS)
+    trust = {"quantisers": TRUST_QUANTISERS, "labs": TRUST_LABS, "last_modified": TRUST_MODIFIED, "owners": {
+        owner: discover.judge(discover.Candidate(id=f"{owner}/synthetic-repo", owner=owner,
+                                                 last_modified=TRUST_MODIFIED),
+                              budget_gb=8.0, trusted=set(TRUST_QUANTISERS))["trusted"]
+        for owner in TRUST_OWNERS}}
     time.time = real_time
     server.shutdown()
     shutil.rmtree(root, ignore_errors=True)
     sources = {name: hashlib.sha256((app_dir / name).read_bytes()).hexdigest()
                for name in ("api.py", "config.py", "db.py", "discover.py", "helpers.py", "hw.py", "main.py",
                             "services.py")}
-    json.dump({"sources": sources, "cases": out_cases, "runtime": runtime_out, "search": search_out,
+    json.dump({"sources": sources, "cases": out_cases, "runtime": runtime_out, "search": search_out, "trust": trust,
                "reserve_forms": reserve_forms}, sys.stdout, indent=1, sort_keys=True, ensure_ascii=True)
     sys.stdout.write("\n")
 

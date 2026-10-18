@@ -1971,6 +1971,192 @@
      "synthetic-quant-a"
     ]
    }
+  },
+  {
+   "body": "{\"budget\":\"16.0\",\"downloaded\":{},\"quantisers\":[\"synthetic-quant-a\",\"synthetic-quant-b\"],\"labs\":[\"synthetic-lab-a\",\"synthetic-lab-z\"]}",
+   "cache": "{\"llama-b\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 16.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3434343434343434343434343434343434343434343434343434343434343434",
+      "Image": "sha256:b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
+      "Name": "/llama-a",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     },
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3535353535353535353535353535353535353535353535353535353535353535",
+      "Image": "sha256:b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5",
+      "Name": "/llama-b",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-vulkan"
+      ]
+     },
+     {
+      "Id": "sha256:b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-vulkan"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {
+    "GPU_VRAM": "llama-a:16"
+   },
+   "files": [],
+   "id": "budget-tie",
+   "meminfo": null,
+   "rows": [],
+   "status": 200,
+   "trusted": {
+    "labs": [
+     "synthetic-lab-z",
+     "synthetic-lab-a",
+     "synthetic-lab-a"
+    ],
+    "quantisers": [
+     "synthetic-quant-b",
+     "synthetic-quant-a"
+    ]
+   }
+  },
+  {
+   "body": "{\"budget\":\"0.05\",\"downloaded\":{},\"quantisers\":[\"synthetic-quant-a\",\"synthetic-quant-b\"],\"labs\":[\"synthetic-lab-a\",\"synthetic-lab-z\"]}",
+   "cache": "{\"llama-a\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 0.05, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-b\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 0.04, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3636363636363636363636363636363636363636363636363636363636363636",
+      "Image": "sha256:b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+      "Name": "/llama-a",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     },
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3737373737373737373737373737373737373737373737373737373737373737",
+      "Image": "sha256:b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7",
+      "Name": "/llama-b",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-vulkan"
+      ]
+     },
+     {
+      "Id": "sha256:b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-vulkan"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "files": [],
+   "id": "budget-tiny",
+   "meminfo": null,
+   "rows": [],
+   "status": 200,
+   "trusted": {
+    "labs": [
+     "synthetic-lab-z",
+     "synthetic-lab-a",
+     "synthetic-lab-a"
+    ],
+    "quantisers": [
+     "synthetic-quant-b",
+     "synthetic-quant-a"
+    ]
+   }
   }
  ],
  "sources": {
@@ -1982,5 +2168,26 @@
   "hw.py": "476d35c36f7bad94ec1c642c769556773671e5203ccef168be7c6fc1f6ad95ef",
   "main.py": "2b82a445538458f4fa0b587a4a9272e8960a81c6fa811b837c475b57341bd95c",
   "services.py": "8da3d667ce32729fba21c93b52968ef42a4ee77fab24f9412837f781a9bf83e8"
+ },
+ "trust": {
+  "labs": [
+   "synthetic-lab-a"
+  ],
+  "last_modified": "2026-10-01T00:00:00.000Z",
+  "owners": {
+   "SYNTHETIC-LAB-A": true,
+   "Synthetic-Mixed": false,
+   "Synthetic-Quant-A": true,
+   "other": false,
+   "synthetic-lab-a": true,
+   "synthetic-mixed": false,
+   "synthetic-quant": false,
+   "synthetic-quant-a": true,
+   "synthetic-quant-ab": false
+  },
+  "quantisers": [
+   "Synthetic-Mixed",
+   "synthetic-quant-a"
+  ]
  }
 }

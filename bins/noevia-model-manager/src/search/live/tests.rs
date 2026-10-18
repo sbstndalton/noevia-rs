@@ -106,7 +106,7 @@ fn history(data: &Path, rows: &V) {
 async fn the_search_runtime_is_the_childs() {
     let fx = fixture();
     let cases = fx["search"].as_array().unwrap();
-    assert_eq!(cases.len(), 3);
+    assert_eq!(cases.len(), 5);
     for case in cases {
         let id = case["id"].as_str().unwrap();
         let dir = tempfile::tempdir().unwrap();
@@ -174,7 +174,26 @@ async fn before_the_child_has_answered_the_runtime_is_unavailable() {
 fn the_trusted_file_is_strict_and_empty_by_default() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("t.json");
+    // Missing: an error (the child keeps the runtime), never silently empty sets.
+    assert!(load_trusted(&path).is_err());
+    // Explicitly empty: empty sets.
+    std::fs::write(&path, r#"{"quantisers":[],"labs":[]}"#).unwrap();
     assert_eq!(load_trusted(&path), Ok(Trusted::default()));
+    // Not a regular file (a FIFO or a directory) is refused without opening it.
+    let fifo = dir.path().join("fifo");
+    assert!(std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .unwrap()
+        .success());
+    assert!(load_trusted(&fifo).is_err());
+    assert!(load_trusted(dir.path()).is_err());
+    // Entries are kept exactly (no case folding), as Python keeps them.
+    std::fs::write(&path, r#"{"quantisers":["b","a","a","Mixed"],"labs":[]}"#).unwrap();
+    assert_eq!(
+        load_trusted(&path).unwrap().quantisers,
+        vec!["Mixed".to_owned(), "a".into(), "b".into()]
+    );
     std::fs::write(&path, r#"{"quantisers":["b","a","a"],"labs":[]}"#).unwrap();
     assert_eq!(
         load_trusted(&path),
@@ -193,5 +212,46 @@ fn the_trusted_file_is_strict_and_empty_by_default() {
     ] {
         std::fs::write(&path, bad).unwrap();
         assert!(load_trusted(&path).is_err(), "{bad:?}");
+    }
+}
+
+/// `discover.judge`'s trust test against Python's own (`trust` in the fixture): only the owner
+/// is lower-cased, and membership is exact, so a mixed-case entry and a prefix lookalike never
+/// match.
+#[test]
+fn trust_matching_is_pythons() {
+    let fx = fixture();
+    let trust = &fx["trust"];
+    let set = |key: &str| -> HashSet<String> {
+        trust[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect()
+    };
+    let (quantisers, labs) = (set("quantisers"), set("labs"));
+    let answers = trust["owners"].as_object().unwrap();
+    assert!(answers.len() >= 8);
+    for (owner, python) in answers {
+        let candidate = super::super::discover::Candidate {
+            id: format!("{owner}/synthetic-repo"),
+            owner: owner.clone(),
+            downloads: 0,
+            likes: 0,
+            last_modified: trust["last_modified"].as_str().unwrap().to_owned(),
+            tags: vec![],
+            files: Arc::new(vec![]),
+            license: None,
+        };
+        let judged = super::super::discover::judge(
+            &candidate,
+            8.0,
+            &quantisers,
+            &labs,
+            super::super::py::Instant(0),
+        )
+        .unwrap();
+        assert_eq!(judged.trusted, python.as_bool().unwrap(), "{owner}");
     }
 }

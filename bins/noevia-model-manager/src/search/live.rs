@@ -10,8 +10,15 @@
 //!   `download_history` (newest first, one entry per file and repository) kept only while the
 //!   file (by its stored name, or its last path part) is in the models-folder snapshot;
 //! - `quantisers` and `labs`: the trusted publisher sets, sorted. They are deployment data, not
-//!   source: they are read at startup from a JSON file (`SEARCH_TRUSTED_PATH`, default
-//!   [`TRUSTED_PATH`]), `{"quantisers": [...], "labs": [...]}`, and are empty when it is absent.
+//!   source: they are read once at startup from a JSON file (`SEARCH_TRUSTED_PATH`, default
+//!   [`TRUSTED_PATH`]), `{"quantisers": [...], "labs": [...]}`. The entries are kept exactly as
+//!   written: `discover.judge` lower-cases only the owner and tests exact membership, so an entry
+//!   with an upper-case letter never matches, here as in Python. A missing file is an error like a
+//!   malformed one (the search runtime then stays with the child); empty sets apply only when the
+//!   file itself says so.
+//!
+//! TODO(noevia#1318, child retirement): both fallbacks to the child must then become a startup
+//! refusal or the native 503, never silently empty sets (the search defaults to trusted-only).
 //!
 //! The repository read's context estimates (`autoconfig.analyze`) still come from the child's
 //! `POST /api/v1/internal/search-repo-runtime`.
@@ -44,15 +51,21 @@ pub struct Trusted {
     pub labs: Vec<String>,
 }
 
-/// Reads the trusted sets: absent is empty; anything but `{"quantisers": [text], "labs": [text]}`
-/// (both keys, nothing else) is an error, and the search then stays with the child.
+/// Reads the trusted sets. A missing file, anything but a regular file (a FIFO would block
+/// startup), or anything but `{"quantisers": [text], "labs": [text]}` (both keys, nothing else) is
+/// an error, and the search runtime then stays with the child.
 pub fn load_trusted(path: &Path) -> Result<Trusted, &'static str> {
     use std::io::Read;
-    let file = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Trusted::default()),
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.is_file() => {}
+        Ok(_) => return Err("the trusted publisher file is not a regular file"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err("the trusted publisher file is missing (seed it with the deploy tool)")
+        }
         Err(_) => return Err("the trusted publisher file cannot be read"),
-    };
+    }
+    let file =
+        std::fs::File::open(path).map_err(|_| "the trusted publisher file cannot be read")?;
     let mut raw = Vec::new();
     file.take(TRUSTED_CAP + 1)
         .read_to_end(&mut raw)
@@ -144,7 +157,7 @@ fn downloaded(database: &Path, present: &HashSet<String>) -> Result<String, Stop
             _ => Err(Stop::Refused),
         }
     };
-    let mut by_repo: Vec<(String, Vec<String>)> = Vec::new();
+    let mut by_repo: Vec<(String, Vec<String>, HashSet<String>)> = Vec::new();
     let mut count = 0usize;
     while let Some(row) = rows.next().map_err(|_| Stop::Failed)? {
         count += 1;
@@ -159,18 +172,21 @@ fn downloaded(database: &Path, present: &HashSet<String>) -> Result<String, Stop
         };
         // A NULL filename later trips `f.rsplit` (AttributeError): the 500.
         let file = file.ok_or(Stop::Failed)?;
-        match by_repo.iter_mut().find(|(r, _)| *r == repo) {
-            Some((_, files)) => {
-                if !files.contains(&file) {
+        match by_repo.iter_mut().find(|(r, _, _)| *r == repo) {
+            Some((_, files, seen)) => {
+                if seen.insert(file.clone()) {
                     files.push(file);
                 }
             }
-            None => by_repo.push((repo, vec![file])),
+            None => {
+                let seen = HashSet::from([file.clone()]);
+                by_repo.push((repo, vec![file], seen));
+            }
         }
     }
     let mut out = String::from("{");
     let mut first = true;
-    for (repo, files) in &by_repo {
+    for (repo, files, _) in &by_repo {
         let kept: Vec<&String> = files
             .iter()
             .filter(|f| {

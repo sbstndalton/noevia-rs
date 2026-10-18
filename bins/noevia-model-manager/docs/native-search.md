@@ -62,7 +62,7 @@ It also records Python's answers for the grammars: 17,000 query values for pydan
 
 ## What remains
 - The two private calls keep this slice dependent on the Python child for live state. They go when the backend sampler (`MODEL_MANAGER_BACKENDS_IMPL`, already native but dark), the download history and the autoconfig (`analyze`) are native; the budget, the downloaded map, the chips and the estimates would then be computed here from the same figures.
-- The trusted publisher sets are defined in `discover.py`; the native side reads them per request. They move to configuration when the child retires.
+- The trusted publisher sets are defined in `discover.py`. Once this process samples the backends they come from the deployment file instead (step 1c, below), read once at startup: a change to the file needs a model-loader restart.
 - Outside this repository: the services Dockerfile pin, and the compose passthrough `MODEL_MANAGER_SEARCH_IMPL: ${MODEL_MANAGER_SEARCH_IMPL:-python}` in the model-loader environment (noevia). Nothing is flipped by this change.
 
 ## Native search runtime (noevia#1318 step 1c)
@@ -79,9 +79,17 @@ no longer made:
 
 **Trusted publisher sets.** They are deployment data, not source. At startup the native side
 reads `SEARCH_TRUSTED_PATH` (default `/config/search-trusted.json`), a JSON object
-`{"quantisers": [...], "labs": [...]}` with exactly those two keys. When the file is absent the
-sets are empty. A file of any other shape is logged, and the search runtime then stays with the
-child. The deploy side seeds the file from the services image (sbstndalton/noevia
+`{"quantisers": [...], "labs": [...]}` with exactly those two keys, once at startup (restart
+model-loader after changing it). A missing file, a file that is not a regular file (a FIFO is not
+opened) or one of any other shape is logged loudly at startup, and the search runtime then stays
+with the child. Empty sets apply only when the file says `{"quantisers":[],"labs":[]}`. Entries
+are kept exactly as written: `discover.judge` lower-cases only the owner and tests exact
+membership, so an entry with an upper-case letter never matches, here as in Python (tested
+against Python with a mixed-case entry and a prefix lookalike).
+
+TODO (child retirement): both fallbacks to the child must then become a startup refusal or the
+native 503, never silently empty sets; the search defaults to trusted-only, so empty sets would
+show nothing. The deploy side seeds the file from the services image (sbstndalton/noevia
 `deploy/tools/seed-search-trusted.sh`), so that ranking is unchanged.
 
 **Store readiness.** The child's startup creates the store, so the first native answer waits

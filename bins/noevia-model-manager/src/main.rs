@@ -1015,9 +1015,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ini: roots.ini.clone().into(),
                 trusted,
             }),
-            Err(reason) => {
-                eprintln!("native-search: {reason}; the search runtime stays with the python child")
-            }
+            Err(reason) => eprintln!(
+                "native-search: WARNING {reason} ({path}); the search runtime (budget, downloaded \
+                 files, trusted publishers) stays with the python child until it is fixed and \
+                 model-loader restarted"
+            ),
         }
     }
     let mut child = child_command.spawn()?;
