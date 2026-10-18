@@ -1,6 +1,6 @@
 # Native benchmark run read (noevia#1318)
 
-`native-bench-runs` with `MODEL_MANAGER_BENCH_RUNS_IMPL=rust` (and `MODEL_MANAGER_IMPL=rust`) serves `GET /api/v1/benchmark/runs/{id}` from the Rust front. Default `python`.
+`native-bench-runs` with `MODEL_MANAGER_BENCH_RUNS_IMPL=rust` serves `GET /api/v1/benchmark/runs/{id}` from the Rust front. Default `python`.
 
 ## What is native and what is asked of Python
 
@@ -17,7 +17,9 @@ Two chart values are live and come from the Python child's private `GET /api/v1/
 Both are placed verbatim, so the sampler and autoconfig are never re-implemented. This is the model-detail pattern. A child that cannot answer, or leaves an alias out, gives 503 `Native benchmark run is unavailable`; the child's 500 stays a 500.
 
 ## Decisions (technical, made here)
-- Only a canonical id (`-?[0-9]+` inside i64, leading zeros allowed) is native. Any other spelling (`%31`, `+1`, `1.0`, an id past i64) is forwarded, and Python keeps its own 422/500 for it. The Python guard compares the raw path with the same rule, so a percent-encoded id is not refused there.
+- All path and integer spellings follow the actual FastAPI ASGI contract. Decode the path once with UTF-8 replacement; encoded slashes change route shape, and malformed percent escapes stay literal. Trailing slashes redirect with 307, preserving query and URL quoting. Other methods answer 405 with `Allow: GET` before integer validation; HEAD has no body. Authentication precedes every branch.
+- Integer strings accept signs, leading zeros, Unicode whitespace, valid underscores and an all-zero fractional part. Invalid values give the path `run_id` 422. Valid integers outside SQLite's signed 64-bit range give its plain 500; they are not misclassified as invalid input. Pydantic first attempts JSON integer parsing, then its cleanup step; their oversized-number errors remain distinct (`int_parsing_size` or `int_parsing`). Leading zeros do not impose a 64-character restriction.
+- The existing front URI limit (8192 bytes, 414 after authentication) remains unchanged; the parser adds no smaller integer-string limit.
 - The route uses the forwarded budget, not the 5 s native one, because it waits on the child, as model detail does.
 - Bounds:
   - 100,000 rows per table and a 64 MiB answer
@@ -38,4 +40,7 @@ The cases cover:
 - an empty run and an all-cold run
 - rounding ties
 
-`tests/bench_runs.rs` replays every case byte for byte against a fake child and checks the private call's query. It also covers child failures, non-canonical ids, python mode, 405, the private path being unreachable from outside, and a missing store.
+`tests/bench_runs.rs` replays every case byte for byte against a fake child and checks the private call's query. It also covers child failures, Python mode, 405, the private path being unreachable from outside, and a missing store.
+
+
+`tools/gen-bench-run-paths-oracle.py` separately runs the actual ASGI app pinned to services `60764e67f390ea9dad5c91c3f41aad865d757823`. It injects Uvicorn-equivalent once-decoded scope paths directly, avoiding TestClient's extra percent decoding. The fixture records FastAPI 0.115.6, Starlette 0.41.3, Pydantic 2.14.0 and pydantic-core 2.50.0; newer framework behavior is not silently substituted. Synthetic SQLite contains one empty run. The source-hashed fixture covers encoded namespaces/IDs, malformed bytes and percent escapes, encoded and double-encoded separators, signs, fractions, Unicode whitespace, long leading zeros, SQLite overflow, Pydantic size errors, absent/nested paths, all methods, redirects with query/Unicode/reserved characters and authentication precedence. The router replays the same cases; only successful reads use a fixed child chart runtime. No child lifecycle or chart selection changes are made here.

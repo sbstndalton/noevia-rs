@@ -319,13 +319,13 @@ async fn child_failures_map_to_500_or_refusal() {
 }
 
 #[tokio::test]
-async fn non_canonical_ids_python_mode_and_other_methods_are_not_native() {
+async fn python_mode_retains_forwarding_and_private_paths_remain_blocked() {
     let dir = tempfile::tempdir().unwrap();
     build(dir.path(), &full_case());
     for segment in ["abc", "%31", "+1", "1.0", "9223372036854775808"] {
         let (base, seen) = child(200, r#"{"legacy":true}"#.to_owned()).await;
         let answer = send(
-            state(Some(dir.path()), &base),
+            state(None, &base),
             "GET",
             &format!("/api/v1/benchmark/runs/{segment}"),
         )
@@ -370,4 +370,67 @@ async fn missing_store_is_500_and_not_created() {
     .await;
     assert_eq!(answer.status, 500);
     assert!(!dir.path().join("model_loader.db").exists());
+}
+
+#[tokio::test]
+async fn actual_asgi_path_integer_method_and_auth_contract() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/bench-run-paths-python.v1.json")).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    build(
+        dir.path(),
+        &serde_json::json!({"seed":["INSERT INTO bench_run(id,backend,status,started_at,reps,max_tokens,note) VALUES(1,'synthetic','done',1,1,1,'')"]}),
+    );
+    for case in fixture["cases"].as_array().unwrap() {
+        let expected = case["status"].as_u64().unwrap();
+        let (base, peer) = if expected == 200 {
+            let (base, peer) = child(200, r#"{"capacity_gb":0.0,"predicted":{}}"#.to_owned()).await;
+            (base, Some(peer))
+        } else {
+            (DEAD.to_owned(), None)
+        };
+        let mut request = Request::builder()
+            .method(case["method"].as_str().unwrap())
+            .uri(case["path"].as_str().unwrap())
+            .header("host", "testserver");
+        if case["auth"].as_bool().unwrap() {
+            request = request.header("x-model-loader-token", TOKEN);
+        }
+        let response = noevia_model_manager::router(state(Some(dir.path()), &base))
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            u64::from(response.status().as_u16()),
+            expected,
+            "{}",
+            case["id"]
+        );
+        for key in ["content-type", "allow", "location"] {
+            assert_eq!(
+                response.headers().get(key).and_then(|v| v.to_str().ok()),
+                case["headers"][key].as_str(),
+                "{} {key}",
+                case["id"]
+            );
+        }
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let text = std::str::from_utf8(&body).unwrap();
+        if expected == 200 || expected == 422 {
+            assert_eq!(
+                serde_json::from_str::<Value>(text).unwrap(),
+                serde_json::from_str::<Value>(case["body"].as_str().unwrap()).unwrap(),
+                "{}",
+                case["id"]
+            );
+        } else {
+            assert_eq!(text, case["body"].as_str().unwrap(), "{}", case["id"]);
+        }
+        if let Some(peer) = peer {
+            assert!(peer
+                .await
+                .unwrap()
+                .starts_with("GET /api/v1/internal/bench-run-runtime"));
+        }
+    }
 }

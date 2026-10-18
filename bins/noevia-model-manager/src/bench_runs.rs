@@ -17,8 +17,8 @@
 //! the Python child through its private `GET /api/v1/internal/bench-run-runtime` call and placed
 //! verbatim, never re-implemented, as model detail does for `loadedOn` and `fit`.
 //!
-//! Only a canonical id (`-?[0-9]+` inside i64) is native; any other spelling is forwarded and
-//! Python answers it (422, or its 500 for an id past SQLite's range).
+//! Path and integer spellings follow the actual FastAPI contract (`paths`), including validation,
+//! redirects and SQLite overflow. Live chart compatibility selection remains independent.
 use model_files::json::Value as Json;
 use rusqlite::{types::ValueRef, Connection};
 use std::{
@@ -56,14 +56,7 @@ pub enum Outcome {
     Unavailable,
 }
 
-/// `-?[0-9]+` inside i64: the ids this side answers.
-pub fn canonical_id(segment: &str) -> Option<i64> {
-    let digits = segment.strip_prefix('-').unwrap_or(segment);
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    segment.parse().ok()
-}
+pub mod paths;
 
 /// A number as Python holds it: `int` stays `int` through `round`, `float` is a float.
 #[derive(Debug, Clone, Copy, PartialEq)]
