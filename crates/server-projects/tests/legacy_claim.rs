@@ -4,9 +4,7 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-use server_projects::{
-    legacy_claim::{claim_root, ClaimError, MAX_BYTES, MAX_DEPTH, MAX_ENTRIES},
-};
+use server_projects::legacy_claim::{claim_root, ClaimError, MAX_BYTES, MAX_DEPTH, MAX_ENTRIES};
 use std::fs;
 use std::path::Path;
 const OWNER: &str = "11111111-2222-4333-8444-555555555555";
@@ -310,10 +308,7 @@ fn rejects_links_oversize_depth_and_entry_count_before_creating_output() {
         vec![0u8; (MAX_BYTES + 1) as usize],
     )
     .unwrap();
-    assert!(matches!(
-        claim(large.path(), OWNER),
-        Err(ClaimError::Limit)
-    ));
+    assert!(matches!(claim(large.path(), OWNER), Err(ClaimError::Limit)));
     assert!(!large.path().join("users").exists());
     assert!(!large.path().join("migration-backups").exists());
     assert!(!large.path().join("legacy-owner.json").exists());
@@ -326,10 +321,7 @@ fn rejects_links_oversize_depth_and_entry_count_before_creating_output() {
         path.push("d");
         fs::create_dir(&path).unwrap();
     }
-    assert!(matches!(
-        claim(deep.path(), OWNER),
-        Err(ClaimError::Limit)
-    ));
+    assert!(matches!(claim(deep.path(), OWNER), Err(ClaimError::Limit)));
     assert!(!deep.path().join("users").exists());
 
     let many = tempfile::tempdir().unwrap();
@@ -338,10 +330,7 @@ fn rejects_links_oversize_depth_and_entry_count_before_creating_output() {
     for i in 0..MAX_ENTRIES {
         fs::write(many.path().join("rag").join(i.to_string()), "").unwrap();
     }
-    assert!(matches!(
-        claim(many.path(), OWNER),
-        Err(ClaimError::Limit)
-    ));
+    assert!(matches!(claim(many.path(), OWNER), Err(ClaimError::Limit)));
     assert!(!many.path().join("users").exists());
 }
 #[test]

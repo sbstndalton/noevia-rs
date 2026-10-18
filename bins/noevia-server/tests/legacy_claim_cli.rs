@@ -24,10 +24,22 @@ fn claim_subcommand_runs_without_loading_server_config_or_auth_database() {
         root_arg,
         std::ffi::OsStr::new(USER),
     ]);
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert_eq!(output.stdout, b"CLAIMED\n");
-    assert!(root.path().join("users").join(USER).join("migration.json").is_file());
-    assert!(!root.path().join("cowork.db").exists(), "filesystem helper must not open auth DB");
+    assert!(root
+        .path()
+        .join("users")
+        .join(USER)
+        .join("migration.json")
+        .is_file());
+    assert!(
+        !root.path().join("cowork.db").exists(),
+        "filesystem helper must not open auth DB"
+    );
 }
 
 #[test]
@@ -38,7 +50,11 @@ fn empty_root_skips_without_creating_the_coordination_sidecar() {
         root.path().as_os_str(),
         std::ffi::OsStr::new(USER),
     ]);
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert_eq!(output.stdout, b"SKIPPED\n");
     assert!(!root.path().join("legacy-owner.json.lock").exists());
 }

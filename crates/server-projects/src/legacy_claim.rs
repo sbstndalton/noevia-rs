@@ -124,11 +124,7 @@ fn acquire_root_lock(root: &OwnedFd) -> Result<RootLock, ClaimError> {
     let fd = openat(
         root.as_fd(),
         name.as_str(),
-        OFlags::RDWR
-            | OFlags::CREATE
-            | OFlags::CLOEXEC
-            | OFlags::NOFOLLOW
-            | OFlags::NONBLOCK,
+        OFlags::RDWR | OFlags::CREATE | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
         Mode::from_raw_mode(0o600),
     )
     .map_err(rustix_error)?;
@@ -873,7 +869,10 @@ mod security_tests {
                 Mode::from_raw_mode(0o600),
             )
             .unwrap();
-            assert!(matches!(acquire_root_lock(&root_fd), Err(ClaimError::Unsafe)));
+            assert!(matches!(
+                acquire_root_lock(&root_fd),
+                Err(ClaimError::Unsafe)
+            ));
             return;
         }
 
