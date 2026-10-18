@@ -251,3 +251,69 @@ fn trusted_configuration_must_be_readable_well_formed_and_nonempty_for_native_ro
         .unwrap()
         .routing_ready());
 }
+
+#[tokio::test]
+async fn merged_benchmark_integer_parser_owns_valid_spellings_without_child_fallback() {
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    let dir = tempfile::tempdir().unwrap();
+    let db = rusqlite::Connection::open(dir.path().join("model_loader.db")).unwrap();
+    db.execute_batch("CREATE TABLE bench_run(id INTEGER PRIMARY KEY)")
+        .unwrap();
+    let mut state = crate::test_support::test_state("http://127.0.0.1:9");
+    state.bench_runs = Some(Arc::new(crate::bench_runs::BenchRuns::new(dir.path())));
+    let app = crate::router(Arc::new(state)).layer(Extension(Enabled));
+    // Reuse the independently qualified grammar oracle, with an empty store:
+    // a valid previously-present run must now reach native "run not found".
+    let fx: serde_json::Value = serde_json::from_str(include_str!(
+        "../../tests/fixtures/bench-run-paths-python.v1.json"
+    ))
+    .unwrap();
+    for case in fx["cases"].as_array().unwrap() {
+        if case["auth"] != true {
+            continue;
+        }
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(case["method"].as_str().unwrap())
+                    .uri(case["path"].as_str().unwrap())
+                    .header("host", "testserver")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let expected = case["status"].as_u64().unwrap() as u16;
+        let status = if expected == 200 { 404 } else { expected };
+        assert_eq!(response.status(), status, "{}", case["id"]);
+        for key in ["allow", "location"] {
+            assert_eq!(
+                response.headers().get(key).and_then(|v| v.to_str().ok()),
+                case["headers"][key].as_str(),
+                "{}",
+                case["id"]
+            );
+        }
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let expected_body = if expected == 200 {
+            r#"{"detail":"run not found"}"#
+        } else {
+            case["body"].as_str().unwrap()
+        };
+        if expected_body.is_empty() {
+            assert!(bytes.is_empty());
+        } else if expected_body.starts_with('{') {
+            assert_eq!(
+                serde_json::from_slice::<serde_json::Value>(&bytes).unwrap(),
+                serde_json::from_str::<serde_json::Value>(expected_body).unwrap(),
+                "{}",
+                case["id"]
+            );
+        } else {
+            assert_eq!(bytes.as_ref(), expected_body.as_bytes(), "{}", case["id"]);
+        }
+    }
+}

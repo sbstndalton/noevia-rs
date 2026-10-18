@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::panic)]
 #[test]
 fn explicit_routing_refuses_before_child_when_compilation_or_helpers_are_missing() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_noevia-model-manager"))

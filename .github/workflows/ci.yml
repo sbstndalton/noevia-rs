@@ -2332,5 +2332,5 @@ jobs:
       - name: Framework routing, startup controls, compatibility and omission
         run: |
           cargo test --locked -p noevia-model-manager --features native-routing --lib routing
-          cargo test --locked -p noevia-model-manager --features native-routing --test routing_capability --test backends --test lifecycle --test validation_order
+          cargo test --locked -p noevia-model-manager --features native-routing --test routing_capability --test backends --test lifecycle --test validation_order --test bench_runs
           cargo test --locked -p noevia-model-manager --no-default-features --test routing_capability
