@@ -324,8 +324,6 @@ fn claim_legacy_in_transaction(
             _ => return Ok(false),
         };
         let _same_account = live;
-        let _root_lock = server_projects::lock::acquire(&data_dir.join("legacy-owner.json"))
-            .map_err(|e| server_store::StoreError::NotReady(format!("legacy claim lock: {e:?}")))?;
         server_projects::legacy_claim::claim_root(data_dir, expected_id).map_err(|e| {
             server_store::StoreError::NotReady(format!("legacy claim unavailable: {e:?}"))
         })

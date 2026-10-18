@@ -6,14 +6,12 @@
 )]
 use server_projects::{
     legacy_claim::{claim_root, ClaimError, MAX_BYTES, MAX_DEPTH, MAX_ENTRIES},
-    lock,
 };
 use std::fs;
 use std::path::Path;
 const OWNER: &str = "11111111-2222-4333-8444-555555555555";
 const OTHER: &str = "99999999-2222-4333-8444-555555555555";
-fn claim_locked(root: &Path, id: &str) -> Result<bool, ClaimError> {
-    let _lock = lock::acquire(&root.join("legacy-owner.json")).unwrap();
+fn claim(root: &Path, id: &str) -> Result<bool, ClaimError> {
     claim_root(root, id)
 }
 fn hex_bytes(text: &str) -> Vec<u8> {
@@ -44,6 +42,11 @@ fn oracle_path(rel: &str) -> String {
 }
 fn oracle_snapshot(root: &Path, result: bool) -> serde_json::Value {
     fn visit(root: &Path, rel: &Path, tree: &mut Vec<serde_json::Value>) {
+        // The Rust port's coordination sidecar is metadata, not claimed data. Its exact mode and
+        // stable inode are asserted separately; all remaining tree entries still compare to Node.
+        if rel == Path::new("legacy-owner.json.lock") {
+            return;
+        }
         let path = root.join(rel);
         let meta = fs::symlink_metadata(&path).unwrap();
         let raw = rel.to_string_lossy().replace('\\', "/");
@@ -111,6 +114,46 @@ fn mode(path: &Path) -> u32 {
 }
 
 #[test]
+fn nonlegacy_fast_path_does_not_create_claim_coordination_file() {
+    let root = tempfile::tempdir().unwrap();
+    assert!(!claim(root.path(), OWNER).unwrap());
+    assert!(!root.path().join("legacy-owner.json.lock").exists());
+}
+
+#[test]
+fn root_claim_lock_is_private_stable_metadata_and_changes_no_other_node_tree_data() {
+    let root = tempfile::tempdir().unwrap();
+    fs::write(root.path().join("projects.json"), r#"{"projects":[]}"#).unwrap();
+    assert!(claim(root.path(), OWNER).unwrap());
+    let lock_path = root.path().join("legacy-owner.json.lock");
+    let lock_meta = fs::symlink_metadata(&lock_path).unwrap();
+    assert!(lock_meta.is_file());
+    assert_eq!(mode(&lock_path), 0o600);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let inode = lock_meta.ino();
+        assert!(!claim(root.path(), OWNER).unwrap());
+        assert_eq!(fs::symlink_metadata(&lock_path).unwrap().ino(), inode);
+    }
+    let target = root.path().join("users").join(OWNER);
+    let marker: serde_json::Value =
+        serde_json::from_slice(&fs::read(target.join("migration.json")).unwrap()).unwrap();
+    let backup = Path::new(marker["backup"].as_str().unwrap());
+    assert!(backup.starts_with(root.path()));
+    for file in [
+        root.path().join("projects.json"),
+        target.join("projects.json"),
+        backup.join("projects.json"),
+    ] {
+        assert_eq!(fs::read(file).unwrap(), br#"{"projects":[]}"#);
+    }
+    let owner: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.path().join("legacy-owner.json")).unwrap()).unwrap();
+    assert_eq!(owner["userId"], OWNER);
+}
+
+#[test]
 fn actual_legacy_node_source_differential_matches_full_synthetic_tree() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/node-legacy-claim.v1.json")).unwrap();
@@ -170,7 +213,7 @@ fn copies_the_node_claim_set_to_owner_and_backup_and_retains_source() {
     fs::create_dir(root.path().join("rag")).unwrap();
     fs::write(root.path().join("rag/blob"), [0u8, 1, 2, 255]).unwrap();
 
-    assert!(claim_locked(root.path(), OWNER).unwrap());
+    assert!(claim(root.path(), OWNER).unwrap());
     let target = root.path().join("users").join(OWNER);
     let marker: serde_json::Value =
         serde_json::from_slice(&fs::read(target.join("migration.json")).unwrap()).unwrap();
@@ -196,7 +239,7 @@ fn copies_the_node_claim_set_to_owner_and_backup_and_retains_source() {
 fn trigger_owner_recovery_and_parallel_admins_match_the_node_contract() {
     let root = tempfile::tempdir().unwrap();
     fs::write(root.path().join("free-chats.json"), "[]").unwrap();
-    assert!(!claim_locked(root.path(), OWNER).unwrap());
+    assert!(!claim(root.path(), OWNER).unwrap());
     fs::write(root.path().join("projects.json"), "{}").unwrap();
     let root = std::sync::Arc::new(root);
     let ids = [OWNER.to_string(), OTHER.to_string()];
@@ -204,7 +247,7 @@ fn trigger_owner_recovery_and_parallel_admins_match_the_node_contract() {
         .into_iter()
         .map(|id| {
             let root = root.clone();
-            std::thread::spawn(move || claim_locked(root.path(), &id).unwrap())
+            std::thread::spawn(move || claim(root.path(), &id).unwrap())
         })
         .collect();
     for join in joins {
@@ -235,7 +278,7 @@ fn previous_owner_selection_is_lexical_not_filesystem_iteration_order() {
         fs::write(user.join("migration.json"), r#"{"version":1}"#).unwrap();
     }
 
-    assert!(!claim_locked(root.path(), OWNER).unwrap());
+    assert!(!claim(root.path(), OWNER).unwrap());
     let owner: serde_json::Value =
         serde_json::from_slice(&fs::read(root.path().join("legacy-owner.json")).unwrap()).unwrap();
     assert_eq!(owner["userId"], first);
@@ -254,7 +297,7 @@ fn rejects_links_oversize_depth_and_entry_count_before_creating_output() {
     )
     .unwrap();
     assert!(matches!(
-        claim_locked(linked.path(), OWNER),
+        claim(linked.path(), OWNER),
         Err(ClaimError::Unsafe)
     ));
     assert!(!linked.path().join("users").exists());
@@ -268,7 +311,7 @@ fn rejects_links_oversize_depth_and_entry_count_before_creating_output() {
     )
     .unwrap();
     assert!(matches!(
-        claim_locked(large.path(), OWNER),
+        claim(large.path(), OWNER),
         Err(ClaimError::Limit)
     ));
     assert!(!large.path().join("users").exists());
@@ -284,7 +327,7 @@ fn rejects_links_oversize_depth_and_entry_count_before_creating_output() {
         fs::create_dir(&path).unwrap();
     }
     assert!(matches!(
-        claim_locked(deep.path(), OWNER),
+        claim(deep.path(), OWNER),
         Err(ClaimError::Limit)
     ));
     assert!(!deep.path().join("users").exists());
@@ -296,7 +339,7 @@ fn rejects_links_oversize_depth_and_entry_count_before_creating_output() {
         fs::write(many.path().join("rag").join(i.to_string()), "").unwrap();
     }
     assert!(matches!(
-        claim_locked(many.path(), OWNER),
+        claim(many.path(), OWNER),
         Err(ClaimError::Limit)
     ));
     assert!(!many.path().join("users").exists());
@@ -306,7 +349,7 @@ fn malformed_owner_and_non_owner_do_not_receive_legacy_data() {
     let malformed = tempfile::tempdir().unwrap();
     fs::write(malformed.path().join("projects.json"), "{}").unwrap();
     fs::write(malformed.path().join("legacy-owner.json"), "{").unwrap();
-    assert!(!claim_locked(malformed.path(), OWNER).unwrap());
+    assert!(!claim(malformed.path(), OWNER).unwrap());
     assert!(!malformed.path().join("users").exists());
 
     let root = tempfile::tempdir().unwrap();
@@ -316,6 +359,6 @@ fn malformed_owner_and_non_owner_do_not_receive_legacy_data() {
         format!(r#"{{"userId":"{OWNER}"}}"#),
     )
     .unwrap();
-    assert!(!claim_locked(root.path(), OTHER).unwrap());
+    assert!(!claim(root.path(), OTHER).unwrap());
     assert!(!root.path().join("users").join(OTHER).exists());
 }

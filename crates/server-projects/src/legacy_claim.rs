@@ -23,6 +23,7 @@ pub enum ClaimError {
     InvalidUser,
     Unsafe,
     Limit,
+    Busy,
     Io(String),
 }
 impl From<std::io::Error> for ClaimError {
@@ -112,6 +113,46 @@ fn source_fd(root: &OwnedFd, rel: &Path, flags: OFlags) -> Result<OwnedFd, Claim
         ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
     )
     .map_err(rustix_error)
+}
+/// The root sidecar lock is opened relative to the same retained directory descriptor used for
+/// the claim. This prevents a path/ancestor swap from redirecting the lock to another tree.
+struct RootLock {
+    _file: File,
+}
+fn acquire_root_lock(root: &OwnedFd) -> Result<RootLock, ClaimError> {
+    let name = format!("{OWNER}.lock");
+    let fd = openat(
+        root.as_fd(),
+        name.as_str(),
+        OFlags::RDWR
+            | OFlags::CREATE
+            | OFlags::CLOEXEC
+            | OFlags::NOFOLLOW
+            | OFlags::NONBLOCK,
+        Mode::from_raw_mode(0o600),
+    )
+    .map_err(rustix_error)?;
+    let meta = fstat(&fd).map_err(rustix_error)?;
+    if FileType::from_raw_mode(meta.st_mode) != FileType::RegularFile {
+        return Err(ClaimError::Unsafe);
+    }
+    fchmod(&fd, Mode::from_raw_mode(0o600)).map_err(rustix_error)?;
+    let file = File::from(fd);
+    let deadline = Instant::now() + std::time::Duration::from_millis(3_000);
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(RootLock { _file: file }),
+            Err(std::fs::TryLockError::WouldBlock) => {
+                if Instant::now() >= deadline {
+                    return Err(ClaimError::Busy);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(std::fs::TryLockError::Error(error)) => {
+                return Err(ClaimError::Io(error.to_string()))
+            }
+        }
+    }
 }
 fn source_stat(root: &OwnedFd, rel: &Path) -> Result<Option<rustix::fs::Stat>, ClaimError> {
     if rel.is_absolute()
@@ -588,14 +629,20 @@ fn write_owner(root: &OwnedFd, id: &str) -> Result<(), ClaimError> {
     Ok(())
 }
 
-/// Claim legacy files for this account. Caller holds the auth DB IMMEDIATE transaction and the
-/// dedicated root lock; callers must revalidate an administrator inside that transaction.
+/// Claim legacy files for this account. Callers that authorize a request must hold the auth DB
+/// IMMEDIATE transaction and revalidate the same live administrator before calling. The
+/// descriptor-relative root lock is taken here, after the nonlegacy fast path.
 pub fn claim_root(root: &Path, user_id: &str) -> Result<bool, ClaimError> {
     if !uuid(user_id) {
         return Err(ClaimError::InvalidUser);
     }
-    let start = Instant::now();
     let root_fd = open_root(root)?;
+    let hint_start = Instant::now();
+    if !has_legacy(&root_fd, hint_start)? {
+        return Ok(false);
+    }
+    let _root_lock = acquire_root_lock(&root_fd)?;
+    let start = Instant::now();
     if !has_legacy(&root_fd, start)? {
         return Ok(false);
     }
@@ -819,6 +866,14 @@ mod security_tests {
                     Err(ClaimError::Unsafe)
                 ));
             }
+            let lock_name = format!("{OWNER}.lock");
+            rustix::fs::mkfifoat(
+                root_fd.as_fd(),
+                lock_name.as_str(),
+                Mode::from_raw_mode(0o600),
+            )
+            .unwrap();
+            assert!(matches!(acquire_root_lock(&root_fd), Err(ClaimError::Unsafe)));
             return;
         }
 
