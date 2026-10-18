@@ -793,6 +793,13 @@ mod tests {
                 together as f64 / MIB as f64
             );
             assert!(together <= 90 * MIB, "{name}: {together}");
+            // The full-scale check of the derived bound, the output vector's term included
+            // ("minimal entries" has the most pairs).
+            assert!(
+                together <= peak_bound(),
+                "{name}: {together} > {}",
+                peak_bound()
+            );
             worst = worst.max(together);
         }
         // The worst shape measured 88.3 MiB, past the 84 MiB of the parse (page + tree), which
@@ -818,6 +825,7 @@ mod tests {
             ("deep arrays", list(nested(500, "1"), 20), true),
             ("deep single-child arrays, one item", nested(500, "1"), true),
             ("deep objects", list(deep_obj(500), 20), false),
+            ("minimal entries", list(file("\"a\"", "\"d\""), 5000), false),
             ("numbers", list("1".into(), 20_000), false),
             (
                 "long strings",
