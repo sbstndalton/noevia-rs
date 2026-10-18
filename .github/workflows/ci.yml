@@ -1457,7 +1457,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: sbstndalton/noevia-services
-          ref: 38d218e503c77b72785f714f5b654c86c9501019
+          ref: 5f50d65f505140e0f71f6b9fa51b8d0a89a49f8b
           path: section-autoconfig-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
