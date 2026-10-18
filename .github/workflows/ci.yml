@@ -793,7 +793,7 @@ jobs:
           PYTHON: python3
           NOEVIA_PROMPTS_DEPENDENCIES: ${{ runner.temp }}/prompts-node-dependencies
         run: |
-          cargo build --locked -p noevia-model-manager --features native-prompts
+          cargo build --locked -p noevia-model-manager --bin noevia-model-manager --features native-routing
           cargo build --locked -p noevia-server --bin noevia-server
           cargo build --locked -p replay --bin corpus-launcher --bin prompts-contracts
           cargo clippy --locked -p replay --bin corpus-launcher --bin prompts-contracts -- -D warnings
