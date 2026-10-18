@@ -3346,3 +3346,61 @@ async fn native_section_autoconfig(
         }
     }
 }
+
+// Frozen private-input contracts are retained only in the library test build.
+#[cfg(test)]
+extern crate self as noevia_model_manager;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/badges.rs"]
+mod historical_badges;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/bench_runs.rs"]
+mod historical_bench_runs;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/benchmark_overview.rs"]
+mod historical_benchmark_overview;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/download_targets.rs"]
+mod historical_download_targets;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/downloads.rs"]
+mod historical_downloads;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/draft_heads.rs"]
+mod historical_draft_heads;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/embedding.rs"]
+mod historical_embedding;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/idle_unload.rs"]
+mod historical_idle_unload;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/model_delete.rs"]
+mod historical_model_delete;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/model_detail.rs"]
+mod historical_model_detail;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/model_list.rs"]
+mod historical_model_list;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/model_updates.rs"]
+mod historical_model_updates;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/policy.rs"]
+mod historical_policy;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/search.rs"]
+mod historical_search;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/section_autoconfig.rs"]
+mod historical_section_autoconfig;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/section_writes.rs"]
+mod historical_section_writes;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/settings.rs"]
+mod historical_settings;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/settings_write.rs"]
+mod historical_settings_write;

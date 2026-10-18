@@ -56,3 +56,30 @@ backup, including old implementation keys: this binary ignores them, the prior i
 them. Rollback restores that image/configuration, not a child mode in this binary. No
 destructive database downgrade or additional permanent mode is introduced. Services image/
 Compose/pins remain release-preparation scope. N5 remains sysfs-only; no real jobs in tests.
+
+
+## Preserved qualification
+
+retirement-test-mapping.json records every original integration source hash and
+selected historical test name. The 52 private-input/forwarding contracts live in
+tests/historical_oracles and compile only into the library's cfg(test) build.
+Their recorded API response, file-tree, revision and source-fixture assertions
+remain unchanged. The required combined-runtime runner compares the exact named
+inventory against this manifest before running all emitted harnesses. No
+production feature or environment key enables these historical transports.
+
+The remaining native tests stay in integration targets using the non-test
+library. Missing owners now explicitly answer 503 without a child connection;
+wrong methods remain 405 and private routes remain 404. Backend restart fixtures
+compare the same recorded errors with the native cache and require zero mirror
+calls. Component startup targets now cover ignored retired keys, mandatory
+capability/TZ preflight and malformed/empty trust without database/INI creation.
+The old child supervision startup cases are replaced by the shipping process
+contract (including ten INI ordering cases) and actual worker/deadline/lease
+contracts. Existing frozen Python schema, response and file oracles remain.
+
+The shipping process contract matches LISTEN socket inodes to its own descriptor
+table, requiring exactly port8090; another process's private-port trap is excluded.
+The sections mutation control changes the actual production bind8090 to8091 and
+must fail this owned-port assertion. This replaces the retired test-only
+child-port mutex mutation; the auth, metadata and file-boundary controls remain.

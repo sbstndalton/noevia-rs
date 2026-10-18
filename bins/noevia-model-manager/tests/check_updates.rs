@@ -302,9 +302,9 @@ async fn actual_python_differential() {
 
 #[tokio::test]
 async fn only_post_of_the_exact_path_is_native() {
-    // Omission: no native writer, so the route is forwarded (here to a dead child: 502).
+    // Omission: no native writer, so the production component refuses without child I/O.
     let (status, _, _) = post(state(None), "POST").await;
-    assert_eq!(status, 502);
+    assert_eq!(status, 503);
     let dir = tempfile::tempdir().unwrap();
     build(dir.path(), &fixture()["cases"][1]);
     // GET is not a check: the front's own 405 (Python's route is POST only).

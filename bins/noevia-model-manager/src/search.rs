@@ -172,6 +172,7 @@ pub enum Outcome {
 enum Stop {
     Failed,
     Refused,
+    #[cfg(test)]
     Unavailable,
     /// An answer of its own (an exception handler's JSON).
     Json(u16, Vec<u8>),
@@ -194,6 +195,7 @@ impl From<Stop> for Outcome {
         match stop {
             Stop::Failed => Outcome::Failed,
             Stop::Refused => Outcome::Refused,
+            #[cfg(test)]
             Stop::Unavailable => Outcome::Unavailable,
             Stop::Json(status, body) => Outcome::Json(status, body),
         }

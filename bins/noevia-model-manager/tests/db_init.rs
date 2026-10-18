@@ -50,8 +50,8 @@ fn the_real_binary_advertises_the_feature_and_refuses_invalid_ownership_before_i
         assert!(!root.path().join("model_loader.db").exists());
         let error = std::str::from_utf8(&output.stderr).unwrap();
         assert!(
-            error.contains("MODEL_MANAGER_DB_INIT_IMPL")
-                || error.contains("native DB initialization")
+            error.contains("mandatory native-routing capability")
+                || error.contains("requires exact TZ=UTC")
         );
     }
 }

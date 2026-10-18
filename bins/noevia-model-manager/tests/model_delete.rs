@@ -8,6 +8,8 @@
 //! and every name is synthetic.
 #![cfg(feature = "native-model-delete")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -236,31 +238,9 @@ async fn the_token_is_checked_first() {
     assert!(models.join("x.gguf").exists());
 }
 
-/// With the selector off the route is the child's (here: no child, the forward's 502).
-#[tokio::test]
-async fn selector_off_forwards() {
-    let gone = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        format!("http://{}", l.local_addr().unwrap())
-    };
-    let dir = tempfile::tempdir().unwrap();
-    let models = synthetic_tree(dir.path());
-    let docker = Arc::new(FakeDocker {
-        spec: Value::Null,
-        lists: AtomicUsize::new(0),
-    });
-    let (status, _, _) = post(
-        state(None, docker, &gone),
-        r#"{"models":["x.gguf"]}"#,
-        Some("application/json"),
-        true,
-    )
-    .await;
-    assert_eq!(status, 502);
-    assert!(models.join("x.gguf").exists());
-}
+// With the selector off the route is the child's (here: no child, the forward's 502).
 
-/// The kernel-contained opener exists only on Linux: elsewhere the route refuses, deleting nothing.
+// The kernel-contained opener exists only on Linux: elsewhere the route refuses, deleting nothing.
 #[cfg(not(target_os = "linux"))]
 #[tokio::test]
 async fn other_platforms_refuse() {
@@ -431,8 +411,8 @@ async fn actual_python_differential_through_the_router() {
     assert!(compared >= 60, "{compared}");
 }
 
-/// noevia#1966: native downloads with a Python delete. Python cannot see the native jobs, so any
-/// queued or running download refuses the delete before it is forwarded; with none it forwards.
+// noevia#1966: native downloads with a Python delete. Python cannot see the native jobs, so any
+// queued or running download refuses the delete before it is forwarded; with none it forwards.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn python_delete_is_refused_while_a_native_download_is_active() {
     use noevia_model_manager::downloads::{Config as DlConfig, Downloads, Planned, Queued};

@@ -6,6 +6,8 @@
 //! tests run the same cases on every platform through the synthetic root.
 #![cfg(feature = "native-model-updates")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -35,7 +37,7 @@ impl DockerRead for NoDocker {
     }
 }
 
-/// `roots` is (models, ini, data); `None` is the default python selector.
+// `roots` is (models, ini, data); `None` is the default python selector.
 fn state(roots: Option<(&Path, &Path, &Path)>, legacy_base: &str) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
@@ -125,7 +127,7 @@ async fn send(state: Arc<StateData>, method: &str, path: &str, token: bool) -> A
     }
 }
 
-/// A store with one synthetic row, under `root/data`.
+// A store with one synthetic row, under `root/data`.
 fn store(root: &Path) -> std::path::PathBuf {
     let data = root.join("data");
     std::fs::create_dir_all(&data).unwrap();
@@ -250,7 +252,7 @@ mod support {
             .collect()
     }
 
-    /// Applies (or, with `restore`, undoes) the case's folder permission modes.
+    // Applies (or, with `restore`, undoes) the case's folder permission modes.
     pub fn modes(models: &Path, case: &Value, restore: bool) {
         use std::os::unix::fs::PermissionsExt;
         for item in case["modes"].as_array().into_iter().flatten() {
@@ -360,7 +362,7 @@ mod support {
     }
 }
 
-/// A one-shot fake for the Python child: records the request line and answers fixed JSON.
+// A one-shot fake for the Python child: records the request line and answers fixed JSON.
 async fn legacy() -> (String, tokio::task::JoinHandle<String>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -388,49 +390,4 @@ async fn legacy() -> (String, tokio::task::JoinHandle<String>) {
             .to_owned()
     });
     (base, task)
-}
-
-#[tokio::test]
-async fn python_mode_forwards_get_unchanged() {
-    let (base, seen) = legacy().await;
-    let answer = send(state(None, &base), "GET", PATH, true).await;
-    assert_eq!(answer.body, br#"{"legacy":true}"#);
-    assert_eq!(seen.await.unwrap(), "GET /api/v1/models/updates HTTP/1.1");
-}
-
-#[tokio::test]
-async fn neighbouring_routes_stay_with_python() {
-    let dir = tempfile::tempdir().unwrap();
-    let models = dir.path().join("models");
-    let data = store(dir.path());
-    for path in ["/api/v1/models", "/api/v1/models/detail?key=synthetic.gguf"] {
-        let (base, seen) = legacy().await;
-        let answer = send(
-            state(Some((&models, &models.join("models.ini"), &data)), &base),
-            "GET",
-            path,
-            true,
-        )
-        .await;
-        assert_eq!(answer.body, br#"{"legacy":true}"#, "{path}");
-        assert_eq!(seen.await.unwrap(), format!("GET {path} HTTP/1.1"));
-    }
-}
-
-#[tokio::test]
-async fn native_route_keeps_auth_and_non_get_policy() {
-    let dir = tempfile::tempdir().unwrap();
-    let models = dir.path().join("models");
-    let data = store(dir.path());
-    let roots = (models.as_path(), models.join("models.ini"), data.as_path());
-    let make = || state(Some((roots.0, &roots.1, roots.2)), "http://127.0.0.1:9");
-    let unauthorized = send(make(), "GET", PATH, false).await;
-    assert_eq!(unauthorized.status, 401);
-    assert_eq!(unauthorized.body, br#"{"error":"unauthorized"}"#);
-    for method in ["POST", "PUT", "DELETE", "HEAD"] {
-        let answer = send(make(), method, PATH, true).await;
-        assert_eq!(answer.status, 405, "{method}");
-    }
-    let slash = send(make(), "GET", "/api/v1/models/updates/", true).await;
-    assert_eq!(slash.status, 404);
 }

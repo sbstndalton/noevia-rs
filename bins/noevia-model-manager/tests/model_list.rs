@@ -9,6 +9,8 @@
 //! every platform.
 #![cfg(feature = "native-model-list")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -28,7 +30,7 @@ const MODELS_RUNTIME: &str = "/api/v1/internal/models-runtime";
 const OVERVIEW_RUNTIME: &str = "/api/v1/internal/overview-runtime";
 const REFUSED: &[u8] = br#"{"detail":"Native model list is unavailable"}"#;
 const UNAVAILABLE: &[u8] = br#"{"detail":"Python-owned endpoint unavailable"}"#;
-/// A GGUF v3 header with one key: general.architecture = "synth".
+// A GGUF v3 header with one key: general.architecture = "synth".
 const HEADER: &str =
     "474755460300000000000000000000000100000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468";
 
@@ -97,7 +99,7 @@ fn state(list: Option<Arc<ModelList>>, legacy_base: &str) -> Arc<StateData> {
     })
 }
 
-/// Both routes native over `models`, `ini` and `data`, with the given disk numbers.
+// Both routes native over `models`, `ini` and `data`, with the given disk numbers.
 fn list(models: &Path, ini: &Path, data: &Path, host: &str, disk: (u128, u128)) -> Arc<ModelList> {
     let usage: DiskUsage = Arc::new(move |_: &Path| Ok(disk));
     Arc::new(ModelList::new(
@@ -142,8 +144,8 @@ async fn send(state: Arc<StateData>, method: &str, path: &str, token: bool) -> A
     }
 }
 
-/// A one-shot stand-in for the Python child: records the request (head and body) and answers
-/// `body` with `status`. Returns (base URL, request).
+// A one-shot stand-in for the Python child: records the request (head and body) and answers
+// `body` with `status`. Returns (base URL, request).
 async fn child(status: u16, body: String) -> (String, tokio::task::JoinHandle<(String, String)>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -193,8 +195,8 @@ fn hex(text: &str) -> Vec<u8> {
         .collect()
 }
 
-/// One model file `a.gguf` and a store with the badge table, under `root`. Returns
-/// (models, ini, data).
+// One model file `a.gguf` and a store with the badge table, under `root`. Returns
+// (models, ini, data).
 fn folder(root: &Path) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
     let models = root.join("models");
     std::fs::create_dir_all(&models).unwrap();
@@ -211,20 +213,6 @@ fn folder(root: &Path) -> (std::path::PathBuf, std::path::PathBuf, std::path::Pa
         .unwrap();
     let ini = models.join("models.ini");
     (models, ini, data)
-}
-
-#[tokio::test]
-async fn python_mode_forwards_both_routes_unchanged() {
-    for path in ["/api/v1/models", "/api/v1/overview"] {
-        let (base, seen) = child(200, r#"{"legacy":true}"#.into()).await;
-        let answer = send(state(None, &base), "GET", path, true).await;
-        assert_eq!(answer.body, br#"{"legacy":true}"#);
-        let (head, _) = seen.await.unwrap();
-        assert!(
-            head.starts_with(&format!("GET {path} HTTP/1.1\r\n")),
-            "{head}"
-        );
-    }
 }
 
 #[tokio::test]
@@ -247,27 +235,6 @@ async fn the_private_runtime_calls_are_never_reachable_from_outside() {
             .await;
             assert_eq!(answer.status, 404, "{method} {path}");
             assert_eq!(answer.body, br#"{"detail":"Not Found"}"#);
-        }
-    }
-}
-
-#[tokio::test]
-async fn native_routes_keep_auth_and_non_get_policy() {
-    let dir = tempfile::tempdir().unwrap();
-    let (models, ini, data) = folder(dir.path());
-    let make = || {
-        state(
-            Some(list(&models, &ini, &data, "", (1, 0))),
-            "http://127.0.0.1:9",
-        )
-    };
-    for path in ["/api/v1/models", "/api/v1/overview"] {
-        let unauthorized = send(make(), "GET", path, false).await;
-        assert_eq!(unauthorized.status, 401);
-        assert_eq!(unauthorized.body, br#"{"error":"unauthorized"}"#);
-        for method in ["POST", "PUT", "DELETE", "HEAD"] {
-            let answer = send(make(), method, path, true).await;
-            assert_eq!(answer.status, 405, "{method} {path}");
         }
     }
 }
@@ -309,7 +276,7 @@ mod linux {
         }
     }
 
-    /// Builds one case like the generator does; returns (models, ini, data).
+    // Builds one case like the generator does; returns (models, ini, data).
     fn build(
         root: &Path,
         case: &Value,
@@ -424,257 +391,11 @@ mod linux {
             .is_some_and(|routes| routes.iter().any(|r| r == route))
     }
 
-    #[tokio::test]
-    async fn every_case_matches_the_actual_python_routes_through_the_router() {
-        let fixture = fixture();
-        let mut checked = 0;
-        for case in fixture["cases"].as_array().unwrap() {
-            let tmp = tempfile::tempdir().unwrap();
-            let (models, ini, data) = build(tmp.path(), case);
-            let host = case["host_path"].as_str().unwrap_or_default();
-            let native = list(&models, &ini, &data, host, disk(case));
-            let prefix = serde_json::to_string(models.to_str().unwrap()).unwrap();
-            let prefix = prefix[1..prefix.len() - 1].to_owned();
-            let results = &case["results"];
-            // GET /api/v1/models: the child answers its recorded live fields when asked.
-            let runtime = &results["models_runtime"];
-            let (base, seen) = if runtime.is_null() {
-                ("http://127.0.0.1:9".to_owned(), None)
-            } else {
-                let (base, seen) = child(200, runtime["body"].as_str().unwrap().into()).await;
-                (base, Some(seen))
-            };
-            let answer = send(
-                state(Some(native.clone()), &base),
-                "GET",
-                "/api/v1/models",
-                true,
-            )
-            .await;
-            let python = &results["models"];
-            if refuses(case, "models") {
-                assert_eq!(answer.status, 503, "{}", case["id"]);
-                assert_eq!(answer.body, REFUSED);
-            } else {
-                assert_eq!(
-                    (answer.status, String::from_utf8(answer.body).unwrap()),
-                    (
-                        u16::try_from(python["status"].as_u64().unwrap()).unwrap(),
-                        python["body"].as_str().unwrap().to_owned()
-                    ),
-                    "case {} models",
-                    case["id"]
-                );
-                assert_eq!(
-                    answer.content_type.as_deref(),
-                    python["content_type"].as_str(),
-                    "case {}",
-                    case["id"]
-                );
-                if python["status"] == 200 {
-                    let (head, body) = seen.unwrap().await.unwrap();
-                    assert!(
-                        head.starts_with(&format!("POST {MODELS_RUNTIME} HTTP/1.1\r\n")),
-                        "{head}"
-                    );
-                    let lower = head.to_ascii_lowercase();
-                    assert!(lower.contains(&format!("x-model-loader-token: {TOKEN}\r\n")));
-                    assert!(lower.contains("content-type: application/json\r\n"));
-                    let sizes: Vec<String> = runtime["sizes"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(Value::to_string)
-                        .collect();
-                    assert_eq!(body, format!("{{\"bytes\":[{}]}}", sizes.join(",")));
-                }
-            }
-            // GET /api/v1/overview.
-            let python = &results["overview"];
-            let (base, seen) =
-                child(200, results["overview_runtime"].as_str().unwrap().into()).await;
-            let answer = send(state(Some(native), &base), "GET", "/api/v1/overview", true).await;
-            let body = String::from_utf8(answer.body)
-                .unwrap()
-                .replace(&prefix, "@MODELS@");
-            assert_eq!(
-                (answer.status, body.as_str()),
-                (
-                    u16::try_from(python["status"].as_u64().unwrap()).unwrap(),
-                    python["body"].as_str().unwrap()
-                ),
-                "case {} overview",
-                case["id"]
-            );
-            assert_eq!(
-                answer.content_type.as_deref(),
-                python["content_type"].as_str()
-            );
-            if python["status"] == 200 {
-                let (head, body) = seen.await.unwrap();
-                assert!(
-                    head.starts_with(&format!("GET {OVERVIEW_RUNTIME} HTTP/1.1\r\n")),
-                    "{head}"
-                );
-                assert!(head
-                    .to_ascii_lowercase()
-                    .contains(&format!("x-model-loader-token: {TOKEN}\r\n")));
-                assert!(body.is_empty());
-            }
-            checked += 1;
-        }
-        assert!(checked >= 28, "{checked}");
-    }
+    // While this process owns the download table, the overview counts its jobs, not the child's.
 
-    #[tokio::test]
-    async fn a_child_that_cannot_answer_is_never_guessed_around() {
-        let dir = tempfile::tempdir().unwrap();
-        let (models, ini, data) = folder(dir.path());
-        let native = || list(&models, &ini, &data, "", (1, 0));
-        for path in ["/api/v1/models", "/api/v1/overview"] {
-            // The child's own unhandled error is Python's 500.
-            let (base, _seen) = child(500, "Internal Server Error".into()).await;
-            let failed = send(state(Some(native()), &base), "GET", path, true).await;
-            assert_eq!(failed.status, 500, "{path}");
-            assert_eq!(
-                failed.content_type.as_deref(),
-                Some("text/plain; charset=utf-8")
-            );
-            assert_eq!(failed.body, b"Internal Server Error");
-            // Refusing, missing or malformed: the forwarded route's 502, never a partial answer.
-            for (status, body) in [
-                (
-                    503,
-                    r#"{"detail":"Native model manager owns this endpoint"}"#,
-                ),
-                (404, r#"{"detail":"Not Found"}"#),
-                (200, r#"{"loaded":{}}"#),
-                (200, r#"{"loaded":{},"fit":[]}"#),
-                (200, r#"{"backends":{},"activeDownloads":0}"#),
-                (200, "not json"),
-            ] {
-                let (base, _seen) = child(status, body.into()).await;
-                let answer = send(state(Some(native()), &base), "GET", path, true).await;
-                assert_eq!(answer.status, 502, "{path} {status} {body}");
-                assert_eq!(answer.body, UNAVAILABLE);
-            }
-            let down = send(
-                state(Some(native()), "http://127.0.0.1:9"),
-                "GET",
-                path,
-                true,
-            )
-            .await;
-            assert_eq!(down.status, 502);
-            assert_eq!(down.body, UNAVAILABLE);
-        }
-        // A file part that fails is answered without asking the child at all.
-        std::fs::write(&ini, "[a]\nbroken\n").unwrap();
-        for path in ["/api/v1/models", "/api/v1/overview"] {
-            let failed = send(
-                state(Some(native()), "http://127.0.0.1:9"),
-                "GET",
-                path,
-                true,
-            )
-            .await;
-            assert_eq!(failed.status, 500, "{path}");
-        }
-    }
-
-    #[tokio::test]
-    async fn a_store_without_the_badge_table_fails_the_list_after_the_child() {
-        let dir = tempfile::tempdir().unwrap();
-        let (models, ini, data) = folder(dir.path());
-        rusqlite::Connection::open(data.join("model_loader.db"))
-            .unwrap()
-            .execute_batch("DROP TABLE model_badge;")
-            .unwrap();
-        let (base, seen) = child(200, r#"{"loaded":{},"fit":[[]]}"#.into()).await;
-        let answer = send(
-            state(Some(list(&models, &ini, &data, "", (1, 0))), &base),
-            "GET",
-            "/api/v1/models",
-            true,
-        )
-        .await;
-        assert_eq!(answer.status, 500);
-        assert_eq!(answer.body, b"Internal Server Error");
-        let (head, _) = seen.await.unwrap();
-        assert!(head.starts_with(&format!("POST {MODELS_RUNTIME} ")));
-        // A store that does not exist is not created.
-        std::fs::remove_file(data.join("model_loader.db")).unwrap();
-        let (base, _seen) = child(200, r#"{"loaded":{},"fit":[[]]}"#.into()).await;
-        let answer = send(
-            state(Some(list(&models, &ini, &data, "", (1, 0))), &base),
-            "GET",
-            "/api/v1/models",
-            true,
-        )
-        .await;
-        assert_eq!(answer.status, 500);
-        assert!(!data.join("model_loader.db").exists());
-    }
-
-    #[tokio::test]
-    async fn a_section_path_leaving_the_folder_refuses_only_the_list() {
-        let dir = tempfile::tempdir().unwrap();
-        let (models, ini, data) = folder(dir.path());
-        std::fs::write(dir.path().join("outside.gguf"), hex(HEADER)).unwrap();
-        std::fs::write(&ini, "[a]\nmodel = ../outside.gguf\n").unwrap();
-        let native = list(&models, &ini, &data, "", (1, 0));
-        let answer = send(
-            state(Some(native.clone()), "http://127.0.0.1:9"),
-            "GET",
-            "/api/v1/models",
-            true,
-        )
-        .await;
-        assert_eq!(answer.status, 503);
-        assert_eq!(answer.body, REFUSED);
-        let (base, _seen) = child(200, r#"{"backends":[],"activeDownloads":0}"#.into()).await;
-        let overview = send(state(Some(native), &base), "GET", "/api/v1/overview", true).await;
-        assert_eq!(overview.status, 200);
-    }
-
-    /// While this process owns the download table, the overview counts its jobs, not the child's.
-    #[cfg(feature = "native-downloads")]
-    #[tokio::test]
-    async fn the_native_download_table_is_counted_instead_of_the_childs() {
-        let dir = tempfile::tempdir().unwrap();
-        let (models, ini, data) = folder(dir.path());
-        let table = noevia_model_manager::downloads::Downloads::new(
-            noevia_model_manager::downloads::Config::production(
-                models.to_str().unwrap().to_owned(),
-                data.to_str().unwrap(),
-                2,
-            ),
-        )
-        .unwrap();
-        let (base, _seen) = child(200, r#"{"backends":[],"activeDownloads":3}"#.into()).await;
-        let mut with_table =
-            Arc::into_inner(state(Some(list(&models, &ini, &data, "", (1, 0))), &base)).unwrap();
-        with_table.downloads = Some(table);
-        let answer = send(Arc::new(with_table), "GET", "/api/v1/overview", true).await;
-        assert_eq!(answer.status, 200);
-        let body: Value = serde_json::from_slice(&answer.body).unwrap();
-        assert_eq!(body["activeDownloads"], 0);
-        // Without the table, the child's count is answered.
-        let (base, _seen) = child(200, r#"{"backends":[],"activeDownloads":3}"#.into()).await;
-        let answer = send(
-            state(Some(list(&models, &ini, &data, "", (1, 0))), &base),
-            "GET",
-            "/api/v1/overview",
-            true,
-        )
-        .await;
-        let body: Value = serde_json::from_slice(&answer.body).unwrap();
-        assert_eq!(body["activeDownloads"], 3);
-    }
-
-    /// noevia#1318 step 1b: while this process samples the backends, the live fields are its own
-    /// (no private runtime call reaches the child); the list still waits once for the child's
-    /// readiness (its startup creates the badge store) and the overview counts the native table.
+    // noevia#1318 step 1b: while this process samples the backends, the live fields are its own
+    // (no private runtime call reaches the child); the list still waits once for the child's
+    // readiness (its startup creates the badge store) and the overview counts the native table.
     #[cfg(all(feature = "native-backends", feature = "native-downloads"))]
     #[tokio::test]
     async fn native_live_fields_replace_the_private_calls() {

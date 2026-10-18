@@ -39,6 +39,19 @@ def main():
             artifacts[item["executable"]] = item["target"]["name"]
     if not artifacts or (args.capability_omission and len(artifacts) != 1):
         raise SystemExit("required test harness artifacts missing")
+    if not args.capability_omission:
+        mapping = json.loads((root / "bins/noevia-model-manager/docs/retirement-test-mapping.json").read_text())
+        expected = {(item["target"], name) for item in mapping for name in item["archived"]}
+        actual = set()
+        for executable in artifacts:
+            listing = subprocess.run([executable, "--list"], check=True, capture_output=True, text=True).stdout
+            for line in listing.splitlines():
+                if line.startswith("historical_") and line.endswith(": test"):
+                    parts = line.removesuffix(": test").split("::")
+                    actual.add((parts[0].removeprefix("historical_"), parts[-1]))
+        if actual != expected or len(actual) != 52:
+            raise SystemExit(f"historical oracle inventory changed: expected {len(expected)}, got {len(actual)}")
+        print("Required historical private-input contracts: 52", flush=True)
     with tempfile.TemporaryDirectory(prefix="qa-native-runtime-tests-", dir="/tmp") as folder:
         os.chmod(folder, 0o700)
         old = os.umask(0o077)

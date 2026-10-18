@@ -526,9 +526,9 @@ async fn route_shapes_and_ownership() {
         assert_ne!(status, 200, "{method} {path}: {body}");
         assert!(!body.contains(REFUSAL), "{method} {path}");
     }
-    // Not owned: the GET is forwarded.
+    // Missing native owner refuses locally.
     let python = state(None, &closed_port());
-    assert_eq!(call(python, "GET", "/api/v1/backends", true).await.0, 502);
+    assert_eq!(call(python, "GET", "/api/v1/backends", true).await.0, 503);
     // The private child calls are never reachable from outside.
     for path in [
         "/api/v1/internal/backend-stats",

@@ -86,7 +86,24 @@ fn state(docker: FakeDocker, child: &str, backends: Backends) -> Arc<StateData> 
         #[cfg(feature = "native-search")]
         search: None,
         #[cfg(feature = "native-backends")]
-        backend_stats: None,
+        backend_stats: Some(Arc::new(
+            noevia_model_manager::backend_stats::BackendStats::new(
+                noevia_model_manager::backend_stats::Config {
+                    configured: vec![NAME.into()],
+                    gpu_vram: vec![],
+                    default_port: Some(8080),
+                    drm_root: std::path::PathBuf::from("/qa-absent-drm"),
+                    legacy_base: child.into(),
+                    token: TOKEN.into(),
+                    meminfo: std::path::PathBuf::from("/qa-absent-meminfo"),
+                    ram_reserve_gb: Some(32.0),
+                },
+                Arc::new(noevia_model_manager::docker::UnixDocker {
+                    socket: std::path::PathBuf::from("/qa-absent-docker.sock"),
+                }),
+            )
+            .unwrap(),
+        )),
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner: None,
         backends: Some(Arc::new(backends)),
@@ -307,7 +324,7 @@ async fn actual_python_differential() {
                 }
                 None => Body::empty(),
             };
-            let response = noevia_model_manager::router(s)
+            let response = noevia_model_manager::router(s.clone())
                 .oneshot(request.body(body).unwrap())
                 .await
                 .unwrap();
@@ -343,26 +360,24 @@ async fn actual_python_differential() {
                 want["chat_requests"],
                 "{id} step {i}: chat requests"
             );
-            // The restart error the child ends up holding: the last set/clear call after the task ran.
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            loop {
-                let calls = restart.lock().unwrap().clone();
-                let expected = want["restart_error"].as_str();
-                let last = calls.last().map(|c| c["error"].as_str().map(str::to_owned));
-                let done = match expected {
-                    Some(e) => last == Some(Some(e.to_owned())),
-                    // Only a queued restart clears the error first.
-                    None => !got.contains("restart queued") || last == Some(None),
-                };
-                if done {
-                    break;
+            // The same recorded restart state now belongs to the native cache.
+            #[cfg(feature = "native-backends")]
+            {
+                let stats = s.backend_stats.as_ref().unwrap();
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                while stats.restart_error(NAME).as_deref() != want["restart_error"].as_str() {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "{id} step {i}: native restart state {:?}",
+                        stats.restart_error(NAME)
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                 }
-                assert!(
-                    std::time::Instant::now() < deadline,
-                    "{id} step {i}: restart calls {calls:?}"
-                );
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
+            assert!(
+                restart.lock().unwrap().is_empty(),
+                "retired restart mirror was called"
+            );
         }
     }
 }
@@ -392,7 +407,7 @@ fn max_tokens_follows_int_and_refuses_what_python_500s() {
 /// the python overview selector or without a native download table.
 #[cfg(feature = "native-backends")]
 #[tokio::test]
-async fn with_the_native_sampler_the_child_still_holds_restart_errors() {
+async fn native_sampler_owns_restart_errors_without_child_mirrors() {
     use noevia_model_manager::backend_stats::{BackendStats, Config};
     let fx: Value =
         serde_json::from_str(include_str!("fixtures/backend-control-python.v1.json")).unwrap();
@@ -473,19 +488,8 @@ async fn with_the_native_sampler_the_child_still_holds_restart_errors() {
     }
     let mirrored = stats.restart_error(NAME).unwrap();
     assert!(mirrored.starts_with("APIError: "));
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    loop {
-        let calls = restart.lock().unwrap().clone();
-        if calls.len() >= 2 {
-            assert!(calls[0]["error"].is_null(), "cleared first: {calls:?}");
-            assert_eq!(calls[0]["name"], NAME);
-            assert_eq!(calls.last().unwrap()["error"], Value::String(mirrored));
-            break;
-        }
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the child was not told: {calls:?}"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
+    assert!(
+        restart.lock().unwrap().is_empty(),
+        "retired restart mirror was called"
+    );
 }

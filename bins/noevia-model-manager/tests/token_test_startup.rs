@@ -8,6 +8,11 @@ fn native_token_test_requires_native_writer_before_any_startup_side_effect() {
         .output()
         .unwrap();
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr)
-        .contains("native-token-test requires native settings writer"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains(
+        if cfg!(feature = "native-routing") {
+            "requires exact TZ=UTC"
+        } else {
+            "mandatory native-routing capability"
+        }
+    ));
 }

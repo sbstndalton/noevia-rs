@@ -7,6 +7,8 @@
 //! refusal test asserts; the lib tests run the same cases on every platform.
 #![cfg(feature = "native-model-detail")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -22,7 +24,7 @@ const TOKEN: &str = "synthetic-model-loader-token-0123456789abcdef";
 const PATH: &str = "/api/v1/models/detail";
 const RUNTIME: &str = "/api/v1/internal/model-detail-runtime";
 const REFUSED: &[u8] = br#"{"detail":"Native model detail is unavailable"}"#;
-/// A GGUF v3 header with one key: general.architecture = "llama".
+// A GGUF v3 header with one key: general.architecture = "llama".
 const LLAMA: &str =
     "474755460300000000000000000000000100000000000000140000000000000067656e6572616c2e6172636869746563747572650800000005000000000000006c6c616d61";
 
@@ -37,7 +39,7 @@ impl DockerRead for NoDocker {
     }
 }
 
-/// `roots` is (models, ini); `None` is the default python selector.
+// `roots` is (models, ini); `None` is the default python selector.
 fn state(roots: Option<(&Path, &Path)>, legacy_base: &str) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
@@ -125,8 +127,8 @@ async fn send(state: Arc<StateData>, method: &str, path: &str, token: bool) -> A
     }
 }
 
-/// A one-shot stand-in for the Python child: records the request head and answers `body` with
-/// `status`. Returns (base URL, request head).
+// A one-shot stand-in for the Python child: records the request head and answers `body` with
+// `status`. Returns (base URL, request head).
 async fn child(status: u16, body: String) -> (String, tokio::task::JoinHandle<String>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -158,29 +160,12 @@ fn hex(text: &str) -> Vec<u8> {
         .collect()
 }
 
-/// One model file `a.gguf` with an architecture, under `root/models`.
+// One model file `a.gguf` with an architecture, under `root/models`.
 fn folder(root: &Path) -> std::path::PathBuf {
     let models = root.join("models");
     std::fs::create_dir_all(&models).unwrap();
     std::fs::write(models.join("a.gguf"), hex(LLAMA)).unwrap();
     models
-}
-
-#[tokio::test]
-async fn python_mode_forwards_get_unchanged() {
-    let (base, seen) = child(200, r#"{"legacy":true}"#.into()).await;
-    let answer = send(
-        state(None, &base),
-        "GET",
-        "/api/v1/models/detail?key=a.gguf",
-        true,
-    )
-    .await;
-    assert_eq!(answer.body, br#"{"legacy":true}"#);
-    assert!(seen
-        .await
-        .unwrap()
-        .starts_with("GET /api/v1/models/detail?key=a.gguf HTTP/1.1\r\n"));
 }
 
 #[tokio::test]
@@ -199,34 +184,6 @@ async fn the_private_runtime_call_is_never_reachable_from_outside() {
         assert_eq!(answer.status, 404);
         assert_eq!(answer.body, br#"{"detail":"Not Found"}"#);
     }
-}
-
-#[tokio::test]
-async fn native_route_keeps_auth_and_non_get_policy() {
-    let dir = tempfile::tempdir().unwrap();
-    let models = folder(dir.path());
-    let ini = models.join("models.ini");
-    let make = || state(Some((&models, &ini)), "http://127.0.0.1:9");
-    let unauthorized = send(make(), "GET", "/api/v1/models/detail?key=a.gguf", false).await;
-    assert_eq!(unauthorized.status, 401);
-    assert_eq!(unauthorized.body, br#"{"error":"unauthorized"}"#);
-    for method in ["POST", "PUT", "DELETE", "HEAD"] {
-        let answer = send(make(), method, "/api/v1/models/detail?key=a.gguf", true).await;
-        assert_eq!(answer.status, 405, "{method}");
-    }
-    let slash = send(make(), "GET", "/api/v1/models/detail/?key=a.gguf", true).await;
-    assert_eq!(slash.status, 404);
-    // Answered before any file is read, on every platform.
-    let missing = send(make(), "GET", PATH, true).await;
-    assert_eq!(missing.status, 422);
-    assert_eq!(missing.content_type.as_deref(), Some("application/json"));
-    assert_eq!(
-        missing.body,
-        br#"{"detail":[{"type":"missing","loc":["query","key"],"msg":"Field required","input":null}]}"#
-    );
-    let bad = send(make(), "GET", "/api/v1/models/detail?key=../a.gguf", true).await;
-    assert_eq!(bad.status, 400);
-    assert_eq!(bad.body, br#"{"detail":"bad model key"}"#);
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -268,7 +225,7 @@ mod linux {
         }
     }
 
-    /// Builds one case like the generator does; returns (models, ini).
+    // Builds one case like the generator does; returns (models, ini).
     fn build(root: &Path, case: &Value) -> (std::path::PathBuf, std::path::PathBuf) {
         let models = root.join("models");
         let ini = models.join("models.ini");
@@ -349,74 +306,6 @@ mod linux {
     }
 
     #[tokio::test]
-    async fn every_case_matches_the_actual_python_route_through_the_router() {
-        let fixture = fixture();
-        let mut checked = 0;
-        for case in fixture["cases"].as_array().unwrap() {
-            let tmp = tempfile::tempdir().unwrap();
-            let (models, ini) = build(tmp.path(), case);
-            let prefix = serde_json::to_string(models.to_str().unwrap()).unwrap();
-            let prefix = prefix[1..prefix.len() - 1].to_owned();
-            for result in case["results"].as_array().unwrap() {
-                let query = result["query"].as_str().unwrap();
-                let uri = if query.is_empty() {
-                    PATH.to_owned()
-                } else {
-                    format!("{PATH}?{query}")
-                };
-                let runtime = &result["runtime"];
-                let (base, seen) = if runtime.is_null() {
-                    ("http://127.0.0.1:9".to_owned(), None)
-                } else {
-                    let (base, seen) = child(200, runtime["body"].as_str().unwrap().into()).await;
-                    (base, Some(seen))
-                };
-                let answer = send(state(Some((&models, &ini)), &base), "GET", &uri, true).await;
-                let body = String::from_utf8(answer.body)
-                    .unwrap()
-                    .replace(&prefix, "@MODELS@");
-                assert_eq!(
-                    (answer.status, body.as_str()),
-                    (
-                        u16::try_from(result["status"].as_u64().unwrap()).unwrap(),
-                        result["body"].as_str().unwrap()
-                    ),
-                    "case {} query {query}",
-                    case["id"]
-                );
-                assert_eq!(
-                    answer.content_type.as_deref(),
-                    result["content_type"].as_str(),
-                    "case {} query {query}",
-                    case["id"]
-                );
-                if let Some(seen) = seen {
-                    let head = seen.await.unwrap();
-                    let fit = if runtime["fit"].as_bool().unwrap() {
-                        1
-                    } else {
-                        0
-                    };
-                    assert!(
-                        head.starts_with(&format!(
-                            "GET {RUNTIME}?bytes={}&fit={fit} HTTP/1.1\r\n",
-                            runtime["bytes"]
-                        )),
-                        "{head}"
-                    );
-                    assert!(
-                        head.to_ascii_lowercase()
-                            .contains(&format!("x-model-loader-token: {TOKEN}\r\n")),
-                        "{head}"
-                    );
-                }
-                checked += 1;
-            }
-        }
-        assert!(checked >= 86, "{checked}");
-    }
-
-    #[tokio::test]
     async fn a_child_that_cannot_answer_is_never_guessed_around() {
         let dir = tempfile::tempdir().unwrap();
         let models = folder(dir.path());
@@ -491,9 +380,9 @@ mod linux {
         assert_eq!(answer.body, REFUSED);
     }
 
-    /// noevia#1318 step 1b: while this process samples the backends, the detail's live fields are
-    /// its own: no child is needed (a closed child base still answers 200), an exception Python
-    /// would raise is the plain 500, and an inventory this side cannot judge is the native 503.
+    // noevia#1318 step 1b: while this process samples the backends, the detail's live fields are
+    // its own: no child is needed (a closed child base still answers 200), an exception Python
+    // would raise is the plain 500, and an inventory this side cannot judge is the native 503.
     #[cfg(feature = "native-backends")]
     #[tokio::test]
     async fn native_live_fields_need_no_child() {

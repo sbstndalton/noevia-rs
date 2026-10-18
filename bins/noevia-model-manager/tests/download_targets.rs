@@ -6,6 +6,8 @@
 //! mount table are rebuilt here from the same declaration. Nothing real is read or mounted.
 #![cfg(feature = "native-download-targets")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -20,7 +22,7 @@ use serde_json::Value;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
 use tower::ServiceExt;
 
-/// sha256 of the services files the fixture was generated from (noevia-services 1d44f5e2).
+// sha256 of the services files the fixture was generated from (noevia-services 1d44f5e2).
 const API_SHA: &str = "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6";
 const SERVICES_SHA: &str = "aadf227ddc3666cebb1631a0ae543c8090539a382e8ca52710fc7a5458f1d041";
 const MAIN_SHA: &str = "87eeac941fa5c0687160f315517b60c02b29324266d780851c547f6a1d749ee2";
@@ -138,7 +140,7 @@ fn unhex(hex: &str) -> Vec<u8> {
         .collect()
 }
 
-/// The same tree and mount table the generator built; returns (root, mount table path).
+// The same tree and mount table the generator built; returns (root, mount table path).
 fn build(base: &Path, case: &Value) -> (String, std::path::PathBuf) {
     let real = base.join("real-models");
     let root = match case["root"].as_str().unwrap() {
@@ -240,7 +242,7 @@ async fn actual_python_differential() {
     }
 }
 
-/// A one-shot fake for the Python child: records the request line and answers fixed JSON.
+// A one-shot fake for the Python child: records the request line and answers fixed JSON.
 async fn legacy() -> (String, tokio::task::JoinHandle<String>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -275,49 +277,6 @@ fn synthetic() -> (tempfile::TempDir, DownloadTargets) {
     let root = std::fs::canonicalize(dir.path()).unwrap();
     let targets = DownloadTargets::new(root.to_str().unwrap(), "", &root.join("no-table"));
     (dir, targets)
-}
-
-#[tokio::test]
-async fn python_mode_forwards_get_unchanged() {
-    let (base, seen) = legacy().await;
-    let answer = send(state(None, &base), "GET", PATH, true).await;
-    assert_eq!(answer.body, br#"{"legacy":true}"#);
-    assert_eq!(seen.await.unwrap(), "GET /api/v1/download-targets HTTP/1.1");
-}
-
-#[tokio::test]
-async fn downloads_start_stays_with_python() {
-    // POST /downloads validates `target` against Python's own list: never answered here.
-    let (_dir, targets) = synthetic();
-    let (base, seen) = legacy().await;
-    let answer = send(
-        state(Some(targets), &base),
-        "POST",
-        "/api/v1/downloads",
-        true,
-    )
-    .await;
-    assert_eq!(answer.body, br#"{"legacy":true}"#);
-    assert_eq!(seen.await.unwrap(), "POST /api/v1/downloads HTTP/1.1");
-}
-
-#[tokio::test]
-async fn native_route_keeps_auth_and_non_get_policy() {
-    let (_dir, targets) = synthetic();
-    let state = state(Some(targets), "http://127.0.0.1:9");
-    let unauthorized = send(state.clone(), "GET", PATH, false).await;
-    assert_eq!(unauthorized.status, 401);
-    assert_eq!(unauthorized.body, br#"{"error":"unauthorized"}"#);
-    for method in ["POST", "PUT", "DELETE"] {
-        assert_eq!(
-            send(state.clone(), method, PATH, true).await.status,
-            405,
-            "{method}"
-        );
-    }
-    let ok = send(state.clone(), "GET", PATH, true).await;
-    assert_eq!(ok.status, 200);
-    assert_eq!(ok.content_type.as_deref(), Some("application/json"));
 }
 
 #[tokio::test]

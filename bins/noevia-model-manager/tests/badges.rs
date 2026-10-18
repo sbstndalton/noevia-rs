@@ -7,6 +7,8 @@
 //! noevia#1905 fix, so every case, `fixed-1905` included, must match (noevia#1910).
 #![cfg(feature = "native-badges")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -29,14 +31,14 @@ use std::{
 };
 use tower::ServiceExt;
 
-/// sha256 of the services files the fixture was generated from (noevia-services 641c9c3,
-/// services#64 with the noevia#1905 fix).
+// sha256 of the services files the fixture was generated from (noevia-services 641c9c3,
+// services#64 with the noevia#1905 fix).
 const API_SHA: &str = "c8cf58e15afb97cc0008c9b11c28b4f4a853a3e59ce8cbbd6ba5336c65cee035";
 const DB_SHA: &str = "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478";
 const MAIN_SHA: &str = "597baa16769063bb66bde46f38c4404443f0ef486b92f6548c0e5e37e8c7a2f5";
 const TOKEN: &str = "synthetic-model-loader-token-0123456789abcdef";
 const PATH: &str = "/api/v1/badges";
-/// `db.init()`'s badge table, verbatim.
+// `db.init()`'s badge table, verbatim.
 const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS model_badge (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,7 +119,7 @@ fn state(badges: Option<Badges>, legacy_base: &str) -> Arc<StateData> {
     })
 }
 
-/// The generator's clock: 1700000000.25 + 1.5 per call, counted per case.
+// The generator's clock: 1700000000.25 + 1.5 per call, counted per case.
 fn clocked(root: &Path) -> Badges {
     let calls = Arc::new(AtomicU32::new(0));
     Badges::with_clock(
@@ -286,7 +288,7 @@ async fn actual_python_differential() {
     }
 }
 
-/// A one-shot fake for the Python child: records the request line and answers fixed JSON.
+// A one-shot fake for the Python child: records the request line and answers fixed JSON.
 async fn legacy() -> (String, tokio::task::JoinHandle<String>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -317,57 +319,6 @@ async fn legacy() -> (String, tokio::task::JoinHandle<String>) {
 }
 
 #[tokio::test]
-async fn python_mode_forwards_both_methods_unchanged() {
-    for method in ["PUT", "DELETE"] {
-        let (base, seen) = legacy().await;
-        let answer = send(state(None, &base), method, PATH, None, Vec::new()).await;
-        assert_eq!(answer.body, r#"{"legacy":true}"#);
-        assert_eq!(
-            seen.await.unwrap(),
-            format!("{method} /api/v1/badges HTTP/1.1")
-        );
-    }
-}
-
-#[tokio::test]
-async fn benchmark_run_reads_stay_with_python() {
-    // GET /benchmark/runs/{id} also lists badges; it is not part of this slice.
-    let dir = tempfile::tempdir().unwrap();
-    let (base, seen) = legacy().await;
-    let answer = send(
-        state(Some(clocked(dir.path())), &base),
-        "GET",
-        "/api/v1/benchmark/runs/1",
-        None,
-        Vec::new(),
-    )
-    .await;
-    assert_eq!(answer.body, r#"{"legacy":true}"#);
-    assert_eq!(seen.await.unwrap(), "GET /api/v1/benchmark/runs/1 HTTP/1.1");
-}
-
-#[tokio::test]
-async fn native_route_keeps_auth_and_method_policy() {
-    let dir = tempfile::tempdir().unwrap();
-    let state = state(Some(clocked(dir.path())), "http://127.0.0.1:9");
-    let response = noevia_model_manager::router(state.clone())
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri(PATH)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status().as_u16(), 401);
-    for method in ["GET", "POST"] {
-        let answer = send(state.clone(), method, PATH, None, Vec::new()).await;
-        assert_eq!(answer.status, 405, "{method}");
-    }
-}
-
-#[tokio::test]
 async fn oversized_body_is_refused_before_the_store() {
     let dir = tempfile::tempdir().unwrap();
     let state = state(Some(clocked(dir.path())), "http://127.0.0.1:9");
@@ -379,8 +330,8 @@ async fn oversized_body_is_refused_before_the_store() {
     assert!(!dir.path().join("model_loader.db").exists());
 }
 
-/// noevia#1909: a write whose request was dropped (the front's 504) still finishes before a later
-/// write starts, and the later write answers inside its own 5 s budget and is what stays stored.
+// noevia#1909: a write whose request was dropped (the front's 504) still finishes before a later
+// write starts, and the later write answers inside its own 5 s budget and is what stays stored.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn dropped_write_cannot_land_after_a_newer_write() {
     let dir = tempfile::tempdir().unwrap();
@@ -431,8 +382,8 @@ async fn dropped_write_cannot_land_after_a_newer_write() {
     assert_eq!(rating, 4);
 }
 
-/// noevia#1909: a write still waiting at the request's own deadline answers inside the budget
-/// (503 busy or the store's 500), never the front's 504, and never writes later.
+// noevia#1909: a write still waiting at the request's own deadline answers inside the budget
+// (503 busy or the store's 500), never the front's 504, and never writes later.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn lock_wait_is_bounded_by_the_request_deadline() {
     let dir = tempfile::tempdir().unwrap();

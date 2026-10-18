@@ -79,6 +79,38 @@ Content-Length: {}
     socket.read_to_string(&mut answer).unwrap();
     answer
 }
+
+// /proc/net is network-namespace-wide. Match LISTEN socket inodes against this
+// process's descriptors so the unrelated private-port trap is never mistaken for ours.
+fn owned_listen_ports(pid: u32) -> Vec<u16> {
+    let inodes: std::collections::BTreeSet<String> = fs::read_dir(format!("/proc/{pid}/fd"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter_map(|entry| fs::read_link(entry.path()).ok())
+        .filter_map(|path| path.to_str().map(str::to_owned))
+        .filter_map(|target| {
+            target
+                .strip_prefix("socket:[")
+                .and_then(|v| v.strip_suffix(']'))
+                .map(str::to_owned)
+        })
+        .collect();
+    let mut ports = std::collections::BTreeSet::new();
+    for table in ["tcp", "tcp6"] {
+        let text = fs::read_to_string(format!("/proc/{pid}/net/{table}")).unwrap();
+        for row in text.lines().skip(1) {
+            let fields: Vec<&str> = row.split_whitespace().collect();
+            if fields.get(3) == Some(&"0A")
+                && fields.get(9).is_some_and(|inode| inodes.contains(*inode))
+            {
+                let port = fields.get(1).unwrap().rsplit(':').next().unwrap();
+                ports.insert(u16::from_str_radix(port, 16).unwrap());
+            }
+        }
+    }
+    ports.into_iter().collect()
+}
+
 fn start(root: &std::path::Path, socket: &std::path::Path) -> Running {
     start_config(root, socket, None)
 }
@@ -108,7 +140,8 @@ fn start_config(
         command.env("MIGRATE_CACHE_RAM_ON_START", value);
     }
     let mut child = Running(command.spawn().unwrap());
-    let deadline = Instant::now() + Duration::from_secs(8);
+    // A bounded cold/contended CI startup budget; shutdown's production grace stays 8s.
+    let deadline = Instant::now() + Duration::from_secs(15);
     loop {
         if let Some(status) = child.0.try_wait().unwrap() {
             panic!(
@@ -116,10 +149,26 @@ fn start_config(
                 fs::read_to_string(root.join("stderr.log")).unwrap()
             );
         }
-        if TcpStream::connect("127.0.0.1:8090").is_ok() {
+        let ports = owned_listen_ports(child.0.id());
+        if !ports.is_empty() {
+            assert_eq!(
+                ports,
+                [8090],
+                "native process must own only the public API listener"
+            );
             break;
         }
-        assert!(Instant::now() < deadline, "native startup timed out");
+        assert!(
+            Instant::now() < deadline,
+            "native startup timed out; pid={} fd={:?}; log={}",
+            child.0.id(),
+            fs::read_dir(format!("/proc/{}/fd", child.0.id()))
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter_map(|entry| fs::read_link(entry.path()).ok())
+                .collect::<Vec<_>>(),
+            fs::read_to_string(root.join("stderr.log")).unwrap()
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
     child
@@ -327,12 +376,41 @@ k : v
         "ok"
     );
     drop(db);
+    // Exercise the native detail and chart replacements with actual synthetic stored inputs.
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/model-detail-python.v1.json")).unwrap();
+    let hex = fixture["cases"][0]["files"][0]["hex"].as_str().unwrap();
+    let bytes: Vec<u8> = hex
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+        .collect();
+    fs::write(root.path().join("models/qa.gguf"), bytes).unwrap();
+    let db = rusqlite::Connection::open(root.path().join("data/model_loader.db")).unwrap();
+    db.execute_batch(
+        "INSERT INTO bench_run(id,backend,status,started_at,finished_at) VALUES(1,'qa','done',1,2);
+        INSERT INTO bench_variant(id,run_id,alias) VALUES(1,1,'qa');",
+    )
+    .unwrap();
+    drop(db);
     // An unrelated private-port trap is never consulted; it is not a child listener.
     let trap = std::net::TcpListener::bind("127.0.0.1:8091").unwrap();
     trap.set_nonblocking(true).unwrap();
     let mut child = start(root.path(), &socket);
     assert!(request("GET", "/api/v1/models", "", true).starts_with("HTTP/1.1 200"));
     assert!(request("GET", "/api/v1/overview", "", true).starts_with("HTTP/1.1 200"));
+    let detail = request("GET", "/api/v1/models/detail?key=qa.gguf", "", true);
+    assert!(detail.starts_with("HTTP/1.1 200"), "{detail}");
+    assert!(
+        detail.contains("loadedOn") && detail.contains("fit"),
+        "{detail}"
+    );
+    let chart = request("GET", "/api/v1/benchmark/runs/1", "", true);
+    assert!(chart.starts_with("HTTP/1.1 200"), "{chart}");
+    assert!(
+        chart.contains("\"charts\"") && chart.contains("\"qa\""),
+        "{chart}"
+    );
     assert!(
         trap.accept().is_err(),
         "native service attempted private RPC"

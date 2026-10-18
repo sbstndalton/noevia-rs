@@ -8,6 +8,8 @@
 //! unreachable child and a failed handler are checked beside it. Every name is synthetic.
 #![cfg(feature = "native-search")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -168,29 +170,8 @@ fn route_shapes() {
     }
 }
 
-/// Another method answers FastAPI's 405 and a slash variant the front's 404 (its route policy,
-/// as without the native search); a request without the token is refused first.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unowned_requests_are_not_answered_natively() {
-    let dir = tempfile::tempdir().unwrap();
-    let search = Search::new(dir.path(), "http://127.0.0.1:1", TOKEN).unwrap();
-    let shared = state(Some(search), &closed_port());
-    for (method, uri, expected) in [
-        ("POST", "/api/v1/search", 405),
-        ("PUT", "/api/v1/search/repo?repo=a%2Fb", 405),
-        ("GET", "/api/v1/search/", 404),
-        ("GET", "/api/v1/search/repo/", 404),
-    ] {
-        let (status, _, body) = call(shared.clone(), method, uri, true).await;
-        assert_eq!(status, expected, "{method} {uri}: {body}");
-        assert!(!body.contains(REFUSAL), "{method} {uri}");
-    }
-    for uri in ["/api/v1/search", "/api/v1/search/repo?repo=a%2Fb"] {
-        let (status, _, body) = call(shared.clone(), "GET", uri, false).await;
-        assert_eq!(status, 401, "{uri}");
-        assert_eq!(body, r#"{"error":"unauthorized"}"#);
-    }
-}
+// Another method answers FastAPI's 405 and a slash variant the front's 404 (its route policy,
+// as without the native search); a request without the token is refused first.
 
 type Seen = Arc<Mutex<Vec<Value>>>;
 
@@ -514,8 +495,8 @@ async fn actual_python_differential_through_the_router() {
     assert!(compared >= 150, "{compared}");
 }
 
-/// A refusal is the native 503, an unreachable child the forwarded 502, a failed handler the plain
-/// 500, and the 422 FastAPI's.
+// A refusal is the native 503, an unreachable child the forwarded 502, a failed handler the plain
+// 500, and the 422 FastAPI's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn refusal_bad_gateway_and_failure_answers() {
     let dir = tempfile::tempdir().unwrap();
@@ -579,18 +560,10 @@ async fn refusal_bad_gateway_and_failure_answers() {
     hub_task.abort();
 }
 
-/// With no native search (the default) the paths are forwarded to the child like any other.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn without_the_native_search_the_routes_are_forwarded() {
-    let shared = state(None, &closed_port());
-    for uri in ["/api/v1/search", "/api/v1/search/repo?repo=a%2Fb"] {
-        let (status, _, body) = call(shared.clone(), "GET", uri, true).await;
-        assert_eq!(status, 502, "{uri}: {body}");
-    }
-}
+// With no native search (the default) the paths are forwarded to the child like any other.
 
-/// The child's private calls are the parent's own: a client cannot reach them through the front's
-/// forwarder, in any spelling, with the native search on or off. The child sees nothing.
+// The child's private calls are the parent's own: a client cannot reach them through the front's
+// forwarder, in any spelling, with the native search on or off. The child sees nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_client_cannot_reach_the_private_search_calls() {
     let (child_base, script, child_task) = child().await;
