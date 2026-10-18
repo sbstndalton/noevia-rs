@@ -162,6 +162,8 @@ Docker services or production data are used.
 
 `native-model-list` with `MODEL_MANAGER_MODELS_IMPL=rust` and `MODEL_MANAGER_OVERVIEW_IMPL=rust` serve the read-only `GET /api/v1/models` and `GET /api/v1/overview`, each default off. The file, ini, badge and disk fields are native; the live `loadedOn`, `fit`, `backends` and `activeDownloads` fields are asked of the Python child through private calls, never re-implemented. Settings it cannot read exactly keep Python serving that route, with one log line. See [native model list and overview](docs/native-model-list.md).
 
+`native-section-autoconfig` and `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust` serve the read-only `GET /api/v1/sections/{name}/autoconfig`, default off. The query, the routing role check, the model file, its header and the whole analysis are native; the live telemetry and the backend inventory are asked of the Python child through a private call, never re-implemented. Settings it cannot read exactly keep Python serving it, with one log line. See [native section autoconfig](docs/native-section-autoconfig.md).
+
 `native-download-targets` and `MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL=rust` serve the read-only `GET /api/v1/download-targets`, default off. `POST /api/v1/downloads` stays Python and checks its target against the same settings. See [native download targets](docs/native-download-targets.md).
 
 `native-badges` and `MODEL_MANAGER_BADGES_IMPL=rust` serve `PUT` and `DELETE /api/v1/badges`, default off, with the noevia#1905 fixes (a non-integer rating or run id answers 400, and padded aliases are stripped once). See [native badge writes](docs/native-badges.md).

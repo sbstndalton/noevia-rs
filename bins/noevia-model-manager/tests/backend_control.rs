@@ -115,6 +115,8 @@ fn state(docker: FakeDocker, child: &str, backends: Backends) -> Arc<StateData> 
         legacy: noevia_model_manager::legacy_client().unwrap(),
         legacy_base: child.into(),
         idle_unload: None,
+        #[cfg(feature = "native-section-autoconfig")]
+        section_autoconfig: None,
     })
 }
 

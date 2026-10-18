@@ -40,6 +40,8 @@ pub mod model_updates;
 pub mod prompts;
 #[cfg(feature = "native-search")]
 pub mod search;
+#[cfg(feature = "native-section-autoconfig")]
+pub mod section_autoconfig;
 #[cfg(feature = "native-section-writes")]
 pub mod section_writes;
 pub mod sections;
@@ -198,6 +200,10 @@ pub struct StateData {
     pub legacy_base: String,
     /// #1747: keeps the chat preset's global `sleep-idle-seconds` in line with the setting.
     pub idle_unload: Option<Arc<idle_unload::Reconciler>>,
+    /// noevia#1318: native `GET /api/v1/sections/{name}/autoconfig`; the telemetry and the
+    /// backend inventory are asked of the child.
+    #[cfg(feature = "native-section-autoconfig")]
+    pub section_autoconfig: Option<Arc<section_autoconfig::SectionAutoconfig>>,
 }
 
 /// #1668: what the Python child is told about the guarded embedding service: its container and
@@ -514,6 +520,8 @@ pub(crate) mod test_support {
             legacy: legacy_client().unwrap(),
             legacy_base: legacy_base.to_owned(),
             idle_unload: None,
+            #[cfg(feature = "native-section-autoconfig")]
+            section_autoconfig: None,
         }
     }
 
@@ -1408,6 +1416,13 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
     if let Some(list) = state.model_list.clone() {
         if let Some(route) = list.route(req.method(), path) {
             return native_model_list(&state, &list, route).await;
+        }
+    }
+    #[cfg(feature = "native-section-autoconfig")]
+    if let Some(autoconfig) = state.section_autoconfig.clone() {
+        if let Some(name) = section_autoconfig::route(req.method(), path) {
+            let query = req.uri().query().unwrap_or_default().to_owned();
+            return native_section_autoconfig(&state, &autoconfig, &name, &query).await;
         }
     }
     #[cfg(feature = "native-model-detail")]
@@ -3012,4 +3027,35 @@ pub fn python_owned(method: &str, path: &str) -> bool {
             | ("DELETE", ["sections" | "prompts", _])
             | ("DELETE", ["badges"])
     )
+}
+
+/// noevia#1318: the section autoconfig: the file part natively, then the live inputs from the
+/// child, then the analysis. It waits on the child, so it keeps a forwarded route's budget.
+#[cfg(feature = "native-section-autoconfig")]
+async fn native_section_autoconfig(
+    state: &StateData,
+    autoconfig: &section_autoconfig::SectionAutoconfig,
+    name: &str,
+    query: &str,
+) -> Response {
+    let child = section_autoconfig::Child {
+        client: &state.legacy,
+        base: &state.legacy_base,
+        token: &state.token,
+    };
+    match autoconfig.get(name, query, child).await {
+        section_autoconfig::Outcome::Json(status, bytes) => (
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response(),
+        section_autoconfig::Outcome::Failed => internal_error(),
+        section_autoconfig::Outcome::Refused => {
+            detail(StatusCode::SERVICE_UNAVAILABLE, section_autoconfig::REFUSAL)
+        }
+        section_autoconfig::Outcome::Unavailable => {
+            detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable")
+        }
+    }
 }

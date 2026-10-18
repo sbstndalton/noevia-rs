@@ -536,6 +536,8 @@ fn state(table: Arc<Downloads>, child_port: u16) -> Arc<StateData> {
         legacy: noevia_model_manager::legacy_client().unwrap(),
         legacy_base: format!("http://127.0.0.1:{child_port}"),
         idle_unload: None,
+        #[cfg(feature = "native-section-autoconfig")]
+        section_autoconfig: None,
     })
 }
 

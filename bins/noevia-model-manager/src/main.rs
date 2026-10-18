@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 mod child_lifecycle;
 mod model_list_cmd;
+mod section_autoconfig_cmd;
 use noevia_model_manager::{
     docker::UnixDocker, legacy_client, router, validate_token, Redactor, StateData,
 };
@@ -75,6 +76,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if cfg!(feature = "native-model-list") {
                 output.write_all(b"native-model-list\n")?;
+            }
+            if cfg!(feature = "native-section-autoconfig") {
+                output.write_all(b"native-section-autoconfig\n")?;
             }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
@@ -490,6 +494,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     // noevia#1318: GET /api/v1/models and GET /api/v1/overview.
     let model_list = model_list_cmd::select(&std::env::vars_os().collect::<Vec<_>>())?;
+    // noevia#1318: GET /api/v1/sections/{name}/autoconfig.
+    let section_autoconfig =
+        section_autoconfig_cmd::select(&std::env::vars_os().collect::<Vec<_>>())?;
     if !matches!(diagnose_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_DIAGNOSE_IMPL must be python or rust".into());
     }
@@ -866,6 +873,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         badges_root.as_deref(),
     );
     model_list_cmd::child(&mut child_command, &model_list);
+    section_autoconfig_cmd::child(&mut child_command, &section_autoconfig);
     // #1668: the native front refuses deletes of the embedding service's models from its router
     // state, so the legacy holder scan must not also pin env names that point at that service
     // forever. It still pins names on any other server (#1638), so it gets the service's address.
@@ -1043,6 +1051,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         legacy,
         legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
         idle_unload: Some(idle_unload),
+        #[cfg(feature = "native-section-autoconfig")]
+        section_autoconfig: section_autoconfig_cmd::state(&section_autoconfig),
     });
     // Retain native stores and their lifetime writer locks until the child is reaped.
     let serve = axum::serve(listener, router(state.clone()));

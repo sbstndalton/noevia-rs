@@ -1,0 +1,123 @@
+# Native section autoconfig read (noevia#1318)
+
+The optional `native-section-autoconfig` Cargo feature (it includes `native-draft-heads`, whose
+contained model-file reader and draft-head search it reuses) serves
+`GET /api/v1/sections/{name}/autoconfig` from Rust. Its selector is
+`MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL`, `python` by default. Startup refuses a value other than
+`python` or `rust`, and `rust` without the compiled feature, as for every switch. It never refuses
+startup over the settings: settings this side cannot read exactly as the child does keep the route
+with Python and log one line
+(`native-section-autoconfig: <reason>; GET /api/v1/sections/{name}/autoconfig stays with python`).
+This document does not authorize activation.
+
+Compose must pass the selector through, never as an empty value:
+
+```yaml
+MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL: ${MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL:-python}
+```
+
+## Ownership
+
+- Rust answers only `GET /api/v1/sections/{name}/autoconfig`, after the token check, with the
+  name segment percent-decoded as the child's server decodes it. Other methods, the slash
+  variants, a name that decodes to a slash and every other section route keep their existing
+  handling.
+- The child gets `NOEVIA_NATIVE_MODEL_MANAGER_SECTION_AUTOCONFIG_CONFIRMED`, `1` only when the
+  route is native (`0` otherwise, also over an inherited value), and then the same `MODELS_DIR`
+  and `MODELS_INI_PATH`. Under `1` the services middleware refuses the route with 503, so it is
+  never served twice, and serves the private call below (404 otherwise). The native front never
+  forwards `/api/v1/internal/*`, so that call is reachable only from the parent.
+- Fallbacks (one log line, the route stays with Python, the child gets `0`): a case-folded alias
+  of `MODELS_DIR`, `MODELS_INI_PATH`, `LLAMACPP_CACHE_RAM_HARD_MAX_MIB` or
+  `LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB` (the child's settings fold names); a `MODELS_DIR` that
+  is not absolute and in pathlib's normal form (the projector and draft-head paths are mapped
+  onto it as text); a `MODELS_INI_PATH` that is not an absolute file path; a cache-ram limit that
+  is not a plain integer; any of these over 4096 bytes. The prompt-cache cap is the child's
+  `settings.cache_ram_limits[0]`: `min(max(cap, 0), max(hard, 0))`.
+
+## What is native and what stays in Python
+
+Native, ported exactly and differential-tested:
+
+- the query: every parameter, FastAPI's lax readings of integers, floats (including `inf` and
+  `nan`) and booleans, the last value of a repeated key, and the 422 body with every error in
+  declaration order;
+- the system routing role check: `models.roles.json` (a missing, unreadable or unusable file is no
+  roles, a repeated key keeps its last value) and the deprecated name/path rule, with the route's
+  own 200 answer; the deprecated rule logs once per section;
+- the section's model file: the explicit `model =` path, the folder layout (its first non-projector
+  `.gguf`), the flat `{name}.gguf`, the "No model file found" answer, the header through the `gguf`
+  crate with the "Could not read the model file" answer, and the size (the folder's model parts
+  when the file sits in one);
+- `budget_backends` (the VRAM budget less the largest prompt cache, the cards in proportion), the
+  whole of `autoconfig.analyze` through the `model-autoconfig` crate (preparation and its refusal
+  texts, the projector and draft head beside the model, the size plan, speculative decoding
+  profiles, values, presets and presentation), `ini.get_section`, the models.ini revision
+  (SHA-256 of the raw bytes), and the JSON, byte for byte (Python's float text, non-finite values
+  as `null`, `ensure_ascii=False`).
+
+Delegated to the Python child, never re-implemented, through the private
+`POST /api/v1/internal/section-autoconfig-runtime` with `{"section": name, "model": model_rel}`:
+
+- the telemetry: `telemetry.ingest` over the backend logs, then the section's `stats_for` and
+  `config_history` (a failure there is empty measurements, as in the route);
+- the backend inventory: `helpers._backend_list()` (the GPU sampler, Docker image tags and
+  commands), whose failure is the route's plain 500.
+
+The child answers `{"measured": ..., "history": ..., "promptTps": "<repr>", "backends": "<json>"}`:
+`measured` and `history` rendered as the route renders them and placed verbatim, the prompt rate
+as Python's float `repr`, and the backend list as JSON text that keeps non-finite floats. The
+parent asks only once the file part found a model, as Python ingests only then. A child 500 is
+FastAPI's plain 500; a refusing, missing or oversized (over 16 MiB) answer is the forwarded
+route's `502 {"detail":"Python-owned endpoint unavailable"}`; an answer of the wrong shape
+refuses (below).
+
+`MODEL_AUTOCONFIG` (the child's choice between its Python analysis, the default, and the
+crate's binary) is not read here: the native route always answers the crate's plan. That is
+justified because the crate matches Python's default analysis: the oracle records the child under
+its default, and every native answer equals it byte for byte. The one behaviour that differs is
+the child's `MODEL_AUTOCONFIG=rust` mode, where Python computes its own plan, has the crate confirm
+it, and fails closed with an error when the two disagree; the native route has no second plan to
+compare with and answers the crate's.
+
+## Bounds and deliberate differences
+
+The route answers `503 {"detail":"Native section autoconfig is unavailable"}` instead of guessing
+for:
+
+- a query value whose reading is uncertain here (whitespace around a number, underscores, a
+  fraction on an integer, more than 18 digits);
+- a model file or folder that leaves the models folder through a link (Python would follow it), a
+  file that vanishes between the check and the read, or a read error (Python's error text is not
+  reproduced);
+- a saved projector or draft-head path that is not under `/models` (a relative `mmproj =` is
+  resolved by Python against its own working directory, which this process cannot reproduce; the
+  oracle pins Python's 200 and the native 503 for it);
+- a header past the reader's bounds, a non-finite float in the header, or a header the summary
+  step refuses;
+- a roles file over 1 MiB, or a models.ini the section parser refuses;
+- any input where the crate refuses but Python could still answer (the crate's own refusals);
+- a child answer of the wrong shape;
+- an answer over 8 MiB;
+- a blocking part (including waiting for one of the two read slots) running past 60 s.
+
+The blocking parts (the file part, then the analysis) each take one of two read slots and run
+under the request's admission permit; a request dropped mid-read keeps both until the read
+returns. The child call has a 120 s timeout (its ingest reads up to 20,000 log lines per backend).
+
+Wire texts the route answers with (the system routing role answer, the backend refusals) are kept
+byte for byte, including the product names they mention.
+
+## Oracle
+
+`tools/gen-section-autoconfig-oracle.py` runs the actual services FastAPI app on synthetic model
+folders, models.ini and roles files and GGUF headers, with the live sources (the telemetry and
+the backend inventory) replaced by deterministic stand-ins, and records each answer of the route
+plus, for every request that reaches the analysis, the request the parent makes and the child's
+real answer to it under the confirmation. It writes
+`tests/fixtures/section-autoconfig-python.v1.json`; the `native-section-autoconfig` CI job
+regenerates it from the pinned services ref with Python 3.12 and requires identical bytes. The lib
+tests rebuild every case through a synthetic root on any platform with a loopback child stand-in;
+`tests/section_autoconfig.rs` runs the same cases through the router and the real opener on Linux,
+and checks each runtime request (path, body and the token header).
+`tests/section_autoconfig_lifecycle.rs` checks the selector at process level.

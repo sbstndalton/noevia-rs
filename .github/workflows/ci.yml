@@ -1448,6 +1448,54 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-model-detail --test model_list_lifecycle --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test model_list_lifecycle --test lifecycle
 
+  native-section-autoconfig:
+    name: Native section autoconfig read, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 5f50d65f505140e0f71f6b9fa51b8d0a89a49f8b
+          path: section-autoconfig-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r section-autoconfig-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Regenerate the actual Python GET /api/v1/sections/{name}/autoconfig oracle
+        run: |
+          python3 -I tools/gen-section-autoconfig-oracle.py section-autoconfig-services/model-manager/app > "$RUNNER_TEMP/section-autoconfig.json"
+          cmp bins/noevia-model-manager/tests/fixtures/section-autoconfig-python.v1.json "$RUNNER_TEMP/section-autoconfig.json" || {
+            diff bins/noevia-model-manager/tests/fixtures/section-autoconfig-python.v1.json "$RUNNER_TEMP/section-autoconfig.json" | head -40
+            exit 1
+          }
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-section-autoconfig -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes,native-settings-write,native-backend-control,native-benchmark-overview,native-check-updates,native-benchmark-runner,native-downloads,native-model-delete,native-draft-heads,native-backends,native-search,native-model-list,native-section-autoconfig -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --no-default-features -- -D warnings
+      - name: Native section autoconfig differential (lib and Linux router), bounds and route policy
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-section-autoconfig --test section_autoconfig --test section_autoconfig_lifecycle --test draft_heads --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-section-autoconfig --lib section_autoconfig
+          cargo test --locked -p noevia-model-manager --features native-section-autoconfig --lib draft_heads::
+      - name: Combined native features keep every existing test
+        # Prompt store tests need the prompt oracle env; the native-prompts job runs them.
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-downloads,native-draft-heads,native-model-list,native-section-autoconfig --test section_autoconfig --test section_autoconfig_lifecycle --test model_list --test draft_heads --test downloads --test settings --test lifecycle --test policy --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-host,native-sections,native-prompts,native-settings,native-downloads,native-draft-heads,native-model-list,native-section-autoconfig --lib section_autoconfig
+      - name: Section autoconfig capability omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-draft-heads --test section_autoconfig_lifecycle --test lifecycle
+          cargo test --locked -p noevia-model-manager --no-default-features --test section_autoconfig_lifecycle --test lifecycle
+
   native-download-targets:
     name: Native download targets read, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
