@@ -1,5 +1,5 @@
 //! noevia-core's `server/browser-policy.cjs` in Rust, exported from `dav-parse.wasm`
-//! (BROWSER_POLICY_IMPL): what noevia decides before every browser action, from the facts the
+//! (BROWSER_POLICY_IMPL, retired in noevia-core#188): what noevia decides before every browser action, from the facts the
 //! executor read off the real page (never from the model's description of it).
 //!
 //! - [`classify`]: `classifyAction`, `allow`, `needs_approval` or `blocked` for one action.
@@ -11,10 +11,10 @@
 //! - [`fold`]: the label folding (`NFKD`, U+0300..U+036F removed, `toLowerCase`, `\s+` to one
 //!   space, trimmed) the consequential-control check reads.
 //!
-//! The host (browser-policy.cjs under BROWSER_POLICY_IMPL=wasm) computes the JS answer first. An
-//! action is allowed only if both allow it; it asks if either asks; it is blocked if either blocks;
-//! an unknown, a refusal or a fault asks (or blocks, where the JS blocks or the caller has no
-//! approval step). So wherever the port cannot be sure it says so ([`Status`] `None`).
+//! The host (browser-policy.cjs; its JS rules were deleted in noevia-core#188) sends this crate the
+//! projections and applies its answer alone. An unknown, a refusal or a fault asks (a navigation is
+//! blocked, and so is any call that has no approval step). So wherever the port cannot be sure it says
+//! so ([`Status`] `None`).
 //!
 //! Form buttons (noevia#1218) and local names with trailing dots (noevia#1219) are decided as the
 //! JS now decides them: a `<button>` in a form submits unless its type is exactly (ASCII

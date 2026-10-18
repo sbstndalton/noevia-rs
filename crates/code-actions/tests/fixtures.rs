@@ -1,5 +1,6 @@
-//! Every row of tests/fixtures/code-actions.v1.json (printed by noevia-core's
-//! tools/gen-code-actions-fixtures.cjs from the JS itself; byte-identical to core's copy) through the
+//! Every row of tests/fixtures/code-actions.v1.json (first printed from
+//! noevia-core's former JS classifier, whose generator was deleted with it in noevia-core#189; frozen and
+//! byte-identical to core's copy) through the
 //! wasm call's wire format: the same reply text as JSON.stringify of the JS answer, or the refusal
 //! the crate documents for a strict row.
 #![allow(

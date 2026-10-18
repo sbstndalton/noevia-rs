@@ -1,7 +1,7 @@
 [package]
 name = "browser-policy"
 version = "0.1.0"
-description = "noevia-core's browser-policy.cjs in Rust: allow, needs approval or blocked for each browser action from the facts the executor observed, where the browser may go, and which secrets may be typed on which origin; the host only ever uses it to ask or refuse more"
+description = "noevia-core's browser-policy.cjs in Rust: allow, needs approval or blocked for each browser action from the facts the executor observed, where the browser may go, and which secrets may be typed on which origin; the host applies its answer alone and asks (or refuses) wherever it is unsure"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

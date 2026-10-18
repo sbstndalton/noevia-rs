@@ -129,14 +129,14 @@ one slice at a time.
   call of a coding agent read into noevia's action classes (the shell reader, wrappers, `sh -c`,
   interpreters, `find -exec`, git, installers, publishers, curl/wget/httpie flags, redirects),
   failing closed; `decide` (allow / ask / deny with the domain allow-list over every URL host) and
-  `pickOption`. The host (CODE_ACTIONS_IMPL) keeps the JS answer only when the port's reply is
-  byte-identical; otherwise a call is never auto-allowed or standing, a decision is at least `ask`,
-  an option `cancelled`. Stricter: command array elements `String()` reads unpredictably, URL hosts
+  `pickOption`. The host applies its answer alone (CODE_ACTIONS_IMPL, retired in noevia-core#189; the JS
+  classifier is deleted): a call the crate cannot classify is never auto-allowed or standing, a
+  decision it cannot give asks a person, an option is `cancelled`. Stricter: command array elements `String()` reads unpredictably, URL hosts
   outside plain ASCII labels or a canonical dotted quad (in `decide`'s network branch), more than
   `MAX_WORK` reading work (every refusal well under 10 ms), inputs over 2 MiB. More than 64
   `-exec`s in one find is every class, never standing, as in the JS (noevia#1212). In
-  `dav-parse.wasm` as `code_actions`. Table from noevia-core
-  (`node tools/gen-code-actions-fixtures.cjs`), copied byte-for-byte to
+  `dav-parse.wasm` as `code_actions`. Table printed once from
+  noevia-core's former JS classifier (its generator was deleted with it; the file is frozen), copied byte-for-byte to
   `crates/code-actions/tests/fixtures/code-actions.v1.json`.
 - `crates/project-file-names`: noevia-core's project-file-names.cjs (#642): a model-given file
   name resolved to exactly one file of the requesting project (verbatim or a unique trailing part),
@@ -155,11 +155,12 @@ one slice at a time.
 - `crates/browser-policy`: noevia-core's browser-policy.cjs (spec-agent-execution §6): allow,
   needs approval or blocked for each browser action from the facts the executor read off the page,
   where the browser may go, and which `{{secret:name}}` placeholders may be filled on an origin
-  (names and domains only, never a value). The host never weakens the JS answer with it
-  (BROWSER_POLICY_IMPL=wasm): both must allow, either asking or blocking wins, any doubt asks. Folds
+  (names and domains only, never a value). The host applies its answer alone
+  (BROWSER_POLICY_IMPL, retired in noevia-core#188; the JS rules are deleted): an unknown, a refusal
+  or a fault asks, and a navigation is then not opened. Folds
   labels with ICU4X NFKD over a table of code points; anything outside it is unknown. In
-  `dav-parse.wasm` as `browser_policy`. Table from noevia-core
-  (`node tools/gen-browser-policy-fixtures.cjs`), copied byte-for-byte to
+  `dav-parse.wasm` as `browser_policy`. Table printed once
+  from noevia-core's former JS rules (their generator was deleted with them; the file is frozen), copied byte-for-byte to
   `crates/browser-policy/tests/fixtures/browser-policy.v1.json`.
 - `crates/tool-gate`: noevia-core's tool-gate.cjs rules: whether one message makes the chat loop
   prefetch a read-only tool (run it on arguments taken from the message) or require it, what the

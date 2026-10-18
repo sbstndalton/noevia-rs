@@ -1,5 +1,5 @@
 //! noevia-core's `server/code-actions.cjs` in Rust, exported from `dav-parse.wasm`
-//! (CODE_ACTIONS_IMPL). code-actions.cjs is the CodeHarness contract v0: it reads one ACP tool call
+//! (CODE_ACTIONS_IMPL, retired in noevia-core#189). code-actions.cjs is the CodeHarness contract v0: it reads one ACP tool call
 //! of a coding agent into noevia's own action classes, decides what happens before a human sees it,
 //! and maps a human's answer back to an ACP permission option. This crate answers the same three
 //! questions over the host's projection of the call:
@@ -33,10 +33,10 @@
 //!   already reads each of them), so chains are linear; more than [`MAX_FIND_EXECS`] `-exec`s in
 //!   one find is every class but none/read, never standing, in the JS and here.
 //!
-//! The host (noevia-core CODE_ACTIONS_IMPL) always computes the JS answer first and keeps it only
-//! when the port's reply is byte-identical; otherwise a classification is made stricter (never
-//! auto-allowed, never standing, the union of both answers' classes and paths), a decision is at
-//! least `ask` (or `deny` when either says so), and an option is `cancelled`.
+//! The host (noevia-core code-actions.cjs; its JS classifier was deleted in noevia-core#189) sends this
+//! crate the projections and applies its answer alone. A call the crate cannot classify is the
+//! unverified classification (the most consequential class, never auto-allowed, never standing), a
+//! decision it cannot give asks a person, and an option is `cancelled`.
 //!
 //! Linear in the input (each nesting level re-reads at most its own text, at most seven levels),
 //! bounded by [`MAX_WORK`], no panics.
