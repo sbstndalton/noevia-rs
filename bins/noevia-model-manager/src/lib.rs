@@ -5,6 +5,9 @@ pub mod backend_stats;
 pub mod backends;
 #[cfg(feature = "native-badges")]
 pub mod badges;
+#[cfg(feature = "native-bench-observe")]
+pub mod bench_observe;
+pub mod bench_observe_cmd;
 #[cfg(feature = "native-benchmark-runner")]
 pub mod bench_runner;
 #[cfg(feature = "native-bench-runs")]

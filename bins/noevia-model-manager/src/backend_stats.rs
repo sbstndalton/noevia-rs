@@ -28,6 +28,8 @@
 use crate::Job;
 use model_files::json::Value as J;
 
+#[cfg(feature = "native-bench-observe")]
+mod bench_observe;
 pub mod fit;
 pub mod live;
 use std::{

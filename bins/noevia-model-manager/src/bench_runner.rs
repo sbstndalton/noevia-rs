@@ -3,11 +3,13 @@
 //! `GET /api/v1/benchmark/progress`, `POST /api/v1/benchmark/start|cancel` and the overview's
 //! `job` render (`api._bench_job`).
 //!
-//! Three per-request observations stay with the Python child, which keeps the GPU sampler and
+//! By default three per-request observations stay with the Python child, which keeps the GPU sampler and
 //! the log parser: the sampled VRAM (`_peak_vram`), whether anything else used the backend
 //! (`_other_traffic`) and a cold load's time (`_read_load_ms`). They are asked of its private
 //! `GET /api/v1/internal/bench-observe`; when the child cannot answer they take the values
 //! Python's own best-effort paths give (`[]`, not contended, no load time).
+//! `MODEL_MANAGER_BENCHMARK_OBSERVE_IMPL=rust` installs the native observer before startup:
+//! sampler cache and bounded log reads then decide locally, with explicit errors and no child fallback.
 //!
 //! Every place `bench.py` reads the clock, this reads the injected [`Clock`] in the same order,
 //! so the differential test can pin both clocks exactly as the Python oracle does.
@@ -329,6 +331,8 @@ pub struct Runner {
     http: reqwest::Client,
     spawn: Spawner,
     observe: Observer,
+    #[cfg(feature = "native-bench-observe")]
+    native_observe: std::sync::OnceLock<crate::bench_observe::Observer>,
     resolve: Resolver,
     sweeps: Option<Sweeps>,
 }
@@ -374,9 +378,30 @@ impl Runner {
             http,
             spawn,
             observe,
+            #[cfg(feature = "native-bench-observe")]
+            native_observe: std::sync::OnceLock::new(),
             resolve,
             sweeps,
         }))
+    }
+
+    /// Installed at startup, before requests or the child start. No child fallback after installation.
+    #[cfg(feature = "native-bench-observe")]
+    pub fn set_native_observer(
+        &self,
+        observer: crate::bench_observe::Observer,
+    ) -> Result<(), &'static str> {
+        self.native_observe
+            .set(observer)
+            .map_err(|_| "benchmark observer already installed")
+    }
+
+    async fn observation(&self, query: String) -> Result<Observed, Raised> {
+        #[cfg(feature = "native-bench-observe")]
+        if let Some(observer) = self.native_observe.get() {
+            return observer(query).await;
+        }
+        Ok((self.observe)(query).await.unwrap_or_default())
     }
 
     fn with<T>(&self, f: impl FnOnce(&mut JobState) -> T) -> T {
@@ -625,7 +650,7 @@ impl Runner {
                     .await?;
                     let query =
                         observe_query(backend, alias, aliases, t_req, cold && m.err.is_empty());
-                    let seen = (self.observe)(query).await.unwrap_or_default();
+                    let seen = self.observation(query).await?;
                     let database = self.database.clone();
                     let row = ResultRow {
                         variant_id,
@@ -1625,6 +1650,42 @@ pub fn production(p: Production) -> Result<Arc<Runner>, &'static str> {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
     use super::*;
+
+    #[cfg(feature = "native-bench-observe")]
+    #[tokio::test]
+    async fn native_observation_never_falls_back_and_errors_reach_the_suite() {
+        let dir = tempfile::tempdir().unwrap();
+        let legacy_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = legacy_calls.clone();
+        let runner = Runner::new(
+            dir.path(),
+            Clock::default(),
+            Arc::new(|_| {}),
+            Arc::new(move |_| {
+                count.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async { Some(Observed::default()) })
+            }),
+            Arc::new(|_| Box::pin(async { Err("unused".into()) })),
+        )
+        .unwrap();
+        assert_eq!(
+            runner.observation("qa".into()).await.unwrap(),
+            Observed::default()
+        );
+        runner
+            .set_native_observer(Arc::new(|_| {
+                Box::pin(async { Err(Raised("qa refusal".into())) })
+            }))
+            .unwrap();
+        assert_eq!(
+            runner.observation("qa".into()).await,
+            Err(Raised("qa refusal".into()))
+        );
+        assert_eq!(legacy_calls.load(Ordering::SeqCst), 1);
+        assert!(runner
+            .set_native_observer(Arc::new(|_| Box::pin(async { Ok(Observed::default()) })))
+            .is_err());
+    }
 
     #[test]
     fn lines_follow_splitlines_across_pieces() {
