@@ -47,6 +47,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-settings-write") {
                 output.write_all(b"native-settings-write\n")?;
             }
+            if cfg!(feature = "native-token-test") {
+                output.write_all(b"native-token-test\n")?;
+            }
             if cfg!(feature = "native-backend-control") {
                 output.write_all(b"native-backend-control\n")?;
             }
@@ -222,6 +225,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let token_test_mode = environment("MODEL_MANAGER_TOKEN_TEST_IMPL", "python")?;
+    if !matches!(token_test_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_TOKEN_TEST_IMPL must be python or rust".into());
+    }
+    if token_test_mode == "rust"
+        && (!cfg!(feature = "native-token-test")
+            || environment("MODEL_MANAGER_SETTINGS_WRITE_IMPL", "python")? != "rust")
+    {
+        return Err("native-token-test requires native settings writer and compiled native-token-test feature".into());
+    }
     let settings_write_mode = environment("MODEL_MANAGER_SETTINGS_WRITE_IMPL", "python")?;
     if !matches!(settings_write_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_SETTINGS_WRITE_IMPL must be python or rust".into());
@@ -754,11 +767,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     });
     #[cfg(feature = "native-settings-write")]
-    let settings_write = settings_write_root.as_deref().map(|root| {
-        Arc::new(noevia_model_manager::settings_write::SettingsWrite::new(
-            std::path::Path::new(root),
-        ))
-    });
+    let settings_write = match settings_write_root.as_deref() {
+        Some(root) => {
+            let writer = noevia_model_manager::settings_write::SettingsWrite::new(
+                std::path::Path::new(root),
+            );
+            #[cfg(feature = "native-token-test")]
+            let writer = if token_test_mode == "rust" {
+                writer.with_native_token_test()?
+            } else {
+                writer
+            };
+            Some(Arc::new(writer))
+        }
+        None => None,
+    };
     #[cfg(feature = "native-section-writes")]
     let section_writes = writes_roots.as_ref().map(|roots| {
         Arc::new(noevia_model_manager::section_writes::SectionWrites::new(

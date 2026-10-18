@@ -62,6 +62,8 @@ pub mod sqlite_read;
 ))]
 mod startup;
 pub mod telemetry_cmd;
+#[cfg(feature = "native-token-test")]
+mod token_test;
 pub mod validation;
 
 use axum::{
@@ -2088,9 +2090,13 @@ async fn native_settings_write(
     match writer.put(&body).await {
         settings_write::Outcome::Saved(bytes, false) => json(StatusCode::OK, bytes),
         settings_write::Outcome::Saved(bytes, true) => {
-            let test = match child_runtime(state, settings_write::TEST_PATH, "", 64 * 1024).await {
-                Ok(t) if settings_write::valid_test(&t) => t,
-                _ => settings_write::TEST_UNAVAILABLE.as_bytes().to_vec(),
+            let test = if let Some(test) = writer.token_test().await {
+                test
+            } else {
+                match child_runtime(state, settings_write::TEST_PATH, "", 64 * 1024).await {
+                    Ok(t) if settings_write::valid_test(&t) => t,
+                    _ => settings_write::TEST_UNAVAILABLE.as_bytes().to_vec(),
+                }
             };
             json(StatusCode::OK, settings_write::with_test(&bytes, &test))
         }
