@@ -1,5 +1,5 @@
 //! The shared fixture table (`tests/fixtures/gguf-meta.v1.json`, byte-identical to noevia-core's,
-//! printed by its `tools/gen-gguf-meta-fixtures.cjs` from gguf-meta.cjs itself).
+//! first printed from the former JS reader gguf-meta.cjs, whose generator was deleted with it in noevia-core#184; frozen).
 //!
 //! Every row must agree exactly: the canonical summary text byte for byte, or the JS's error
 //! message. Rows nested past `MAX_NEST` (which the JS accepts) must be refused as `Depth`. Each

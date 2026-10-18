@@ -1,5 +1,6 @@
-//! Every row of tests/fixtures/project-file-names.v1.json (printed by noevia-core's
-//! tools/gen-project-file-names-fixtures.cjs from the JS itself; byte-identical to core's copy)
+//! Every row of tests/fixtures/project-file-names.v1.json (first printed from
+//! noevia-core's former JS resolver, whose generator was deleted with it in noevia-core#185; frozen and
+//! byte-identical to core's copy)
 //! through the wasm call's wire format: the same file index, reason, candidates or refusal.
 #![allow(
     clippy::unwrap_used,

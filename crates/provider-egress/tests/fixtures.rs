@@ -1,7 +1,9 @@
-//! Every row of tests/fixtures/provider-egress.v1.json (printed by noevia-core's
-//! tools/gen-provider-egress-fixtures.cjs from the JS itself; byte-identical to core's copy)
+//! Every row of tests/fixtures/provider-egress.v1.json (first printed from
+//! noevia-core's former JS rules, whose generator was deleted with them in noevia-core#186; frozen and
+//! byte-identical to core's copy)
 //! through the wasm call's wire format: the exact reply text. Rows marked `strict` hold the port's
-//! deliberately stricter answer (see the crate docs); the generator checks they never let out more.
+//! deliberately stricter answer (see the crate docs); the generator checked, while it existed, that they never let out more
+//! (noevia-core's differential test now pins it against the frozen JS answers).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

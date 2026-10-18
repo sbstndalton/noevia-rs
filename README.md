@@ -27,7 +27,8 @@ one slice at a time.
   as the JS byte for byte (numbers as `Number#toString`, NaN/±Infinity/-0 tagged, mode() ties,
   `kv[null]`). Stricter than the JS, as refusals: arrays nested past 64, more than 262,144 kept
   values, more than 24 MiB of read (not skipped) header bytes in 512 ranges. In `dav-parse.wasm` as `gguf_summary`
-  (GGUF_META_IMPL). Table from noevia-core (`node tools/gen-gguf-meta-fixtures.cjs`, synthetic
+  (GGUF_META_IMPL, retired in noevia-core#184: the host always uses it). Table printed once from noevia-core's former JS reader
+  (its generator was deleted with it; the file is frozen), synthetic
   headers incl. truncated at every byte, huge counts and lengths, odd types), copied
   byte-for-byte to `crates/gguf/tests/fixtures/gguf-meta.v1.json`.
 - `crates/policy-leaves`: noevia-core's auth-tokens.cjs (`resolveAuthTokens`, #294: both tokens
@@ -140,16 +141,16 @@ one slice at a time.
 - `crates/project-file-names`: noevia-core's project-file-names.cjs (#642): a model-given file
   name resolved to exactly one file of the requesting project (verbatim or a unique trailing part),
   traversal-shaped names refused. No normalization tables: a name outside the NFC-inert set is
-  refused, so it never resolves under PROJECT_FILE_NAMES_IMPL=wasm; the host resolves a name only
-  when both resolve it to the same file. In `dav-parse.wasm` as `project_file_names`. Table from
-  noevia-core (`node tools/gen-project-file-names-fixtures.cjs`), copied byte-for-byte to
+  refused, so the host answers `unverified` for it (PROJECT_FILE_NAMES_IMPL, retired in
+  noevia-core#185: the host applies this crate's answer alone). In `dav-parse.wasm` as `project_file_names`. Table printed once from
+  noevia-core's former JS resolver (its generator was deleted with it; the file is frozen), copied byte-for-byte to
   `crates/project-file-names/tests/fixtures/project-file-names.v1.json`.
 - `crates/provider-egress`: noevia-core's provider-egress.cjs (#447, #452): which providers are
   external, Diary text refused for them, private toolboxes stripped, and storage-tool paths in (or,
-  for tree tools, containing) the Diary folder refused. The host asks it only when the JS lets
-  something out, so it can only refuse more (PROVIDER_EGRESS_IMPL=wasm). No normalization tables:
+  for tree tools, containing) the Diary folder refused. The host applies its answer alone
+  (PROVIDER_EGRESS_IMPL, retired in noevia-core#186; an unknown, a fault or a refusal is the strict result). No normalization tables:
   a path outside the NFC-inert set is treated as possibly in the Diary. In `dav-parse.wasm` as
-  `provider_egress`. Table from noevia-core (`node tools/gen-provider-egress-fixtures.cjs`), copied
+  `provider_egress`. Table printed once from noevia-core's former JS rules (their generator was deleted with them; the file is frozen), copied
   byte-for-byte to `crates/provider-egress/tests/fixtures/provider-egress.v1.json`.
 - `crates/browser-policy`: noevia-core's browser-policy.cjs (spec-agent-execution §6): allow,
   needs approval or blocked for each browser action from the facts the executor read off the page,
