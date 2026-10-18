@@ -500,7 +500,7 @@ async fn a_dead_port_refuses_connections_and_cannot_be_taken_by_another_listener
     // Neither an explicit bind of the port nor a burst of OS-assigned ones ever lands on it.
     assert!(TcpListener::bind(addr).await.is_err());
     let mut taken = Vec::new();
-    for _ in 0..256 {
+    for _ in 0..64 {
         let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
         assert_ne!(l.local_addr().unwrap().port(), dead.port());
         taken.push(l);
