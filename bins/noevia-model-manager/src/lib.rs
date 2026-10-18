@@ -1916,7 +1916,10 @@ pub fn max_tokens(value: Option<&prompts::JsonValue>) -> Option<i64> {
     Some(n.clamp(1, 4096))
 }
 
-/// noevia#1318: the child keeps `last_restart_error`; set (`Some`) or clear (`None`) it.
+/// noevia#1318: the child keeps its own copy of `last_restart_error`; set (`Some`) or clear
+/// (`None`) it. Always, even while the native sampler mirrors it: the child's backend snapshot
+/// still shows it in `/overview`'s `backends[]` under `MODEL_MANAGER_OVERVIEW_IMPL=python`, and in
+/// the native overview without a native download table (its child runtime call).
 #[cfg(feature = "native-backend-control")]
 async fn set_restart_error(
     legacy: &reqwest::Client,

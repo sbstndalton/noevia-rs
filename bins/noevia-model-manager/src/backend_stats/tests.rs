@@ -178,20 +178,13 @@ async fn child() -> Child {
                         .push(String::from_utf8(data[end..end + length].to_vec()).unwrap());
                     r#"{"ok":true}"#.to_owned()
                 } else {
-                    let target = line.split(' ').nth(1).unwrap();
-                    let query = target.split_once('?').unwrap().1;
-                    let mut name = "";
-                    let mut probe = "";
-                    for kv in query.split('&') {
-                        let (k, v) = kv.split_once('=').unwrap();
-                        if k == "name" {
-                            name = v;
-                        } else {
-                            probe = v;
-                        }
-                    }
-                    let gpu = p.lock().unwrap()[format!("{name} {probe}")].clone();
-                    serde_json::json!({ "gpu": gpu }).to_string()
+                    // noevia#1318 step 2: the sampler never asks the child for a GPU read; a
+                    // request here is recorded as a push no case expects, which fails the case.
+                    let _ = &p;
+                    q.lock()
+                        .unwrap()
+                        .push(format!("UNEXPECTED CHILD REQUEST {line}"));
+                    r#"{"gpu":null}"#.to_owned()
                 };
                 let reply = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",

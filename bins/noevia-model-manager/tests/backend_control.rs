@@ -386,3 +386,106 @@ fn max_tokens_follows_int_and_refuses_what_python_500s() {
         assert_eq!(max_tokens(Some(&j(text))), want, "{text}");
     }
 }
+
+/// noevia#1318 step 2: a failed restart is kept in the native mirror and the child is still told
+/// (cleared, then set), because the child's backend snapshot still shows it in `/overview` under
+/// the python overview selector or without a native download table.
+#[cfg(feature = "native-backends")]
+#[tokio::test]
+async fn with_the_native_sampler_the_child_still_holds_restart_errors() {
+    use noevia_model_manager::backend_stats::{BackendStats, Config};
+    let fx: Value =
+        serde_json::from_str(include_str!("fixtures/backend-control-python.v1.json")).unwrap();
+    let (case, step) = fx["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|c| {
+            c["steps"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| {
+                    s["restart_error"].is_string()
+                        && s["path"].as_str().unwrap().ends_with("/restart")
+                })
+                .map(|s| (c, s))
+        })
+        .expect("a fixture step whose restart fails");
+    let models = Arc::new(Mutex::new((200, String::new())));
+    let chat = Arc::new(Mutex::new((200, String::new())));
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let restart = Arc::new(Mutex::new(Vec::new()));
+    let port = server(models, chat, requests, restart.clone()).await;
+    let child = format!("http://127.0.0.1:{port}");
+    let dir = tempfile::tempdir().unwrap();
+    let stats = Arc::new(
+        BackendStats::new(
+            Config {
+                configured: vec![NAME.into()],
+                gpu_vram: vec![],
+                default_port: Some(8080),
+                drm_root: dir.path().join("drm"),
+                legacy_base: child.clone(),
+                token: TOKEN.into(),
+                meminfo: dir.path().join("meminfo"),
+                ram_reserve_gb: Some(32.0),
+            },
+            Arc::new(noevia_model_manager::docker::UnixDocker {
+                socket: dir.path().join("absent.sock"),
+            }),
+        )
+        .unwrap(),
+    );
+    stats.seed_restart_errors(&[(NAME.to_owned(), "APIError: an older failure".to_owned())]);
+    let docker = FakeDocker {
+        spec: spec(&case["spec"], port),
+        restart_error: step["restart_error"].as_str().map(str::to_owned),
+    };
+    let mut s = Arc::into_inner(state(
+        docker,
+        &child,
+        Backends::with_clock(Some(8080), Arc::new(|| 1000.0)).unwrap(),
+    ))
+    .unwrap();
+    s.backend_stats = Some(stats.clone());
+    let response = noevia_model_manager::router(Arc::new(s))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(step["path"].as_str().unwrap())
+                .header("x-model-loader-token", TOKEN)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while stats.restart_error(NAME).as_deref() == Some("APIError: an older failure")
+        || stats.restart_error(NAME).is_none()
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the mirror was never set"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let mirrored = stats.restart_error(NAME).unwrap();
+    assert!(mirrored.starts_with("APIError: "));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let calls = restart.lock().unwrap().clone();
+        if calls.len() >= 2 {
+            assert!(calls[0]["error"].is_null(), "cleared first: {calls:?}");
+            assert_eq!(calls[0]["name"], NAME);
+            assert_eq!(calls.last().unwrap()["error"], Value::String(mirrored));
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the child was not told: {calls:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}

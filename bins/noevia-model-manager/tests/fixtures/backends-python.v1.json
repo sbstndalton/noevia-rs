@@ -1025,21 +1025,35 @@
        },
        "error": null,
        "gpu": {
-        "cards": [],
+        "cards": [
+         {
+          "clock_mhz": 0.0,
+          "device": "card2",
+          "index": 0,
+          "name": "AMD Radeon 880M/890M",
+          "power_w": 0.0,
+          "shared_total_gb": 48.0,
+          "shared_used_gb": 9.0,
+          "temp_c": 0.0,
+          "util_pct": 37.0,
+          "vram_total_gb": 0.5,
+          "vram_used_gb": 0.1
+         }
+        ],
         "clock_mhz": 0.0,
         "gpu_count": 1,
         "measured": true,
-        "memory_kind": "dedicated",
-        "name": "card0",
-        "power_w": 30.0,
-        "shared_total_gb": 0.0,
-        "shared_used_gb": 0.0,
-        "source": "",
-        "temp_c": 45.0,
-        "util_pct": 7.0,
+        "memory_kind": "unified",
+        "name": "AMD Radeon 880M/890M",
+        "power_w": 0.0,
+        "shared_total_gb": 48.0,
+        "shared_used_gb": 9.0,
+        "source": "sysfs",
+        "temp_c": 0.0,
+        "util_pct": 37.0,
         "vendor": "amd",
-        "vram_total_gb": 16.0,
-        "vram_used_gb": 4.0
+        "vram_total_gb": 0.5,
+        "vram_used_gb": 0.1
        },
        "ok": true
       },
@@ -1136,40 +1150,8 @@
      },
      "op": "tick",
      "probes": {
-      "127.0.0.1 amd": {
-       "cards": [],
-       "clock_mhz": 0.0,
-       "gpu_count": 1,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "card0",
-       "power_w": 30.0,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 45.0,
-       "util_pct": 7.0,
-       "vendor": "amd",
-       "vram_total_gb": 16.0,
-       "vram_used_gb": 4.0
-      },
-      "127.0.0.1 amd-nvidia": {
-       "cards": [],
-       "clock_mhz": 0.0,
-       "gpu_count": 1,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "card0",
-       "power_w": 30.0,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 45.0,
-       "util_pct": 7.0,
-       "vendor": "amd",
-       "vram_total_gb": 16.0,
-       "vram_used_gb": 4.0
-      },
+      "127.0.0.1 amd": null,
+      "127.0.0.1 amd-nvidia": null,
       "127.0.0.1 nvidia": null,
       "llama-gone amd": null,
       "llama-gone amd-nvidia": null,
@@ -1341,7 +1323,7 @@
     },
     {
      "at": 1792240002.5,
-     "body": "{\"backends\":[{\"name\":\"llama-gone\",\"found\":false,\"status\":\"not_found\",\"image\":\"\",\"short_id\":\"\",\"started_at\":\"\",\"uptime\":null,\"uptime_s\":null,\"host_ports\":[],\"internal_port\":null,\"loaded_model\":null,\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":\"APIError: synthetic restart failure\",\"stats\":{\"ok\":false,\"error\":\"container not found\",\"gpu\":null,\"container\":null},\"history\":[]},{\"name\":\"127.0.0.1\",\"found\":true,\"status\":\"running\",\"image\":\"ghcr.io/ggml-org/llama.cpp:server-rocm\",\"short_id\":\"060606060606\",\"started_at\":\"2026-10-17 10:00\",\"uptime\":\"2h 26m\",\"uptime_s\":8802,\"host_ports\":[],\"internal_port\":19090,\"loaded_model\":\"embed-fixed\",\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":\"APIError: x\",\"stats\":{\"ok\":true,\"error\":null,\"gpu\":{\"vendor\":\"amd\",\"name\":\"AMD Radeon 880M/890M\",\"util_pct\":37.0,\"vram_used_gb\":0.1,\"vram_total_gb\":0.5,\"temp_c\":0.0,\"power_w\":0.0,\"gpu_count\":1,\"cards\":[{\"index\":0,\"name\":\"AMD Radeon 880M/890M\",\"util_pct\":37.0,\"vram_used_gb\":0.1,\"vram_total_gb\":0.5,\"temp_c\":0.0,\"power_w\":0.0,\"shared_used_gb\":9.0,\"shared_total_gb\":48.0,\"clock_mhz\":0.0,\"device\":\"card2\"}],\"memory_kind\":\"unified\",\"shared_used_gb\":9.0,\"shared_total_gb\":48.0,\"clock_mhz\":0.0,\"source\":\"sysfs\",\"measured\":true},\"container\":{\"cpu_pct\":60.0,\"mem_used_gb\":2.0,\"mem_limit_gb\":8.0,\"mem_anon_gb\":1.5}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":7.0,\"vram_used_gb\":4.0,\"cpu_pct\":60.0,\"mem_used_gb\":2.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":45.0,\"power_w\":30.0},{\"ts\":1792240002.0,\"gpu_util\":37.0,\"vram_used_gb\":0.1,\"cpu_pct\":60.0,\"mem_used_gb\":2.0,\"per_gpu_util\":[37.0],\"per_gpu_vram_used_gb\":[0.1],\"shared_used_gb\":9.0,\"temp_c\":0.0,\"power_w\":0.0}]}]}",
+     "body": "{\"backends\":[{\"name\":\"llama-gone\",\"found\":false,\"status\":\"not_found\",\"image\":\"\",\"short_id\":\"\",\"started_at\":\"\",\"uptime\":null,\"uptime_s\":null,\"host_ports\":[],\"internal_port\":null,\"loaded_model\":null,\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":\"APIError: synthetic restart failure\",\"stats\":{\"ok\":false,\"error\":\"container not found\",\"gpu\":null,\"container\":null},\"history\":[]},{\"name\":\"127.0.0.1\",\"found\":true,\"status\":\"running\",\"image\":\"ghcr.io/ggml-org/llama.cpp:server-rocm\",\"short_id\":\"060606060606\",\"started_at\":\"2026-10-17 10:00\",\"uptime\":\"2h 26m\",\"uptime_s\":8802,\"host_ports\":[],\"internal_port\":19090,\"loaded_model\":\"embed-fixed\",\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":\"APIError: x\",\"stats\":{\"ok\":true,\"error\":null,\"gpu\":{\"vendor\":\"amd\",\"name\":\"AMD Radeon 880M/890M\",\"util_pct\":37.0,\"vram_used_gb\":0.1,\"vram_total_gb\":0.5,\"temp_c\":0.0,\"power_w\":0.0,\"gpu_count\":1,\"cards\":[{\"index\":0,\"name\":\"AMD Radeon 880M/890M\",\"util_pct\":37.0,\"vram_used_gb\":0.1,\"vram_total_gb\":0.5,\"temp_c\":0.0,\"power_w\":0.0,\"shared_used_gb\":9.0,\"shared_total_gb\":48.0,\"clock_mhz\":0.0,\"device\":\"card2\"}],\"memory_kind\":\"unified\",\"shared_used_gb\":9.0,\"shared_total_gb\":48.0,\"clock_mhz\":0.0,\"source\":\"sysfs\",\"measured\":true},\"container\":{\"cpu_pct\":60.0,\"mem_used_gb\":2.0,\"mem_limit_gb\":8.0,\"mem_anon_gb\":1.5}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":37.0,\"vram_used_gb\":0.1,\"cpu_pct\":60.0,\"mem_used_gb\":2.0,\"per_gpu_util\":[37.0],\"per_gpu_vram_used_gb\":[0.1],\"shared_used_gb\":9.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240002.0,\"gpu_util\":37.0,\"vram_used_gb\":0.1,\"cpu_pct\":60.0,\"mem_used_gb\":2.0,\"per_gpu_util\":[37.0],\"per_gpu_vram_used_gb\":[0.1],\"shared_used_gb\":9.0,\"temp_c\":0.0,\"power_w\":0.0}]}]}",
      "docker": {
       "containers": [
        {
@@ -1445,50 +1427,7 @@
         "mem_used_gb": 3.0
        },
        "error": null,
-       "gpu": {
-        "cards": [
-         {
-          "clock_mhz": 0.0,
-          "device": "",
-          "index": 0,
-          "name": "Synthetic RTX",
-          "power_w": 120.5,
-          "shared_total_gb": 0.0,
-          "shared_used_gb": 0.0,
-          "temp_c": 61.0,
-          "util_pct": 50.0,
-          "vram_total_gb": 24.0,
-          "vram_used_gb": 2.0
-         },
-         {
-          "clock_mhz": 0.0,
-          "device": "",
-          "index": 1,
-          "name": "Synthetic RTX",
-          "power_w": 130.25,
-          "shared_total_gb": 0.0,
-          "shared_used_gb": 0.0,
-          "temp_c": 66.0,
-          "util_pct": 70.0,
-          "vram_total_gb": 24.0,
-          "vram_used_gb": 4.0
-         }
-        ],
-        "clock_mhz": 0.0,
-        "gpu_count": 2,
-        "measured": true,
-        "memory_kind": "dedicated",
-        "name": "2 \u00d7 Synthetic RTX",
-        "power_w": 250.8,
-        "shared_total_gb": 0.0,
-        "shared_used_gb": 0.0,
-        "source": "",
-        "temp_c": 66.0,
-        "util_pct": 60.0,
-        "vendor": "nvidia",
-        "vram_total_gb": 48.0,
-        "vram_used_gb": 6.0
-       },
+       "gpu": null,
        "ok": true
       }
      },
@@ -1567,94 +1506,8 @@
      "op": "tick",
      "probes": {
       "localhost amd": null,
-      "localhost amd-nvidia": {
-       "cards": [
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 0,
-         "name": "Synthetic RTX",
-         "power_w": 120.5,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 61.0,
-         "util_pct": 50.0,
-         "vram_total_gb": 24.0,
-         "vram_used_gb": 2.0
-        },
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 1,
-         "name": "Synthetic RTX",
-         "power_w": 130.25,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 66.0,
-         "util_pct": 70.0,
-         "vram_total_gb": 24.0,
-         "vram_used_gb": 4.0
-        }
-       ],
-       "clock_mhz": 0.0,
-       "gpu_count": 2,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "2 \u00d7 Synthetic RTX",
-       "power_w": 250.8,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 66.0,
-       "util_pct": 60.0,
-       "vendor": "nvidia",
-       "vram_total_gb": 48.0,
-       "vram_used_gb": 6.0
-      },
-      "localhost nvidia": {
-       "cards": [
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 0,
-         "name": "Synthetic RTX",
-         "power_w": 120.5,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 61.0,
-         "util_pct": 50.0,
-         "vram_total_gb": 24.0,
-         "vram_used_gb": 2.0
-        },
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 1,
-         "name": "Synthetic RTX",
-         "power_w": 130.25,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 66.0,
-         "util_pct": 70.0,
-         "vram_total_gb": 24.0,
-         "vram_used_gb": 4.0
-        }
-       ],
-       "clock_mhz": 0.0,
-       "gpu_count": 2,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "2 \u00d7 Synthetic RTX",
-       "power_w": 250.8,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 66.0,
-       "util_pct": 60.0,
-       "vendor": "nvidia",
-       "vram_total_gb": 48.0,
-       "vram_used_gb": 6.0
-      }
+      "localhost amd-nvidia": null,
+      "localhost nvidia": null
      },
      "sysfs": {}
     },
@@ -1669,50 +1522,7 @@
         "mem_used_gb": 3.0
        },
        "error": null,
-       "gpu": {
-        "cards": [
-         {
-          "clock_mhz": 0.0,
-          "device": "",
-          "index": 0,
-          "name": "Card A",
-          "power_w": 50.0,
-          "shared_total_gb": 0.0,
-          "shared_used_gb": 0.0,
-          "temp_c": 40.0,
-          "util_pct": 10.0,
-          "vram_total_gb": 8.0,
-          "vram_used_gb": 1.0
-         },
-         {
-          "clock_mhz": 0.0,
-          "device": "",
-          "index": 1,
-          "name": "Card B",
-          "power_w": 30.5,
-          "shared_total_gb": 0.0,
-          "shared_used_gb": 0.0,
-          "temp_c": 45.0,
-          "util_pct": 20.0,
-          "vram_total_gb": 4.0,
-          "vram_used_gb": 0.5
-         }
-        ],
-        "clock_mhz": 0.0,
-        "gpu_count": 2,
-        "measured": true,
-        "memory_kind": "dedicated",
-        "name": "Card A + Card B",
-        "power_w": 80.5,
-        "shared_total_gb": 0.0,
-        "shared_used_gb": 0.0,
-        "source": "",
-        "temp_c": 45.0,
-        "util_pct": 15.0,
-        "vendor": "nvidia",
-        "vram_total_gb": 12.0,
-        "vram_used_gb": 1.5
-       },
+       "gpu": null,
        "ok": true
       }
      },
@@ -1791,94 +1601,8 @@
      "op": "tick",
      "probes": {
       "localhost amd": null,
-      "localhost amd-nvidia": {
-       "cards": [
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 0,
-         "name": "Card A",
-         "power_w": 50.0,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 40.0,
-         "util_pct": 10.0,
-         "vram_total_gb": 8.0,
-         "vram_used_gb": 1.0
-        },
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 1,
-         "name": "Card B",
-         "power_w": 30.5,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 45.0,
-         "util_pct": 20.0,
-         "vram_total_gb": 4.0,
-         "vram_used_gb": 0.5
-        }
-       ],
-       "clock_mhz": 0.0,
-       "gpu_count": 2,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "Card A + Card B",
-       "power_w": 80.5,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 45.0,
-       "util_pct": 15.0,
-       "vendor": "nvidia",
-       "vram_total_gb": 12.0,
-       "vram_used_gb": 1.5
-      },
-      "localhost nvidia": {
-       "cards": [
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 0,
-         "name": "Card A",
-         "power_w": 50.0,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 40.0,
-         "util_pct": 10.0,
-         "vram_total_gb": 8.0,
-         "vram_used_gb": 1.0
-        },
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 1,
-         "name": "Card B",
-         "power_w": 30.5,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 45.0,
-         "util_pct": 20.0,
-         "vram_total_gb": 4.0,
-         "vram_used_gb": 0.5
-        }
-       ],
-       "clock_mhz": 0.0,
-       "gpu_count": 2,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "Card A + Card B",
-       "power_w": 80.5,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 45.0,
-       "util_pct": 15.0,
-       "vendor": "nvidia",
-       "vram_total_gb": 12.0,
-       "vram_used_gb": 1.5
-      }
+      "localhost amd-nvidia": null,
+      "localhost nvidia": null
      },
      "sysfs": {}
     },
@@ -2074,7 +1798,7 @@
     },
     {
      "at": 1792240007.0,
-     "body": "{\"backends\":[{\"name\":\"localhost\",\"found\":true,\"status\":\"running\",\"image\":\"registry.example/llama.cpp:server-cuda12\",\"short_id\":\"070707070707\",\"started_at\":\"2026-10-17 10:00\",\"uptime\":\"2h 26m\",\"uptime_s\":8806,\"host_ports\":[],\"internal_port\":18100,\"loaded_model\":null,\"probe_error\":\"HTTP 500\",\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":true,\"error\":null,\"gpu\":null,\"container\":{\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"mem_limit_gb\":16.0,\"mem_anon_gb\":null}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":60.0,\"vram_used_gb\":6.0,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[50.0,70.0],\"per_gpu_vram_used_gb\":[2.0,4.0],\"shared_used_gb\":0.0,\"temp_c\":66.0,\"power_w\":250.8},{\"ts\":1792240002.0,\"gpu_util\":15.0,\"vram_used_gb\":1.5,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[10.0,20.0],\"per_gpu_vram_used_gb\":[1.0,0.5],\"shared_used_gb\":0.0,\"temp_c\":45.0,\"power_w\":80.5},{\"ts\":1792240004.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240006.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0}]}]}",
+     "body": "{\"backends\":[{\"name\":\"localhost\",\"found\":true,\"status\":\"running\",\"image\":\"registry.example/llama.cpp:server-cuda12\",\"short_id\":\"070707070707\",\"started_at\":\"2026-10-17 10:00\",\"uptime\":\"2h 26m\",\"uptime_s\":8806,\"host_ports\":[],\"internal_port\":18100,\"loaded_model\":null,\"probe_error\":\"HTTP 500\",\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":true,\"error\":null,\"gpu\":null,\"container\":{\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"mem_limit_gb\":16.0,\"mem_anon_gb\":null}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240002.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240004.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240006.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0}]}]}",
      "docker": {
       "containers": [
        {
@@ -2170,48 +1894,21 @@
        },
        "error": null,
        "gpu": {
-        "cards": [
-         {
-          "clock_mhz": 0.0,
-          "device": "",
-          "index": 0,
-          "name": "Card A",
-          "power_w": 50.0,
-          "shared_total_gb": 0.0,
-          "shared_used_gb": 0.0,
-          "temp_c": 40.0,
-          "util_pct": 10.0,
-          "vram_total_gb": 8.0,
-          "vram_used_gb": 1.0
-         },
-         {
-          "clock_mhz": 0.0,
-          "device": "",
-          "index": 1,
-          "name": "Card B",
-          "power_w": 30.5,
-          "shared_total_gb": 0.0,
-          "shared_used_gb": 0.0,
-          "temp_c": 45.0,
-          "util_pct": 20.0,
-          "vram_total_gb": 4.0,
-          "vram_used_gb": 0.5
-         }
-        ],
+        "cards": [],
         "clock_mhz": 0.0,
-        "gpu_count": 2,
-        "measured": true,
+        "gpu_count": 1,
+        "measured": false,
         "memory_kind": "dedicated",
-        "name": "Card A + Card B",
-        "power_w": 80.5,
+        "name": "Vulkan device (no SMI tool in image \u2014 VRAM from GPU_VRAM)",
+        "power_w": 0.0,
         "shared_total_gb": 0.0,
         "shared_used_gb": 0.0,
-        "source": "",
-        "temp_c": 45.0,
-        "util_pct": 15.0,
+        "source": "declared",
+        "temp_c": 0.0,
+        "util_pct": 0.0,
         "vendor": "vulkan",
         "vram_total_gb": 12.0,
-        "vram_used_gb": 1.5
+        "vram_used_gb": 0.0
        },
        "ok": true
       },
@@ -2347,94 +2044,8 @@
      "op": "tick",
      "probes": {
       "127.0.0.1 amd": null,
-      "127.0.0.1 amd-nvidia": {
-       "cards": [
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 0,
-         "name": "Card A",
-         "power_w": 50.0,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 40.0,
-         "util_pct": 10.0,
-         "vram_total_gb": 8.0,
-         "vram_used_gb": 1.0
-        },
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 1,
-         "name": "Card B",
-         "power_w": 30.5,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 45.0,
-         "util_pct": 20.0,
-         "vram_total_gb": 4.0,
-         "vram_used_gb": 0.5
-        }
-       ],
-       "clock_mhz": 0.0,
-       "gpu_count": 2,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "Card A + Card B",
-       "power_w": 80.5,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 45.0,
-       "util_pct": 15.0,
-       "vendor": "nvidia",
-       "vram_total_gb": 12.0,
-       "vram_used_gb": 1.5
-      },
-      "127.0.0.1 nvidia": {
-       "cards": [
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 0,
-         "name": "Card A",
-         "power_w": 50.0,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 40.0,
-         "util_pct": 10.0,
-         "vram_total_gb": 8.0,
-         "vram_used_gb": 1.0
-        },
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 1,
-         "name": "Card B",
-         "power_w": 30.5,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 45.0,
-         "util_pct": 20.0,
-         "vram_total_gb": 4.0,
-         "vram_used_gb": 0.5
-        }
-       ],
-       "clock_mhz": 0.0,
-       "gpu_count": 2,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "Card A + Card B",
-       "power_w": 80.5,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 45.0,
-       "util_pct": 15.0,
-       "vendor": "nvidia",
-       "vram_total_gb": 12.0,
-       "vram_used_gb": 1.5
-      },
+      "127.0.0.1 amd-nvidia": null,
+      "127.0.0.1 nvidia": null,
       "localhost amd": null,
       "localhost amd-nvidia": null,
       "localhost nvidia": null
@@ -2490,23 +2101,7 @@
         "mem_used_gb": 3.0
        },
        "error": null,
-       "gpu": {
-        "cards": [],
-        "clock_mhz": 0.0,
-        "gpu_count": 1,
-        "measured": true,
-        "memory_kind": "dedicated",
-        "name": "card0",
-        "power_w": 30.0,
-        "shared_total_gb": 0.0,
-        "shared_used_gb": 0.0,
-        "source": "",
-        "temp_c": 45.0,
-        "util_pct": 7.0,
-        "vendor": "vulkan",
-        "vram_total_gb": 0.0,
-        "vram_used_gb": 0.0
-       },
+       "gpu": null,
        "ok": true
       }
      },
@@ -2632,40 +2227,8 @@
       "127.0.0.1 amd": null,
       "127.0.0.1 amd-nvidia": null,
       "127.0.0.1 nvidia": null,
-      "localhost amd": {
-       "cards": [],
-       "clock_mhz": 0.0,
-       "gpu_count": 1,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "card0",
-       "power_w": 30.0,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 45.0,
-       "util_pct": 7.0,
-       "vendor": "amd",
-       "vram_total_gb": 0.0,
-       "vram_used_gb": 0.0
-      },
-      "localhost amd-nvidia": {
-       "cards": [],
-       "clock_mhz": 0.0,
-       "gpu_count": 1,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "card0",
-       "power_w": 30.0,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 45.0,
-       "util_pct": 7.0,
-       "vendor": "amd",
-       "vram_total_gb": 0.0,
-       "vram_used_gb": 0.0
-      },
+      "localhost amd": null,
+      "localhost amd-nvidia": null,
       "localhost nvidia": null
      },
      "sysfs": {
@@ -2683,7 +2246,7 @@
     },
     {
      "at": 1792240003.0,
-     "body": "{\"backends\":[{\"name\":\"127.0.0.1\",\"found\":true,\"status\":\"running\",\"image\":\"ghcr.io/ggml-org/llama.cpp:server-vulkan-b4000\",\"short_id\":\"080808080808\",\"started_at\":\"2026-10-17 10:00\",\"uptime\":\"2h 26m\",\"uptime_s\":8802,\"host_ports\":[],\"internal_port\":18190,\"loaded_model\":null,\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":true,\"error\":null,\"gpu\":{\"vendor\":\"vulkan\",\"name\":\"Vulkan device (no SMI tool in image \u2014 VRAM from GPU_VRAM)\",\"util_pct\":0.0,\"vram_used_gb\":0.0,\"vram_total_gb\":12.0,\"temp_c\":0.0,\"power_w\":0.0,\"gpu_count\":1,\"cards\":[],\"memory_kind\":\"dedicated\",\"shared_used_gb\":0.0,\"shared_total_gb\":0.0,\"clock_mhz\":0.0,\"source\":\"declared\",\"measured\":false},\"container\":{\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"mem_limit_gb\":0.0,\"mem_anon_gb\":null}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":15.0,\"vram_used_gb\":1.5,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[10.0,20.0],\"per_gpu_vram_used_gb\":[1.0,0.5],\"shared_used_gb\":0.0,\"temp_c\":45.0,\"power_w\":80.5},{\"ts\":1792240002.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0}]},{\"name\":\"localhost\",\"found\":true,\"status\":\"running\",\"image\":\"ghcr.io/ggml-org/llama.cpp:server-vulkan-b4000\",\"short_id\":\"090909090909\",\"started_at\":\"2026-10-17 10:00\",\"uptime\":\"2h 26m\",\"uptime_s\":8802,\"host_ports\":[],\"internal_port\":18191,\"loaded_model\":null,\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":true,\"error\":null,\"gpu\":{\"vendor\":\"vulkan\",\"name\":\"card0\",\"util_pct\":7.0,\"vram_used_gb\":0.0,\"vram_total_gb\":0.0,\"temp_c\":45.0,\"power_w\":30.0,\"gpu_count\":1,\"cards\":[],\"memory_kind\":\"dedicated\",\"shared_used_gb\":0.0,\"shared_total_gb\":0.0,\"clock_mhz\":0.0,\"source\":\"\",\"measured\":true},\"container\":{\"cpu_pct\":0.0,\"mem_used_gb\":3.0,\"mem_limit_gb\":0.0,\"mem_anon_gb\":null}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240002.0,\"gpu_util\":7.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":45.0,\"power_w\":30.0}]}]}",
+     "body": "{\"backends\":[{\"name\":\"127.0.0.1\",\"found\":true,\"status\":\"running\",\"image\":\"ghcr.io/ggml-org/llama.cpp:server-vulkan-b4000\",\"short_id\":\"080808080808\",\"started_at\":\"2026-10-17 10:00\",\"uptime\":\"2h 26m\",\"uptime_s\":8802,\"host_ports\":[],\"internal_port\":18190,\"loaded_model\":null,\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":true,\"error\":null,\"gpu\":{\"vendor\":\"vulkan\",\"name\":\"Vulkan device (no SMI tool in image \u2014 VRAM from GPU_VRAM)\",\"util_pct\":0.0,\"vram_used_gb\":0.0,\"vram_total_gb\":12.0,\"temp_c\":0.0,\"power_w\":0.0,\"gpu_count\":1,\"cards\":[],\"memory_kind\":\"dedicated\",\"shared_used_gb\":0.0,\"shared_total_gb\":0.0,\"clock_mhz\":0.0,\"source\":\"declared\",\"measured\":false},\"container\":{\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"mem_limit_gb\":0.0,\"mem_anon_gb\":null}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240002.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":80.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0}]},{\"name\":\"localhost\",\"found\":true,\"status\":\"running\",\"image\":\"ghcr.io/ggml-org/llama.cpp:server-vulkan-b4000\",\"short_id\":\"090909090909\",\"started_at\":\"2026-10-17 10:00\",\"uptime\":\"2h 26m\",\"uptime_s\":8802,\"host_ports\":[],\"internal_port\":18191,\"loaded_model\":null,\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":true,\"error\":null,\"gpu\":null,\"container\":{\"cpu_pct\":0.0,\"mem_used_gb\":3.0,\"mem_limit_gb\":0.0,\"mem_anon_gb\":null}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240002.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":3.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0}]}]}",
      "docker": {
       "containers": [
        {
@@ -2843,50 +2406,7 @@
       "localhost": {
        "container": null,
        "error": null,
-       "gpu": {
-        "cards": [
-         {
-          "clock_mhz": 0.0,
-          "device": "",
-          "index": 0,
-          "name": "Synthetic RTX",
-          "power_w": 120.5,
-          "shared_total_gb": 0.0,
-          "shared_used_gb": 0.0,
-          "temp_c": 61.0,
-          "util_pct": 50.0,
-          "vram_total_gb": 24.0,
-          "vram_used_gb": 2.0
-         },
-         {
-          "clock_mhz": 0.0,
-          "device": "",
-          "index": 1,
-          "name": "Synthetic RTX",
-          "power_w": 130.25,
-          "shared_total_gb": 0.0,
-          "shared_used_gb": 0.0,
-          "temp_c": 66.0,
-          "util_pct": 70.0,
-          "vram_total_gb": 24.0,
-          "vram_used_gb": 4.0
-         }
-        ],
-        "clock_mhz": 0.0,
-        "gpu_count": 2,
-        "measured": true,
-        "memory_kind": "dedicated",
-        "name": "2 \u00d7 Synthetic RTX",
-        "power_w": 250.8,
-        "shared_total_gb": 0.0,
-        "shared_used_gb": 0.0,
-        "source": "",
-        "temp_c": 66.0,
-        "util_pct": 60.0,
-        "vendor": "nvidia",
-        "vram_total_gb": 48.0,
-        "vram_used_gb": 6.0
-       },
+       "gpu": null,
        "ok": true
       }
      },
@@ -3032,94 +2552,8 @@
       "llama-broken-image amd-nvidia": null,
       "llama-broken-image nvidia": null,
       "localhost amd": null,
-      "localhost amd-nvidia": {
-       "cards": [
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 0,
-         "name": "Synthetic RTX",
-         "power_w": 120.5,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 61.0,
-         "util_pct": 50.0,
-         "vram_total_gb": 24.0,
-         "vram_used_gb": 2.0
-        },
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 1,
-         "name": "Synthetic RTX",
-         "power_w": 130.25,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 66.0,
-         "util_pct": 70.0,
-         "vram_total_gb": 24.0,
-         "vram_used_gb": 4.0
-        }
-       ],
-       "clock_mhz": 0.0,
-       "gpu_count": 2,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "2 \u00d7 Synthetic RTX",
-       "power_w": 250.8,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 66.0,
-       "util_pct": 60.0,
-       "vendor": "nvidia",
-       "vram_total_gb": 48.0,
-       "vram_used_gb": 6.0
-      },
-      "localhost nvidia": {
-       "cards": [
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 0,
-         "name": "Synthetic RTX",
-         "power_w": 120.5,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 61.0,
-         "util_pct": 50.0,
-         "vram_total_gb": 24.0,
-         "vram_used_gb": 2.0
-        },
-        {
-         "clock_mhz": 0.0,
-         "device": "",
-         "index": 1,
-         "name": "Synthetic RTX",
-         "power_w": 130.25,
-         "shared_total_gb": 0.0,
-         "shared_used_gb": 0.0,
-         "temp_c": 66.0,
-         "util_pct": 70.0,
-         "vram_total_gb": 24.0,
-         "vram_used_gb": 4.0
-        }
-       ],
-       "clock_mhz": 0.0,
-       "gpu_count": 2,
-       "measured": true,
-       "memory_kind": "dedicated",
-       "name": "2 \u00d7 Synthetic RTX",
-       "power_w": 250.8,
-       "shared_total_gb": 0.0,
-       "shared_used_gb": 0.0,
-       "source": "",
-       "temp_c": 66.0,
-       "util_pct": 60.0,
-       "vendor": "nvidia",
-       "vram_total_gb": 48.0,
-       "vram_used_gb": 6.0
-      }
+      "localhost amd-nvidia": null,
+      "localhost nvidia": null
      },
      "sysfs": {}
     },
@@ -3313,7 +2747,7 @@
     },
     {
      "at": 1792240003.0,
-     "body": "{\"backends\":[{\"name\":\"127.0.0.1\",\"found\":true,\"status\":\"running\",\"image\":\"\",\"short_id\":\"\",\"started_at\":\"\",\"uptime\":null,\"uptime_s\":null,\"host_ports\":[],\"internal_port\":null,\"loaded_model\":null,\"probe_error\":\"port unknown\",\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":true,\"error\":null,\"gpu\":null,\"container\":{\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"mem_limit_gb\":0.0,\"mem_anon_gb\":null}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240002.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0}]},{\"name\":\"llama-broken-image\",\"found\":true,\"status\":\"error: 500 Server Error for http+docker://localhost/v1.47/images/8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b/json: Internal Server Error (\\\"synthetic image read failure\\\")\",\"image\":\"\",\"short_id\":\"\",\"started_at\":\"\",\"uptime\":null,\"uptime_s\":null,\"host_ports\":[],\"internal_port\":null,\"loaded_model\":null,\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":true,\"error\":null,\"gpu\":null,\"container\":{\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"mem_limit_gb\":0.0,\"mem_anon_gb\":null}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240002.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0}]},{\"name\":\"localhost\",\"found\":false,\"status\":\"error: 500 Server Error for http+docker://localhost/v1.47/containers/localhost/json: Internal Server Error (\\\"synthetic inspect failure\\\")\",\"image\":\"\",\"short_id\":\"\",\"started_at\":\"\",\"uptime\":null,\"uptime_s\":null,\"host_ports\":[],\"internal_port\":null,\"loaded_model\":null,\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":false,\"error\":\"APIError: 500 Server Error for http+docker://localhost/v1.47/containers/localhost/json: Internal Server Error (\\\"synthetic inspect failure\\\")\",\"gpu\":null,\"container\":null},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":60.0,\"vram_used_gb\":6.0,\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"per_gpu_util\":[50.0,70.0],\"per_gpu_vram_used_gb\":[2.0,4.0],\"shared_used_gb\":0.0,\"temp_c\":66.0,\"power_w\":250.8}]}]}",
+     "body": "{\"backends\":[{\"name\":\"127.0.0.1\",\"found\":true,\"status\":\"running\",\"image\":\"\",\"short_id\":\"\",\"started_at\":\"\",\"uptime\":null,\"uptime_s\":null,\"host_ports\":[],\"internal_port\":null,\"loaded_model\":null,\"probe_error\":\"port unknown\",\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":true,\"error\":null,\"gpu\":null,\"container\":{\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"mem_limit_gb\":0.0,\"mem_anon_gb\":null}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240002.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0}]},{\"name\":\"llama-broken-image\",\"found\":true,\"status\":\"error: 500 Server Error for http+docker://localhost/v1.47/images/8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b/json: Internal Server Error (\\\"synthetic image read failure\\\")\",\"image\":\"\",\"short_id\":\"\",\"started_at\":\"\",\"uptime\":null,\"uptime_s\":null,\"host_ports\":[],\"internal_port\":null,\"loaded_model\":null,\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":true,\"error\":null,\"gpu\":null,\"container\":{\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"mem_limit_gb\":0.0,\"mem_anon_gb\":null}},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0},{\"ts\":1792240002.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0}]},{\"name\":\"localhost\",\"found\":false,\"status\":\"error: 500 Server Error for http+docker://localhost/v1.47/containers/localhost/json: Internal Server Error (\\\"synthetic inspect failure\\\")\",\"image\":\"\",\"short_id\":\"\",\"started_at\":\"\",\"uptime\":null,\"uptime_s\":null,\"host_ports\":[],\"internal_port\":null,\"loaded_model\":null,\"probe_error\":null,\"unreachable_but_healthy\":false,\"last_restart_error\":null,\"stats\":{\"ok\":false,\"error\":\"APIError: 500 Server Error for http+docker://localhost/v1.47/containers/localhost/json: Internal Server Error (\\\"synthetic inspect failure\\\")\",\"gpu\":null,\"container\":null},\"history\":[{\"ts\":1792240000.0,\"gpu_util\":0.0,\"vram_used_gb\":0.0,\"cpu_pct\":0.0,\"mem_used_gb\":0.0,\"per_gpu_util\":[],\"per_gpu_vram_used_gb\":[],\"shared_used_gb\":0.0,\"temp_c\":0.0,\"power_w\":0.0}]}]}",
      "docker": {
       "containers": [
        {
