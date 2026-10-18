@@ -977,6 +977,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => None,
     };
     #[cfg(feature = "native-backends")]
+    let ram_reserve_gb = ram_reserve(std::env::vars_os().collect());
+    #[cfg(feature = "native-backends")]
     let backend_stats = match backends_settings {
         Some(gpu_vram) => Some(Arc::new(
             noevia_model_manager::backend_stats::BackendStats::new(
@@ -987,6 +989,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     drm_root: noevia_model_manager::backend_stats::DRM_ROOT.into(),
                     legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
                     token: token.clone(),
+                    meminfo: noevia_model_manager::backend_stats::fit::MEMINFO.into(),
+                    ram_reserve_gb,
                 },
                 docker.clone(),
             )?,
@@ -1810,6 +1814,24 @@ fn backends_fallback(
     noevia_model_manager::backend_stats::gpu_vram_map(&gpu_vram)
 }
 
+/// noevia#1318 step 1: HOST_RAM_RESERVE_GB as the child's settings read it (the fit chips' usable
+/// RAM). `None` (the chips are refused) for a case-folded spelling, which the child would also
+/// read, or a value that is not a plain decimal.
+#[cfg(feature = "native-backends")]
+fn ram_reserve(values: Vec<(std::ffi::OsString, std::ffi::OsString)>) -> Option<f64> {
+    let mut raw = None;
+    for (key, value) in &values {
+        let Some(key) = key.to_str() else { continue };
+        if key.eq_ignore_ascii_case("HOST_RAM_RESERVE_GB") {
+            if key != "HOST_RAM_RESERVE_GB" {
+                return None;
+            }
+            raw = Some(value.to_str()?.to_owned());
+        }
+    }
+    noevia_model_manager::backend_stats::fit::reserve_gb(raw.as_deref())
+}
+
 /// noevia#1318 slice 13: the child stops sampling the backends and refuses GET /api/v1/backends
 /// only when the native sampler owns them; it then runs in UTC like the native answer.
 fn backends_child(child_command: &mut tokio::process::Command, backends_mode: &str) {
@@ -1825,6 +1847,18 @@ fn backends_child(child_command: &mut tokio::process::Command, backends_mode: &s
 #[cfg(all(test, feature = "native-backends"))]
 mod backends_command_tests {
     #![allow(clippy::unwrap_used)]
+    #[test]
+    fn ram_reserve_reads_the_exact_name_only() {
+        let reserve = |pairs: &[(&str, &str)]| super::ram_reserve(env(pairs));
+        assert_eq!(reserve(&[]), Some(32.0));
+        assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", " 8.5 ")]), Some(8.5));
+        assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "-4")]), Some(-4.0));
+        assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "1e3")]), None);
+        assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "inf")]), None);
+        assert_eq!(reserve(&[("host_ram_reserve_gb", "8")]), None);
+        assert_eq!(reserve(&[("OTHER", "8")]), Some(32.0));
+    }
+
     fn env(pairs: &[(&str, &str)]) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
         pairs
             .iter()

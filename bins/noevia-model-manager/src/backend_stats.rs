@@ -26,6 +26,8 @@
 //! exception text or 500.
 use crate::Job;
 use model_files::json::Value as J;
+
+pub mod fit;
 use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
@@ -688,6 +690,24 @@ async fn image(docker: &dyn DockerApi, api: &str, attrs: &J) -> Result<J, ReadEr
         .ok_or(ReadErr::Odd)
 }
 
+/// `(image.tags or [""])[0]`: `None` when a tag is not text (`.lower()` would raise).
+fn first_tag_or_empty(img: &J) -> Option<String> {
+    match img.get("RepoTags") {
+        Some(J::Arr(tags)) => {
+            for t in tags {
+                match t {
+                    J::Str(t) if t == "<none>:<none>" => {}
+                    J::Str(t) => return Some(t.clone()),
+                    _ => return None,
+                }
+            }
+            Some(String::new())
+        }
+        None | Some(J::Null) => Some(String::new()),
+        Some(_) => None,
+    }
+}
+
 /// `(image.tags or [image.short_id])[0]`.
 fn first_tag(img: &J) -> Option<String> {
     if let Some(J::Arr(tags)) = img.get("RepoTags") {
@@ -723,8 +743,9 @@ fn short_id(attrs: &J) -> Option<String> {
     str_of(attrs.get("Id")).map(|id| id.chars().take(12).collect())
 }
 
-/// `services.discover_llama_containers()` names, `[]` on any Docker failure.
-async fn discover(docker: &dyn DockerApi) -> Vec<String> {
+/// `services.discover_llama_containers()`: each name with its lower-cased first image tag, `[]` on
+/// any Docker failure.
+async fn discover(docker: &dyn DockerApi) -> Vec<(String, String)> {
     let Some(api) = client(docker).await else {
         return Vec::new();
     };
@@ -768,16 +789,15 @@ async fn discover(docker: &dyn DockerApi) -> Vec<String> {
         if name == "model-loader" {
             continue;
         }
-        out.push(name);
+        out.push((name, tag));
     }
     out
 }
 
 /// `_effective_container_names()`: configured first, then discovered, without repeats.
-async fn effective(docker: &dyn DockerApi, configured: &[String]) -> Vec<String> {
-    let discovered = discover(docker).await;
+fn effective(configured: &[String], discovered: &[(String, String)]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for n in configured.iter().chain(discovered.iter()) {
+    for n in configured.iter().chain(discovered.iter().map(|(n, _)| n)) {
         if !n.is_empty() && !out.contains(n) {
             out.push(n.clone());
         }
@@ -1423,6 +1443,11 @@ pub struct Config {
     pub drm_root: PathBuf,
     pub legacy_base: String,
     pub token: String,
+    /// What `hw.host_ram_gb` reads (`fit::MEMINFO`).
+    pub meminfo: PathBuf,
+    /// HOST_RAM_RESERVE_GB (`fit::reserve_gb`); `None` when it is not a value this side reads,
+    /// and the fit chips are then refused rather than guessed.
+    pub ram_reserve_gb: Option<f64>,
 }
 
 /// `settings.gpu_vram_map`: `name:int` pairs (whitespace stripped; others skipped).
@@ -1538,6 +1563,45 @@ impl BackendStats {
     pub fn seed_restart_errors(&self, errors: &[(String, String)]) {
         let mut st = lock(&self.state);
         st.restart_errors = errors.iter().cloned().collect();
+    }
+
+    /// Lib and integration tests seed the cache as the child's `hw._CACHE` held it
+    /// (`{name: BackendStats}` as `_plain` writes it, `container` null).
+    #[doc(hidden)]
+    pub fn seed_cache_json(&self, cache: &str) -> Option<()> {
+        let J::Obj(pairs) = parse_json(cache.as_bytes())? else {
+            return None;
+        };
+        let mut seeded = Vec::new();
+        for (name, v) in pairs {
+            let ok = match v.get("ok")? {
+                J::Bool(b) => *b,
+                _ => return None,
+            };
+            let error = match v.get("error")? {
+                J::Null => None,
+                J::Str(s) => Some(s.clone()),
+                _ => return None,
+            };
+            let gpu = match v.get("gpu")? {
+                J::Null => None,
+                g => Some(gpu_from(g)?),
+            };
+            if !matches!(v.get("container")?, J::Null) {
+                return None;
+            }
+            seeded.push((
+                name,
+                Stats {
+                    ok,
+                    error,
+                    gpu,
+                    container: None,
+                },
+            ));
+        }
+        lock(&self.state).cache = seeded;
+        Some(())
     }
 
     fn declared(&self, name: &str) -> f64 {
@@ -1716,7 +1780,8 @@ impl BackendStats {
     /// One pass of `hw._sample_loop` (without the host part, which has its own native owner or
     /// stays with the child), then the push of the cache to the child.
     pub async fn tick(&self) {
-        let names = effective(self.docker.as_ref(), &self.config.configured).await;
+        let discovered = discover(self.docker.as_ref()).await;
+        let names = effective(&self.config.configured, &discovered);
         for name in &names {
             let stats = self.collect(name).await;
             let ts = (self.clock)();
@@ -1817,7 +1882,7 @@ impl BackendStats {
     async fn answer(&self) -> Result<String, Fail> {
         let docker = self.docker.as_ref();
         let api = client(docker).await;
-        let names = effective(docker, &self.config.configured).await;
+        let names = effective(&self.config.configured, &discover(docker).await);
         let mut backends: Vec<Backend> = Vec::new();
         let mut targets: Vec<(usize, Option<u32>)> = Vec::new();
         let mut health: HashMap<usize, String> = HashMap::new();

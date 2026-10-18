@@ -20,7 +20,7 @@ fn fixture() -> V {
 }
 
 /// The recorded Docker world, answered as the fake daemon of the generator answers it.
-struct World(Mutex<Option<V>>);
+pub(super) struct World(pub(super) Mutex<Option<V>>);
 
 fn answer(status: u16, body: &V) -> Raw {
     let reason = match status {
@@ -291,6 +291,8 @@ async fn actual_python_differential() {
                 drm_root: drm.clone(),
                 legacy_base: fake_child.base.clone(),
                 token: "synthetic-token".into(),
+                meminfo: "/nonexistent/meminfo".into(),
+                ram_reserve_gb: Some(32.0),
             },
             world.clone(),
             Arc::new(move || f64::from_bits(n.load(Ordering::SeqCst))),
@@ -475,6 +477,8 @@ async fn stats_that_are_not_json_give_the_generic_sampler_error() {
             drm_root: dir.path().join("drm"),
             legacy_base: "http://127.0.0.1:9".into(),
             token: String::new(),
+            meminfo: "/nonexistent/meminfo".into(),
+            ram_reserve_gb: Some(32.0),
         },
         Arc::new(World(Mutex::new(Some(w)))),
         Arc::new(|| 1.0),

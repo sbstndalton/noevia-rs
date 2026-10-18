@@ -399,6 +399,8 @@ async fn recorded_worlds_through_the_router_and_the_unix_transport() {
                     drm_root: drm.clone(),
                     legacy_base: base,
                     token: TOKEN.into(),
+                    meminfo: "/nonexistent/meminfo".into(),
+                    ram_reserve_gb: Some(32.0),
                 },
                 docker_for(down),
                 Arc::new(move || f64::from_bits(n.load(Ordering::SeqCst))),
@@ -487,6 +489,8 @@ async fn route_shapes_and_ownership() {
                 drm_root: dir.path().join("drm"),
                 legacy_base: closed_port(),
                 token: TOKEN.into(),
+                meminfo: "/nonexistent/meminfo".into(),
+                ram_reserve_gb: Some(32.0),
             },
             Arc::new(UnixDocker {
                 socket: dir.path().join("absent.sock"),
