@@ -125,7 +125,8 @@ this process ingests the backend logs, reads the telemetry tables and builds the
   confirmation). 3. Deploy this build with `MODEL_MANAGER_TELEMETRY_IMPL` still `python`. 4. Set
   `MODEL_MANAGER_TELEMETRY_IMPL`, `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL` and
   `MODEL_MANAGER_BACKENDS_IMPL` to `rust` together, then restart. Out of order, step 4 against
-  an old child keeps Python's ingest (the log line above) rather than two writers.
+  an old child makes native telemetry refuse with 503 and no native writes. To restore
+  child ingestion, select `python` and restart so its confirmation is reset to `0`.
 - **Differential:** `tools/gen-telemetry-ingest-oracle.py` runs the actual `telemetry.ingest`,
   `stats_for` and `config_history` over fourteen passes (first read, the interval, repeated reads,
   a restart, port reuse, a gap, an interrupted write and its recovery, a raising parse, a
