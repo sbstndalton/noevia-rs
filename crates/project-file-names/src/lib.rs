@@ -1,5 +1,5 @@
 //! noevia-core's `server/project-file-names.cjs` in Rust, exported from `dav-parse.wasm`
-//! (PROJECT_FILE_NAMES_IMPL). One resolver for every tool that reads or edits a project file by
+//! (PROJECT_FILE_NAMES_IMPL, retired in noevia-core#185). One resolver for every tool that reads or edits a project file by
 //! the name a model gave (#642): the stored name verbatim, or a trailing part of it that ends on a
 //! folder boundary, matching exactly one file of the requesting account's own project. Names that
 //! look like an escape attempt (`..` or `.` segments, an absolute or drive path, backslashes,

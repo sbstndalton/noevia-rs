@@ -6,7 +6,7 @@
 //! plan first and an edit goes ahead only when the port gives the identical plan.
 //!
 //! The host has already resolved the model's name to one file of the requesting project
-//! (project-file-names.cjs, itself confirmed under PROJECT_FILE_NAMES_IMPL). It sends that file's
+//! (project-file-names.cjs, which asks the project-file-names crate; PROJECT_FILE_NAMES_IMPL was retired in noevia-core#185). It sends that file's
 //! index, the stored names of all the project's files (a non-string name or a missing entry as
 //! `null`), the project's `projectFolder` and `reservedFolder` (strings or `null`; the empty string
 //! counts as none, as in the JS), whether a storage account is connected, and the file's projection:

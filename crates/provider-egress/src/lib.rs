@@ -1,5 +1,5 @@
 //! noevia-core's `server/provider-egress.cjs` in Rust, exported from `dav-parse.wasm`
-//! (PROVIDER_EGRESS_IMPL): what may leave the server through an EXTERNAL provider (#447).
+//! (PROVIDER_EGRESS_IMPL, retired in noevia-core#186): what may leave the server through an EXTERNAL provider (#447).
 //!
 //! - [`external`]: `isExternalProvider` / `isTrialTermsHost` (a ChatGPT sign-in row, a row the
 //!   server flagged external, or a custom provider whose URL host is a trial-terms service).
@@ -10,11 +10,11 @@
 //!   cannot be worked out.
 //! - [`canonical_path`] and [`diary_folder`]: `canonicalPath` and `diaryFolderFor`.
 //!
-//! The host (provider-egress.cjs under PROVIDER_EGRESS_IMPL=wasm) computes the JS answer first and
-//! asks this port only when the JS lets something out; the port can then only take more away. So
-//! wherever the port cannot be sure it answers the strict way.
+//! The host (provider-egress.cjs; its JS rules were deleted in noevia-core#186) sends this port the
+//! projections and applies its answer alone. So wherever the port cannot be sure it answers the strict
+//! way, and a refusal, fault or bad reply on the host side is the strict result too.
 //!
-//! # Where the port is stricter than the JS (by design)
+//! # Where the port is stricter than the former JS rules (by design)
 //!
 //! - **Unicode in paths.** The JS NFC-normalizes a path, percent-decodes it up to three times and
 //!   lowercases it. The port carries no normalization or case tables of its own beyond the Rust
