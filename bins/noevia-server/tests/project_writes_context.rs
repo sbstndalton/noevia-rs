@@ -347,3 +347,80 @@ async fn a_removed_accounts_directory_is_not_recreated() {
     assert_eq!(status, 401);
     assert!(!f.data.join("users").exists());
 }
+
+/// The account is removed after the first gate and before the directory is made (Node refuses it
+/// in process once `removed` holds the id): the answer is the removed account's 410 and no
+/// directory is left behind, not an orphan `users/<id>` the removal had already swept.
+#[tokio::test]
+async fn an_account_removed_between_the_gate_and_the_directory_leaves_nothing() {
+    let f = front_new_account(true).await;
+    let (data, user) = (f.data.clone(), f.user.clone());
+    noevia_server::project_routes::hooks::on_before_ensure(&f.user, move || {
+        // core deleteUser, then workspaceStore.remove (the directory never existed here).
+        let c = Connection::open(server_store::db_path(&data)).unwrap();
+        c.execute("DELETE FROM sessions WHERE user_id = ?1", [&user])
+            .unwrap();
+        c.execute("DELETE FROM users WHERE id = ?1", [&user])
+            .unwrap();
+        let _ = std::fs::remove_dir_all(data.join("users").join(&user));
+    });
+    for (m, p) in [("POST", "/api/chats/c1/context")] {
+        let (status, _, body) = call(f.addr, m, p, &headers(&f), "").await;
+        assert_eq!(
+            (status, body.as_str()),
+            (410, r#"{"error":"account no longer exists"}"#),
+            "{m} {p}"
+        );
+    }
+    assert!(
+        !f.user_dir().exists(),
+        "the removed account's directory stays gone"
+    );
+    assert_eq!(projects_json(&f), None);
+}
+
+/// A directory that was already there is not this request's to take away, whatever the gate says
+/// on the second pass.
+#[tokio::test]
+async fn an_existing_directory_is_never_removed_by_the_second_gate() {
+    let f = front(true).await;
+    let (data, user) = (f.data.clone(), f.user.clone());
+    noevia_server::project_routes::hooks::on_before_ensure(&f.user, move || {
+        let c = Connection::open(server_store::db_path(&data)).unwrap();
+        c.execute("DELETE FROM sessions WHERE user_id = ?1", [&user])
+            .unwrap();
+    });
+    let (status, _, _) = call(f.addr, "POST", "/api/chats/c1/context", &headers(&f), "").await;
+    assert_eq!(status, 401);
+    assert!(f.user_dir().is_dir());
+}
+
+/// Node's `claimLegacy` moves a pre-multi-user data dir's root files into the administrator's
+/// directory only while that directory does not exist. The port does not claim, so while the claim
+/// is open the first request makes no directory and is told to retry; a Node-routed request makes it.
+#[tokio::test]
+async fn a_pending_legacy_claim_is_left_to_node() {
+    let f = front_new_account(true).await;
+    std::fs::write(f.data.join("projects.json"), r#"{"projects":[]}"#).unwrap();
+    for m in ["GET", "POST"] {
+        let (status, _, body) = call(f.addr, m, "/api/chats/c1/context", &headers(&f), "").await;
+        assert_eq!(status, 503, "{m}: {body}");
+        assert!(body.contains("still being set up"), "{body}");
+        assert!(!f.data.join("users").exists(), "{m}: no directory made");
+    }
+    // Node has run its claim (the directory exists now): served as any later request.
+    std::fs::create_dir_all(f.user_dir()).unwrap();
+    let (status, _, _) = call(f.addr, "POST", "/api/chats/c1/context", &headers(&f), "").await;
+    assert_eq!(status, 200);
+    // The legacy files stay for recovery and name another owner: nothing is left to claim.
+    let g = front_new_account(true).await;
+    std::fs::write(g.data.join("projects.json"), r#"{"projects":[]}"#).unwrap();
+    std::fs::write(
+        g.data.join("legacy-owner.json"),
+        r#"{"userId":"99999999-2222-4333-8444-555555555555"}"#,
+    )
+    .unwrap();
+    let (status, _, body) = call(g.addr, "POST", "/api/chats/c1/context", &headers(&g), "").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(g.user_dir().is_dir());
+}

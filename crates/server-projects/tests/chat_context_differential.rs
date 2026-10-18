@@ -82,10 +82,14 @@ fn run_case(c: &Value, user: &str) -> (u16, String, Option<String>, DirState) {
     };
     let after = std::fs::read_to_string(&file).ok();
     let made = dir.is_dir();
+    #[cfg(unix)]
     let private = made && {
         use std::os::unix::fs::PermissionsExt;
         std::fs::metadata(&dir).unwrap().permissions().mode() & 0o077 == 0
     };
+    // Node's mode 0700 has no non-unix reading: the fixture's flag is taken as met.
+    #[cfg(not(unix))]
+    let private = made;
     let users = std::fs::read_dir(root.path().join("users"))
         .unwrap()
         .map(|e| e.unwrap().file_name().into_string().unwrap())

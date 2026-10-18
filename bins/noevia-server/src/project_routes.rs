@@ -144,17 +144,61 @@ pub async fn serve(
     // request, whichever route it is (core index.cjs handleRequestInner). The stores here never
     // do, a missing directory there being a removed account (#1425), so a new account's first
     // request needs it made, once, right after the gate has confirmed the session and before
-    // the body is read: an account removed after that finds the directory gone and stays gone.
-    // Only the gate's own user id reaches the path, as `users/<uuid>` (#2026).
-    let (made_data_dir, made_user) = (data_dir.clone(), authn.user.id.clone());
-    if !matches!(
-        tokio::task::spawn_blocking(move || {
-            server_projects::store::ensure_user_dir(&made_data_dir, &made_user)
-        })
-        .await,
-        Ok(Ok(_))
-    ) {
-        return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true);
+    // the body is read. Node refuses a removed account in process (`removed`); here the account
+    // may be removed between the gate and the mkdir, so the gate runs once more after it, and a
+    // directory this request made for an account that is gone is taken away again. Only the
+    // gate's own user id reaches the path, as `users/<uuid>` (#2026).
+    let step =
+        {
+            let (data_dir, user) = (data_dir.clone(), authn.user.id.clone());
+            let (layer, creds, path) = (
+                Arc::clone(&regate_layer),
+                regate_creds.clone(),
+                path.clone(),
+            );
+            tokio::task::spawn_blocking(move || {
+                hooks::before_ensure(&user);
+                let made = match server_projects::store::ensure_user_dir(&data_dir, &user) {
+                    Ok(server_projects::store::Ensured::Created(dir)) => Some(dir),
+                    Ok(server_projects::store::Ensured::Existed(_)) => None,
+                    Ok(server_projects::store::Ensured::LegacyPending) => return Step::SettingUp,
+                    Err(_) => return Step::Failed,
+                };
+                match regate(&layer, &creds, &path, now, &data_dir, &user) {
+                    Ok(()) => Step::Go,
+                    Err(refused) => {
+                        let created = made.is_some();
+                        if let Some(dir) = made {
+                            // Not recursive: a directory this call has just made holds nothing.
+                            let _ = std::fs::remove_dir(&dir);
+                        }
+                        // The same rule `regate` applies once the directory is gone: a session the
+                        // gate no longer knows, for a directory only this request had made, is a
+                        // removed account (410); any other refusal is the gate's own answer.
+                        Step::Refused(match refused {
+                            Refused::Gate(Rejection::Refused(
+                                server_auth::Refusal::Unauthorized,
+                            )) if created => Refused::Removed,
+                            other => other,
+                        })
+                    }
+                }
+            })
+            .await
+        };
+    match step {
+        Ok(Step::Go) => {}
+        Ok(Step::SettingUp) => {
+            return reply::error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Your account is still being set up; try again in a moment.",
+                true,
+            )
+        }
+        Ok(Step::Refused(refused)) => return refusal(refused),
+        Ok(Step::Failed) | Err(_) => {
+            return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true)
+        }
     }
     let limit = match &route {
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
@@ -218,13 +262,58 @@ pub async fn serve(
     .await;
     match done {
         Ok(Ok(r)) => respond(r),
-        Ok(Err(Refused::Removed)) => reply::json(
+        Ok(Err(refused)) => refusal(refused),
+        Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+    }
+}
+
+/// The answer to a request the gate refused on a later pass.
+fn refusal(refused: Refused) -> Response<Body> {
+    match refused {
+        Refused::Removed => reply::json(
             StatusCode::GONE,
             &serde_json::json!({"error": "account no longer exists"}),
             true,
         ),
-        Ok(Err(Refused::Gate(rejection))) => rejection.into_response(),
-        Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+        Refused::Gate(rejection) => rejection.into_response(),
+    }
+}
+
+/// How the first pass after the first gate ended.
+enum Step {
+    Go,
+    /// Node's legacy claim for this user is still to come: nothing is served yet (503).
+    SettingUp,
+    Refused(Refused),
+    Failed,
+}
+
+/// Test hooks: nothing is registered outside the tests that need them.
+#[doc(hidden)]
+pub mod hooks {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    type Hook = Arc<dyn Fn() + Send + Sync>;
+    static BEFORE_ENSURE: Mutex<Option<HashMap<String, Hook>>> = Mutex::new(None);
+
+    /// Runs `hook` when this user's request has passed the first gate and not yet made the
+    /// user's directory (a test removes the account there).
+    pub fn on_before_ensure(user: &str, hook: impl Fn() + Send + Sync + 'static) {
+        if let Ok(mut map) = BEFORE_ENSURE.lock() {
+            map.get_or_insert_with(HashMap::new)
+                .insert(user.to_string(), Arc::new(hook));
+        }
+    }
+
+    pub(super) fn before_ensure(user: &str) {
+        let hook = BEFORE_ENSURE
+            .lock()
+            .ok()
+            .and_then(|map| map.as_ref().and_then(|m| m.get(user).cloned()));
+        if let Some(hook) = hook {
+            hook();
+        }
     }
 }
 
