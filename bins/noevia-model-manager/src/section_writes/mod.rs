@@ -863,6 +863,109 @@ impl SectionWrites {
     }
 }
 
+/// The system routing role: its value in `models.roles.json` (`ini.LAYA_ROLE`), which the
+/// deprecated name/path rule also matches as a name prefix.
+const SYSTEM_ROUTING_ROLE: &str = "laya";
+
+/// `re.match(r"^<role>(?:[_.-]|$)", part, re.I)` for [`SYSTEM_ROUTING_ROLE`]; `$` also matches
+/// before one final newline.
+fn system_routing_name(part: &str) -> bool {
+    let role = SYSTEM_ROUTING_ROLE.as_bytes();
+    let bytes = part.as_bytes();
+    if !bytes
+        .get(..role.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(role))
+    {
+        return false;
+    }
+    matches!(
+        bytes.get(role.len()..),
+        Some([] | [b'\n'] | [b'_' | b'.' | b'-', ..])
+    )
+}
+
+/// `ini._is_laya_section(cp, name)`: the system routing role from `models.roles.json` when the
+/// section has a role, else the deprecated name/path rule (logged, as Python logs it).
+fn system_routing_section(cp: &Parser, name: &str, roles: &[(String, String)]) -> bool {
+    if name == "*" || !cp.has_section(name) {
+        return false;
+    }
+    if let Some((_, role)) = roles.iter().find(|(k, _)| k == name) {
+        return role == SYSTEM_ROUTING_ROLE;
+    }
+    let model = cp
+        .get(name, "model")
+        .or_else(|| cp.get(name, "m"))
+        .unwrap_or_default();
+    let matched = std::iter::once(name)
+        .chain(model.split(['\\', '/']))
+        .filter(|part| !part.is_empty())
+        .any(system_routing_name);
+    if matched {
+        // Once per section: the migration runs once per parent start. The wording is this
+        // side's own (no test compares it with Python's log line).
+        eprintln!(
+            "models.ini [{name}] is treated as a system routing section by the deprecated name/path \
+             rule; mark it in models.roles.json ('{{\"{name}\": \"{SYSTEM_ROUTING_ROLE}\"}}'), not in \
+             models.ini, which the inference engine also reads (#1179, #1596)"
+        );
+    }
+    matched
+}
+
+impl SectionWrites {
+    /// `ini.migrate_cache_ram()` (#697, noevia#2010): every chat, embedding and reranking
+    /// section gets an explicit, bounded cache-ram (`_bound_cache_ram`), and the file is written
+    /// once through the normal backed-up writer when any section changed. `*`, `DEFAULT` and
+    /// sections with the system routing role are left alone. A section counts as changed when its values (as
+    /// `cp.items` reads them, in any order) differ. Returns the changed sections in file order.
+    /// `Err` is a file the migration skips: nothing was written. The caller holds [`Self::lock`].
+    pub fn migrate_cache_ram(&self) -> Result<Vec<String>, &'static str> {
+        if !self.ini.exists() {
+            return Ok(Vec::new());
+        }
+        let (bytes, _) = current(&self.ini).map_err(|()| "models.ini could not be read")?;
+        let mut cp = read_ini(bytes.as_deref(), true).map_err(|o| match o {
+            Outcome::Json(409, _) => "models.ini has repeated sections",
+            _ => "models.ini could not be parsed",
+        })?;
+        let roles = read_roles(&self.ini.with_file_name("models.roles.json"));
+        let names: Vec<String> = cp.names().iter().map(|n| (*n).to_owned()).collect();
+        let mut changed = Vec::new();
+        for name in names {
+            // `not _is_chat_section and not _is_non_chat_section`, evaluated in Python's order.
+            if !non_chat(&cp, &name) && (name == "*" || system_routing_section(&cp, &name, &roles))
+            {
+                continue;
+            }
+            let before = cp.items(&name).unwrap_or_default();
+            bound_cache_ram(&mut cp, &name, self.cache);
+            if !cp.items(&name).unwrap_or_default().same(&before) {
+                changed.push(name);
+            }
+        }
+        if !changed.is_empty() {
+            self.replace_file(&cfg::render(&cp), None, true)
+                .map_err(|_| "models.ini could not be written safely; nothing was changed")?;
+        }
+        Ok(changed)
+    }
+
+    /// The parent's startup migration: once, under the writers' lock, which the blocking work
+    /// keeps until the write has returned (the Python child no longer runs it, noevia#2010).
+    pub async fn migrate_cache_ram_at_startup(
+        self: Arc<Self>,
+    ) -> Result<Vec<String>, &'static str> {
+        let guard = self.lock().await;
+        tokio::task::spawn_blocking(move || {
+            let _guard = guard;
+            self.migrate_cache_ram()
+        })
+        .await
+        .map_err(|_| "the cache-ram migration stopped")?
+    }
+}
+
 /// `replace_models_ini`'s checks on the body, before the lock.
 pub fn models_ini_body(body: &Json) -> Result<(String, bool), Outcome> {
     let text = match body.get("text") {

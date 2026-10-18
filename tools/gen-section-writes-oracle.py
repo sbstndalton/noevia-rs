@@ -13,6 +13,9 @@ Rust test pins its clock to the same instant. `{REV}` in a step is replaced by t
 models.ini as it is at that step. For safe defaults, the answer of the child's private
 safe-defaults-plan call for the same state is recorded too (the native writer asks for it), then
 the Python route itself runs. `MODEL_FILES_IMPL=rust` cases use the real `model-files` binary.
+A `MIGRATE` step (noevia#2010) calls `ini.migrate_cache_ram()` directly, as the startup hook does,
+and records the changed sections as compact JSON (200), or 500 when it raises (the hook logs and
+skips that). `migrate_flag` records how the pinned `Settings` reads each MIGRATE_CACHE_RAM_ON_START.
 Every file is synthetic; the GGUF files are tiny headers with no tensors.
 """
 from __future__ import annotations
@@ -197,6 +200,69 @@ CASES = [
 ]
 
 
+
+def migrate():
+    return {"method": "MIGRATE", "path": None, "body": None, "content_type": None}
+
+
+# The system routing role literal (`ini.LAYA_ROLE`). The deprecated name/path rule matches it as a
+# name prefix too, so the synthetic section names below are built from it.
+ROLE = "laya"
+UP, CAP = ROLE.upper(), ROLE.capitalize()
+
+# noevia#2010: the startup cache-ram migration. Most cases run it twice; the second run must
+# find nothing to change and write nothing.
+MIGRATE_RULES = (
+    "version = 1\n\n# synthetic presets\n[chat-a]\n; keep this comment\nmodel = /models/chat-a.gguf\nctx-size = 8192\n\n"
+    "[chat-alias]\nmodel = /models/b.gguf\nLLAMA_ARG_CACHE_RAM = 8192\ncram = 100\n\n"
+    "[chat-neg]\n--cache-ram = -1\n\n[chat-ok]\nmodel = /models/c.gguf\ncache-ram = 1024\n\n"
+    "[chat-text]\ncache-ram = lots\n\n[chat-padded]\ncache-ram = 0042\n\n[cased]\nCache-RAM = 77\n\n"
+    "[my-embed]\nmodel = /models/e.gguf\n\n[flagged]\nmodel = /models/f.gguf\nreranking = ON\n\n"
+    "[embed-explicit]\ncache-ram = 300\n\n[Rerank-Big]\n\n"
+    f"[{ROLE}_router]\nmodel = /models/x.gguf\n\n[routed-by-path]\nmodel = /models/{UP}-v2/w.gguf\n\n"
+    f"[routed-by-m]\nm = C:\\models\\{ROLE}.gguf\n\n[{ROLE}bout]\nmodel = /models/l.gguf\n\n"
+    f"[multi-line]\nmodel = /a/{ROLE}\n  next\n\n[{ROLE}-by-role-chat]\nmodel = /models/{ROLE}-q.gguf\n\n"
+    "[by-role]\nmodel = /models/r.gguf\n")
+CASES += [
+    case("migrate-rules", [migrate(), migrate()], ini=MIGRATE_RULES, impl="rust",
+         roles=f'{{"{ROLE}-by-role-chat": "chat", "by-role": " {UP} "}}',
+         files=[[f"models.ini.bak-20200101-0000{i:02d}", "old", 1600000000] for i in range(12)]
+         + [["models.ini.bak-before-upgrade", "operator", 1600000000]]),
+    case("migrate-star-bounded", [migrate(), migrate()], impl="rust", hard=4096, cap=512,
+         ini="[*]\ncache-ram = 512\n\n[a]\nmodel = m\n\n[b]\ncache-ram = 99999\n\n[c-embed]\n"),
+    case("migrate-star-unbounded", [migrate(), migrate()], impl="rust",
+         ini="[*]\ncache-ram = -1\n[a]\n[b]\nembedding = true\n"),
+    case("migrate-defaults", [migrate(), migrate()], impl="rust",
+         ini="[DEFAULT]\nthreads = 4\ncache-ram = -1\n\n[a]\nmodel = /models/a.gguf\n\n[my-embed]\n\n[*]\n"),
+    case("migrate-reorder-only-counts-values", [migrate(), migrate()], impl="rust",
+         ini="[a]\ncache-ram = 100\ntemp = 1\n\n[b]\nmodel = m\n"),
+    case("migrate-nothing-to-do", [migrate()], impl="rust",
+         ini=f"[a]\ncache-ram = 100\n\n[e-embed]\ncache-ram = 0\n\n[{ROLE}]\n"),
+    case("migrate-crlf-no-final-newline", [migrate(), migrate()], impl="rust",
+         ini="[a]\r\nmodel = m\r\n[b]\r\ncache-ram = 5"),
+    case("migrate-odd-headers-full-render", [migrate(), migrate()], impl="rust",
+         ini="v = 1\n[a] trailing\nmodel = m\n[b];c\nk : v\n"),
+    case("migrate-roles-unusable", [migrate(), migrate()], impl="rust", roles="[1]",
+         ini=f"[{ROLE}]\n\n[{CAP}.X]\n\n[{ROLE}-]\n\n[lay]\n"),
+    case("migrate-duplicates-refused", [migrate()], impl="rust", ini="[a]\nx = 1\n[a]\n"),
+    case("migrate-unparseable", [migrate()], impl="rust", ini="[a]\ngarbage line\n"),
+    case("migrate-missing-file", [migrate()], impl="rust"),
+    # Roles that are not non-empty strings are not roles: those sections fall back to the name rule.
+    case("migrate-roles-not-strings", [migrate(), migrate()], impl="rust",
+         roles=(f'{{"{ROLE}-x": 5, "{ROLE}_y": null, "{ROLE}.z": "{ROLE}", "{ROLE}-w": "", '
+                f'"{ROLE}-v": ["{ROLE}"], "{ROLE}-o": {{"r": "{ROLE}"}}, "other": 5, "x": null}}'),
+         ini=f"[{ROLE}-x]\n\n[{ROLE}_y]\n\n[{ROLE}.z]\n\n[{ROLE}-w]\n\n[{ROLE}-v]\n\n[{ROLE}-o]\n\n[other]\n\n[x]\n"),
+]
+
+# noevia#2010: MIGRATE_CACHE_RAM_ON_START as the pinned `Settings` reads it; the native parent must
+# agree. Each `migrate_flag` entry is [name, value, result]. A `None` value means the variable is
+# unset; a `None` result means Settings refuses the value (a ValidationError, so the child would not
+# start).
+FLAG = "MIGRATE_CACHE_RAM_ON_START"
+FLAG_VALUES = ["true", " true", "true ", "TRUE", "tRuE", "1", "on", "t", "y", "yes", "YES", "0", "no",
+               "No", "off", "f", "n", "false", "FALSE", "", "2", "-1", "1.0", "enabled", "truee", "none"]
+
+
 def main() -> int:
     app_dir = Path(sys.argv[1]).resolve()
     for key in list(os.environ):
@@ -209,11 +275,22 @@ def main() -> int:
 
     from app import config, db, ini  # noqa: E402
     from app.main import app  # noqa: E402
+    from pydantic import ValidationError  # noqa: E402
 
     ini.time = types.SimpleNamespace(strftime=lambda fmt, *a: STAMP if fmt == "%Y%m%d-%H%M%S" else real_time.strftime(fmt, *a),
                                      monotonic_ns=real_time.monotonic_ns)
     client = TestClient(app, raise_server_exceptions=False)
-    digest = {n: hashlib.sha256((app_dir / n).read_bytes()).hexdigest() for n in ("api.py", "ini.py", "main.py", "helpers.py")}
+    digest = {n: hashlib.sha256((app_dir / n).read_bytes()).hexdigest() for n in ("api.py", "ini.py", "main.py", "helpers.py", "config.py")}
+    flags = []
+    for name, value in [(FLAG, v) for v in FLAG_VALUES] + [(FLAG.lower(), "false"), (FLAG, None)]:
+        if value is not None:
+            os.environ[name] = value
+        try:
+            got = config.Settings().migrate_cache_ram_on_start
+        except ValidationError:  # Settings refuses the value: the child would not start
+            got = None
+        os.environ.pop(name, None)
+        flags.append([name, value, got])
     out = []
     for c in CASES:
         with tempfile.TemporaryDirectory() as tmp:
@@ -237,6 +314,13 @@ def main() -> int:
             db._DB_PATH = None
             answers = []
             for step in c["steps"]:
+                if step["method"] == "MIGRATE":
+                    try:
+                        status, text = 200, json.dumps(ini.migrate_cache_ram(), ensure_ascii=False, separators=(",", ":"))
+                    except Exception:  # noqa: BLE001 - the startup hook logs and skips any failure
+                        status, text = 500, ""
+                    answers.append({"status": status, "content_type": None, "body": text, "plan": None})
+                    continue
                 rev = hashlib.sha256(path.read_bytes() if path.exists() else b"").hexdigest()
                 url = step["path"].replace("{REV}", rev)
                 body = None if step["body"] is None else step["body"].replace("{REV}", rev).encode()
@@ -258,7 +342,7 @@ def main() -> int:
                 "ini": path.read_bytes().decode() if path.exists() else None,
                 "roles": roles.read_text(encoding="utf-8") if roles.exists() else None,
                 "listing": listing}})
-    json.dump({"oracle": digest, "stamp": STAMP, "epoch": EPOCH, "cases": out}, sys.stdout, ensure_ascii=False, indent=1, sort_keys=True)
+    json.dump({"oracle": digest, "stamp": STAMP, "epoch": EPOCH, "cases": out, "migrate_flag": flags}, sys.stdout, ensure_ascii=False, indent=1, sort_keys=True)
     sys.stdout.write("\n")
     return 0
 

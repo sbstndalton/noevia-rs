@@ -119,6 +119,136 @@ proptest! {
     }
 }
 
+#[test]
+fn system_routing_name_rule_matches_python() {
+    // `re.match(r"^<role>(?:[_.-]|$)", part, re.I)` for the system routing role.
+    let role = SYSTEM_ROUTING_ROLE;
+    let upper = role.to_uppercase();
+    let short = &role[..role.len() - 1];
+    for (part, want) in [
+        (role.to_owned(), true),
+        (upper.clone(), true),
+        (format!("{upper}_x"), true),
+        (format!("{role}.gguf"), true),
+        (format!("{role}-"), true),
+        (format!("{role}\n"), true),
+        (format!("{role}\nnext"), false),
+        (format!("{role}b"), false),
+        (short.to_owned(), false),
+        (format!("x{role}"), false),
+        (String::new(), false),
+        (format!("{short}\u{e4}"), false),
+        (format!("{role} \u{e4}"), false),
+    ] {
+        assert_eq!(system_routing_name(&part), want, "{part:?}");
+    }
+}
+
+fn migration_dir(text: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    std::fs::write(&ini, text).unwrap();
+    (dir, ini)
+}
+
+fn files(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    let mut out: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| {
+            let e = e.unwrap();
+            (
+                e.file_name().into_string().unwrap(),
+                std::fs::read(e.path()).unwrap(),
+            )
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// noevia#2010: the startup migration waits for the writers' lock and keeps it across the write,
+/// so a writer queued behind it only ever sees the migrated file.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn startup_migration_holds_the_write_lock_across_the_write() {
+    let (dir, ini) = migration_dir("[chat]\nmodel = /models/synthetic.gguf\n");
+    let writes = Arc::new(SectionWrites::new(&ini, (1024, 2048)));
+    let held = writes.lock().await;
+    let task = tokio::spawn(writes.clone().migrate_cache_ram_at_startup());
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert!(!task.is_finished(), "migration ran without the lock");
+    assert_eq!(
+        std::fs::read_to_string(&ini).unwrap(),
+        "[chat]\nmodel = /models/synthetic.gguf\n"
+    );
+    // tokio's mutex is fair: the migration is first in line, this writer second.
+    let next = tokio::spawn({
+        let writes = writes.clone();
+        let ini = ini.clone();
+        async move {
+            let _guard = writes.lock().await;
+            std::fs::read_to_string(&ini).unwrap()
+        }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    drop(held);
+    assert_eq!(task.await.unwrap().unwrap(), ["chat"]);
+    assert_eq!(
+        next.await.unwrap(),
+        "[chat]\nmodel = /models/synthetic.gguf\ncache-ram = 1024\n"
+    );
+    assert!(!write_lock_held(&writes).await);
+    drop(dir);
+}
+
+#[tokio::test]
+async fn startup_migration_is_idempotent_and_writes_nothing_when_nothing_changes() {
+    let (dir, ini) = migration_dir(&format!(
+        "[chat]\n\n[my-embed]\n\n[{SYSTEM_ROUTING_ROLE}_router]\n"
+    ));
+    let writes = Arc::new(SectionWrites::new(&ini, (512, 2048)));
+    assert_eq!(
+        writes.clone().migrate_cache_ram_at_startup().await.unwrap(),
+        ["chat", "my-embed"]
+    );
+    let after = files(dir.path());
+    assert_eq!(after.len(), 2, "models.ini and one rotating backup");
+    assert!(writes
+        .clone()
+        .migrate_cache_ram_at_startup()
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(files(dir.path()), after, "the second run wrote nothing");
+}
+
+#[tokio::test]
+async fn startup_migration_failures_write_nothing() {
+    for text in ["[a]\n[a]\n", "[a]\ngarbage line\n"] {
+        let (dir, ini) = migration_dir(text);
+        let writes = Arc::new(SectionWrites::new(&ini, (1024, 2048)));
+        let before = files(dir.path());
+        assert!(
+            writes.migrate_cache_ram_at_startup().await.is_err(),
+            "{text:?}"
+        );
+        assert_eq!(files(dir.path()), before, "{text:?}");
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let writes = Arc::new(SectionWrites::new(
+        &dir.path().join("models.ini"),
+        (1024, 2048),
+    ));
+    assert!(writes
+        .migrate_cache_ram_at_startup()
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(
+        files(dir.path()).is_empty(),
+        "a missing file is not created"
+    );
+}
+
 /// A child that answers its health check (so the native writers know its startup is over).
 async fn healthy_child() -> (String, tokio::task::JoinHandle<()>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

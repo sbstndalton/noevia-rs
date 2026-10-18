@@ -77,20 +77,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Err("native-logs feature is not enabled".into());
     }
-    // noevia#1071: the native parent is permanent. MODEL_MANAGER_IMPL is retired; a leftover
-    // value other than `rust` is ignored with a warning (there is no Python-only mode to exec).
-    if retired_selector_ignored(&environment("MODEL_MANAGER_IMPL", "rust")?) {
-        eprintln!(
-            "MODEL_MANAGER_IMPL is retired and ignored; the native model manager always runs"
-        );
-    }
-    // noevia#1957: MODEL_FILES_IMPL is retired too; models.ini backups always follow the
-    // model-files backups plan, so any leftover value is only reported.
-    if std::env::var_os("MODEL_FILES_IMPL").is_some() {
-        eprintln!(
-            "MODEL_FILES_IMPL is retired and ignored; models.ini backups always follow the model-files plan"
-        );
-    }
+    // noevia#1071/#2011: the native parent is permanent (there is no Python-only mode to exec),
+    // and the retired MODEL_MANAGER_IMPL and MODEL_FILES_IMPL keys are not read at all.
     // The sub-selectors below still name the parent mode; it is always native now.
     let mode = "rust";
     let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
@@ -418,8 +406,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     // noevia#1318 slice 13: the backend sampler (Docker discovery, container stats, sysfs, GPU_VRAM)
     // and GET /api/v1/backends. Like the other switches, startup is refused for a value other than
-    // python or rust, and for `rust` without MODEL_MANAGER_IMPL=rust or without the compiled
-    // native-backends feature. Only once those hold does anything this side cannot own exactly
+    // python or rust, and for `rust` without the compiled native-backends feature. Only once those hold does anything this side cannot own exactly
     // (`backends_fallback`) keep the sampler and the route with Python, with a notice, instead of
     // refusing.
     let backends_mode = environment("MODEL_MANAGER_BACKENDS_IMPL", "python")?;
@@ -869,6 +856,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Err(error) = idle_unload.reconcile().await {
         eprintln!("idle unload: {error}");
     }
+    // noevia#2010: this writer runs the startup cache-ram migration, once, after the reconcile and
+    // before the child starts: the old order, since the child that used to run it starts after the
+    // reconcile. The child is never respawned (its exit ends this process), so once per start is
+    // once per child start. A failure is logged, never fatal.
+    #[cfg(feature = "native-section-writes")]
+    if let (Some(writes), Some(true)) = (&section_writes, writes_roots.as_ref().map(|r| r.migrate))
+    {
+        match writes.clone().migrate_cache_ram_at_startup().await {
+            Ok(changed) if changed.is_empty() => {}
+            Ok(changed) => eprintln!(
+                "cache-ram migration: set an explicit bounded cache-ram in {} section(s): {}",
+                changed.len(),
+                changed.join(", ")
+            ),
+            Err(reason) => eprintln!("cache-ram migration skipped: {reason}"),
+        }
+    }
     #[cfg(feature = "native-downloads")]
     let downloads = match downloads_roots.as_ref() {
         Some(roots) => Some(noevia_model_manager::downloads::Downloads::new(
@@ -1010,11 +1014,6 @@ async fn terminate() {
             std::future::pending::<()>().await;
         }
     }
-}
-
-/// noevia#1071: true when a leftover `MODEL_MANAGER_IMPL` asks for anything but the native parent.
-fn retired_selector_ignored(value: &str) -> bool {
-    value != "rust"
 }
 
 fn environment(key: &str, default: &str) -> Result<String, &'static str> {
@@ -1436,6 +1435,8 @@ mod settings_write_command_tests {
 struct WritesRoots {
     ini: String,
     cache: (i64, i64),
+    /// `settings.migrate_cache_ram_on_start` (noevia#2010).
+    migrate: bool,
 }
 
 #[cfg(feature = "native-section-writes")]
@@ -1494,9 +1495,20 @@ fn section_writes_roots(
     let cap = int("LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB", 1024)?
         .max(0)
         .min(hard);
+    // pydantic's bool: these words in any letter case, nothing stripped (anything else stops the
+    // child at startup, so it never migrates either).
+    let migrate = match canonical("MIGRATE_CACHE_RAM_ON_START")? {
+        None => true,
+        Some(v) => match v.to_ascii_lowercase().as_str() {
+            "1" | "on" | "t" | "true" | "y" | "yes" => true,
+            "0" | "off" | "f" | "false" | "n" | "no" => false,
+            _ => return Err("MIGRATE_CACHE_RAM_ON_START is not a boolean"),
+        },
+    };
     Ok(WritesRoots {
         ini,
         cache: (cap, hard),
+        migrate,
     })
 }
 
@@ -2112,24 +2124,9 @@ mod section_writes_command_tests {
             (r.ini.as_str(), r.cache),
             ("/models/models.ini", (1024, 2048))
         );
-        let r = roots(
-            "UTC",
-            &[
-                ("LLAMACPP_CACHE_RAM_HARD_MAX_MIB", "512"),
-                ("MODEL_FILES_IMPL", " Rust "),
-            ],
-        )
-        .unwrap();
+        assert!(r.migrate);
+        let r = roots("UTC", &[("LLAMACPP_CACHE_RAM_HARD_MAX_MIB", "512")]).unwrap();
         assert_eq!(r.cache, (512, 512));
-        // noevia#1957: a leftover MODEL_FILES_IMPL (any value or spelling) changes nothing.
-        for value in ["python", " Rust ", ""] {
-            let r = roots("", &[("MODEL_FILES_IMPL", value)]).unwrap();
-            assert_eq!(
-                (r.ini.as_str(), r.cache),
-                ("/models/models.ini", (1024, 2048))
-            );
-        }
-        assert!(roots("", &[("model_files_impl", "python")]).is_ok());
         assert_eq!(
             roots("", &[("LLAMACPP_CACHE_RAM_HARD_MAX_MIB", "-5")])
                 .unwrap()
@@ -2142,6 +2139,61 @@ mod section_writes_command_tests {
         }
         assert!(roots("", &[("models_ini_path", "/x.ini")]).is_err());
         assert!(roots("", &[("LLAMACPP_CACHE_RAM_HARD_MAX_MIB", "1_000")]).is_err());
+    }
+
+    /// noevia#2010: every value the oracle ran through the pinned Python `Settings` reads the same
+    /// here; a case-folded spelling, which Python also reads, keeps Python writing instead.
+    #[test]
+    #[allow(clippy::indexing_slicing)]
+    fn startup_migration_setting_matches_the_pinned_python_settings() {
+        let fx: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/section-writes-python.v1.json"
+        ))
+        .unwrap();
+        let flags = fx["migrate_flag"].as_array().unwrap();
+        assert!(flags.len() >= 25);
+        for f in flags {
+            let (name, value, python) = (f[0].as_str().unwrap(), f[1].as_str(), f[2].as_bool());
+            let pairs: Vec<(&str, &str)> = value.map(|v| vec![(name, v)]).unwrap_or_default();
+            let native = roots("", &pairs);
+            if name == "MIGRATE_CACHE_RAM_ON_START" {
+                assert_eq!(native.ok().map(|r| r.migrate), python, "{value:?}");
+            } else {
+                assert!(python.is_some() && native.is_err(), "{name}");
+            }
+        }
+    }
+
+    #[test]
+    fn startup_migration_setting_reads_as_pydantic_does() {
+        // noevia#2010: the words pydantic accepts, in any case; anything else keeps Python
+        // writing (and stops the child), as do non-canonical spellings.
+        for (value, on) in [
+            ("true", true),
+            ("TRUE", true),
+            ("tRuE", true),
+            ("1", true),
+            ("on", true),
+            ("t", true),
+            ("y", true),
+            ("YES", true),
+            ("false", false),
+            ("0", false),
+            ("off", false),
+            ("f", false),
+            ("n", false),
+            ("No", false),
+        ] {
+            let r = roots("", &[("MIGRATE_CACHE_RAM_ON_START", value)]).unwrap();
+            assert_eq!(r.migrate, on, "{value}");
+        }
+        for bad in ["", " true", "true ", "2", "1.0", "enabled"] {
+            assert!(
+                roots("", &[("MIGRATE_CACHE_RAM_ON_START", bad)]).is_err(),
+                "{bad:?}"
+            );
+        }
+        assert!(roots("", &[("migrate_cache_ram_on_start", "false")]).is_err());
     }
 
     #[test]
