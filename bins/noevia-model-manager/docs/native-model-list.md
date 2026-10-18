@@ -54,7 +54,7 @@ Native, ported exactly and differential-tested:
 inventory judged for every listed size), and `/overview` gets `BackendStats::overview_runtime`
 (the snapshot without `stats` and `history`) when this process also owns the download table.
 Without the native table, the overview still asks the child, for its download count. Before
-its first badge read, the list waits once per process for the child's `GET /api/v1/health`,
+its first badge read, the list waits once per process for the child's private `GET /api/v1/internal/startup-ready`,
 because the child's startup creates that store. Until the child has answered, the list keeps
 the forwarded route's 502. The private runtime handlers are then unused by native.
 `tools/gen-fit-oracle.py` records the child's own answers (loaded and unloaded models, Docker
@@ -119,3 +119,5 @@ pinned services ref with Python 3.12 and requires identical bytes. The lib tests
 case through a synthetic root on any platform; `tests/model_list.rs` runs the same cases through
 the router, the real opener and a child stand-in on Linux, and checks the runtime requests (path,
 body and the token header). `tests/model_list_lifecycle.rs` checks the selectors at process level.
+
+Readiness requires exact HTTP 200 `{"startup_ready":1}` from a child containing services#101. Unknown successful bodies, oversized replies and old children refuse the read. A ten-second total wait bounds startup retries; success is cached per list instance. Public child health remains 503 (#2044).

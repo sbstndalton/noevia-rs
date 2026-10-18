@@ -326,7 +326,7 @@ pub struct Search {
     /// noevia#1318 step 1c: the native search runtime, once this process samples the backends.
     #[cfg(feature = "native-backends")]
     live: std::sync::OnceLock<live::Source>,
-    /// Set once the child has answered its health check (its startup created the store).
+    /// Set once the child advertises completed startup (its schema initialization ran).
     #[cfg(feature = "native-backends")]
     started: std::sync::atomic::AtomicBool,
     /// Lib tests: runs before the final parse of every listing.
