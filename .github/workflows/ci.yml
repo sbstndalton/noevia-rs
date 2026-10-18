@@ -2268,6 +2268,8 @@ jobs:
         run: cargo run --locked -q -p noevia-model-manager --bin generate-diagnose-transport-oracle > "$NOEVIA_DIAGNOSE_SDK_ORACLE"
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --all-features -- -D warnings
+      - name: Native model-manager HTTP health check
+        run: cargo test --locked -p noevia-model-manager --all-features --lib healthcheck::tests
       - name: Combined helpers, startup barriers, shared cooldown and store lifetimes
         run: python3 tools/run-native-runtime-tests.py
       - name: Real CLI with deliberately omitted native helpers

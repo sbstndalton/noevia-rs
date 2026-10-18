@@ -29,6 +29,7 @@ pub mod downloads;
 #[cfg(feature = "native-draft-heads")]
 pub mod draft_heads;
 pub mod embedding;
+pub mod healthcheck;
 pub mod host;
 #[cfg(feature = "native-check-updates")]
 pub mod hub_page;

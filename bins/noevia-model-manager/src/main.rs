@@ -4,12 +4,18 @@ mod db_init_cmd;
 mod model_list_cmd;
 mod section_autoconfig_cmd;
 use noevia_model_manager::{
-    docker::UnixDocker, legacy_client, router, validate_token, Redactor, StateData,
+    docker::UnixDocker, healthcheck, legacy_client, router, validate_token, Redactor, StateData,
 };
 use std::{io::Write, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if healthcheck::is_healthcheck_command(std::env::args().skip(1)) {
+        healthcheck::check()
+            .await
+            .map_err(|_| "model manager health check failed")?;
+        return Ok(());
+    }
     if std::env::args().any(|a| a == "--features") {
         if cfg!(feature = "native-logs") {
             let stdout = std::io::stdout();
