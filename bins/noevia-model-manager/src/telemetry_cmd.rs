@@ -10,10 +10,10 @@
 use std::ffi::OsString;
 
 const KEY: &str = "MODEL_MANAGER_TELEMETRY_IMPL";
-pub(crate) const CHILD_KEY: &str = "NOEVIA_NATIVE_MODEL_MANAGER_TELEMETRY_CONFIRMED";
+pub const CHILD_KEY: &str = "NOEVIA_NATIVE_MODEL_MANAGER_TELEMETRY_CONFIRMED";
 
 /// `true`: native. `ready`: the native section autoconfig and the sampler are both on.
-pub(crate) fn select(values: &[(OsString, OsString)], ready: bool) -> Result<bool, String> {
+pub fn select(values: &[(OsString, OsString)], ready: bool) -> Result<bool, String> {
     let value = match values.iter().rev().find(|(k, _)| k == KEY) {
         Some((_, v)) => v
             .to_str()
@@ -36,7 +36,7 @@ pub(crate) fn select(values: &[(OsString, OsString)], ready: bool) -> Result<boo
 
 /// The child is told who owns the telemetry tables (`1` native, `0` otherwise, also over an
 /// inherited value).
-pub(crate) fn child(command: &mut tokio::process::Command, native: bool) {
+pub fn child(command: &mut tokio::process::Command, native: bool) {
     command.env(CHILD_KEY, if native { "1" } else { "0" });
 }
 

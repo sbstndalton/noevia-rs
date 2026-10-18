@@ -2,7 +2,6 @@
 mod child_lifecycle;
 mod model_list_cmd;
 mod section_autoconfig_cmd;
-mod telemetry_cmd;
 use noevia_model_manager::{
     docker::UnixDocker, legacy_client, router, validate_token, Redactor, StateData,
 };
@@ -1033,9 +1032,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let telemetry_ready = backend_stats.is_some() && section_autoconfig.settings.is_some();
     #[cfg(not(feature = "native-backends"))]
     let telemetry_ready = false;
-    let telemetry_native =
-        telemetry_cmd::select(&std::env::vars_os().collect::<Vec<_>>(), telemetry_ready)?;
-    telemetry_cmd::child(&mut child_command, telemetry_native);
+    let telemetry_native = noevia_model_manager::telemetry_cmd::select(
+        &std::env::vars_os().collect::<Vec<_>>(),
+        telemetry_ready,
+    )?;
+    noevia_model_manager::telemetry_cmd::child(&mut child_command, telemetry_native);
     let mut child = child_command.spawn()?;
     #[cfg(feature = "native-backends")]
     let _backend_sampler = backend_stats.as_ref().map(|stats| stats.start());

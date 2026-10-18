@@ -55,6 +55,7 @@ pub mod settings_write;
     feature = "native-bench-runs"
 ))]
 pub mod sqlite_read;
+pub mod telemetry_cmd;
 pub mod validation;
 
 use axum::{
