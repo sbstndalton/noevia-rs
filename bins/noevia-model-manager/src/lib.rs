@@ -658,17 +658,6 @@ fn native_badges_route(state: &StateData, method: &Method, path: &str) -> bool {
         && path == "/api/v1/badges"
 }
 
-/// Only GET of a canonical id (`-?[0-9]+` inside i64) is native; other spellings, methods and
-/// the slash variant keep their existing forward/405/404 handling.
-#[cfg(feature = "native-bench-runs")]
-fn native_bench_run_id(state: &StateData, method: &Method, path: &str) -> Option<i64> {
-    if state.bench_runs.is_none() || *method != Method::GET {
-        return None;
-    }
-    path.strip_prefix("/api/v1/benchmark/runs/")
-        .and_then(bench_runs::canonical_id)
-}
-
 #[cfg(feature = "native-section-writes")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SectionWrite {
@@ -1389,9 +1378,63 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         }
     }
     #[cfg(feature = "native-bench-runs")]
-    if let Some(run_id) = native_bench_run_id(&state, req.method(), path) {
-        if let Some(runs) = state.bench_runs.clone() {
-            return native_bench_run(&state, &runs, run_id).await;
+    if let Some(runs) = state.bench_runs.as_ref() {
+        use bench_runs::paths::{Id, Route};
+        let route = bench_runs::paths::classify(path);
+        if route != Route::NotOwned {
+            let mut answer = match route {
+                Route::NotOwned | Route::NotFound => detail(StatusCode::NOT_FOUND, "Not Found"),
+                Route::Redirect(canonical) => {
+                    let host = req
+                        .headers()
+                        .get("host")
+                        .and_then(|h| h.to_str().ok())
+                        .unwrap_or("localhost");
+                    (
+                        StatusCode::TEMPORARY_REDIRECT,
+                        [(
+                            axum::http::header::LOCATION,
+                            bench_runs::paths::location(host, &canonical, req.uri().query()),
+                        )],
+                    )
+                        .into_response()
+                }
+                Route::Item(_) if *req.method() != Method::GET => {
+                    let mut response = detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed");
+                    response.headers_mut().insert(
+                        axum::http::header::ALLOW,
+                        axum::http::HeaderValue::from_static("GET"),
+                    );
+                    response
+                }
+                Route::Item(raw) => {
+                    match bench_runs::paths::parse(&raw) {
+                        Id::Value(run_id) => native_bench_run(&state, runs, run_id).await,
+                        Id::Overflow => internal_error(),
+                        invalid => {
+                            let (kind, message) = if invalid == Id::TooLarge {
+                                ("int_parsing_size","Unable to parse input string as an integer, exceeded maximum size")
+                            } else {
+                                ("int_parsing","Input should be a valid integer, unable to parse string as an integer")
+                            };
+                            (
+                                StatusCode::UNPROCESSABLE_ENTITY,
+                                Json(validation::parsing(
+                                    kind,
+                                    &[validation::key("path"), validation::key("run_id")],
+                                    message,
+                                    &raw,
+                                )),
+                            )
+                                .into_response()
+                        }
+                    }
+                }
+            };
+            if *req.method() == Method::HEAD {
+                *answer.body_mut() = Body::empty();
+            }
+            return answer;
         }
     }
     #[cfg(feature = "native-badges")]

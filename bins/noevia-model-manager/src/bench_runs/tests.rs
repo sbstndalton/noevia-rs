@@ -3,29 +3,6 @@ use super::*;
 use proptest::prelude::*;
 
 #[test]
-fn canonical_ids_only() {
-    assert_eq!(canonical_id("7"), Some(7));
-    assert_eq!(canonical_id("007"), Some(7));
-    assert_eq!(canonical_id("-3"), Some(-3));
-    assert_eq!(canonical_id("9223372036854775807"), Some(i64::MAX));
-    assert_eq!(canonical_id("-9223372036854775808"), Some(i64::MIN));
-    for bad in [
-        "",
-        "-",
-        "+1",
-        " 1",
-        "1 ",
-        "1.0",
-        "1_0",
-        "9223372036854775808",
-        "%31",
-        "abc",
-    ] {
-        assert_eq!(canonical_id(bad), None, "{bad:?}");
-    }
-}
-
-#[test]
 fn round_matches_python() {
     // Expected values are CPython 3.12 round(x, n) (ties to even on the exact binary value).
     for (x, n, want) in [
