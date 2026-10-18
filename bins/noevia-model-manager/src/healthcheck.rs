@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-const HEALTHCHECK_URL: &str = "http://127.0.0.1:8090/health";
+const HEALTHCHECK_URL: &str = "http://127.0.0.1:8090/api/v1/health";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -62,7 +62,7 @@ mod tests {
                 .await
                 .expect("write test response");
         });
-        (format!("http://{address}/health"), task)
+        (format!("http://{address}/api/v1/health"), task)
     }
 
     #[test]
@@ -73,6 +73,34 @@ mod tests {
             "--healthcheck".to_owned(),
             "--features".to_owned()
         ]));
+    }
+
+    #[tokio::test]
+    async fn probes_the_public_health_route_without_the_child_token() {
+        use std::sync::Arc;
+
+        assert_eq!(HEALTHCHECK_URL, "http://127.0.0.1:8090/api/v1/health");
+        let mut state = crate::test_support::test_state("http://127.0.0.1:9");
+        state.token = "required-synthetic-token".to_owned();
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral router listener");
+        let address = listener.local_addr().expect("read router listener address");
+        let server =
+            tokio::spawn(
+                async move { axum::serve(listener, crate::router(Arc::new(state))).await },
+            );
+        let client = client(REQUEST_TIMEOUT).unwrap();
+        let route = format!("http://{address}/api/v1/health");
+        assert_eq!(check_url(&client, &route).await, Ok(()));
+
+        let wrong_route = client
+            .get(format!("http://{address}/health"))
+            .send()
+            .await
+            .expect("request legacy health path");
+        assert_eq!(wrong_route.status(), reqwest::StatusCode::UNAUTHORIZED);
+        server.abort();
     }
 
     #[tokio::test]
@@ -120,7 +148,7 @@ mod tests {
         assert_eq!(
             check_url(
                 &client(REQUEST_TIMEOUT).unwrap(),
-                &format!("http://{address}/health")
+                &format!("http://{address}/api/v1/health")
             )
             .await,
             Err("health check returned a non-200 status")
@@ -145,7 +173,7 @@ mod tests {
             Duration::from_millis(300),
             check_url(
                 &client(timeout).unwrap(),
-                &format!("http://{address}/health"),
+                &format!("http://{address}/api/v1/health"),
             ),
         )
         .await;
