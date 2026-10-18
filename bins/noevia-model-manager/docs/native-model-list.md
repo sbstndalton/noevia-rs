@@ -48,6 +48,19 @@ Native, ported exactly and differential-tested:
   folder's `error` text, and `disk` with `usedPct` computed as Python's exact integer true division
   followed by `round(x, 1)`), the non-companion model count, the section count and `revision`.
 
+**noevia#1318 step 1b: native live fields.** While this process samples the backends
+(`MODEL_MANAGER_BACKENDS_IMPL=rust`), both bodies are produced natively (`backend_stats/live.rs`):
+`/models` gets `BackendStats::models_runtime` (the backend snapshot for `loaded`, one fit
+inventory judged for every listed size), and `/overview` gets `BackendStats::overview_runtime`
+(the snapshot without `stats` and `history`) when this process also owns the download table.
+Without the native table, the overview still asks the child, for its download count. Before
+its first badge read, the list waits once per process for the child's `GET /api/v1/health`,
+because the child's startup creates that store. Until the child has answered, the list keeps
+the forwarded route's 502. The private runtime handlers are then unused by native.
+`tools/gen-fit-oracle.py` records the child's own answers (loaded and unloaded models, Docker
+down, restart errors, CPU and GPU chips), and `backend_stats::live::tests` reproduces them byte
+for byte. `tests/model_list.rs` checks the routes through the router.
+
 Delegated, never re-implemented: live state only the child computes. Only after the file part
 succeeded does the parent ask the child, under the forwarded routes' budget:
 

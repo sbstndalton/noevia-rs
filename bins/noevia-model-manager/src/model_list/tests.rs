@@ -740,6 +740,8 @@ async fn a_held_list_slot_never_holds_up_the_overview() {
     let client = reqwest::Client::new();
     // Nothing listens on port 9: the overview's file part runs, then its child call fails.
     let child = || Child {
+        #[cfg(feature = "native-backends")]
+        live: None,
         client: &client,
         base: "http://127.0.0.1:9",
         token: "",

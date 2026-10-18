@@ -37,6 +37,10 @@
 //! own count replaces the child's, which is then empty. The child renders those values with the
 //! routes' own serialisation (pydantic's JSON mode), and they are placed verbatim.
 //!
+//! noevia#1318 step 1b: while this process samples the backends, those live fields are produced
+//! natively instead (`backend_stats::live`, byte-identical to the child's answers) and the child's
+//! private runtime call is not made.
+//!
 //! Deliberate differences (see `docs/native-model-list.md`): what the bounded reader cannot follow
 //! exactly answers the native 503 [`REFUSAL`] instead of a guess.
 use crate::bench_runs::{Row, Val};
@@ -126,11 +130,14 @@ pub struct Settings {
     pub host_path: Option<String>,
 }
 
-/// How the parent reaches its child.
+/// How the parent reaches its child, and the native live fields when this process samples the
+/// backends.
 pub struct Child<'a> {
     pub client: &'a reqwest::Client,
     pub base: &'a str,
     pub token: &'a str,
+    #[cfg(feature = "native-backends")]
+    pub live: Option<&'a crate::backend_stats::BackendStats>,
 }
 
 type ShapeKey = (PathBuf, i128, u64);
@@ -147,6 +154,9 @@ pub struct ModelList {
     /// The overview's own slot, so a list stuck on a hung read never holds the overview up.
     counts: Arc<tokio::sync::Semaphore>,
     shapes: Arc<Mutex<HashMap<ShapeKey, String>>>,
+    /// Set once the child has answered its health check (its startup ran `db.init()`).
+    #[cfg_attr(not(feature = "native-backends"), allow(dead_code))]
+    started: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl ModelList {
@@ -160,6 +170,7 @@ impl ModelList {
             reads: Arc::new(tokio::sync::Semaphore::new(1)),
             counts: Arc::new(tokio::sync::Semaphore::new(1)),
             shapes: Arc::new(Mutex::new(HashMap::new())),
+            started: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -211,7 +222,7 @@ impl ModelList {
             Ok(listed) => listed,
             Err(outcome) => return outcome,
         };
-        let runtime = match post_runtime(&child, &listed.sizes()).await {
+        let runtime = match post_runtime(&child, &listed.sizes(), &self.started).await {
             Ok(body) => body,
             Err(outcome) => return outcome,
         };
@@ -243,7 +254,7 @@ impl ModelList {
             Ok(counted) => counted,
             Err(outcome) => return outcome,
         };
-        let runtime = match get_runtime(&child).await {
+        let runtime = match get_runtime(&child, active).await {
             Ok(body) => body,
             Err(outcome) => return outcome,
         };
@@ -840,7 +851,45 @@ pub(crate) fn runtime_request(sizes: &[u128]) -> String {
     format!("{{\"bytes\":[{}]}}", items.join(","))
 }
 
-async fn post_runtime(child: &Child<'_>, sizes: &[u128]) -> Result<Vec<u8>, Outcome> {
+/// A native live field that did not finish: Python's 500, or the native 503.
+#[cfg(feature = "native-backends")]
+fn live_failed(fail: crate::backend_stats::Fail) -> Outcome {
+    match fail {
+        crate::backend_stats::Fail::Raised => Outcome::Failed,
+        crate::backend_stats::Fail::Refused => Outcome::Refused,
+    }
+}
+
+/// Whether the child's startup is over (its health check answered once): the badge store it
+/// creates (`db.init()`) is read only after that, as when its runtime call came first.
+#[cfg(feature = "native-backends")]
+async fn child_started(child: &Child<'_>, started: &std::sync::atomic::AtomicBool) -> bool {
+    use std::sync::atomic::Ordering;
+    if started.load(Ordering::Acquire) {
+        return true;
+    }
+    let request = child.client.get(format!("{}/api/v1/health", child.base));
+    let ok = read_child(child, request).await.is_ok();
+    if ok {
+        started.store(true, Ordering::Release);
+    }
+    ok
+}
+
+async fn post_runtime(
+    child: &Child<'_>,
+    sizes: &[u128],
+    started: &std::sync::atomic::AtomicBool,
+) -> Result<Vec<u8>, Outcome> {
+    #[cfg(feature = "native-backends")]
+    if let Some(live) = child.live {
+        let body = live.models_runtime(sizes).await.map_err(live_failed)?;
+        if !child_started(child, started).await {
+            return Err(Outcome::Unavailable);
+        }
+        return Ok(body);
+    }
+    let _ = started;
     let request = child
         .client
         .post(format!("{}{MODELS_RUNTIME_PATH}", child.base))
@@ -849,7 +898,13 @@ async fn post_runtime(child: &Child<'_>, sizes: &[u128]) -> Result<Vec<u8>, Outc
     read_child(child, request).await
 }
 
-async fn get_runtime(child: &Child<'_>) -> Result<Vec<u8>, Outcome> {
+async fn get_runtime(child: &Child<'_>, active: Option<usize>) -> Result<Vec<u8>, Outcome> {
+    // Natively only while this process also owns the download table; else the child's count.
+    #[cfg(feature = "native-backends")]
+    if let (Some(live), Some(active)) = (child.live, active) {
+        return live.overview_runtime(active).await.map_err(live_failed);
+    }
+    let _ = active;
     let request = child
         .client
         .get(format!("{}{OVERVIEW_RUNTIME_PATH}", child.base));
