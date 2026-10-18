@@ -77,7 +77,39 @@ list in the child's answer.
 - **Differential:** `tools/gen-fit-oracle.py` records Python's whole list (baseline included) and
   the known keys, and `section_autoconfig::inventory::tests` compares both.
 
-Step 3d drops the child call along with the telemetry port.
+**Step 3d (noevia#1318).** With the `native-telemetry` feature and
+`MODEL_MANAGER_TELEMETRY_IMPL=rust` (default `python`), the route no longer asks the child at all:
+this process ingests the backend logs, reads the telemetry tables and builds the backend list.
+
+- **One writer per table.** The selector is decided before the child starts. Under `rust` the
+  child is started with `NOEVIA_NATIVE_MODEL_MANAGER_TELEMETRY_CONFIRMED=1`, its autoconfig route
+  is not forwarded to and its runtime call is never made, so `req_timing`, `server_config` and the
+  `telemetry_*` keys of `kv` have this process as their only writer. Under `python` the child is
+  told `0` and nothing here writes them. `rust` needs `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust`
+  and `MODEL_MANAGER_BACKENDS_IMPL=rust`; without them, or without the compiled feature, startup
+  is refused rather than downgraded.
+- **Ingest semantics (`telemetry.ingest`, kept exactly).** At most once per 20 s
+  (`telemetry_last_ingest`). For each effective backend name: the Docker log tail
+  (`tail=20000`, stdout and stderr, timestamps; multiplexed frames demultiplexed as docker-py
+  does when the container has no TTY; decoded with replacement), then `parse_log` from the
+  `backend-telemetry` crate with the per-backend watermark `telemetry_log_watermark:<name>` and
+  continuous-span key `telemetry_continuous_since:<name>`. The tail is gap-free only when its
+  first line is at or before the watermark; only then is the watermark passed on, so a respawn on
+  the same port is attributed by the previous spawn line and a gap starts a new span. Rows with
+  no generated tokens or no timestamp are dropped. A backend whose read fails is skipped; a
+  store write that fails (an interrupted write) skips the rest of that backend and leaves its
+  keys unchanged, so the next pass re-reads the same lines and the unique indexes keep it
+  idempotent. A parse that raises ends the ingest, and the route answers empty measurements, as
+  Python's `except`. The SQL is `db.py`'s, each call its own transaction, WAL, 5 s busy timeout.
+- **Hard caps (refused, 503, never guessed):** a log answer over 64 MiB, more than 40,000 lines or
+  4,096 distinct ports in one tail, a stored value of a type Python would not have written, a log
+  shape the parser does not support, or a backend list this side cannot build.
+- **Differential:** `tools/gen-telemetry-ingest-oracle.py` runs the actual `telemetry.ingest`,
+  `stats_for` and `config_history` over twelve passes (first read, the interval, repeated reads,
+  a restart, port reuse, a gap, an interrupted write and its recovery, a raising parse, a
+  multiplexed log with invalid UTF-8, unreadable stored keys) and records the tables, the keys and
+  the rendered measurements after each; `section_autoconfig::telemetry::tests` replays every pass
+  on the same schema and compares them.
 
 The child answers `{"measured": ..., "history": ..., "promptTps": "<repr>", "backends": "<json>"}`:
 `measured` and `history` rendered as the route renders them and placed verbatim, the prompt rate

@@ -46,6 +46,9 @@ native-model-list = ["native-model-detail", "native-bench-runs"]
 # noevia#1318: GET /api/v1/sections/{name}/autoconfig (the draft-head read's file reader and the
 # model-autoconfig crate; the telemetry and the backend inventory are asked of the child).
 native-section-autoconfig = ["native-draft-heads"]
+# noevia#1318 step 3d: the section autoconfig's telemetry (log ingest and the telemetry store)
+# natively, so the route no longer asks the child; this process is then the only telemetry writer.
+native-telemetry = ["native-section-autoconfig", "native-backends", "dep:backend-telemetry"]
 [lints]
 workspace = true
 [dependencies]
@@ -67,6 +70,7 @@ rustix = { version = "1", features = ["fs", "process", "net"] }
 gguf = { path = "../../crates/gguf" }
 model-autoconfig = { path = "../../crates/model-autoconfig" }
 model-files = { path = "../../crates/model-files", optional = true }
+backend-telemetry = { path = "../../crates/backend-telemetry", optional = true }
 rusqlite = { version = "0.40", features = ["bundled", "hooks", "limits"], optional = true }
 tempfile = "3"
 server-auth = { path = "../../crates/server-auth" }

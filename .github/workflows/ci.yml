@@ -1511,6 +1511,45 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-draft-heads --test section_autoconfig_lifecycle --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test section_autoconfig_lifecycle --test lifecycle
 
+  native-telemetry:
+    name: Native section autoconfig telemetry ingest, actual Python differential (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: e5f0c045a17a0331f4d660d4d0147fca11dc67dc
+          path: telemetry-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r telemetry-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Regenerate the actual Python telemetry ingest oracle
+        run: |
+          python3 -I tools/gen-telemetry-ingest-oracle.py telemetry-services/model-manager/app > "$RUNNER_TEMP/telemetry-ingest.json"
+          cmp bins/noevia-model-manager/tests/fixtures/telemetry-ingest-python.v1.json "$RUNNER_TEMP/telemetry-ingest.json" || {
+            diff bins/noevia-model-manager/tests/fixtures/telemetry-ingest-python.v1.json "$RUNNER_TEMP/telemetry-ingest.json" | head -40
+            exit 1
+          }
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-telemetry -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes,native-settings-write,native-backend-control,native-benchmark-overview,native-check-updates,native-benchmark-runner,native-downloads,native-model-delete,native-draft-heads,native-backends,native-search,native-model-list,native-section-autoconfig,native-telemetry -- -D warnings
+      - name: Ingest differential, store, caps, selector and route
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-telemetry --lib section_autoconfig
+          cargo test --locked -p noevia-model-manager --features native-telemetry --lib backend_stats::
+          cargo test --locked -p noevia-model-manager --features native-telemetry --lib docker::
+          cargo test --locked -p noevia-model-manager --features native-telemetry --test section_autoconfig --test section_autoconfig_lifecycle --test backends --test lifecycle --bin noevia-model-manager
+
   native-download-targets:
     name: Native download targets read, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest

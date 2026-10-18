@@ -82,22 +82,24 @@ pub(crate) struct Stand {
 pub(crate) async fn stand_in() -> (String, Arc<Mutex<Stand>>) {
     let shared = Arc::new(Mutex::new(Stand::default()));
     let state = shared.clone();
-    let app = axum::Router::new().route(
-        RUNTIME_PATH,
-        axum::routing::post(move |headers: axum::http::HeaderMap, body: String| {
-            let state = state.clone();
-            async move {
-                let mut stand = state.lock().unwrap();
-                let token = headers
-                    .get("x-model-loader-token")
-                    .and_then(|v| v.to_str().ok())
-                    .map(str::to_owned);
-                stand.seen.push((token, body));
-                let (status, body) = stand.reply.clone().unwrap_or((404, String::new()));
-                (axum::http::StatusCode::from_u16(status).unwrap(), body)
-            }
-        }),
-    );
+    let app = axum::Router::new()
+        .route("/api/v1/health", axum::routing::get(|| async { "{}" }))
+        .route(
+            RUNTIME_PATH,
+            axum::routing::post(move |headers: axum::http::HeaderMap, body: String| {
+                let state = state.clone();
+                async move {
+                    let mut stand = state.lock().unwrap();
+                    let token = headers
+                        .get("x-model-loader-token")
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_owned);
+                    stand.seen.push((token, body));
+                    let (status, body) = stand.reply.clone().unwrap_or((404, String::new()));
+                    (axum::http::StatusCode::from_u16(status).unwrap(), body)
+                }
+            }),
+        );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
