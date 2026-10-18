@@ -34,6 +34,8 @@ mod bench_observe;
 pub(crate) mod fallback;
 pub mod fit;
 pub mod live;
+#[cfg(all(feature = "native-search", feature = "native-section-autoconfig"))]
+mod repository;
 use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},

@@ -19,11 +19,30 @@
 //! Python rediscovers the containers for every chip list and every estimate; this side reads one
 //! inventory per answer, as the other fit readers do.
 //!
-//! Anything this side cannot follow exactly answers `None`, and the caller asks the child as
-//! before: an inventory it cannot judge, a non-finite float in a chip, an analysis that raises in
-//! Python (whose reason names the exception type) or that this port refuses, a value of a type
-//! Python would render differently or trip over.
+//! Reference analysis exceptions are caught as the helper's exact HTTP200 empty-estimate
+//! reason, while reference JSON-render failures and explicit native resource refusals remain
+//! typed errors. Installed strict routing never retries a companion RPC. Optional compatibility
+//! routing may still ask its configured companion after a bounded native refusal.
 use super::Live;
+
+/// Unsupported native resource/shape limits are separate from Python's JSON-render errors.
+#[derive(Debug)]
+pub(super) enum Error {
+    Unsupported,
+    ReferenceFailure,
+}
+impl From<Error> for super::Stop {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::Unsupported => Self::Refused,
+            Error::ReferenceFailure => Self::Failed,
+        }
+    }
+}
+fn need<T>(value: Option<T>) -> Result<T, Error> {
+    value.ok_or(Error::Unsupported)
+}
+
 use crate::backend_stats::{
     fit::{self, Descriptor, Floats, Inventory},
     Num,
@@ -98,9 +117,9 @@ pub(super) fn estimates(
     mmproj_gb: f64,
     backends: &Value,
     cache_ram_cap_mib: i64,
-) -> Option<(String, String)> {
+) -> Result<(String, String), Error> {
     if matches!(backends, Value::Arr(items) if items.is_empty()) {
-        return Some(("[]".to_owned(), NO_GPU.to_owned()));
+        return Ok(("[]".to_owned(), NO_GPU.to_owned()));
     }
     struct Row {
         text: String,
@@ -131,11 +150,21 @@ pub(super) fn estimates(
             // `mmproj_gb or None`.
             mmproj_gb_override: (mmproj_gb != 0.0).then_some(mmproj_gb),
         };
-        // A Python exception is the child's reason with its type name: asked of the child.
-        let rec = analyze::analyze(&inputs).ok()?;
+        // The reference helper catches analysis exceptions, but not JSON serialization.
+        let rec = match analyze::analyze_typed(&inputs) {
+            Ok(rec) => rec,
+            Err(analyze::AnalysisError::Python(class)) => {
+                return Ok((
+                    "[]".to_owned(),
+                    format!("Autoconfig failed on this file's metadata ({class})."),
+                ))
+            }
+            Err(analyze::AnalysisError::Failed) => return Err(Error::ReferenceFailure),
+            Err(analyze::AnalysisError::Refused) => return Err(Error::Unsupported),
+        };
         let error = match rec.get("error") {
             Some(Value::Str(e)) => e.clone(),
-            _ => return None,
+            _ => return Err(Error::Unsupported),
         };
         let ctx_value = rec.get("recommended_ctx");
         if !error.is_empty() || !ctx_value.is_some_and(Value::truthy) {
@@ -145,23 +174,28 @@ pub(super) fn estimates(
             }
             continue;
         }
-        let ctx = int_of(ctx_value)?;
-        let active = rec.get("active_preset")?;
+        let ctx = need(int_of(ctx_value))?;
+        let active = need(rec.get("active_preset"))?;
         let chosen = match rec.get("presets") {
             Some(Value::Arr(items)) => items.iter().find(|p| p.get("key") == Some(active)),
-            _ => return None,
+            _ => return Err(Error::Unsupported),
         };
         let (gpu_layers, total_layers, speed_pct, offload) = match chosen {
             Some(p) => {
-                let speed = match p.get("speed_score")? {
+                let speed = match need(p.get("speed_score"))? {
                     // `round(x * 100)`: Python raises for a non-finite product.
-                    Value::Float(f) => model_autoconfig::pyfloat::round_int(f * 100.0).ok()?,
-                    Value::Int(_) => int_of(p.get("speed_score"))?.checked_mul(100)?,
-                    _ => return None,
+                    Value::Float(f) => model_autoconfig::pyfloat::round_int(f * 100.0).map_err(
+                        |error| match error {
+                            model_autoconfig::Error::Python(_) => Error::ReferenceFailure,
+                            _ => Error::Unsupported,
+                        },
+                    )?,
+                    Value::Int(_) => need(need(int_of(p.get("speed_score")))?.checked_mul(100))?,
+                    _ => return Err(Error::Unsupported),
                 };
                 (
-                    int_text(p.get("gpu_layers"))?,
-                    int_text(p.get("total_layers"))?,
+                    need(int_text(p.get("gpu_layers")))?,
+                    need(int_text(p.get("total_layers")))?,
                     speed,
                     p.get("offload_kind").is_some_and(Value::truthy),
                 )
@@ -192,28 +226,59 @@ pub(super) fn estimates(
     } else {
         String::new()
     };
-    Some((format!("[{}]", rows.join(",")), reason))
+    Ok((format!("[{}]", rows.join(",")), reason))
 }
 
 /// `(summary.get("model") or {}).get("context_length") or 0` as `json.dumps` writes it.
-fn native_ctx(summary: &Value) -> Option<String> {
-    let model = summary.get("model");
-    let value = match model {
-        None => return Some("0".to_owned()),
-        Some(m) if !m.truthy() => return Some("0".to_owned()),
-        Some(Value::Obj(_)) => model?.get("context_length"),
-        // `.get` of a list or a string raises.
-        Some(_) => return None,
+fn native_ctx(summary: &Value) -> Result<String, Error> {
+    let model = match summary.get("model") {
+        None => return Ok("0".to_owned()),
+        Some(model) if !model.truthy() => return Ok("0".to_owned()),
+        Some(model @ Value::Obj(_)) => model,
+        Some(_) => return Err(Error::ReferenceFailure), // Python .get raises.
     };
+    let value = model.get("context_length").filter(|v| v.truthy());
+    let mut out = String::new();
+    json_value(
+        &mut out,
+        value.unwrap_or(&Value::Int(model_files::BigInt::zero())),
+    )?;
+    Ok(out)
+}
+
+/// JSONResponse's finite JSON, retaining full nested nativeCtx values and arbitrary JSON ints.
+fn json_value(out: &mut String, value: &Value) -> Result<(), Error> {
     match value {
-        None => Some("0".to_owned()),
-        Some(v) if !v.truthy() => Some("0".to_owned()),
-        Some(Value::Int(_)) => int_text(value),
-        Some(Value::Bool(true)) => Some("true".to_owned()),
-        Some(Value::Str(s)) => Some(json_string(s)),
-        Some(Value::Float(f)) if f.is_finite() => Some(gguf::py_float_repr(*f)),
-        Some(_) => None,
+        Value::Null => out.push_str("null"),
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Int(n) => out.push_str(&n.to_string()),
+        Value::Float(f) if f.is_finite() => out.push_str(&gguf::py_float_repr(*f)),
+        Value::Float(_) => return Err(Error::ReferenceFailure),
+        Value::Str(s) => out.push_str(&json_string(s)),
+        Value::Arr(values) => {
+            out.push('[');
+            for (i, value) in values.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                json_value(out, value)?;
+            }
+            out.push(']');
+        }
+        Value::Obj(values) => {
+            out.push('{');
+            for (i, (key, value)) in values.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&json_string(key));
+                out.push(':');
+                json_value(out, value)?;
+            }
+            out.push('}');
+        }
     }
+    Ok(())
 }
 
 /// The header summary as the dict the child's `json.loads` makes of it. A real summary carries
@@ -260,17 +325,18 @@ pub(super) fn groups(
     inventory: &Inventory,
     descriptors: &[Descriptor],
     cache_ram_cap_mib: i64,
-) -> Option<Vec<Live>> {
+) -> Result<Vec<Live>, Error> {
     // `mm_bytes / 1024 ** 3`: an int divided by an int is one correctly rounded division.
-    let mm_gb = match mmproj_bytes {
-        Some(b) if b < (1u128 << 53) => b as f64 / 1_073_741_824.0,
-        Some(_) => return None,
-        None => 0.0,
-    };
+    // The divisor is a power of two, so integer rounding followed by scaling is exact.
+    let mm_gb = mmproj_bytes.map_or(0.0, |bytes| bytes as f64 / 1_073_741_824.0);
     let backends = backends(descriptors);
     let mut out = Vec::with_capacity(asks.len());
     for ask in asks {
-        let fit = raw(fit::chips(ask.bytes, inventory, Floats::Raise).ok()?)?;
+        let fit = need(raw(fit::chips(ask.bytes, inventory, Floats::Raise)
+            .map_err(|error| match error {
+                crate::backend_stats::Fail::Raised => Error::ReferenceFailure,
+                _ => Error::Unsupported,
+            })?))?;
         let mut live = Live {
             fit,
             estimates: None,
@@ -279,16 +345,19 @@ pub(super) fn groups(
         };
         if let Some(summary) = summary.filter(|s| s.truthy()) {
             if ask.estimate {
+                // Serialization / model.get errors always fail the reference response,
+                // even if analysis itself catches a metadata exception.
+                let context = native_ctx(summary)?;
                 let (estimates, reason) =
                     estimates(summary, ask.bytes, mm_gb, &backends, cache_ram_cap_mib)?;
-                live.estimates = Some(raw(estimates)?);
+                live.estimates = Some(need(raw(estimates))?);
                 live.reason = reason;
-                live.native_ctx = Some(raw(native_ctx(summary)?)?);
+                live.native_ctx = Some(need(raw(context))?);
             }
         }
         out.push(live);
     }
-    Some(out)
+    Ok(out)
 }
 
 #[cfg(test)]

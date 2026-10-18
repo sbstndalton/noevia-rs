@@ -147,3 +147,47 @@ those answers byte for byte.
 It also records `main._search_repo_runtime` for synthetic GGUF headers (summarised by the
 app's own `gguf_meta`). `search::estimates::tests` reproduces the inventory, the estimate
 backends and every answer byte for byte.
+
+
+## Strict repository runtime ownership (#214)
+
+With the native routing owner installed, repository fit chips and preset estimates
+are computed natively for each request. A failure cannot retry the companion private
+repository-runtime RPC. Compatibility routing retains its configured companion fallback.
+
+The native implementation retains the reference helper's caught analysis exception
+class and its HTTP 200 empty-estimate reason. It also retains the full JSON native-context
+value and the reference's HTTP 500 outcome for nonfinite JSON or invalid model.get shapes.
+Large file/projector byte counts use correctly rounded division by 2**30; this does not
+weaken the rest of the size core's integer arithmetic caps. Finite reserve spellings
+accepted by the settings oracle include exponent, fraction and digit-separated underscore
+forms. Invalid, nonfinite or over-4096-byte reserve configuration is explicitly refused;
+it is never changed to the default or zero.
+
+Repository discovery has a ten-second total deadline. Like the companion's Docker SDK,
+missing Docker or failed version negotiation contributes no discovered names, as does
+a caught APIError during listing or inspection. After successful negotiation, a transport
+timeout, malformed success response or uncaught API-error decoding failure yields the
+reference HTTP 500. Configured names and their declared/cached measured VRAM remain
+eligible whenever the reference discovery returns an empty list. This path neither stores nor consults the optional
+fallback cooldown; it does not synthesize capacity. Other mandatory telemetry and
+benchmark discovery policies are unchanged.
+
+Explicit bounded native refusals remain: JSON summaries over 8 MiB, over 2**20 nodes,
+depth 64, number literals over 4096 bytes or lone Unicode surrogates; admission/cancellation;
+and size-core unsupported values (non-ASCII numeric strings, integer arithmetic beyond
+2**100, contexts above 2**53 in values assembly, work budget and capped cards/backends).
+These are typed unsupported outcomes, distinct from a known Python exception class.
+Ordinary generated summaries are also bounded by the existing 1 MiB GGUF header read;
+the strict path never sends an unsupported summary to the companion. Existing public
+search limits on Hub/listing/query/body/group inputs continue to apply, including the
+group byte bound before runtime computation. Docker JSON is bounded to 1 MiB, depth 64,
+200000 nodes and 64-byte numbers; inventory to 1024 entries, sendable path identifiers
+to 256 ASCII characters, and API versions to numeric major.minor components. A bound
+refuses explicitly instead of being decoded partially into an empty inventory.
+
+tools/gen-repo-runtime-oracle.py records the actual pinned companion endpoint,
+helper/analyzer, settings parser and Docker SDK against synthetic data. CI regenerates
+the source-hashed fixture and tests exact reference results, real-router zero-RPC
+ownership, compatibility tripwire, hostile bounds, fresh timed-out discovery, configured
+capacity preservation and cancellation.

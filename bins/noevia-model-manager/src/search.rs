@@ -22,7 +22,10 @@
 //! only the Python child holds, asked once per request through two private calls
 //! (`GET /api/v1/internal/search-runtime`: the GPU budget, the downloaded files and the trusted
 //! publisher sets; `POST /api/v1/internal/search-repo-runtime`: the fit chips and the context
-//! estimates of the groups, the autoconfig fit math). When the child cannot answer, the route
+//! estimates of the groups, the autoconfig fit math). Installed strict routing instead owns
+//! repository runtime work through typed native results, including reference exceptions and
+//! bounded Docker discovery; those requests never retry the private companion call. In
+//! compatibility routing, when the child cannot answer, the route
 //! answers 502 as any forwarded route does, never a guess.
 //!
 //! Deliberate differences (see `docs/native-search.md`): conditions this side cannot follow
@@ -421,11 +424,21 @@ impl Search {
 
     /// `GET /api/v1/search/repo?repo=...`.
     pub async fn repo(&self, query: &str) -> Outcome {
+        self.repo_profile(query, false).await
+    }
+
+    /// Installed strict routing owns all repository runtime work; no private companion RPC.
+    #[cfg(feature = "native-routing")]
+    pub(crate) async fn repo_owned(&self, query: &str) -> Outcome {
+        self.repo_profile(query, true).await
+    }
+
+    async fn repo_profile(&self, query: &str, authoritative: bool) -> Outcome {
         let repo = match params::repo(query) {
             Ok(repo) => repo,
             Err(body) => return Outcome::Json(422, body.into_bytes()),
         };
-        match self.run_repo(&repo).await {
+        match self.run_repo(&repo, authoritative).await {
             Ok(body) => Outcome::Json(200, body.into_bytes()),
             Err(stop) => stop.into(),
         }
@@ -1127,7 +1140,7 @@ impl Search {
 
     // ---- GET /api/v1/search/repo -----------------------------------------------------------
 
-    async fn run_repo(&self, repo: &str) -> Result<String, Stop> {
+    async fn run_repo(&self, repo: &str, authoritative: bool) -> Result<String, Stop> {
         let failure = |message: String| {
             Ok(format!(
                 "{{\"repo\":{},\"error\":{},\"groups\":[]}}",
@@ -1213,6 +1226,9 @@ impl Search {
         }
         let live = if groups.is_empty() {
             Vec::new()
+        } else if authoritative {
+            self.native_repo_runtime_owned(&groups, summary.as_deref(), true)
+                .await?
         } else {
             match self.native_repo_runtime(&groups, summary.as_deref()).await {
                 Some(live) => live,
@@ -1344,91 +1360,100 @@ impl Search {
         Ok((Some(summary), None))
     }
 
-    /// noevia#1318 step 3a: the groups' fit chips and estimates natively (see `estimates`);
-    /// `None` keeps the child's answer.
+    /// Optional compatibility mode can still use the configured companion owner.
     #[cfg(all(feature = "native-backends", feature = "native-section-autoconfig"))]
     async fn native_repo_runtime(
         &self,
         groups: &[Group],
         summary: Option<&str>,
     ) -> Option<Vec<Live>> {
-        let source = self.live.get()?;
-        // The python section autoconfig selector: not a fallback, the configured owner.
-        let cache_cap = source.estimates_cache_cap_mib?;
-        let back = |class| {
-            estimates::fell_back(class);
-            None
-        };
+        self.native_repo_runtime_owned(groups, summary, false)
+            .await
+            .inspect_err(|_| {
+                estimates::fell_back("a bounded native runtime failure");
+            })
+            .ok()
+    }
+
+    #[cfg(all(feature = "native-backends", feature = "native-section-autoconfig"))]
+    async fn native_repo_runtime_owned(
+        &self,
+        groups: &[Group],
+        summary: Option<&str>,
+        authoritative: bool,
+    ) -> Result<Vec<Live>, Stop> {
+        let source = self.live.get().ok_or(Stop::Refused)?;
+        let cache_cap = source.estimates_cache_cap_mib.ok_or(Stop::Refused)?;
         let mut asks = Vec::with_capacity(groups.len());
-        for g in groups {
-            let Ok(bytes) = u128::try_from(g.bytes) else {
-                return back("a negative size");
-            };
+        for group in groups {
             asks.push(estimates::Ask {
-                bytes,
-                estimate: summary.is_some() && g.is_gguf && !g.projector,
+                bytes: u128::try_from(group.bytes).map_err(|_| Stop::Refused)?,
+                estimate: summary.is_some() && group.is_gguf && !group.projector,
             });
         }
-        let Ok(mmproj) = groups
+        let mmproj = groups
             .iter()
             .filter(|g| g.projector)
             .map(|g| g.bytes)
             .min()
             .map(u128::try_from)
             .transpose()
-        else {
-            return back("a negative projector size");
-        };
-        // Reject an unreadable summary before Docker discovery can spend the inventory deadline.
-        // The summary (up to 8 MiB) stays on the blocking worker.
+            .map_err(|_| Stop::Refused)?;
+        // Parse on the bounded worker before any Docker discovery.
         let text = summary.map(str::to_owned);
-        let parsed = self
+        let summary = self
             .blocking(move || match text.as_deref() {
-                Some(text) => estimates::summary(text)
-                    .map(Some)
-                    .ok_or("a summary this side does not read"),
+                Some(text) => estimates::summary(text).map(Some).ok_or(Stop::Refused),
                 None => Ok(None),
             })
-            .await;
-        let summary = match parsed {
-            Ok(Ok(summary)) => summary,
-            Ok(Err(class)) => return back(class),
-            Err(_) => return back("the blocking work failed or was cancelled"),
-        };
-        let inventory = match source
-            .stats
-            .fallback_reads
-            .run(source.stats.inventory())
-            .await
-        {
-            Ok(Some(inventory)) => inventory,
-            Ok(None) => return back("HOST_RAM_RESERVE_GB is not a value this side reads"),
-            Err(_) => return back("Docker did not answer in time"),
+            .await??;
+        let inventory = if authoritative {
+            // The reference discovery catches Docker failure and returns no discovered names.
+            // Configured names and their declared/cached VRAM remain in inventory_from.
+            source
+                .stats
+                .repository_inventory()
+                .await
+                .map_err(|error| match error {
+                    crate::backend_stats::Fail::Raised => Stop::Failed,
+                    crate::backend_stats::Fail::Refused => Stop::Refused,
+                })?
+        } else {
+            source
+                .stats
+                .fallback_reads
+                .run(source.stats.inventory())
+                .await
+                .map_err(|_| Stop::Refused)?
+                .ok_or(Stop::Refused)?
         };
         let descriptors = source.stats.estimate_descriptors(&inventory);
-        let answer = self
-            .blocking(move || {
-                estimates::groups(
-                    &asks,
-                    mmproj,
-                    summary.as_ref(),
-                    &inventory,
-                    &descriptors,
-                    cache_cap,
-                )
-                .ok_or("an analysis or value this side does not follow exactly")
-            })
-            .await;
-        match answer {
-            Ok(Ok(live)) => Some(live),
-            Ok(Err(class)) => back(class),
-            Err(_) => back("the blocking work failed or was cancelled"),
-        }
+        self.blocking(move || {
+            estimates::groups(
+                &asks,
+                mmproj,
+                summary.as_ref(),
+                &inventory,
+                &descriptors,
+                cache_cap,
+            )
+            .map_err(Stop::from)
+        })
+        .await?
     }
 
     #[cfg(not(all(feature = "native-backends", feature = "native-section-autoconfig")))]
     async fn native_repo_runtime(&self, _: &[Group], _: Option<&str>) -> Option<Vec<Live>> {
         None
+    }
+    #[cfg(not(all(feature = "native-backends", feature = "native-section-autoconfig")))]
+    async fn native_repo_runtime_owned(
+        &self,
+        _: &[Group],
+        _: Option<&str>,
+        _: bool,
+    ) -> Result<Vec<Live>, Stop> {
+        Err(Stop::Refused)
     }
 
     /// The child's fit chips and estimates for the groups.
