@@ -170,9 +170,9 @@ impl SectionAutoconfig {
         };
         match telemetry.owner(child).await {
             None => return Some(Err(Outcome::Unavailable)),
-            // A child without the telemetry guard keeps Python's ingest: the private call, as
-            // before (logged once in `owner`).
-            Some(false) => return None,
+            // The confirmation has already disabled a guarded child's writer. Without
+            // its advertisement no process can safely claim ownership (#2041).
+            Some(false) => return Some(Err(Outcome::Refused)),
             Some(true) => {}
         }
         let measured = match telemetry.measure(name, model_rel).await {

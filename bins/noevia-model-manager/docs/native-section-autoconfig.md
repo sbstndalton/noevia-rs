@@ -90,8 +90,9 @@ this process ingests the backend logs, reads the telemetry tables and builds the
   `db.record_timings` and `db.record_server_configs` write nothing (services#98), and it answers
   the private `GET /api/v1/internal/telemetry-guard` with `{"telemetry_guard":1}` (services#100).
   This process ingests only after that answer. A child image without the guard answers 404
-  there; this process then keeps Python's ingest (the route asks the child through the private
-  runtime call, as before), writes none of the tables, and logs that once. (The child refuses
+  there; this process refuses native telemetry with 503, writes none of the tables, and logs
+  that once. It cannot safely fall back: services#98 already disables its writer under the
+  confirmation even though it lacks the advertisement (#2041). (The child refuses
   `GET /api/v1/health`, which this process owns, so the advertisement is a private route
   rather than a health field.) The answer is kept for the life of the process: the child is
   never respawned (its exit ends this process), so its image cannot change under it. `rust` needs `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust`

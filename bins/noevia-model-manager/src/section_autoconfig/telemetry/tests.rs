@@ -42,7 +42,11 @@ const PAST_CAP: &[u8] = b"synthetic answer past the cap";
 
 /// The logs of one pass, and how many log reads were made.
 #[derive(Default)]
-struct Daemon(Mutex<PassLogs>, std::sync::atomic::AtomicUsize);
+struct Daemon(
+    Mutex<PassLogs>,
+    std::sync::atomic::AtomicUsize,
+    Mutex<Option<std::path::PathBuf>>,
+);
 
 fn id_of(name: &str) -> String {
     format!(
@@ -89,7 +93,15 @@ impl DockerApi for Daemon {
                 },
                 ["", "containers", id, "logs"] => {
                     assert_eq!(query, crate::docker::TELEMETRY_LOGS_QUERY);
-                    self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let previous = self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if previous > 0 {
+                        if let Some(path) = self.2.lock().unwrap().as_ref() {
+                            assert!(
+                                rows(path) > 0,
+                                "previous tail must be stored before reading the next"
+                            );
+                        }
+                    }
                     let found = logs.iter().find(|(n, _)| id_of(n) == *id);
                     match found {
                         Some((_, (Some(bytes), _))) if bytes == PAST_CAP => {
@@ -569,10 +581,10 @@ async fn the_route_no_longer_asks_the_child() {
     assert_eq!(got, want);
 }
 
-/// A child without the telemetry guard keeps Python's ingest: the route asks it as before, and
-/// this process writes nothing (the answer is kept: the child is never respawned).
+/// A guarded-but-unadvertised child cannot safely be used as an ingest fallback.
+/// Refuse without writing or calling its private runtime.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_child_without_the_guard_keeps_pythons_ingest() {
+async fn a_guarded_child_without_the_advertisement_refuses_without_fallback() {
     use crate::section_autoconfig::tests::{first_case, run, shown, stand_in};
     let fx = fixture();
     let fit = crate::backend_stats::fit::tests::fixture();
@@ -607,19 +619,88 @@ async fn a_child_without_the_guard_keeps_pythons_ingest() {
         stats.clone(),
         Arc::new(|| 1.0e9),
     )));
+    // A services#98 child has already disabled ingest under confirmation=1 but
+    // answers 404 here. Its private runtime can still return old/empty measurements;
+    // never call it as a substitute for an ownership handshake.
     let got = shown(run(&native, &path, &base, &client).await);
-    assert!(
-        !stand.lock().unwrap().seen.is_empty(),
-        "the child was not asked"
-    );
-    let models = tempfile::tempdir().unwrap();
-    let (child_backed, _) = first_case(models.path());
-    child_backed.set_stats(stats.clone());
-    assert_eq!(got, shown(run(&child_backed, &path, &base, &client).await));
-    // Nothing written here, the guard not asked again.
+    assert_eq!(got.0, 503);
+    assert!(stand.lock().unwrap().seen.is_empty());
     assert_eq!(dump(&db)["kv"], V::Array(Vec::new()));
     stand.lock().unwrap().guard = true;
     let again = shown(run(&native, &path, &base, &client).await);
     assert_eq!(again, got);
+    assert!(stand.lock().unwrap().seen.is_empty());
     assert_eq!(dump(&db)["kv"], V::Array(Vec::new()));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn each_tail_is_stored_before_reading_the_next_backend() {
+    let fx = fixture();
+    let dir = tempfile::tempdir().unwrap();
+    let path = store(dir.path(), &fx["schema"]);
+    let daemon = Arc::new(Daemon::default());
+    *daemon.2.lock().unwrap() = Some(path.clone());
+    let names: Vec<String> = vec!["syn-first".into(), "syn-second".into()];
+    for name in &names {
+        daemon
+            .0
+            .lock()
+            .unwrap()
+            .insert(name.clone(), (Some(first_log(&fx)), true));
+    }
+    let telemetry = world(
+        &names,
+        daemon.clone(),
+        dir.path(),
+        Arc::new(Mutex::new(1.0e9)),
+    );
+    assert_eq!(telemetry.ingest().await, Ok(()));
+    assert_eq!(daemon.1.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert!(dump(&path)["req_timing"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r[2] == "syn-second"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn guard_requires_the_exact_bounded_advertisement() {
+    use axum::{routing::get, Router};
+    for (body, expected) in [
+        (GUARD_BODY.to_vec(), Some(true)),
+        (b"{}".to_vec(), Some(false)),
+        (vec![b'x'; GUARD_BODY.len() + 1], None),
+    ] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new().route(
+                    GUARD_PATH,
+                    get(move || {
+                        let body = body.clone();
+                        async move { body }
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let stats = Arc::new(crate::backend_stats::fit::tests::stats_for(
+            &crate::backend_stats::fit::tests::fixture()["cases"][0],
+            dir.path(),
+        ));
+        let telemetry = Telemetry::new(dir.path(), stats);
+        let client = reqwest::Client::new();
+        let child = crate::section_autoconfig::Child {
+            client: &client,
+            base: &base,
+            token: "",
+        };
+        assert_eq!(telemetry.owner(&child).await, expected);
+        assert!(!dir.path().join("model_loader.db").exists());
+        server.abort();
+    }
 }

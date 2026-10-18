@@ -9,8 +9,8 @@
 //! the native section autoconfig, the private runtime call is no longer made, and the child's
 //! `telemetry.ingest` and `record_*` writers refuse outright. This side writes only once the
 //! child has advertised that guard (`GET /api/v1/internal/telemetry-guard`); a child image
-//! without it keeps Python's ingest, through the private runtime call as before, with one loud
-//! log line. With `python` the child stays the only writer and this side never opens those
+//! without it refuses native telemetry with one loud log line, because a guarded but
+//! unadvertised child may already have stopped its writer (#2041). With `python` the child stays the only writer and this side never opens those
 //! tables for writing.
 //!
 //! The ingest follows Python step by step: the 20-second interval on `telemetry_last_ingest`;
@@ -126,9 +126,9 @@ impl Telemetry {
 
     /// Who ingests, asked of the child once: `Some(true)` this process (the child advertised its
     /// telemetry guard, so it never writes the tables, and its startup has made the store),
-    /// `Some(false)` Python (a child without the guard would still ingest: this side writes
-    /// nothing and the route keeps asking the child, logged once), `None` not known yet (the
-    /// child is not answering; asked again next time).
+    /// `Some(false)` unsupported child (this side writes nothing and the route refuses;
+    /// its writer may already be disabled, logged once), `None` not known yet (the child
+    /// is not answering; asked again next time).
     ///
     /// The answer is kept for the life of this process. That is safe because the child is never
     /// respawned (its exit ends this process): its image, so its guard, cannot change under a
@@ -144,10 +144,19 @@ impl Telemetry {
         if !child.token.is_empty() {
             request = request.header("x-model-loader-token", child.token);
         }
-        let answer = request.send().await.ok()?;
+        let mut answer = request.send().await.ok()?;
         let status = answer.status();
         let native = if status.is_success() {
-            answer.bytes().await.ok()?.as_ref() == GUARD_BODY
+            // The advertisement is a fixed tiny body; never aggregate an unbounded
+            // response, even when an incompatible child returns a successful status.
+            let mut body = Vec::new();
+            while let Some(chunk) = answer.chunk().await.ok()? {
+                if body.len().saturating_add(chunk.len()) > GUARD_BODY.len() {
+                    return None;
+                }
+                body.extend_from_slice(&chunk);
+            }
+            body == GUARD_BODY
         } else if status == reqwest::StatusCode::NOT_FOUND {
             false
         } else {
@@ -156,8 +165,8 @@ impl Telemetry {
         if self.owner.set(native).is_ok() && !native {
             eprintln!(
                 "noevia-model-manager: MODEL_MANAGER_TELEMETRY_IMPL=rust, but the Python child does \
-                 not advertise the telemetry guard ({GUARD_PATH} answered {status}); Python keeps \
-                 the telemetry ingest and this process writes none of it. Deploy a services image \
+                 not advertise the telemetry guard ({GUARD_PATH} answered {status}); native telemetry is \
+                 unavailable because ownership cannot be verified. Deploy a services image \
                  with the guard, then restart"
             );
         }
@@ -200,37 +209,37 @@ impl Telemetry {
             return Ok(());
         }
         let names = self.stats.effective_names().await;
-        let mut logs = Vec::with_capacity(names.len());
         for name in names {
             if self.backing_off(&name, now) {
                 continue;
             }
             match tokio::time::timeout(LOG_TIMEOUT, self.stats.telemetry_logs(&name)).await {
-                Ok(Logs::Text(text)) => logs.push((name, text)),
+                Ok(Logs::Text(text)) => {
+                    // Process and release this tail before asking Docker for another. The
+                    // transport cap applies per backend, not to the whole inventory (#2040).
+                    let db = self.database.clone();
+                    let backend = name.clone();
+                    let reason = blocking(move || {
+                        let store = store::Store::open(&db)?;
+                        ingest_one(&store, &backend, &text)
+                    })
+                    .await?;
+                    if let Some(reason) = reason {
+                        self.back_off(&name, now, reason);
+                    }
+                }
                 Ok(Logs::Skip) => {}
-                // Skipped, as Python skips a backend whose read fails.
                 Ok(Logs::TooLarge) => self.back_off(&name, now, "log answer over 64 MiB"),
                 Err(_) => self.back_off(&name, now, "log read over 60 s"),
             }
         }
         let db = self.database.clone();
-        let bounded = blocking(move || {
-            let store = store::Store::open(&db)?;
-            let mut bounded = Vec::new();
-            for (name, text) in logs {
-                if let Some(reason) = ingest_one(&store, &name, &text)? {
-                    bounded.push((name, reason));
-                }
-            }
-            store
+        blocking(move || {
+            store::Store::open(&db)?
                 .set_setting(LAST_INGEST_KEY, &gguf::py_float_repr(now))
-                .map_err(|_| Stop::Raised)?;
-            Ok(bounded)
+                .map_err(|_| Stop::Raised)
         })
         .await?;
-        for (name, reason) in bounded {
-            self.back_off(&name, now, reason);
-        }
         Ok(())
     }
 
