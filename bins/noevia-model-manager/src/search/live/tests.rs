@@ -18,7 +18,7 @@ fn fixture() -> V {
     serde_json::from_str(include_str!("../../../tests/fixtures/fit-python.v1.json")).unwrap()
 }
 
-/// A child that answers every request 200 (its health check), counting them.
+/// A child that advertises completed startup, counting requests.
 async fn healthy_child() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
@@ -36,7 +36,9 @@ async fn healthy_child() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
                     }
                     head.push(byte[0]);
                 }
-                let body = r#"{"status":"ok"}"#;
+                assert!(String::from_utf8_lossy(&head)
+                    .starts_with("GET /api/v1/internal/startup-ready "));
+                let body = r#"{"startup_ready":1}"#;
                 let reply = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                     body.len()
@@ -142,7 +144,7 @@ async fn the_search_runtime_is_the_childs() {
                 "{id}"
             );
         }
-        // The health check is asked once; the runtime itself never reaches the child.
+        // The private startup check is asked once; the runtime itself never reaches the child.
         assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), 1, "{id}");
     }
 }

@@ -674,7 +674,7 @@ mod linux {
 
     /// noevia#1318 step 1b: while this process samples the backends, the live fields are its own
     /// (no private runtime call reaches the child); the list still waits once for the child's
-    /// health (its startup creates the badge store) and the overview counts the native table.
+    /// readiness (its startup creates the badge store) and the overview counts the native table.
     #[cfg(all(feature = "native-backends", feature = "native-downloads"))]
     #[tokio::test]
     async fn native_live_fields_replace_the_private_calls() {
@@ -726,9 +726,9 @@ mod linux {
         };
         let chips = r#""loadedOn":[],"fit":[{"name":"llama-a","vram_gb":12.0,"verdict":"fits","ratio_pct":0}]"#;
 
-        // The list asks the child only for its health, once per process.
+        // The list asks the child only for startup readiness, once per instance.
         let native = list(&models, &ini, &data, "", (1, 0));
-        let (base, seen) = child(200, r#"{"status":"ok"}"#.into()).await;
+        let (base, seen) = child(200, r#"{"startup_ready":1}"#.into()).await;
         let answer = send(
             with(native.clone(), &base, false),
             "GET",
@@ -744,7 +744,10 @@ mod linux {
         );
         assert!(String::from_utf8_lossy(&answer.body).contains(chips));
         let (head, _) = seen.await.unwrap();
-        assert!(head.starts_with("GET /api/v1/health "), "{head}");
+        assert!(
+            head.starts_with("GET /api/v1/internal/startup-ready "),
+            "{head}"
+        );
         let again = send(with(native, &closed, false), "GET", "/api/v1/models", true).await;
         assert_eq!(again.status, 200);
         assert!(String::from_utf8_lossy(&again.body).contains(chips));

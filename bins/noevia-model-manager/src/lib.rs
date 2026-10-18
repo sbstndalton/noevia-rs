@@ -58,6 +58,12 @@ pub mod settings_write;
     feature = "native-bench-runs"
 ))]
 pub mod sqlite_read;
+#[cfg(any(
+    feature = "native-section-writes",
+    all(feature = "native-model-list", feature = "native-backends"),
+    all(feature = "native-search", feature = "native-backends")
+))]
+mod startup;
 pub mod telemetry_cmd;
 #[cfg(feature = "native-token-test")]
 mod token_test;
@@ -1671,26 +1677,6 @@ fn bench_run_response(outcome: bench_runs::Outcome) -> Response {
     }
 }
 
-/// Set once the child has answered its health check: its startup (which may migrate models.ini
-/// cache-ram values) is over, so this side is the only models.ini writer from then on.
-#[cfg(feature = "native-section-writes")]
-static CHILD_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-#[cfg(feature = "native-section-writes")]
-async fn child_started(state: &StateData) -> bool {
-    use std::sync::atomic::Ordering;
-    if CHILD_STARTED.load(Ordering::Acquire) {
-        return true;
-    }
-    let ok = child_runtime(state, "/api/v1/health", "", 4096)
-        .await
-        .is_ok();
-    if ok {
-        CHILD_STARTED.store(true, Ordering::Release);
-    }
-    ok
-}
-
 /// noevia#1318: the models.ini writers. Body and name checks run first (FastAPI's 422s, then
 /// the handlers' 400s), then everything else under the one write lock; the store work runs on a
 /// blocking thread that owns the lock guard, so a dropped request still finishes before the next.
@@ -1756,7 +1742,14 @@ async fn native_section_write(
         Ok(e) => e,
         Err(outcome) => return section_outcome(outcome),
     };
-    if !child_started(state).await {
+    if !crate::startup::ready(
+        &state.legacy,
+        &state.legacy_base,
+        &state.token,
+        &writes.started,
+    )
+    .await
+    {
         return unavailable();
     }
     let guard = writes.lock().await;

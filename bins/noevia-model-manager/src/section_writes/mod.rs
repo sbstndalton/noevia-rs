@@ -61,6 +61,7 @@ pub struct SectionWrites {
     clock: Clock,
     #[cfg(feature = "native-safe-defaults")]
     safe_models: std::sync::OnceLock<PathBuf>,
+    pub(crate) started: std::sync::atomic::AtomicBool,
     lock: Arc<tokio::sync::Mutex<()>>,
 }
 
@@ -432,6 +433,7 @@ impl SectionWrites {
             clock,
             #[cfg(feature = "native-safe-defaults")]
             safe_models: std::sync::OnceLock::new(),
+            started: std::sync::atomic::AtomicBool::new(false),
             lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }

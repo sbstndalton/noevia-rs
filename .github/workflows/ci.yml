@@ -1753,6 +1753,11 @@ jobs:
           repository: sbstndalton/noevia-services
           ref: ff8f314d7496e83d3b2d229089f8aabb4ddf67f9
           path: section-writes-services
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 60764e67f390ea9dad5c91c3f41aad865d757823
+          path: startup-ready-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
@@ -1772,6 +1777,10 @@ jobs:
             diff bins/noevia-model-manager/tests/fixtures/section-writes-python.v1.json "$RUNNER_TEMP/section-writes.json" | head -40
             exit 1
           }
+      - name: Actual child startup and native readiness barrier (#2044)
+        run: |
+          STARTUP_TEST_PYTHON="$(command -v python3)" STARTUP_TEST_APP="$PWD/startup-ready-services/model-manager" cargo test --locked -p noevia-model-manager --features native-section-writes,native-model-list,native-backends,native-downloads,native-search --lib startup::
+          cargo test --locked -p noevia-model-manager --features native-section-writes,native-model-list,native-backends,native-downloads --test model_list --test section_writes
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-section-writes -- -D warnings
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes -- -D warnings

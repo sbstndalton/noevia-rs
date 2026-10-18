@@ -97,7 +97,7 @@ fn state(writes: SectionWrites, legacy_base: &str) -> Arc<StateData> {
     })
 }
 
-/// A fake child: `/api/v1/health` is ok; the plan call answers whatever `plan` holds.
+/// A fake child: `/api/v1/internal/startup-ready` advertises completion; the plan call answers whatever `plan` holds.
 async fn child(plan: Arc<Mutex<Option<(u16, String)>>>) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -125,8 +125,8 @@ async fn child(plan: Arc<Mutex<Option<(u16, String)>>>) -> String {
                     .next()
                     .unwrap_or("")
                     .to_owned();
-                let (status, body) = if line.starts_with("GET /api/v1/health ") {
-                    (200, r#"{"ok":true}"#.to_owned())
+                let (status, body) = if line.starts_with("GET /api/v1/internal/startup-ready ") {
+                    (200, r#"{"startup_ready":1}"#.to_owned())
                 } else if line.starts_with("GET /api/v1/internal/safe-defaults-plan?") {
                     plan.lock().unwrap().clone().unwrap_or((599, String::new()))
                 } else {

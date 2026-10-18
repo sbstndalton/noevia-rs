@@ -28,10 +28,10 @@
 use crate::Job;
 use model_files::json::Value as J;
 
-#[cfg(feature = "native-section-autoconfig")]
-pub(crate) mod fallback;
 #[cfg(feature = "native-bench-observe")]
 mod bench_observe;
+#[cfg(feature = "native-section-autoconfig")]
+pub(crate) mod fallback;
 pub mod fit;
 pub mod live;
 use std::{

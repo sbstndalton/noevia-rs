@@ -249,13 +249,13 @@ async fn startup_migration_failures_write_nothing() {
     );
 }
 
-/// A child that answers its health check (so the native writers know its startup is over).
+/// A child that answers its startup-ready advertisement (so the native writers know its startup is over).
 async fn healthy_child() -> (String, tokio::task::JoinHandle<()>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let app = axum::Router::new().route(
-        "/api/v1/health",
-        axum::routing::get(|| async { r#"{"ok":true}"# }),
+        "/api/v1/internal/startup-ready",
+        axum::routing::get(|| async { r#"{"startup_ready":1}"# }),
     );
     let server = tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
