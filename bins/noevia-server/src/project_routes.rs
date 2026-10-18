@@ -155,13 +155,40 @@ pub async fn serve(
             regate_creds.clone(),
             path.clone(),
         );
+        let (auth_writes, expected_id, expected_admin) = (
+            Arc::clone(&app.writes),
+            authn.user.id.clone(),
+            authn.account_role == server_auth::Role::Admin,
+        );
         tokio::task::spawn_blocking(move || {
             #[cfg(debug_assertions)]
             hooks::before_ensure(&user);
             let made = match server_projects::store::ensure_user_dir(&data_dir, &user) {
                 Ok(server_projects::store::Ensured::Created(dir)) => Some(dir),
                 Ok(server_projects::store::Ensured::Existed(_)) => None,
-                Ok(server_projects::store::Ensured::LegacyPending) => return Step::SettingUp,
+                Ok(server_projects::store::Ensured::LegacyPending) => {
+                    if !expected_admin
+                        || claim_legacy_in_transaction(
+                            &auth_writes,
+                            &layer,
+                            &creds,
+                            &path,
+                            now,
+                            &data_dir,
+                            &expected_id,
+                        )
+                        .is_err()
+                    {
+                        return Step::SettingUp;
+                    }
+                    match server_projects::store::ensure_user_dir(&data_dir, &user) {
+                        Ok(server_projects::store::Ensured::Created(dir)) => Some(dir),
+                        Ok(server_projects::store::Ensured::Existed(_)) => None,
+                        Ok(server_projects::store::Ensured::LegacyPending) | Err(_) => {
+                            return Step::SettingUp
+                        }
+                    }
+                }
                 Err(_) => return Step::Failed,
             };
             match regate(&layer, &creds, &path, now, &data_dir, &user) {
@@ -269,6 +296,40 @@ fn refusal(refused: Refused) -> Response<Body> {
         ),
         Refused::Gate(rejection) => rejection.into_response(),
     }
+}
+
+/// Claims the legacy root only while the same live administrator is serialized against
+/// Node's deleteUser transaction by the shared auth database's IMMEDIATE writer lock.
+fn claim_legacy_in_transaction(
+    writes: &crate::upkeep::WriterLayer,
+    identity: &crate::identity::IdentityLayer,
+    creds: &server_auth::Creds,
+    path: &str,
+    now_ms: i64,
+    data_dir: &std::path::Path,
+    expected_id: &str,
+) -> Result<bool, server_store::StoreError> {
+    let auth = identity
+        .authenticator()
+        .ok_or_else(|| server_store::StoreError::NotReady("auth unavailable".into()))?;
+    let writer = writes.writer()?;
+    writer.write(|tx| {
+        let reader = tx.reader();
+        let live = match auth.gate_in(&reader, creds, path, now_ms)? {
+            Ok(user)
+                if user.user.id == expected_id && user.account_role == server_auth::Role::Admin =>
+            {
+                user
+            }
+            _ => return Ok(false),
+        };
+        let _same_account = live;
+        let _root_lock = server_projects::lock::acquire(&data_dir.join("legacy-owner.json"))
+            .map_err(|e| server_store::StoreError::NotReady(format!("legacy claim lock: {e:?}")))?;
+        server_projects::legacy_claim::claim_root(data_dir, expected_id).map_err(|e| {
+            server_store::StoreError::NotReady(format!("legacy claim unavailable: {e:?}"))
+        })
+    })
 }
 
 /// How the first pass after the first gate ended.
