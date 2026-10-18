@@ -1495,12 +1495,10 @@ async fn native_model_detail(
 ) -> Response {
     let outcome = match detail.locate(query).await {
         model_detail::Step::Done(outcome) => outcome,
-        model_detail::Step::Located(located) => {
-            match model_detail_runtime(state, &model_detail::runtime_query(&located)).await {
-                Ok(body) => model_detail::splice(&located, &body),
-                Err(outcome) => outcome,
-            }
-        }
+        model_detail::Step::Located(located) => match model_detail_runtime(state, &located).await {
+            Ok(body) => model_detail::splice(&located, &body),
+            Err(outcome) => outcome,
+        },
     };
     match outcome {
         model_detail::Outcome::Json(status, bytes) => (
@@ -1531,6 +1529,8 @@ async fn native_model_list(
         client: &state.legacy,
         base: &state.legacy_base,
         token: &state.token,
+        #[cfg(feature = "native-backends")]
+        live: state.backend_stats.as_deref(),
     };
     let outcome = match route {
         model_list::Route::Models => list.models(child).await,
@@ -1569,8 +1569,20 @@ fn detail_response(status: StatusCode, text: &'static str) -> Response {
 #[cfg(feature = "native-model-detail")]
 async fn model_detail_runtime(
     state: &StateData,
-    query: &str,
+    located: &model_detail::Located,
 ) -> Result<Vec<u8>, model_detail::Outcome> {
+    // noevia#1318 step 1b: natively while this process samples the backends.
+    #[cfg(feature = "native-backends")]
+    if let Some(stats) = &state.backend_stats {
+        return stats
+            .detail_runtime(located.bytes, located.fit)
+            .await
+            .map_err(|fail| match fail {
+                backend_stats::Fail::Raised => model_detail::Outcome::Failed,
+                backend_stats::Fail::Refused => model_detail::Outcome::Refused,
+            });
+    }
+    let query = model_detail::runtime_query(located);
     let mut request = state.legacy.get(format!(
         "{}{}?{query}",
         state.legacy_base,

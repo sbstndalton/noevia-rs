@@ -14,6 +14,11 @@ container, GPU or model is touched.
 Recorded per case: the inventory, the chips of every size as the detail runtime renders them
 (`JSONResponse`) and as the `-> dict` routes render them (pydantic's JSON mode), the descriptors
 without `baseline` (`autoconfig.parse_baseline` of `baseline_args`), and the search budget.
+
+Recorded per runtime case (step 1b): the answers of the child's private calls the native routes
+used to splice (`main._model_detail_runtime`, `_models_runtime`, `_overview_runtime`), through the
+app's own middleware, with fake llama-servers on 127.0.0.1 answering the backends' probes and the
+clock pinned. The native reads now produce those bytes themselves.
 """
 from __future__ import annotations
 
@@ -151,6 +156,44 @@ def cases():
     return out
 
 
+MODELS_TWO = json.dumps({"data": [{"id": "synthetic-a", "status": {"value": "loaded"}},
+                                  {"id": "synthetic-b", "status": {"value": "loaded"}},
+                                  {"id": "synthetic-c", "status": {"value": "unloaded"}}]})
+MODELS_ONE = json.dumps({"data": [{"id": " synthetic-a ", "status": {"value": "loaded"}}]})
+NOW = bo.T0 + 100
+
+
+def runtime_cases():
+    out = []
+    # 1. Loaded and unloaded models: two backends report synthetic-a, one also synthetic-b (and
+    # synthetic-c unloaded); a stopped backend is not probed. The GPU backend has chips.
+    a = container(40, "127.0.0.1", 40, ports={"18340/tcp": [{"HostIp": "0.0.0.0", "HostPort": "28340"}]},
+                  health="healthy")
+    b = container(41, "localhost", 41, cmd=["--port", "18341"])
+    stopped = container(42, "llama-stopped", 41, status="exited", started="2026-10-16T08:00:00Z")
+    w = world([a, b, stopped], [image(40, [VULKAN]), image(41, [CPU])])
+    out.append({"id": "loaded", "env": {}, "meminfo": meminfo(gib_kib(64)), "docker": w,
+                "llama": {"127.0.0.1": [200, MODELS_TWO], "localhost": [200, MODELS_ONE]},
+                "cache": {"127.0.0.1": ok(gpu(16.0)), "localhost": ok(None)},
+                "detail": [[str(8 * GIB), "1"], [str(8 * GIB), "0"], ["0", "1"], [str(100 * GIB), "1"]],
+                "models": [[], [0, 8 * GIB, 30 * GIB, 100 * GIB]]})
+    # 2. Nothing loaded: one router lists only unloaded models, the other is not listening (and
+    # healthy: unreachable-but-healthy), so no model has a backend.
+    a = container(43, "127.0.0.1", 40, ports={"18342/tcp": None})
+    b = container(44, "localhost", 41, cmd=["--port", "18343"], health="healthy")
+    w = world([a, b], [image(40, [VULKAN]), image(41, [CPU])])
+    out.append({"id": "unloaded", "env": {"LLAMA_CONTAINERS": "llama-gone"}, "meminfo": meminfo(gib_kib(40)),
+                "docker": w, "llama": {"127.0.0.1": [200, bo.MODELS_NONE]},
+                "restart_errors": {"llama-gone": "APIError: synthetic restart failure"},
+                "cache": {"127.0.0.1": ok(gpu(8.0)), "localhost": warming()},
+                "detail": [[str(4 * GIB), "1"]], "models": [[2 * GIB, 7 * GIB]]})
+    # 3. No Docker: the configured backends are unreachable, nothing is loaded, only declared VRAM.
+    out.append({"id": "docker-down", "env": {"LLAMA_CONTAINERS": "llama-a,llama-b", "GPU_VRAM": "llama-a:12"},
+                "meminfo": meminfo(gib_kib(64)), "docker": None, "llama": {}, "cache": {},
+                "detail": [[str(GIB), "1"]], "models": [[], [GIB, 50 * GIB]]})
+    return out
+
+
 RESERVE_FORMS = ["0", "8", "32", "8.5", " 16 ", "+8.25\n", "-4", "0.05", "007", "1e3", "inf", "nan",
                  "8.", ".5", "1_0", "0x10", "8 kB", ""]
 
@@ -192,6 +235,13 @@ def main() -> None:
         except Exception:  # noqa: BLE001 - the plain 500
             return "500"
 
+    from datetime import datetime
+
+    class Pinned(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.fromtimestamp(NOW, tz)
+
     out_cases = []
     for case in cases():
         env = case["env"]
@@ -216,6 +266,63 @@ def main() -> None:
                           "cpu": services._cpu_backends(), "ram": repr(hw.usable_ram_gb())},
             "chips": chips, "descriptors": render(descriptors, "detail"), "budget": repr(budget),
         })
+    os.environ.update(NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED="1",
+                      NOEVIA_NATIVE_MODEL_MANAGER_MODELS_CONFIRMED="1",
+                      NOEVIA_NATIVE_MODEL_MANAGER_OVERVIEW_CONFIRMED="1")
+    import http.server
+    import time
+
+    from starlette.testclient import TestClient
+
+    from app import main as app_main
+    client = TestClient(app_main.app, raise_server_exceptions=False)
+    real_time = time.time
+    time.time = lambda: NOW
+    services.datetime = Pinned
+    runtime_out = []
+    for case in runtime_cases():
+        env = case["env"]
+        settings.llama_containers = env.get("LLAMA_CONTAINERS", "")
+        settings.gpu_vram = env.get("GPU_VRAM", "")
+        settings.host_ram_reserve_gb = float(env.get("HOST_RAM_RESERVE_GB", "32"))
+        mem["text"] = case["meminfo"]
+        w = case["docker"]
+        bo.STATE["world"] = w
+        os.environ["DOCKER_HOST"] = f"unix://{sock_path}" if w is not None else f"unix://{root}/absent.sock"
+        services._restart_errors.clear()
+        services._restart_errors.update(case.get("restart_errors") or {})
+        hw.load_pushed(case["cache"])
+        bo.STATE["llama"] = dict(case["llama"])
+        listeners, ports = [], {}
+        for c in ((w or {}).get("containers") or []):
+            name = c["Name"][1:]
+            if case["llama"].get(name) is None:
+                continue
+            _hp, port = services._resolve_internal_port(c)
+            srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), bo.Llama)
+            srv.backend_name = name
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            listeners.append(srv)
+            ports[name] = port
+        answers = []
+
+        def record(op, args, r):
+            answers.append({"op": op, "args": args, "status": r.status_code, "body": r.text})
+
+        for size, fit in case["detail"]:
+            record("detail", [size, fit],
+                   client.get(f"/api/v1/internal/model-detail-runtime?bytes={size}&fit={fit}"))
+        for sizes in case["models"]:
+            record("models", [str(s) for s in sizes],
+                   client.post("/api/v1/internal/models-runtime", content=json.dumps({"bytes": sizes})))
+        record("overview", [], client.get("/api/v1/internal/overview-runtime"))
+        for srv in listeners:
+            srv.shutdown()
+            srv.server_close()
+        runtime_out.append({"id": case["id"], "env": env, "meminfo": case["meminfo"], "docker": w,
+                            "llama": case["llama"], "ports": ports, "restart_errors": case.get("restart_errors") or {},
+                            "cache": json.dumps(case["cache"], ensure_ascii=False), "now": repr(NOW),
+                            "answers": answers})
     # pydantic's own reading of HOST_RAM_RESERVE_GB forms; the native parser accepts a subset.
     from app.config import Settings
     reserve_forms = {}
@@ -224,11 +331,13 @@ def main() -> None:
             reserve_forms[form] = repr(Settings(host_ram_reserve_gb=form).host_ram_reserve_gb)
         except Exception:  # noqa: BLE001 - a settings error stops the child
             reserve_forms[form] = "error"
+    time.time = real_time
     server.shutdown()
     shutil.rmtree(root, ignore_errors=True)
     sources = {name: hashlib.sha256((app_dir / name).read_bytes()).hexdigest()
-               for name in ("config.py", "helpers.py", "hw.py", "services.py")}
-    json.dump({"sources": sources, "cases": out_cases, "reserve_forms": reserve_forms}, sys.stdout, indent=1, sort_keys=True, ensure_ascii=True)
+               for name in ("api.py", "config.py", "helpers.py", "hw.py", "main.py", "services.py")}
+    json.dump({"sources": sources, "cases": out_cases, "runtime": runtime_out,
+               "reserve_forms": reserve_forms}, sys.stdout, indent=1, sort_keys=True, ensure_ascii=True)
     sys.stdout.write("\n")
 
 

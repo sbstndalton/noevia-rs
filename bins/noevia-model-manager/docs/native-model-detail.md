@@ -31,6 +31,19 @@ non-companion file, a draft-named file over 2 GiB counting as a model), `modelId
 through the `gguf` crate with `chat_template` removed (422 with Python's message for a header the
 parser rejects, 500 when the summary raises).
 
+**noevia#1318 step 1b: native live fields.** While this process samples the backends
+(`MODEL_MANAGER_BACKENDS_IMPL=rust`, the `native-backends` sampler running), the same
+`{"loaded": ..., "fit": ...}` body is produced natively by `BackendStats::detail_runtime`
+(`backend_stats/live.rs`): the backend snapshot `GET /api/v1/backends` uses for `loaded`, and
+`backend_stats::fit` over the sampler cache, the read-only Docker discovery and `/proc/meminfo`
+for `fit`. It is spliced exactly as the child's was, and the child is not asked at all. A snapshot
+Python would have ended with an exception is the plain 500; a Docker answer the native reader
+cannot follow, or a HOST_RAM_RESERVE_GB it does not read, is the native 503. The child's
+`/api/v1/internal/model-detail-runtime` handler is then unused by native and is kept only for a
+process whose sampler stays with Python. `tools/gen-fit-oracle.py` records that handler's answers
+for loaded, unloaded and Docker-less worlds; `backend_stats::live::tests` reproduces them byte for
+byte.
+
 Delegated: `loadedOn` (Docker discovery plus llama-server probes) and `fit` (the GPU sampler and
 host RAM) are live state. Only after the file part succeeded does the parent call the child's
 `GET /api/v1/internal/model-detail-runtime?bytes=<total>&fit=<0|1>`, which answers

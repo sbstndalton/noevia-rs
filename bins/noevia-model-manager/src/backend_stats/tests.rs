@@ -209,7 +209,7 @@ async fn child() -> Child {
 }
 
 /// A fake llama-server answering `/v1/models` with the recorded status and body.
-async fn llama(port: u32, status: u64, body: String) -> tokio::task::JoinHandle<()> {
+pub(super) async fn llama(port: u32, status: u64, body: String) -> tokio::task::JoinHandle<()> {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port as u16))
         .await
         .unwrap_or_else(|e| panic!("port {port}: {e}"));

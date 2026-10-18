@@ -28,6 +28,7 @@ use crate::Job;
 use model_files::json::Value as J;
 
 pub mod fit;
+pub mod live;
 use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
@@ -1879,10 +1880,12 @@ impl BackendStats {
         }
     }
 
-    async fn answer(&self) -> Result<String, Fail> {
+    /// `services.snapshot_llama_backends()`: the Docker state and the llama-server probes, over
+    /// one discovery the caller made (so one answer judges one inventory).
+    async fn snapshot(&self, discovered: &[(String, String)]) -> Result<Vec<Backend>, Fail> {
         let docker = self.docker.as_ref();
         let api = client(docker).await;
-        let names = effective(&self.config.configured, &discover(docker).await);
+        let names = effective(&self.config.configured, discovered);
         let mut backends: Vec<Backend> = Vec::new();
         let mut targets: Vec<(usize, Option<u32>)> = Vec::new();
         let mut health: HashMap<usize, String> = HashMap::new();
@@ -1938,6 +1941,11 @@ impl BackendStats {
                 b.unreachable_but_healthy = true;
             }
         }
+        Ok(backends)
+    }
+
+    async fn answer(&self) -> Result<String, Fail> {
+        let backends = self.snapshot(&discover(self.docker.as_ref()).await).await?;
         let st = lock(&self.state);
         let mut out = String::from("{\"backends\":[");
         for (i, b) in backends.iter().enumerate() {

@@ -671,4 +671,115 @@ mod linux {
         let body: Value = serde_json::from_slice(&answer.body).unwrap();
         assert_eq!(body["activeDownloads"], 3);
     }
+
+    /// noevia#1318 step 1b: while this process samples the backends, the live fields are its own
+    /// (no private runtime call reaches the child); the list still waits once for the child's
+    /// health (its startup creates the badge store) and the overview counts the native table.
+    #[cfg(all(feature = "native-backends", feature = "native-downloads"))]
+    #[tokio::test]
+    async fn native_live_fields_replace_the_private_calls() {
+        use noevia_model_manager::backend_stats::{BackendStats, Config};
+        let dir = tempfile::tempdir().unwrap();
+        let (models, ini, data) = folder(dir.path());
+        let meminfo = dir.path().join("meminfo");
+        std::fs::write(&meminfo, "MemTotal:       67108864 kB\n").unwrap();
+        let stats = Arc::new(
+            BackendStats::new(
+                Config {
+                    configured: vec!["llama-a".into()],
+                    gpu_vram: vec![("llama-a".into(), 12.0)],
+                    default_port: Some(8080),
+                    drm_root: dir.path().join("drm"),
+                    legacy_base: "http://127.0.0.1:9".into(),
+                    token: TOKEN.into(),
+                    meminfo,
+                    ram_reserve_gb: Some(32.0),
+                },
+                Arc::new(noevia_model_manager::docker::UnixDocker {
+                    socket: dir.path().join("absent.sock"),
+                }),
+            )
+            .unwrap(),
+        );
+        let with = |list: Arc<ModelList>, base: &str, table: bool| {
+            let mut st = Arc::into_inner(state(Some(list), base)).unwrap();
+            st.backend_stats = Some(stats.clone());
+            if table {
+                st.downloads = Some(
+                    noevia_model_manager::downloads::Downloads::new(
+                        noevia_model_manager::downloads::Config::production(
+                            models.to_str().unwrap().to_owned(),
+                            data.to_str().unwrap(),
+                            2,
+                        ),
+                    )
+                    .unwrap(),
+                );
+            }
+            Arc::new(st)
+        };
+        let closed = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", l.local_addr().unwrap());
+            drop(l);
+            base
+        };
+        let chips = r#""loadedOn":[],"fit":[{"name":"llama-a","vram_gb":12.0,"verdict":"fits","ratio_pct":0}]"#;
+
+        // The list asks the child only for its health, once per process.
+        let native = list(&models, &ini, &data, "", (1, 0));
+        let (base, seen) = child(200, r#"{"status":"ok"}"#.into()).await;
+        let answer = send(
+            with(native.clone(), &base, false),
+            "GET",
+            "/api/v1/models",
+            true,
+        )
+        .await;
+        assert_eq!(
+            answer.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&answer.body)
+        );
+        assert!(String::from_utf8_lossy(&answer.body).contains(chips));
+        let (head, _) = seen.await.unwrap();
+        assert!(head.starts_with("GET /api/v1/health "), "{head}");
+        let again = send(with(native, &closed, false), "GET", "/api/v1/models", true).await;
+        assert_eq!(again.status, 200);
+        assert!(String::from_utf8_lossy(&again.body).contains(chips));
+        // Before the child has ever answered, the list keeps the forwarded route's 502.
+        let fresh = list(&models, &ini, &data, "", (1, 0));
+        let answer = send(with(fresh, &closed, false), "GET", "/api/v1/models", true).await;
+        assert_eq!(answer.status, 502);
+        assert_eq!(answer.body, UNAVAILABLE);
+
+        // The overview needs no child at all while the download table is native.
+        let answer = send(
+            with(list(&models, &ini, &data, "", (1, 0)), &closed, true),
+            "GET",
+            "/api/v1/overview",
+            true,
+        )
+        .await;
+        assert_eq!(answer.status, 200);
+        let body: Value = serde_json::from_slice(&answer.body).unwrap();
+        assert_eq!(body["activeDownloads"], 0);
+        assert_eq!(body["backends"][0]["name"], "llama-a");
+        assert_eq!(body["backends"][0]["status"], "docker unreachable");
+        assert_eq!(body["backends"][0].as_object().unwrap().len(), 14);
+        // Without the native table the child's count (its overview call) is still asked.
+        let (base, seen) = child(200, r#"{"backends":[],"activeDownloads":3}"#.into()).await;
+        let answer = send(
+            with(list(&models, &ini, &data, "", (1, 0)), &base, false),
+            "GET",
+            "/api/v1/overview",
+            true,
+        )
+        .await;
+        let body: Value = serde_json::from_slice(&answer.body).unwrap();
+        assert_eq!(body["activeDownloads"], 3);
+        let (head, _) = seen.await.unwrap();
+        assert!(head.starts_with(&format!("GET {OVERVIEW_RUNTIME} ")));
+    }
 }

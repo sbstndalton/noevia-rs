@@ -490,4 +490,93 @@ mod linux {
         assert_eq!(answer.status, 503);
         assert_eq!(answer.body, REFUSED);
     }
+
+    /// noevia#1318 step 1b: while this process samples the backends, the detail's live fields are
+    /// its own: no child is needed (a closed child base still answers 200), an exception Python
+    /// would raise is the plain 500, and an inventory this side cannot judge is the native 503.
+    #[cfg(feature = "native-backends")]
+    #[tokio::test]
+    async fn native_live_fields_need_no_child() {
+        use noevia_model_manager::backend_stats::{BackendStats, Config};
+        let dir = tempfile::tempdir().unwrap();
+        let models = folder(dir.path());
+        let ini = models.join("models.ini");
+        let meminfo = dir.path().join("meminfo");
+        std::fs::write(&meminfo, "MemTotal:       67108864 kB\n").unwrap();
+        let closed = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", l.local_addr().unwrap());
+            drop(l);
+            base
+        };
+        let stats = |gpu_vram: Vec<(String, f64)>, reserve: Option<f64>| {
+            Arc::new(
+                BackendStats::new(
+                    Config {
+                        configured: vec!["llama-a".into()],
+                        gpu_vram,
+                        default_port: Some(8080),
+                        drm_root: dir.path().join("drm"),
+                        legacy_base: closed.clone(),
+                        token: TOKEN.into(),
+                        meminfo: meminfo.clone(),
+                        ram_reserve_gb: reserve,
+                    },
+                    Arc::new(noevia_model_manager::docker::UnixDocker {
+                        socket: dir.path().join("absent.sock"),
+                    }),
+                )
+                .unwrap(),
+            )
+        };
+        let with = |stats: Arc<BackendStats>| {
+            let mut st = Arc::into_inner(state(Some((&models, &ini)), &closed)).unwrap();
+            st.backend_stats = Some(stats);
+            Arc::new(st)
+        };
+        let uri = "/api/v1/models/detail?key=a.gguf";
+
+        let answer = send(
+            with(stats(vec![("llama-a".into(), 12.0)], Some(32.0))),
+            "GET",
+            uri,
+            true,
+        )
+        .await;
+        assert_eq!(
+            answer.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&answer.body)
+        );
+        let body = String::from_utf8(answer.body).unwrap();
+        assert!(
+            body.contains(r#""loadedOn":[],"fit":[{"name":"llama-a","vram_gb":12.0,"verdict":"fits","ratio_pct":0}]"#),
+            "{body}"
+        );
+
+        // A reserve this side does not read: the native 503, never a guess.
+        let answer = send(
+            with(stats(vec![("llama-a".into(), 12.0)], None)),
+            "GET",
+            uri,
+            true,
+        )
+        .await;
+        assert_eq!(answer.status, 503);
+        assert_eq!(
+            answer.body,
+            br#"{"detail":"Native model detail is unavailable"}"#
+        );
+
+        // A sampled VRAM so small the ratio overflows: Python's round() raises, the plain 500.
+        let tiny = stats(vec![], Some(32.0));
+        tiny.seed_cache_json(
+            r#"{"llama-a":{"ok":true,"error":null,"gpu":{"vendor":"vulkan","name":"g","util_pct":0.0,"vram_used_gb":0.0,"vram_total_gb":5e-324,"temp_c":0.0,"power_w":0.0,"gpu_count":1,"cards":[],"memory_kind":"unified","shared_used_gb":0.0,"shared_total_gb":0.0,"clock_mhz":0.0,"source":"sysfs","measured":true},"container":null}}"#,
+        )
+        .unwrap();
+        let answer = send(with(tiny), "GET", uri, true).await;
+        assert_eq!(answer.status, 500);
+        assert_eq!(answer.body, b"Internal Server Error");
+    }
 }

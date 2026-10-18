@@ -1445,6 +1445,7 @@ jobs:
       - name: Native model list differential (lib and Linux router), bounds and route policy
         run: |
           cargo test --locked -p noevia-model-manager --features native-model-list --test model_list --test model_list_lifecycle --test model_detail --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-model-list,native-backends,native-downloads --test model_list --test model_detail
           cargo test --locked -p noevia-model-manager --features native-model-list --lib model_list::
           cargo test --locked -p noevia-model-manager --features native-model-list --lib model_detail::
       - name: Combined native features keep every existing test

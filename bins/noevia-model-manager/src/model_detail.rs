@@ -20,6 +20,10 @@
 //! them where `_entry` does, so the answer is the one Python would give. When the child cannot
 //! answer, the route answers 502 as any forwarded route does, never a guess.
 //!
+//! noevia#1318 step 1b: while this process samples the backends, those live fields are produced
+//! natively instead (`backend_stats::live`, byte-identical to the child's answers) and the child's
+//! private runtime call is not made.
+//!
 //! Deliberate differences (see `docs/native-model-detail.md`): conditions the kernel-contained
 //! reader cannot follow exactly (I/O errors whose Python text names an errno, a link leaving the
 //! models folder, a `model =` path with `..`, header reads past the reader's bound, numbers
