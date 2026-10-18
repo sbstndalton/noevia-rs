@@ -20,7 +20,8 @@
 //! TODO(noevia#1318, child retirement): both fallbacks to the child must then become a startup
 //! refusal or the native 503, never silently empty sets (the search defaults to trusted-only).
 //!
-//! The repository read's context estimates (`autoconfig.analyze`) still come from the child's
+//! The repository read's chips and context estimates (`autoconfig.analyze`) are native too while
+//! the section autoconfig is (`estimates`); otherwise they come from the child's
 //! `POST /api/v1/internal/search-repo-runtime`.
 //!
 //! The badge store's schema is created by the child's startup, so the first native answer waits
@@ -105,6 +106,9 @@ pub struct Source {
     pub models: PathBuf,
     pub ini: PathBuf,
     pub trusted: Trusted,
+    /// noevia#1318 step 3a: `settings.cache_ram_limits[0]` while the section autoconfig is native;
+    /// the repository read's chips and estimates are then computed here (`None`: the child's).
+    pub estimates_cache_cap_mib: Option<i64>,
 }
 
 /// `_files_present_on_disk()`: every part and folded companion part of the snapshot, by name and,

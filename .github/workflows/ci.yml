@@ -1496,6 +1496,8 @@ jobs:
         run: |
           cargo test --locked -p noevia-model-manager --features native-section-autoconfig --test section_autoconfig --test section_autoconfig_lifecycle --test draft_heads --test lifecycle --bin noevia-model-manager
           cargo test --locked -p noevia-model-manager --features native-section-autoconfig --lib section_autoconfig
+          # noevia#1318 step 3a: the repository estimates through the same analysis.
+          cargo test --locked -p noevia-model-manager --features native-search,native-backends,native-section-autoconfig --lib search::estimates
           cargo test --locked -p noevia-model-manager --features native-section-autoconfig --lib draft_heads::
       - name: Combined native features keep every existing test
         # Prompt store tests need the prompt oracle env; the native-prompts job runs them.

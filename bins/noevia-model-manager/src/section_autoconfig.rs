@@ -22,7 +22,7 @@
 //!
 //! Deliberate refusals (the native 503) where Python cannot be followed exactly are listed in
 //! `docs/native-section-autoconfig.md`.
-mod analyze;
+pub(crate) mod analyze;
 mod files;
 pub mod query;
 mod render;
@@ -349,9 +349,10 @@ fn answer(
     } else {
         params.prompt_budget_s
     };
+    let summary_value = analyze::from_summary(&located.summary);
     let inputs = analyze::Inputs {
         name,
-        summary: &located.summary,
+        summary: &summary_value,
         file_size: located.file_size,
         backends,
         model_rel: &located.model_rel,
@@ -366,9 +367,12 @@ fn answer(
         verified_ctx: params.verified_ctx.max(0),
         mode: &mode,
         cache_ram_cap_mib: settings.cache_ram_cap_mib,
-        models_text: &settings.models,
-        root: &root,
-        base: &located.base,
+        files: Some(analyze::Files {
+            models_text: &settings.models,
+            root: &root,
+            base: &located.base,
+        }),
+        mmproj_gb_override: None,
     };
     let recommendation = analyze::analyze(&inputs)?;
     let summary = &located.summary;

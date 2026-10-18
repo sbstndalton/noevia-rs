@@ -101,10 +101,43 @@ forwarded route's 502.
 zero-sized filesystem and an unreadable `models.ini`. A stored value Python would trip over
 answers the 500.
 
-**Still from the child.** `POST /api/v1/internal/search-repo-runtime` still provides the
-repository read's fit chips and context estimates, because the estimates need
-`autoconfig.analyze`.
+## Step 3a: repository estimates (noevia#1318)
+
+While the search runtime is native (`MODEL_MANAGER_SEARCH_IMPL=rust` with
+`MODEL_MANAGER_BACKENDS_IMPL=rust`, so this process samples the backends, and a readable trusted
+sets file) and the section autoconfig is native too (`MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust`,
+which fixes the cache-ram cap the analysis reads), the repository read computes its fit chips and context estimates itself, and
+`POST /api/v1/internal/search-repo-runtime` is not called.
+
+- **Chips.** `fit::chips` over one fit inventory per answer.
+- **Estimates.** The section autoconfig's `analyze()` runs once per preset, with no models
+  folder (no file beside the model is read) and the smallest projector as
+  `mmproj_gb_override`. It sizes against the backends `_preset_estimates_with_reason` builds:
+  vendor `cuda`, the sampled GPU count and per-card VRAM, the host RAM and an empty baseline.
+- **Native context.** As Python reads it.
+
+The child is still asked, for that answer only, when this side cannot follow Python exactly:
+
+- an inventory it cannot judge (an unreadable `HOST_RAM_RESERVE_GB`)
+- a non-finite chip
+- an analysis that raises in Python (Python's reason names the exception type) or that the port
+  refuses
+- a value Python would render differently
+- a projector of 2^53 bytes or more
+
+Each reason class is logged once (`native-search: the repository estimates were asked of the
+python child (...)`), so a fallback is never silent. The summary carries the whole chat
+template, so it is read with strings bounded by the summary itself, not the JSON reader's
+default 4096 characters.
+
+Python rediscovers the containers for every chip list and estimate; this side reads one
+inventory per answer, like the other fit readers. With the python section autoconfig selector,
+the child answers as before.
 
 **Differential.** `tools/gen-fit-oracle.py` records `main._search_runtime` with synthetic
 trusted sets (the real ones never enter this repository). `search::live::tests` reproduces
 those answers byte for byte.
+
+It also records `main._search_repo_runtime` for synthetic GGUF headers (summarised by the
+app's own `gguf_meta`). `search::estimates::tests` reproduces the inventory, the estimate
+backends and every answer byte for byte.

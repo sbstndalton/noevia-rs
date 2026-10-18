@@ -15,7 +15,7 @@ use crate::backend_stats::{gpu_vram_map, Config};
 use serde_json::Value as V;
 use std::sync::{Arc, Mutex};
 
-fn fixture() -> V {
+pub(crate) fn fixture() -> V {
     serde_json::from_str(include_str!("../../../tests/fixtures/fit-python.v1.json")).unwrap()
 }
 
@@ -26,7 +26,7 @@ fn configured(raw: &str) -> Vec<String> {
         .collect()
 }
 
-fn stats_for(case: &V, dir: &Path) -> BackendStats {
+pub(crate) fn stats_for(case: &V, dir: &Path) -> BackendStats {
     let env = &case["env"];
     let meminfo = dir.join("meminfo");
     if let Some(text) = case["meminfo"].as_str() {
