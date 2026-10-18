@@ -50,6 +50,28 @@ pub fn user_dir(data_dir: &Path, user_id: &str) -> Result<PathBuf, StoreError> {
     Ok(data_dir.join("users").join(user_id))
 }
 
+/// The signed-in user's directory, made when it is absent: workspace.cjs `get` runs
+/// `fs.mkdirSync(userDir(id), { recursive: true, mode: 0o700 })` for every authenticated request
+/// (core index.cjs `handleRequestInner`, before any route), so a new account has its directory
+/// from its first request, whichever route that is (sbstndalton/noevia#2026). The stores below
+/// never make it themselves ([`StoreError::Gone`]: a missing directory there is a removed
+/// account), so a handler the front answers calls this first, only for a user the request gate
+/// has just let through, never for an id that is not a user id (`users/<uuid>` only, so nothing
+/// can name a path elsewhere). Every directory it makes is mode 0700 (as Node, before the umask);
+/// one that exists is left as it is.
+pub fn ensure_user_dir(data_dir: &Path, user_id: &str) -> Result<PathBuf, StoreError> {
+    let dir = user_dir(data_dir, user_id)?;
+    let mut make = std::fs::DirBuilder::new();
+    make.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        make.mode(0o700);
+    }
+    make.create(&dir)?;
+    Ok(dir)
+}
+
 /// workspace.cjs `assetDir(projectId)`: `project-assets/<id reduced to [A-Za-z0-9_-]>`.
 pub fn asset_dir(user_dir: &Path, project_id: &str) -> PathBuf {
     let id = crate::js::id_chars(project_id);
@@ -253,6 +275,49 @@ mod tests {
             asset_dir(Path::new("/u"), "../.."),
             Path::new("/u/project-assets")
         );
+    }
+
+    #[test]
+    fn ensure_user_dir_makes_users_uuid_dir_0700_and_nothing_else() {
+        let root = tempfile::tempdir().unwrap();
+        let id = "11111111-2222-4333-8444-555555555555";
+        let dir = ensure_user_dir(root.path(), id).unwrap();
+        assert_eq!(dir, root.path().join("users").join(id));
+        assert!(dir.is_dir());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+            // The mode is subject to the umask, as Node's: never wider than 0700.
+            assert_eq!(mode(&dir) & 0o077, 0);
+            assert_eq!(mode(&root.path().join("users")) & 0o077, 0);
+        }
+        // Existing: left as it is, with what it holds.
+        std::fs::write(dir.join("projects.json"), "{}").unwrap();
+        assert_eq!(ensure_user_dir(root.path(), id).unwrap(), dir);
+        assert_eq!(std::fs::read(dir.join("projects.json")).unwrap(), b"{}");
+        // Not a user id: refused, nothing made.
+        let other = tempfile::tempdir().unwrap();
+        for bad in [
+            "",
+            "..",
+            "../../x/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "g1111111-2222-4333-8444-555555555555",
+        ] {
+            assert!(
+                matches!(
+                    ensure_user_dir(other.path(), bad),
+                    Err(StoreError::InvalidUser)
+                ),
+                "{bad}"
+            );
+        }
+        assert_eq!(std::fs::read_dir(other.path()).unwrap().count(), 0);
+        // Something that is not a directory is in the way: an error, not replaced.
+        let blocked = tempfile::tempdir().unwrap();
+        std::fs::write(blocked.path().join("users"), "x").unwrap();
+        assert!(ensure_user_dir(blocked.path(), id).is_err());
+        assert_eq!(std::fs::read(blocked.path().join("users")).unwrap(), b"x");
     }
 
     #[test]

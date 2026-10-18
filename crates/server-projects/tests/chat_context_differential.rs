@@ -26,17 +26,33 @@ const FIXED: &[(&str, u16, &str)] = &[
         400,
         "{\"error\":\"Invalid chat identifier\"}",
     ),
+    (
+        "get-absent-dir-malformed-escape",
+        400,
+        "{\"error\":\"Invalid chat identifier\"}",
+    ),
+    (
+        "post-absent-dir-malformed-escape",
+        400,
+        "{\"error\":\"Invalid chat identifier\"}",
+    ),
 ];
 
 fn fixture() -> Value {
     serde_json::from_str(include_str!("fixtures/node-chat-context.v1.json")).unwrap()
 }
 
-fn run_case(c: &Value, user: &str) -> (u16, String, Option<String>) {
+/// What a case leaves of the user's directory: (made, private to its owner, the names under users/).
+type DirState = (bool, bool, Vec<String>);
+
+fn run_case(c: &Value, user: &str) -> (u16, String, Option<String>, DirState) {
     let root = tempfile::tempdir().unwrap();
     let dir = root.path().join("users").join(user);
-    std::fs::create_dir_all(&dir).unwrap();
     let ws = &c["ws"];
+    // A new account has no directory yet (#2026); every other case has one with its files.
+    if ws["absent"].as_bool() != Some(true) {
+        std::fs::create_dir_all(&dir).unwrap();
+    }
     for (key, file) in [
         ("projects", store::PROJECTS_FILE),
         ("tombstones", chats::TOMBSTONES_FILE),
@@ -54,6 +70,8 @@ fn run_case(c: &Value, user: &str) -> (u16, String, Option<String>) {
         now_ms: c["now"].as_i64().unwrap(),
     };
     let chat = c["chat"].as_str().unwrap();
+    // The front's step before any Rust-owned route, Node's workspace load for the signed-in user.
+    store::ensure_user_dir(root.path(), user).unwrap();
     let reply = match c["method"].as_str().unwrap() {
         "GET" => context::get(ctx, chat),
         "POST" => context::post(ctx, chat),
@@ -63,10 +81,20 @@ fn run_case(c: &Value, user: &str) -> (u16, String, Option<String>) {
         panic!("not JSON")
     };
     let after = std::fs::read_to_string(&file).ok();
+    let made = dir.is_dir();
+    let private = made && {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(&dir).unwrap().permissions().mode() & 0o077 == 0
+    };
+    let users = std::fs::read_dir(root.path().join("users"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
     (
         reply.status,
         text,
         if after == before { None } else { after },
+        (made, private, users),
     )
 }
 
@@ -78,16 +106,38 @@ fn every_case_answers_and_writes_as_node() {
     assert!(cases.len() >= 40, "{}", cases.len());
     let mut fixed_seen = 0;
     let mut wrote = 0;
+    let mut absent_seen = 0;
     for c in cases {
         let name = c["name"].as_str().unwrap();
-        let (status, text, after) = run_case(c, user);
+        let (status, text, after, (made, private, users)) = run_case(c, user);
         if let Some((_, want, body)) = FIXED.iter().find(|(n, _, _)| *n == name) {
             fixed_seen += 1;
             assert_eq!((status, text.as_str()), (*want, *body), "{name}");
             assert_eq!(after, None, "{name}: nothing written");
+            if c["ws"]["absent"].as_bool() == Some(true) {
+                // Node's workspace load precedes the id check: the directory exists after the 400.
+                let dir = &c["expected"]["userDir"];
+                assert_eq!(Some(made), dir["made"].as_bool(), "{name}: directory made");
+                assert_eq!(Some(private), dir["private"].as_bool(), "{name}: mode");
+                absent_seen += 1;
+            }
             continue;
         }
         let expected = &c["expected"];
+        if c["ws"]["absent"].as_bool() == Some(true) {
+            // The new account's first request: Node made the directory (and only it), private.
+            let dir = &expected["userDir"];
+            assert_eq!(Some(made), dir["made"].as_bool(), "{name}: directory made");
+            assert_eq!(Some(private), dir["private"].as_bool(), "{name}: mode");
+            let node: Vec<_> = dir["users"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect();
+            assert_eq!(users, node, "{name}: users/");
+            absent_seen += 1;
+        }
         assert_eq!(
             u64::from(status),
             expected["status"].as_u64().unwrap(),
@@ -102,6 +152,7 @@ fn every_case_answers_and_writes_as_node() {
         wrote += usize::from(after.is_some());
     }
     assert_eq!(fixed_seen, FIXED.len());
+    assert_eq!(absent_seen, 6, "the new-account cases ran");
     // The fixture exercises the writes, not only the reads.
     assert!(wrote >= 10, "{wrote}");
 }

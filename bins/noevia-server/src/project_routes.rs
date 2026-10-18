@@ -9,7 +9,9 @@
 //! A write passes the gate again right before it touches a file (sbstndalton/noevia#1425): the
 //! body is read between the two, for as long as the client takes, and an account removed (or a
 //! session revoked) meanwhile must not write. The gate only reads the store, so running it twice
-//! changes nothing. The store underneath never recreates a removed user's directory either.
+//! changes nothing. The store underneath never recreates a removed user's directory either; only the
+//! first gate, which has just confirmed the session, makes a missing one, as Node's workspace load
+//! did (#2026).
 
 use crate::identity::{self, Rejection};
 use crate::reply;
@@ -138,6 +140,22 @@ pub async fn serve(
             Ok(Err(rejection)) => return rejection.into_response(),
             Err(_) => return Rejection::Unavailable.into_response(),
         };
+    // Node's workspace load makes the directory of every signed-in user on that user's first
+    // request, whichever route it is (core index.cjs handleRequestInner). The stores here never
+    // do, a missing directory there being a removed account (#1425), so a new account's first
+    // request needs it made, once, right after the gate has confirmed the session and before
+    // the body is read: an account removed after that finds the directory gone and stays gone.
+    // Only the gate's own user id reaches the path, as `users/<uuid>` (#2026).
+    let (made_data_dir, made_user) = (data_dir.clone(), authn.user.id.clone());
+    if !matches!(
+        tokio::task::spawn_blocking(move || {
+            server_projects::store::ensure_user_dir(&made_data_dir, &made_user)
+        })
+        .await,
+        Ok(Ok(_))
+    ) {
+        return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true);
+    }
     let limit = match &route {
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
