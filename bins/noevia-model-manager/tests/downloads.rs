@@ -497,6 +497,8 @@ fn state(table: Arc<Downloads>, child_port: u16) -> Arc<StateData> {
         model_updates: None,
         #[cfg(feature = "native-model-detail")]
         model_detail: None,
+        #[cfg(feature = "native-model-list")]
+        model_list: None,
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
         #[cfg(feature = "native-badges")]
