@@ -1814,9 +1814,9 @@ fn backends_fallback(
     noevia_model_manager::backend_stats::gpu_vram_map(&gpu_vram)
 }
 
-/// noevia#1318 step 1: HOST_RAM_RESERVE_GB as the child's settings read it (the fit chips' usable
-/// RAM). `None` (the chips are refused) for a case-folded spelling, which the child would also
-/// read, or a value that is not a plain decimal.
+/// noevia#1318 step 1: HOST_RAM_RESERVE_GB for the fit chips' usable RAM, a strict subset of what
+/// the child's settings read. `None` (the chips are refused) for a case-variant key, which the
+/// child would also read, or a value that is not a plain decimal.
 #[cfg(feature = "native-backends")]
 fn ram_reserve(values: Vec<(std::ffi::OsString, std::ffi::OsString)>) -> Option<f64> {
     let mut raw = None;
