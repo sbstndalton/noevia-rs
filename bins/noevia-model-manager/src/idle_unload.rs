@@ -370,6 +370,9 @@ impl Reconciler {
             .current
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = next;
+        // noevia#2015 review: the view is taken while the guard is still held, so a write that
+        // follows once the reconcile drops it cannot show up in this request's answer.
+        let view = self.view();
         let preset = match self.reconcile_locked(guard).await {
             Ok(Some(_)) => Preset::Written,
             Ok(None) => Preset::Unchanged,
@@ -378,7 +381,7 @@ impl Reconciler {
                 Preset::Failed(error)
             }
         };
-        Ok((self.view(), preset))
+        Ok((view, preset))
     }
     /// `Ok(Some(revision))` when the file was rewritten (sha256 hex of the new bytes, the same
     /// revision the Python editor reports), `Ok(None)` when nothing changed or no preset exists.
