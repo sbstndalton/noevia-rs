@@ -1982,3 +1982,31 @@ jobs:
             ${{ runner.temp }}/node-reasoning.json
             omission.log
           if-no-files-found: error
+
+  backend-telemetry:
+    name: Backend telemetry parser, actual Python differential (#1318 step 3c)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 32596e012c4e637427f70628c2bf861613302e1a
+          path: telemetry-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install the services requirements
+        run: python3 -m pip install -r telemetry-services/model-manager/requirements.txt
+      - name: Regenerate the actual Python telemetry oracle
+        run: |
+          python3 -I tools/gen-telemetry-oracle.py telemetry-services/model-manager/app > "$RUNNER_TEMP/telemetry.json"
+          cmp crates/backend-telemetry/tests/fixtures/telemetry-python.v1.json "$RUNNER_TEMP/telemetry.json"
+      - run: cargo fmt --check -p backend-telemetry
+      - run: cargo clippy --locked -p backend-telemetry --all-targets -- -D warnings
+      - run: cargo test --locked -p backend-telemetry
