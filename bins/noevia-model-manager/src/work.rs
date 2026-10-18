@@ -43,6 +43,17 @@ where
         work.await
     })
 }
+pub(crate) fn spawn_on<F>(runtime: &tokio::runtime::Handle, work: F) -> JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    let held = register();
+    runtime.spawn(async move {
+        let _held = held;
+        work.await
+    })
+}
 pub(crate) fn spawn_blocking<F, T>(work: F) -> JoinHandle<T>
 where
     F: FnOnce() -> T + Send + 'static,

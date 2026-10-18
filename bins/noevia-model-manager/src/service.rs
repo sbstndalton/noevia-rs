@@ -42,23 +42,26 @@ impl Ready {
         };
         // No new connections after the graceful signal. Existing requests keep their
         // admission until their registered blocking work ends, including dropped clients.
+        let deadline = tokio::time::Instant::now() + SHUTDOWN_GRACE;
+        self.state.permits.close();
         let _ = signal.send(());
         stop_background();
         if let Some(embed) = self.state.embedding.as_ref() {
             embed.cancel_warm();
         }
-        if let Some(runner) = self.state.bench_runner.as_ref() {
-            runner.cancel();
-        }
-        if let Some(table) = self.state.downloads.as_ref() {
-            table.cancel_all();
-        }
-        let deadline = tokio::time::Instant::now() + SHUTDOWN_GRACE;
         let drain = async {
+            cancel_jobs(self.state.clone()).await;
             if result.is_none() {
                 let _ = serving.await;
             }
-            let _admissions = self.state.permits.acquire_many(4).await;
+            // A closed semaphore refuses new work; it is not proof that old work ended.
+            // Existing admissions return permits only after their orphan joins finish.
+            while self.state.permits.available_permits() < 4 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            // A request already admitted at the boundary may have queued a job during its
+            // drain. Sweep again after admission is empty, then await actual worker lifetimes.
+            cancel_jobs(self.state.clone()).await;
             if let Some(diagnosis) = self.state.diagnosis.as_ref() {
                 diagnosis.shutdown().await;
             }
@@ -76,6 +79,20 @@ impl Ready {
             0
         });
     }
+}
+
+async fn cancel_jobs(state: Arc<StateData>) {
+    // Cancellation takes job mutexes: account for their actual worker lifetime and include any
+    // lock contention in the same deadline, rather than blocking before the grace timer starts.
+    let _ = crate::work::spawn_blocking(move || {
+        if let Some(runner) = state.bench_runner.as_ref() {
+            runner.cancel();
+        }
+        if let Some(table) = state.downloads.as_ref() {
+            table.cancel_all();
+        }
+    })
+    .await;
 }
 
 #[cfg(test)]

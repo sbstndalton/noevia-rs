@@ -1039,7 +1039,7 @@ impl Drop for Admission {
         let (state, orphans) = (self.state.clone(), self.orphans.clone());
         match tokio::runtime::Handle::try_current() {
             Ok(runtime) => {
-                runtime.spawn(async move {
+                crate::work::spawn_on(&runtime, async move {
                     docker::observe(&orphans).await;
                     state.permits.add_permits(1);
                 });
