@@ -240,3 +240,17 @@ async fn the_repository_read_answers_natively_only_with_the_cap() {
         }
     }
 }
+
+#[test]
+fn each_fallback_reason_is_logged_once() {
+    assert!(fell_back("a synthetic reason for this test"));
+    assert!(!fell_back("a synthetic reason for this test"));
+    assert!(fell_back("another synthetic reason for this test"));
+}
+
+#[test]
+fn a_summary_past_the_node_cap_is_left_to_the_child() {
+    let many = format!("{{\"model\":[{}0]}}", "0,".repeat(1 << 20));
+    assert!(super::summary(&many).is_none());
+    assert!(super::summary("{\"model\":[0,0]}").is_some());
+}

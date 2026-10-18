@@ -105,3 +105,62 @@ async fn the_route_takes_the_native_list() {
 fn shown_json(v: &Value) -> String {
     shown(v)
 }
+
+/// A command this side does not render (a non-string entry), and one the baseline rule refuses
+/// (past its argument cap), keep the child's list for that answer.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_route_keeps_the_child_list_when_it_cannot_build_its_own() {
+    use crate::section_autoconfig::tests::{first_case, run, shown, stand_in};
+    let fx = fixture();
+    let fit_case = fx["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == "baselines")
+        .unwrap();
+    let (base, stand) = stand_in().await;
+    let client = reqwest::Client::new();
+    let fixture = crate::section_autoconfig::tests::fixture();
+    let path = fixture["cases"][0]["results"][0]["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let body = fixture["cases"][0]["results"][0]["runtime"]["body"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    stand.lock().unwrap().reply = Some((200, body));
+    let answer = |stats: Option<Arc<crate::backend_stats::BackendStats>>| {
+        let (path, base, client) = (&path, &base, &client);
+        async move {
+            let models = tempfile::tempdir().unwrap();
+            let (autoconfig, _) = first_case(models.path());
+            if let Some(stats) = stats {
+                autoconfig.set_stats(stats);
+            }
+            shown(run(&autoconfig, path, base, client).await)
+        }
+    };
+    let child_only = answer(None).await;
+    assert_eq!(child_only.0, 200);
+    let long: Vec<serde_json::Value> = (0..=model_autoconfig::baseline::MAX_ARGS)
+        .map(|i| serde_json::Value::String(format!("--synthetic-{i}")))
+        .collect();
+    for cmd in [
+        serde_json::json!(["-ngl", 99]),
+        serde_json::Value::Array(long),
+    ] {
+        let mut case = fit_case.clone();
+        case["docker"]["containers"][0]["Config"]["Cmd"] = cmd;
+        let dir = tempfile::tempdir().unwrap();
+        let stats = Arc::new(stats_for(&case, dir.path()));
+        assert_eq!(answer(Some(stats)).await, child_only);
+    }
+}
+
+#[test]
+fn each_fallback_reason_is_logged_once() {
+    assert!(fell_back("a synthetic reason for this test"));
+    assert!(!fell_back("a synthetic reason for this test"));
+    assert!(fell_back("another synthetic reason for this test"));
+}

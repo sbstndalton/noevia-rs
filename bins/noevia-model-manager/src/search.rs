@@ -1379,19 +1379,28 @@ impl Search {
         else {
             return back("a negative projector size");
         };
-        let summary = match summary {
-            Some(text) => match estimates::summary(text) {
-                Some(v) => Some(v),
-                None => return back("a summary this side does not read"),
-            },
-            None => None,
-        };
-        let Some(inventory) = source.stats.inventory().await else {
-            return back("HOST_RAM_RESERVE_GB is not a value this side reads");
+        let inventory = match tokio::time::timeout(
+            estimates::INVENTORY_TIMEOUT,
+            source.stats.inventory(),
+        )
+        .await
+        {
+            Ok(Some(inventory)) => inventory,
+            Ok(None) => return back("HOST_RAM_RESERVE_GB is not a value this side reads"),
+            Err(_) => return back("Docker did not answer in time"),
         };
         let descriptors = source.stats.estimate_descriptors(&inventory);
+        let text = summary.map(str::to_owned);
+        // The summary (up to 8 MiB) is parsed on the blocking thread with the analysis.
         let answer = self
             .blocking(move || {
+                let summary = match text.as_deref() {
+                    Some(text) => match estimates::summary(text) {
+                        Some(v) => Some(v),
+                        None => return Err("a summary this side does not read"),
+                    },
+                    None => None,
+                };
                 estimates::groups(
                     &asks,
                     mmproj,
@@ -1400,13 +1409,13 @@ impl Search {
                     &descriptors,
                     cache_cap,
                 )
+                .ok_or("an analysis or value this side does not follow exactly")
             })
-            .await
-            .ok()
-            .flatten();
+            .await;
         match answer {
-            Some(live) => Some(live),
-            None => back("an analysis or value this side does not follow exactly"),
+            Ok(Ok(live)) => Some(live),
+            Ok(Err(class)) => back(class),
+            Err(_) => back("the blocking work failed or was cancelled"),
         }
     }
 

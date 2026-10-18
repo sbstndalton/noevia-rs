@@ -170,11 +170,14 @@ def cases():
     w = world([container(18, "llama-cuda", 18, cmd=["-m", "/models/s/m.gguf", "--ctx-size", "8192", "-ngl", "99",
                                                     "--flash-attn", "on", "--jinja", "--synthetic-flag", "v",
                                                     "-ctk", "q8_0", "--no-mmap", "-c"]),
-               container(19, "llama-rocm", 19, cmd=[])],
+               container(19, "llama-rocm", 19, cmd=[]),
+               container(20, "llama-cuda-b", 18, cmd=["--threads=4", "--ctx-size", "-1", "-ngl", "-fa", "--",
+                                                      "--jinja", "-np", "2", "--batch-size=512"])],
               [image(18, [CUDA]), image(19, [ROCM])])
     out.append({"id": "baselines", "env": {}, "meminfo": meminfo(gib_kib(64)), "docker": w,
                 "cache": {"llama-cuda": ok(gpu(24.0, vendor="nvidia", cards=[card(0, 24.0)])),
-                          "llama-rocm": ok(gpu(16, vendor="amd"))},
+                          "llama-rocm": ok(gpu(16, vendor="amd")),
+                          "llama-cuda-b": ok(gpu(12.0, vendor="nvidia", cards=[card(0, 12.0)]))},
                 "sizes": [GIB]})
     return out
 

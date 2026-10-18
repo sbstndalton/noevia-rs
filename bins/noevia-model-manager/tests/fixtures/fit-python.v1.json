@@ -1383,17 +1383,17 @@
    "meminfo": "MemTotal:       65536000 kB\nMemFree:         1024 kB\n"
   },
   {
-   "backend_list": "[{\"name\":\"llama-cuda\",\"vendor\":\"cuda\",\"vram_gb\":24.0,\"gpu_count\":1,\"card_vram_gb\":[24.0],\"host_ram_gb\":64.0,\"baseline\":{\"ctx-size\":\"true\",\"ngl\":\"99\",\"flash-attn\":\"on\",\"jinja\":\"true\",\"cache-type-k\":\"q8_0\"},\"baseline_args\":[\"-m\",\"/models/s/m.gguf\",\"--ctx-size\",\"8192\",\"-ngl\",\"99\",\"--flash-attn\",\"on\",\"--jinja\",\"--synthetic-flag\",\"v\",\"-ctk\",\"q8_0\",\"--no-mmap\",\"-c\"]},{\"name\":\"llama-rocm\",\"vendor\":\"rocm\",\"vram_gb\":16.0,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":64.0,\"baseline\":{},\"baseline_args\":[]}]",
+   "backend_list": "[{\"name\":\"llama-cuda\",\"vendor\":\"cuda\",\"vram_gb\":24.0,\"gpu_count\":1,\"card_vram_gb\":[24.0],\"host_ram_gb\":64.0,\"baseline\":{\"ctx-size\":\"true\",\"ngl\":\"99\",\"flash-attn\":\"on\",\"jinja\":\"true\",\"cache-type-k\":\"q8_0\"},\"baseline_args\":[\"-m\",\"/models/s/m.gguf\",\"--ctx-size\",\"8192\",\"-ngl\",\"99\",\"--flash-attn\",\"on\",\"--jinja\",\"--synthetic-flag\",\"v\",\"-ctk\",\"q8_0\",\"--no-mmap\",\"-c\"]},{\"name\":\"llama-rocm\",\"vendor\":\"rocm\",\"vram_gb\":16.0,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":64.0,\"baseline\":{},\"baseline_args\":[]},{\"name\":\"llama-cuda-b\",\"vendor\":\"cuda\",\"vram_gb\":12.0,\"gpu_count\":1,\"card_vram_gb\":[12.0],\"host_ram_gb\":64.0,\"baseline\":{\"ctx-size\":\"true\",\"ngl\":\"true\",\"flash-attn\":\"true\",\"jinja\":\"true\",\"parallel\":\"2\"},\"baseline_args\":[\"--threads=4\",\"--ctx-size\",\"-1\",\"-ngl\",\"-fa\",\"--\",\"--jinja\",\"-np\",\"2\",\"--batch-size=512\"]}]",
    "budget": "24.0",
-   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-rocm\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"amd\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 16, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-rocm\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"amd\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 16, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-cuda-b\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 12.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 12.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
    "chips": [
     {
      "bytes": "1073741824",
-     "detail": "[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":4},{\"name\":\"llama-rocm\",\"vram_gb\":16.0,\"verdict\":\"fits\",\"ratio_pct\":6}]",
-     "route": "[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":4},{\"name\":\"llama-rocm\",\"vram_gb\":16.0,\"verdict\":\"fits\",\"ratio_pct\":6}]"
+     "detail": "[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":4},{\"name\":\"llama-rocm\",\"vram_gb\":16.0,\"verdict\":\"fits\",\"ratio_pct\":6},{\"name\":\"llama-cuda-b\",\"vram_gb\":12.0,\"verdict\":\"fits\",\"ratio_pct\":8}]",
+     "route": "[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":4},{\"name\":\"llama-rocm\",\"vram_gb\":16.0,\"verdict\":\"fits\",\"ratio_pct\":6},{\"name\":\"llama-cuda-b\",\"vram_gb\":12.0,\"verdict\":\"fits\",\"ratio_pct\":8}]"
     }
    ],
-   "descriptors": "[{\"name\":\"llama-cuda\",\"vendor\":\"cuda\",\"vram_gb\":24.0,\"gpu_count\":1,\"card_vram_gb\":[24.0],\"host_ram_gb\":64.0,\"baseline_args\":[\"-m\",\"/models/s/m.gguf\",\"--ctx-size\",\"8192\",\"-ngl\",\"99\",\"--flash-attn\",\"on\",\"--jinja\",\"--synthetic-flag\",\"v\",\"-ctk\",\"q8_0\",\"--no-mmap\",\"-c\"]},{\"name\":\"llama-rocm\",\"vendor\":\"rocm\",\"vram_gb\":16.0,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":64.0,\"baseline_args\":[]}]",
+   "descriptors": "[{\"name\":\"llama-cuda\",\"vendor\":\"cuda\",\"vram_gb\":24.0,\"gpu_count\":1,\"card_vram_gb\":[24.0],\"host_ram_gb\":64.0,\"baseline_args\":[\"-m\",\"/models/s/m.gguf\",\"--ctx-size\",\"8192\",\"-ngl\",\"99\",\"--flash-attn\",\"on\",\"--jinja\",\"--synthetic-flag\",\"v\",\"-ctk\",\"q8_0\",\"--no-mmap\",\"-c\"]},{\"name\":\"llama-rocm\",\"vendor\":\"rocm\",\"vram_gb\":16.0,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":64.0,\"baseline_args\":[]},{\"name\":\"llama-cuda-b\",\"vendor\":\"cuda\",\"vram_gb\":12.0,\"gpu_count\":1,\"card_vram_gb\":[12.0],\"host_ram_gb\":64.0,\"baseline_args\":[\"--threads=4\",\"--ctx-size\",\"-1\",\"-ngl\",\"-fa\",\"--\",\"--jinja\",\"-np\",\"2\",\"--batch-size=512\"]}]",
    "docker": {
     "containers": [
      {
@@ -1451,6 +1451,37 @@
        "StartedAt": "2026-10-17T10:00:00.123456789Z",
        "Status": "running"
       }
+     },
+     {
+      "Config": {
+       "Cmd": [
+        "--threads=4",
+        "--ctx-size",
+        "-1",
+        "-ngl",
+        "-fa",
+        "--",
+        "--jinja",
+        "-np",
+        "2",
+        "--batch-size=512"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "1414141414141414141414141414141414141414141414141414141414141414",
+      "Image": "sha256:9292929292929292929292929292929292929292929292929292929292929292",
+      "Name": "/llama-cuda-b",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
      }
     ],
     "image_errors": {},
@@ -1487,6 +1518,10 @@
      [
       "llama-rocm",
       "16.0"
+     ],
+     [
+      "llama-cuda-b",
+      "12.0"
      ]
     ],
     "ram": "32.0"

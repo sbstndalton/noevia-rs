@@ -179,22 +179,28 @@ pub(crate) fn backend_list(descriptors: &[Descriptor]) -> Option<Value> {
     Some(Value::Arr(out))
 }
 
-/// Why one answer kept the child's list: logged once per reason.
-pub(super) fn fell_back(class: &'static str) {
+/// Why the native side left one answer to the child: logged once per class, never silently.
+/// `true` when this call logged it.
+pub(super) fn fell_back(class: &'static str) -> bool {
     use std::sync::{Mutex, OnceLock};
     static SEEN: OnceLock<Mutex<Vec<&'static str>>> = OnceLock::new();
     let mut seen = SEEN
         .get_or_init(|| Mutex::new(Vec::new()))
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if !seen.contains(&class) {
-        seen.push(class);
-        eprintln!(
-            "native-section-autoconfig: the backend inventory was taken from the python child \
-             ({class}); logged once per reason"
-        );
+    if seen.contains(&class) {
+        return false;
     }
+    seen.push(class);
+    eprintln!("{PREFIX} ({class}); logged once per reason");
+    true
 }
+
+const PREFIX: &str =
+    "native-section-autoconfig: the backend inventory was taken from the python child";
+
+/// The descriptors' Docker reads (discovery, version, inspect, image) for one answer.
+pub(super) const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[cfg(test)]
 mod tests;

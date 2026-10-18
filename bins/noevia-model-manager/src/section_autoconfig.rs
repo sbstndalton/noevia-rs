@@ -156,12 +156,19 @@ impl SectionAutoconfig {
         let Some(stats) = self.stats.get() else {
             return;
         };
-        match stats.descriptors().await {
-            Ok(descriptors) => match inventory::backend_list(&descriptors) {
+        match tokio::time::timeout(inventory::TIMEOUT, stats.descriptors()).await {
+            Ok(Ok(descriptors)) => match inventory::backend_list(&descriptors) {
                 Some(list) => runtime.backends = list,
-                None => inventory::fell_back("a baseline this side does not parse"),
+                None => {
+                    inventory::fell_back("a baseline this side does not parse");
+                }
             },
-            Err(_) => inventory::fell_back("a container command this side does not render"),
+            Ok(Err(_)) => {
+                inventory::fell_back("the native descriptors could not be built");
+            }
+            Err(_) => {
+                inventory::fell_back("Docker did not answer in time");
+            }
         }
     }
 

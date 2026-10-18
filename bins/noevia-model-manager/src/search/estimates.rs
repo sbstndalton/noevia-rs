@@ -223,6 +223,7 @@ pub(super) fn summary(text: &str) -> Option<Value> {
     let limits = model_files::json::Limits {
         string_chars: SUMMARY_CAP,
         bytes: SUMMARY_CAP,
+        nodes: SUMMARY_NODES,
         ..model_files::json::Limits::default()
     };
     model_files::json::parse_with_limits(text, limits).ok()
@@ -230,23 +231,29 @@ pub(super) fn summary(text: &str) -> Option<Value> {
 
 /// Largest summary read (the header read is one MiB; its JSON escapes can at most sextuple it).
 const SUMMARY_CAP: usize = 8 * 1024 * 1024;
+/// Most JSON values in a summary (a header's arrays are capped well below this by `gguf`).
+const SUMMARY_NODES: usize = 1 << 20;
+/// The inventory's Docker reads (discovery, version) for one answer.
+pub(super) const INVENTORY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Why the native side left one answer to the child: logged once per class, never silently.
-pub(super) fn fell_back(class: &'static str) {
+/// `true` when this call logged it.
+pub(super) fn fell_back(class: &'static str) -> bool {
     use std::sync::{Mutex, OnceLock};
     static SEEN: OnceLock<Mutex<Vec<&'static str>>> = OnceLock::new();
     let mut seen = SEEN
         .get_or_init(|| Mutex::new(Vec::new()))
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if !seen.contains(&class) {
-        seen.push(class);
-        eprintln!(
-            "native-search: the repository estimates were asked of the python child ({class}); \
-             logged once per reason"
-        );
+    if seen.contains(&class) {
+        return false;
     }
+    seen.push(class);
+    eprintln!("{PREFIX} ({class}); logged once per reason");
+    true
 }
+
+const PREFIX: &str = "native-search: the repository estimates were asked of the python child";
 
 fn raw(text: String) -> Option<Box<RawValue>> {
     RawValue::from_string(text).ok()
