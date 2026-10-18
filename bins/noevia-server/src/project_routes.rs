@@ -148,44 +148,36 @@ pub async fn serve(
     // may be removed between the gate and the mkdir, so the gate runs once more after it, and a
     // directory this request made for an account that is gone is taken away again. Only the
     // gate's own user id reaches the path, as `users/<uuid>` (#2026).
-    let step =
-        {
-            let (data_dir, user) = (data_dir.clone(), authn.user.id.clone());
-            let (layer, creds, path) = (
-                Arc::clone(&regate_layer),
-                regate_creds.clone(),
-                path.clone(),
-            );
-            tokio::task::spawn_blocking(move || {
-                hooks::before_ensure(&user);
-                let made = match server_projects::store::ensure_user_dir(&data_dir, &user) {
-                    Ok(server_projects::store::Ensured::Created(dir)) => Some(dir),
-                    Ok(server_projects::store::Ensured::Existed(_)) => None,
-                    Ok(server_projects::store::Ensured::LegacyPending) => return Step::SettingUp,
-                    Err(_) => return Step::Failed,
-                };
-                match regate(&layer, &creds, &path, now, &data_dir, &user) {
-                    Ok(()) => Step::Go,
-                    Err(refused) => {
-                        let created = made.is_some();
-                        if let Some(dir) = made {
-                            // Not recursive: a directory this call has just made holds nothing.
-                            let _ = std::fs::remove_dir(&dir);
-                        }
-                        // The same rule `regate` applies once the directory is gone: a session the
-                        // gate no longer knows, for a directory only this request had made, is a
-                        // removed account (410); any other refusal is the gate's own answer.
-                        Step::Refused(match refused {
-                            Refused::Gate(Rejection::Refused(
-                                server_auth::Refusal::Unauthorized,
-                            )) if created => Refused::Removed,
-                            other => other,
-                        })
+    let step = {
+        let (data_dir, user) = (data_dir.clone(), authn.user.id.clone());
+        let (layer, creds, path) = (
+            Arc::clone(&regate_layer),
+            regate_creds.clone(),
+            path.clone(),
+        );
+        tokio::task::spawn_blocking(move || {
+            #[cfg(feature = "test-hooks")]
+            hooks::before_ensure(&user);
+            let made = match server_projects::store::ensure_user_dir(&data_dir, &user) {
+                Ok(server_projects::store::Ensured::Created(dir)) => Some(dir),
+                Ok(server_projects::store::Ensured::Existed(_)) => None,
+                Ok(server_projects::store::Ensured::LegacyPending) => return Step::SettingUp,
+                Err(_) => return Step::Failed,
+            };
+            match regate(&layer, &creds, &path, now, &data_dir, &user) {
+                Ok(()) => Step::Go,
+                Err(refused) => {
+                    let (undo, refused) = after_second_gate(made.is_some(), refused);
+                    if let (true, Some(dir)) = (undo, made) {
+                        // Not recursive: a directory this call has just made holds nothing.
+                        let _ = std::fs::remove_dir(&dir);
                     }
+                    Step::Refused(refused)
                 }
-            })
-            .await
-        };
+            }
+        })
+        .await
+    };
     match step {
         Ok(Step::Go) => {}
         Ok(Step::SettingUp) => {
@@ -288,7 +280,23 @@ enum Step {
     Failed,
 }
 
-/// Test hooks: nothing is registered outside the tests that need them.
+/// What the second gate's refusal means for the directory this request just made. Only a session
+/// the gate no longer knows (Unauthorized: the account was removed) takes it away, and that is the
+/// removed account's 410; a transient refusal (the gate unavailable, a rate limit) leaves it, since a
+/// concurrent request of the same user may already have seen it as existing and be using it.
+/// Returns whether to remove the directory, and the answer.
+fn after_second_gate(created: bool, refused: Refused) -> (bool, Refused) {
+    match refused {
+        Refused::Gate(Rejection::Refused(server_auth::Refusal::Unauthorized)) if created => {
+            (true, Refused::Removed)
+        }
+        other => (false, other),
+    }
+}
+
+/// Test hooks (cargo feature `test-hooks`, enabled for this package's own tests only; no release
+/// build has it, so none takes the lock).
+#[cfg(feature = "test-hooks")]
 #[doc(hidden)]
 pub mod hooks {
     use std::collections::HashMap;
@@ -306,7 +314,7 @@ pub mod hooks {
         }
     }
 
-    pub(super) fn before_ensure(user: &str) {
+    pub(crate) fn before_ensure(user: &str) {
         let hook = BEFORE_ENSURE
             .lock()
             .ok()
@@ -357,6 +365,29 @@ fn regate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_an_unknown_session_takes_the_new_directory_away() {
+        let (undo, answer) = after_second_gate(
+            true,
+            Refused::Gate(Rejection::Refused(server_auth::Refusal::Unauthorized)),
+        );
+        assert!(undo && matches!(answer, Refused::Removed));
+        // Transient or other refusals keep it: a concurrent request may be using it.
+        for refusal in [
+            Rejection::Unavailable,
+            Rejection::Refused(server_auth::Refusal::Csrf),
+        ] {
+            let (undo, answer) = after_second_gate(true, Refused::Gate(refusal));
+            assert!(!undo && matches!(answer, Refused::Gate(_)));
+        }
+        // A directory that was already there is never taken away.
+        let (undo, _) = after_second_gate(
+            false,
+            Refused::Gate(Rejection::Refused(server_auth::Refusal::Unauthorized)),
+        );
+        assert!(!undo);
+    }
 
     #[test]
     fn free_chat_list_matchers() {

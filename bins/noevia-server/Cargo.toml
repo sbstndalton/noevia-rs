@@ -50,6 +50,8 @@ rust-free-chats = []
 # sbstndalton/noevia#1264: project writes still Node's, under NOEVIA_RUST_PROJECT_WRITES
 # (src/routes.rs PROJECT_WRITES; slice 1: a free chat's attachments project).
 rust-project-writes = []
+# Test-only hooks in the project routes; never in a shipped build (enabled by the dev-dependency below).
+test-hooks = []
 
 [dependencies]
 server-storage-reads = { path = "../../crates/server-storage-reads", optional = true }
@@ -87,6 +89,8 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 
 [dev-dependencies]
+# Own tests only: turns `test-hooks` on for `cargo test`, not for any build of the binary.
+noevia-server = { path = ".", features = ["test-hooks"] }
 secret-envelope = { path = "../../crates/secret-envelope" }
 tempfile = "3"
 http-body-util = { version = "0.1", features = ["channel"] }
