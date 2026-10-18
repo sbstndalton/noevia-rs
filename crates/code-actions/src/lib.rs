@@ -1,8 +1,8 @@
 //! noevia-core's `server/code-actions.cjs` in Rust, exported from `dav-parse.wasm`
-//! (CODE_ACTIONS_IMPL, retired in noevia-core#189). code-actions.cjs is the CodeHarness contract v0: it reads one ACP tool call
-//! of a coding agent into noevia's own action classes, decides what happens before a human sees it,
-//! and maps a human's answer back to an ACP permission option. This crate answers the same three
-//! questions over the host's projection of the call:
+//! (CODE_ACTIONS_IMPL, retired in noevia-core#189). code-actions.cjs is the CodeHarness contract
+//! v0: it reads one ACP tool call of a coding agent into noevia's own action classes, decides what
+//! happens before a human sees it, and maps a human's answer back to an ACP permission option. This
+//! crate answers the same three questions over the host's projection of the call:
 //!
 //! - [`classify`] (`classify(call)`): the action class (`kind`, then the command text read by a
 //!   small POSIX-shell reader: wrappers, env prefixes, `sh -c`/`eval`, interpreters with inline
@@ -10,31 +10,31 @@
 //!   httpie flags, redirects, substitutions), every class present, whether it is one plain
 //!   command, whether a standing approval may cover it, and the paths it names or writes.
 //! - [`decide`] (`decide({classified, capabilities, domains, inWorkspace})`): `allow` / `ask` /
-//!   `deny` with the former JS's reason text, including the domain allow-list check over every URL host
-//!   the command names.
+//!   `deny` with the former JS's reason text, including the domain allow-list check over every URL
+//!   host the command names.
 //! - [`pick_option`] (`pickOption(options, wanted)`): the ACP option to answer with, never a
 //!   silent downgrade from a refusal to an allow.
 //!
-//! Strings are UTF-16 code units, compared exactly; every case-insensitive pattern of the former JS was a
-//! non-`u` regex over ASCII text, which is ASCII-only case folding. No Unicode tables, number
+//! Strings are UTF-16 code units, compared exactly; every case-insensitive pattern of the former JS
+//! was a non-`u` regex over ASCII text, which is ASCII-only case folding. No Unicode tables, number
 //! formatting or locale data are involved, so no answer depends on the Node/ICU version.
 //!
 //! # Stricter than the former JS (refused; the host then asks a person or refuses, see below)
 //!
 //! - A request over [`MAX_INPUT_BYTES`] or not the documented shape (`input`, `too_large`).
-//! - `ambiguous`: a command array element that is an object or array, or a number other than a
-//!   safe integer (the former JS read it through `String()`); in `decide`'s network branch, a URL host
+//! - `ambiguous`: a command array element that is an object or array, or a number other than a safe
+//!   integer (the former JS read it through `String()`); in `decide`'s network branch, a URL host
 //!   the port does not read with certainty: anything but ASCII letters, digits, `_` and `-` in
-//!   non-empty labels (no `xn--` label, no label starting or ending with `-`, no trailing dot),
-//!   an IP literal in brackets, or a numeric last label other than a canonical dotted quad.
+//!   non-empty labels (no `xn--` label, no label starting or ending with `-`, no trailing dot), an
+//!   IP literal in brackets, or a numeric last label other than a canonical dotted quad.
 //! - `too_large`: more than [`MAX_WORK`] units of reading work (lexed text, words visited), which
-//!   keeps every refusal well under 10 ms. Nested `find -exec find …` is read like the former JS after
-//!   noevia#1201: a find reached through `-exec` does not re-read its own `-exec`s (the outer find
-//!   already reads each of them), so chains are linear; more than [`MAX_FIND_EXECS`] `-exec`s in
-//!   one find is every class but none/read, never standing, as in the former JS.
+//!   keeps every refusal well under 10 ms. Nested `find -exec find …` is read like the former JS
+//!   after noevia#1201: a find reached through `-exec` does not re-read its own `-exec`s (the outer
+//!   find already reads each of them), so chains are linear; more than [`MAX_FIND_EXECS`] `-exec`s
+//!   in one find is every class but none/read, never standing, as in the former JS.
 //!
-//! The host (noevia-core code-actions.cjs; its JS classifier was deleted in noevia-core#189) sends this
-//! crate the projections and applies its answer alone. A call the crate cannot classify is the
+//! The host (noevia-core code-actions.cjs; its JS classifier was deleted in noevia-core#189) sends
+//! this crate the projections and applies its answer alone. A call the crate cannot classify is the
 //! unverified classification (the most consequential class, never auto-allowed, never standing), a
 //! decision it cannot give asks a person, and an option is `cancelled`.
 //!
@@ -58,7 +58,8 @@ pub const MAX_INPUT_BYTES: usize = 2 * 1024 * 1024 + 1;
 /// noevia#1212: 256 Ki units, so a refusal comes back in well under 10 ms in the wasm module; a
 /// command of more than 256 Ki UTF-16 units is refused (`too_large`) and the host fails closed.
 pub const MAX_WORK: u64 = 256 * 1024;
-/// `MAX_FIND_EXECS` of the former JS: a find with more `-exec`s is read as every class, never standing.
+/// `MAX_FIND_EXECS` of the former JS: a find with more `-exec`s is read as every class, never
+/// standing.
 pub const MAX_FIND_EXECS: usize = 64;
 /// Reading work charged for each command text and each command (segment, `-exec` slice) read, on
 /// top of its length: the table lookups a command costs (noevia#1212), so many tiny segments or
@@ -79,7 +80,7 @@ pub enum Refusal {
     Input,
     /// Over [`MAX_INPUT_BYTES`] or [`MAX_WORK`].
     TooLarge,
-    /// A value whose JS reading the port does not reproduce with certainty.
+    /// A value whose former JS reading the port does not reproduce with certainty.
     Ambiguous,
 }
 
@@ -126,7 +127,7 @@ const SEVERITY: [Action; 10] = [
 ];
 
 impl Action {
-    /// The JS name.
+    /// The name the former JS used.
     pub fn name(self) -> &'static str {
         match self {
             Action::Read => "read_repository",
@@ -1720,7 +1721,7 @@ pub fn analyze_command(command: &[u16]) -> R<Analysis> {
 enum Host {
     /// The lowercased hostname.
     Name(Word),
-    /// `new URL()` throws: the JS records `''`.
+    /// `new URL()` throws: the former JS recorded `''`.
     Fails,
     /// The port does not read it with certainty.
     Unsure,

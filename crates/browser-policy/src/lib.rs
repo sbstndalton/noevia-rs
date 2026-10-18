@@ -1,6 +1,7 @@
 //! noevia-core's `server/browser-policy.cjs` in Rust, exported from `dav-parse.wasm`
-//! (BROWSER_POLICY_IMPL, retired in noevia-core#188): what noevia decides before every browser action, from the facts the
-//! executor read off the real page (never from the model's description of it).
+//! (BROWSER_POLICY_IMPL, retired in noevia-core#188): what noevia decides before every browser
+//! action, from the facts the executor read off the real page (never from the model's description
+//! of it).
 //!
 //! - [`classify`]: `classifyAction`, `allow`, `needs_approval` or `blocked` for one action.
 //! - [`navigation`]: `checkNavigation`, where the browser may go (http(s) only, no embedded
@@ -13,13 +14,13 @@
 //!
 //! The host (browser-policy.cjs; its JS rules were deleted in noevia-core#188) sends this crate the
 //! projections and applies its answer alone. An unknown, a refusal or a fault asks (a navigation is
-//! blocked, and so is any call that has no approval step). So wherever the port cannot be sure it says
-//! so ([`Status`] `None`).
+//! blocked, and so is any call that has no approval step). So wherever the port cannot be sure it
+//! says so ([`Status`] `None`).
 //!
 //! Form buttons (noevia#1218) and local names with trailing dots (noevia#1219) are decided as the
-//! former JS decided them when it was deleted: a `<button>` in a form submits unless its type is exactly (ASCII
-//! case-insensitively) `button` or `reset`, and the local suffixes are checked on the host with
-//! and without its trailing dots.
+//! former JS decided them when it was deleted: a `<button>` in a form submits unless its type is
+//! exactly (ASCII case-insensitively) `button` or `reset`, and the local suffixes are checked on
+//! the host with and without its trailing dots.
 //!
 //! # Where the port is stricter than the former JS (by design)
 //!
@@ -232,9 +233,9 @@ fn cat(parts: &[&[u16]]) -> Vec<u16> {
 
 // ── fold ────────────────────────────────────────────────────────────────────
 
-/// The former JS `fold(text)` of a string (the host passes `String(text || '')`): NFKD, U+0300..U+036F
-/// removed, `toLowerCase`, every `\s+` run one space, trimmed. `None` when `text` holds a lone
-/// surrogate or a code point outside [`KNOWN_RANGES`].
+/// The former JS `fold(text)` of a string (the host passes `String(text || '')`): NFKD,
+/// U+0300..U+036F removed, `toLowerCase`, every `\s+` run one space, trimmed. `None` when `text`
+/// holds a lone surrogate or a code point outside [`KNOWN_RANGES`].
 pub fn fold(text: &[u16], work: &mut Work) -> R<Option<Vec<u16>>> {
     work.charge(text.len())?;
     if text.iter().all(|&c| c < 0x80) {
@@ -457,7 +458,7 @@ pub enum Decision {
 }
 
 impl Decision {
-    /// The JS string.
+    /// The string the former JS used.
     pub fn as_str(self) -> &'static str {
         match self {
             Decision::Allow => "allow",
