@@ -1,0 +1,3051 @@
+{
+ "argv": [
+  {
+   "dict": [],
+   "tokens": []
+  },
+  {
+   "dict": [
+    [
+     "--model",
+     "true"
+    ]
+   ],
+   "tokens": [
+    "--model"
+   ]
+  },
+  {
+   "dict": [
+    [
+     "-m",
+     "/m.gguf"
+    ]
+   ],
+   "tokens": [
+    "-m",
+    "/m.gguf",
+    "--port",
+    "1",
+    "-p",
+    "2",
+    "--host",
+    "h",
+    "-a",
+    "x",
+    "--alias",
+    "y"
+   ]
+  },
+  {
+   "dict": [
+    [
+     "--a",
+     "2"
+    ],
+    [
+     "--b",
+     "true"
+    ],
+    [
+     "-c",
+     "true"
+    ],
+    [
+     "--d",
+     "true"
+    ],
+    [
+     "-",
+     "true"
+    ],
+    [
+     "--e",
+     "true"
+    ],
+    [
+     "--x=y",
+     "true"
+    ],
+    [
+     "--",
+     "true"
+    ]
+   ],
+   "tokens": [
+    "pos",
+    "--a",
+    "1",
+    "--a",
+    "2",
+    "--b",
+    "-c",
+    "--d",
+    "-",
+    "--e",
+    "--x=y",
+    "--"
+   ]
+  },
+  {
+   "dict": [
+    [
+     "--z",
+     ""
+    ],
+    [
+     "--y",
+     "true"
+    ]
+   ],
+   "tokens": [
+    "--z",
+    "",
+    "--y"
+   ]
+  }
+ ],
+ "attributed": {
+  "gap": {
+   "configs": [
+    {
+     "alias": "",
+     "argv": [],
+     "first_seen": "1792318200.123456",
+     "instance": "18013",
+     "model_path": "/models/syn/x.gguf"
+    }
+   ],
+   "continuous_since": "0.0",
+   "covered_until": "1792317599.123456",
+   "samples": [
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18010",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 1,
+     "ts": "1792317600.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18011",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 2,
+     "ts": "1792317900.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18012",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 3,
+     "ts": "1792318140.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18013",
+     "model_path": "/models/syn/x.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 4,
+     "ts": "1792318201.123456"
+    }
+   ],
+   "text": "2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:05:00.123456789Z [18011] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:05:00.123456789Z [18011] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:09:00.123456789Z [18012] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:09:00.123456789Z [18012] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:10:00.123456789Z [18013] 0.05.690 I srv    load_model: loading model '/models/syn/x.gguf'\n2026-10-18T10:10:01.123456789Z [18013] 0.05.690 I slot print_timing: id  0 | task 4 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:10:01.123456789Z [18013] 0.05.690 I slot print_timing: id  0 | task 4 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n"
+  },
+  "gap-free": {
+   "configs": [
+    {
+     "alias": "",
+     "argv": [],
+     "first_seen": "1792318200.123456",
+     "instance": "18013",
+     "model_path": "/models/syn/x.gguf"
+    }
+   ],
+   "continuous_since": "1792316500.0",
+   "covered_until": "1792317601.123456",
+   "samples": [
+    {
+     "alias": "syn-g",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18010@1792317000",
+     "model_path": "/models/syn/g.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "ngram-simple (max=8)",
+     "task": 1,
+     "ts": "1792317600.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18011",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 2,
+     "ts": "1792317900.123456"
+    },
+    {
+     "alias": "syn-h",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18012@1792318000",
+     "model_path": "/models/syn/h.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 3,
+     "ts": "1792318140.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18013",
+     "model_path": "/models/syn/x.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 4,
+     "ts": "1792318201.123456"
+    }
+   ],
+   "text": "2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:05:00.123456789Z [18011] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:05:00.123456789Z [18011] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:09:00.123456789Z [18012] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:09:00.123456789Z [18012] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:10:00.123456789Z [18013] 0.05.690 I srv    load_model: loading model '/models/syn/x.gguf'\n2026-10-18T10:10:01.123456789Z [18013] 0.05.690 I slot print_timing: id  0 | task 4 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:10:01.123456789Z [18013] 0.05.690 I slot print_timing: id  0 | task 4 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n"
+  },
+  "model-veto": {
+   "configs": [
+    {
+     "alias": "",
+     "argv": [],
+     "first_seen": "1792317600.123456",
+     "instance": "18010",
+     "model_path": "/models/syn/other.gguf"
+    },
+    {
+     "alias": "",
+     "argv": [],
+     "first_seen": "1792318200.123456",
+     "instance": "18013",
+     "model_path": "/models/syn/x.gguf"
+    }
+   ],
+   "continuous_since": "0.0",
+   "covered_until": "1792317601.123456",
+   "samples": [
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18010",
+     "model_path": "/models/syn/other.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 1,
+     "ts": "1792317600.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18011",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 2,
+     "ts": "1792317900.123456"
+    },
+    {
+     "alias": "syn-h",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18012@1792318000",
+     "model_path": "/models/syn/h.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 3,
+     "ts": "1792318140.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18013",
+     "model_path": "/models/syn/x.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 4,
+     "ts": "1792318201.123456"
+    }
+   ],
+   "text": "2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I srv    load_model: loading model '/models/syn/other.gguf'\n2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:05:00.123456789Z [18011] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:05:00.123456789Z [18011] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:09:00.123456789Z [18012] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:09:00.123456789Z [18012] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:10:00.123456789Z [18013] 0.05.690 I srv    load_model: loading model '/models/syn/x.gguf'\n2026-10-18T10:10:01.123456789Z [18013] 0.05.690 I slot print_timing: id  0 | task 4 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:10:01.123456789Z [18013] 0.05.690 I slot print_timing: id  0 | task 4 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n"
+  },
+  "no-cover": {
+   "configs": [
+    {
+     "alias": "",
+     "argv": [],
+     "first_seen": "1792318200.123456",
+     "instance": "18013",
+     "model_path": "/models/syn/x.gguf"
+    }
+   ],
+   "continuous_since": "0.0",
+   "covered_until": "0.0",
+   "samples": [
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18010",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 1,
+     "ts": "1792317600.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18011",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 2,
+     "ts": "1792317900.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18012",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 3,
+     "ts": "1792318140.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18013",
+     "model_path": "/models/syn/x.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 4,
+     "ts": "1792318201.123456"
+    }
+   ],
+   "text": "2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:05:00.123456789Z [18011] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:05:00.123456789Z [18011] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:09:00.123456789Z [18012] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:09:00.123456789Z [18012] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:10:00.123456789Z [18013] 0.05.690 I srv    load_model: loading model '/models/syn/x.gguf'\n2026-10-18T10:10:01.123456789Z [18013] 0.05.690 I slot print_timing: id  0 | task 4 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:10:01.123456789Z [18013] 0.05.690 I slot print_timing: id  0 | task 4 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n"
+  },
+  "old-span": {
+   "configs": [
+    {
+     "alias": "",
+     "argv": [],
+     "first_seen": "1792318200.123456",
+     "instance": "18013",
+     "model_path": "/models/syn/x.gguf"
+    }
+   ],
+   "continuous_since": "1792317500.0",
+   "covered_until": "1792317600.123456",
+   "samples": [
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18010",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 1,
+     "ts": "1792317600.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18011",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 2,
+     "ts": "1792317900.123456"
+    },
+    {
+     "alias": "syn-h",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18012@1792318000",
+     "model_path": "/models/syn/h.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 3,
+     "ts": "1792318140.123456"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18013",
+     "model_path": "/models/syn/x.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 4,
+     "ts": "1792318201.123456"
+    }
+   ],
+   "text": "2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:00.123456789Z [18010] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:05:00.123456789Z [18011] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:05:00.123456789Z [18011] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:09:00.123456789Z [18012] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:09:00.123456789Z [18012] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:10:00.123456789Z [18013] 0.05.690 I srv    load_model: loading model '/models/syn/x.gguf'\n2026-10-18T10:10:01.123456789Z [18013] 0.05.690 I slot print_timing: id  0 | task 4 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:10:01.123456789Z [18013] 0.05.690 I slot print_timing: id  0 | task 4 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n"
+  }
+ },
+ "differing": [
+  {
+   "configs": [],
+   "keys": []
+  },
+  {
+   "configs": [
+    [
+     [
+      "--a",
+      "1"
+     ]
+    ]
+   ],
+   "keys": []
+  },
+  {
+   "configs": [
+    [
+     [
+      "--a",
+      "1"
+     ]
+    ],
+    [
+     [
+      "--a",
+      "1"
+     ]
+    ]
+   ],
+   "keys": []
+  },
+  {
+   "configs": [
+    [
+     [
+      "--a",
+      "1"
+     ]
+    ],
+    [
+     [
+      "--a",
+      "2"
+     ],
+     [
+      "--b",
+      "x"
+     ]
+    ]
+   ],
+   "keys": [
+    "--a",
+    "--b"
+   ]
+  },
+  {
+   "configs": [
+    [
+     [
+      "--b",
+      "\u2014"
+     ]
+    ],
+    []
+   ],
+   "keys": []
+  },
+  {
+   "configs": [
+    [
+     [
+      "--z",
+      "1"
+     ],
+     [
+      "-a",
+      "1"
+     ],
+     [
+      "--\u00e9",
+      "1"
+     ]
+    ],
+    [
+     [
+      "--z",
+      "2"
+     ]
+    ],
+    [
+     [
+      "--z",
+      "2"
+     ],
+     [
+      "Z",
+      "1"
+     ]
+    ]
+   ],
+   "keys": [
+    "--z",
+    "--\u00e9",
+    "-a",
+    "Z"
+   ]
+  }
+ ],
+ "history": {
+  "configs-raise": {
+   "argvs": "raise",
+   "rows": [
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "1.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "1.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "1.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "1.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ]
+   ],
+   "runs": []
+  },
+  "one-config": {
+   "argvs": [
+    [
+     "a",
+     [
+      [
+       "-m",
+       "/m.gguf"
+      ]
+     ]
+    ]
+   ],
+   "rows": [
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "1.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "1.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "1.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "1.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ]
+   ],
+   "runs": []
+  },
+  "ties": {
+   "argvs": [
+    [
+     "x",
+     [
+      [
+       "-m",
+       "/x"
+      ]
+     ]
+    ],
+    [
+     "y",
+     [
+      [
+       "-m",
+       "/y"
+      ]
+     ]
+    ],
+    [
+     "z",
+     [
+      [
+       "--model",
+       ""
+      ],
+      [
+       "-m",
+       "/z"
+      ],
+      [
+       "-t",
+       "4"
+      ]
+     ]
+    ]
+   ],
+   "rows": [
+    [
+     [
+      "instance",
+      "x"
+     ],
+     [
+      "ts",
+      "5.0"
+     ],
+     [
+      "gen_tps",
+      "10.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "x"
+     ],
+     [
+      "ts",
+      "5.0"
+     ],
+     [
+      "gen_tps",
+      "10.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "x"
+     ],
+     [
+      "ts",
+      "5.0"
+     ],
+     [
+      "gen_tps",
+      "10.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "y"
+     ],
+     [
+      "ts",
+      "5.0"
+     ],
+     [
+      "gen_tps",
+      "20.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "y"
+     ],
+     [
+      "ts",
+      "5.0"
+     ],
+     [
+      "gen_tps",
+      "20.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "y"
+     ],
+     [
+      "ts",
+      "5.0"
+     ],
+     [
+      "gen_tps",
+      "20.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "z"
+     ],
+     [
+      "ts",
+      "6.0"
+     ],
+     [
+      "gen_tps",
+      "30.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "z"
+     ],
+     [
+      "ts",
+      "6.0"
+     ],
+     [
+      "gen_tps",
+      "30.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "z"
+     ],
+     [
+      "ts",
+      "6.0"
+     ],
+     [
+      "gen_tps",
+      "30.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ]
+   ],
+   "runs": [
+    {
+     "argv": [
+      [
+       "--model",
+       ""
+      ],
+      [
+       "-m",
+       "/z"
+      ],
+      [
+       "-t",
+       "4"
+      ]
+     ],
+     "diff": [
+      [
+       "--model",
+       ""
+      ],
+      [
+       "-m",
+       "/z"
+      ],
+      [
+       "-t",
+       "4"
+      ]
+     ],
+     "draft_acc_p50": null,
+     "draft_len_p50": null,
+     "gen_p25": "30.0",
+     "gen_p50": "30.0",
+     "gen_p75": "30.0",
+     "instance": "z",
+     "is_current": false,
+     "last_ts": "6.0",
+     "n": 3,
+     "prompt_p50": "0.0",
+     "rel_pct": 100
+    },
+    {
+     "argv": [
+      [
+       "-m",
+       "/x"
+      ]
+     ],
+     "diff": [
+      [
+       "--model",
+       "unset"
+      ],
+      [
+       "-m",
+       "/x"
+      ],
+      [
+       "-t",
+       "unset"
+      ]
+     ],
+     "draft_acc_p50": null,
+     "draft_len_p50": null,
+     "gen_p25": "10.0",
+     "gen_p50": "10.0",
+     "gen_p75": "10.0",
+     "instance": "x",
+     "is_current": true,
+     "last_ts": "5.0",
+     "n": 3,
+     "prompt_p50": "0.0",
+     "rel_pct": 33
+    },
+    {
+     "argv": [
+      [
+       "-m",
+       "/y"
+      ]
+     ],
+     "diff": [
+      [
+       "--model",
+       "unset"
+      ],
+      [
+       "-m",
+       "/y"
+      ],
+      [
+       "-t",
+       "unset"
+      ]
+     ],
+     "draft_acc_p50": null,
+     "draft_len_p50": null,
+     "gen_p25": "20.0",
+     "gen_p50": "20.0",
+     "gen_p75": "20.0",
+     "instance": "y",
+     "is_current": false,
+     "last_ts": "5.0",
+     "n": 3,
+     "prompt_p50": "0.0",
+     "rel_pct": 67
+    }
+   ]
+  },
+  "two-configs": {
+   "argvs": [
+    [
+     "b",
+     [
+      [
+       "--model",
+       "/m.gguf"
+      ],
+      [
+       "--ctx-size",
+       "8192"
+      ]
+     ]
+    ],
+    [
+     "a",
+     [
+      [
+       "-m",
+       "/m.gguf"
+      ]
+     ]
+    ],
+    [
+     "c",
+     [
+      [
+       "-m",
+       "/m.gguf"
+      ]
+     ]
+    ],
+    [
+     "d",
+     [
+      [
+       "--ctx-size",
+       "1"
+      ]
+     ]
+    ]
+   ],
+   "rows": [
+    [
+     [
+      "instance",
+      "b"
+     ],
+     [
+      "ts",
+      "30.0"
+     ],
+     [
+      "gen_tps",
+      "140.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "b"
+     ],
+     [
+      "ts",
+      "29.0"
+     ],
+     [
+      "gen_tps",
+      "141.5"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "b"
+     ],
+     [
+      "ts",
+      "28.0"
+     ],
+     [
+      "gen_tps",
+      "150.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "20.0"
+     ],
+     [
+      "gen_tps",
+      "99.0"
+     ],
+     [
+      "prompt_tps",
+      "900.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "19.0"
+     ],
+     [
+      "gen_tps",
+      "98.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "18.0"
+     ],
+     [
+      "gen_tps",
+      "97.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      "0.5"
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "c"
+     ],
+     [
+      "ts",
+      "15.0"
+     ],
+     [
+      "gen_tps",
+      "99.5"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "d"
+     ],
+     [
+      "ts",
+      "10.0"
+     ],
+     [
+      "gen_tps",
+      "1.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ]
+   ],
+   "runs": [
+    {
+     "argv": [
+      [
+       "--model",
+       "/m.gguf"
+      ],
+      [
+       "--ctx-size",
+       "8192"
+      ]
+     ],
+     "diff": [
+      [
+       "--ctx-size",
+       "8192"
+      ],
+      [
+       "--model",
+       "/m.gguf"
+      ],
+      [
+       "-m",
+       "unset"
+      ]
+     ],
+     "draft_acc_p50": null,
+     "draft_len_p50": null,
+     "gen_p25": "140.0",
+     "gen_p50": "141.5",
+     "gen_p75": "150.0",
+     "instance": "b",
+     "is_current": true,
+     "last_ts": "30.0",
+     "n": 3,
+     "prompt_p50": "0.0",
+     "rel_pct": 100
+    },
+    {
+     "argv": [
+      [
+       "-m",
+       "/m.gguf"
+      ]
+     ],
+     "diff": [
+      [
+       "--ctx-size",
+       "unset"
+      ],
+      [
+       "--model",
+       "unset"
+      ],
+      [
+       "-m",
+       "/m.gguf"
+      ]
+     ],
+     "draft_acc_p50": "0.5",
+     "draft_len_p50": null,
+     "gen_p25": "98.0",
+     "gen_p50": "99.0",
+     "gen_p75": "99.0",
+     "instance": "a,c",
+     "is_current": false,
+     "last_ts": "20.0",
+     "n": 4,
+     "prompt_p50": "900.0",
+     "rel_pct": 70
+    }
+   ]
+  },
+  "zero-best": {
+   "argvs": [
+    [
+     "a",
+     [
+      [
+       "-m",
+       "/a"
+      ]
+     ]
+    ],
+    [
+     "b",
+     [
+      [
+       "-m",
+       "/b"
+      ],
+      [
+       "--jinja",
+       "true"
+      ]
+     ]
+    ]
+   ],
+   "rows": [
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "3.0"
+     ],
+     [
+      "gen_tps",
+      "0.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "3.0"
+     ],
+     [
+      "gen_tps",
+      "0.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "a"
+     ],
+     [
+      "ts",
+      "3.0"
+     ],
+     [
+      "gen_tps",
+      "0.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "b"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "0.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "b"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "0.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "b"
+     ],
+     [
+      "ts",
+      "2.0"
+     ],
+     [
+      "gen_tps",
+      "0.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ]
+   ],
+   "runs": [
+    {
+     "argv": [
+      [
+       "-m",
+       "/a"
+      ]
+     ],
+     "diff": [
+      [
+       "--jinja",
+       "unset"
+      ],
+      [
+       "-m",
+       "/a"
+      ]
+     ],
+     "draft_acc_p50": null,
+     "draft_len_p50": null,
+     "gen_p25": "0.0",
+     "gen_p50": "0.0",
+     "gen_p75": "0.0",
+     "instance": "a",
+     "is_current": true,
+     "last_ts": "3.0",
+     "n": 3,
+     "prompt_p50": "0.0",
+     "rel_pct": 0
+    },
+    {
+     "argv": [
+      [
+       "-m",
+       "/b"
+      ],
+      [
+       "--jinja",
+       "true"
+      ]
+     ],
+     "diff": [
+      [
+       "--jinja",
+       "true"
+      ],
+      [
+       "-m",
+       "/b"
+      ]
+     ],
+     "draft_acc_p50": null,
+     "draft_len_p50": null,
+     "gen_p25": "0.0",
+     "gen_p50": "0.0",
+     "gen_p75": "0.0",
+     "instance": "b",
+     "is_current": false,
+     "last_ts": "2.0",
+     "n": 3,
+     "prompt_p50": "0.0",
+     "rel_pct": 0
+    }
+   ]
+  }
+ },
+ "keys": [
+  {
+   "key": "8080",
+   "port": "8080",
+   "ts": "0.0"
+  },
+  {
+   "key": "8080@1792317600",
+   "port": "8080",
+   "ts": "1792317600.9"
+  },
+  {
+   "key": "1@0",
+   "port": "1",
+   "ts": "-0.5"
+  },
+  {
+   "key": "1@-1",
+   "port": "1",
+   "ts": "-1.5"
+  }
+ ],
+ "logs": {
+  "edges": {
+   "configs": [
+    {
+     "alias": "syn-e",
+     "argv": [
+      [
+       "--model",
+       "/models/syn/a.gguf"
+      ],
+      [
+       "--ctx-size",
+       "8192"
+      ],
+      [
+       "--spec-type",
+       "draft-mtp"
+      ],
+      [
+       "--spec-draft-n-max",
+       "4"
+      ],
+      [
+       "--spec-draft-p-min",
+       "0.25"
+      ],
+      [
+       "-ngl",
+       "99"
+      ],
+      [
+       "--jinja",
+       "true"
+      ]
+     ],
+     "first_seen": "1792317601.0",
+     "instance": "18006@1792317601",
+     "model_path": "/models/syn/a.gguf"
+    }
+   ],
+   "samples": [
+    {
+     "alias": "syn-e",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 16,
+     "gen_tps": "3200.0",
+     "instance": "18006@1792317601",
+     "model_path": "/models/syn/a.gguf",
+     "prompt_tokens": 7,
+     "prompt_tps": "1400.0",
+     "spec_type": "draft-mtp (max=4 min=0.25)",
+     "task": 4,
+     "ts": "1792317602.123456"
+    },
+    {
+     "alias": "syn-e",
+     "draft_acc": "1.0",
+     "draft_len": "0.0",
+     "gen_tokens": 0,
+     "gen_tps": "0.0",
+     "instance": "18006@1792317601",
+     "model_path": "/models/syn/a.gguf",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "draft-mtp (max=4 min=0.25)",
+     "task": 5,
+     "ts": "1792317602.123456"
+    },
+    {
+     "alias": "syn-e",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "inf",
+     "instance": "18006@1792317601",
+     "model_path": "/models/syn/a.gguf",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "draft-mtp (max=4 min=0.25)",
+     "task": 6,
+     "ts": "1792317603.123456"
+    }
+   ],
+   "span": [
+    "1792317601.0",
+    "1792317603.123456"
+   ],
+   "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-e on port 18006\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 | prompt eval time = 5 ms / 7 tokens (1 ms per token, 1400 tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 |  eval time = .5 ms / 0016 tokens ( .1 ms per token, 3200. tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 5 | draft acceptance = 1 ( 0 accepted / 0 generated), mean len = 0\n2026-10-18T10:00:03.123456789Z [18006] x slot print_timing: id 1 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 tokens per second)"
+  },
+  "interleaved": {
+   "configs": [
+    {
+     "alias": "",
+     "argv": [],
+     "first_seen": "0.0",
+     "instance": "18004",
+     "model_path": "/models/syn/c.gguf"
+    },
+    {
+     "alias": "syn-c",
+     "argv": [],
+     "first_seen": "1792317605.0",
+     "instance": "18004@1792317605",
+     "model_path": ""
+    },
+    {
+     "alias": "syn-d",
+     "argv": [
+      [
+       "-m",
+       "/models/syn/b.gguf"
+      ],
+      [
+       "--ctx-size",
+       "4096"
+      ],
+      [
+       "-np",
+       "2"
+      ],
+      [
+       "--flash-attn",
+       "true"
+      ]
+     ],
+     "first_seen": "1792317606.5",
+     "instance": "18005@1792317606",
+     "model_path": "/models/syn/b.gguf"
+    }
+   ],
+   "samples": [
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18003",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 9,
+     "ts": "1792317600.123456"
+    },
+    {
+     "alias": "syn-c",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18004@1792317605",
+     "model_path": "",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 3,
+     "ts": "1792317607.123456"
+    },
+    {
+     "alias": "syn-d",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18005@1792317606",
+     "model_path": "/models/syn/b.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 3,
+     "ts": "1792317608.123456"
+    }
+   ],
+   "span": [
+    "1792317600.123456",
+    "1792317608.123456"
+   ],
+   "text": "2026-10-18T10:00:00.123456789Z [18003] 0.05.690 I slot print_timing: id  0 | task 9 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\r\nno timestamp here\r\n[18004] 0.01.000 I srv    load_model: loading model '/models/syn/c.gguf'\r\n2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with name=syn-c on port 18004\u000b2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with name=syn-d on port 18005\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load:   -m\u001e2026-10-18T10:00:06.5Z srv    load:   /models/syn/b.gguf\u001e2026-10-18T10:00:06.5Z srv    load:   --ctx-size\u001e2026-10-18T10:00:06.5Z srv    load:   4096\u001e2026-10-18T10:00:06.5Z srv    load:   -np\u001e2026-10-18T10:00:06.5Z srv    load:   2\u001e2026-10-18T10:00:06.5Z srv    load:   --flash-attn\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u2028"
+  },
+  "respawn": {
+   "configs": [
+    {
+     "alias": "syn-a",
+     "argv": [
+      [
+       "--model",
+       "/models/syn/a.gguf"
+      ],
+      [
+       "--ctx-size",
+       "8192"
+      ],
+      [
+       "--spec-type",
+       "draft-mtp"
+      ],
+      [
+       "--spec-draft-n-max",
+       "4"
+      ],
+      [
+       "--spec-draft-p-min",
+       "0.25"
+      ],
+      [
+       "-ngl",
+       "99"
+      ],
+      [
+       "--jinja",
+       "true"
+      ]
+     ],
+     "first_seen": "1792317601.0",
+     "instance": "18001@1792317601",
+     "model_path": "/models/syn/a.gguf"
+    },
+    {
+     "alias": "syn-b",
+     "argv": [
+      [
+       "-m",
+       "/models/syn/b.gguf"
+      ],
+      [
+       "--ctx-size",
+       "4096"
+      ],
+      [
+       "-np",
+       "2"
+      ],
+      [
+       "--flash-attn",
+       "true"
+      ]
+     ],
+     "first_seen": "1792317660.0",
+     "instance": "18002@1792317660",
+     "model_path": "/models/syn/b.gguf"
+    },
+    {
+     "alias": "syn-a",
+     "argv": [
+      [
+       "--model",
+       "/models/syn/a.gguf"
+      ]
+     ],
+     "first_seen": "1792317720.0",
+     "instance": "18001@1792317720",
+     "model_path": "/models/syn/a.gguf"
+    }
+   ],
+   "samples": [
+    {
+     "alias": "syn-a",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18001@1792317601",
+     "model_path": "/models/syn/a.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "draft-mtp (max=4 min=0.25)",
+     "task": 1,
+     "ts": "1792317603.123456"
+    },
+    {
+     "alias": "syn-a",
+     "draft_acc": "0.62963",
+     "draft_len": "2.13",
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18001@1792317601",
+     "model_path": "/models/syn/a.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "draft-mtp (max=4 min=0.25)",
+     "task": 2,
+     "ts": "1792317604.123456"
+    },
+    {
+     "alias": "syn-b",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 111,
+     "gen_tps": "141.5",
+     "instance": "18002@1792317660",
+     "model_path": "/models/syn/b.gguf",
+     "prompt_tokens": 12,
+     "prompt_tps": "1142.8",
+     "spec_type": "",
+     "task": 1,
+     "ts": "1792317662.123456"
+    },
+    {
+     "alias": "syn-a",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 8,
+     "gen_tps": "160.0",
+     "instance": "18001@1792317720",
+     "model_path": "/models/syn/a.gguf",
+     "prompt_tokens": 8297,
+     "prompt_tps": "6695.1",
+     "spec_type": "",
+     "task": 1,
+     "ts": "1792317721.123456"
+    }
+   ],
+   "span": [
+    "1792317601.0",
+    "1792317721.123456"
+   ],
+   "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18001] 0.05.690 I srv    load_model: loading model '/models/syn/a.gguf'\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.62963 ( 51 accepted / 81 generated), mean len = 2.13\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with name=syn-b on port 18002\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:01:00.000000001Z srv    load:   -m\n2026-10-18T10:01:00.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:01:00.000000001Z srv    load:   --ctx-size\n2026-10-18T10:01:00.000000001Z srv    load:   4096\n2026-10-18T10:01:00.000000001Z srv    load:   -np\n2026-10-18T10:01:00.000000001Z srv    load:   2\n2026-10-18T10:01:00.000000001Z srv    load:   --flash-attn\n2026-10-18T10:01:01.123456789Z [18002] 0.05.690 I srv    load_model: loading model '/models/syn/b.gguf'\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 10.5 ms / 12 tokens (0.15 ms per token, 1142.8 tokens per second)\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:02:00.000000001Z srv    load:   --model\n2026-10-18T10:02:00.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:02:00.000000001Z srv    load:   --alias\n2026-10-18T10:02:00.000000001Z srv    load:   syn-a\n2026-10-18T10:02:00.000000001Z srv    load:   --port\n2026-10-18T10:02:00.000000001Z srv    load:   18001\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  50.0 ms /  8 tokens (7.07 ms per token,  160.0 tokens per second)\n"
+  },
+  "stamps": {
+   "configs": [],
+   "samples": [
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 0,
+     "ts": "1792317600.0"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 1,
+     "ts": "1792310400.5"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 2,
+     "ts": "1792323000.25"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 3,
+     "ts": "1792317600.0"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 4,
+     "ts": "0.0"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 5,
+     "ts": "0.0"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 6,
+     "ts": "1709251199.999999"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 7,
+     "ts": "0.0"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 8,
+     "ts": "0.0"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 9,
+     "ts": "-0.5"
+    },
+    {
+     "alias": "",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "10.5",
+     "instance": "18007",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 10,
+     "ts": "0.0"
+    }
+   ],
+   "span": [
+    "1792317600.0",
+    "1792323000.25"
+   ],
+   "text": "2026-10-18T10:00:00Z [18007] x slot print_timing: id 0 | task 0 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.5+02:00 [18007] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00,25-01:30 [18007] x slot print_timing: id 0 | task 2 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00Z [18007] x slot print_timing: id 0 | task 3 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-02-30T10:00:00Z [18007] x slot print_timing: id 0 | task 4 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T24:00:00Z [18007] x slot print_timing: id 0 | task 5 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2024-02-29T23:59:59.9999999Z [18007] x slot print_timing: id 0 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n0000-01-01T00:00:00Z [18007] x slot print_timing: id 0 | task 7 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:60Z [18007] x slot print_timing: id 0 | task 8 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n1969-12-31T23:59:59.5Z [18007] x slot print_timing: id 0 | task 9 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-13-01T00:00:00+0000 [18007] x slot print_timing: id 0 | task 10 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)"
+  },
+  "whitespace": {
+   "configs": [
+    {
+     "alias": "syn-f",
+     "argv": [
+      [
+       "--model\u00a0/models/syn/f.gguf",
+       "true"
+      ]
+     ],
+     "first_seen": "1792317601.123456",
+     "instance": "18008@1792317601",
+     "model_path": ""
+    }
+   ],
+   "samples": [
+    {
+     "alias": "syn-f",
+     "draft_acc": null,
+     "draft_len": null,
+     "gen_tokens": 20,
+     "gen_tps": "11.0",
+     "instance": "18008@1792317601",
+     "model_path": "",
+     "prompt_tokens": 0,
+     "prompt_tps": "0.0",
+     "spec_type": "",
+     "task": 1,
+     "ts": "1792317602.123456"
+    }
+   ],
+   "span": [
+    "1792317601.123456",
+    "1792317602.123456"
+   ],
+   "text": "2026-10-18T10:00:01.123456789Z srv\u001fload: spawning server instance with name=syn-f on port 18008\n2026-10-18T10:00:01.123456789Z srv\u3000load:\u2003\u2003--model\u00a0/models/syn/f.gguf\n2026-10-18T10:00:02.123456789Z [18008] x slot print_timing: id\u2009\u20090 | task 1 |\u00a0eval time = 1 ms /\u200020 tokens (1 ms per token, 11.0 tokens per second)\n"
+  }
+ },
+ "pct": [
+  {
+   "out": "0.0",
+   "q": "0.5",
+   "values": []
+  },
+  {
+   "out": "3.0",
+   "q": "0.5",
+   "values": [
+    "3.0"
+   ]
+  },
+  {
+   "out": "1.0",
+   "q": "0.5",
+   "values": [
+    "1.0",
+    "2.0"
+   ]
+  },
+  {
+   "out": "3.0",
+   "q": "0.5",
+   "values": [
+    "1.0",
+    "2.0",
+    "3.0",
+    "4.0"
+   ]
+  },
+  {
+   "out": "2.0",
+   "q": "0.25",
+   "values": [
+    "4.0",
+    "1.0",
+    "3.0",
+    "2.0"
+   ]
+  },
+  {
+   "out": "5.0",
+   "q": "0.75",
+   "values": [
+    "5.0",
+    "1.0",
+    "2.0",
+    "3.0",
+    "4.0",
+    "6.0"
+   ]
+  },
+  {
+   "out": "1.0",
+   "q": "0.25",
+   "values": [
+    "1.0",
+    "2.0",
+    "3.0"
+   ]
+  },
+  {
+   "out": "4.0",
+   "q": "0.5",
+   "values": [
+    "0.0",
+    "1.0",
+    "2.0",
+    "3.0",
+    "4.0",
+    "5.0",
+    "6.0",
+    "7.0",
+    "8.0",
+    "9.0"
+   ]
+  },
+  {
+   "out": "inf",
+   "q": "0.75",
+   "values": [
+    "0.1",
+    "0.2",
+    "inf"
+   ]
+  }
+ ],
+ "raising": {
+  "bad-float": {
+   "raised": "ValueError",
+   "text": "2026-10-18T10:00:01.123456789Z [18009] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 1.2.3 tokens per second)"
+  }
+ },
+ "sources": {
+  "telemetry.py": "5f390933bc0c734f1223229ddd7e19b73ed6f7abc8b382b2b228ddf81bb344bd"
+ },
+ "stats": {
+  "current-wins": {
+   "rows": [
+    [
+     [
+      "instance",
+      "2@2"
+     ],
+     [
+      "ts",
+      "20.0"
+     ],
+     [
+      "gen_tps",
+      "50.0"
+     ],
+     [
+      "prompt_tps",
+      "800.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "2@2"
+     ],
+     [
+      "ts",
+      "19.0"
+     ],
+     [
+      "gen_tps",
+      "51.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "2@2"
+     ],
+     [
+      "ts",
+      "18.0"
+     ],
+     [
+      "gen_tps",
+      "52.0"
+     ],
+     [
+      "prompt_tps",
+      "800.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "2@2"
+     ],
+     [
+      "ts",
+      "17.0"
+     ],
+     [
+      "gen_tps",
+      "53.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "2@2"
+     ],
+     [
+      "ts",
+      "16.0"
+     ],
+     [
+      "gen_tps",
+      "54.0"
+     ],
+     [
+      "prompt_tps",
+      "800.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "2@2"
+     ],
+     [
+      "ts",
+      "15.0"
+     ],
+     [
+      "gen_tps",
+      "55.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      null
+     ]
+    ],
+    [
+     [
+      "instance",
+      "1@1"
+     ],
+     [
+      "ts",
+      "5.0"
+     ],
+     [
+      "gen_tps",
+      "10.0"
+     ],
+     [
+      "prompt_tps",
+      "100.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      "ngram-simple"
+     ]
+    ]
+   ],
+   "stats": {
+    "config_count": 1,
+    "draft_acc_p50": null,
+    "draft_len_p50": null,
+    "draft_n": 0,
+    "gen_p25": "51.0",
+    "gen_p50": "52.0",
+    "gen_p75": "54.0",
+    "last_ts": "20.0",
+    "n": 6,
+    "prompt_p50": "800.0",
+    "single_config": true,
+    "spec_types": []
+   }
+  },
+  "empty": {
+   "rows": [],
+   "stats": {
+    "config_count": 1,
+    "draft_acc_p50": null,
+    "draft_len_p50": null,
+    "draft_n": 0,
+    "gen_p25": "0.0",
+    "gen_p50": "0.0",
+    "gen_p75": "0.0",
+    "last_ts": "0.0",
+    "n": 0,
+    "prompt_p50": "0.0",
+    "single_config": true,
+    "spec_types": []
+   }
+  },
+  "pooled": {
+   "rows": [
+    [
+     [
+      "instance",
+      "3@3"
+     ],
+     [
+      "ts",
+      "30.0"
+     ],
+     [
+      "gen_tps",
+      "40.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      ""
+     ]
+    ],
+    [
+     [
+      "instance",
+      "2@2"
+     ],
+     [
+      "ts",
+      "20.0"
+     ],
+     [
+      "gen_tps",
+      "41.0"
+     ],
+     [
+      "prompt_tps",
+      "0.0"
+     ],
+     [
+      "draft_acc",
+      "0.25"
+     ],
+     [
+      "draft_len",
+      null
+     ],
+     [
+      "spec_type",
+      "b"
+     ]
+    ],
+    [
+     [
+      "instance",
+      "1@1"
+     ],
+     [
+      "ts",
+      "10.0"
+     ],
+     [
+      "gen_tps",
+      "0.0"
+     ],
+     [
+      "prompt_tps",
+      "700.0"
+     ],
+     [
+      "draft_acc",
+      null
+     ],
+     [
+      "draft_len",
+      "3.0"
+     ],
+     [
+      "spec_type",
+      "a"
+     ]
+    ]
+   ],
+   "stats": {
+    "config_count": 3,
+    "draft_acc_p50": "0.25",
+    "draft_len_p50": "3.0",
+    "draft_n": 1,
+    "gen_p25": "40.0",
+    "gen_p50": "40.0",
+    "gen_p75": "41.0",
+    "last_ts": "30.0",
+    "n": 3,
+    "prompt_p50": "700.0",
+    "single_config": false,
+    "spec_types": [
+     "a",
+     "b"
+    ]
+   }
+  },
+  "single": {
+   "rows": [
+    [
+     [
+      "instance",
+      "1@1"
+     ],
+     [
+      "ts",
+      "9.0"
+     ],
+     [
+      "gen_tps",
+      "100.0"
+     ],
+     [
+      "prompt_tps",
+      "900.0"
+     ],
+     [
+      "draft_acc",
+      "0.5"
+     ],
+     [
+      "draft_len",
+      "2.0"
+     ],
+     [
+      "spec_type",
+      "draft-mtp (max=4)"
+     ]
+    ],
+    [
+     [
+      "instance",
+      "1@1"
+     ],
+     [
+      "ts",
+      "9.0"
+     ],
+     [
+      "gen_tps",
+      "100.0"
+     ],
+     [
+      "prompt_tps",
+      "900.0"
+     ],
+     [
+      "draft_acc",
+      "0.5"
+     ],
+     [
+      "draft_len",
+      "2.0"
+     ],
+     [
+      "spec_type",
+      "draft-mtp (max=4)"
+     ]
+    ],
+    [
+     [
+      "instance",
+      "1@1"
+     ],
+     [
+      "ts",
+      "9.0"
+     ],
+     [
+      "gen_tps",
+      "100.0"
+     ],
+     [
+      "prompt_tps",
+      "900.0"
+     ],
+     [
+      "draft_acc",
+      "0.5"
+     ],
+     [
+      "draft_len",
+      "2.0"
+     ],
+     [
+      "spec_type",
+      "draft-mtp (max=4)"
+     ]
+    ]
+   ],
+   "stats": {
+    "config_count": 1,
+    "draft_acc_p50": "0.5",
+    "draft_len_p50": "2.0",
+    "draft_n": 3,
+    "gen_p25": "100.0",
+    "gen_p50": "100.0",
+    "gen_p75": "100.0",
+    "last_ts": "9.0",
+    "n": 3,
+    "prompt_p50": "900.0",
+    "single_config": true,
+    "spec_types": [
+     "draft-mtp (max=4)"
+    ]
+   }
+  }
+ },
+ "stored": {
+  "18010": [
+   {
+    "alias": "syn-g",
+    "argv": [
+     [
+      "--model",
+      "/models/syn/g.gguf"
+     ],
+     [
+      "--spec-type",
+      "ngram-simple"
+     ],
+     [
+      "--draft-max",
+      "8"
+     ]
+    ],
+    "first_seen": "1792317000.0",
+    "instance": "18010@1792317000",
+    "model_path": "/models/syn/g.gguf"
+   },
+   {
+    "alias": "syn-old",
+    "argv": [],
+    "first_seen": "1792316000.0",
+    "instance": "18010@1792316000",
+    "model_path": "/models/syn/old.gguf"
+   }
+  ],
+  "18011": "raise",
+  "18012": [
+   {
+    "alias": "syn-h",
+    "argv": [],
+    "first_seen": "1792318000.0",
+    "instance": "18012@1792318000",
+    "model_path": "/models/syn/h.gguf"
+   }
+  ]
+ }
+}

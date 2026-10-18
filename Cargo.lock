@@ -159,6 +159,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "backend-telemetry"
+version = "0.1.0"
+dependencies = [
+ "gguf",
+ "regex",
+ "serde_json",
+]
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
