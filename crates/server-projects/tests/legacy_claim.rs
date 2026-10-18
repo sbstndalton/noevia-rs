@@ -18,8 +18,10 @@ fn claim_locked(root: &Path, id: &str) -> Result<bool, ClaimError> {
 }
 fn hex_bytes(text: &str) -> Vec<u8> {
     assert_eq!(text.len() % 2, 0);
-    text.as_bytes()
-        .chunks_exact(2)
+    let (pairs, remainder) = text.as_bytes().as_chunks::<2>();
+    assert!(remainder.is_empty());
+    pairs
+        .iter()
         .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
         .collect()
 }
@@ -27,9 +29,9 @@ fn hex_text(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 fn oracle_path(rel: &str) -> String {
-    let mut parts = rel.split('/');
+    let parts = rel.split('/');
     let mut out = Vec::new();
-    while let Some(part) = parts.next() {
+    for part in parts {
         if out.last().is_some_and(|p: &&str| *p == "migration-backups")
             && part.starts_with("legacy-")
         {
@@ -65,8 +67,7 @@ fn oracle_snapshot(root: &Path, result: bool) -> serde_json::Value {
                 .file_name()
                 .is_some_and(|name| name == "legacy-owner.json")
             {
-                record["json"] =
-                    serde_json::from_slice(&bytes).unwrap_or_else(|_| serde_json::Value::Null);
+                record["json"] = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
                 if record["json"].is_null() {
                     record["json"] = serde_json::Value::Null;
                     record["hex"] = hex_text(&bytes).into();
