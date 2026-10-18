@@ -700,7 +700,7 @@ fn fixture_provenance_is_the_pinned_services_source() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn actual_python_differential() {
+async fn native_transfer_table_matches_actual_python_jobs_files_and_history() {
     let fixture = fixture();
     let cases = fixture["cases"].as_array().unwrap().clone();
     assert!(cases.len() >= 25);
@@ -752,22 +752,10 @@ async fn actual_python_differential() {
             db.execute("INSERT INTO kv(key, value) VALUES('hf_token', ?1)", [token])
                 .unwrap();
         }
-        let plans: Vec<(String, String, String)> = case["steps"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|s| s["op"] == "start")
-            .map(|s| {
-                (
-                    s["path"].as_str().unwrap().to_owned(),
-                    ports.show(s["request"].as_str().unwrap()),
-                    ports.show(&serde_json::to_string(&s["plan"]).unwrap()),
-                )
-            })
-            .collect();
-        let expected_plans = plans.len();
-        let plans = Arc::new(Mutex::new(plans));
-        let child_port = child(plans.clone()).await;
+        // Frozen planning inputs isolate this transfer oracle from remote repository discovery.
+        // Actual native Planner response/job/destination parity has its own source-bound suite.
+        let trap = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let child_port = trap.local_addr().unwrap().port();
         let table = Downloads::new(Config {
             models_dir: models.to_str().unwrap().to_owned(),
             database: root.join("model_loader.db"),
@@ -782,7 +770,7 @@ async fn actual_python_differential() {
             clock: wall,
         })
         .unwrap();
-        let state = state(table, child_port);
+        let state = state(table.clone(), child_port);
         let progress =
             case.get("progress").is_none_or(|p| p != false) && !id.starts_with("parallel-");
         let mut created = 0;
@@ -802,15 +790,21 @@ async fn actual_python_differential() {
                 }
                 "start" => {
                     let before = jobs(&state).await.len();
-                    let (status, body) = send(
-                        &state,
-                        "POST",
-                        step["path"].as_str().unwrap(),
-                        Some(ports.show(step["request"].as_str().unwrap())),
+                    let plan = noevia_model_manager::downloads::parse_plan(
+                        ports
+                            .show(&serde_json::to_string(&step["plan"]).unwrap())
+                            .as_bytes(),
                     )
-                    .await;
-                    assert_eq!(status, step["plan"]["status"], "{at}: {body}");
-                    assert_eq!(body, step["plan"]["body"].as_str().unwrap(), "{at}");
+                    .unwrap();
+                    if plan.status == 200 {
+                        assert_eq!(
+                            table.queue(plan.jobs),
+                            noevia_model_manager::downloads::Queued::Done,
+                            "{at}"
+                        );
+                    } else {
+                        assert!(plan.jobs.is_empty(), "refused plan had jobs: {at}");
+                    }
                     created += jobs(&state).await.len() - before;
                 }
                 "wait" => {
@@ -890,8 +884,10 @@ async fn actual_python_differential() {
         wait(&state, idle).await;
         fake.release.send_replace(true);
         assert!(
-            plans.lock().unwrap().is_empty(),
-            "{id}: {expected_plans} plans not all asked for"
+            tokio::time::timeout(Duration::from_millis(20), trap.accept())
+                .await
+                .is_err(),
+            "native transfer contacted private child"
         );
         let end = std::time::Instant::now() + Duration::from_secs(20);
         let rows = loop {
@@ -1247,18 +1243,21 @@ const HEADS_START: &str = "/api/v1/sections/synthetic-chat/draft-heads/download"
 // noevia#1994: the delete's body is read before the whole table is held. A client whose body
 // never completes holds nothing while it stalls, and nothing once it is dropped; a start in the
 // meantime queues.
+#[cfg(all(feature = "native-download-plan", feature = "native-model-delete"))]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a_stalled_python_delete_body_never_holds_the_table() {
+async fn a_stalled_native_delete_body_never_holds_the_table() {
     use futures_util::StreamExt as _;
-    let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let hang = silent.local_addr().unwrap().port();
-    tokio::spawn(async move {
-        let mut held = Vec::new();
-        while let Ok((sock, _)) = silent.accept().await {
-            held.push(sock);
-        }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(async move {
+        let app = axum::Router::new().route(
+            "/x.gguf",
+            axum::routing::head(|| async { ([("content-length", "1")], "") })
+                .get(|| async { std::future::pending::<&'static str>().await }),
+        );
+        axum::serve(listener, app).await.unwrap();
     });
-    let mut child = turn_based_child().await;
+    let trap = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().canonicalize().unwrap();
     let models = root.join("models");
@@ -1277,7 +1276,35 @@ async fn a_stalled_python_delete_body_never_holds_the_table() {
         clock: wall,
     })
     .unwrap();
-    let state = state(table.clone(), child.port);
+    table
+        .set_planner(
+            noevia_model_manager::download_plan::Planner::new(
+                models.to_str().unwrap(),
+                &models.join("models.ini"),
+                root.as_path(),
+                "",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let mut native_state =
+        Arc::into_inner(state(table.clone(), trap.local_addr().unwrap().port())).unwrap();
+    native_state.model_delete = Some(
+        noevia_model_manager::model_delete::ModelDelete::new(
+            noevia_model_manager::model_delete::Config {
+                models: models.to_str().unwrap().into(),
+                ini: models.join("models.ini"),
+                host_path: String::new(),
+                targets: String::new(),
+                mountinfo: root.join("mountinfo"),
+                hostname: String::new(),
+                embed: None,
+            },
+            Arc::new(NoDocker),
+        )
+        .with_downloads(table.clone()),
+    );
+    let state = Arc::new(native_state);
     // The first part of the body arrives; the rest never does.
     let (polled, was_polled) = tokio::sync::oneshot::channel::<()>();
     let body = futures_util::stream::iter([Ok::<_, std::io::Error>(bytes::Bytes::from_static(
@@ -1302,13 +1329,23 @@ async fn a_stalled_python_delete_body_never_holds_the_table() {
         .unwrap();
     tokio::time::sleep(Duration::from_millis(50)).await;
     assert_eq!(table.whole_reservations(), 0, "held while the body stalls");
-    child
-        .plans
-        .send(one_file_plan("hang/x.gguf", hang))
-        .unwrap();
-    let (status, body) = send(&state, "POST", URL_START, Some(r#"{"url": "x"}"#.into())).await;
-    assert_eq!(child.arrived().await, "plan");
+    let (status, body) = send(
+        &state,
+        "POST",
+        URL_START,
+        Some(json!({"url": format!("http://127.0.0.1:{port}/x.gguf"), "target":""}).to_string()),
+    )
+    .await;
     assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        serde_json::from_str::<Value>(&body).unwrap(),
+        json!({"queued":["x.gguf"]})
+    );
+    assert_eq!(
+        jobs(&state).await.len(),
+        1,
+        "native planner queued no transfer"
+    );
     stalled.abort();
     assert!(stalled.await.unwrap_err().is_cancelled());
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -1328,4 +1365,11 @@ async fn a_stalled_python_delete_body_never_holds_the_table() {
         .await;
     }
     wait(&state, idle).await;
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), trap.accept())
+            .await
+            .is_err(),
+        "native delete/download used private RPC"
+    );
+    server.abort();
 }

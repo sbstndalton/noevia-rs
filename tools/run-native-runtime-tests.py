@@ -49,9 +49,9 @@ def main():
                 if line.startswith("historical_") and line.endswith(": test"):
                     parts = line.removesuffix(": test").split("::")
                     actual.add((parts[0].removeprefix("historical_"), parts[-1]))
-        if actual != expected or len(actual) != 54:
+        if actual != expected or len(actual) != 57:
             raise SystemExit(f"historical oracle inventory changed: expected {len(expected)}, got {len(actual)}")
-        print("Required historical private-input contracts: 54", flush=True)
+        print("Required historical private-input contracts: 57", flush=True)
     with tempfile.TemporaryDirectory(prefix="qa-native-runtime-tests-", dir="/tmp") as folder:
         os.chmod(folder, 0o700)
         old = os.umask(0o077)

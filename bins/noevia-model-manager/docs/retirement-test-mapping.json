@@ -72,14 +72,16 @@
     "original_count": 7,
     "archived": [
       "failures_and_the_overview_count",
-      "python_delete_forward_reserves_the_whole_table"
+      "python_delete_forward_reserves_the_whole_table",
+      "actual_python_differential",
+      "a_stalled_python_delete_body_never_holds_the_table"
     ],
     "integration_remaining": [
       "fixture_provenance_is_the_pinned_services_source",
-      "actual_python_differential",
       "safe_dest_matches_python",
       "route_shapes",
-      "a_stalled_python_delete_body_never_holds_the_table"
+      "native_transfer_table_matches_actual_python_jobs_files_and_history",
+      "a_stalled_native_delete_body_never_holds_the_table"
     ],
     "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
     "source_sha256": "2812ea35fbd5ba95d0999f85357f3d26dbebd756ae87ab57e0ef7fe81c72395e"
@@ -190,14 +192,15 @@
     "archived": [
       "native_route_keeps_auth_and_non_get_policy",
       "python_mode_forwards_get_unchanged",
-      "every_case_matches_the_actual_python_route_through_the_router"
+      "every_case_matches_the_actual_python_route_through_the_router",
+      "a_child_that_cannot_answer_is_never_guessed_around"
     ],
     "integration_remaining": [
       "the_private_runtime_call_is_never_reachable_from_outside",
       "without_the_contained_opener_the_route_refuses",
-      "a_child_that_cannot_answer_is_never_guessed_around",
       "a_link_leaving_the_models_folder_refuses",
-      "native_live_fields_need_no_child"
+      "native_live_fields_need_no_child",
+      "missing_native_live_owner_refuses_without_private_rpc_and_invalid_files_still_match"
     ],
     "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
     "source_sha256": "e154c6a04a53b807082276d18b17e144a2d70ae3abfbb7ce38b312b097c07ab3"

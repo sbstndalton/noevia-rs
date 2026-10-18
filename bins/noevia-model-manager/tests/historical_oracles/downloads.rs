@@ -1161,3 +1161,340 @@ async fn python_delete_forward_reserves_the_whole_table() {
 // noevia#1994: the delete's body is read before the whole table is held. A client whose body
 // never completes holds nothing while it stalls, and nothing once it is dropped; a start in the
 // meantime queues.
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn actual_python_differential() {
+    let fixture = fixture();
+    let cases = fixture["cases"].as_array().unwrap().clone();
+    assert!(cases.len() >= 25);
+    for case in cases {
+        let id = case["id"].as_str().unwrap().to_owned();
+        let files: HashMap<(String, String), Value> = case["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| {
+                (
+                    (
+                        f["server"].as_str().unwrap().to_owned(),
+                        f["path"].as_str().unwrap().to_owned(),
+                    ),
+                    f.clone(),
+                )
+            })
+            .collect();
+        let fake = Arc::new(Fake {
+            files,
+            log: Mutex::new(Vec::new()),
+            release: tokio::sync::watch::channel(false).0,
+            ports: Mutex::new(HashMap::new()),
+        });
+        serve(&fake, "hub").await;
+        serve(&fake, "cdn").await;
+        let dead = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let ports = Ports {
+            hub: fake.host("hub"),
+            cdn: fake.host("cdn"),
+            dead: format!("127.0.0.1:{dead}"),
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let models = root.join("models");
+        std::fs::create_dir(&models).unwrap();
+        for t in case["targets"].as_array().unwrap() {
+            std::fs::create_dir(models.join(t.as_str().unwrap())).unwrap();
+        }
+        let db = Connection::open(root.join("model_loader.db")).unwrap();
+        for sql in fixture["schema"].as_array().unwrap() {
+            db.execute_batch(sql.as_str().unwrap()).unwrap();
+        }
+        if let Some(token) = case["token"].as_str() {
+            db.execute("INSERT INTO kv(key, value) VALUES('hf_token', ?1)", [token])
+                .unwrap();
+        }
+        let plans: Vec<(String, String, String)> = case["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|s| s["op"] == "start")
+            .map(|s| {
+                (
+                    s["path"].as_str().unwrap().to_owned(),
+                    ports.show(s["request"].as_str().unwrap()),
+                    ports.show(&serde_json::to_string(&s["plan"]).unwrap()),
+                )
+            })
+            .collect();
+        let expected_plans = plans.len();
+        let plans = Arc::new(Mutex::new(plans));
+        let child_port = child(plans.clone()).await;
+        let table = Downloads::new(Config {
+            models_dir: models.to_str().unwrap().to_owned(),
+            database: root.join("model_loader.db"),
+            max_concurrent: usize::try_from(case["concurrent"].as_u64().unwrap()).unwrap(),
+            token_origin: TokenOrigin {
+                scheme: "http".into(),
+                host: "127.0.0.1".into(),
+                port: fake.ports.lock().unwrap()["hub"],
+            },
+            parallel_min: fixture["parallel_min"].as_i64().unwrap(),
+            unknown_cap: noevia_model_manager::downloads::UNKNOWN_SIZE_CAP,
+            clock: wall,
+        })
+        .unwrap();
+        let state = state(table, child_port);
+        let progress =
+            case.get("progress").is_none_or(|p| p != false) && !id.starts_with("parallel-");
+        let mut created = 0;
+        for (n, step) in case["steps"].as_array().unwrap().iter().enumerate() {
+            let at = format!("{id}: step {n} {}", step["op"]);
+            match step["op"].as_str().unwrap() {
+                "partial" => {
+                    let p = models.join(step["file"].as_str().unwrap());
+                    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+                    let total = usize::try_from(step["total"].as_u64().unwrap()).unwrap();
+                    let keep = usize::try_from(step["size"].as_u64().unwrap()).unwrap();
+                    std::fs::write(&p, &content(step["seed"].as_u64().unwrap(), total)[..keep])
+                        .unwrap();
+                    if let Some(v) = step["validator"].as_str() {
+                        std::fs::write(format!("{}.validator", p.to_str().unwrap()), v).unwrap();
+                    }
+                }
+                "start" => {
+                    let before = jobs(&state).await.len();
+                    let (status, body) = send(
+                        &state,
+                        "POST",
+                        step["path"].as_str().unwrap(),
+                        Some(ports.show(step["request"].as_str().unwrap())),
+                    )
+                    .await;
+                    assert_eq!(status, step["plan"]["status"], "{at}: {body}");
+                    assert_eq!(body, step["plan"]["body"].as_str().unwrap(), "{at}");
+                    created += jobs(&state).await.len() - before;
+                }
+                "wait" => {
+                    let until = step["until"].clone();
+                    if until == "idle" {
+                        wait(&state, idle).await;
+                    } else {
+                        wait(&state, |list| {
+                            list.iter().any(|j| {
+                                j["filename"] == until["file"]
+                                    && match until.get("downloaded") {
+                                        Some(d) => j["downloaded"].as_u64() >= d.as_u64(),
+                                        None => j["status"] == until["status"],
+                                    }
+                            })
+                        })
+                        .await;
+                    }
+                }
+                "list" => {
+                    let (status, body) = send(&state, "GET", "/api/v1/downloads", None).await;
+                    assert_eq!(status, 200, "{at}");
+                    let orders = key_orders(&body);
+                    let list: Value = serde_json::from_str(&body).unwrap();
+                    let mut got: Vec<Value> = list["jobs"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|j| {
+                            let keys = orders[j["id"].as_str().unwrap()].clone();
+                            normal_job(j, &ports, progress, keys)
+                        })
+                        .collect();
+                    got.sort_by(|a, b| a["filename"].as_str().cmp(&b["filename"].as_str()));
+                    assert_eq!(Value::Array(got), step["jobs"], "{at}");
+                }
+                "cancel" => {
+                    let list = jobs(&state).await;
+                    let job = list.iter().find(|j| j["filename"] == step["file"]).unwrap();
+                    let uri = format!("/api/v1/downloads/{}/cancel", job["id"].as_str().unwrap());
+                    let (status, body) = send(&state, "POST", &uri, None).await;
+                    assert_eq!(
+                        (json!(status), json!(body)),
+                        (step["status"].clone(), step["body"].clone()),
+                        "{at}"
+                    );
+                }
+                "cancel_unknown" => {
+                    let (status, body) = send(
+                        &state,
+                        "POST",
+                        "/api/v1/downloads/synthetic-unknown/cancel",
+                        None,
+                    )
+                    .await;
+                    assert_eq!(
+                        (json!(status), json!(body)),
+                        (step["status"].clone(), step["body"].clone()),
+                        "{at}"
+                    );
+                }
+                "clear" => {
+                    let (status, body) =
+                        send(&state, "POST", "/api/v1/downloads/clear", None).await;
+                    assert_eq!(
+                        (json!(status), json!(body)),
+                        (step["status"].clone(), step["body"].clone()),
+                        "{at}"
+                    );
+                }
+                "release" => {
+                    fake.release.send_replace(true);
+                }
+                other => panic!("{id}: unknown step {other}"),
+            }
+        }
+        wait(&state, idle).await;
+        fake.release.send_replace(true);
+        assert!(
+            plans.lock().unwrap().is_empty(),
+            "{id}: {expected_plans} plans not all asked for"
+        );
+        let end = std::time::Instant::now() + Duration::from_secs(20);
+        let rows = loop {
+            let rows: Vec<Value> = db
+                .prepare("SELECT repo_id, filename, dest_path, total_bytes, status, error, started_at, completed_at FROM download_history ORDER BY id")
+                .unwrap()
+                .query_map([], |r| {
+                    let dest: String = r.get(2)?;
+                    let error: Option<String> = r.get(5)?;
+                    let started: Option<f64> = r.get(6)?;
+                    let completed: Option<f64> = r.get(7)?;
+                    Ok(json!([
+                        ports.hide(&r.get::<_, String>(0)?),
+                        r.get::<_, String>(1)?,
+                        Path::new(&dest).strip_prefix(&models).unwrap().to_str().unwrap(),
+                        r.get::<_, i64>(3)?,
+                        r.get::<_, String>(4)?,
+                        error.map(|e| ports.hide(&e)),
+                        started.is_some(),
+                        completed.is_some()
+                    ]))
+                })
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            if rows.len() >= created {
+                break rows;
+            }
+            assert!(std::time::Instant::now() < end, "{id}: history rows");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        };
+        let mut rows = rows;
+        rows.sort_by_key(py_dumps);
+        assert_eq!(
+            Value::Array(rows),
+            case["history"],
+            "{id}: download_history"
+        );
+        assert_eq!(
+            Value::Array(files_under(&models)),
+            case["models"],
+            "{id}: models folder"
+        );
+        if !case["requests"].is_null() {
+            let mut log: Vec<Value> = fake
+                .log
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|r| {
+                    let mut r = r.clone();
+                    r[2] = json!(ports.hide(r[2].as_str().unwrap()));
+                    r
+                })
+                .collect();
+            log.sort_by_key(py_dumps);
+            assert_eq!(Value::Array(log), case["requests"], "{id}: requests");
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_stalled_python_delete_body_never_holds_the_table() {
+    use futures_util::StreamExt as _;
+    let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let hang = silent.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((sock, _)) = silent.accept().await {
+            held.push(sock);
+        }
+    });
+    let mut child = turn_based_child().await;
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let models = root.join("models");
+    std::fs::create_dir(&models).unwrap();
+    let db = Connection::open(root.join("model_loader.db")).unwrap();
+    for sql in fixture()["schema"].as_array().unwrap() {
+        db.execute_batch(sql.as_str().unwrap()).unwrap();
+    }
+    let table = Downloads::new(Config {
+        models_dir: models.to_str().unwrap().to_owned(),
+        database: root.join("model_loader.db"),
+        max_concurrent: 2,
+        token_origin: TokenOrigin::hub(),
+        parallel_min: 64 * 1024,
+        unknown_cap: noevia_model_manager::downloads::UNKNOWN_SIZE_CAP,
+        clock: wall,
+    })
+    .unwrap();
+    let state = state(table.clone(), child.port);
+    // The first part of the body arrives; the rest never does.
+    let (polled, was_polled) = tokio::sync::oneshot::channel::<()>();
+    let body = futures_util::stream::iter([Ok::<_, std::io::Error>(bytes::Bytes::from_static(
+        b"{\"models\":",
+    ))])
+    .chain(futures_util::stream::once(async move {
+        let _ = polled.send(());
+        std::future::pending::<Result<bytes::Bytes, std::io::Error>>().await
+    }));
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/models/delete")
+        .header("x-model-loader-token", TOKEN)
+        .header("content-type", "application/json")
+        .body(Body::from_stream(body))
+        .unwrap();
+    let router = noevia_model_manager::router(state.clone());
+    let stalled = tokio::spawn(async move { router.oneshot(request).await });
+    tokio::time::timeout(Duration::from_secs(20), was_polled)
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(table.whole_reservations(), 0, "held while the body stalls");
+    child
+        .plans
+        .send(one_file_plan("hang/x.gguf", hang))
+        .unwrap();
+    let (status, body) = send(&state, "POST", URL_START, Some(r#"{"url": "x"}"#.into())).await;
+    assert_eq!(child.arrived().await, "plan");
+    assert_eq!(status, 200, "{body}");
+    stalled.abort();
+    assert!(stalled.await.unwrap_err().is_cancelled());
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(
+        table.whole_reservations(),
+        0,
+        "held after the request was dropped"
+    );
+    for job in jobs(&state).await {
+        let id = job["id"].as_str().unwrap().to_owned();
+        send(
+            &state,
+            "POST",
+            &format!("/api/v1/downloads/{id}/cancel"),
+            None,
+        )
+        .await;
+    }
+    wait(&state, idle).await;
+}

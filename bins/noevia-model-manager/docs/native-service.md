@@ -15,6 +15,12 @@ The secure SQLite worker initializes the full source-derived schema and prompt s
 holding its lifetime writer lease. Existing schema migrations are additive/idempotent;
 incompatible schemas refuse. Native INI bootstrap preserves stored idle preference
 reconciliation followed by optional cache-ram migration, including best-effort error logging.
+Store paths retain their existing safety policy: directories must be real, owned by root
+or the effective runtime UID, and not writable by group/others. A root-owned sticky
+temporary ancestor is allowed only when its immediate child is private (0700) and owned
+by the effective UID. Ordinary non-temporary roots do not require mode0700. Existing
+database/lease files retain their separate safe-file checks.
+
 Missing models.ini remains missing. service::Ready requires completed schema/seed and all
 installed native owners. There is no private runtime fallback or invented empty preset.
 
@@ -61,7 +67,7 @@ Compose/pins remain release-preparation scope. N5 remains sysfs-only; no real jo
 ## Preserved qualification
 
 retirement-test-mapping.json records every original integration source hash and
-selected historical test name. The 54 private-input/forwarding contracts live in
+selected historical test name. The 57 private-input/forwarding contracts live in
 tests/historical_oracles and compile only into the library's cfg(test) build.
 Their recorded API response, file-tree, revision and source-fixture assertions
 remain unchanged. The required combined-runtime runner compares the exact named
@@ -83,3 +89,8 @@ table, requiring exactly port8090; another process's private-port trap is exclud
 The sections mutation control changes the actual production bind8090 to8091 and
 must fail this owned-port assertion. This replaces the retired test-only
 child-port mutex mutation; the auth, metadata and file-boundary controls remain.
+
+The download transfer integration replays the same frozen plans directly into the real
+native queue while retaining all job/file/history/wire assertions. Native Planner has its
+separate actual-source parity suite; a production-route partial delete body test installs
+both native Planner and native delete owner and proves queue progress and zero private RPC.

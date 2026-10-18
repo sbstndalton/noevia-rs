@@ -306,44 +306,21 @@ mod linux {
     }
 
     #[tokio::test]
-    async fn a_child_that_cannot_answer_is_never_guessed_around() {
+    async fn missing_native_live_owner_refuses_without_private_rpc_and_invalid_files_still_match() {
         let dir = tempfile::tempdir().unwrap();
         let models = folder(dir.path());
         let ini = models.join("models.ini");
+        let trap = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", trap.local_addr().unwrap());
         let uri = "/api/v1/models/detail?key=a.gguf";
-        // The child's own unhandled error is Python's 500.
-        let (base, _seen) = child(500, "Internal Server Error".into()).await;
-        let failed = send(state(Some((&models, &ini)), &base), "GET", uri, true).await;
-        assert_eq!(failed.status, 500);
-        assert_eq!(
-            failed.content_type.as_deref(),
-            Some("text/plain; charset=utf-8")
+        let answer = send(state(Some((&models, &ini)), &base), "GET", uri, true).await;
+        assert_eq!(answer.status, 503);
+        assert_eq!(answer.body, REFUSED);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(20), trap.accept())
+                .await
+                .is_err()
         );
-        assert_eq!(failed.body, b"Internal Server Error");
-        // Refusing, missing or malformed: the forwarded route's 502, never a partial answer.
-        for (status, body) in [
-            (
-                503,
-                r#"{"detail":"Native model manager owns this endpoint"}"#,
-            ),
-            (404, r#"{"detail":"Not Found"}"#),
-            (200, r#"{"loaded":{}}"#),
-            (200, r#"{"loaded":{},"fit":{}}"#),
-        ] {
-            let (base, _seen) = child(status, body.into()).await;
-            let answer = send(state(Some((&models, &ini)), &base), "GET", uri, true).await;
-            assert_eq!(answer.status, 502, "{status} {body}");
-            assert_eq!(answer.body, UNAVAILABLE);
-        }
-        let down = send(
-            state(Some((&models, &ini)), "http://127.0.0.1:9"),
-            "GET",
-            uri,
-            true,
-        )
-        .await;
-        assert_eq!(down.status, 502);
-        assert_eq!(down.body, UNAVAILABLE);
         // A file part that fails is answered without asking the child at all.
         std::fs::write(models.join("a.gguf"), b"NOPE").unwrap();
         let bad = send(
