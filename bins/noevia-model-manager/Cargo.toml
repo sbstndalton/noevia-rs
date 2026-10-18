@@ -52,6 +52,7 @@ native-section-autoconfig = ["native-draft-heads"]
 # natively, so the route no longer asks the child; this process is then the only telemetry writer.
 native-telemetry = ["native-section-autoconfig", "native-backends", "dep:backend-telemetry", "dep:indexmap"]
 native-bench-observe = ["native-benchmark-runner", "native-backends", "dep:backend-telemetry"]
+native-safe-defaults = ["native-section-writes", "native-section-autoconfig"]
 [lints]
 workspace = true
 [dependencies]

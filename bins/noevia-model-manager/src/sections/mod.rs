@@ -2,6 +2,8 @@
 pub(crate) mod access;
 mod defaults;
 pub mod ini;
+#[cfg(feature = "native-safe-defaults")]
+pub(crate) mod safe_defaults;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{

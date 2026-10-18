@@ -1761,16 +1761,20 @@ async fn native_section_write(
     }
     let guard = writes.lock().await;
     let plan = if let SectionWrite::SafeDefaults(name) = &route {
-        let query: String = form_urlencoded::Serializer::new(String::new())
-            .append_pair("name", name)
-            .finish();
-        match child_runtime(state, section_writes::PLAN_PATH, &query, 1024 * 1024).await {
-            Ok(bytes) => match section_writes::parse_plan(&bytes) {
-                Some(plan) => Some(plan),
-                None => return unavailable(),
-            },
-            Err(true) => return internal_error(),
-            Err(false) => return unavailable(),
+        if writes.has_native_defaults() {
+            None
+        } else {
+            let query: String = form_urlencoded::Serializer::new(String::new())
+                .append_pair("name", name)
+                .finish();
+            match child_runtime(state, section_writes::PLAN_PATH, &query, 1024 * 1024).await {
+                Ok(bytes) => match section_writes::parse_plan(&bytes) {
+                    Some(plan) => Some(plan),
+                    None => return unavailable(),
+                },
+                Err(true) => return internal_error(),
+                Err(false) => return unavailable(),
+            }
         }
     } else {
         None
@@ -1803,6 +1807,9 @@ async fn native_section_write(
                         .map(|(_, v)| v.into_owned())
                         .unwrap_or_default();
                     writes.delete(&name, &base)
+                }
+                SectionWrite::SafeDefaults(name) if writes.has_native_defaults() => {
+                    writes.native_defaults(&name)
                 }
                 SectionWrite::SafeDefaults(name) => match plan {
                     Some(plan) => writes.safe_defaults(&name, plan),

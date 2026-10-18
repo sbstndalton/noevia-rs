@@ -404,3 +404,26 @@ async fn non_native_shapes_never_write() {
     }
     assert!(!ini.exists());
 }
+
+#[cfg(feature = "native-safe-defaults")]
+#[tokio::test]
+async fn native_safe_defaults_never_asks_child_for_a_plan() {
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir(&models).unwrap();
+    std::fs::write(models.join("syn-bad.gguf"), b"not a valid header").unwrap();
+    let ini = models.join("models.ini");
+    let writes = SectionWrites::new(&ini, (1024, 2048));
+    writes.set_safe_models(&models);
+    // This child rejects any planning request. The selected native planner must bypass it.
+    let base = child(Arc::new(Mutex::new(None))).await;
+    let state = state(writes, &base);
+    let step = serde_json::json!({"method":"POST","path":"/api/v1/sections/syn-bad/safe-defaults","body":null,"content_type":null});
+    let answer = send(state.clone(), &step, "").await;
+    assert_eq!(answer.status, 200, "{}", answer.body);
+    assert!(std::fs::read_to_string(&ini)
+        .unwrap()
+        .contains("ctx-size = 8192"));
+    let again = send(state, &step, "").await;
+    assert_eq!(again.status, 409);
+}
