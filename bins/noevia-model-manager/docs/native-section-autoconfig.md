@@ -64,6 +64,21 @@ Delegated to the Python child, never re-implemented, through the private
 - the backend inventory: `helpers._backend_list()` (the GPU sampler, Docker image tags and
   commands), whose failure is the route's plain 500.
 
+**Step 3b (noevia#1318).** While this process samples the backends
+(`MODEL_MANAGER_BACKENDS_IMPL=rust`), the route uses its own `_backend_list()` instead of the
+list in the child's answer.
+
+- **The list:** the native descriptors (`fit::descriptors`), each with `baseline` as
+  `parse_baseline(cmd) if cmd else {}`. The parse goes through the `model-autoconfig` crate over
+  `inventory::KNOWN_KEYS` (`sorted(ini.ALL_KNOWN_KEYS)`).
+- **Failures:** the child still lists the backends itself, so a failure there stays Python's 500.
+  A container command this side does not render, or a baseline the rule refuses, keeps the
+  child's list for that answer. Each of those reasons is logged once.
+- **Differential:** `tools/gen-fit-oracle.py` records Python's whole list (baseline included) and
+  the known keys, and `section_autoconfig::inventory::tests` compares both.
+
+Step 3d drops the child call along with the telemetry port.
+
 The child answers `{"measured": ..., "history": ..., "promptTps": "<repr>", "backends": "<json>"}`:
 `measured` and `history` rendered as the route renders them and placed verbatim, the prompt rate
 as Python's float `repr`, and the backend list as JSON text that keeps non-finite floats. The

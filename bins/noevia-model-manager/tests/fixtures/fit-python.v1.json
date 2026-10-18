@@ -1,6 +1,7 @@
 {
  "cases": [
   {
+   "backend_list": "[{\"name\":\"llama-igpu\",\"vendor\":\"unknown\",\"vram_gb\":16.0,\"gpu_count\":1,\"card_vram_gb\":[16.0],\"host_ram_gb\":64.0,\"baseline\":{},\"baseline_args\":[\"--host\",\"0.0.0.0\"]}]",
    "budget": "16.0",
    "cache": "{\"llama-igpu\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 16, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 16.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
    "chips": [
@@ -153,6 +154,7 @@
    "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
   },
   {
+   "backend_list": "[]",
    "budget": "0.0",
    "cache": "{\"llama-cpu\": {\"ok\": true, \"error\": null, \"gpu\": null, \"container\": null}, \"llama-unknown\": {\"ok\": false, \"error\": \"warming up\u2026\", \"gpu\": null, \"container\": null}}",
    "chips": [
@@ -287,6 +289,7 @@
    "meminfo": "MemTotal:       100663296 kB\nMemFree:         1024 kB\n"
   },
   {
+   "backend_list": "[]",
    "budget": "0.0",
    "cache": "{}",
    "chips": [
@@ -383,6 +386,7 @@
    "meminfo": "MemFree: 1 kB\r\nMemTotal:\t33554432 kB\r\n"
   },
   {
+   "backend_list": "[{\"name\":\"llama-igpu\",\"vendor\":\"unknown\",\"vram_gb\":8.0,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":16.0,\"baseline\":{},\"baseline_args\":[\"--host\",\"0.0.0.0\"]}]",
    "budget": "8.0",
    "cache": "{\"llama-igpu\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 8.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
    "chips": [
@@ -496,6 +500,7 @@
    "meminfo": "MemTotal:       16777216 kB\nMemFree:         1024 kB\n"
   },
   {
+   "backend_list": "[]",
    "budget": "0.0",
    "cache": "{}",
    "chips": [
@@ -572,6 +577,7 @@
    "meminfo": null
   },
   {
+   "backend_list": "[]",
    "budget": "0.0",
    "cache": "{}",
    "chips": [
@@ -648,6 +654,7 @@
    "meminfo": "MemTotal: lots kB\n"
   },
   {
+   "backend_list": "[]",
    "budget": "0.0",
    "cache": "{}",
    "chips": [
@@ -724,6 +731,7 @@
    "meminfo": "MemTotal:\n"
   },
   {
+   "backend_list": "[]",
    "budget": "0.0",
    "cache": "{}",
    "chips": [
@@ -800,6 +808,7 @@
    "meminfo": "MemTotal: 1_048_576 kB\n"
   },
   {
+   "backend_list": "[{\"name\":\"llama-igpu\",\"vendor\":\"unknown\",\"vram_gb\":15.55,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":64.0,\"baseline\":{},\"baseline_args\":[\"--host\",\"0.0.0.0\"]},{\"name\":\"llama-big\",\"vendor\":\"unknown\",\"vram_gb\":16.0,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":64.0,\"baseline\":{},\"baseline_args\":[\"--host\",\"0.0.0.0\"]}]",
    "budget": "16.0",
    "cache": "{\"llama-igpu\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 15.55, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-big\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 4.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
    "chips": [
@@ -923,6 +932,7 @@
    "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
   },
   {
+   "backend_list": "[{\"name\":\"llama-igpu\",\"vendor\":\"unknown\",\"vram_gb\":0.25,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":8.0,\"baseline\":{},\"baseline_args\":[\"--host\",\"0.0.0.0\"]}]",
    "budget": "0.25",
    "cache": "{\"llama-igpu\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 0.25, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
    "chips": [
@@ -1007,6 +1017,7 @@
    "meminfo": "MemTotal:       8388608 kB\nMemFree:         1024 kB\n"
   },
   {
+   "backend_list": "[]",
    "budget": "0.0",
    "cache": "{}",
    "chips": [
@@ -1038,6 +1049,7 @@
    "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
   },
   {
+   "backend_list": "[]",
    "budget": "0.0",
    "cache": "{}",
    "chips": [
@@ -1105,6 +1117,7 @@
    "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
   },
   {
+   "backend_list": "[{\"name\":\"llama-gone\",\"vendor\":\"unknown\",\"vram_gb\":12.0,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":62.5,\"baseline\":{},\"baseline_args\":[]},{\"name\":\"llama-cuda\",\"vendor\":\"cuda\",\"vram_gb\":48.0,\"gpu_count\":2,\"card_vram_gb\":[24,24.0],\"host_ram_gb\":62.5,\"baseline\":{\"ngl\":\"99\"},\"baseline_args\":[\"--port\",\"8081\",\"-ngl\",\"99\"]},{\"name\":\"llama-cpu\",\"vendor\":\"unknown\",\"vram_gb\":4.0,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":62.5,\"baseline\":{},\"baseline_args\":[\"l\",\"l\",\"a\",\"m\",\"a\",\"-\",\"s\",\"e\",\"r\",\"v\",\"e\",\"r\"]}]",
    "budget": "48.0",
    "cache": "{\"llama-igpu\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 15.6, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-rocm\": {\"ok\": false, \"error\": \"warming up\u2026\", \"gpu\": null, \"container\": null}, \"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 48, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 2, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}, {\"index\": 1, \"name\": \"Synthetic GPU 1\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-unknown\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 0.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
    "chips": [
@@ -1368,7 +1381,253 @@
     "ram": "46.5"
    },
    "meminfo": "MemTotal:       65536000 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "backend_list": "[{\"name\":\"llama-cuda\",\"vendor\":\"cuda\",\"vram_gb\":24.0,\"gpu_count\":1,\"card_vram_gb\":[24.0],\"host_ram_gb\":64.0,\"baseline\":{\"ctx-size\":\"true\",\"ngl\":\"99\",\"flash-attn\":\"on\",\"jinja\":\"true\",\"cache-type-k\":\"q8_0\"},\"baseline_args\":[\"-m\",\"/models/s/m.gguf\",\"--ctx-size\",\"8192\",\"-ngl\",\"99\",\"--flash-attn\",\"on\",\"--jinja\",\"--synthetic-flag\",\"v\",\"-ctk\",\"q8_0\",\"--no-mmap\",\"-c\"]},{\"name\":\"llama-rocm\",\"vendor\":\"rocm\",\"vram_gb\":16.0,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":64.0,\"baseline\":{},\"baseline_args\":[]},{\"name\":\"llama-cuda-b\",\"vendor\":\"cuda\",\"vram_gb\":12.0,\"gpu_count\":1,\"card_vram_gb\":[12.0],\"host_ram_gb\":64.0,\"baseline\":{\"ctx-size\":\"true\",\"ngl\":\"true\",\"flash-attn\":\"true\",\"jinja\":\"true\",\"parallel\":\"2\"},\"baseline_args\":[\"--threads=4\",\"--ctx-size\",\"-1\",\"-ngl\",\"-fa\",\"--\",\"--jinja\",\"-np\",\"2\",\"--batch-size=512\"]}]",
+   "budget": "24.0",
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-rocm\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"amd\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 16, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-cuda-b\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 12.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 12.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "chips": [
+    {
+     "bytes": "1073741824",
+     "detail": "[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":4},{\"name\":\"llama-rocm\",\"vram_gb\":16.0,\"verdict\":\"fits\",\"ratio_pct\":6},{\"name\":\"llama-cuda-b\",\"vram_gb\":12.0,\"verdict\":\"fits\",\"ratio_pct\":8}]",
+     "route": "[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":4},{\"name\":\"llama-rocm\",\"vram_gb\":16.0,\"verdict\":\"fits\",\"ratio_pct\":6},{\"name\":\"llama-cuda-b\",\"vram_gb\":12.0,\"verdict\":\"fits\",\"ratio_pct\":8}]"
+    }
+   ],
+   "descriptors": "[{\"name\":\"llama-cuda\",\"vendor\":\"cuda\",\"vram_gb\":24.0,\"gpu_count\":1,\"card_vram_gb\":[24.0],\"host_ram_gb\":64.0,\"baseline_args\":[\"-m\",\"/models/s/m.gguf\",\"--ctx-size\",\"8192\",\"-ngl\",\"99\",\"--flash-attn\",\"on\",\"--jinja\",\"--synthetic-flag\",\"v\",\"-ctk\",\"q8_0\",\"--no-mmap\",\"-c\"]},{\"name\":\"llama-rocm\",\"vendor\":\"rocm\",\"vram_gb\":16.0,\"gpu_count\":1,\"card_vram_gb\":[],\"host_ram_gb\":64.0,\"baseline_args\":[]},{\"name\":\"llama-cuda-b\",\"vendor\":\"cuda\",\"vram_gb\":12.0,\"gpu_count\":1,\"card_vram_gb\":[12.0],\"host_ram_gb\":64.0,\"baseline_args\":[\"--threads=4\",\"--ctx-size\",\"-1\",\"-ngl\",\"-fa\",\"--\",\"--jinja\",\"-np\",\"2\",\"--batch-size=512\"]}]",
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "-m",
+        "/models/s/m.gguf",
+        "--ctx-size",
+        "8192",
+        "-ngl",
+        "99",
+        "--flash-attn",
+        "on",
+        "--jinja",
+        "--synthetic-flag",
+        "v",
+        "-ctk",
+        "q8_0",
+        "--no-mmap",
+        "-c"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "1212121212121212121212121212121212121212121212121212121212121212",
+      "Image": "sha256:9292929292929292929292929292929292929292929292929292929292929292",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     },
+     {
+      "Config": {
+       "Cmd": [],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "1313131313131313131313131313131313131313131313131313131313131313",
+      "Image": "sha256:9393939393939393939393939393939393939393939393939393939393939393",
+      "Name": "/llama-rocm",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     },
+     {
+      "Config": {
+       "Cmd": [
+        "--threads=4",
+        "--ctx-size",
+        "-1",
+        "-ngl",
+        "-fa",
+        "--",
+        "--jinja",
+        "-np",
+        "2",
+        "--batch-size=512"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "1414141414141414141414141414141414141414141414141414141414141414",
+      "Image": "sha256:9292929292929292929292929292929292929292929292929292929292929292",
+      "Name": "/llama-cuda-b",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:9292929292929292929292929292929292929292929292929292929292929292",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     },
+     {
+      "Id": "sha256:9393939393939393939393939393939393939393939393939393939393939393",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-rocm"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "id": "baselines",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ],
+     [
+      "llama-rocm",
+      "16.0"
+     ],
+     [
+      "llama-cuda-b",
+      "12.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
   }
+ ],
+ "known_keys": [
+  "alias",
+  "backend-sampling",
+  "batch-size",
+  "cache-ram",
+  "cache-reuse",
+  "cache-type-k",
+  "cache-type-k-draft",
+  "cache-type-v",
+  "cache-type-v-draft",
+  "chat-template",
+  "chat-template-file",
+  "chat-template-kwargs",
+  "check-tensors",
+  "checkpoint-min-step",
+  "cont-batching",
+  "context-shift",
+  "control-vector",
+  "control-vector-layer-range",
+  "control-vector-scaled",
+  "cpu-mask",
+  "cpu-moe",
+  "cpu-range",
+  "cpu-strict",
+  "ctx-checkpoints",
+  "ctx-size",
+  "device",
+  "embd-normalize",
+  "embedding",
+  "fit",
+  "fit-ctx",
+  "fit-target",
+  "flash-attn",
+  "image-max-tokens",
+  "image-min-tokens",
+  "jinja",
+  "keep",
+  "kv-offload",
+  "kv-unified",
+  "load-mode",
+  "lookup-cache-dynamic",
+  "lookup-cache-static",
+  "lora",
+  "lora-scaled",
+  "main-gpu",
+  "mmproj",
+  "mmproj-auto",
+  "mmproj-offload",
+  "mmproj-url",
+  "model",
+  "mtmd-batch-max-tokens",
+  "n-cpu-moe",
+  "ngl",
+  "no-host",
+  "numa",
+  "op-offload",
+  "override-kv",
+  "override-tensor",
+  "parallel",
+  "poll",
+  "pooling",
+  "prio",
+  "reasoning",
+  "reasoning-budget",
+  "reasoning-budget-message",
+  "reasoning-format",
+  "reasoning-preserve",
+  "repack",
+  "rerank",
+  "rope-freq-base",
+  "rope-freq-scale",
+  "rope-scale",
+  "rope-scaling",
+  "spec-draft-cpu-moe",
+  "spec-draft-device",
+  "spec-draft-hf",
+  "spec-draft-model",
+  "spec-draft-n-cpu-moe",
+  "spec-draft-n-max",
+  "spec-draft-n-min",
+  "spec-draft-ngl",
+  "spec-draft-p-min",
+  "spec-draft-p-split",
+  "spec-type",
+  "special",
+  "split-mode",
+  "swa-full",
+  "tags",
+  "tensor-split",
+  "threads",
+  "threads-batch",
+  "ubatch-size",
+  "verbosity",
+  "warmup",
+  "yarn-attn-factor",
+  "yarn-beta-fast",
+  "yarn-beta-slow",
+  "yarn-ext-factor",
+  "yarn-orig-ctx"
  ],
  "repo": [
   {
@@ -3206,6 +3465,7 @@
   "gguf_meta.py": "8ac984794fb9087fcd774cfe1a4e83eac847c1675224c8c09029fb9dcbd43b0a",
   "helpers.py": "fcf2ccb14e5e068f97bb7a4b7985ab7f4f4855b940eb6d9e3838f239ad97918d",
   "hw.py": "476d35c36f7bad94ec1c642c769556773671e5203ccef168be7c6fc1f6ad95ef",
+  "ini.py": "b3cb05fd382b5f408ad16430db8841d40c82a3714115233f2e35b2f7f3b61740",
   "main.py": "2b82a445538458f4fa0b587a4a9272e8960a81c6fa811b837c475b57341bd95c",
   "services.py": "8da3d667ce32729fba21c93b52968ef42a4ee77fab24f9412837f781a9bf83e8"
  },
