@@ -125,6 +125,8 @@ pub(super) type Answers = Arc<Mutex<J>>;
 pub(super) struct Gauge {
     pub live: AtomicUsize,
     pub peak: AtomicUsize,
+    /// Set by a case to let go the answers marked `"hold"`: they wait for it, not for a time.
+    pub released: std::sync::atomic::AtomicBool,
 }
 
 struct Serving(Arc<Gauge>);
@@ -207,6 +209,11 @@ pub(super) async fn hub_gauged(
                         J::Null,
                     ),
                 };
+                if extra["hold"] == true {
+                    while !gauge.released.load(Ordering::SeqCst) {
+                        tokio::time::sleep(Duration::from_millis(5)).await;
+                    }
+                }
                 if let Some(delay) = extra["delay"].as_f64() {
                     tokio::time::sleep(Duration::from_secs_f64(delay)).await;
                 }

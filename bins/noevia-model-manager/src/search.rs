@@ -309,8 +309,9 @@ pub struct Search {
     /// The token the newest read saw: caches filled under another token are dropped, since a
     /// listing or a header may be private to a token.
     last_auth: Mutex<Ledger>,
-    /// Numbers the token reads, before each one starts.
-    tickets: AtomicU64,
+    /// Numbers the token reads. The number is taken, and the sqlite read made, under this lock,
+    /// so that ticket order is read order.
+    tickets: Arc<Mutex<u64>>,
     /// Bumped, before the caches are cleared, whenever the token changes: a request that read
     /// the token under an older generation does not store what it learnt.
     generation: AtomicU64,
@@ -380,7 +381,7 @@ impl Search {
             lookups: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_LOOKUPS)),
             listing_deadline: timeouts.listings,
             last_auth: Mutex::new(Ledger::default()),
-            tickets: AtomicU64::new(0),
+            tickets: Arc::new(Mutex::new(0)),
             generation: AtomicU64::new(0),
             files: Mutex::new(FilesCache::default()),
             headers: Mutex::new(HeaderCache::default()),
@@ -441,9 +442,15 @@ impl Search {
     /// `_auth_headers()`: the stored token as the `Authorization` value, and the generation the
     /// request's results may be stored under.
     async fn auth(&self) -> Result<(Auth, Epoch), Stop> {
-        let ticket = self.tickets.fetch_add(1, Ordering::SeqCst) + 1;
         let database = self.database.clone();
-        let read = self.blocking(move || hub_auth(&database)).await?;
+        let tickets = self.tickets.clone();
+        let (ticket, read) = self
+            .blocking(move || {
+                let mut issued = lock(&tickets);
+                *issued += 1;
+                (*issued, hub_auth(&database))
+            })
+            .await?;
         let seen = match &read {
             HubAuth::Absent => Token::Absent,
             HubAuth::Value(value) => Token::Value(value.as_bytes().to_vec()),
@@ -1171,9 +1178,14 @@ impl Search {
         let mut summary: Option<Arc<str>> = None;
         let mut gated = "";
         if let Some(path) = probe {
-            summary = self.gguf_header(repo, &path).await?;
+            let (read, reason) = self.read_header(repo, &path).await?;
+            summary = read;
             if summary.is_none() {
-                gated = lock(&self.headers).gated.get(repo).copied().unwrap_or("");
+                // The reason the answer itself carried; a cached failure leaves the gate that
+                // was remembered with it (a read that raced a token change stores nothing).
+                gated = reason
+                    .or_else(|| lock(&self.headers).gated.get(repo).copied())
+                    .unwrap_or("");
             }
         }
         let live = if groups.is_empty() {
@@ -1193,10 +1205,21 @@ impl Search {
     }
 
     /// `hf.gguf_header(repo, path)`: the summary of the first MiB of a file, cached.
+    #[cfg(test)]
     async fn gguf_header(&self, repo: &str, path: &str) -> Result<Option<Arc<str>>, Stop> {
+        Ok(self.read_header(repo, path).await?.0)
+    }
+
+    /// [`Self::gguf_header`], and the gate this very answer set (a 401 or a 403), which the
+    /// cache may not have kept.
+    async fn read_header(
+        &self,
+        repo: &str,
+        path: &str,
+    ) -> Result<(Option<Arc<str>>, Option<&'static str>), Stop> {
         let key = format!("{repo}/{path}");
         if let Some(cached) = lock(&self.headers).map.get(&key) {
-            return Ok(cached.clone());
+            return Ok((cached.clone(), None));
         }
         let Some((target, query)) =
             net::httpx_target(&format!("{}/{repo}/resolve/main", self.hub.resolve), path)
@@ -1230,7 +1253,7 @@ impl Search {
             Auth::Header(value) => Some(value),
             Auth::NotAscii | Auth::Refused => {
                 self.store_header(epoch, key, None, Gate::Keep);
-                return Ok(None);
+                return Ok((None, None));
             }
         };
         let mut request = self.header_client.get(parsed).header(
@@ -1245,7 +1268,7 @@ impl Search {
         };
         let Ok(response) = request.send().await else {
             failed(self);
-            return Ok(None);
+            return Ok((None, None));
         };
         let status = response.status().as_u16();
         let mut body = Vec::new();
@@ -1254,7 +1277,7 @@ impl Search {
                 Ok(read) => body = read,
                 Err(_) => {
                     failed(self);
-                    return Ok(None);
+                    return Ok((None, None));
                 }
             }
         }
@@ -1266,11 +1289,11 @@ impl Search {
                 "your token lacks access \u{2014} accept this model's licence on its HF page"
             };
             self.store_header(epoch, key, None, Gate::Set(repo, reason));
-            return Ok(None);
+            return Ok((None, Some(reason)));
         }
         if (status != 200 && status != 206) || body.is_empty() {
             failed(self);
-            return Ok(None);
+            return Ok((None, None));
         }
         let parsed = self
             .blocking(move || -> Result<Option<String>, Stop> {
@@ -1288,11 +1311,11 @@ impl Search {
             .await??;
         let Some(summary) = parsed else {
             failed(self);
-            return Ok(None);
+            return Ok((None, None));
         };
         let summary: Arc<str> = Arc::from(summary);
         self.store_header(epoch, key, Some(summary.clone()), Gate::Lift(repo));
-        Ok(Some(summary))
+        Ok((Some(summary), None))
     }
 
     /// The child's fit chips and estimates for the groups.

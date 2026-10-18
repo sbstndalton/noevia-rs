@@ -987,7 +987,7 @@ jobs:
           repository: sbstndalton/noevia-services
           # noevia#1318 slice 14: services feat/1318-native-search (the guard and the two private
           # calls; the routes are unchanged).
-          ref: 0915561968c6486334043bda7779554d337e899b
+          ref: 2bbe5e1bd4ecbbc6c11b70c21f5af15953970fc0
           path: search-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
