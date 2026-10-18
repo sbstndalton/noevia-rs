@@ -16,7 +16,8 @@ use std::path::Path;
 pub(crate) enum AnalysisError {
     Failed,
     Refused,
-    Python(&'static str),
+    // Minimal safe-default profiles preserve the class for native-search callers.
+    Python(#[cfg_attr(not(feature = "native-search"), allow(dead_code))] &'static str),
 }
 use AnalysisError as Stop;
 impl From<crate::model_updates::Stop> for AnalysisError {
