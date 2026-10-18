@@ -117,6 +117,26 @@ async fn hostile_pages_are_refused_within_a_bound() {
     );
 }
 
+/// noevia#2013: a full-size page, exactly `PAGE_CAP` bytes of real content (not only blanks), is
+/// read whole and accepted when it is within the node and string limits.
+#[tokio::test]
+async fn a_full_size_page_is_accepted() {
+    let cap = PAGE_CAP;
+    let unit = format!(", \"{}\"", "a".repeat(60_000));
+    let page = filled("[\"a\"", &unit, "]", cap);
+    assert_eq!(page.len(), cap);
+    let body = read_page(&page).await.unwrap();
+    assert_eq!(body.len(), cap);
+    assert!(body.capacity() <= cap);
+    let Some(Value::Arr(items)) = parse_page(body) else {
+        panic!("a full-size page was refused");
+    };
+    assert!(items.len() > 200);
+    // One byte less is accepted too.
+    let body = read_page(&filled("[", " ", "]", cap - 1)).await.unwrap();
+    assert_eq!(parse_page(body), Some(Value::Arr(Vec::new())));
+}
+
 /// The reader refuses a failed stream and a page past the cap, whatever the chunking.
 #[tokio::test]
 async fn the_reader_stops_at_the_cap_and_at_a_transport_error() {

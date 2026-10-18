@@ -6,6 +6,13 @@
 //! bounds, including pages measured from the real Hub (`tests/fixtures/hub-tree/README.md`).
 use model_files::json::{Limits, Value};
 
+/// noevia#2013: the one model-hub API endpoint the front talks to (the update check, the
+/// draft-head lookup and the search). It is a named constant, not a setting: the stored hub
+/// token is sent to it, so it is not something an environment variable may redirect. The others
+/// (`check_updates::HF_API`, `draft_heads::HF_API`, `search::HF_API`) are this value under the
+/// names the Python side uses.
+pub const HUB_API: &str = "https://huggingface.co/api";
+
 /// noevia#1985, noevia#1996: largest tree page read. A Hub page is at most a few thousand entries
 /// (the `expand=true` listing is 50 per page, well under 1 MiB); a larger one is a failed request.
 pub const PAGE_CAP: usize = 16 * 1024 * 1024;
