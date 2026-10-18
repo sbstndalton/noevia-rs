@@ -156,7 +156,7 @@ pub async fn serve(
             path.clone(),
         );
         tokio::task::spawn_blocking(move || {
-            #[cfg(feature = "test-hooks")]
+            #[cfg(debug_assertions)]
             hooks::before_ensure(&user);
             let made = match server_projects::store::ensure_user_dir(&data_dir, &user) {
                 Ok(server_projects::store::Ensured::Created(dir)) => Some(dir),
@@ -294,9 +294,10 @@ fn after_second_gate(created: bool, refused: Refused) -> (bool, Refused) {
     }
 }
 
-/// Test hooks (cargo feature `test-hooks`, enabled for this package's own tests only; no release
-/// build has it, so none takes the lock).
-#[cfg(feature = "test-hooks")]
+/// Test hooks, compiled in debug builds only (`cargo test` and the CI replays); a release build has
+/// neither the module nor the lock. (A cargo feature turned on by a dev-dependency of the package
+/// on itself would also have changed which features `--features noevia-server/...` builds select.)
+#[cfg(debug_assertions)]
 #[doc(hidden)]
 pub mod hooks {
     use std::collections::HashMap;

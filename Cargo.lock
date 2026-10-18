@@ -1656,7 +1656,6 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "noevia-server",
  "secret-envelope",
  "serde",
  "serde_json",

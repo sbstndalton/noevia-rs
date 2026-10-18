@@ -351,6 +351,7 @@ async fn a_removed_accounts_directory_is_not_recreated() {
 /// The account is removed after the first gate and before the directory is made (Node refuses it
 /// in process once `removed` holds the id): the answer is the removed account's 410 and no
 /// directory is left behind, not an orphan `users/<id>` the removal had already swept.
+#[cfg(debug_assertions)]
 #[tokio::test]
 async fn an_account_removed_between_the_gate_and_the_directory_leaves_nothing() {
     let f = front_new_account(true).await;
@@ -381,6 +382,7 @@ async fn an_account_removed_between_the_gate_and_the_directory_leaves_nothing() 
 
 /// A directory that was already there is not this request's to take away, whatever the gate says
 /// on the second pass.
+#[cfg(debug_assertions)]
 #[tokio::test]
 async fn an_existing_directory_is_never_removed_by_the_second_gate() {
     let f = front(true).await;
