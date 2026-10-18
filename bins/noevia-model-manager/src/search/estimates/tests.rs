@@ -242,9 +242,12 @@ async fn the_repository_read_answers_natively_only_with_the_cap() {
 }
 
 #[test]
-fn each_fallback_reason_is_logged_once() {
+fn fallback_reasons_log_again_at_powers_of_ten() {
     assert!(fell_back("a synthetic reason for this test"));
-    assert!(!fell_back("a synthetic reason for this test"));
+    for _ in 2..10 {
+        assert!(!fell_back("a synthetic reason for this test"));
+    }
+    assert!(fell_back("a synthetic reason for this test"));
     assert!(fell_back("another synthetic reason for this test"));
 }
 
@@ -253,4 +256,68 @@ fn a_summary_past_the_node_cap_is_left_to_the_child() {
     let many = format!("{{\"model\":[{}0]}}", "0,".repeat(1 << 20));
     assert!(super::summary(&many).is_none());
     assert!(super::summary("{\"model\":[0,0]}").is_some());
+}
+
+#[tokio::test]
+async fn an_unreadable_summary_skips_docker_and_a_timeout_leaves_estimates_with_the_child() {
+    use crate::backend_stats::fit::tests::hung_stats;
+    use crate::search::{live::Source, Group, Search};
+    use std::sync::{atomic::Ordering, Arc};
+    use std::time::{Duration, Instant};
+    let dir = tempfile::tempdir().unwrap();
+    let (stats, calls, peer) = hung_stats(dir.path());
+    let search = Search::new(dir.path(), "http://127.0.0.1:9", "").unwrap();
+    search.set_live(Source {
+        stats: Arc::new(stats),
+        models: dir.path().join("models"),
+        ini: dir.path().join("models.ini"),
+        trusted: Default::default(),
+        estimates_cache_cap_mib: Some(1024),
+    });
+    let groups = [Group {
+        shard_base: "qa.gguf".into(),
+        shards: None,
+        bytes: 1,
+        quant: None,
+        projector: false,
+        is_gguf: true,
+        files: Vec::new(),
+    }];
+    let before = Instant::now();
+    assert!(search
+        .native_repo_runtime(&groups, Some("{bad"))
+        .await
+        .is_none());
+    assert!(before.elapsed() < Duration::from_secs(2));
+    assert_eq!(
+        calls.load(Ordering::Relaxed),
+        0,
+        "an unreadable summary must not open Docker"
+    );
+    let before = Instant::now();
+    assert!(tokio::time::timeout(
+        Duration::from_secs(20),
+        search.native_repo_runtime(&groups, Some("{}"))
+    )
+    .await
+    .unwrap()
+    .is_none());
+    assert!(before.elapsed() >= Duration::from_secs(9));
+    assert!(before.elapsed() < Duration::from_secs(20));
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    let retry = Instant::now();
+    assert!(tokio::time::timeout(
+        Duration::from_secs(20),
+        search.native_repo_runtime(&groups, Some("{}"))
+    )
+    .await
+    .unwrap()
+    .is_none());
+    assert!(retry.elapsed() < Duration::from_secs(2));
+    assert_eq!(
+        calls.load(Ordering::Relaxed),
+        1,
+        "cooldown does not read Docker again"
+    );
+    peer.abort();
 }

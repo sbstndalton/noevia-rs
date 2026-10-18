@@ -28,6 +28,8 @@
 use crate::Job;
 use model_files::json::Value as J;
 
+#[cfg(feature = "native-section-autoconfig")]
+pub(crate) mod fallback;
 pub mod fit;
 pub mod live;
 use std::{
@@ -1484,6 +1486,8 @@ struct Sampled {
 /// The native sampler and `GET /api/v1/backends`.
 pub struct BackendStats {
     config: Config,
+    #[cfg(feature = "native-section-autoconfig")]
+    pub(crate) fallback_reads: fallback::Reads,
     docker: Arc<dyn DockerApi>,
     probe: reqwest::Client,
     child: reqwest::Client,
@@ -1613,6 +1617,8 @@ impl BackendStats {
         };
         Ok(Self {
             config,
+            #[cfg(feature = "native-section-autoconfig")]
+            fallback_reads: fallback::Reads::default(),
             docker,
             // httpx.Timeout(2.0, read=3.0).
             probe: base()

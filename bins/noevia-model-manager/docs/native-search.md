@@ -125,10 +125,16 @@ The child is still asked, for that answer only, when this side cannot follow Pyt
 - a value Python would render differently
 - a projector of 2^53 bytes or more
 
-Each reason class is logged once (`native-search: the repository estimates were asked of the
-python child (...)`), so a fallback is never silent. The summary carries the whole chat
-template, so it is read with strings bounded by the summary itself, not the JSON reader's
-default 4096 characters.
+Each reason class is logged at the first, tenth, hundredth and subsequent powers-of-ten
+occurrence (`native-search: the repository estimates were asked of the python child (...)`).
+The summary is parsed on the blocking worker before Docker discovery, so malformed input
+does not pay the inventory deadline. It carries the whole chat template and is read with strings
+bounded by the summary itself, not the JSON reader's default 4096 characters.
+
+Docker inventory work has a 10-second deadline. A timeout starts a 10-second monotonic cooldown
+shared by this sampler's optional inventory readers; each such request keeps the child's answer
+without another Docker read. Only the retry deadline is retained, never an inventory value.
+Once it expires the next request tries the native read again.
 
 Python rediscovers the containers for every chip list and estimate; this side reads one
 inventory per answer, like the other fit readers. With the python section autoconfig selector,

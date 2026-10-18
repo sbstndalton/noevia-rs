@@ -73,7 +73,12 @@ list in the child's answer.
   `inventory::KNOWN_KEYS` (`sorted(ini.ALL_KNOWN_KEYS)`).
 - **Failures:** the child still lists the backends itself, so a failure there stays Python's 500.
   A container command this side does not render, or a baseline the rule refuses, keeps the
-  child's list for that answer. Each of those reasons is logged once.
+  child's list for that answer. Docker inventory work has a 10-second deadline; after a timeout,
+  optional inventory reads on that sampler keep the child's answer for 10 seconds before retrying.
+  This cooldown holds only a monotonic retry deadline, never a previous inventory. Failures are
+  logged at the first, tenth, hundredth and subsequent powers-of-ten occurrence per reason.
+  The authoritative native-telemetry path below still refuses on inventory failure and does not
+  use this child-fallback cooldown.
 - **Differential:** `tools/gen-fit-oracle.py` records Python's whole list (baseline included) and
   the known keys, and `section_autoconfig::inventory::tests` compares both.
 

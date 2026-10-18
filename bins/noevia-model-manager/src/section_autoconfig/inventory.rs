@@ -8,7 +8,7 @@
 //!
 //! The child still answers the telemetry (and still lists the backends itself, so its own
 //! failures stay Python's). A descriptor list this side cannot render, or a baseline the rule
-//! refuses or on which Python raises, keeps the child's list for that answer, with one log line
+//! refuses or on which Python raises, keeps the child's list for that answer, with counted log lines
 //! per reason.
 use crate::backend_stats::{fit::Descriptor, Num};
 use model_autoconfig::Work;
@@ -179,28 +179,24 @@ pub(crate) fn backend_list(descriptors: &[Descriptor]) -> Option<Value> {
     Some(Value::Arr(out))
 }
 
-/// Why the native side left one answer to the child: logged once per class, never silently.
-/// `true` when this call logged it.
+/// Why the native side left an answer to the child: counted at 1, 10, 100 ... per class.
 pub(super) fn fell_back(class: &'static str) -> bool {
-    use std::sync::{Mutex, OnceLock};
-    static SEEN: OnceLock<Mutex<Vec<&'static str>>> = OnceLock::new();
-    let mut seen = SEEN
-        .get_or_init(|| Mutex::new(Vec::new()))
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if seen.contains(&class) {
-        return false;
+    static LOG: std::sync::OnceLock<crate::backend_stats::fallback::Log> =
+        std::sync::OnceLock::new();
+    if let Some(line) = LOG.get_or_init(Default::default).record(PREFIX, class) {
+        eprintln!("{line}");
+        true
+    } else {
+        false
     }
-    seen.push(class);
-    eprintln!("{PREFIX} ({class}); logged once per reason");
-    true
 }
 
 const PREFIX: &str =
     "native-section-autoconfig: the backend inventory was taken from the python child";
 
-/// The descriptors' Docker reads (discovery, version, inspect, image) for one answer.
-pub(super) const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// The authoritative telemetry path has no child fallback or negative cache.
+#[cfg(feature = "native-telemetry")]
+pub(super) const TIMEOUT: std::time::Duration = crate::backend_stats::fallback::TIMEOUT;
 
 #[cfg(test)]
 mod tests;
