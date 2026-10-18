@@ -21,7 +21,9 @@
 //! such as `1.2.3`), [`Error::Raised`] says so.
 #![forbid(unsafe_code)]
 
+use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 mod time;
@@ -50,18 +52,16 @@ pub enum Error {
     Unsupported(&'static str),
 }
 
-/// An insertion-ordered dict of strings (assignment to a present key keeps its place).
-pub type Dict = Vec<(String, String)>;
+/// An insertion-ordered dict of strings (assignment to a present key keeps its place), with
+/// hashed lookups so every pass stays linear, as Python's dicts are.
+pub type Dict = IndexMap<String, String>;
 
 fn dict_set(d: &mut Dict, k: &str, v: String) {
-    match d.iter_mut().find(|(key, _)| key == k) {
-        Some((_, slot)) => *slot = v,
-        None => d.push((k.to_owned(), v)),
-    }
+    d.insert(k.to_owned(), v);
 }
 
 fn dict_get<'a>(d: &'a Dict, k: &str) -> Option<&'a str> {
-    d.iter().find(|(key, _)| key == k).map(|(_, v)| v.as_str())
+    d.get(k).map(String::as_str)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -108,15 +108,38 @@ pub struct Backend<'a> {
     pub lookup: &'a mut dyn FnMut(&str) -> Result<Vec<Stored>, ()>,
 }
 
-/// Python's `\s` for `str`, inside a character class.
-const WS: &str = r"\s\x1c-\x1f";
+/// Python's `\s` for `str` (`str.isspace`: Unicode White_Space and `\x1c`-`\x1f`) and its
+/// negation, as whole character classes.
+const PY_SPACE: &str = r"[\s\x1c-\x1f]";
+const PY_NON_SPACE: &str = r"[^\s\x1c-\x1f]";
+
+/// `pattern` with every `\s` and `\S` escape (outside a bracket class; the patterns here use none
+/// inside one) replaced by Python's class, in one left-to-right pass: an escaped backslash is
+/// kept as it is, so `\\s` stays a backslash followed by `s`.
+fn python_classes(pattern: &str) -> String {
+    let mut out = String::with_capacity(pattern.len() * 2);
+    let mut chars = pattern.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('s') => out.push_str(PY_SPACE),
+            Some('S') => out.push_str(PY_NON_SPACE),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
+}
 
 fn re(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
     cell.get_or_init(|| {
-        let p = pattern
-            .replace(r"\S", &format!("[^{WS}]"))
-            .replace(r"\s", &format!("[{WS}]"));
-        Regex::new(&p).unwrap_or_else(|e| unreachable!("{e}"))
+        Regex::new(&python_classes(pattern)).unwrap_or_else(|e| unreachable!("{e}"))
     })
 }
 
@@ -243,7 +266,7 @@ pub fn argv_to_dict<S: AsRef<str>>(tokens: &[S]) -> Dict {
             }
         }
     }
-    out.retain(|(k, _)| !VOLATILE_ARGS.contains(&k.as_str()));
+    out.retain(|k, _| !VOLATILE_ARGS.contains(&k.as_str()));
     out
 }
 
@@ -252,12 +275,10 @@ pub fn differing_keys(configs: &[&Dict]) -> Vec<String> {
     if configs.len() < 2 {
         return Vec::new();
     }
-    let mut keys: Vec<&str> = Vec::new();
+    let mut keys: IndexSet<&str> = IndexSet::new();
     for c in configs {
-        for (k, _) in c.iter() {
-            if !keys.contains(&k.as_str()) {
-                keys.push(k);
-            }
+        for k in c.keys() {
+            keys.insert(k);
         }
     }
     let mut out: Vec<String> = keys
@@ -324,15 +345,14 @@ pub fn log_span(text: &str) -> Result<(f64, f64), Error> {
     Ok((first, last))
 }
 
-fn get<'a>(v: &'a [(String, ServerConfig)], k: &str) -> Option<&'a ServerConfig> {
-    v.iter().find(|(key, _)| key == k).map(|(_, c)| c)
+type ByPid = IndexMap<String, ServerConfig>;
+
+fn get<'a>(v: &'a ByPid, k: &str) -> Option<&'a ServerConfig> {
+    v.get(k)
 }
 
-fn put(v: &mut Vec<(String, ServerConfig)>, k: &str, c: ServerConfig) {
-    match v.iter_mut().find(|(key, _)| key == k) {
-        Some((_, slot)) => *slot = c,
-        None => v.push((k.to_owned(), c)),
-    }
+fn put(v: &mut ByPid, k: &str, c: ServerConfig) {
+    v.insert(k.to_owned(), c);
 }
 
 /// `parse_log(text, backend, covered_until, continuous_since)`: `backend` is `None` for the pure
@@ -344,11 +364,11 @@ pub fn parse_log(
     let mut pending_alias = String::new();
     let mut pending_port = String::new();
     let mut pending_argv: Vec<String> = Vec::new();
-    let mut by_pid: Vec<(String, ServerConfig)> = Vec::new();
-    let mut spec_of: Vec<(String, String)> = Vec::new();
-    let mut key_of_port: Vec<(String, String)> = Vec::new();
-    let mut samples: Vec<((String, i64), Sample)> = Vec::new();
-    let mut stored_by_port: Vec<(String, Vec<Stored>)> = Vec::new();
+    let mut by_pid: ByPid = IndexMap::new();
+    let mut spec_of: HashMap<String, String> = HashMap::new();
+    let mut key_of_port: HashMap<String, String> = HashMap::new();
+    let mut samples: IndexMap<(String, i64), Sample> = IndexMap::new();
+    let mut stored_by_port: HashMap<String, Vec<Stored>> = HashMap::new();
     let first_ts = if backend.is_some() {
         log_span(text)?.0
     } else {
@@ -361,8 +381,8 @@ pub fn parse_log(
     let flush = |pending_alias: &mut String,
                  pending_port: &mut String,
                  pending_argv: &mut Vec<String>,
-                 by_pid: &mut Vec<(String, ServerConfig)>,
-                 spec_of: &mut Vec<(String, String)>| {
+                 by_pid: &mut ByPid,
+                 spec_of: &mut HashMap<String, String>| {
         if !pending_port.is_empty() {
             let argv = argv_to_dict(pending_argv);
             let path = dict_get(&argv, "--model")
@@ -393,10 +413,7 @@ pub fn parse_log(
                 first_seen: prev.as_ref().map_or(0.0, |p| p.first_seen),
             };
             put(by_pid, pending_port, rec);
-            match spec_of.iter_mut().find(|(k, _)| k == pending_port.as_str()) {
-                Some((_, slot)) => *slot = spec,
-                None => spec_of.push((pending_port.clone(), spec)),
-            }
+            spec_of.insert(pending_port.clone(), spec);
         }
         pending_alias.clear();
         pending_port.clear();
@@ -416,10 +433,7 @@ pub fn parse_log(
             let port = m.get(2).map_or("", |g| g.as_str()).to_owned();
             pending_alias = m.get(1).map_or("", |g| g.as_str()).to_owned();
             pending_port = instance_key(&port, ts)?;
-            match key_of_port.iter_mut().find(|(k, _)| *k == port) {
-                Some((_, slot)) => *slot = pending_port.clone(),
-                None => key_of_port.push((port, pending_port.clone())),
-            }
+            key_of_port.insert(port, pending_port.clone());
             put(
                 &mut by_pid,
                 &pending_port.clone(),
@@ -460,9 +474,9 @@ pub fn parse_log(
             let port = m.get(1).map_or("", |g| g.as_str());
             let path = m.get(2).map_or("", |g| g.as_str()).to_owned();
             let pid = key_of_port
-                .iter()
-                .find(|(k, _)| k == port)
-                .map_or(port.to_owned(), |(_, v)| v.clone());
+                .get(port)
+                .cloned()
+                .unwrap_or_else(|| port.to_owned());
             let mut rec = get(&by_pid, &pid).cloned().unwrap_or(ServerConfig {
                 instance: pid.clone(),
                 alias: String::new(),
@@ -490,10 +504,10 @@ pub fn parse_log(
             let port = g(1);
             let task = int(g(3))?;
             let mut pid = key_of_port
-                .iter()
-                .find(|(k, _)| k == port)
-                .map_or(port.to_owned(), |(_, v)| v.clone());
-            let stored = if key_of_port.iter().any(|(k, _)| k == port) {
+                .get(port)
+                .cloned()
+                .unwrap_or_else(|| port.to_owned());
+            let stored = if key_of_port.contains_key(port) {
                 None
             } else {
                 stored_instance(
@@ -509,7 +523,7 @@ pub fn parse_log(
                 pid = s.instance.clone();
             }
             let key = (pid.clone(), task);
-            let idx = match samples.iter().position(|(k, _)| *k == key) {
+            let idx = match samples.get_index_of(&key) {
                 Some(i) => i,
                 None => {
                     let s = match &stored {
@@ -530,19 +544,15 @@ pub fn parse_log(
                                 task,
                                 model_path: rec.map_or(String::new(), |r| r.model_path.clone()),
                                 alias: rec.map_or(String::new(), |r| r.alias.clone()),
-                                spec_type: spec_of
-                                    .iter()
-                                    .find(|(k, _)| *k == pid)
-                                    .map_or(String::new(), |(_, v)| v.clone()),
+                                spec_type: spec_of.get(&pid).cloned().unwrap_or_default(),
                                 ..empty_sample()
                             }
                         }
                     };
-                    samples.push((key, s));
-                    samples.len() - 1
+                    samples.insert_full(key, s).0
                 }
             };
-            let Some((_, s)) = samples.get_mut(idx) else {
+            let Some((_, s)) = samples.get_index_mut(idx) else {
                 continue;
             };
             if ts != 0.0 {
@@ -566,8 +576,8 @@ pub fn parse_log(
         }
     }
     Ok((
-        samples.into_iter().map(|(_, s)| s).collect(),
-        by_pid.into_iter().map(|(_, c)| c).collect(),
+        samples.into_values().collect(),
+        by_pid.into_values().collect(),
     ))
 }
 
@@ -592,8 +602,8 @@ fn empty_sample() -> Sample {
 fn stored_instance(
     backend: Option<&mut Backend<'_>>,
     gap_free: bool,
-    cache: &mut Vec<(String, Vec<Stored>)>,
-    by_pid: &[(String, ServerConfig)],
+    cache: &mut HashMap<String, Vec<Stored>>,
+    by_pid: &ByPid,
     port: &str,
     ts: f64,
 ) -> Option<Stored> {
@@ -601,11 +611,9 @@ fn stored_instance(
     if ts == 0.0 || !gap_free {
         return None;
     }
-    if !cache.iter().any(|(k, _)| k == port) {
-        let rows = (backend.lookup)(port).unwrap_or_default();
-        cache.push((port.to_owned(), rows));
-    }
-    let rows = &cache.iter().find(|(k, _)| k == port)?.1;
+    let rows = cache
+        .entry(port.to_owned())
+        .or_insert_with(|| (backend.lookup)(port).unwrap_or_default());
     let found = rows.iter().find(|r| r.first_seen <= ts)?;
     if found.first_seen < backend.continuous_since {
         return None;
@@ -647,6 +655,77 @@ pub struct Stats {
     pub config_count: usize,
 }
 
+/// CPython's `float.__floordiv__` for finite operands (`float_floor_div`).
+fn py_floordiv(vx: f64, wx: f64) -> f64 {
+    let m = vx % wx;
+    let mut div = (vx - m) / wx;
+    if m != 0.0 && ((wx < 0.0) != (m < 0.0)) {
+        div -= 1.0;
+    }
+    if div != 0.0 {
+        let floordiv = div.floor();
+        if div - floordiv > 0.5 {
+            floordiv + 1.0
+        } else {
+            floordiv
+        }
+    } else {
+        0.0f64.copysign(vx / wx)
+    }
+}
+
+/// `Stats(last_ts=...).age_str` at `now` (`time.time()`).
+pub fn age_str(last_ts: f64, now: f64) -> Result<String, Error> {
+    if last_ts == 0.0 {
+        return Ok(String::new());
+    }
+    // `max(0.0, x)`: x only when it is greater (NaN is not).
+    let x = now - last_ts;
+    let d = if x > 0.0 { x } else { 0.0 };
+    if d < 90.0 {
+        return Ok("just now".to_owned());
+    }
+    for (cutoff, size, unit) in [
+        (Some(3600.0), 60.0, "min"),
+        (Some(86400.0), 3600.0, "hour"),
+        (None, 86400.0, "day"),
+    ] {
+        if cutoff.is_none_or(|c| d < c) {
+            if !d.is_finite() {
+                return Err(Error::Raised(
+                    "ValueError: cannot convert float NaN to integer",
+                ));
+            }
+            let n = py_floordiv(d, size);
+            if n.abs() >= 9.0e18 {
+                return Err(Error::Unsupported("an age past 64 bits"));
+            }
+            let n = n as i64;
+            return Ok(format!("{n} {unit}{} ago", if n != 1 { "s" } else { "" }));
+        }
+    }
+    Ok(String::new())
+}
+
+pattern!(re_max, r"max=(\d+)");
+
+impl Stats {
+    /// `age_str` at `now`.
+    pub fn age_str(&self, now: f64) -> Result<String, Error> {
+        age_str(self.last_ts, now)
+    }
+
+    /// `draft_n_max`: the first `max=<digits>` of the spec types, 0 without one.
+    pub fn draft_n_max(&self) -> Result<i64, Error> {
+        for st in &self.spec_types {
+            if let Some(m) = re_max().captures(st) {
+                return int(m.get(1).map_or("", |g| g.as_str()));
+            }
+        }
+        Ok(0)
+    }
+}
+
 impl Default for Stats {
     fn default() -> Self {
         Stats {
@@ -667,13 +746,8 @@ impl Default for Stats {
 }
 
 fn distinct<'a>(items: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
-    let mut out: Vec<&str> = Vec::new();
-    for i in items {
-        if !out.contains(&i) {
-            out.push(i);
-        }
-    }
-    out
+    let set: IndexSet<&str> = items.collect();
+    set.into_iter().collect()
 }
 
 /// `max(values, default=0.0)` with Python's comparison (the first of equal maxima).
@@ -714,13 +788,12 @@ pub fn stats_for(rows: &[Row]) -> Stats {
         .collect();
     let acc: Vec<f64> = rows.iter().filter_map(|r| r.draft_acc).collect();
     let dlen: Vec<f64> = rows.iter().filter_map(|r| r.draft_len).collect();
-    let mut spec: Vec<String> = Vec::new();
-    for r in &rows {
-        let s = r.spec_type.clone().unwrap_or_default();
-        if !s.is_empty() && !spec.contains(&s) {
-            spec.push(s);
-        }
-    }
+    let spec: HashSet<&str> = rows
+        .iter()
+        .map(|r| r.spec_type.as_deref().unwrap_or(""))
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut spec: Vec<String> = spec.into_iter().map(str::to_owned).collect();
     spec.sort();
     Stats {
         n: rows.len(),
@@ -756,6 +829,13 @@ pub struct ConfigRun {
     pub rel_pct: i64,
 }
 
+impl ConfigRun {
+    /// `age_str` at `now`.
+    pub fn age_str(&self, now: f64) -> Result<String, Error> {
+        age_str(self.last_ts, now)
+    }
+}
+
 /// `config_history(...)` over `db.timings_by_instance` rows (newest first) and
 /// `db.server_configs_for` (`None`: it raised, which Python treats as `{}`).
 pub fn config_history(
@@ -767,28 +847,28 @@ pub fn config_history(
     if rows.is_empty() {
         return Ok(Vec::new());
     }
-    let mut by_instance: Vec<(&str, Vec<&Row>)> = Vec::new();
+    let mut by_instance: IndexMap<&str, Vec<&Row>> = IndexMap::new();
     for r in rows {
-        match by_instance.iter_mut().find(|(k, _)| *k == r.instance) {
-            Some((_, rs)) => rs.push(r),
-            None => by_instance.push((&r.instance, vec![r])),
-        }
+        by_instance.entry(r.instance.as_str()).or_default().push(r);
     }
+    // `argvs` is a dict: a repeated instance keeps its last value.
+    let argvs: Option<HashMap<&str, &Dict>> =
+        argvs.map(|a| a.iter().map(|(k, v)| (k.as_str(), v)).collect());
     let empty = Dict::new();
     let complete = |a: &Dict| {
         dict_get(a, "--model").is_some_and(|v| !v.is_empty())
             || dict_get(a, "-m").is_some_and(|v| !v.is_empty())
     };
     struct Fold<'a> {
-        sig: Vec<(&'a str, &'a str)>,
         argv: &'a Dict,
         rows: Vec<&'a Row>,
         instances: Vec<&'a str>,
     }
-    let mut folded: Vec<Fold<'_>> = Vec::new();
+    let mut folded: IndexMap<Vec<(&str, &str)>, Fold<'_>> = IndexMap::new();
     for (inst, rs) in &by_instance {
         let argv = argvs
-            .and_then(|a| a.iter().find(|(k, _)| k == inst).map(|(_, v)| v))
+            .as_ref()
+            .and_then(|a| a.get(inst).copied())
             .unwrap_or(&empty);
         if !complete(argv) {
             continue;
@@ -796,22 +876,26 @@ pub fn config_history(
         let mut sig: Vec<(&str, &str)> =
             argv.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         sig.sort();
-        match folded.iter_mut().find(|f| f.sig == sig) {
+        match folded.get_mut(&sig) {
             Some(f) => {
                 f.rows.extend(rs.iter().copied());
                 f.instances.push(inst);
             }
-            None => folded.push(Fold {
-                sig,
-                argv,
-                rows: rs.clone(),
-                instances: vec![inst],
-            }),
+            None => {
+                folded.insert(
+                    sig,
+                    Fold {
+                        argv,
+                        rows: rs.clone(),
+                        instances: vec![inst],
+                    },
+                );
+            }
         }
     }
     let newest = rows.first().map_or("", |r| r.instance.as_str());
     let mut runs: Vec<ConfigRun> = Vec::new();
-    for f in &folded {
+    for f in folded.values() {
         let rs = &f.rows;
         if rs.len() < min_samples {
             continue;

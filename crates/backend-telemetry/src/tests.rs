@@ -49,7 +49,10 @@ fn float(v: &V) -> f64 {
 
 fn shown(result: Result<(Vec<Sample>, Vec<ServerConfig>), Error>) -> V {
     match result {
-        Err(Error::Raised(_)) => serde_json::json!({"raised": "ValueError"}),
+        // The exception class, as Python's `type(e).__name__`.
+        Err(Error::Raised(why)) => {
+            serde_json::json!({"raised": why.split(':').next().unwrap_or(why)})
+        }
         Err(Error::Unsupported(why)) => panic!("unsupported: {why}"),
         Ok((samples, configs)) => serde_json::json!({
             "samples": samples.iter().map(|s| serde_json::json!({
@@ -132,9 +135,8 @@ fn the_stored_attribution_is_pythons() {
             "{id}"
         );
         // Each port is looked up at most once per parse.
-        let mut unique = asked.clone();
-        unique.dedup();
-        assert_eq!(unique, asked, "{id}");
+        let unique: std::collections::HashSet<&String> = asked.iter().collect();
+        assert_eq!(unique.len(), asked.len(), "{id}: {asked:?}");
     }
 }
 
@@ -215,7 +217,7 @@ fn stats_and_history_are_pythons() {
             "prompt_p50": f(s.prompt_p50), "draft_acc_p50": of(s.draft_acc_p50),
             "draft_len_p50": of(s.draft_len_p50), "draft_n": s.draft_n, "last_ts": f(s.last_ts),
             "spec_types": s.spec_types, "single_config": s.single_config,
-            "config_count": s.config_count,
+            "config_count": s.config_count, "draft_n_max": s.draft_n_max().unwrap(),
         });
         assert_eq!(shown, case["stats"], "{id}");
     }
@@ -281,4 +283,61 @@ fn lines_split_as_python_splits_them() {
     );
     assert_eq!(splitlines("\n\n x"), vec!["", "", " x"]);
     assert_eq!(splitlines("a\x1fb"), vec!["a\x1fb"]);
+}
+
+#[test]
+fn ages_limits_and_far_stamps_are_pythons() {
+    let fx = fixture();
+    for case in fx["ages"].as_array().unwrap() {
+        let (last, now) = (float(&case["last_ts"]), float(&case["now"]));
+        assert_eq!(
+            age_str(last, now).unwrap(),
+            case["age"].as_str().unwrap(),
+            "{case}"
+        );
+        assert_eq!(
+            age_str(last, now).unwrap(),
+            case["run_age"].as_str().unwrap(),
+            "{case}"
+        );
+    }
+    for case in fx["n_max"].as_array().unwrap() {
+        let s = Stats {
+            spec_types: case["spec_types"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|t| t.as_str().unwrap().to_owned())
+                .collect(),
+            ..Stats::default()
+        };
+        assert_eq!(
+            s.draft_n_max().unwrap(),
+            case["max"].as_i64().unwrap(),
+            "{case}"
+        );
+    }
+    let far = fx["far"].as_array().unwrap();
+    // Below 2**53 microseconds the stamp is Python's; past it this side refuses.
+    let below = format!("{} x", far[0]["stamp"].as_str().unwrap());
+    assert_eq!(f(parse_ts(&below).unwrap()), far[0]["ts"]);
+    let above = format!("{} x", far[1]["stamp"].as_str().unwrap());
+    assert!(matches!(parse_ts(&above), Err(Error::Unsupported(_))));
+    assert!(matches!(
+        Stats {
+            spec_types: vec!["x (max=\u{0661})".into()],
+            ..Stats::default()
+        }
+        .draft_n_max(),
+        Err(Error::Unsupported(_))
+    ));
+}
+
+#[test]
+fn python_classes_are_built_in_one_pass() {
+    assert_eq!(python_classes(r"a\sb"), r"a[\s\x1c-\x1f]b");
+    assert_eq!(python_classes(r"\S+"), r"[^\s\x1c-\x1f]+");
+    // An escaped backslash before `s` is a literal backslash and an `s`.
+    assert_eq!(python_classes(r"\\s"), r"\\s");
+    assert_eq!(python_classes(r"\d\."), r"\d\.");
 }
