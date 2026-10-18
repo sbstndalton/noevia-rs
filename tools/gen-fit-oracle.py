@@ -19,6 +19,10 @@ Recorded per runtime case (step 1b): the answers of the child's private calls th
 used to splice (`main._model_detail_runtime`, `_models_runtime`, `_overview_runtime`), through the
 app's own middleware, with fake llama-servers on 127.0.0.1 answering the backends' probes and the
 clock pinned. The native reads now produce those bytes themselves.
+
+Recorded per search case (step 1c): the answer of `main._search_runtime` (the GPU budget, the
+downloaded files still on disk, and the trusted publisher sets, which the oracle replaces with
+synthetic ones: the real sets are deployment data and never enter this repository).
 """
 from __future__ import annotations
 
@@ -198,6 +202,47 @@ RESERVE_FORMS = ["0", "8", "32", "8.5", " 16 ", "+8.25\n", "-4", "0.05", "007", 
                  "8.", ".5", "1_0", "0x10", "8 kB", ""]
 
 
+SEARCH_QUANTISERS = ["synthetic-quant-b", "synthetic-quant-a"]
+SEARCH_LABS = ["synthetic-lab-z", "synthetic-lab-a", "synthetic-lab-a"]
+
+
+def search_cases():
+    files = ["a/a-Q4.gguf", "b.gguf", "c/c-00001-of-00002.gguf", "c/c-00002-of-00002.gguf",
+             "d/d.gguf", "d/mmproj-d.gguf", "notes.txt"]
+    rows = [("org/a", "a/a-Q4.gguf", "done"), ("org/a", "a/a-Q4.gguf", "done"), ("org/a", "a/gone.gguf", "done"),
+            ("org/b", "b.gguf", "done"), ("org/b", "sub/b.gguf", "done"),
+            ("org/c", "c/c-00002-of-00002.gguf", "done"), ("org/d", "d/mmproj-d.gguf", "done"),
+            ("org/x", "x.gguf", "failed"), ("", "a/a-Q4.gguf", "done"), ("org/gone", "gone.gguf", "done"),
+            ("org/\u00fc", "b.gguf", "done"), ("org/a", "b.gguf", "downloading"), ("org/e", "d.gguf", "done")]
+    w = world([container(50, "llama-igpu", 50), container(51, "llama-cuda", 51)],
+              [image(50, [VULKAN]), image(51, [CUDA])])
+    return [
+        {"id": "downloaded-and-budget", "env": {"GPU_VRAM": "llama-cuda:0"}, "meminfo": meminfo(gib_kib(64)),
+         "docker": w, "cache": {"llama-igpu": ok(gpu(15.6)), "llama-cuda": ok(gpu(24.0))},
+         "files": files, "rows": rows},
+        {"id": "declared-budget", "env": {"LLAMA_CONTAINERS": "llama-gone", "GPU_VRAM": "llama-gone:12"},
+         "meminfo": meminfo(gib_kib(64)), "docker": None, "cache": {}, "files": ["z.gguf"],
+         "rows": [("org/z", "z/z.gguf", "done")]},
+        {"id": "empty", "env": {}, "meminfo": None, "docker": None, "cache": {}, "files": [], "rows": []},
+        # Budget ties (a declaration and a sample of the same figure) and sub-0.1 figures.
+        {"id": "budget-tie", "env": {"GPU_VRAM": "llama-a:16"}, "meminfo": None,
+         "docker": world([container(52, "llama-a", 52), container(53, "llama-b", 53)],
+                         [image(52, [VULKAN]), image(53, [VULKAN])]),
+         "cache": {"llama-b": ok(gpu(16.0))}, "files": [], "rows": []},
+        {"id": "budget-tiny", "env": {}, "meminfo": None,
+         "docker": world([container(54, "llama-a", 54), container(55, "llama-b", 55)],
+                         [image(54, [VULKAN]), image(55, [VULKAN])]),
+         "cache": {"llama-a": ok(gpu(0.05)), "llama-b": ok(gpu(0.04))}, "files": [], "rows": []},
+    ]
+
+
+TRUST_QUANTISERS = ["Synthetic-Mixed", "synthetic-quant-a"]
+TRUST_LABS = ["synthetic-lab-a"]
+TRUST_OWNERS = ["synthetic-quant-a", "Synthetic-Quant-A", "synthetic-mixed", "Synthetic-Mixed",
+                "synthetic-quant-ab", "synthetic-quant", "synthetic-lab-a", "SYNTHETIC-LAB-A", "other"]
+TRUST_MODIFIED = "2026-10-01T00:00:00.000Z"
+
+
 def main() -> None:
     app_dir = Path(sys.argv[1]).resolve()
     root = Path(tempfile.mkdtemp(prefix="gen-fit-"))
@@ -331,12 +376,54 @@ def main() -> None:
             reserve_forms[form] = repr(Settings(host_ram_reserve_gb=form).host_ram_reserve_gb)
         except Exception:  # noqa: BLE001 - a settings error stops the child
             reserve_forms[form] = "error"
+    from app import db, discover
+    discover.TRUSTED_QUANTISERS = set(SEARCH_QUANTISERS)
+    discover.TRUSTED_LABS = set(SEARCH_LABS)
+    os.environ["NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED"] = "1"
+    import sqlite3
+    search_out = []
+    for case in search_cases():
+        env = case["env"]
+        settings.llama_containers = env.get("LLAMA_CONTAINERS", "")
+        settings.gpu_vram = env.get("GPU_VRAM", "")
+        settings.host_ram_reserve_gb = 32.0
+        mem["text"] = case["meminfo"]
+        w = case["docker"]
+        bo.STATE["world"] = w
+        os.environ["DOCKER_HOST"] = f"unix://{sock_path}" if w is not None else f"unix://{root}/absent.sock"
+        hw.load_pushed(case["cache"])
+        shutil.rmtree(root / "models", ignore_errors=True)
+        (root / "models").mkdir()
+        for name in case["files"]:
+            p = root / "models" / name
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(b"GGUF")
+        for p in (root / "data").glob("model_loader.db*"):
+            p.unlink()
+        db.init()
+        with sqlite3.connect(root / "data" / "model_loader.db") as c:
+            for repo, name, status in case["rows"]:
+                c.execute("INSERT INTO download_history(repo_id, filename, dest_path, total_bytes, status, "
+                          "started_at) VALUES (?, ?, '/models', 4, ?, 1.0)", (repo, name, status))
+        r = client.get("/api/v1/internal/search-runtime")
+        search_out.append({"id": case["id"], "env": env, "meminfo": case["meminfo"], "docker": w,
+                           "cache": json.dumps(case["cache"], ensure_ascii=False), "files": case["files"],
+                           "rows": [list(row) for row in case["rows"]],
+                           "trusted": {"quantisers": SEARCH_QUANTISERS, "labs": SEARCH_LABS},
+                           "status": r.status_code, "body": r.text})
+    discover.TRUSTED_LABS = set(TRUST_LABS)
+    trust = {"quantisers": TRUST_QUANTISERS, "labs": TRUST_LABS, "last_modified": TRUST_MODIFIED, "owners": {
+        owner: discover.judge(discover.Candidate(id=f"{owner}/synthetic-repo", owner=owner,
+                                                 last_modified=TRUST_MODIFIED),
+                              budget_gb=8.0, trusted=set(TRUST_QUANTISERS))["trusted"]
+        for owner in TRUST_OWNERS}}
     time.time = real_time
     server.shutdown()
     shutil.rmtree(root, ignore_errors=True)
     sources = {name: hashlib.sha256((app_dir / name).read_bytes()).hexdigest()
-               for name in ("api.py", "config.py", "helpers.py", "hw.py", "main.py", "services.py")}
-    json.dump({"sources": sources, "cases": out_cases, "runtime": runtime_out,
+               for name in ("api.py", "config.py", "db.py", "discover.py", "helpers.py", "hw.py", "main.py",
+                            "services.py")}
+    json.dump({"sources": sources, "cases": out_cases, "runtime": runtime_out, "search": search_out, "trust": trust,
                "reserve_forms": reserve_forms}, sys.stdout, indent=1, sort_keys=True, ensure_ascii=True)
     sys.stdout.write("\n")
 

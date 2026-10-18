@@ -30,6 +30,8 @@
 //! patterns are applied, hub fields of odd JSON types, numbers past 64 bits, a page past the
 //! `hub_page` bounds); a repository id that is not Hub-shaped is not sent to the Hub.
 mod discover;
+#[cfg(feature = "native-backends")]
+pub mod live;
 mod net;
 mod params;
 mod py;
@@ -319,6 +321,12 @@ pub struct Search {
     generation: AtomicU64,
     files: Mutex<FilesCache>,
     headers: Mutex<HeaderCache>,
+    /// noevia#1318 step 1c: the native search runtime, once this process samples the backends.
+    #[cfg(feature = "native-backends")]
+    live: std::sync::OnceLock<live::Source>,
+    /// Set once the child has answered its health check (its startup created the store).
+    #[cfg(feature = "native-backends")]
+    started: std::sync::atomic::AtomicBool,
     /// Lib tests: runs before the final parse of every listing.
     #[cfg(test)]
     parse_hook: Mutex<Option<tree::ParseHook>>,
@@ -387,6 +395,10 @@ impl Search {
             generation: AtomicU64::new(0),
             files: Mutex::new(FilesCache::default()),
             headers: Mutex::new(HeaderCache::default()),
+            #[cfg(feature = "native-backends")]
+            live: std::sync::OnceLock::new(),
+            #[cfg(feature = "native-backends")]
+            started: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
             parse_hook: Mutex::new(None),
         })
@@ -1094,8 +1106,14 @@ impl Search {
         Ok(None)
     }
 
-    /// The child's `{budget, downloaded, quantisers, labs}`.
+    /// The child's `{budget, downloaded, quantisers, labs}`; natively (the same bytes) once this
+    /// process samples the backends.
     async fn search_runtime(&self) -> Result<Runtime, Stop> {
+        #[cfg(feature = "native-backends")]
+        if let Some(source) = self.live.get() {
+            let body = self.native_runtime(source).await?;
+            return parse_runtime(&body).ok_or(Stop::Failed);
+        }
         let body = self
             .child(
                 self.legacy
