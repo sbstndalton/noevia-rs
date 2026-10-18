@@ -2049,3 +2049,35 @@ jobs:
       - run: cargo fmt --check -p backend-telemetry
       - run: cargo clippy --locked -p backend-telemetry --all-targets -- -D warnings
       - run: cargo test --locked -p backend-telemetry
+
+  native-token-test:
+    name: Native stored-token validator matches actual Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-services
+          ref: eefbcbaeebd3f806c62dd5aea48036da8b20bfbf
+          path: token-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - run: python3 -m pip install -r token-services/model-manager/requirements.txt
+      - name: Regenerate actual Python validator oracle without network
+        run: |
+          python3 -I tools/gen-token-test-oracle.py token-services/model-manager/app > "$RUNNER_TEMP/token-test.json"
+          cmp bins/noevia-model-manager/tests/fixtures/token-test-python.v1.json "$RUNNER_TEMP/token-test.json"
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-token-test -- -D warnings
+      - run: cargo test --locked -p noevia-model-manager --features native-token-test --lib token_test
+      - run: cargo test --locked -p noevia-model-manager --features native-token-test --test token_test_startup
+      - name: Deliberate compiled capability omission refuses before startup
+        run: |
+          cargo build --locked -p noevia-model-manager --no-default-features --features native-logs --target-dir target/token-omission
+          if MODEL_MANAGER_TOKEN_TEST_IMPL=rust MODEL_MANAGER_SETTINGS_WRITE_IMPL=rust target/token-omission/debug/noevia-model-manager > token-omission.log 2>&1; then exit 1; fi
+          grep -q 'native-token-test requires native settings writer and compiled native-token-test feature' token-omission.log
