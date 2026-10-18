@@ -387,11 +387,12 @@ fn max_tokens_follows_int_and_refuses_what_python_500s() {
     }
 }
 
-/// noevia#1318 step 2: while this process samples the backends, the native mirror is the only
-/// owner of the restart errors: a failed restart is kept there, and the child is never told.
+/// noevia#1318 step 2: a failed restart is kept in the native mirror and the child is still told
+/// (cleared, then set), because the child's backend snapshot still shows it in `/overview` under
+/// the python overview selector or without a native download table.
 #[cfg(feature = "native-backends")]
 #[tokio::test]
-async fn with_the_native_sampler_the_child_never_holds_restart_errors() {
+async fn with_the_native_sampler_the_child_still_holds_restart_errors() {
     use noevia_model_manager::backend_stats::{BackendStats, Config};
     let fx: Value =
         serde_json::from_str(include_str!("fixtures/backend-control-python.v1.json")).unwrap();
@@ -470,11 +471,21 @@ async fn with_the_native_sampler_the_child_never_holds_restart_errors() {
         );
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
-    assert!(stats.restart_error(NAME).unwrap().starts_with("APIError: "));
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    assert!(
-        restart.lock().unwrap().is_empty(),
-        "the child was told: {:?}",
-        restart.lock().unwrap()
-    );
+    let mirrored = stats.restart_error(NAME).unwrap();
+    assert!(mirrored.starts_with("APIError: "));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let calls = restart.lock().unwrap().clone();
+        if calls.len() >= 2 {
+            assert!(calls[0]["error"].is_null(), "cleared first: {calls:?}");
+            assert_eq!(calls[0]["name"], NAME);
+            assert_eq!(calls.last().unwrap()["error"], Value::String(mirrored));
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the child was not told: {calls:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
 }

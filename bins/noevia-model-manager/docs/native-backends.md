@@ -122,12 +122,13 @@ Python samples it when the tool is absent from the image:
 differential still compares against Python's own answers. The fake children fail a case if they
 are asked for a GPU read. Docker access stays read-only: nothing here runs `exec`.
 
-**Restart errors.** While this process samples the backends, the native mirror is the only
-owner, and the child's copy is no longer set or cleared. Every reader of that copy is then
-native: `GET /api/v1/backends`, and the backend snapshot behind the live fields of the model
-reads. With `MODEL_MANAGER_BACKENDS_IMPL=python` the child answers `GET /backends` itself and
-still receives the errors. `tests/backend_control.rs` checks that the child is never told while
-the sampler is native.
+**Restart errors.** The native mirror serves the native `GET /api/v1/backends` and the native
+model reads' live fields. The child's copy is still set and cleared on every native restart,
+because the child's own backend snapshot is still read: `/overview`'s `backends[]` under
+`MODEL_MANAGER_OVERVIEW_IMPL=python`, the native overview without a native download table (its
+child runtime call), and every route under the python backends selector. The copy can go when
+those paths are retired. `tests/backend_control.rs` checks that the child is told even while the
+sampler is native.
 
 **Cache push kept.** The push of the sampler cache to the child (`PUT /api/v1/internal/backend-stats`)
 stays, because child code still reads `hw.stats_for` through it:
