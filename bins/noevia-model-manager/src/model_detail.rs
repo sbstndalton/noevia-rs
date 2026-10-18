@@ -231,7 +231,7 @@ impl Entry {
             format!("{}/{}", self.model.subdir, self.model.base)
         }
     }
-    fn first_rel(&self) -> Result<String, Stop> {
+    pub(crate) fn first_rel(&self) -> Result<String, Stop> {
         let first = self.model.parts.first().ok_or(Stop::Failed)?;
         Ok(if self.model.subdir.is_empty() {
             first.name.clone()
@@ -264,6 +264,15 @@ pub(crate) struct Snapshot {
     pub(crate) root: Root,
     pub(crate) base: PathBuf,
     pub(crate) entries: Vec<Entry>,
+    /// noevia#1318: what the model list also needs from the same reads: every file of the walk
+    /// (`utils.iter_gguf` order), the files some section configures (`ini.sections_by_file()`'s
+    /// keys) and the section names (`ini.section_names()`). Only the list reads them.
+    #[cfg_attr(not(feature = "native-model-list"), allow(dead_code))]
+    pub(crate) found: Vec<Found>,
+    #[cfg_attr(not(feature = "native-model-list"), allow(dead_code))]
+    pub(crate) claimed: std::collections::HashSet<String>,
+    #[cfg_attr(not(feature = "native-model-list"), allow(dead_code))]
+    pub(crate) names: Vec<String>,
 }
 
 pub(crate) fn snapshot(
@@ -295,8 +304,13 @@ pub(crate) fn snapshot(
         }
         _ => Vec::new(),
     };
+    let names: Vec<String> = ini
+        .as_ref()
+        .map(|(_, parsed)| parsed.names().map(str::to_owned).collect())
+        .unwrap_or_default();
+    let claimed = by_file.keys().cloned().collect();
     let mut entries = Vec::new();
-    for model in group(found)? {
+    for model in group(found.clone())? {
         let rel = match model.parts.first() {
             Some(first) if model.subdir.is_empty() => first.name.clone(),
             Some(first) => format!("{}/{}", model.subdir, first.name),
@@ -320,6 +334,9 @@ pub(crate) fn snapshot(
         root,
         base,
         entries,
+        found,
+        claimed,
+        names,
     }))
 }
 
@@ -521,11 +538,21 @@ impl<R: Seek> Seek for Watched<R> {
 }
 
 fn open_part(root: &Root, base: &Path, rel: &str) -> Result<std::fs::File, Stop> {
+    // Vanished since the walk: Python's FileNotFoundError text is not reproduced.
+    open_model_file(root, base, rel)?.ok_or(Stop::Refused)
+}
+
+/// Opens a model file the walk listed (`None`: it vanished since). An absolute link is followed
+/// only while it stays inside the models folder, as the walk followed it.
+pub(crate) fn open_model_file(
+    root: &Root,
+    base: &Path,
+    rel: &str,
+) -> Result<Option<std::fs::File>, Stop> {
     let mut budget = Budget::default();
     match root.file(rel, false, &mut budget) {
-        Ok(Some(file)) => Ok(file),
-        // Vanished since the walk: Python's FileNotFoundError text is not reproduced.
-        Ok(None) => Err(Stop::Refused),
+        Ok(Some(file)) => Ok(Some(file)),
+        Ok(None) => Ok(None),
         Err(_) => {
             // An absolute link inside the models folder, as the walk followed it.
             if inside(base, rel)?.is_none() {
@@ -539,7 +566,7 @@ fn open_part(root: &Root, base: &Path, rel: &str) -> Result<std::fs::File, Stop>
             if !file.metadata().map_err(|_| Stop::Refused)?.is_file() {
                 return Err(Stop::Refused);
             }
-            Ok(file)
+            Ok(Some(file))
         }
     }
 }
@@ -591,6 +618,29 @@ fn describe(
     } else {
         shape(&raw)?
     };
+    let head = entry_head(entry, &shape)?;
+    // str(g.parts[0]): the configured folder (as pathlib normalises it) joined with the file.
+    let path = models.join(&rel);
+    let path = path.to_str().ok_or(Stop::Refused)?;
+    let tail = format!(
+        ",\"badges\":[],\"path\":{},\"summary\":{}}}",
+        json_string(path),
+        summary
+    );
+    Ok(Step::Located(Box::new(Located {
+        head,
+        tail,
+        model_id: entry.model_id().to_owned(),
+        bytes: model.total,
+        fit: !model.companion,
+    })))
+}
+
+/// `api._entry(g, …)` from `"key"` through `"shape": …,` (trailing comma included); the live
+/// fields and the badges follow.
+pub(crate) fn entry_head(entry: &Entry, shape: &str) -> Result<String, Stop> {
+    let model = &entry.model;
+    let rel = entry.first_rel()?;
     let projector = if model.companion_name.is_empty() {
         "null".to_owned()
     } else {
@@ -606,7 +656,7 @@ fn describe(
         .map(|a| json_string(a))
         .collect::<Vec<_>>()
         .join(",");
-    let head = format!(
+    Ok(format!(
         concat!(
             "{{\"key\":{},\"name\":{},\"stem\":{},\"subdir\":{},\"bytes\":{},\"size\":{},",
             "\"modified\":{},\"mtime\":{},\"sharded\":{},\"parts\":{},\"companion\":{},",
@@ -628,22 +678,7 @@ fn describe(
         json_string(entry.model_id()),
         json_string(&rel),
         shape,
-    );
-    // str(g.parts[0]): the configured folder (as pathlib normalises it) joined with the file.
-    let path = models.join(&rel);
-    let path = path.to_str().ok_or(Stop::Refused)?;
-    let tail = format!(
-        ",\"badges\":[],\"path\":{},\"summary\":{}}}",
-        json_string(path),
-        summary
-    );
-    Ok(Step::Located(Box::new(Located {
-        head,
-        tail,
-        model_id: entry.model_id().to_owned(),
-        bytes: model.total,
-        fit: !model.companion,
-    })))
+    ))
 }
 
 /// `utils.human_bytes(n)`.
@@ -756,7 +791,7 @@ fn truthy(value: &gguf::Value) -> bool {
 }
 
 /// `services.model_shape(path)` as JSON (`null` when the architecture is unknown).
-fn shape(raw: &gguf::Raw) -> Result<String, Stop> {
+pub(crate) fn shape(raw: &gguf::Raw) -> Result<String, Stop> {
     // `kv.get("kv")` is a dict only when a header key named `kv` held a summarised array; the
     // summary dict then has no architecture.
     if matches!(raw.get("kv"), Some(gguf::Value::ArraySummary { .. })) {
@@ -787,4 +822,4 @@ fn shape(raw: &gguf::Raw) -> Result<String, Stop> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

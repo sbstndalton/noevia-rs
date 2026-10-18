@@ -72,6 +72,8 @@ fn state(badges: Option<Badges>, legacy_base: &str) -> Arc<StateData> {
         model_updates: None,
         #[cfg(feature = "native-model-detail")]
         model_detail: None,
+        #[cfg(feature = "native-model-list")]
+        model_list: None,
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
         badges: badges.map(Arc::new),

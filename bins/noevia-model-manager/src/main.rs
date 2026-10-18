@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 mod child_lifecycle;
+mod model_list_cmd;
 use noevia_model_manager::{
     docker::UnixDocker, legacy_client, router, validate_token, Redactor, StateData,
 };
@@ -71,6 +72,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if cfg!(feature = "native-search") {
                 output.write_all(b"native-search\n")?;
+            }
+            if cfg!(feature = "native-model-list") {
+                output.write_all(b"native-model-list\n")?;
             }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
@@ -484,6 +488,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    // noevia#1318: GET /api/v1/models and GET /api/v1/overview.
+    let model_list = model_list_cmd::select(&std::env::vars_os().collect::<Vec<_>>())?;
     if !matches!(diagnose_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_DIAGNOSE_IMPL must be python or rust".into());
     }
@@ -859,6 +865,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "native-badges")]
         badges_root.as_deref(),
     );
+    model_list_cmd::child(&mut child_command, &model_list);
     // #1668: the native front refuses deletes of the embedding service's models from its router
     // state, so the legacy holder scan must not also pin env names that point at that service
     // forever. It still pins names on any other server (#1638), so it gets the service's address.
@@ -995,6 +1002,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_updates,
         #[cfg(feature = "native-model-detail")]
         model_detail,
+        #[cfg(feature = "native-model-list")]
+        model_list: model_list_cmd::state(&model_list),
         #[cfg(feature = "native-download-targets")]
         download_targets,
         #[cfg(feature = "native-badges")]

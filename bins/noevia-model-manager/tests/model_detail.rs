@@ -48,6 +48,8 @@ fn state(roots: Option<(&Path, &Path)>, legacy_base: &str) -> Arc<StateData> {
         settings: None,
         model_updates: None,
         model_detail: roots.map(|(models, ini)| Arc::new(ModelDetail::new(models, ini))),
+        #[cfg(feature = "native-model-list")]
+        model_list: None,
         sections: None,
         embedding: None,
         host: None,

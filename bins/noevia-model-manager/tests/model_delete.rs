@@ -112,6 +112,8 @@ fn state(
         settings: None,
         model_updates: None,
         model_detail: None,
+        #[cfg(feature = "native-model-list")]
+        model_list: None,
         sections: None,
         embedding: None,
         host: None,

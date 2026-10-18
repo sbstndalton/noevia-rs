@@ -40,6 +40,9 @@ native-search = ["native-draft-heads"]
 # noevia#1318 slice 13: the backend sampler (read-only Docker, sysfs, GPU_VRAM; exec stays in the
 # child) and GET /api/v1/backends. It needs the native restart's error store.
 native-backends = ["native-backend-control"]
+# noevia#1318: GET /api/v1/models and GET /api/v1/overview (model detail's snapshot and entry
+# fields, the benchmark runs' store rows); their live fields are asked of the child.
+native-model-list = ["native-model-detail", "native-bench-runs"]
 [lints]
 workspace = true
 [dependencies]

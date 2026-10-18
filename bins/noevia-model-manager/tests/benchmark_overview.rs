@@ -60,6 +60,8 @@ fn state(
         model_updates: None,
         #[cfg(feature = "native-model-detail")]
         model_detail: None,
+        #[cfg(feature = "native-model-list")]
+        model_list: None,
         #[cfg(feature = "native-download-targets")]
         download_targets: None,
         #[cfg(feature = "native-badges")]

@@ -1157,6 +1157,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         if cfg!(feature = "native-search") {
             expected.push_str("native-search\n");
         }
+        if cfg!(feature = "native-model-list") {
+            expected.push_str("native-model-list\n");
+        }
         // noevia#1925: the production image also advertises native-diagnose (printed last).
         if cfg!(feature = "native-diagnose") {
             expected.push_str("native-diagnose\n");

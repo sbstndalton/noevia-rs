@@ -58,6 +58,8 @@ fn state(stats: Option<Arc<BackendStats>>, legacy_base: &str) -> Arc<StateData> 
         model_updates: None,
         #[cfg(feature = "native-model-detail")]
         model_detail: None,
+        #[cfg(feature = "native-model-list")]
+        model_list: None,
         sections: None,
         embedding: None,
         host: None,

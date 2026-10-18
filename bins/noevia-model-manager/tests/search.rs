@@ -59,6 +59,8 @@ fn state(search: Option<Search>, legacy_base: &str) -> Arc<StateData> {
         prompts: None,
         #[cfg(feature = "native-settings")]
         settings: None,
+        #[cfg(feature = "native-model-list")]
+        model_list: None,
         model_updates: None,
         model_detail: None,
         sections: None,
