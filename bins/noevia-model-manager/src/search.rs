@@ -110,6 +110,10 @@ pub struct Timeouts {
     pub header: Duration,
     /// `owner_avatars`' `timeout=8.0`.
     pub avatar: Duration,
+    /// A bound httpx does not have: the listings of a search (all candidates together), and one
+    /// repository's listing. A lookup still running at it is a failed listing (no files, not
+    /// cached; in the repository route `Network error:` with no text, as a timeout has).
+    pub listings: Duration,
 }
 
 impl Default for Timeouts {
@@ -119,6 +123,7 @@ impl Default for Timeouts {
             tree: Duration::from_secs(30),
             header: Duration::from_secs(25),
             avatar: Duration::from_secs(8),
+            listings: Duration::from_secs(90),
         }
     }
 }
@@ -245,6 +250,17 @@ struct HeaderCache {
     gated: HashMap<String, &'static str>,
 }
 
+impl HeaderCache {
+    /// `_HEADER_CACHE[key] = value`. Python clears a full cache only for a success and lets the
+    /// failures grow; here every insert is bounded.
+    fn put(&mut self, key: String, value: Option<Arc<str>>) {
+        if self.map.len() >= HEADER_CACHE_MAX {
+            self.map.clear();
+        }
+        self.map.insert(key, value);
+    }
+}
+
 pub struct Search {
     database: PathBuf,
     hub: Hub,
@@ -257,6 +273,10 @@ pub struct Search {
     header_client: reqwest::Client,
     avatar_client: reqwest::Client,
     lookups: Arc<tokio::sync::Semaphore>,
+    listing_deadline: Duration,
+    /// The `Authorization` the last request carried (`Some(None)`: none): caches filled under
+    /// another token are dropped, since a listing or header may be private to a token.
+    last_auth: Mutex<Option<Option<Vec<u8>>>>,
     files: Mutex<FilesCache>,
     headers: Mutex<HeaderCache>,
     /// Lib tests: runs before the final parse of every listing.
@@ -321,6 +341,8 @@ impl Search {
             header_client: client(timeouts.header, true)?,
             avatar_client: client(timeouts.avatar, true)?,
             lookups: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_LOOKUPS)),
+            listing_deadline: timeouts.listings,
+            last_auth: Mutex::new(None),
             files: Mutex::new(FilesCache::default()),
             headers: Mutex::new(HeaderCache::default()),
             #[cfg(test)]
@@ -381,6 +403,24 @@ impl Search {
     async fn auth(&self) -> Result<Auth, Stop> {
         let database = self.database.clone();
         let read = self.blocking(move || hub_auth(&database)).await?;
+        let carried = match &read {
+            HubAuth::Absent => Some(None),
+            HubAuth::Value(value) => Some(Some(value.as_bytes().to_vec())),
+            _ => None,
+        };
+        if let Some(carried) = carried {
+            let mut last = lock(&self.last_auth);
+            if last.as_ref().is_some_and(|before| *before != carried) {
+                // Another token: what was learnt under the old one may not hold.
+                let mut files = lock(&self.files);
+                files.map.clear();
+                files.bytes = 0;
+                let mut headers = lock(&self.headers);
+                headers.map.clear();
+                headers.gated.clear();
+            }
+            *last = Some(carried);
+        }
         Ok(match read {
             HubAuth::Absent => Auth::None,
             HubAuth::Value(value) => Auth::Header(value),
@@ -479,13 +519,16 @@ impl Search {
         let instant = py::instant_of_unix((self.clock)())?;
         let mut judged: Vec<Judged> = Vec::with_capacity(candidates.len());
         for candidate in &candidates {
-            judged.push(discover::judge(
-                candidate,
-                budget_gb,
-                &quantisers,
-                &labs,
-                instant,
-            )?);
+            judged.push(
+                discover::judge(candidate, budget_gb, &quantisers, &labs, instant).inspect_err(
+                    |_| {
+                        eprintln!(
+                            "search: refusing the answer, {} cannot be judged exactly",
+                            candidate.id
+                        );
+                    },
+                )?,
+            );
         }
         let found_count = judged.len();
         let hidden_untrusted = judged.iter().filter(|r| !r.trusted).count();
@@ -683,6 +726,7 @@ impl Search {
             Err(Stop::Failed) => None,
             Err(other) => return Err(other),
         };
+        let deadline = tokio::time::Instant::now() + self.listing_deadline;
         let lookups = repos
             .iter()
             .zip(&found)
@@ -694,23 +738,32 @@ impl Search {
                     let Some(header) = header else {
                         return Ok(None);
                     };
-                    let Ok(permit) = self.lookups.clone().acquire_owned().await else {
-                        return Err(Stop::Refused);
+                    let work = async {
+                        let Ok(permit) = self.lookups.clone().acquire_owned().await else {
+                            return Err(Stop::Refused);
+                        };
+                        let permit = Arc::new(permit);
+                        let listed = tree::list(
+                            &self.tree_client,
+                            &self.hub.api,
+                            header.as_ref(),
+                            repo,
+                            &permit,
+                            self.hook(),
+                        )
+                        .await;
+                        drop(permit);
+                        match listed {
+                            Ok(files) => gguf_files(files).map(Some),
+                            Err(_) => Ok(None),
+                        }
                     };
-                    let permit = Arc::new(permit);
-                    let listed = tree::list(
-                        &self.tree_client,
-                        &self.hub.api,
-                        header.as_ref(),
-                        repo,
-                        &permit,
-                        self.hook(),
-                    )
-                    .await;
-                    drop(permit);
-                    match listed {
-                        Ok(files) => gguf_files(files).map(Some),
-                        Err(_) => Ok(None),
+                    match tokio::time::timeout_at(deadline, work).await {
+                        Ok(result) => result,
+                        Err(_) => {
+                            eprintln!("search: the listing of {repo} did not finish in time");
+                            Ok(None)
+                        }
                     }
                 }
             });
@@ -965,15 +1018,20 @@ impl Search {
                 .await
                 .map_err(|_| Stop::Refused)?,
         );
-        let listed = tree::list(
+        let listing = tree::list(
             &self.tree_client,
             &self.hub.api,
             header.as_ref(),
             repo,
             &lookup,
             self.hook(),
-        )
-        .await;
+        );
+        let deadline = tokio::time::Instant::now() + self.listing_deadline;
+        let listed = match tokio::time::timeout_at(deadline, listing).await {
+            Ok(listed) => listed,
+            // A timeout has no message in httpx.
+            Err(_) => Err(TreeError::Transport(String::new())),
+        };
         drop(lookup);
         let files = match listed {
             Ok(files) => files,
@@ -1063,7 +1121,7 @@ impl Search {
             Auth::None => None,
             Auth::Header(value) => Some(value),
             Auth::NotAscii | Auth::Refused => {
-                lock(&self.headers).map.insert(key, None);
+                lock(&self.headers).put(key, None);
                 return Ok(None);
             }
         };
@@ -1075,7 +1133,7 @@ impl Search {
             request = request.header(reqwest::header::AUTHORIZATION, value);
         }
         let failed = |this: &Self| {
-            lock(&this.headers).map.insert(key.clone(), None);
+            lock(&this.headers).put(key.clone(), None);
         };
         let Ok(response) = request.send().await else {
             failed(self);
@@ -1104,7 +1162,7 @@ impl Search {
                 cache.gated.clear();
             }
             cache.gated.insert(repo.to_owned(), reason);
-            cache.map.insert(key, None);
+            cache.put(key, None);
             return Ok(None);
         }
         if (status != 200 && status != 206) || body.is_empty() {
@@ -1132,10 +1190,7 @@ impl Search {
         let summary: Arc<str> = Arc::from(summary);
         let mut cache = lock(&self.headers);
         cache.gated.remove(repo);
-        if cache.map.len() >= HEADER_CACHE_MAX {
-            cache.map.clear();
-        }
-        cache.map.insert(key, Some(summary.clone()));
+        cache.put(key, Some(summary.clone()));
         Ok(Some(summary))
     }
 

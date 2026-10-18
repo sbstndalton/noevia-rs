@@ -379,6 +379,7 @@ fn timeouts() -> Timeouts {
         tree: WAIT,
         header: WAIT,
         avatar: WAIT,
+        listings: Duration::from_secs(60),
     }
 }
 
@@ -712,4 +713,83 @@ fn numbers_are_rounded_and_written_as_python_does() {
             "{n} / 10**6"
         );
     }
+}
+
+// ---- the Unicode classes ---------------------------------------------------------------------
+
+fn bitmap(ranges: &J) -> Vec<bool> {
+    let mut map = vec![false; 0x11_0000];
+    for r in ranges.as_array().unwrap() {
+        for c in r[0].as_u64().unwrap()..=r[1].as_u64().unwrap() {
+            map[c as usize] = true;
+        }
+    }
+    map
+}
+
+/// The classes `discover.rs` spells out are Python's `\w`, `\d`, `\s` and `re.I` letters over every
+/// character Python's Unicode database (the version the fixture names) assigns.
+#[test]
+fn unicode_classes_are_pythons() {
+    let fixture = fixture();
+    let u = &fixture["unicode"];
+    let (assigned, word, digit, space) = (
+        bitmap(&u["assigned"]),
+        bitmap(&u["word"]),
+        bitmap(&u["digit"]),
+        bitmap(&u["space"]),
+    );
+    let nd = regex::Regex::new(&format!("^{}$", discover::DIGIT)).unwrap();
+    let blank = regex::Regex::new(&format!("^{}$", discover::SPACE)).unwrap();
+    let mut problems: Vec<String> = Vec::new();
+    let mut counted = 0;
+    for c in (0..0x11_0000u32).filter(|c| assigned[*c as usize]) {
+        let ch = char::from_u32(c).unwrap();
+        let text = ch.to_string();
+        counted += 1;
+        if discover::is_word(ch).unwrap() != word[c as usize] {
+            problems.push(format!("\\w {c:#x}: python {}", word[c as usize]));
+        }
+        if nd.is_match(&text) != digit[c as usize]
+            || discover::digit_value(ch).is_some() != digit[c as usize]
+        {
+            problems.push(format!("\\d {c:#x}: python {}", digit[c as usize]));
+        }
+        if blank.is_match(&text) != space[c as usize] || py::is_space(ch) != space[c as usize] {
+            problems.push(format!("\\s {c:#x}: python {}", space[c as usize]));
+        }
+    }
+    for pair in u["digit_values"].as_array().unwrap() {
+        let (c, v) = (
+            pair[0].as_u64().unwrap() as u32,
+            pair[1].as_u64().unwrap() as u32,
+        );
+        if discover::digit_value(char::from_u32(c).unwrap()) != Some(v) {
+            problems.push(format!("digit {c:#x} = {v}"));
+        }
+    }
+    // A letter under re.I: its two cases and these.
+    for (letter, python) in u["letters"].as_object().unwrap() {
+        let l = letter.chars().next().unwrap();
+        let mut ours: Vec<u64> = discover::folded(l)
+            .iter()
+            .map(|c| u64::from(u32::from(*c)))
+            .collect();
+        let mut theirs: Vec<u64> = python
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c.as_u64().unwrap())
+            .collect();
+        ours.sort_unstable();
+        theirs.sort_unstable();
+        if ours != theirs {
+            problems.push(format!("re.I {letter}: {ours:?}, python {theirs:?}"));
+        }
+    }
+    problems.truncate(30);
+    assert!(
+        counted > 140_000 && problems.is_empty(),
+        "{counted}: {problems:#?}"
+    );
 }

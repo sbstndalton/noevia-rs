@@ -445,6 +445,7 @@ async fn actual_python_differential_through_the_router() {
                 tree: wait,
                 header: wait,
                 avatar: wait,
+                listings: Duration::from_secs(60),
             },
         )
         .unwrap();
@@ -582,4 +583,44 @@ async fn without_the_native_search_the_routes_are_forwarded() {
         let (status, _, body) = call(shared.clone(), "GET", uri, true).await;
         assert_eq!(status, 502, "{uri}: {body}");
     }
+}
+
+/// The child's private calls are the parent's own: a client cannot reach them through the front's
+/// forwarder, in any spelling, with the native search on or off. The child sees nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_client_cannot_reach_the_private_search_calls() {
+    let (child_base, script, child_task) = child().await;
+    let dir = tempfile::tempdir().unwrap();
+    for native in [true, false] {
+        let search = native.then(|| Search::new(dir.path(), &child_base, TOKEN).unwrap());
+        // The front forwards to the child's address, so a leak would reach the fake.
+        let shared = state(search, &child_base);
+        for method in ["GET", "POST", "PUT"] {
+            for uri in [
+                "/api/v1/internal/search-runtime",
+                "/api/v1/internal/search-repo-runtime",
+                "/api/v1/internal/search-runtime?x=1",
+                "/api/v1/INTERNAL/search-runtime",
+                "/api/v1/%69nternal/search-runtime",
+                "/api/v1/internal%2Fsearch-repo-runtime",
+                "/api/v1/%2569nternal/search-runtime",
+                "/api/v1/%2e%2e/v1/internal/search-runtime",
+                "/api/v1/./internal/search-runtime",
+                "/api/v1//internal/search-runtime",
+            ] {
+                let (status, _, body) = call(shared.clone(), method, uri, true).await;
+                assert!(
+                    status == 404 || status == 405,
+                    "{method} {uri}: {status} {body}"
+                );
+                assert!(!body.contains("runtime\":"), "{method} {uri}: {body}");
+            }
+        }
+    }
+    assert!(
+        script.lock().unwrap().problems.is_empty(),
+        "the child was reached: {:?}",
+        script.lock().unwrap().problems
+    );
+    child_task.abort();
 }

@@ -309,6 +309,12 @@ def hostile_case(id, extra_item, get="/api/v1/search?" + ALL, hub_extra=None, **
     return {"id": id, "hub": {**hostile([extra_item]), **(hub_extra or {})}, "requests": [req(get)], **kw}
 
 
+NBSP, NBH, EAC, NL = chr(0xA0), chr(0x2011), chr(0xE9), chr(10)
+CJK = chr(0x6A21) + chr(0x578B)
+DOTTED, DOTLESS, LONGS = chr(0x130), chr(0x131), chr(0x17F)
+AR1, AR2, AR7 = chr(0x661), chr(0x662), chr(0x667)
+AR5 = chr(0x665) * 5
+FW4, FW7 = chr(0xFF14), chr(0xFF17)
 BASE_ID = "lab-two/odd-1B-GGUF"
 ODD_TREE = {tree(BASE_ID): page([q4("odd-1B-Q4_K_M.gguf", 0.9)])}
 
@@ -578,6 +584,34 @@ SEARCH_CASES: list[dict] = [
             entry("zero-Q4_K_M.gguf", 0), entry("nosize-Q4_K_M.gguf"),
             entry("strsize-Q4_K_M.gguf", "2000000000"),
         ])}, "requests": [req("/api/v1/search?" + ALL)]},
+    {"id": "unicode-paths", "hub": {
+        models_target(): answer([item("lab-one/uni-GGUF", 50, 1), item("lab-one/uni2-GGUF", 40, 1)]),
+        tree("lab-one/uni-GGUF"): page([
+            q4(CJK + "-Q4_K_M.gguf", 1.0), q4("caf" + EAC + "-Q5_K_M.gguf", 1.2),
+            q4("nb" + NBH + "x-Q4_K_M.gguf", 1.0), q4("model" + NBH + "Q4_K_M.gguf", 1.0),
+            q4("z-" + DOTLESS + "Q2_XS.gguf", 1.0), q4("z-" + DOTTED + "Q3_M.gguf", 1.0),
+            q4("model-Q4_K_M" + EAC + chr(0xFC) + ".gguf", 1.0), q4("model-Q" + FW4 + "_K.gguf", 1.0),
+            q4("n-Q4_K_M-" + AR5 + "-of-" + AR5 + ".gguf", 1.0), q4("n-Q4_K_M-" + AR1 * 5 + "-of-" + AR2 * 5 + ".gguf", 1.0),
+            q4("medu" + LONGS + "a-Q4_K_M.gguf", 1.0), q4(CJK + "mtp" + CJK + "-Q4_K_M.gguf", 1.0),
+            q4("x" + NBH + "mtp" + NBH + "y-Q4_K_M.gguf", 1.0), q4("x-mtp-y-Q4_K_M.gguf", 1.0),
+            q4(DOTTED + "matrix-Q4_K_M.gguf", 1.0), q4("q-" + AR7 + "B-Q4_K_M.gguf", 3.0),
+            q4("r-" + FW7 + "B-Q6_K.gguf", 6.0), q4("s-7" + NBSP + "B-Q8_0.gguf", 8.0),
+            q4("t-" + DOTTED + "Q2_K.gguf", 1.0), q4("dir" + EAC + "/u-Q4_K_M.gguf", 1.0),
+            q4(chr(0x3A3) + "-Q4_K_M.gguf", 1.0), q4("w-Q4_K_M" + NL + ".gguf", 1.0),
+        ]),
+        tree("lab-one/uni2-GGUF"): page([q4("only-Q4_K_M.gguf", 1.0)]),
+    }, "requests": [req("/api/v1/search?" + ALL)]},
+    {"id": "unicode-ids", "hub": {
+        models_target(): answer([item("lab-one/" + CJK + "-7B-GGUF", 50, 1), item("lab-one/caf" + EAC + "-3B-GGUF", 49, 1),
+                                 item("lab-one/m-7" + NBSP + "B-GGUF", 48, 1), item("lab-one/n" + NBH + "7B-GGUF", 47, 1),
+                                 item("lab-one/o-" + AR7 + "B-GGUF", 46, 1), item("lab-one/p-" + FW7 + "B-GGUF", 45, 1),
+                                 item("lab-one/q-" + FW7 + "." + FW7 + "B-A" + FW7 + "B-GGUF", 44, 1),
+                                 item("lab-one/r-7B-A3B" + NBH + "x", 43, 1),
+                                 item("lab-one/s-" + EAC + "7B-GGUF", 42, 1),
+                                 item("lab-one/t-" + CJK + "7B" + NL, 41, 1),
+                                 item(EAC + "-org/u-1B-GGUF", 40, 1),
+                                 item("lab-one/v-MoE" + DOTTED + "-GGUF", 39, 1)]),
+    }, "native_requests": "unchecked", "requests": [req("/api/v1/search?" + ALL)]},
     {"id": "param-names", "hub": {
         models_target(): answer([item(i, 5, 1) for i in (
             "lab-one/a-7B-70B-GGUF", "lab-one/b-70B_7B-GGUF", "lab-one/c-0B-GGUF", "lab-one/d-1.5b-it-GGUF",
@@ -704,6 +738,14 @@ REPO_CASES: list[dict] = [
         resolve(RB, "a-Q4_K_M.gguf"): header_answer(pad=8)}),
     rcase("repo-odd-names", {tree(RB): page([q4("plain.gguf", 1.0), q4("B-upper-Q4_K_M.GGUF", 1.0)]),
                              resolve(RB, "B-upper-Q4_K_M.GGUF"): header_answer(pad=8)}),
+    rcase("repo-unicode-names", {tree(RB): page([
+        q4(CJK + "-Q4_K_M.gguf", 1.0), q4("caf" + EAC + "-Q4_K_M.gguf", 1.0), q4(chr(0xC9) + "cole-Q4_K_M.gguf", 1.0),
+        q4(DOTTED + "-Q4_K_M.gguf", 1.0), q4(chr(0xDF) + "-Q4_K_M.gguf", 1.0), q4(chr(0x3A3) + "-Q4_K_M.gguf", 1.0),
+        q4(chr(0x391) + chr(0x3A3) + "-Q4_K_M.gguf", 1.0), q4("x" + NBSP + "-Q4_K_M.gguf", 1.0),
+        q4("x" + NBH + "-Q4_K_M.gguf", 1.0), q4(DOTTED + "matrix.gguf", 1.0), q4(DOTLESS + "matrix.gguf", 1.0),
+        q4("MMPROJ-" + CJK + ".gguf", 1.0), entry(CJK + ".json", 3), entry("caf" + EAC + ".txt", 3)]),
+        resolve(RB, "%C3%89cole-Q4_K_M.gguf"): header_answer(pad=8),
+        resolve(RB, "caf%C3%A9-Q4_K_M.gguf"): header_answer(pad=8)}),
     rcase("repo-only-support-files", {tree(RB): page([entry("README.md", 1), entry("config.json", 2), entry("tokenizer.model", 3)])}),
     rcase("repo-only-projector", {tree(RB): page([q4("mmproj-a-F16.gguf", 0.9)])}),
     rcase("repo-sizes", {tree(RB): page([
@@ -862,6 +904,36 @@ def iso_corpus():
             seen.add(s)
             unique.append(s)
     return unique
+
+
+def unicode_tables():
+    """What Python's `re` takes for `\w`, `\d`, `\s` and an IGNORECASE letter, for the characters
+    Python's Unicode database assigns (the native side is compared over exactly those)."""
+    import re
+    import unicodedata
+
+    def ranges(points):
+        out = []
+        for c in points:
+            if out and out[-1][1] == c - 1:
+                out[-1][1] = c
+            else:
+                out.append([c, c])
+        return out
+
+    assigned = [c for c in range(0x110000)
+                if not 0xD800 <= c <= 0xDFFF and unicodedata.category(chr(c)) != "Cn"]
+    word, digit, space = re.compile(r"\w"), re.compile(r"\d"), re.compile(r"\s")
+    letters = {}
+    for letter in "abcdefghijklmnopqrstuvwxyz":
+        rx = re.compile(letter, re.I)
+        letters[letter] = [c for c in assigned if c > 127 and rx.fullmatch(chr(c))]
+    nd = [c for c in assigned if digit.fullmatch(chr(c))]
+    return {"assigned": ranges(assigned),
+            "word": ranges(c for c in assigned if word.fullmatch(chr(c))),
+            "digit": ranges(nd), "digit_values": [[c, unicodedata.decimal(chr(c))] for c in nd],
+            "space": ranges(c for c in assigned if space.fullmatch(chr(c))),
+            "letters": letters, "unicode_version": unicodedata.unidata_version}
 
 
 def numbers():
@@ -1041,7 +1113,8 @@ def main() -> int:
     for s in servers.values():
         s.shutdown()
     json.dump({"oracle": digest, "schema": schema, "cases": out, "grammar": grammar(),
-               "iso": [[s, repr(discover._age_days(s))] for s in iso_corpus()], "numbers": numbers()},
+               "iso": [[s, repr(discover._age_days(s))] for s in iso_corpus()], "numbers": numbers(),
+               "unicode": unicode_tables()},
               sys.stdout, ensure_ascii=True, indent=1, sort_keys=True)
     sys.stdout.write("\n")
     return 0

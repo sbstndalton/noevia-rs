@@ -74,6 +74,10 @@ impl Drop for Rig {
 }
 
 async fn rig_with(answers: J, child_down: bool) -> Rig {
+    rig_full(answers, child_down, Duration::from_secs(60)).await
+}
+
+async fn rig_full(answers: J, child_down: bool, listings: Duration) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     store(dir.path(), &fixture()["schema"], &J::Null);
     let answers: Answers = Arc::new(Mutex::new(answers));
@@ -98,6 +102,7 @@ async fn rig_with(answers: J, child_down: bool) -> Rig {
             tree: Duration::from_secs(5),
             header: Duration::from_secs(5),
             avatar: Duration::from_secs(5),
+            listings,
         },
     )
     .unwrap();
@@ -134,18 +139,17 @@ fn body_of(outcome: Outcome) -> String {
 
 // ---- what is refused ------------------------------------------------------------------------
 
+/// Non-ASCII names are judged (the oracle compares them with Python's); the judging of one that
+/// this side cannot follow exactly would be refused with the candidate named in the log.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn text_outside_printable_ascii_is_refused_where_pythons_patterns_apply() {
-    // A file name.
-    let r = rig(one_model(&[file("\u{e9}-Q4_K_M.gguf", GB)])).await;
-    assert_eq!(r.search.search(ALL).await, Outcome::Refused);
-    // A control character in a file name.
-    let r = rig(one_model(&[file("a\u{1}-Q4_K_M.gguf", GB)])).await;
-    assert_eq!(r.search.search(ALL).await, Outcome::Refused);
-    // A repository id (it is not asked of the Hub, so the judged repository has no files).
-    let r = rig(json!({MODELS: ok(&json!([item("lab-one/\u{fc}-GGUF")]))})).await;
-    assert_eq!(r.search.search(ALL).await, Outcome::Refused);
-    // The same names are fine when the route does not apply a pattern: a repository listing.
+async fn non_ascii_names_are_judged_not_refused() {
+    let r = rig(one_model(&[file("\u{6a21}\u{578b}-Q4_K_M.gguf", GB)])).await;
+    let body = body_of(r.search.search(ALL).await);
+    assert!(body.contains("\u{6a21}\u{578b}-Q4_K_M.gguf"), "{body}");
+    let r = rig(json!({MODELS: ok(&json!([item("lab-one/\u{fc}-7B-GGUF")]))})).await;
+    let body = body_of(r.search.search(ALL).await);
+    assert!(body.contains(r#""params":7.0"#), "{body}");
+    // The repository route shows such names too.
     let hub = json!({tree("lab-one/m-GGUF"): ok(&json!([file("\u{4e2d}-Q4_K_M.gguf", GB)]))});
     let r = rig(hub).await;
     r.script.lock().unwrap().repo = Some(json!({
@@ -614,4 +618,164 @@ async fn requests_that_fail_before_the_hub_answer_make_no_hub_request_for_bad_qu
 #[test]
 fn hex_helper_round_trips() {
     assert_eq!(hex(&to_hex(b"\x00\xffA")), b"\x00\xffA");
+}
+
+// ---- the listing deadline, the header cache bound, the token ---------------------------------
+
+fn tree_requests(r: &Rig) -> usize {
+    r.seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|row| row["path"].as_str().unwrap().contains("/tree/"))
+        .count()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_listing_phase_past_its_deadline_counts_as_failed_listings() {
+    let mut answers = serde_json::Map::new();
+    let ids: Vec<String> = (0..3).map(|i| format!("lab-one/m{i}-GGUF")).collect();
+    answers.insert(
+        MODELS.into(),
+        ok(&J::Array(ids.iter().map(|id| item(id)).collect())),
+    );
+    for (i, id) in ids.iter().enumerate() {
+        let mut listing = ok(&json!([file("m-Q4_K_M.gguf", GB)]));
+        if i > 0 {
+            listing["delay"] = json!(6.0);
+        }
+        answers.insert(tree(id), listing);
+    }
+    let r = rig_full(J::Object(answers), false, Duration::from_millis(400)).await;
+    let started = std::time::Instant::now();
+    let body = body_of(r.search.search(ALL).await);
+    assert!(
+        started.elapsed() < Duration::from_secs(4),
+        "{:?}",
+        started.elapsed()
+    );
+    // The listing that finished counts, the others are "no files" and are not cached.
+    assert_eq!(
+        body.matches("no GGUF model files in this repository")
+            .count(),
+        2,
+        "{body}"
+    );
+    assert!(body.contains(r#""path":"m-Q4_K_M.gguf""#));
+    assert_eq!(lock(&r.search.files).map.len(), 1);
+    // The repository route: one listing, the same bound, and what a timeout says.
+    let slow = json!({tree("lab-one/m-GGUF"): padded_delay(ok(&json!([])), 6.0)});
+    let r = rig_full(slow, false, Duration::from_millis(400)).await;
+    let started = std::time::Instant::now();
+    let body = body_of(r.search.repo("repo=lab-one%2Fm-GGUF").await);
+    assert!(started.elapsed() < Duration::from_secs(4));
+    assert_eq!(
+        body,
+        r#"{"repo":"lab-one/m-GGUF","error":"Network error: ","groups":[]}"#
+    );
+}
+
+fn padded_delay(mut answer: J, seconds: f64) -> J {
+    answer["delay"] = json!(seconds);
+    answer
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn failures_gates_and_refused_tokens_stay_within_the_header_cache_bound() {
+    // 70 headers the Hub does not have, 70 gated ones.
+    let mut answers = serde_json::Map::new();
+    for i in 0..70 {
+        answers.insert(format!("/o/gate{i}/resolve/main/g.gguf"), ans(401, b"{}"));
+    }
+    let r = rig(J::Object(answers)).await;
+    for i in 0..70 {
+        assert!(r
+            .search
+            .gguf_header("o/r", &format!("f{i}.gguf"))
+            .await
+            .unwrap()
+            .is_none());
+        assert!(lock(&r.search.headers).map.len() <= HEADER_CACHE_MAX);
+    }
+    // 64 stood; the 65th found 64 and cleared; then 5 more.
+    assert_eq!(lock(&r.search.headers).map.len(), 6);
+    for i in 0..70 {
+        assert!(r
+            .search
+            .gguf_header(&format!("o/gate{i}"), "g.gguf")
+            .await
+            .unwrap()
+            .is_none());
+        assert!(lock(&r.search.headers).map.len() <= HEADER_CACHE_MAX);
+    }
+    assert_eq!(lock(&r.search.headers).gated.len(), 70);
+    // A token h11 refuses is remembered as no header, within the same bound.
+    let db = rusqlite::Connection::open(r.dir.path().join("model_loader.db")).unwrap();
+    db.execute("INSERT INTO kv(key, value) VALUES('hf_token', 'tok ')", [])
+        .unwrap();
+    for i in 0..70 {
+        assert!(r
+            .search
+            .gguf_header("o/r", &format!("t{i}.gguf"))
+            .await
+            .unwrap()
+            .is_none());
+        assert!(lock(&r.search.headers).map.len() <= HEADER_CACHE_MAX);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn what_was_learnt_under_another_token_is_dropped() {
+    let header = gguf(&[("arch.context_length", 4, 4096u32.to_le_bytes().to_vec())]);
+    let mut hub = one_model(&[file("a-Q4_K_M.gguf", GB)]);
+    hub["/lab-one/m-GGUF/resolve/main/a-Q4_K_M.gguf"] = ans(206, &header);
+    let r = rig(hub).await;
+    body_of(r.search.search(ALL).await);
+    let first = tree_requests(&r);
+    assert_eq!(first, 1);
+    // Cached: no listing, and the header is read once.
+    body_of(r.search.search(ALL).await);
+    assert_eq!(tree_requests(&r), first);
+    assert!(r
+        .search
+        .gguf_header("lab-one/m-GGUF", "a-Q4_K_M.gguf")
+        .await
+        .unwrap()
+        .is_some());
+    assert!(!lock(&r.search.headers).map.is_empty());
+    // The same token again changes nothing.
+    let db = rusqlite::Connection::open(r.dir.path().join("model_loader.db")).unwrap();
+    db.execute(
+        "INSERT INTO kv(key, value) VALUES('hf_token', 'first-token')",
+        [],
+    )
+    .unwrap();
+    body_of(r.search.search(ALL).await);
+    assert_eq!(
+        tree_requests(&r),
+        first + 1,
+        "the first token differs from none"
+    );
+    body_of(r.search.search(ALL).await);
+    assert_eq!(tree_requests(&r), first + 1);
+    // Another token: listings and headers are dropped.
+    db.execute(
+        "UPDATE kv SET value = 'second-token' WHERE key = 'hf_token'",
+        [],
+    )
+    .unwrap();
+    body_of(r.search.search(ALL).await);
+    assert_eq!(tree_requests(&r), first + 2);
+    assert!(lock(&r.search.headers).map.is_empty() && lock(&r.search.headers).gated.is_empty());
+    let auth: Vec<String> = r
+        .seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|row| row["authorization"].as_str().map(str::to_owned))
+        .collect();
+    assert!(
+        auth.contains(&"Bearer first-token".to_owned())
+            && auth.contains(&"Bearer second-token".to_owned())
+    );
 }

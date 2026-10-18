@@ -1,10 +1,15 @@
 //! `model-manager/app/discover.py`: judging, filtering and ranking the repositories a search
 //! found, against the GPU budget this server reports.
 //!
-//! The rules are `discover.py`'s, step by step. Its patterns are applied to printable ASCII only
-//! (a path or id with any other character is [`Unsupported`], because Python's `\w`, `\d`, `\b`
-//! and case folding differ from the Unicode classes of this side for such text); floats are
-//! computed in the same order with Python's rounding and formatting (`py.rs`).
+//! The rules are `discover.py`'s, step by step. Its patterns are Python `re` patterns on `str`, so
+//! `\w`, `\d`, `\s` and `re.I` are Unicode-aware; the patterns here spell those out so that they
+//! match the same text: `\w` is `[\p{L}\p{N}_]`, `\d` is `\p{Nd}`, `\s` is the set `str.isspace`
+//! has, a letter under `re.I` is its two cases plus the characters Python folds onto it
+//! (`\u{130}` and `\u{131}` for `i`, `\u{17f}` for `s`, `\u{212a}` for `k`), `\b` is checked by
+//! hand, and a `$` that also matches before a final newline strips that newline first. The tests
+//! compare every one of these sets with Python's over all the characters it assigns
+//! (`tests/fixtures/search-python.v1.json`, key `unicode`). Floats are computed in the same order
+//! with Python's rounding and formatting (`py.rs`).
 use super::py::{self, Instant, Unsupported};
 use regex::Regex;
 use std::sync::OnceLock;
@@ -14,47 +19,144 @@ const SUB_Q4_PARAM_LIMIT: f64 = 100.0;
 /// `discover.MIN_MODEL_GB`.
 const MIN_MODEL_GB: f64 = 0.3;
 
+/// Python's `\w` for a `str` pattern: letters, numbers (`str.isalnum`) and the underscore.
+pub(super) const WORD: &str = r"[\p{L}\p{N}_]";
+/// Python's `\d`.
+pub(super) const DIGIT: &str = r"\p{Nd}";
+/// Python's `\s`: what `str.isspace` is true for.
+pub(super) const SPACE: &str = r"[\x09-\x0d\x1c-\x20\x{85}\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}]";
+
+/// The non-ASCII characters Python's `re.I` matches with the ASCII letter `letter`.
+pub(super) fn folded(letter: char) -> &'static [char] {
+    match letter {
+        'i' => &['\u{130}', '\u{131}'],
+        'k' => &['\u{212a}'],
+        's' => &['\u{17f}'],
+        _ => &[],
+    }
+}
+
+/// `text` as a pattern that matches it under `re.I`: each letter a class of its cases.
+fn ci(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        if c.is_ascii_alphabetic() {
+            let lower = c.to_ascii_lowercase();
+            out.push('[');
+            out.push(lower);
+            out.push(lower.to_ascii_uppercase());
+            out.extend(folded(lower));
+            out.push(']');
+        } else {
+            out.push_str(&regex::escape(&c.to_string()));
+        }
+    }
+    out
+}
+
 fn pattern(
     cell: &'static OnceLock<Option<Regex>>,
-    source: &str,
+    source: impl FnOnce() -> String,
 ) -> Result<&'static Regex, Unsupported> {
-    cell.get_or_init(|| Regex::new(source).ok())
+    cell.get_or_init(|| Regex::new(&source()).ok())
         .as_ref()
         .ok_or(Unsupported)
 }
 
+/// `(?:^|[-_.])((?:UD-)?(?:IQ\d\w*|Q\d(?:_[\w]+)*|MXFP4|F16|BF16|F32))(?:[-_.]|$)`, `re.I`.
 fn quant_pattern() -> Result<&'static Regex, Unsupported> {
     static CELL: OnceLock<Option<Regex>> = OnceLock::new();
-    pattern(
-        &CELL,
-        r"(?i)(?:^|[-_.])((?:UD-)?(?:IQ\d\w*|Q\d(?:_[\w]+)*|MXFP4|F16|BF16|F32))(?:[-_.]|$)",
-    )
+    pattern(&CELL, || {
+        format!(
+            r"(?:^|[-_.])((?:{ud}-)?(?:{iq}{DIGIT}{WORD}*|{q}{DIGIT}(?:_{WORD}+)*|{mxfp}4|{f}16|{bf}16|{f}32))(?:[-_.]|\z)",
+            ud = ci("UD"),
+            iq = ci("IQ"),
+            q = ci("Q"),
+            mxfp = ci("MXFP"),
+            f = ci("F"),
+            bf = ci("BF"),
+        )
+    })
 }
 
+/// `(?:^|[-_.])(?:UD-)?(IQ[123]\w*|Q[123](?:_[\w]+)*)(?:[-_.]|$)`, `re.I`.
 fn sub_q4_pattern() -> Result<&'static Regex, Unsupported> {
     static CELL: OnceLock<Option<Regex>> = OnceLock::new();
-    pattern(
-        &CELL,
-        r"(?i)(?:^|[-_.])(?:UD-)?(IQ[123]\w*|Q[123](?:_[\w]+)*)(?:[-_.]|$)",
-    )
+    pattern(&CELL, || {
+        format!(
+            r"(?:^|[-_.])(?:{ud}-)?({iq}[123]{WORD}*|{q}[123](?:_{WORD}+)*)(?:[-_.]|\z)",
+            ud = ci("UD"),
+            iq = ci("IQ"),
+            q = ci("Q"),
+        )
+    })
 }
 
+/// `(?:^|[-_.])(\d+(?:\.\d+)?)\s*B(?:-A(\d+(?:\.\d+)?)B)?(?:[-_.]|$)`, `re.I`.
 fn params_pattern() -> Result<&'static Regex, Unsupported> {
     static CELL: OnceLock<Option<Regex>> = OnceLock::new();
-    pattern(
-        &CELL,
-        r"(?i)(?:^|[-_.])(\d+(?:\.\d+)?)\s*B(?:-A(\d+(?:\.\d+)?)B)?(?:[-_.]|$)",
-    )
+    pattern(&CELL, || {
+        format!(
+            r"(?:^|[-_.])({DIGIT}+(?:\.{DIGIT}+)?){SPACE}*{b}(?:-{a}({DIGIT}+(?:\.{DIGIT}+)?){b})?(?:[-_.]|\z)",
+            b = ci("B"),
+            a = ci("A"),
+        )
+    })
 }
 
+/// `mmproj|projector|\bmtp\b|draft|eagle\d?|medusa`, `re.I`, without `\bmtp\b` (see
+/// [`has_mtp_word`]) and with `eagle\d?` as `eagle` (the search needs only whether it matches).
 fn companion_pattern() -> Result<&'static Regex, Unsupported> {
     static CELL: OnceLock<Option<Regex>> = OnceLock::new();
-    pattern(&CELL, r"(?i)mmproj|projector|\bmtp\b|draft|eagle\d?|medusa")
+    pattern(&CELL, || {
+        ["mmproj", "projector", "draft", "eagle", "medusa"]
+            .iter()
+            .map(|word| ci(word))
+            .collect::<Vec<_>>()
+            .join("|")
+    })
 }
 
+fn mtp_pattern() -> Result<&'static Regex, Unsupported> {
+    static CELL: OnceLock<Option<Regex>> = OnceLock::new();
+    pattern(&CELL, || ci("mtp"))
+}
+
+fn word_char_pattern() -> Result<&'static Regex, Unsupported> {
+    static CELL: OnceLock<Option<Regex>> = OnceLock::new();
+    pattern(&CELL, || format!("^{WORD}$"))
+}
+
+/// `-\d{5}-of-\d{5}`.
 fn shard_pattern() -> Result<&'static Regex, Unsupported> {
     static CELL: OnceLock<Option<Regex>> = OnceLock::new();
-    pattern(&CELL, r"-\d{5}-of-\d{5}")
+    pattern(&CELL, || format!("-{DIGIT}{{5}}-of-{DIGIT}{{5}}"))
+}
+
+/// Whether Python's `\w` matches `c`.
+pub(super) fn is_word(c: char) -> Result<bool, Unsupported> {
+    let mut buffer = [0u8; 4];
+    Ok(word_char_pattern()?.is_match(c.encode_utf8(&mut buffer)))
+}
+
+/// `\bmtp\b` under `re.I`: an occurrence of the word with no word character on either side.
+fn has_mtp_word(name: &str) -> Result<bool, Unsupported> {
+    for m in mtp_pattern()?.find_iter(name) {
+        let before = name.get(..m.start()).and_then(|s| s.chars().next_back());
+        let after = name.get(m.end()..).and_then(|s| s.chars().next());
+        let edge = |c: Option<char>| -> Result<bool, Unsupported> {
+            c.map_or(Ok(true), |c| is_word(c).map(|w| !w))
+        };
+        if edge(before)? && edge(after)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// `COMPANION.search(name)`.
+fn is_companion(name: &str) -> Result<bool, Unsupported> {
+    Ok(companion_pattern()?.is_match(name) || has_mtp_word(name)?)
 }
 
 /// `IMATRIX.search(name)` (`re.compile("imatrix", re.I)`) for any text: under `re.I` the letter
@@ -64,31 +166,29 @@ pub fn has_imatrix(name: &str) -> bool {
     const WORD: [char; 7] = ['i', 'm', 'a', 't', 'r', 'i', 'x'];
     let chars: Vec<char> = name.chars().collect();
     chars.windows(WORD.len()).any(|window| {
-        window.iter().zip(WORD).all(|(c, w)| {
-            c.to_ascii_lowercase() == w || (w == 'i' && matches!(c, '\u{130}' | '\u{131}'))
-        })
+        window
+            .iter()
+            .zip(WORD)
+            .all(|(c, w)| c.to_ascii_lowercase() == w || folded(w).contains(c))
     })
-}
-
-/// Printable ASCII, the text the patterns above are applied to.
-pub fn plain(text: &str) -> bool {
-    text.bytes().all(|b| (0x20..=0x7e).contains(&b))
 }
 
 fn basename(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
+/// A pattern ending in `$` matches before a final newline too: without it, `\z` is the same.
+fn before_final_newline(text: &str) -> &str {
+    text.strip_suffix('\n').unwrap_or(text)
+}
+
 /// `discover.quant_of(path)`.
 pub fn quant_of(path: &str) -> Result<Option<String>, Unsupported> {
-    let name = basename(path);
-    if !plain(name) {
-        return Err(Unsupported);
-    }
+    let name = before_final_newline(basename(path));
     Ok(quant_pattern()?
         .captures(name)
         .and_then(|c| c.get(1))
-        .map(|m| m.as_str().to_ascii_uppercase()))
+        .map(|m| m.as_str().to_uppercase()))
 }
 
 /// `discover.is_stray_gguf(path, size_bytes)`: imatrix calibration data, or too small to be
@@ -107,19 +207,51 @@ fn is_model_weight_file(path: &str, size_bytes: i128) -> Result<bool, Unsupporte
     Ok(quant_of(path)?.is_some() && (size_bytes as f64 / 1e9) >= MIN_MODEL_GB)
 }
 
+/// The first code point of each run of ten decimal digits (`Nd`), in order.
+const ZEROS: [u32; 68] = [
+    0x30, 0x660, 0x6f0, 0x7c0, 0x966, 0x9e6, 0xa66, 0xae6, 0xb66, 0xbe6, 0xc66, 0xce6, 0xd66,
+    0xde6, 0xe50, 0xed0, 0xf20, 0x1040, 0x1090, 0x17e0, 0x1810, 0x1946, 0x19d0, 0x1a80, 0x1a90,
+    0x1b50, 0x1bb0, 0x1c40, 0x1c50, 0xa620, 0xa8d0, 0xa900, 0xa9d0, 0xa9f0, 0xaa50, 0xabf0, 0xff10,
+    0x104a0, 0x10d30, 0x11066, 0x110f0, 0x11136, 0x111d0, 0x112f0, 0x11450, 0x114d0, 0x11650,
+    0x116c0, 0x11730, 0x118e0, 0x11950, 0x11c50, 0x11d50, 0x11da0, 0x11f50, 0x16a60, 0x16ac0,
+    0x16b50, 0x1d7ce, 0x1d7d8, 0x1d7e2, 0x1d7ec, 0x1d7f6, 0x1e140, 0x1e2f0, 0x1e4f0, 0x1e950,
+    0x1fbf0,
+];
+
+/// The value of a decimal digit of any script (`unicodedata.decimal`).
+pub(super) fn digit_value(c: char) -> Option<u32> {
+    let point = u32::from(c);
+    ZEROS
+        .iter()
+        .find(|zero| (**zero..**zero + 10).contains(&point))
+        .map(|zero| point - zero)
+}
+
+/// A number as `float()` reads it: Python accepts the digits of every script.
+fn ascii_number(text: &str) -> Option<f64> {
+    let ascii: String = text
+        .chars()
+        .map(|c| {
+            if c == '.' {
+                Some('.')
+            } else {
+                digit_value(c).and_then(|v| char::from_digit(v, 10))
+            }
+        })
+        .collect::<Option<String>>()?;
+    ascii.parse().ok()
+}
+
 /// `discover.params_from(name)`: (total B, active B), the largest total in the name.
 pub fn params_from(name: &str) -> Result<(Option<f64>, Option<f64>), Unsupported> {
-    if !plain(name) {
-        return Err(Unsupported);
-    }
     let mut best: Option<(f64, Option<f64>)> = None;
-    for m in params_pattern()?.captures_iter(name) {
-        let total: f64 = m
+    for m in params_pattern()?.captures_iter(before_final_newline(name)) {
+        let total = m
             .get(1)
-            .and_then(|g| g.as_str().parse().ok())
+            .and_then(|g| ascii_number(g.as_str()))
             .ok_or(Unsupported)?;
         let active = match m.get(2) {
-            Some(g) => Some(g.as_str().parse::<f64>().map_err(|_| Unsupported)?),
+            Some(g) => Some(ascii_number(g.as_str()).ok_or(Unsupported)?),
             None => None,
         };
         if best.is_none_or(|(b, _)| total > b) {
@@ -242,12 +374,7 @@ fn build_options(candidate: &Candidate, budget_gb: f64) -> Result<Vec<Opt>, Unsu
     let mut rows: Vec<Row> = Vec::new();
     let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for file in candidate.files.iter() {
-        if !plain(&file.path) {
-            return Err(Unsupported);
-        }
-        if !file.path.to_lowercase().ends_with(".gguf")
-            || companion_pattern()?.is_match(basename(&file.path))
-        {
+        if !file.path.to_lowercase().ends_with(".gguf") || is_companion(basename(&file.path))? {
             continue;
         }
         let base = shard_pattern()?.replace_all(&file.path, "").into_owned();
@@ -280,7 +407,7 @@ fn build_options(candidate: &Candidate, budget_gb: f64) -> Result<Vec<Opt>, Unsu
             Some(t) if t != 0.0 => Some(t),
             _ => params_from(&row.path)?.0,
         };
-        let sub_q4 = sub_q4_pattern()?.is_match(basename(&row.path))
+        let sub_q4 = sub_q4_pattern()?.is_match(before_final_newline(basename(&row.path)))
             && params.is_none_or(|p| p < SUB_Q4_PARAM_LIMIT);
         let mut reasons = Vec::new();
         if gb > budget_gb {
@@ -518,7 +645,26 @@ mod tests {
         );
         assert_eq!(quant_of("b.bf16.gguf").unwrap().as_deref(), Some("BF16"));
         assert_eq!(quant_of("plain.gguf").unwrap(), None);
-        assert!(quant_of("\u{fc}-Q4.gguf").is_err());
+        // Python's patterns are Unicode-aware.
+        assert_eq!(quant_of("\u{fc}-Q4.gguf").unwrap().as_deref(), Some("Q4"));
+        assert_eq!(
+            quant_of("m-Q4_K_M\u{e9}.gguf").unwrap().as_deref(),
+            Some("Q4_K_M\u{c9}")
+        );
+        assert_eq!(
+            quant_of("m-\u{130}Q2_K.gguf").unwrap().as_deref(),
+            Some("\u{130}Q2_K")
+        );
+        assert_eq!(quant_of("m\u{2011}Q4_K_M.gguf").unwrap(), None);
+        assert_eq!(params_from("m-\u{667}B").unwrap(), (Some(7.0), None));
+        assert_eq!(params_from("m-7\u{a0}B-x").unwrap(), (Some(7.0), None));
+        assert_eq!(params_from("m-7B\n").unwrap(), (Some(7.0), None));
+        assert_eq!(params_from("m-7B\n\n").unwrap(), (None, None));
+        assert!(is_companion("x-mtp-y").unwrap());
+        assert!(is_companion("x\u{2011}mtp\u{2011}y").unwrap());
+        assert!(!is_companion("\u{6a21}mtp\u{578b}").unwrap());
+        assert!(!is_companion("mtpx").unwrap());
+        assert!(is_companion("medu\u{17f}a").unwrap());
         assert_eq!(
             params_from("org-35B-A3B-it").unwrap(),
             (Some(35.0), Some(3.0))
