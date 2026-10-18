@@ -48,7 +48,7 @@ where
 }
 
 /// The parse limits of one page.
-fn page_limits() -> Limits {
+pub(crate) fn page_limits() -> Limits {
     Limits {
         bytes: PAGE_CAP,
         depth: JSON_DEPTH,

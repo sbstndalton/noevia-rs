@@ -69,6 +69,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-backends") {
                 output.write_all(b"native-backends\n")?;
             }
+            if cfg!(feature = "native-search") {
+                output.write_all(b"native-search\n")?;
+            }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
             }
@@ -440,6 +443,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    // noevia#1318 slice 14: GET /api/v1/search and GET /api/v1/search/repo.
+    let search_mode = environment("MODEL_MANAGER_SEARCH_IMPL", "python")?;
+    if !matches!(search_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_SEARCH_IMPL must be python or rust".into());
+    }
+    if search_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-search")) {
+        return Err(
+            "native-search requires rust model manager and compiled native-search feature".into(),
+        );
+    }
+    #[cfg_attr(not(feature = "native-search"), allow(unused_mut))]
+    let mut search_mode = search_mode;
+    #[cfg(feature = "native-search")]
+    let search_roots = if search_mode == "rust" {
+        match model_updates_roots(std::env::vars_os().collect()) {
+            Ok(roots) => Some(roots),
+            Err(reason) => {
+                eprintln!("native-search: {reason}; GET search stays with python");
+                search_mode = "python".to_owned();
+                None
+            }
+        }
+    } else {
+        None
+    };
     let bench_mode = environment("MODEL_MANAGER_BENCH_RUNS_IMPL", "python")?;
     if !matches!(bench_mode.as_str(), "python" | "rust") {
         return Err("MODEL_MANAGER_BENCH_RUNS_IMPL must be python or rust".into());
@@ -797,6 +825,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         heads_roots.as_ref(),
     );
     backends_child(&mut child_command, &backends_mode);
+    search_child(
+        &mut child_command,
+        &search_mode,
+        #[cfg(feature = "native-search")]
+        search_roots.as_ref(),
+    );
     child_command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED",
         if control_mode == "rust" { "1" } else { "0" },
@@ -918,6 +952,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )),
         None => None,
     };
+    #[cfg(feature = "native-search")]
+    let search = match search_roots.as_ref() {
+        Some(roots) => Some(Arc::new(noevia_model_manager::search::Search::new(
+            std::path::Path::new(&roots.data),
+            noevia_model_manager::LEGACY_BASE,
+            &token,
+        )?)),
+        None => None,
+    };
     #[cfg(feature = "native-backends")]
     let backend_stats = match backends_settings {
         Some(gpu_vram) => Some(Arc::new(
@@ -974,6 +1017,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_delete,
         #[cfg(feature = "native-draft-heads")]
         draft_heads,
+        #[cfg(feature = "native-search")]
+        search,
         #[cfg(feature = "native-backends")]
         backend_stats,
         #[cfg(feature = "native-benchmark-runner")]
@@ -1818,6 +1863,74 @@ fn draft_heads_child(
             .env("MODELS_DIR", &roots.models)
             .env("MODELS_INI_PATH", &roots.ini)
             .env("DATA_DIR", &roots.data);
+    }
+}
+
+/// noevia#1318 slice 14: the child refuses the two search reads only when the native side owns
+/// them, and is handed the same three roots (it keeps `DATA_DIR`'s store and the models folder
+/// the live state is read from).
+fn search_child(
+    child_command: &mut tokio::process::Command,
+    search_mode: &str,
+    #[cfg(feature = "native-search")] roots: Option<&UpdatesRoots>,
+) {
+    child_command.env(
+        "NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED",
+        if search_mode == "rust" { "1" } else { "0" },
+    );
+    #[cfg(feature = "native-search")]
+    if let Some(roots) = roots {
+        child_command
+            .env("MODELS_DIR", &roots.models)
+            .env("MODELS_INI_PATH", &roots.ini)
+            .env("DATA_DIR", &roots.data);
+    }
+}
+
+#[cfg(all(test, feature = "native-search"))]
+mod search_command_tests {
+    #[test]
+    fn confirmation_overrides_inherited_value() {
+        let roots = super::UpdatesRoots {
+            models: "/synthetic/models".into(),
+            ini: "/synthetic/models.ini".into(),
+            data: "/synthetic/data".into(),
+        };
+        for (mode, roots, expected) in [("rust", Some(&roots), "1"), ("python", None, "0")] {
+            let mut command = tokio::process::Command::new("uvicorn");
+            command.env("NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED", "hostile");
+            super::search_child(&mut command, mode, roots);
+            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
+            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
+            assert_eq!(
+                get("NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED"),
+                Some(std::ffi::OsStr::new(expected))
+            );
+            assert_eq!(
+                get("DATA_DIR"),
+                roots.map(|r| std::ffi::OsStr::new(r.data.as_str()))
+            );
+        }
+    }
+
+    /// A case-folded spelling of a root keeps Python serving the routes (one log line).
+    #[test]
+    fn folded_spellings_are_refused() {
+        let env = |pairs: &[(&str, &str)]| -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+            pairs
+                .iter()
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect()
+        };
+        assert!(
+            super::model_updates_roots(env(&[("MODELS_DIR", "/m"), ("DATA_DIR", "/d")])).is_ok()
+        );
+        for alias in ["models_dir", "Models_Ini_Path", "data_dir"] {
+            assert!(
+                super::model_updates_roots(env(&[(alias, "/x")])).is_err(),
+                "{alias}"
+            );
+        }
     }
 }
 

@@ -91,6 +91,8 @@ fn state(badges: Option<Badges>, legacy_base: &str) -> Arc<StateData> {
         model_delete: None,
         #[cfg(feature = "native-draft-heads")]
         draft_heads: None,
+        #[cfg(feature = "native-search")]
+        search: None,
         #[cfg(feature = "native-backends")]
         backend_stats: None,
         #[cfg(feature = "native-benchmark-runner")]

@@ -976,6 +976,56 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-model-detail --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
 
+  native-search:
+    name: Native search reads, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          # noevia#1318 slice 14: services feat/1318-native-search (the guard and the two private
+          # calls; the routes are unchanged).
+          ref: 9b87d756cd758bc4b6fcda1a64c2464b36ec96ac
+          path: search-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r search-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Build model-files for the Python child's tree listing
+        run: cargo build --locked -p model-files-cli
+      - name: Regenerate the actual Python GET /api/v1/search and /search/repo oracle (synthetic repositories, fake Hub)
+        env:
+          MODEL_FILES_BIN: ${{ github.workspace }}/target/debug/model-files
+        run: |
+          python3 -I tools/gen-search-oracle.py search-services/model-manager/app > "$RUNNER_TEMP/search.json"
+          cmp bins/noevia-model-manager/tests/fixtures/search-python.v1.json "$RUNNER_TEMP/search.json" || {
+            python3 -c 'import sys; a, b = (open(p, "rb").read() for p in sys.argv[1:]); i = next(i for i in range(min(len(a), len(b)) + 1) if a[i:i + 1] != b[i:i + 1]); print("committed:", a[max(0, i - 160):i + 160]); print("regenerated:", b[max(0, i - 160):i + 160])' bins/noevia-model-manager/tests/fixtures/search-python.v1.json "$RUNNER_TEMP/search.json"
+            exit 1
+          }
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-search -- -D warnings
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs,native-section-writes,native-settings-write,native-backend-control,native-benchmark-overview,native-check-updates,native-benchmark-runner,native-downloads,native-model-delete,native-draft-heads,native-backends,native-search -- -D warnings
+      - name: Native search differential (lib and Linux router), bounds, route policy and selector
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-search --test search --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-search --lib search::
+          cargo test --locked -p noevia-model-manager --features native-search --lib draft_heads::
+          cargo test --locked -p noevia-model-manager --features native-search --lib check_updates::
+          cargo test --locked -p noevia-model-manager --features native-search --lib hub_page::
+      - name: Search capability omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-draft-heads --test lifecycle
+          cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+
   native-benchmark-overview:
     name: Native benchmark overview, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest

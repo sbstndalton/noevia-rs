@@ -211,6 +211,8 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
         model_delete: None,
         #[cfg(feature = "native-draft-heads")]
         draft_heads: None,
+        #[cfg(feature = "native-search")]
+        search: None,
         #[cfg(feature = "native-backends")]
         backend_stats: None,
         #[cfg(feature = "native-benchmark-runner")]
