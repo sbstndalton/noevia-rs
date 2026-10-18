@@ -1,42 +1,43 @@
-//! noevia-core's `server/browser-policy.cjs` in Rust, exported from `dav-parse.wasm`
-//! (BROWSER_POLICY_IMPL): what noevia decides before every browser action, from the facts the
-//! executor read off the real page (never from the model's description of it).
+//! noevia-core's `server/browser-policy.cjs` in Rust, exported from `dav-parse.wasm` (the
+//! BROWSER_POLICY_IMPL switch is retired): what noevia decides before every browser action, from
+//! the facts the executor read off the real page (never from the model's description of it).
 //!
 //! - [`classify`]: `classifyAction`, `allow`, `needs_approval` or `blocked` for one action.
 //! - [`navigation`]: `checkNavigation`, where the browser may go (http(s) only, no embedded
 //!   credentials, no local names, no private IP literals, only allowlisted hosts).
-//! - [`substitute`]: the decision half of `substituteSecrets`: which `{{secret:name}}`
-//!   placeholders may be filled on an origin, or why not. The port never sees a secret value; the
-//!   host keeps doing the substitution itself.
+//! - [`substitute`]: the decision half of `substituteSecrets`: which `{{secret:name}}` placeholders
+//!   may be filled on an origin, or why not. The port never sees a secret value; the host keeps
+//!   doing the substitution itself.
 //! - [`fold`]: the label folding (`NFKD`, U+0300..U+036F removed, `toLowerCase`, `\s+` to one
 //!   space, trimmed) the consequential-control check reads.
 //!
-//! The host (browser-policy.cjs under BROWSER_POLICY_IMPL=wasm) computes the JS answer first. An
-//! action is allowed only if both allow it; it asks if either asks; it is blocked if either blocks;
-//! an unknown, a refusal or a fault asks (or blocks, where the JS blocks or the caller has no
-//! approval step). So wherever the port cannot be sure it says so ([`Status`] `None`).
+//! The host (browser-policy.cjs; its JS rules were deleted in noevia-core#188) applies the crate's
+//! answer alone. An unknown, refusal or fault asks for approval; navigation and secret substitution
+//! have no approval step and refuse instead. A missing or tampered module stops startup. Where the
+//! port cannot be sure it says so ([`Status`] `None`).
 //!
 //! Form buttons (noevia#1218) and local names with trailing dots (noevia#1219) are decided as the
-//! JS now decides them: a `<button>` in a form submits unless its type is exactly (ASCII
-//! case-insensitively) `button` or `reset`, and the local suffixes are checked on the host with
-//! and without its trailing dots.
+//! former JS decided them when it was deleted: a `<button>` in a form submits unless its type is
+//! exactly (ASCII case-insensitively) `button` or `reset`, and the local suffixes are checked on
+//! the host with and without its trailing dots.
 //!
-//! # Where the port is stricter than the JS (by design)
+//! # Where the port is stricter than the former JS (by design)
 //!
 //! - **Text outside [`KNOWN_RANGES`]** (a lone surrogate, or a code point outside the Latin, Greek,
 //!   Cyrillic, Hebrew, Arabic, Devanagari, Thai, punctuation, arrows, symbols and dingbats, kana,
-//!   CJK, Hangul, private use, fullwidth and emoji blocks listed) in a label, tag,
-//!   type, role or key that the decision reads: [`fold`] gives no answer and the action is
-//!   unknown (the host asks). Inside the table the port folds with ICU4X's NFKD and the standard
-//!   library's lowercasing; noevia-core's differential test checks every code point of the table,
-//!   alone, between letters and next to combining marks, against the runtime's own ICU.
+//!   CJK, Hangul, private use, fullwidth and emoji blocks listed) in a label, tag, type, role or
+//!   key that the decision reads: [`fold`] gives no answer and the action is unknown (the host
+//!   asks). Inside the table the port folds with ICU4X's NFKD and the standard library's
+//!   lowercasing; noevia-core's differential test checks every code point of the table, alone,
+//!   between letters and next to combining marks, against the runtime's own ICU.
 //! - **A non-GET method with non-ASCII text** counts as not GET (exact: no non-ASCII text
 //!   uppercases to `GET`).
-//! - Requests over [`MAX_INPUT_BYTES`] (`too_large`), and requests that would need more than
-//!   their work budget (`too_large`), which the host treats as a fault.
+//! - Requests over [`MAX_INPUT_BYTES`] (`too_large`), and requests that would need more than their
+//!   work budget (`too_large`), which the host treats as a fault.
 //!
 //! URLs are parsed with the `url` crate (the WHATWG URL Standard, like Node's). Where the two
-//! parsers disagree, the host sees a mismatch and takes the stricter answer.
+//! parsers may differ, the crate refuses inputs outside its qualified subset and the host fails
+//! closed.
 //!
 //! Linear in the input: every loop is charged to a work budget proportional to the request size
 //! ([`WORK_PER_BYTE`]), recursion is one level (a key press judged as a click), no panics.
@@ -58,7 +59,7 @@ pub const WORK_FLOOR: u64 = 1 << 16;
 /// JSON nesting kept: the outer array, the projections, and their arrays.
 const JSON_CAP: usize = 4;
 
-/// `CONSEQUENTIAL`, in the JS's order.
+/// `CONSEQUENTIAL`, in the former JS's order.
 pub const CONSEQUENTIAL: [&str; 61] = [
     // en
     "send",
@@ -232,7 +233,7 @@ fn cat(parts: &[&[u16]]) -> Vec<u16> {
 
 // ── fold ────────────────────────────────────────────────────────────────────
 
-/// The JS `fold(text)` of a string (the host passes `String(text || '')`): NFKD, U+0300..U+036F
+/// The former JS `fold(text)` of a string (the host passes `String(text || '')`): NFKD, U+0300..U+036F
 /// removed, `toLowerCase`, every `\s+` run one space, trimmed. `None` when `text` holds a lone
 /// surrogate or a code point outside [`KNOWN_RANGES`].
 pub fn fold(text: &[u16], work: &mut Work) -> R<Option<Vec<u16>>> {
@@ -457,7 +458,7 @@ pub enum Decision {
 }
 
 impl Decision {
-    /// The JS string.
+    /// The string.
     pub fn as_str(self) -> &'static str {
         match self {
             Decision::Allow => "allow",
@@ -552,7 +553,7 @@ fn click(el: &Element, work: &mut Work) -> R<Verdict> {
         return Ok(unknown());
     };
     // HTML: a <button>'s missing or invalid type is the Submit Button state; only an exact (ASCII
-    // case-insensitive) `button` or `reset` does not submit (noevia#1218, now also the JS).
+    // case-insensitive) `button` or `reset` does not submit (noevia#1218, as the former JS did).
     let raw_kind: Vec<u16> = el
         .kind
         .iter()
