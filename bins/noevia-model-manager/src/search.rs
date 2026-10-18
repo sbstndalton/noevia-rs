@@ -1353,40 +1353,61 @@ impl Search {
         summary: Option<&str>,
     ) -> Option<Vec<Live>> {
         let source = self.live.get()?;
+        // The python section autoconfig selector: not a fallback, the configured owner.
         let cache_cap = source.estimates_cache_cap_mib?;
+        let back = |class| {
+            estimates::fell_back(class);
+            None
+        };
         let mut asks = Vec::with_capacity(groups.len());
         for g in groups {
+            let Ok(bytes) = u128::try_from(g.bytes) else {
+                return back("a negative size");
+            };
             asks.push(estimates::Ask {
-                bytes: u128::try_from(g.bytes).ok()?,
+                bytes,
                 estimate: summary.is_some() && g.is_gguf && !g.projector,
             });
         }
-        let mmproj = groups
+        let Ok(mmproj) = groups
             .iter()
             .filter(|g| g.projector)
             .map(|g| g.bytes)
             .min()
             .map(u128::try_from)
             .transpose()
-            .ok()?;
+        else {
+            return back("a negative projector size");
+        };
         let summary = match summary {
-            Some(text) => Some(model_files::json::parse(text).ok()?),
+            Some(text) => match estimates::summary(text) {
+                Some(v) => Some(v),
+                None => return back("a summary this side does not read"),
+            },
             None => None,
         };
-        let inventory = source.stats.inventory().await?;
+        let Some(inventory) = source.stats.inventory().await else {
+            return back("HOST_RAM_RESERVE_GB is not a value this side reads");
+        };
         let descriptors = source.stats.estimate_descriptors(&inventory);
-        self.blocking(move || {
-            estimates::groups(
-                &asks,
-                mmproj,
-                summary.as_ref(),
-                &inventory,
-                &descriptors,
-                cache_cap,
-            )
-        })
-        .await
-        .ok()?
+        let answer = self
+            .blocking(move || {
+                estimates::groups(
+                    &asks,
+                    mmproj,
+                    summary.as_ref(),
+                    &inventory,
+                    &descriptors,
+                    cache_cap,
+                )
+            })
+            .await
+            .ok()
+            .flatten();
+        match answer {
+            Some(live) => Some(live),
+            None => back("an analysis or value this side does not follow exactly"),
+        }
     }
 
     #[cfg(not(all(feature = "native-backends", feature = "native-section-autoconfig")))]

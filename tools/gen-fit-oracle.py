@@ -245,11 +245,16 @@ def search_cases():
 
 
 def repo_cases():
-    """(id, env, meminfo, docker, cache, [(header kwargs or None, groups, mmproj bytes)])."""
+    """(id, env, meminfo, docker, cache, [(header, groups, mmproj bytes)]).
+
+    A header is the kwargs of the section oracle's `model()`, plus `drop` (summary `model` keys
+    deleted) and `set` (summary `model` keys replaced) applied after `gguf_meta` summarised it:
+    shapes a real header cannot carry, on which Python raises (the native side asks the child)."""
     one = world([container(60, "llama-cuda", 60)], [image(60, [CUDA])])
     two = world([container(61, "llama-cuda", 61), container(62, "llama-igpu", 62)],
                 [image(61, [CUDA]), image(62, [VULKAN])])
     plain = {"layers": 32, "ctx": 32768}
+    long = {"layers": 40, "ctx": 131072, "embed": 5120, "heads": 40, "kv": 8}
     moe = {"layers": 48, "ctx": 262144, "embed": 2048, "heads": 32, "kv": 4,
            "extra": {"synth.expert_count": ["u32", 128], "synth.expert_used_count": ["u32", 8]}}
     return [
@@ -276,6 +281,34 @@ def repo_cases():
          "meminfo": meminfo(gib_kib(16)), "docker": None, "cache": {},
          "asks": [({"layers": 5000}, [(4 * GIB, True)], None), ({"kv": None, "heads": 0}, [(4 * GIB, True)], None),
                   (plain, [(400 * GIB, True)], None), (plain, [(3 * GIB, True)], 3 * GIB)]},
+        # A tight budget: the same long-context model with and without a large projector beside
+        # it, so the projector override visibly shortens the context.
+        {"id": "projector-budget", "env": {}, "meminfo": meminfo(gib_kib(64)), "docker": one,
+         "cache": {"llama-cuda": ok(gpu(11.0, vendor="nvidia", cards=[card(0, 11.0)]))},
+         "asks": [(long, [(7 * GIB, True)], None), (long, [(7 * GIB, True), (2 * GIB, False)], 2 * GIB),
+                  (long, [(7 * GIB, True), (3 * GIB, False), (GIB, False)], GIB)]},
+        # Python raises in the analysis (its reason names the exception type) or on the summary
+        # itself: the native side leaves these to the child.
+        {"id": "python-raises", "env": {}, "meminfo": meminfo(gib_kib(64)), "docker": one,
+         "cache": {"llama-cuda": ok(gpu(24.0, vendor="nvidia", cards=[card(0, 24.0)]))},
+         "asks": [(dict(plain, set={"context_length": "32K"}), [(4 * GIB, True)], None),
+                  (dict(plain, set={"block_count": "many"}), [(4 * GIB, True)], None),
+                  (dict(plain, set={"embedding_length": "wide"}), [(4 * GIB, True)], None)],
+         "child": [0, 1, 2]},
+        # Real headers: a long chat template (past the JSON reader's default string cap), a built-in
+        # draft head (nextn_predict_layers), no context length, and the chip edges at 65 % and 90 %.
+        {"id": "real-shapes", "env": {}, "meminfo": meminfo(gib_kib(64)), "docker": one,
+         "cache": {"llama-cuda": ok(gpu(24.0, vendor="nvidia", cards=[card(0, 24.0)]))},
+         "asks": [(dict(plain, template="{# synthetic #}" + "{{ m.content }}" * 2000), [(4 * GIB, True)], None),
+                  (dict(plain, extra={"synth.nextn_predict_layers": ["u32", 1]}), [(4 * GIB, True)], None),
+                  (dict(plain, drop=["context_length"]), [(4 * GIB, True)], None),
+                  (None, [(b, False) for b in boundaries(24)], None)]},
+        # A GPU backend beside a CPU one: both chips, the estimates sized on the GPU only.
+        {"id": "gpu-and-cpu", "env": {}, "meminfo": meminfo(gib_kib(64)),
+         "docker": world([container(64, "llama-cuda", 64), container(65, "llama-cpu", 65)],
+                         [image(64, [CUDA]), image(65, [CPU])]),
+         "cache": {"llama-cuda": ok(gpu(16.0, vendor="nvidia", cards=[card(0, 16.0)])), "llama-cpu": ok(None)},
+         "asks": [(plain, [(4 * GIB, True), (20 * GIB, True)], None)]},
         # A small model at a small native context: one answer, the duplicate chips collapse.
         {"id": "collapse", "env": {}, "meminfo": meminfo(gib_kib(64)), "docker": one,
          "cache": {"llama-cuda": ok(gpu(48.0, vendor="nvidia", cards=[card(0, 48.0)]))},
@@ -478,7 +511,12 @@ def main() -> None:
         for header, groups, mm in case["asks"]:
             summary = None
             if header is not None:
+                header = dict(header)
+                drop, changes = header.pop("drop", []), header.pop("set", {})
                 summary = gguf_meta.summarize_bytes(so.build_gguf(so.model(**header)["gguf"]))
+                for key in drop:
+                    summary["model"].pop(key, None)
+                summary["model"].update(changes)
             body = {"groups": [{"bytes": b, "estimate": e and summary is not None} for b, e in groups],
                     "mmprojBytes": mm, "summary": summary}
             r = client.post("/api/v1/internal/search-repo-runtime", content=json.dumps(body))
@@ -491,7 +529,8 @@ def main() -> None:
                          "cache_cap": settings.cache_ram_limits[0],
                          "inventory": {"gpu": [[k, repr(v)] for k, v in fit_backends.items()],
                                        "cpu": services._cpu_backends(), "ram": repr(hw.usable_ram_gb())},
-                         "backends": backends, "host_ram": repr(hw.host_ram_gb()), "asks": asks})
+                         "backends": backends, "host_ram": repr(hw.host_ram_gb()), "asks": asks,
+                         "child": case.get("child", [])})
     discover.TRUSTED_LABS = set(TRUST_LABS)
     trust = {"quantisers": TRUST_QUANTISERS, "labs": TRUST_LABS, "last_modified": TRUST_MODIFIED, "owners": {
         owner: discover.judge(discover.Candidate(id=f"{owner}/synthetic-repo", owner=owner,

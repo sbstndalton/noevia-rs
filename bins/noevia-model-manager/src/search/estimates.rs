@@ -216,6 +216,38 @@ fn native_ctx(summary: &Value) -> Option<String> {
     }
 }
 
+/// The header summary as the dict the child's `json.loads` makes of it. A real summary carries
+/// the whole chat template (often past the reader's default 4096-character string cap), so
+/// strings are bounded by the summary itself (a summary of at most the first MiB of a header).
+pub(super) fn summary(text: &str) -> Option<Value> {
+    let limits = model_files::json::Limits {
+        string_chars: SUMMARY_CAP,
+        bytes: SUMMARY_CAP,
+        ..model_files::json::Limits::default()
+    };
+    model_files::json::parse_with_limits(text, limits).ok()
+}
+
+/// Largest summary read (the header read is one MiB; its JSON escapes can at most sextuple it).
+const SUMMARY_CAP: usize = 8 * 1024 * 1024;
+
+/// Why the native side left one answer to the child: logged once per class, never silently.
+pub(super) fn fell_back(class: &'static str) {
+    use std::sync::{Mutex, OnceLock};
+    static SEEN: OnceLock<Mutex<Vec<&'static str>>> = OnceLock::new();
+    let mut seen = SEEN
+        .get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !seen.contains(&class) {
+        seen.push(class);
+        eprintln!(
+            "native-search: the repository estimates were asked of the python child ({class}); \
+             logged once per reason"
+        );
+    }
+}
+
 fn raw(text: String) -> Option<Box<RawValue>> {
     RawValue::from_string(text).ok()
 }

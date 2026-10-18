@@ -41,6 +41,7 @@ async fn the_repository_estimates_are_pythons() {
     let cases = fx["repo"].as_array().unwrap();
     assert!(cases.len() >= 5);
     let mut answers = 0;
+    let mut fallbacks = 0;
     for case in cases {
         let id = case["id"].as_str().unwrap();
         let dir = tempfile::tempdir().unwrap();
@@ -94,21 +95,55 @@ async fn the_repository_estimates_are_pythons() {
                 })
                 .collect();
             let mm = ask["mmproj"].as_str().map(|b| b.parse().unwrap());
-            let summary = ask["summary"]
-                .as_str()
-                .map(|s| model_files::json::parse(s).unwrap());
-            let live = groups(&asks, mm, summary.as_ref(), &inv, &descriptors, cap)
-                .unwrap_or_else(|| panic!("{id} #{n}: not answered natively"));
+            let summary = ask["summary"].as_str().map(|s| super::summary(s).unwrap());
+            let live = groups(&asks, mm, summary.as_ref(), &inv, &descriptors, cap);
+            let child: Vec<u64> = case["child"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|i| i.as_u64().unwrap())
+                .collect();
+            if child.contains(&(n as u64)) {
+                // Python raised: its reason names the exception type, so the child answers.
+                assert!(
+                    ask["body"].as_str().unwrap().contains("Autoconfig failed"),
+                    "{id} #{n}"
+                );
+                assert!(live.is_none(), "{id} #{n}: answered natively");
+                fallbacks += 1;
+                continue;
+            }
+            let live = live.unwrap_or_else(|| panic!("{id} #{n}: not answered natively"));
             assert_eq!(render(&live), ask["body"].as_str().unwrap(), "{id} #{n}");
             answers += 1;
         }
     }
-    assert!(answers >= 12);
+    assert!(answers >= 20);
+    assert!(fallbacks >= 3);
+    // The projector override changes the answer in the tight-budget world.
+    let tight = cases
+        .iter()
+        .find(|c| c["id"] == "projector-budget")
+        .unwrap();
+    let bodies: Vec<&str> = tight["asks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["body"].as_str().unwrap())
+        .collect();
+    assert!(bodies[0].contains("\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":40"));
+    assert!(bodies[1].contains("\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":4096"));
+    // A real chat template is past the default string cap, and is still read.
+    let long = cases.iter().find(|c| c["id"] == "real-shapes").unwrap()["asks"][0]["summary"]
+        .as_str()
+        .unwrap();
+    assert!(model_files::json::parse(long).is_err());
+    assert!(super::summary(long).is_some());
 }
 
 #[test]
 fn values_python_would_render_differently_are_left_to_the_child() {
-    let parse = |s: &str| model_files::json::parse(s).unwrap();
+    let parse = |s: &str| super::summary(s).unwrap();
     assert_eq!(
         native_ctx(&parse(r#"{"model":{"context_length":8192}}"#)).unwrap(),
         "8192"
@@ -180,7 +215,14 @@ async fn the_repository_read_answers_natively_only_with_the_cap() {
         })
         .collect();
     let summary = ask["summary"].as_str().unwrap();
-    for cap in [None, Some(case["cache_cap"].as_i64().unwrap())] {
+    let mut unreadable = case.clone();
+    unreadable["env"]["HOST_RAM_RESERVE_GB"] = V::String("1e3".into());
+    let cap = Some(case["cache_cap"].as_i64().unwrap());
+    for (case, cap, native) in [
+        (case, None, false),
+        (&unreadable, cap, false),
+        (case, cap, true),
+    ] {
         let search = Search::new(dir.path(), "http://127.0.0.1:9", "").unwrap();
         search.set_live(Source {
             stats: std::sync::Arc::new(stats_for(case, dir.path())),
@@ -190,9 +232,11 @@ async fn the_repository_read_answers_natively_only_with_the_cap() {
             estimates_cache_cap_mib: cap,
         });
         let live = search.native_repo_runtime(&groups, Some(summary)).await;
-        match cap {
-            None => assert!(live.is_none()),
-            Some(_) => assert_eq!(render(&live.unwrap()), ask["body"].as_str().unwrap()),
+        if native {
+            assert_eq!(render(&live.unwrap()), ask["body"].as_str().unwrap());
+        } else {
+            // No cap (the python section autoconfig), or an unreadable HOST_RAM_RESERVE_GB.
+            assert!(live.is_none());
         }
     }
 }

@@ -103,9 +103,10 @@ answers the 500.
 
 ## Step 3a: repository estimates (noevia#1318)
 
-While the search runtime is native and the section autoconfig is native too
-(`MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust`, which fixes the cache-ram cap the analysis
-reads), the repository read computes its fit chips and context estimates itself, and
+While the search runtime is native (`MODEL_MANAGER_SEARCH_IMPL=rust` with
+`MODEL_MANAGER_BACKENDS_IMPL=rust`, so this process samples the backends, and a readable trusted
+sets file) and the section autoconfig is native too (`MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust`,
+which fixes the cache-ram cap the analysis reads), the repository read computes its fit chips and context estimates itself, and
 `POST /api/v1/internal/search-repo-runtime` is not called.
 
 - **Chips.** `fit::chips` over one fit inventory per answer.
@@ -123,6 +124,11 @@ The child is still asked, for that answer only, when this side cannot follow Pyt
   refuses
 - a value Python would render differently
 - a projector of 2^53 bytes or more
+
+Each reason class is logged once (`native-search: the repository estimates were asked of the
+python child (...)`), so a fallback is never silent. The summary carries the whole chat
+template, so it is read with strings bounded by the summary itself, not the JSON reader's
+default 4096 characters.
 
 Python rediscovers the containers for every chip list and estimate; this side reads one
 inventory per answer, like the other fit readers. With the python section autoconfig selector,
