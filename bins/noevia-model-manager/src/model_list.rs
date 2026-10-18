@@ -860,27 +860,6 @@ fn live_failed(fail: crate::backend_stats::Fail) -> Outcome {
     }
 }
 
-/// Whether the child's startup is over (its health check answered once): the badge store it
-/// creates (`db.init()`) is read only after that, as when its runtime call came first.
-///
-/// Until the first success, every `/models` request makes this one health request itself and
-/// waits for it, bounded by `read_child`'s `CHILD_TIMEOUT` (120 s, the forwarded routes' budget);
-/// a failure answers that request 502 and the next request asks again. After the first success
-/// the flag is set for this `ModelList` and no request waits on the child any more.
-#[cfg(feature = "native-backends")]
-async fn child_started(child: &Child<'_>, started: &std::sync::atomic::AtomicBool) -> bool {
-    use std::sync::atomic::Ordering;
-    if started.load(Ordering::Acquire) {
-        return true;
-    }
-    let request = child.client.get(format!("{}/api/v1/health", child.base));
-    let ok = read_child(child, request).await.is_ok();
-    if ok {
-        started.store(true, Ordering::Release);
-    }
-    ok
-}
-
 async fn post_runtime(
     child: &Child<'_>,
     sizes: &[u128],
@@ -889,7 +868,7 @@ async fn post_runtime(
     #[cfg(feature = "native-backends")]
     if let Some(live) = child.live {
         let body = live.models_runtime(sizes).await.map_err(live_failed)?;
-        if !child_started(child, started).await {
+        if !crate::startup::ready(child.client, child.base, child.token, started).await {
             return Err(Outcome::Unavailable);
         }
         return Ok(body);

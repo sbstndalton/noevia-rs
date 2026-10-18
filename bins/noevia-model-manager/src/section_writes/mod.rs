@@ -59,6 +59,7 @@ pub struct SectionWrites {
     /// `settings.cache_ram_limits`: (cap, hard maximum) in MiB.
     pub cache: (i64, i64),
     clock: Clock,
+    pub(crate) started: std::sync::atomic::AtomicBool,
     lock: Arc<tokio::sync::Mutex<()>>,
 }
 
@@ -428,6 +429,7 @@ impl SectionWrites {
             ini: ini.to_owned(),
             cache,
             clock,
+            started: std::sync::atomic::AtomicBool::new(false),
             lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
