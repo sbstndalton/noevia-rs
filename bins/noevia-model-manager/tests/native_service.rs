@@ -356,7 +356,10 @@ Content-Length: 1000
     std::thread::sleep(Duration::from_millis(300));
     assert!(child.0.try_wait().unwrap().is_none());
     assert_lock_held(root.path());
-    assert_eq!(wait(&mut child.0, Duration::from_secs(10)).code(), Some(124));
+    assert_eq!(
+        wait(&mut child.0, Duration::from_secs(10)).code(),
+        Some(124)
+    );
     assert!(
         started.elapsed() >= Duration::from_secs(7),
         "shutdown skipped admission drain"

@@ -70,6 +70,7 @@ pub const REPO_RUNTIME_PATH: &str = "/api/v1/internal/search-repo-runtime";
 pub const HF_API: &str = crate::hub_page::HUB_API;
 pub const HF_RESOLVE: &str = "https://huggingface.co";
 /// The child's private-call answers are read up to this size.
+#[cfg(test)]
 const CHILD_CAP: usize = 16 * 1024 * 1024;
 /// A Hub error body is read up to this size (Python shows 200 characters of it).
 const ERROR_BODY_CAP: usize = 1024 * 1024;
@@ -304,8 +305,11 @@ pub struct Search {
     database: PathBuf,
     hub: Hub,
     clock: Clock,
+    #[cfg(test)]
     legacy: reqwest::Client,
+    #[cfg(test)]
     legacy_base: String,
+    #[cfg(test)]
     token: String,
     search_client: reqwest::Client,
     tree_client: reqwest::Client,
@@ -329,10 +333,6 @@ pub struct Search {
     /// noevia#1318 step 1c: the native search runtime, once this process samples the backends.
     #[cfg(feature = "native-backends")]
     live: std::sync::OnceLock<live::Source>,
-    /// Set once the child advertises completed startup (its schema initialization ran).
-    #[cfg(feature = "native-backends")]
-    #[allow(dead_code)] // removed with reviewed repository-runtime integration
-    started: std::sync::atomic::AtomicBool,
     /// Lib tests: runs before the final parse of every listing.
     #[cfg(test)]
     parse_hook: Mutex<Option<tree::ParseHook>>,
@@ -359,6 +359,10 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Search {
+    pub fn native(data: &Path) -> Result<Self, &'static str> {
+        Self::new(data, "", "")
+    }
+
     /// `data` is Python's `DATA_DIR`; the child is at `legacy_base` and takes `token`.
     pub fn new(data: &Path, legacy_base: &str, token: &str) -> Result<Self, &'static str> {
         Self::with(
@@ -380,6 +384,7 @@ impl Search {
         clock: Clock,
         timeouts: Timeouts,
     ) -> Result<Self, &'static str> {
+        let _ = (legacy_base, token);
         Ok(Self {
             database: data.join("model_loader.db"),
             hub: Hub {
@@ -387,8 +392,11 @@ impl Search {
                 resolve: hub.resolve.trim_end_matches('/').to_owned(),
             },
             clock,
+            #[cfg(test)]
             legacy: crate::legacy_client().map_err(|_| "child client could not be built")?,
+            #[cfg(test)]
             legacy_base: legacy_base.to_owned(),
+            #[cfg(test)]
             token: token.to_owned(),
             search_client: client(timeouts.search, false)?,
             tree_client: client(timeouts.tree, true)?,
@@ -403,8 +411,6 @@ impl Search {
             headers: Mutex::new(HeaderCache::default()),
             #[cfg(feature = "native-backends")]
             live: std::sync::OnceLock::new(),
-            #[cfg(feature = "native-backends")]
-            started: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
             parse_hook: Mutex::new(None),
         })
@@ -556,6 +562,7 @@ impl Search {
     }
 
     /// One call of the child's private API.
+    #[cfg(test)]
     async fn child(&self, request: reqwest::RequestBuilder) -> Result<Vec<u8>, Stop> {
         let request = if self.token.is_empty() {
             request
@@ -1130,13 +1137,20 @@ impl Search {
             let body = self.native_runtime(source).await?;
             return parse_runtime(&body).ok_or(Stop::Failed);
         }
-        let body = self
-            .child(
-                self.legacy
-                    .get(format!("{}{RUNTIME_PATH}", self.legacy_base)),
-            )
-            .await?;
-        parse_runtime(&body).ok_or(Stop::Unavailable)
+        #[cfg(test)]
+        {
+            let body = self
+                .child(
+                    self.legacy
+                        .get(format!("{}{RUNTIME_PATH}", self.legacy_base)),
+                )
+                .await?;
+            parse_runtime(&body).ok_or(Stop::Unavailable)
+        }
+        #[cfg(not(test))]
+        {
+            Err(Stop::Refused)
+        }
     }
 
     // ---- GET /api/v1/search/repo -----------------------------------------------------------
@@ -1458,6 +1472,7 @@ impl Search {
     }
 
     /// The child's fit chips and estimates for the groups.
+    #[cfg(test)]
     async fn repo_runtime(
         &self,
         groups: &[Group],
@@ -1500,6 +1515,16 @@ impl Search {
             )
             .await?;
         parse_repo_runtime(&answer, groups.len()).ok_or(Stop::Unavailable)
+    }
+
+    #[cfg(not(test))]
+    async fn repo_runtime(
+        &self,
+        groups: &[Group],
+        summary: Option<&str>,
+    ) -> Result<Vec<Live>, Stop> {
+        let _ = (groups, summary);
+        Err(Stop::Refused)
     }
 }
 
@@ -1809,6 +1834,7 @@ struct Live {
     native_ctx: Option<Box<RawValue>>,
 }
 
+#[cfg(test)]
 fn parse_repo_runtime(body: &[u8], count: usize) -> Option<Vec<Live>> {
     let fields: HashMap<String, Box<RawValue>> = serde_json::from_slice(body).ok()?;
     let groups: Vec<HashMap<String, Box<RawValue>>> =

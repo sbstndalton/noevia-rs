@@ -551,10 +551,8 @@ async fn service() -> Result<(), Box<dyn std::error::Error>> {
     };
     #[cfg(feature = "native-search")]
     let search = match search_roots.as_ref() {
-        Some(roots) => Some(Arc::new(noevia_model_manager::search::Search::new(
+        Some(roots) => Some(Arc::new(noevia_model_manager::search::Search::native(
             std::path::Path::new(&roots.data),
-            noevia_model_manager::LEGACY_BASE,
-            &token,
         )?)),
         None => None,
     };
