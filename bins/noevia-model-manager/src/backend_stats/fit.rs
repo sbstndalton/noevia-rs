@@ -92,8 +92,9 @@ pub fn usable_ram_gb(total: f64, reserve: f64) -> f64 {
     model_autoconfig::pyfloat::round_nd(model_autoconfig::pyfloat::max(0.0, total - reserve), 1)
 }
 
-/// HOST_RAM_RESERVE_GB as pydantic reads a float: a plain decimal (surrounding whitespace, sign,
-/// digits, one optional fraction). `None` for anything else, which this side does not judge.
+/// HOST_RAM_RESERVE_GB: a strict subset of what pydantic reads as a float, a plain decimal
+/// (surrounding ASCII whitespace, sign, digits, one optional fraction). Every other form, even one
+/// pydantic would accept, is `None`, and the chips then refuse rather than guess.
 pub fn reserve_gb(raw: Option<&str>) -> Option<f64> {
     let Some(raw) = raw else {
         return Some(DEFAULT_RESERVE_GB);

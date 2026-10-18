@@ -144,6 +144,25 @@ async fn an_unreadable_reserve_refuses_the_inventory() {
 }
 
 #[test]
+fn every_accepted_reserve_is_pydantics_reading() {
+    let fx = fixture();
+    let forms = fx["reserve_forms"].as_object().unwrap();
+    assert!(forms.len() >= 18);
+    let mut accepted = 0;
+    for (form, python) in forms {
+        if let Some(native) = reserve_gb(Some(form)) {
+            accepted += 1;
+            assert_eq!(
+                gguf::py_float_repr(native),
+                python.as_str().unwrap(),
+                "{form:?}"
+            );
+        }
+    }
+    assert!(accepted >= 8);
+}
+
+#[test]
 fn reserve_and_ram_follow_python() {
     assert_eq!(reserve_gb(None), Some(DEFAULT_RESERVE_GB));
     assert_eq!(reserve_gb(Some("8")), Some(8.0));

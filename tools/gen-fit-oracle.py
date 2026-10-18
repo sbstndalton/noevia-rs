@@ -151,6 +151,10 @@ def cases():
     return out
 
 
+RESERVE_FORMS = ["0", "8", "32", "8.5", " 16 ", "+8.25\n", "-4", "0.05", "007", "1e3", "inf", "nan",
+                 "8.", ".5", "1_0", "0x10", "8 kB", ""]
+
+
 def main() -> None:
     app_dir = Path(sys.argv[1]).resolve()
     root = Path(tempfile.mkdtemp(prefix="gen-fit-"))
@@ -212,11 +216,19 @@ def main() -> None:
                           "cpu": services._cpu_backends(), "ram": repr(hw.usable_ram_gb())},
             "chips": chips, "descriptors": render(descriptors, "detail"), "budget": repr(budget),
         })
+    # pydantic's own reading of HOST_RAM_RESERVE_GB forms; the native parser accepts a subset.
+    from app.config import Settings
+    reserve_forms = {}
+    for form in RESERVE_FORMS:
+        try:
+            reserve_forms[form] = repr(Settings(host_ram_reserve_gb=form).host_ram_reserve_gb)
+        except Exception:  # noqa: BLE001 - a settings error stops the child
+            reserve_forms[form] = "error"
     server.shutdown()
     shutil.rmtree(root, ignore_errors=True)
     sources = {name: hashlib.sha256((app_dir / name).read_bytes()).hexdigest()
                for name in ("config.py", "helpers.py", "hw.py", "services.py")}
-    json.dump({"sources": sources, "cases": out_cases}, sys.stdout, indent=1, sort_keys=True, ensure_ascii=True)
+    json.dump({"sources": sources, "cases": out_cases, "reserve_forms": reserve_forms}, sys.stdout, indent=1, sort_keys=True, ensure_ascii=True)
     sys.stdout.write("\n")
 
 
