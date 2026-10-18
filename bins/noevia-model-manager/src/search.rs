@@ -1817,6 +1817,7 @@ struct Runtime {
     labs: Vec<String>,
 }
 
+#[cfg(any(test, feature = "native-backends"))]
 fn parse_runtime(body: &[u8]) -> Option<Runtime> {
     let fields: HashMap<String, Box<RawValue>> = serde_json::from_slice(body).ok()?;
     let budget: String = serde_json::from_str(fields.get("budget")?.get()).ok()?;

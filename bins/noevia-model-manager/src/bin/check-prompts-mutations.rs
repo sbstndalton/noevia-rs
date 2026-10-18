@@ -362,7 +362,7 @@ mod tests {
             ),
             (&exit, &drain, "assertion `left == right` failed"),
         ] {
-            let assertion = &expected[0];
+            let assertion = expected.first().expect("owned assertion is present");
             let out=format!("\nrunning 1 test\ntest {name} ... FAILED\n\n---- {name} stdout ----\nthread '{name}' (55) panicked at {}:{}:13:\n{message}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured;\n",assertion.path,assertion.line);
             assert!(semantic_failure(Some(101), &out, "", test, expected));
             assert!(!semantic_failure(Some(101), &out, "", test, wrong));

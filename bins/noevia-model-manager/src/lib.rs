@@ -3250,7 +3250,10 @@ async fn native_downloads(
     }
 }
 
-#[cfg(feature = "native-downloads")]
+#[cfg(all(
+    feature = "native-downloads",
+    any(test, feature = "native-download-plan")
+))]
 fn download_plan_response(table: &Arc<downloads::Downloads>, plan: downloads::Plan) -> Response {
     let Ok(code) = StatusCode::from_u16(plan.status) else {
         return internal_error();

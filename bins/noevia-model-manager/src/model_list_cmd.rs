@@ -168,7 +168,7 @@ pub(crate) fn child(command: &mut tokio::process::Command, selection: &Selection
 }
 
 /// The native routes' state, when either is native.
-#[cfg(feature = "native-model-list")]
+#[cfg(all(feature = "native-model-list", feature = "native-routing"))]
 pub(crate) fn state(
     selection: &Selection,
 ) -> Option<std::sync::Arc<noevia_model_manager::model_list::ModelList>> {

@@ -773,28 +773,15 @@ fn environment(key: &str, default: &str) -> Result<String, &'static str> {
     }
 }
 
-#[cfg(feature = "native-prompts")]
-#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-routing")]
 fn prompt_data_dir() -> Result<String, &'static str> {
     data_dir()
 }
-#[cfg(any(
-    feature = "native-prompts",
-    feature = "native-settings",
-    feature = "native-badges",
-    feature = "native-bench-runs",
-    feature = "native-settings-write",
-    feature = "native-benchmark-overview"
-))]
-#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-routing")]
 fn data_dir() -> Result<String, &'static str> {
     prompt_data_dir_from(std::env::vars_os())
 }
-#[cfg(any(
-    feature = "native-prompts",
-    feature = "native-settings",
-    feature = "native-model-updates"
-))]
+#[cfg(any(feature = "native-prompts", feature = "native-model-updates"))]
 #[cfg(any(test, feature = "native-routing"))]
 fn prompt_data_dir_from(
     values: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
@@ -899,7 +886,7 @@ fn model_updates_child(
 /// owns it, and is handed the same three roots (the status map reads the same models folder).
 #[cfg(test)]
 #[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-model-updates")]
+#[cfg(feature = "native-check-updates")]
 fn model_updates_child_as(
     child_command: &mut tokio::process::Command,
     confirmation: &str,
@@ -1580,7 +1567,13 @@ mod backends_command_tests {
         // compares every accepted native spelling against that independent oracle.
         let oracle: serde_json::Value =
             serde_json::from_str(include_str!("../tests/fixtures/fit-python.v1.json")).unwrap();
-        assert_eq!(oracle["reserve_forms"]["1e3"], "1000.0");
+        assert_eq!(
+            oracle
+                .get("reserve_forms")
+                .and_then(|forms| forms.get("1e3"))
+                .and_then(serde_json::Value::as_str),
+            Some("1000.0")
+        );
         assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "1e3")]), Some(1000.0));
         // Nonfinite values are deliberately refused by the bounded native fit reader.
         assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "inf")]), None);
