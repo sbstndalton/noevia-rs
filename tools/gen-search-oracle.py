@@ -907,7 +907,7 @@ def iso_corpus():
 
 
 def unicode_tables():
-    """What Python's `re` takes for `\w`, `\d`, `\s` and an IGNORECASE letter, for the characters
+    r"""What Python's `re` takes for `\w`, `\d`, `\s` and an IGNORECASE letter, for the characters
     Python's Unicode database assigns (the native side is compared over exactly those)."""
     import re
     import unicodedata
