@@ -45,18 +45,34 @@ fn mutation(
     println!("detected {filter}: {before}");
     Ok(())
 }
+fn auth_mutation() -> Result<(), Box<dyn std::error::Error>> {
+    mutation(
+        Path::new("bins/noevia-model-manager/src/lib.rs"),
+        "if auth_path != \"/api/v1/health\" && !state.token.is_empty()",
+        "if auth_path != \"/api/v1/health\" && auth_path != \"/api/v1/sections/tiny\" && !state.token.is_empty()",
+        "noevia-model-manager",
+        "actual_framework_query_redirect_method_and_auth_contract",
+        false,
+    )
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let mode = args.next();
     let metadata_only = mode.as_deref() == Some("--metadata-only");
     let repair_tail = mode.as_deref() == Some("--http-lifecycle-only");
+    let auth_only = mode.as_deref() == Some("--auth-only");
     let repair_only = mode.as_deref() == Some("--repair-only") || repair_tail;
     match mode.as_deref() {
-        None | Some("--metadata-only" | "--repair-only" | "--http-lifecycle-only") => (),
+        None
+        | Some("--metadata-only" | "--repair-only" | "--http-lifecycle-only" | "--auth-only") => (),
         _ => return Err("unexpected mutation group".into()),
     };
     if args.next().is_some() {
         return Err("unexpected argument".into());
+    }
+    if auth_only {
+        auth_mutation()?;
+        return Ok(());
     }
     let root = Path::new("bins/noevia-model-manager/src/sections");
     if !metadata_only && !repair_only {
@@ -93,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 false,
             )?;
         }
-        mutation(Path::new("bins/noevia-model-manager/src/lib.rs"),"if path != \"/api/v1/health\" && !state.token.is_empty()","if path != \"/api/v1/health\" && path != \"/api/v1/sections/tiny\" && !state.token.is_empty()","noevia-model-manager","actual_framework_query_redirect_method_and_auth_contract",false)?;
+        auth_mutation()?;
         mutation(
             Path::new("crates/gguf/src/raw.rs"),
             "if n > individual\n                || reservation.is_none_or",
