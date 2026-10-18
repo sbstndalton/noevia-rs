@@ -564,7 +564,8 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
     use super::*;
     use crate::hub_page::measure::{
-        charged, filled, fixture_pages, heap, read_page, GGUF_LARGE, MIB, PICKLE_IMPORTS,
+        charged, filled, fixture_pages, heap, peak_bound, read_page, GGUF_LARGE, MIB,
+        PICKLE_IMPORTS,
     };
     use crate::hub_page::PAGE_NODES;
 
@@ -724,7 +725,8 @@ mod tests {
     /// are copied whole. Measured by buffer capacities, with the output vector's previous buffer
     /// (kept while it grows), the shapes below hold 13 to 88 MiB, the worst being the page that
     /// combines both (a date of nested arrays beside long paths). The test bounds each shape at
-    /// 90 MiB, which `docs/native-check-updates.md` reports as a measurement of these shapes.
+    /// 90 MiB, and every shape (so every admitted page) under `peak_bound()`, 110.7 MiB, derived
+    /// from the limits (noevia#2013) and reported in `docs/native-check-updates.md`.
     #[tokio::test]
     async fn entries_beside_the_tree_are_bounded() {
         let nested_unit = format!("{}1{}, ", "[".repeat(500), "]".repeat(500));
@@ -790,8 +792,15 @@ mod tests {
                 together as f64 / MIB as f64
             );
             assert!(together <= 90 * MIB, "{name}: {together}");
+            // And the general bound, derived from the limits rather than from these shapes.
+            assert!(
+                together <= peak_bound(),
+                "{name}: {together} > {}",
+                peak_bound()
+            );
             worst = worst.max(together);
         }
+        eprintln!("general bound: {:.1} MiB", peak_bound() as f64 / MIB as f64);
         // The worst shape measured 88.3 MiB, past the 84 MiB of the parse (page + tree), which
         // left the output out. No lower bound is asserted: a leaner parser must not fail this.
         eprintln!("worst: {:.1} MiB", worst as f64 / MIB as f64);

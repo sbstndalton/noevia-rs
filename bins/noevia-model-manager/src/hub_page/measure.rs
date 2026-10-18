@@ -65,6 +65,26 @@ pub(crate) fn tree_bound() -> usize {
     PAGE_NODES * per_node + 2 * PAGE_CAP
 }
 
+/// The most `check_updates::entries()` may hold beside the tree (noevia#2013): the pairs it
+/// copies out, with the vector's previous buffer while it grows. A copied path or date is a
+/// subtree of its own file entry, entries do not overlap, and a clone is allocated to its exact
+/// length (no doubling slack, so no more than the tree's own per-node term): per node, a slot of
+/// the larger kind and its own allocation (an allocation is at most 31 bytes over its length);
+/// and every string byte once, at most the page's bytes. The vector holds one pair per file
+/// entry, an entry being at least 9 nodes (the object, `type`, `path`, `lastCommit` and `date`
+/// with their keys); it grows by doubling, so its buffer is under twice that count and the
+/// previous one under once, 3 times in all.
+pub(crate) fn output_bound() -> usize {
+    let pair = std::mem::size_of::<(String, Value)>();
+    PAGE_NODES * (pair + charged(1)) + PAGE_CAP + 3 * (PAGE_NODES / 9 + 1) * pair
+}
+
+/// The most a check holds once the page is parsed: the tree and the output built beside it
+/// (noevia#2013). The raw page is gone by then, so this is not added to `PAGE_CAP`.
+pub(crate) fn peak_bound() -> usize {
+    tree_bound() + output_bound()
+}
+
 /// `unit` repeated into exactly `len` bytes between `open` and `close`.
 pub(crate) fn filled(open: &str, unit: &str, close: &str, len: usize) -> Vec<u8> {
     let mut page = String::with_capacity(len);
