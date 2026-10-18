@@ -19,7 +19,7 @@ one slice at a time.
 - `crates/gguf` + `bins/gguf-meta` (sbstndalton/noevia#896): bounded GGUF metadata
   reader. `gguf-meta <path>` prints the same summary JSON as model-manager's
   `gguf_meta.py`. Its differential corpus is regenerated from the Python reference with
-  `NOEVIA_GGUF_META=<noevia>/services/model-manager/app/gguf_meta.py python3 tools/gen-fixtures.py`.
+  `NOEVIA_GGUF_META=<noevia-services>/model-manager/app/gguf_meta.py python3 tools/gen-fixtures.py`.
   `gguf::node` is noevia-core's gguf-meta.cjs instead (`summarize(readGguf(file))`, its own
   caps and thrown errors): the host passes the file's size and the byte ranges it has read and
   is told the next range to read; bytes the JS skips (long strings, the rest of big arrays) are

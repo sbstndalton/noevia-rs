@@ -17,11 +17,11 @@
 //! so ([`Status`] `None`).
 //!
 //! Form buttons (noevia#1218) and local names with trailing dots (noevia#1219) are decided as the
-//! JS now decides them: a `<button>` in a form submits unless its type is exactly (ASCII
+//! former JS decided them when it was deleted: a `<button>` in a form submits unless its type is exactly (ASCII
 //! case-insensitively) `button` or `reset`, and the local suffixes are checked on the host with
 //! and without its trailing dots.
 //!
-//! # Where the port is stricter than the JS (by design)
+//! # Where the port is stricter than the former JS (by design)
 //!
 //! - **Text outside [`KNOWN_RANGES`]** (a lone surrogate, or a code point outside the Latin, Greek,
 //!   Cyrillic, Hebrew, Arabic, Devanagari, Thai, punctuation, arrows, symbols and dingbats, kana,
@@ -58,7 +58,7 @@ pub const WORK_FLOOR: u64 = 1 << 16;
 /// JSON nesting kept: the outer array, the projections, and their arrays.
 const JSON_CAP: usize = 4;
 
-/// `CONSEQUENTIAL`, in the JS's order.
+/// `CONSEQUENTIAL`, in the former JS's order.
 pub const CONSEQUENTIAL: [&str; 61] = [
     // en
     "send",
@@ -232,7 +232,7 @@ fn cat(parts: &[&[u16]]) -> Vec<u16> {
 
 // ── fold ────────────────────────────────────────────────────────────────────
 
-/// The JS `fold(text)` of a string (the host passes `String(text || '')`): NFKD, U+0300..U+036F
+/// The former JS `fold(text)` of a string (the host passes `String(text || '')`): NFKD, U+0300..U+036F
 /// removed, `toLowerCase`, every `\s+` run one space, trimmed. `None` when `text` holds a lone
 /// surrogate or a code point outside [`KNOWN_RANGES`].
 pub fn fold(text: &[u16], work: &mut Work) -> R<Option<Vec<u16>>> {
@@ -552,7 +552,7 @@ fn click(el: &Element, work: &mut Work) -> R<Verdict> {
         return Ok(unknown());
     };
     // HTML: a <button>'s missing or invalid type is the Submit Button state; only an exact (ASCII
-    // case-insensitive) `button` or `reset` does not submit (noevia#1218, now also the JS).
+    // case-insensitive) `button` or `reset` does not submit (noevia#1218, as the former JS did).
     let raw_kind: Vec<u16> = el
         .kind
         .iter()
