@@ -36,6 +36,7 @@ pub const MAX_SECONDS: u32 = 7 * 24 * 60 * 60;
 /// llama.cpp's own preset key for `--sleep-idle-seconds` (it rejects 0, so 0 removes the key).
 pub const KEY: &str = "sleep-idle-seconds";
 const GLOBAL_SECTION: &str = "[*]";
+const GLOBAL_NAME: &str = "*";
 const FILE_CAP: u64 = 4 * 1024 * 1024;
 
 /// `Ok(Some(n))`: unload after n idle seconds. `Ok(None)`: disabled.
@@ -56,9 +57,23 @@ pub fn parse(raw: Option<&str>) -> Result<Option<u32>, &'static str> {
     }
 }
 
+/// Python's `\s` (`str.isspace`), as the section parser reads it.
+fn space(c: char) -> bool {
+    c.is_whitespace() || matches!(c, '\u{001c}'..='\u{001f}')
+}
+
+/// The section name of a header line, matched the way the section parser (and the Python editor's
+/// `_SECTION_HEADER_RE`, `^\s*\[([^\]\r\n]+)\]\s*(?:[;#].*)?$`) match it: an inline `;` or `#`
+/// comment and trailing whitespace may follow the closing bracket. `line` has no newline.
+/// noevia#2019: a header such as `[*] ; shared` is still the `[*]` section.
 fn header(line: &str) -> Option<&str> {
-    let t = line.trim();
-    (t.starts_with('[') && t.ends_with(']')).then_some(t)
+    let inner = line.trim_start_matches(space).strip_prefix('[')?;
+    let len = inner.find([']', '\r', '\n']).unwrap_or(inner.len());
+    if len == 0 || !inner[len..].starts_with(']') {
+        return None;
+    }
+    let after = inner[len + 1..].trim_start_matches(space);
+    (after.is_empty() || after.starts_with([';', '#'])).then_some(&inner[..len])
 }
 
 /// llama.cpp's preset grammar is `ident ws "=" ws value`, keys are case-sensitive, and an
@@ -89,7 +104,7 @@ pub fn apply(text: &str, setting: Option<u32>) -> Option<String> {
     for line in text.lines() {
         if let Some(h) = header(line) {
             first_header.get_or_insert(lines.len());
-            in_global = h == GLOBAL_SECTION;
+            in_global = h == GLOBAL_NAME;
             if in_global {
                 global_at.get_or_insert(lines.len());
             }
@@ -1100,6 +1115,113 @@ sleep-idle-seconds = 1800
                 text.lines().any(|l| l == line) && text.matches(KEY).count() == 1,
                 "the preset is stale after a dropped save ({value:?}): {text}"
             );
+        }
+    }
+
+    /// noevia#2019: a `[*]` header with an inline comment or trailing whitespace is the global
+    /// section (as the section parser and the Python editor read it), so the key is edited in
+    /// it and no second `[*]` is added.
+    #[test]
+    fn a_global_header_with_a_comment_or_trailing_space_is_still_the_global_section() {
+        for header in [
+            "[*] ; shared",
+            "[*] # shared",
+            "[*]   ",
+            "[*]\t;c",
+            "  [*]  # c",
+            "[*];c",
+        ] {
+            for (before, setting, after) in [
+                // No key yet: it goes into the existing section.
+                (
+                    format!("{header}\nctx-size = 4096\n\n[synthetic]\nk = v\n"),
+                    Some(900),
+                    format!("{header}\nsleep-idle-seconds = 900\nctx-size = 4096\n\n[synthetic]\nk = v\n"),
+                ),
+                // An existing key is replaced where it stands.
+                (
+                    format!("{header}\nsleep-idle-seconds = 60\n\n[synthetic]\nk = v\n"),
+                    Some(900),
+                    format!("{header}\nsleep-idle-seconds = 900\n\n[synthetic]\nk = v\n"),
+                ),
+                // Disabling removes it from the existing section.
+                (
+                    format!("{header}\nsleep-idle-seconds = 60\n\n[synthetic]\nk = v\n"),
+                    None,
+                    format!("{header}\n\n[synthetic]\nk = v\n"),
+                ),
+            ] {
+                assert_eq!(apply(&before, setting).as_deref(), Some(after.as_str()), "{header:?}");
+                assert_eq!(apply(&after, setting), None, "{header:?}");
+            }
+        }
+        // No duplicate `[*]` whatever the header looks like.
+        let out = apply("[*] ; shared\n[m]\n", Some(900)).unwrap();
+        assert_eq!(out.matches("[*]").count(), 1, "{out}");
+    }
+
+    /// noevia#2019: a model's header with an inline comment still ends the global section, so
+    /// that model's own key is never taken for the global one.
+    #[test]
+    fn a_model_header_with_a_comment_ends_the_global_section() {
+        let text = "[*]\nctx-size = 1\n[model] ; own\nsleep-idle-seconds = 5\n";
+        assert_eq!(
+            apply(text, Some(900)).as_deref(),
+            Some("[*]\nsleep-idle-seconds = 900\nctx-size = 1\n[model] ; own\nsleep-idle-seconds = 5\n")
+        );
+        // Disabled: the model's own key is left alone.
+        assert_eq!(apply(text, None), None);
+    }
+
+    #[test]
+    fn header_lines_follow_the_python_pattern() {
+        for (line, name) in [
+            ("[*]", Some("*")),
+            ("[*] ; c", Some("*")),
+            ("[*] # c", Some("*")),
+            ("[*]   ", Some("*")),
+            ("  [a b] ;", Some("a b")),
+            ("[ * ]", Some(" * ")),
+            ("[*] junk", None),
+            ("[*]]", None),
+            ("[]", None),
+            ("[*", None),
+            ("x [*]", None),
+            ("; [*]", None),
+        ] {
+            assert_eq!(header(line), name, "{line:?}");
+        }
+        assert_eq!(
+            apply("[ * ]\n", Some(900)).unwrap().matches("[*]").count(),
+            1
+        );
+    }
+
+    /// The idle reconcile and the section parser read the same header lines the same way.
+    #[cfg(feature = "native-section-writes")]
+    #[test]
+    fn header_lines_agree_with_the_section_parser() {
+        for line in [
+            "[*]",
+            "[*] ; c",
+            "[*] # c",
+            "[*]   ",
+            " \t[*]\t",
+            "[*] x",
+            "[*]]",
+            "[]",
+            "[",
+            "[*",
+            "[a]b]",
+            "[a] ;",
+            "[a]#",
+            "x[a]",
+            "[\u{a0}*] ;",
+            "[*]\u{1f}",
+            "[*]\u{a0};c",
+        ] {
+            let parser = crate::section_writes::cfg::header_match(line).map(|(a, b)| &line[a..b]);
+            assert_eq!(header(line), parser, "{line:?}");
         }
     }
 }
