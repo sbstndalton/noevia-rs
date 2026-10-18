@@ -1,7 +1,9 @@
-//! Every row of tests/fixtures/browser-policy.v1.json (printed by noevia-core's
-//! tools/gen-browser-policy-fixtures.cjs from the JS itself; byte-identical to core's copy)
-//! through the wasm call's wire format: the exact reply text. Rows marked `strict` hold the port's
-//! deliberately stricter answer (see the crate docs); the generator checks they never allow more.
+//! Every row of tests/fixtures/browser-policy.v1.json (first printed from noevia-core's former JS
+//! rules, whose generator was deleted with them in noevia-core#188; frozen and byte-identical to
+//! core's copy) through the wasm call's wire format: the exact reply text. Rows marked `strict`
+//! hold the port's deliberately stricter answer (see the crate docs); the generator checked, while
+//! it existed, that they never allow more (noevia-core's differential test now pins it against the
+//! frozen JS answers).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
