@@ -5,9 +5,11 @@
 //!
 //! - restart: an effective backend (LLAMA_CONTAINERS plus discovered llama.cpp containers) is
 //!   looked up, its last restart error cleared, and `restart(timeout=15)` queued in the background;
-//!   a failure is kept as that backend's `last_restart_error`, which `GET /api/v1/backends` (still
-//!   Python) shows. That error store stays in the child: this side clears and sets it through the
-//!   child's private `PUT /api/v1/internal/backend-restart-error`.
+//!   a failure is kept as that backend's `last_restart_error`, which `GET /api/v1/backends` shows.
+//!   noevia#1318 step 2: while this process samples the backends, its native mirror is the only
+//!   store (every reader is native). Only with `MODEL_MANAGER_BACKENDS_IMPL=python`, when the child
+//!   answers `GET /backends` itself, does this side also set and clear the child's copy through its
+//!   private `PUT /api/v1/internal/backend-restart-error`.
 //! - test: the backend's llama-server port is resolved from `docker inspect` (published port, else
 //!   `--port`/`LLAMA_ARG_PORT`, else LLAMA_DEFAULT_PORT), its `/v1/models` probed for a loaded
 //!   model, and one non-streaming chat completion sent.

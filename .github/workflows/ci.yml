@@ -1267,7 +1267,7 @@ jobs:
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-settings,native-backend-control,native-backends -- -D warnings
       - name: Native backends differential, transport allowlist and selector
         run: |
-          cargo test --locked -p noevia-model-manager --features native-backends --test backends --test lifecycle --bin noevia-model-manager
+          cargo test --locked -p noevia-model-manager --features native-backends --test backends --test backend_control --test lifecycle --bin noevia-model-manager
           cargo test --locked -p noevia-model-manager --features native-backends --lib backend_stats::
           cargo test --locked -p noevia-model-manager --features native-backends --lib docker::
       - name: Backends capability omission

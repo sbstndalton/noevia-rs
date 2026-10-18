@@ -15,7 +15,8 @@ into its objects, errors and messages exactly as in production), to fake llama-s
 Recorded per step: after a sampler tick, the backend cache as JSON (what the native sampler pushes
 to the child) and the `docker exec` GPU reads the native sampler asks the child for
 (`hw.exec_probe`); after a GET, the status and body. `docker exec` itself is answered at the
-docker-py boundary (`Container.exec_run`) from the case, since the native side never runs it.
+docker-py boundary (`Container.exec_run`), always as a missing tool (noevia#1318 step 2: the
+native side drops those reads).
 `time.time` and `datetime.now` are pinned per step; TZ is UTC. Every name is synthetic; no Docker
 daemon, container, GPU or model is touched.
 """
@@ -409,11 +410,11 @@ def main() -> None:
     hw._DRM_ROOT = str(drm)
 
     def exec_run(self, cmd, *args, **kwargs):
+        # noevia#1318 step 2: the native sampler drops the vendor-tool reads (nvidia-smi,
+        # rocm-smi) instead of porting them, so Python is recorded as it samples an image without
+        # those tools: every exec answers "not found", whatever the case scripted for it.
         program = cmd.split()[0]
-        answer = STATE["exec"].get(self.name, {}).get(program)
-        if answer is None:
-            return ExecResult(126, f"OCI runtime exec failed: {program}: not found".encode())
-        return ExecResult(answer[0], answer[1].encode())
+        return ExecResult(126, f"OCI runtime exec failed: {program}: not found".encode())
 
     dmc.Container.exec_run = exec_run
 

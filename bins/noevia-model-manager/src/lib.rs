@@ -1916,7 +1916,23 @@ pub fn max_tokens(value: Option<&prompts::JsonValue>) -> Option<i64> {
     Some(n.clamp(1, 4096))
 }
 
-/// noevia#1318: the child keeps `last_restart_error`; set (`Some`) or clear (`None`) it.
+/// noevia#1318 step 2: whether the child's `_restart_errors` copy is still read. While this
+/// process samples the backends, the native mirror is the only owner: every reader of the child's
+/// copy (its `GET /api/v1/backends`, and the backend snapshot behind the model reads' live fields)
+/// is then native. With `MODEL_MANAGER_BACKENDS_IMPL=python` the child answers `GET /backends`
+/// itself and keeps receiving the errors.
+#[cfg(feature = "native-backend-control")]
+fn child_keeps_restart_errors(state: &StateData) -> bool {
+    #[cfg(feature = "native-backends")]
+    if state.backend_stats.is_some() {
+        return false;
+    }
+    let _ = state;
+    true
+}
+
+/// noevia#1318: the child keeps `last_restart_error` (only while it answers `GET /backends`, see
+/// [`child_keeps_restart_errors`]); set (`Some`) or clear (`None`) it.
 #[cfg(feature = "native-backend-control")]
 async fn set_restart_error(
     legacy: &reqwest::Client,
@@ -2005,7 +2021,9 @@ async fn native_backend_control(
         if let Some(stats) = &state.backend_stats {
             stats.set_restart_error(&name, None);
         }
-        set_restart_error(&state.legacy, &state.legacy_base, &state.token, &name, None).await;
+        if child_keeps_restart_errors(&state) {
+            set_restart_error(&state.legacy, &state.legacy_base, &state.token, &name, None).await;
+        }
         let task_state = state.clone();
         tokio::spawn(async move {
             let outcome = tokio::time::timeout(
@@ -2021,6 +2039,9 @@ async fn native_backend_control(
             #[cfg(feature = "native-backends")]
             if let Some(stats) = &task_state.backend_stats {
                 stats.set_restart_error(&name, Some(&error));
+            }
+            if !child_keeps_restart_errors(&task_state) {
+                return;
             }
             set_restart_error(
                 &task_state.legacy,

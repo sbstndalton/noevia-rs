@@ -10,9 +10,10 @@
 //! What runs here: the Docker reads (`/version`, the container list, inspect, image inspect and
 //! one-shot container stats, all read-only and allowlisted in `docker.rs`), the sysfs reads of AMD
 //! cards mapped into a backend (`hw._read_drm`), the `GPU_VRAM` declaration, the history, the
-//! llama-server probes and the answer. What stays in the Python child: the GPU reads that need
-//! `docker exec` (`nvidia-smi`, `rocm-smi`), asked through its private
-//! `GET /api/v1/internal/gpu-exec-probe`; this side never runs `exec`. After every tick the cache
+//! llama-server probes and the answer. The GPU reads that need `docker exec` (`nvidia-smi`,
+//! `rocm-smi`) are not made at all (noevia#1318 step 2): only the integrated-GPU sysfs profile is
+//! kept, and an image whose vendor tool would have answered is sampled as if the tool were absent.
+//! This side never runs `exec` and never asks the child for a GPU read. After every tick the cache
 //! is pushed to the child (`PUT /api/v1/internal/backend-stats`), whose other readers (fit chips,
 //! autoconfig, the benchmark observer) keep reading it through `hw.stats_for`; the child no longer
 //! samples the backends itself.
@@ -36,9 +37,8 @@ use std::{
     time::Duration,
 };
 
-/// The child's private calls (never forwarded from outside: `is_internal_path`).
+/// The child's private call (never forwarded from outside: `is_internal_path`).
 pub const PUSH_PATH: &str = "/api/v1/internal/backend-stats";
-pub const PROBE_PATH: &str = "/api/v1/internal/gpu-exec-probe";
 /// `hw._DRM_ROOT`.
 pub const DRM_ROOT: &str = "/sys/class/drm";
 /// The native 503 body when this side cannot answer exactly.
@@ -1491,7 +1491,6 @@ pub struct BackendStats {
     state: Mutex<Sampled>,
     /// One log line per run of failures, not one per tick.
     push_failing: std::sync::atomic::AtomicBool,
-    probe_failing: std::sync::atomic::AtomicBool,
 }
 
 /// Logs `message` when `flag` turns on; clears it on success.
@@ -1542,7 +1541,6 @@ impl BackendStats {
             clock,
             state: Mutex::new(Sampled::default()),
             push_failing: std::sync::atomic::AtomicBool::new(false),
-            probe_failing: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -1557,6 +1555,12 @@ impl BackendStats {
                 st.restart_errors.remove(name);
             }
         }
+    }
+
+    /// Tests read the native mirror's restart error for one backend.
+    #[doc(hidden)]
+    pub fn restart_error(&self, name: &str) -> Option<String> {
+        lock(&self.state).restart_errors.get(name).cloned()
     }
 
     /// Lib and integration tests seed the restart errors as the child's store held them.
@@ -1613,44 +1617,6 @@ impl BackendStats {
             .map_or(0.0, |(_, v)| *v)
     }
 
-    /// The child's `hw.exec_probe(name, probe)`; `None` when it gives none or cannot be asked.
-    async fn exec_probe(&self, name: &str, probe: &str) -> Option<Gpu> {
-        if !(name.len() <= 256
-            && name
-                .bytes()
-                .next()
-                .is_some_and(|b| b.is_ascii_alphanumeric())
-            && name
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b)))
-        {
-            return None;
-        }
-        let url = format!(
-            "{}{PROBE_PATH}?name={name}&probe={probe}",
-            self.config.legacy_base
-        );
-        let mut request = self.child.get(url);
-        if !self.config.token.is_empty() {
-            request = request.header("x-model-loader-token", &self.config.token);
-        }
-        let answered = match request.send().await {
-            Ok(r) if r.status() == reqwest::StatusCode::OK => r.bytes().await.ok(),
-            _ => None,
-        };
-        let value = answered.as_deref().and_then(parse_json);
-        note(
-            &self.probe_failing,
-            value.is_none(),
-            "model-manager backend sampler: the child did not answer a GPU read",
-        );
-        let value = value?;
-        match value.get("gpu")? {
-            J::Null => None,
-            g => gpu_from(g),
-        }
-    }
-
     /// `hw._collect(name)`.
     async fn collect(&self, name: &str) -> Stats {
         let Some(api) = client(self.docker.as_ref()).await else {
@@ -1681,14 +1647,14 @@ impl BackendStats {
                     .unwrap_or(Err(()))
             }
         };
+        // noevia#1318 step 2: the vendor-tool reads (`nvidia-smi`, `rocm-smi`, which need
+        // `docker exec`) are dropped, not ported: only the current integrated-GPU profile has to
+        // keep working. Each answers as Python does when the tool is absent from the image.
         let gpu = match vendor {
-            "nvidia" => self.exec_probe(name, "nvidia").await,
-            "amd" => match self.exec_probe(name, "amd").await {
-                Some(g) => Some(g),
-                None => match drm().await {
-                    Ok(g) => g,
-                    Err(()) => return Stats::failed(SAMPLER_ERROR),
-                },
+            "nvidia" => None,
+            "amd" => match drm().await {
+                Ok(g) => g,
+                Err(()) => return Stats::failed(SAMPLER_ERROR),
             },
             "vulkan" => match drm().await {
                 Err(()) => return Stats::failed(SAMPLER_ERROR),
@@ -1696,33 +1662,26 @@ impl BackendStats {
                     vendor: "vulkan".into(),
                     ..g
                 }),
-                Ok(None) => match self.exec_probe(name, "amd-nvidia").await {
-                    Some(g) => Some(Gpu {
+                Ok(None) => {
+                    let declared = self.declared(name);
+                    (declared > 0.0).then(|| Gpu {
                         vendor: "vulkan".into(),
-                        ..g
-                    }),
-                    None => {
-                        let declared = self.declared(name);
-                        (declared > 0.0).then(|| Gpu {
-                            vendor: "vulkan".into(),
-                            name: "Vulkan device (no SMI tool in image — VRAM from GPU_VRAM)"
-                                .into(),
-                            util_pct: zero(),
-                            vram_used_gb: zero(),
-                            vram_total_gb: Num::Float(round_nd(declared, 1)),
-                            temp_c: zero(),
-                            power_w: zero(),
-                            gpu_count: 1,
-                            cards: Vec::new(),
-                            memory_kind: "dedicated".into(),
-                            shared_used_gb: zero(),
-                            shared_total_gb: zero(),
-                            clock_mhz: zero(),
-                            source: "declared".into(),
-                            measured: false,
-                        })
-                    }
-                },
+                        name: "Vulkan device (no SMI tool in image — VRAM from GPU_VRAM)".into(),
+                        util_pct: zero(),
+                        vram_used_gb: zero(),
+                        vram_total_gb: Num::Float(round_nd(declared, 1)),
+                        temp_c: zero(),
+                        power_w: zero(),
+                        gpu_count: 1,
+                        cards: Vec::new(),
+                        memory_kind: "dedicated".into(),
+                        shared_used_gb: zero(),
+                        shared_total_gb: zero(),
+                        clock_mhz: zero(),
+                        source: "declared".into(),
+                        measured: false,
+                    })
+                }
             },
             _ => None,
         };
