@@ -66,6 +66,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-benchmark-runner") {
                 output.write_all(b"native-benchmark-runner\n")?;
             }
+            if cfg!(feature = "native-routing") {
+                output.write_all(b"native-routing\n")?;
+            }
             if cfg!(feature = "native-download-plan") {
                 output.write_all(b"native-download-plan\n")?;
             }
@@ -111,6 +114,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // and the retired MODEL_MANAGER_IMPL and MODEL_FILES_IMPL keys are not read at all.
     // The sub-selectors below still name the parent mode; it is always native now.
     let mode = "rust";
+    let routing_native =
+        noevia_model_manager::routing_cmd::select(&std::env::vars_os().collect::<Vec<_>>())?;
+    #[cfg(feature = "native-routing")]
+    let routing_trusted = if routing_native {
+        let path = environment(
+            "SEARCH_TRUSTED_PATH",
+            noevia_model_manager::search::live::TRUSTED_PATH,
+        )?;
+        Some(noevia_model_manager::routing::trusted_preflight(
+            std::path::Path::new(&path),
+        )?)
+    } else {
+        None
+    };
     let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
     let sections_mode = environment("MODEL_MANAGER_SECTIONS_IMPL", "python")?;
     let prompts_mode = environment("MODEL_MANAGER_PROMPTS_IMPL", "python")?;
@@ -625,6 +642,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         configured.push(name.to_owned());
     }
+    #[cfg(feature = "native-routing")]
+    if routing_native
+        && ![
+            settings_root.is_some(),
+            updates_roots.is_some(),
+            detail_roots.is_some(),
+            targets_roots.is_some(),
+            badges_root.is_some(),
+            settings_write_root.is_some(),
+            writes_roots.is_some(),
+            safe_defaults_settings.is_some(),
+            check_roots.is_some(),
+            overview_roots.is_some(),
+            downloads_roots.is_some(),
+            delete_roots.is_some(),
+            heads_roots.is_some(),
+            backends_settings.is_some(),
+            search_roots.is_some(),
+            bench_root.is_some(),
+            model_list.models.is_some(),
+            model_list.overview.is_some(),
+            section_autoconfig.settings.is_some(),
+            prompt_root.is_some(),
+        ]
+        .iter()
+        .all(|ready| *ready)
+    {
+        return Err(
+            "native routing requires qualified roots without compatibility fallbacks".into(),
+        );
+    }
     let docker = Arc::new(UnixDocker::from_env()?);
     #[cfg(feature = "native-benchmark-runner")]
     let bench_runner = match (runner_mode.as_str(), overview_roots.as_ref()) {
@@ -642,16 +690,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     token: token.clone(),
                 },
             )?;
-            // bench.reap_orphans at startup: leftover sweep containers, by exact label only.
-            match tokio::time::timeout(std::time::Duration::from_secs(60), runner.reap_orphans())
-                .await
-            {
-                Ok((reaped, stuck)) if reaped + stuck > 0 => {
-                    eprintln!("benchmark orphan check: {reaped} removed, {stuck} still stopping");
-                }
-                Ok(_) => {}
-                Err(_) => eprintln!("benchmark orphan check timed out; startup continues"),
-            }
             Some(runner)
         }
         _ => None,
@@ -712,28 +750,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .as_str(),
             "1" | "true" | "on" | "yes"
         ));
-        // A bad state file or a read-only /config leaves the service in an error state (deletes
-        // refused, status reports it); it must not crash-loop the whole model manager.
-        if let Err(error) = service.seed(
-            &environment("EMBEDDING_MODEL", "")?,
-            &environment("EMBED_MODEL_FILE", "")?,
-        ) {
-            eprintln!("embedding service: {error}");
-        }
         let service = Arc::new(service);
-        service.start_warm();
-        // #1717: re-warm after an embed restart noevia did not make.
-        drop(service.watch());
         Some(service)
     };
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;
-    // Refuse an existing loopback listener before spawn: ownership is never borrowed from
-    // an unknown process. uvicorn receives only the fixed private loopback address.
-    let legacy_probe = reusable_probe(std::net::SocketAddrV4::new(
-        std::net::Ipv4Addr::LOCALHOST,
-        8091,
-    ))?;
-    drop(legacy_probe);
     #[cfg(feature = "native-prompts")]
     let prompts = if prompts_mode == "rust" {
         let data = prompt_root.as_deref().ok_or("native prompt root missing")?;
@@ -1108,7 +1127,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "SEARCH_TRUSTED_PATH",
             noevia_model_manager::search::live::TRUSTED_PATH,
         )?;
-        match noevia_model_manager::search::live::load_trusted(std::path::Path::new(&path)) {
+        #[cfg(feature = "native-routing")]
+        let trusted = routing_trusted.map(Ok).unwrap_or_else(|| {
+            noevia_model_manager::search::live::load_trusted(std::path::Path::new(&path))
+        });
+        #[cfg(not(feature = "native-routing"))]
+        let trusted = noevia_model_manager::search::live::load_trusted(std::path::Path::new(&path));
+        match trusted {
             Ok(trusted) => search.set_live(noevia_model_manager::search::live::Source {
                 stats: stats.clone(),
                 models: roots.models.clone().into(),
@@ -1155,12 +1180,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     #[cfg(not(feature = "native-bench-observe"))]
     let _ = observe_native;
-    let mut child = child_command.spawn()?;
-    #[cfg(feature = "native-backends")]
-    let _backend_sampler = backend_stats.as_ref().map(|stats| stats.start());
-    let _host_sampler = host
-        .as_ref()
-        .map(|history| noevia_model_manager::host::HostSampler::start(history.clone()));
     let state = Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis,
@@ -1234,8 +1253,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             native
         },
     });
+    // Complete framework ownership is checked against installed stores before child startup.
+    #[cfg(feature = "native-routing")]
+    let app = if routing_native {
+        noevia_model_manager::routing::router(state.clone())?
+    } else {
+        router(state.clone())
+    };
+    #[cfg(not(feature = "native-routing"))]
+    let app = {
+        let _ = routing_native;
+        router(state.clone())
+    };
+    #[cfg(feature = "native-benchmark-runner")]
+    if let Some(runner) = state.bench_runner.as_ref() {
+        // bench.reap_orphans at startup: leftover sweep containers, by exact label only.
+        match tokio::time::timeout(std::time::Duration::from_secs(60), runner.reap_orphans()).await
+        {
+            Ok((reaped, stuck)) if reaped + stuck > 0 => {
+                eprintln!("benchmark orphan check: {reaped} removed, {stuck} still stopping");
+            }
+            Ok(_) => {}
+            Err(_) => eprintln!("benchmark orphan check timed out; startup continues"),
+        }
+    }
+    if let Some(service) = state.embedding.as_ref() {
+        // A bad state file or a read-only /config leaves the service in an error state (deletes
+        // refused, status reports it); it must not crash-loop the whole model manager.
+        if let Err(error) = service.seed(
+            &environment("EMBEDDING_MODEL", "")?,
+            &environment("EMBED_MODEL_FILE", "")?,
+        ) {
+            eprintln!("embedding service: {error}");
+        }
+        service.start_warm();
+        // #1717: re-warm after an embed restart noevia did not make.
+        drop(service.watch());
+    }
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;
+    // Refuse an existing loopback listener before spawn: ownership is never borrowed from
+    // an unknown process. uvicorn receives only the fixed private loopback address.
+    let legacy_probe = reusable_probe(std::net::SocketAddrV4::new(
+        std::net::Ipv4Addr::LOCALHOST,
+        8091,
+    ))?;
+    drop(legacy_probe);
+    let mut child = child_command.spawn()?;
+    #[cfg(feature = "native-backends")]
+    let _backend_sampler = state.backend_stats.as_ref().map(|stats| stats.start());
+    let _host_sampler = state
+        .host
+        .as_ref()
+        .map(|history| noevia_model_manager::host::HostSampler::start(history.clone()));
     // Retain native stores and their lifetime writer locks until the child is reaped.
-    let serve = axum::serve(listener, router(state.clone()));
+    let serve = axum::serve(listener, app);
     let outcome: Result<(), Box<dyn std::error::Error>> = tokio::select! {
         result=serve => result.map_err(Into::into),
         result=child.wait() => match result {Ok(_)=>Err("Python-owned endpoint process exited".into()),Err(e)=>Err(e.into())},

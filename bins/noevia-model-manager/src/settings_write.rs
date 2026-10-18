@@ -94,6 +94,10 @@ impl SettingsWrite {
         Ok(self)
     }
 
+    #[cfg(feature = "native-routing")]
+    pub(crate) fn routing_ready(&self) -> bool {
+        self.token_test.is_some()
+    }
     /// None means the compatibility child owns validation. Native failures never fall back.
     pub async fn token_test(&self) -> Option<Vec<u8>> {
         #[cfg(feature = "native-token-test")]

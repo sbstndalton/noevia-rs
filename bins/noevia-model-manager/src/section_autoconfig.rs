@@ -134,6 +134,11 @@ struct Runtime {
 }
 
 impl SectionAutoconfig {
+    #[cfg(feature = "native-routing")]
+    pub(crate) fn routing_ready(&self) -> bool {
+        self.stats.get().is_some() && self.telemetry.get().is_some()
+    }
+
     pub fn new(settings: Settings) -> Self {
         Self::with(settings, Root::new)
     }

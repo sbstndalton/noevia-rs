@@ -43,6 +43,9 @@ pub mod model_list;
 pub mod model_updates;
 #[cfg(feature = "native-prompts")]
 pub mod prompts;
+#[cfg(feature = "native-routing")]
+pub mod routing;
+pub mod routing_cmd;
 #[cfg(feature = "native-search")]
 pub mod search;
 #[cfg(feature = "native-section-autoconfig")]
@@ -796,11 +799,19 @@ fn detail(status: StatusCode, text: &'static str) -> Response {
     (status, Json(json!({"detail":text}))).into_response()
 }
 
-async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response {
+#[allow(unused_mut)]
+async fn handler(State(state): State<Arc<StateData>>, mut req: Request) -> Response {
     #[cfg(feature = "native-diagnose")]
     let diagnosis_deadline = std::time::Instant::now() + TIMEOUT;
     let path = req.uri().path();
-    if path != "/api/v1/health" && !state.token.is_empty() {
+    #[cfg(feature = "native-routing")]
+    let decoded_auth = (req.extensions().get::<routing::Enabled>().is_some() && path.len() <= 8192)
+        .then(|| percent_decode_lossy(path));
+    #[cfg(feature = "native-routing")]
+    let auth_path = decoded_auth.as_deref().unwrap_or(path);
+    #[cfg(not(feature = "native-routing"))]
+    let auth_path = path;
+    if auth_path != "/api/v1/health" && !state.token.is_empty() {
         let supplied = req
             .headers()
             .get("x-model-loader-token")
@@ -817,6 +828,63 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     if req.uri().to_string().len() > 8192 {
         return detail(StatusCode::URI_TOO_LONG, "request URI exceeded limit");
     }
+    #[cfg(feature = "native-routing")]
+    if req.extensions().get::<routing::Enabled>().is_some() {
+        let decoded = decoded_auth.unwrap_or_else(|| percent_decode_lossy(req.uri().path()));
+        if is_internal_path(req.uri().path()) {
+            return routing::framework(StatusCode::NOT_FOUND, "Not Found", None, req.method());
+        }
+        match routing::classify(
+            req.method(),
+            &decoded,
+            state.embedding.is_some(),
+            state.idle_unload.is_some(),
+        ) {
+            routing::Route::NotFound => {
+                return routing::framework(StatusCode::NOT_FOUND, "Not Found", None, req.method())
+            }
+            routing::Route::Method(allowed) => {
+                return routing::framework(
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    "Method Not Allowed",
+                    Some(allowed),
+                    req.method(),
+                )
+            }
+            routing::Route::Redirect(path) => {
+                let host = req
+                    .headers()
+                    .get("host")
+                    .and_then(|h| h.to_str().ok())
+                    .unwrap_or("localhost");
+                let location = routing::location(&path, req.uri(), host);
+                return (
+                    StatusCode::TEMPORARY_REDIRECT,
+                    [(axum::http::header::LOCATION, location)],
+                    Body::empty(),
+                )
+                    .into_response();
+            }
+            routing::Route::Match { canonical, backend } => {
+                let original = req.uri().clone();
+                let query = original
+                    .query()
+                    .map(|q| format!("?{q}"))
+                    .unwrap_or_default();
+                let uri = match format!("{}{query}", routing::canonical_path(&canonical)).parse() {
+                    Ok(uri) => uri,
+                    Err(_) => return detail(StatusCode::BAD_REQUEST, "invalid request path"),
+                };
+                req.extensions_mut().insert(routing::Routed {
+                    original,
+                    decoded: canonical,
+                    backend,
+                });
+                *req.uri_mut() = uri;
+            }
+        }
+    }
+    let path = req.uri().path();
     #[cfg(feature = "native-diagnose")]
     if let Some(diagnosis) = &state.diagnosis {
         let route = diagnose_docker::classify(path);
@@ -1385,7 +1453,16 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
     }
     #[cfg(feature = "native-backend-control")]
     if let Some(control) = state.backends.clone() {
-        if let Some((name, action)) = backend_control_route(req.method(), path) {
+        #[cfg(feature = "native-routing")]
+        let routed_control = req
+            .extensions()
+            .get::<routing::Routed>()
+            .and_then(|r| r.backend.clone());
+        #[cfg(not(feature = "native-routing"))]
+        let routed_control = None;
+        if let Some((name, action)) =
+            routed_control.or_else(|| backend_control_route(req.method(), path))
+        {
             return native_backend_control(state.clone(), control, name, action, req).await;
         }
     }
@@ -2164,6 +2241,13 @@ async fn child_runtime(
 }
 
 async fn forward(state: Arc<StateData>, req: Request) -> Response {
+    #[cfg(feature = "native-routing")]
+    if req.extensions().get::<routing::Routed>().is_some() {
+        return detail(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Native route owner is unavailable",
+        );
+    }
     let path = req.uri().path();
     if !python_owned(req.method().as_str(), path) {
         if ["GET", "POST", "PUT", "DELETE"]

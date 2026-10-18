@@ -396,6 +396,10 @@ impl Runner {
             .map_err(|_| "benchmark observer already installed")
     }
 
+    #[cfg(feature = "native-routing")]
+    pub(crate) fn routing_ready(&self) -> bool {
+        self.native_observe.get().is_some()
+    }
     async fn observation(&self, query: String) -> Result<Observed, Raised> {
         #[cfg(feature = "native-bench-observe")]
         if let Some(observer) = self.native_observe.get() {

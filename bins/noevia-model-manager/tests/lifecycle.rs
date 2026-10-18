@@ -1148,6 +1148,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         if cfg!(feature = "native-benchmark-runner") {
             expected.push_str("native-benchmark-runner\n");
         }
+        if cfg!(feature = "native-routing") {
+            expected.push_str("native-routing\n");
+        }
         if cfg!(feature = "native-download-plan") {
             expected.push_str("native-download-plan\n");
         }

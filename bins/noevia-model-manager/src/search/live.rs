@@ -219,7 +219,19 @@ fn list(items: &[String]) -> String {
     format!("[{}]", rendered.join(","))
 }
 
+#[cfg(feature = "native-routing")]
+impl Trusted {
+    pub(crate) fn routing_ready(&self) -> bool {
+        self.quantisers.iter().any(|s| !s.is_empty()) && self.labs.iter().any(|s| !s.is_empty())
+    }
+}
 impl Search {
+    #[cfg(feature = "native-routing")]
+    pub(crate) fn routing_ready(&self) -> bool {
+        self.live
+            .get()
+            .is_some_and(|s| s.trusted.routing_ready() && s.estimates_cache_cap_mib.is_some())
+    }
     /// Makes the search runtime native (once; later calls are ignored).
     pub fn set_live(&self, source: Source) {
         let _ = self.live.set(source);

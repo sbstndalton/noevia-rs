@@ -54,6 +54,7 @@ native-telemetry = ["native-section-autoconfig", "native-backends", "dep:backend
 native-bench-observe = ["native-benchmark-runner", "native-backends", "dep:backend-telemetry"]
 native-safe-defaults = ["native-section-writes", "native-section-autoconfig"]
 native-download-plan = ["native-downloads", "native-download-targets", "native-draft-heads", "dep:unicode-normalization"]
+native-routing = ["native-badges", "native-diagnose", "native-host", "native-sections", "native-db-init", "native-token-test", "native-model-list", "native-safe-defaults", "native-download-plan", "native-bench-observe", "native-telemetry", "native-search", "native-model-delete"]
 [lints]
 workspace = true
 [dependencies]
