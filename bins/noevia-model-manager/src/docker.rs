@@ -513,7 +513,12 @@ pub fn allowed_backend_read(path: &str) -> bool {
     match parts.as_slice() {
         ["", "containers" | "images", id, "json"] => query.is_empty() && id_ok(id),
         ["", "containers", id, "stats"] => query == "stream=false" && id_ok(id),
-        ["", "containers", id, "logs"] => query == TELEMETRY_LOGS_QUERY && id_ok(id),
+        ["", "containers", id, "logs"] => {
+            (query == TELEMETRY_LOGS_QUERY
+                || query == "stderr=1&stdout=1&timestamps=1&follow=0&tail=400"
+                || query == "stderr=1&stdout=1&timestamps=1&follow=0&tail=800")
+                && id_ok(id)
+        }
         _ => false,
     }
 }
@@ -533,7 +538,9 @@ impl crate::backend_stats::DockerApi for UnixDocker {
                 .body(Empty::<Bytes>::new())
                 .map_err(|_| "Docker request refused")?;
             // Only the telemetry log read is larger than the other reads' cap.
-            let cap = if path.contains("/logs?") {
+            let cap = if path.ends_with("tail=400") || path.ends_with("tail=800") {
+                8 * 1024 * 1024
+            } else if path.contains("/logs?") {
                 TELEMETRY_LOG_CAP
             } else {
                 LOG_CAP

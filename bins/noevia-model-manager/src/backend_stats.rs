@@ -30,6 +30,8 @@ use model_files::json::Value as J;
 
 #[cfg(feature = "native-section-autoconfig")]
 pub(crate) mod fallback;
+#[cfg(feature = "native-bench-observe")]
+mod bench_observe;
 pub mod fit;
 pub mod live;
 use std::{

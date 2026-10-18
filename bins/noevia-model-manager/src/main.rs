@@ -68,6 +68,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-draft-heads") {
                 output.write_all(b"native-draft-heads\n")?;
             }
+            if cfg!(feature = "native-bench-observe") {
+                output.write_all(b"native-bench-observe\n")?;
+            }
             if cfg!(feature = "native-backends") {
                 output.write_all(b"native-backends\n")?;
             }
@@ -1037,6 +1040,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         telemetry_ready,
     )?;
     noevia_model_manager::telemetry_cmd::child(&mut child_command, telemetry_native);
+    // Select before starting the child: native observation never uses its private helper.
+    #[cfg(all(feature = "native-benchmark-runner", feature = "native-backends"))]
+    let observation_ready = bench_runner.is_some() && backend_stats.is_some();
+    #[cfg(not(all(feature = "native-benchmark-runner", feature = "native-backends")))]
+    let observation_ready = false;
+    let observe_native = noevia_model_manager::bench_observe_cmd::select(
+        &std::env::vars_os().collect::<Vec<_>>(),
+        observation_ready,
+    )?;
+    #[cfg(feature = "native-bench-observe")]
+    if observe_native {
+        let (Some(runner), Some(stats)) = (bench_runner.as_ref(), backend_stats.as_ref()) else {
+            return Err("native benchmark observation needs native runner and sampler".into());
+        };
+        runner.set_native_observer(noevia_model_manager::bench_observe::observer(stats.clone()))?;
+    }
+    #[cfg(not(feature = "native-bench-observe"))]
+    let _ = observe_native;
     let mut child = child_command.spawn()?;
     #[cfg(feature = "native-backends")]
     let _backend_sampler = backend_stats.as_ref().map(|stats| stats.start());
