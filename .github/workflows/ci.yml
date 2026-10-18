@@ -1561,6 +1561,11 @@ jobs:
           repository: sbstndalton/noevia-services
           ref: e5f0c045a17a0331f4d660d4d0147fca11dc67dc
           path: observe-services
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 2360cb51f6475122ba0aa3d32272849a63028d66
+          path: observe-prompts-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
@@ -1582,6 +1587,9 @@ jobs:
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-bench-observe -- -D warnings
       - name: Native observations, benchmark regression and omission
+        env:
+          NOEVIA_PROMPTS_APP: ${{ github.workspace }}/observe-prompts-services/model-manager/app
+          PYTHON: python3
         run: |
           cargo test --locked -p noevia-model-manager --features native-bench-observe --lib
           cargo test --locked -p noevia-model-manager --features native-bench-observe --test bench_observe --test bench_runner --test bench_sweep
