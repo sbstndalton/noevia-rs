@@ -314,16 +314,14 @@ impl Store {
         let mut rows = q
             .query(rusqlite::params_from_iter(instances.iter()))
             .map_err(|_| Read::Raised)?;
-        let mut out: Vec<(String, bt::Dict)> = Vec::new();
+        // `{r["instance"]: ... for r in rows}`: first-seen order, the last value kept.
+        let mut out: indexmap::IndexMap<String, bt::Dict> = indexmap::IndexMap::new();
         while let Some(r) = rows.next().map_err(|_| Read::Raised)? {
             let inst = text(r.get_ref(0))?;
             let a = argv(r.get_ref(1))?;
-            match out.iter_mut().find(|(k, _)| *k == inst) {
-                Some((_, slot)) => *slot = a,
-                None => out.push((inst, a)),
-            }
+            out.insert(inst, a);
         }
-        Ok(out)
+        Ok(out.into_iter().collect())
     }
 }
 

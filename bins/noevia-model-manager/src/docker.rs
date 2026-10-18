@@ -943,6 +943,41 @@ mod tests {
         peer.await.unwrap();
     }
 
+    /// noevia#1318 step 3d: the telemetry log read has its own 64 MiB cap; every other read keeps
+    /// the 1 MiB one. Past the cap the answer is [`EXCEEDED`], which the ingest skips and backs off.
+    #[cfg(feature = "native-backends")]
+    #[tokio::test]
+    async fn the_telemetry_log_read_has_its_own_cap() {
+        use crate::backend_stats::DockerApi;
+        let _serial = SERIAL.lock().await;
+        let logs = format!("/containers/{}/logs?{TELEMETRY_LOGS_QUERY}", "a".repeat(64));
+        let body = vec![b'x'; LOG_CAP + 1];
+        let mut answer =
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes();
+        answer.extend_from_slice(&body);
+        let (_root, socket, peer) = serve(answer.clone());
+        let raw = UnixDocker { socket }.get(&logs).await.unwrap();
+        assert_eq!(raw.body.len(), LOG_CAP + 1);
+        peer.await.unwrap();
+        let (_root, socket, peer) = serve(answer);
+        let other = format!("/containers/{}/json", "a".repeat(64));
+        assert_eq!(
+            UnixDocker { socket }.get(&other).await.err(),
+            Some(EXCEEDED)
+        );
+        peer.await.unwrap();
+        let (_root, socket, peer) = serve(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+                TELEMETRY_LOG_CAP + 1
+            )
+            .into_bytes(),
+        );
+        assert_eq!(UnixDocker { socket }.get(&logs).await.err(), Some(EXCEEDED));
+        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+        peer.await.unwrap();
+    }
+
     /// noevia#1385: a Docker peer that accepts and then never answers, held open until dropped.
     fn silent() -> (tempfile::TempDir, PathBuf, tokio::sync::oneshot::Sender<()>) {
         let root = tempfile::Builder::new()

@@ -85,7 +85,16 @@ this process ingests the backend logs, reads the telemetry tables and builds the
   child is started with `NOEVIA_NATIVE_MODEL_MANAGER_TELEMETRY_CONFIRMED=1`, its autoconfig route
   is not forwarded to and its runtime call is never made, so `req_timing`, `server_config` and the
   `telemetry_*` keys of `kv` have this process as their only writer. Under `python` the child is
-  told `0` and nothing here writes them. `rust` needs `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust`
+  told `0` and nothing here writes them.
+- **The child's guard.** Under the confirmation the child's `telemetry.ingest`,
+  `db.record_timings` and `db.record_server_configs` write nothing (services#98), and it answers
+  the private `GET /api/v1/internal/telemetry-guard` with `{"telemetry_guard":1}` (services#100).
+  This process ingests only after that answer. A child image without the guard answers 404
+  there; this process then keeps Python's ingest (the route asks the child through the private
+  runtime call, as before), writes none of the tables, and logs that once. (The child refuses
+  `GET /api/v1/health`, which this process owns, so the advertisement is a private route
+  rather than a health field.) The answer is kept for the life of the process: the child is
+  never respawned (its exit ends this process), so its image cannot change under it. `rust` needs `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust`
   and `MODEL_MANAGER_BACKENDS_IMPL=rust`; without them, or without the compiled feature, startup
   is refused rather than downgraded.
 - **Ingest semantics (`telemetry.ingest`, kept exactly).** At most once per 20 s
@@ -101,13 +110,26 @@ this process ingests the backend logs, reads the telemetry tables and builds the
   keys unchanged, so the next pass re-reads the same lines and the unique indexes keep it
   idempotent. A parse that raises ends the ingest, and the route answers empty measurements, as
   Python's `except`. The SQL is `db.py`'s, each call its own transaction, WAL, 5 s busy timeout.
-- **Hard caps (refused, 503, never guessed):** a log answer over 64 MiB, more than 40,000 lines or
-  4,096 distinct ports in one tail, a stored value of a type Python would not have written, a log
-  shape the parser does not support, or a backend list this side cannot build.
+- **Bounds (that backend skipped, as Python skips a failed read):** a log answer over 64 MiB, a
+  log read over 60 s, more than 40,000 lines or 4,096 distinct ports in one tail. Nothing of that
+  backend is written and its keys stay; the other backends are ingested and the route answers.
+  It is logged once per backend and reason and not read again for 10 minutes, so a huge log is
+  not re-read on every request. Python would read such a tail; here it is left out of the
+  measurements until it is back within the bounds.
+- **Refused (503, never guessed), only where rows could be written wrong:** a stored value of a
+  type Python would not have written, a log shape the parser does not support, or a backend
+  list this side cannot build.
+- **Rollout order.** 1. Deploy services#98 (and #100). 2. Confirm the deployed child image has
+  the guard (`GET /api/v1/internal/telemetry-guard` from the parent's side answers 200 under the
+  confirmation). 3. Deploy this build with `MODEL_MANAGER_TELEMETRY_IMPL` still `python`. 4. Set
+  `MODEL_MANAGER_TELEMETRY_IMPL`, `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL` and
+  `MODEL_MANAGER_BACKENDS_IMPL` to `rust` together, then restart. Out of order, step 4 against
+  an old child keeps Python's ingest (the log line above) rather than two writers.
 - **Differential:** `tools/gen-telemetry-ingest-oracle.py` runs the actual `telemetry.ingest`,
-  `stats_for` and `config_history` over twelve passes (first read, the interval, repeated reads,
+  `stats_for` and `config_history` over fourteen passes (first read, the interval, repeated reads,
   a restart, port reuse, a gap, an interrupted write and its recovery, a raising parse, a
-  multiplexed log with invalid UTF-8, unreadable stored keys) and records the tables, the keys and
+  multiplexed log with invalid UTF-8, unreadable stored keys, ports A, B, A answered from the
+  stored-instance cache) and records the tables, the keys and
   the rendered measurements after each; `section_autoconfig::telemetry::tests` replays every pass
   on the same schema and compares them.
 

@@ -1619,6 +1619,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "indexmap",
  "model-autoconfig",
  "model-files",
  "proptest",

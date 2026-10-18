@@ -76,6 +76,8 @@ pub(crate) fn settings(models: &Path, cache_cap: i64) -> Settings {
 pub(crate) struct Stand {
     pub(crate) reply: Option<(u16, String)>,
     pub(crate) seen: Vec<(Option<String>, String)>,
+    /// noevia#1318 step 3d: whether the child advertises its telemetry guard.
+    pub(crate) guard: bool,
 }
 
 /// A loopback child answering only the private runtime call.
@@ -83,7 +85,25 @@ pub(crate) async fn stand_in() -> (String, Arc<Mutex<Stand>>) {
     let shared = Arc::new(Mutex::new(Stand::default()));
     let state = shared.clone();
     let app = axum::Router::new()
-        .route("/api/v1/health", axum::routing::get(|| async { "{}" }))
+        .route(
+            "/api/v1/internal/telemetry-guard",
+            axum::routing::get({
+                let state = shared.clone();
+                move || {
+                    let guard = state.lock().unwrap().guard;
+                    async move {
+                        if guard {
+                            (axum::http::StatusCode::OK, r#"{"telemetry_guard":1}"#)
+                        } else {
+                            (
+                                axum::http::StatusCode::NOT_FOUND,
+                                r#"{"detail":"Not Found"}"#,
+                            )
+                        }
+                    }
+                }
+            }),
+        )
         .route(
             RUNTIME_PATH,
             axum::routing::post(move |headers: axum::http::HeaderMap, body: String| {

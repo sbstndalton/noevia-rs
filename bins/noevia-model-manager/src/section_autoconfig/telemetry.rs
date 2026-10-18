@@ -6,9 +6,12 @@
 //! (`telemetry_last_ingest`, `telemetry_log_watermark:<backend>`,
 //! `telemetry_continuous_since:<backend>`). The child is told so
 //! (`NOEVIA_NATIVE_MODEL_MANAGER_TELEMETRY_CONFIRMED=1`): its own route is already refused under
-//! the native section autoconfig, the private runtime call is no longer made, and a services
-//! child that knows the flag refuses its ingest outright. With `python` the child stays the only
-//! writer and this side never opens those tables for writing.
+//! the native section autoconfig, the private runtime call is no longer made, and the child's
+//! `telemetry.ingest` and `record_*` writers refuse outright. This side writes only once the
+//! child has advertised that guard (`GET /api/v1/internal/telemetry-guard`); a child image
+//! without it keeps Python's ingest, through the private runtime call as before, with one loud
+//! log line. With `python` the child stays the only writer and this side never opens those
+//! tables for writing.
 //!
 //! The ingest follows Python step by step: the 20-second interval on `telemetry_last_ingest`;
 //! for each effective backend the log tail (`tail=20000`, timestamps, docker-py's frame
@@ -17,21 +20,27 @@
 //! `db.server_instances_on_port`, `record_server_configs` and `record_timings` (the same SQL,
 //! each its own transaction as each Python call is), then the two keys, an error there skipping
 //! only that backend; and the interval key last. A step on which Python raises gives the route's
-//! empty measurements, as its `except` does; anything this side does not follow exactly (a log
-//! past 64 MiB, a stored value of a type Python would treat differently, a log shape the parser
-//! refuses) answers the native 503 for that request rather than guessing, and writes nothing
-//! more.
+//! empty measurements, as its `except` does.
 //!
-//! The store is created by the child's startup, so the first native answer waits once for the
-//! child's `GET /api/v1/health`.
+//! Bounds: a backend whose log answer is past 64 MiB, whose read takes longer than 60 s, whose
+//! tail has more than 40,000 lines or names more than 4,096 ports is skipped for that pass, as
+//! Python skips a backend whose read fails: nothing of it is written and its keys stay. It is
+//! logged once per backend and reason and not read again for [`BACKOFF_S`], so a huge log is
+//! not re-read on every request. Only where rows could be written wrong (a stored value of a
+//! type Python would treat differently, a log shape the parser refuses) is the answer the
+//! native 503, with nothing more written.
+//!
+//! The store is created by the child's startup; the guard answer comes after it (the child
+//! serves requests only once its startup is over).
 mod store;
 
 use crate::backend_stats::{BackendStats, Clock, Logs};
 use backend_telemetry as bt;
 use model_files::json::Value;
 use std::{
+    collections::{HashMap, HashSet},
     path::PathBuf,
-    sync::{atomic::AtomicBool, Arc},
+    sync::Arc,
 };
 
 /// `_INGEST_INTERVAL_S`.
@@ -74,8 +83,19 @@ pub struct Telemetry {
     clock: Clock,
     /// One ingest at a time (Python's `_LOCK` serialises its store calls).
     ingest: tokio::sync::Mutex<()>,
-    started: AtomicBool,
+    /// Who ingests, once the child has answered ([`Telemetry::owner`]).
+    owner: tokio::sync::OnceCell<bool>,
+    /// Backends skipped by a bound, until this clock value.
+    backoff: std::sync::Mutex<HashMap<String, f64>>,
+    /// The (backend, reason) pairs already logged.
+    logged: std::sync::Mutex<HashSet<(String, &'static str)>>,
 }
+
+/// The child's telemetry guard advertisement (services, noevia#1318 step 3d).
+pub(crate) const GUARD_PATH: &str = "/api/v1/internal/telemetry-guard";
+pub(crate) const GUARD_BODY: &[u8] = br#"{"telemetry_guard":1}"#;
+/// How long a backend skipped by a bound is left unread.
+pub const BACKOFF_S: f64 = 600.0;
 
 fn now() -> f64 {
     std::time::SystemTime::now()
@@ -98,28 +118,75 @@ impl Telemetry {
             stats,
             clock,
             ingest: tokio::sync::Mutex::new(()),
-            started: AtomicBool::new(false),
+            owner: tokio::sync::OnceCell::new(),
+            backoff: std::sync::Mutex::new(HashMap::new()),
+            logged: std::sync::Mutex::new(HashSet::new()),
         }
     }
 
-    /// The store exists once the child's startup is over (its health check answered).
-    pub(crate) async fn child_started(&self, child: &super::Child<'_>) -> bool {
-        use std::sync::atomic::Ordering;
-        if self.started.load(Ordering::Acquire) {
-            return true;
+    /// Who ingests, asked of the child once: `Some(true)` this process (the child advertised its
+    /// telemetry guard, so it never writes the tables, and its startup has made the store),
+    /// `Some(false)` Python (a child without the guard would still ingest: this side writes
+    /// nothing and the route keeps asking the child, logged once), `None` not known yet (the
+    /// child is not answering; asked again next time).
+    ///
+    /// The answer is kept for the life of this process. That is safe because the child is never
+    /// respawned (its exit ends this process): its image, so its guard, cannot change under a
+    /// kept answer, and the store it made persists.
+    pub(crate) async fn owner(&self, child: &super::Child<'_>) -> Option<bool> {
+        if let Some(native) = self.owner.get() {
+            return Some(*native);
         }
         let mut request = child
             .client
-            .get(format!("{}/api/v1/health", child.base))
+            .get(format!("{}{GUARD_PATH}", child.base))
             .timeout(std::time::Duration::from_secs(10));
         if !child.token.is_empty() {
             request = request.header("x-model-loader-token", child.token);
         }
-        let ok = matches!(request.send().await, Ok(r) if r.status().is_success());
-        if ok {
-            self.started.store(true, Ordering::Release);
+        let answer = request.send().await.ok()?;
+        let status = answer.status();
+        let native = if status.is_success() {
+            answer.bytes().await.ok()?.as_ref() == GUARD_BODY
+        } else if status == reqwest::StatusCode::NOT_FOUND {
+            false
+        } else {
+            return None;
+        };
+        if self.owner.set(native).is_ok() && !native {
+            eprintln!(
+                "noevia-model-manager: MODEL_MANAGER_TELEMETRY_IMPL=rust, but the Python child does \
+                 not advertise the telemetry guard ({GUARD_PATH} answered {status}); Python keeps \
+                 the telemetry ingest and this process writes none of it. Deploy a services image \
+                 with the guard, then restart"
+            );
         }
-        ok
+        self.owner.get().copied()
+    }
+
+    fn backing_off(&self, name: &str, now: f64) -> bool {
+        self.backoff
+            .lock()
+            .ok()
+            .and_then(|b| b.get(name).copied())
+            .is_some_and(|until| now < until)
+    }
+
+    /// Skips `name` for [`BACKOFF_S`], logged once per backend and reason.
+    fn back_off(&self, name: &str, now: f64, reason: &'static str) {
+        if let Ok(mut b) = self.backoff.lock() {
+            b.insert(name.to_owned(), now + BACKOFF_S);
+        }
+        let first = self
+            .logged
+            .lock()
+            .is_ok_and(|mut l| l.insert((name.to_owned(), reason)));
+        if first {
+            eprintln!(
+                "noevia-model-manager: telemetry ingest skipped backend {name} ({reason}); not \
+                 read again for {BACKOFF_S} s; logged once per backend and reason"
+            );
+        }
     }
 
     /// `telemetry.ingest(services._effective_container_names())`.
@@ -135,25 +202,36 @@ impl Telemetry {
         let names = self.stats.effective_names().await;
         let mut logs = Vec::with_capacity(names.len());
         for name in names {
+            if self.backing_off(&name, now) {
+                continue;
+            }
             match tokio::time::timeout(LOG_TIMEOUT, self.stats.telemetry_logs(&name)).await {
                 Ok(Logs::Text(text)) => logs.push((name, text)),
                 Ok(Logs::Skip) => {}
-                Ok(Logs::TooLarge) => return Err(Stop::Refused),
-                // docker-py's own read timeout is 60 s; past ours, this side does not follow.
-                Err(_) => return Err(Stop::Refused),
+                // Skipped, as Python skips a backend whose read fails.
+                Ok(Logs::TooLarge) => self.back_off(&name, now, "log answer over 64 MiB"),
+                Err(_) => self.back_off(&name, now, "log read over 60 s"),
             }
         }
         let db = self.database.clone();
-        blocking(move || {
+        let bounded = blocking(move || {
             let store = store::Store::open(&db)?;
-            for (name, text) in &logs {
-                ingest_one(&store, name, text)?;
+            let mut bounded = Vec::new();
+            for (name, text) in logs {
+                if let Some(reason) = ingest_one(&store, &name, &text)? {
+                    bounded.push((name, reason));
+                }
             }
             store
                 .set_setting(LAST_INGEST_KEY, &gguf::py_float_repr(now))
-                .map_err(|_| Stop::Raised)
+                .map_err(|_| Stop::Raised)?;
+            Ok(bounded)
         })
-        .await
+        .await?;
+        for (name, reason) in bounded {
+            self.back_off(&name, now, reason);
+        }
+        Ok(())
     }
 
     /// The route's `try: ingest; stats_for; config_history except: Stats(), []`.
@@ -218,14 +296,13 @@ const MAX_PORTS: usize = 4096;
 /// One backend's log read; the docker-py client's timeout is not followed past this.
 const LOG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// The distinct instances in first-seen order, in one pass.
 fn distinct(rows: &[bt::Row]) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for r in rows {
-        if !out.contains(&r.instance) {
-            out.push(r.instance.clone());
-        }
-    }
-    out
+    rows.iter()
+        .map(|r| r.instance.clone())
+        .collect::<indexmap::IndexSet<String>>()
+        .into_iter()
+        .collect()
 }
 
 async fn blocking<T: Send + 'static>(
@@ -236,25 +313,26 @@ async fn blocking<T: Send + 'static>(
         .map_err(|_| Stop::Refused)?
 }
 
-/// One backend of the ingest loop.
-fn ingest_one(store: &store::Store, name: &str, text: &str) -> Result<(), Stop> {
+/// One backend of the ingest loop. `Ok(Some(reason))`: skipped by a bound, nothing written.
+fn ingest_one(store: &store::Store, name: &str, text: &str) -> Result<Option<&'static str>, Stop> {
     // Docker answers at most 20,000 lines; Python splits on more separators than a newline, so
-    // a tail past twice that is not followed here (it is not a llama-server log).
+    // a tail past twice that is skipped here (it is not a server log).
     if bt::splitlines(text).len() > MAX_LINES {
-        return Err(Stop::Refused);
+        return Ok(Some("tail over 40,000 lines"));
     }
     let covered = store.float_setting(&format!("{WATERMARK_KEY}{name}"))?;
     let since = store.float_setting(&format!("{CONTINUOUS_KEY}{name}"))?;
     let (first, newest) = bt::log_span(text)?;
     let gap_free = first != 0.0 && covered != 0.0 && since != 0.0 && first <= covered;
     let mut refused = false;
+    let mut bounded = false;
     let mut looked_up = 0usize;
     let mut lookup = |port: &str| {
         // One lookup per distinct port (the parser caches them); a tail naming more ports than
-        // this is not followed here.
+        // this is skipped.
         looked_up += 1;
         if looked_up > MAX_PORTS {
-            refused = true;
+            bounded = true;
             return Err(());
         }
         match store.server_instances_on_port(name, port) {
@@ -276,6 +354,9 @@ fn ingest_one(store: &store::Store, name: &str, text: &str) -> Result<(), Stop> 
     );
     if refused {
         return Err(Stop::Refused);
+    }
+    if bounded {
+        return Ok(Some("tail over 4,096 ports"));
     }
     let (samples, configs) = parsed?;
     let rows: Vec<&bt::Sample> = samples
@@ -300,7 +381,7 @@ fn ingest_one(store: &store::Store, name: &str, text: &str) -> Result<(), Stop> 
         }
         Ok(())
     })();
-    Ok(())
+    Ok(None)
 }
 
 fn f(x: f64) -> Value {

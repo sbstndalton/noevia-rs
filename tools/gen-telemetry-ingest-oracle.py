@@ -87,6 +87,11 @@ def passes():
     raising = scrolled + [stamp(270) + "[18001] x slot print_timing: id  0 | task 99 |        eval time =  1 ms / "
                                        "20 tokens (1 ms per token,  1.2.3 tokens per second)"]
     b = spawn(5, "syn-b", 18002, ["-m", "/models/syn/b.gguf", "-c", "4096"]) + req(6, 18002, 1, rate=33.0)
+    d_spawned = (spawn(1550, "syn-d", 18004, ["-m", "/models/syn/d.gguf", "--port", "18004"])
+                 + spawn(1551, "syn-e", 18005, ["-m", "/models/syn/e.gguf", "--port", "18005"])
+                 + req(1552, 18004, 1, rate=61.0) + req(1553, 18005, 1, rate=62.0))
+    d_aba = (req(1553, 18005, 1, rate=62.0) + req(1650, 18004, 2, rate=63.0)
+             + req(1651, 18005, 2, rate=64.0) + req(1652, 18004, 3, rate=65.0))
     c_chunks = [(1, text(spawn(7, "syn-c", 18003, ["-m", "/models/syn/c.gguf"]))),
                 (2, b"\xff\xfe broken \xe2\x82 bytes\n"), (1, text(req(8, 18003, 1, rate=12.5)))]
     return [
@@ -107,10 +112,14 @@ def passes():
         {"id": "bad-keys", "now": T0 + 1500.0, "kv": {"telemetry_log_watermark:syn-b-backend": " nan ",
                                                      "telemetry_continuous_since:syn-b-backend": "x"},
          "logs": {"syn-b-backend": text(b)}},
+        # Ports A, B, A with both spawns scrolled out of a gap-free tail: each stored-instance
+        # lookup is made once and the second A is answered from the parser's cache.
+        {"id": "ports-spawned", "now": T0 + 1600.0, "logs": {"syn-d-backend": text(d_spawned)}},
+        {"id": "ports-aba", "now": T0 + 1700.0, "logs": {"syn-d-backend": text(d_aba)}},
     ]
 
 
-NAMES = ["syn-a-backend", "syn-b-backend", "syn-c-backend"]
+NAMES = ["syn-a-backend", "syn-b-backend", "syn-c-backend", "syn-d-backend"]
 TRIGGER = ("CREATE TRIGGER synthetic_interrupt BEFORE INSERT ON req_timing "
            "BEGIN SELECT RAISE(ABORT, 'synthetic interrupted write'); END")
 

@@ -37,8 +37,12 @@ fn fixture() -> V {
 /// One pass's Docker: each name's log bytes (`None`: the read fails) and whether it has a TTY.
 type PassLogs = HashMap<String, (Option<Vec<u8>>, bool)>;
 
+/// Log bytes standing for an answer the transport refused past its cap.
+const PAST_CAP: &[u8] = b"synthetic answer past the cap";
+
+/// The logs of one pass, and how many log reads were made.
 #[derive(Default)]
-struct Daemon(Mutex<PassLogs>);
+struct Daemon(Mutex<PassLogs>, std::sync::atomic::AtomicUsize);
 
 fn id_of(name: &str) -> String {
     format!(
@@ -85,8 +89,12 @@ impl DockerApi for Daemon {
                 },
                 ["", "containers", id, "logs"] => {
                     assert_eq!(query, crate::docker::TELEMETRY_LOGS_QUERY);
+                    self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     let found = logs.iter().find(|(n, _)| id_of(n) == *id);
                     match found {
+                        Some((_, (Some(bytes), _))) if bytes == PAST_CAP => {
+                            Err(crate::docker::EXCEEDED)
+                        }
                         Some((_, (Some(bytes), _))) => Ok(ok(bytes.clone())),
                         _ => Ok(Raw {
                             status: 500,
@@ -278,29 +286,184 @@ async fn a_raising_ingest_is_the_empty_measurements() {
     assert_eq!(dump(&path)["kv"], V::Array(Vec::new()));
 }
 
-/// A log past the cap, a tail of too many lines, and a stored argv that is not an object of
-/// strings are not followed: the native 503, nothing more written.
+/// The first pass of the oracle's log of `syn-a-backend` (a spawn and six requests).
+fn first_log(fx: &V) -> Vec<u8> {
+    unhex(fx["passes"][0]["logs"]["syn-a-backend"].as_str().unwrap())
+}
+
+fn kv_keys(path: &std::path::Path) -> Vec<String> {
+    dump(path)["kv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r[0].as_str().unwrap().to_owned())
+        .collect()
+}
+
+fn rows(path: &std::path::Path) -> usize {
+    dump(path)["req_timing"].as_array().unwrap().len()
+}
+
+/// A bound skips the backend as a failed read does (nothing of it written, its keys kept, the
+/// other backends ingested), and it is not read again until the backoff is over.
+async fn skipped_then_backed_off(bad: Vec<u8>, pre: &[(&str, &str)]) {
+    let fx = fixture();
+    let dir = tempfile::tempdir().unwrap();
+    let path = store(dir.path(), &fx["schema"]);
+    {
+        let db = rusqlite::Connection::open(&path).unwrap();
+        for (k, v) in pre {
+            db.execute(
+                "INSERT INTO kv(key, value) VALUES(?, ?)",
+                rusqlite::params![k, v],
+            )
+            .unwrap();
+        }
+    }
+    let daemon = Arc::new(Daemon::default());
+    daemon
+        .0
+        .lock()
+        .unwrap()
+        .insert("syn-x-backend".into(), (Some(bad), true));
+    daemon
+        .0
+        .lock()
+        .unwrap()
+        .insert("syn-a-backend".into(), (Some(first_log(&fx)), true));
+    let clock = Arc::new(Mutex::new(1.0e9));
+    let telemetry = world(
+        &["syn-x-backend".into(), "syn-a-backend".into()],
+        daemon.clone(),
+        dir.path(),
+        clock.clone(),
+    );
+    let reads = || daemon.1.load(std::sync::atomic::Ordering::SeqCst);
+    let mut want_keys: Vec<String> = pre.iter().map(|(k, _)| (*k).to_owned()).collect();
+    want_keys.extend([
+        "telemetry_continuous_since:syn-a-backend".to_owned(),
+        "telemetry_last_ingest".to_owned(),
+        "telemetry_log_watermark:syn-a-backend".to_owned(),
+    ]);
+    want_keys.sort();
+    let pre_values = dump(&path)["kv"].clone();
+
+    assert_eq!(telemetry.ingest().await, Ok(()));
+    assert_eq!(reads(), 2);
+    assert_eq!(kv_keys(&path), want_keys);
+    let syn_x: Vec<V> = dump(&path)["kv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r[0].as_str().unwrap().ends_with(":syn-x-backend"))
+        .cloned()
+        .collect();
+    assert_eq!(
+        V::Array(syn_x),
+        pre_values,
+        "the skipped backend's keys stay"
+    );
+    let stored = rows(&path);
+    assert!(stored > 0);
+    assert!(dump(&path)["req_timing"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|r| r[2] == "syn-a-backend"));
+    // The route answers measurements, not the 503.
+    assert!(telemetry.read("syn-a", "/models/syn/a.gguf").await.is_ok());
+
+    // Past the interval, within the backoff: only the other backend is read.
+    *clock.lock().unwrap() += 30.0;
+    assert_eq!(telemetry.ingest().await, Ok(()));
+    assert_eq!(reads(), 3);
+    // Past the backoff: read again (and skipped again, logged only the first time).
+    *clock.lock().unwrap() += BACKOFF_S;
+    assert_eq!(telemetry.ingest().await, Ok(()));
+    assert_eq!(reads(), 5);
+    assert_eq!(rows(&path), stored);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_log_past_64_mib_is_skipped_and_backed_off() {
+    skipped_then_backed_off(PAST_CAP.to_vec(), &[]).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_tail_of_too_many_lines_is_skipped_and_backed_off() {
+    skipped_then_backed_off("x\n".repeat(MAX_LINES + 1).into_bytes(), &[]).await;
+}
+
+/// A gap-free tail (its first line at the watermark) whose requests name more stored-instance
+/// lookups than the bound.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_tail_of_too_many_ports_is_skipped_and_backed_off() {
+    let mut log = String::new();
+    for p in 0..=MAX_PORTS {
+        log.push_str(&format!(
+            "2026-10-18T10:00:03.123456789Z [{}] x slot print_timing: id  0 | task 1 |        \
+             eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n",
+            20000 + p
+        ));
+    }
+    let first = bt::log_span(&log).unwrap().0;
+    let mark = gguf::py_float_repr(first);
+    skipped_then_backed_off(
+        log.into_bytes(),
+        &[
+            ("telemetry_continuous_since:syn-x-backend", "1.0"),
+            ("telemetry_log_watermark:syn-x-backend", &mark),
+        ],
+    )
+    .await;
+    // One port fewer is ingested.
+    let fx = fixture();
+    let dir = tempfile::tempdir().unwrap();
+    let path = store(dir.path(), &fx["schema"]);
+    let mut log = String::new();
+    for p in 0..MAX_PORTS {
+        log.push_str(&format!(
+            "2026-10-18T10:00:03.123456789Z [{}] x slot print_timing: id  0 | task 1 |        \
+             eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n",
+            20000 + p
+        ));
+    }
+    let daemon = Arc::new(Daemon::default());
+    daemon
+        .0
+        .lock()
+        .unwrap()
+        .insert("syn-x-backend".into(), (Some(log.into_bytes()), true));
+    {
+        let db = rusqlite::Connection::open(&path).unwrap();
+        db.execute_batch(&format!(
+            "INSERT INTO kv(key, value) VALUES('telemetry_continuous_since:syn-x-backend', '1.0');
+             INSERT INTO kv(key, value) VALUES('telemetry_log_watermark:syn-x-backend', '{mark}');"
+        ))
+        .unwrap();
+    }
+    let telemetry = world(
+        &["syn-x-backend".into()],
+        daemon,
+        dir.path(),
+        Arc::new(Mutex::new(1.0e9)),
+    );
+    assert_eq!(telemetry.ingest().await, Ok(()));
+    assert_eq!(rows(&path), MAX_PORTS);
+}
+
+/// A stored argv that is not an object of strings is not followed: the native 503.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shapes_not_followed_refuse() {
     let fx = fixture();
     let dir = tempfile::tempdir().unwrap();
     let path = store(dir.path(), &fx["schema"]);
-    let daemon = Arc::new(Daemon::default());
-    let many = "x\n".repeat(MAX_LINES + 1).into_bytes();
-    daemon
-        .0
-        .lock()
-        .unwrap()
-        .insert("syn-a-backend".into(), (Some(many), true));
-    let clock = Arc::new(Mutex::new(1.0e9));
     let telemetry = world(
         &["syn-a-backend".into()],
-        daemon.clone(),
+        Arc::new(Daemon::default()),
         dir.path(),
-        clock.clone(),
+        Arc::new(Mutex::new(1.0e9)),
     );
-    assert_eq!(telemetry.ingest().await, Err(Stop::Refused));
-    assert_eq!(dump(&path)["kv"], V::Array(Vec::new()));
     // A stored argv Python would carry on with as a list.
     let db = rusqlite::Connection::open(&path).unwrap();
     db.execute(
@@ -378,6 +541,7 @@ async fn the_route_no_longer_asks_the_child() {
         stats.clone(),
         Arc::new(|| 1.0e9),
     )));
+    stand.lock().unwrap().guard = true;
     stand.lock().unwrap().reply = Some((500, "child asked".into()));
     let got = shown(run(&native, &path, &base, &client).await);
     assert_eq!(got.0, 200, "{}", got.1);
@@ -403,4 +567,59 @@ async fn the_route_no_longer_asks_the_child() {
     let (child_backed, _) = first_case(models.path());
     let want = shown(run(&child_backed, &path, &base, &client).await);
     assert_eq!(got, want);
+}
+
+/// A child without the telemetry guard keeps Python's ingest: the route asks it as before, and
+/// this process writes nothing (the answer is kept: the child is never respawned).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_child_without_the_guard_keeps_pythons_ingest() {
+    use crate::section_autoconfig::tests::{first_case, run, shown, stand_in};
+    let fx = fixture();
+    let fit = crate::backend_stats::fit::tests::fixture();
+    let fit_case = fit["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == "baselines")
+        .unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let db = store(data.path(), &fx["schema"]);
+    let stats = Arc::new(crate::backend_stats::fit::tests::stats_for(
+        fit_case,
+        data.path(),
+    ));
+    let (base, stand) = stand_in().await;
+    let client = reqwest::Client::new();
+    let section = crate::section_autoconfig::tests::fixture();
+    let path = section["cases"][0]["results"][0]["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let runtime = section["cases"][0]["results"][0]["runtime"].clone();
+    stand.lock().unwrap().reply =
+        Some((200, runtime["body"].as_str().unwrap_or_default().to_owned()));
+
+    let models = tempfile::tempdir().unwrap();
+    let (native, _) = first_case(models.path());
+    native.set_stats(stats.clone());
+    native.set_telemetry(Arc::new(Telemetry::with_clock(
+        data.path(),
+        stats.clone(),
+        Arc::new(|| 1.0e9),
+    )));
+    let got = shown(run(&native, &path, &base, &client).await);
+    assert!(
+        !stand.lock().unwrap().seen.is_empty(),
+        "the child was not asked"
+    );
+    let models = tempfile::tempdir().unwrap();
+    let (child_backed, _) = first_case(models.path());
+    child_backed.set_stats(stats.clone());
+    assert_eq!(got, shown(run(&child_backed, &path, &base, &client).await));
+    // Nothing written here, the guard not asked again.
+    assert_eq!(dump(&db)["kv"], V::Array(Vec::new()));
+    stand.lock().unwrap().guard = true;
+    let again = shown(run(&native, &path, &base, &client).await);
+    assert_eq!(again, got);
+    assert_eq!(dump(&db)["kv"], V::Array(Vec::new()));
 }

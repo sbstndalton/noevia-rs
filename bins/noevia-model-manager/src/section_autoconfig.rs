@@ -168,8 +168,12 @@ impl SectionAutoconfig {
         let Some(stats) = self.stats.get() else {
             return Some(Err(Outcome::Refused));
         };
-        if !telemetry.child_started(child).await {
-            return Some(Err(Outcome::Unavailable));
+        match telemetry.owner(child).await {
+            None => return Some(Err(Outcome::Unavailable)),
+            // A child without the telemetry guard keeps Python's ingest: the private call, as
+            // before (logged once in `owner`).
+            Some(false) => return None,
+            Some(true) => {}
         }
         let measured = match telemetry.measure(name, model_rel).await {
             Ok(m) => m,
