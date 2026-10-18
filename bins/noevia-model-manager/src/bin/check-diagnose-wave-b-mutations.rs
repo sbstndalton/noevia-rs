@@ -77,16 +77,16 @@ fn cases() -> [Case; 5] {
             replay: false,
         },
         Case {
-            id: "child-confirmation",
+            id: "mandatory-capability",
             source: MAIN,
-            before: "\"NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED\",\n            if diagnose_mode == \"rust\" { \"1\" } else { \"0\" },",
-            after: "\"NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED\",\n            \"0\",",
+            before: "if !cfg!(feature = \"native-routing\") {",
+            after: "if false {",
             test_path: MAIN,
             target: "noevia-model-manager",
-            test: "diagnosis_command_tests::native_child_confirmation_semantics",
-            assertion: "assert_eq!(marker, if selected { \"1\" } else { \"0\" });",
-            // This feature set compiles two lifecycle tests and three DB-selector tests.
-            filtered: 5,
+            test: "native_capability_tests::mandatory_capability_is_required_before_startup",
+            assertion: "assert_eq!(\n            super::require_native_capability().is_err(),",
+            // Verified native-diagnose-only --list: capability and legacy-oracle tests.
+            filtered: 1,
             replay: false,
         },
     ]
@@ -184,7 +184,7 @@ fn semantic(
         "\\A\\nrunning 1 test\\ntest {t} \\.\\.\\. FAILED\\n\\nfailures:\\n\\n---- {t} stdout ----\\n\\nthread '{t}' \\([0-9]{{1,20}}\\) panicked at {p}:{line}:{column}:\\nassertion `left == right` failed\\n  left: [^\\r\\n]+\\n right: [^\\r\\n]+\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\\n\\nfailures:\\n    {t}\\n\\ntest result: FAILED\\. 0 passed; 1 failed; 0 ignored; 0 measured; {} filtered out; finished in [0-9]+\\.[0-9]+s\\n\\n\\z",
         case.filtered
     );
-    let (package, crate_path, running, footer, binary) = if case.id == "child-confirmation" {
+    let (package, crate_path, running, footer, binary) = if case.id == "mandatory-capability" {
         (
             "noevia-model-manager",
             "bins/noevia-model-manager",
@@ -209,7 +209,7 @@ fn semantic(
             case.target,
         )
     };
-    let footer = if case.replay || case.id == "child-confirmation" {
+    let footer = if case.replay || case.id == "mandatory-capability" {
         format!("error: test failed, to rerun pass `-p {package} {footer}`")
     } else {
         format!(
@@ -232,7 +232,7 @@ fn semantic(
         && regex::Regex::new(&stderr).is_ok_and(|r| r.is_match(err))
 }
 fn case_binary(case: &Case) -> &str {
-    if case.id == "child-confirmation" {
+    if case.id == "mandatory-capability" {
         "noevia_model_manager"
     } else if case.replay {
         "diagnose_contracts"
@@ -341,7 +341,7 @@ fn cargo(case: &Case, build: bool) -> Command {
             "--bin",
             "noevia-model-manager",
         ]);
-    } else if case.id == "child-confirmation" {
+    } else if case.id == "mandatory-capability" {
         command.args([
             "--features",
             "native-diagnose",
@@ -506,13 +506,13 @@ fn main() -> Result<(), String> {
 mod tests {
     use super::*;
     #[test]
-    fn current_child_confirmation_inventory_is_exact() -> Result<(), String> {
+    fn current_mandatory_capability_inventory_is_exact() -> Result<(), String> {
         let case = cases()
             .into_iter()
             .last()
             .ok_or("fixed final case absent")?;
         let out = format!(
-            "\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:100:13:\nassertion `left == right` failed\n  left: \"0\"\n right: \"1\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.01s\n\n",
+            "\nrunning 1 test\ntest {t} ... FAILED\n\nfailures:\n\n---- {t} stdout ----\n\nthread '{t}' (123) panicked at {p}:100:9:\nassertion `left == right` failed\n  left: false\n right: true\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    {t}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.01s\n\n",
             t = case.test,
             p = case.test_path
         );
@@ -523,17 +523,17 @@ mod tests {
                 out,
                 err,
                 &case,
-                (100, 13),
+                (100, 9),
                 Path::new("/owned"),
                 Path::new("/target"),
             )
         };
         assert!(check(&out, err));
         for bad in [
-            out.replace("5 filtered out", "2 filtered out"),
-            out.replace("5 filtered out", "3 filtered out"),
-            out.replace("5 filtered out", "4 filtered out"),
-            out.replace("5 filtered out", "6 filtered out"),
+            out.replace("1 filtered out", "2 filtered out"),
+            out.replace("1 filtered out", "3 filtered out"),
+            out.replace("1 filtered out", "4 filtered out"),
+            out.replace("1 filtered out", "6 filtered out"),
             out.replace("running 1 test", "running 2 tests"),
             format!("{out}extra test ... FAILED\n"),
         ] {
@@ -556,7 +556,7 @@ mod tests {
             assert!(!check(&out, &bad));
         }
         for bad in [
-            out.replace(":100:13:", ":100:9:"),
+            out.replace(":100:9:", ":100:13:"),
             out.replace(case.test_path, "tools/replay/src/bin/diagnose-contracts.rs"),
         ] {
             assert!(!check(&bad, err));
@@ -579,9 +579,9 @@ mod tests {
                 &case,
             )?;
             assert!(line > 0);
-            if case.id == "child-confirmation" {
+            if case.id == "mandatory-capability" {
                 assert_eq!(case.test_path, MAIN);
-                assert_eq!(column, 13);
+                assert_eq!(column, 9);
             } else {
                 assert!(matches!(column, 5 | 9));
             }
@@ -590,14 +590,15 @@ mod tests {
     }
 
     #[test]
-    fn child_confirmation_qualifies_the_actual_six_test_harness_inventory() -> Result<(), String> {
+    fn mandatory_capability_qualifies_the_actual_two_test_harness_inventory() -> Result<(), String>
+    {
         let case = cases()
             .into_iter()
-            .find(|c| c.id == "child-confirmation")
-            .ok_or("child confirmation case absent")?;
+            .find(|c| c.id == "mandatory-capability")
+            .ok_or("mandatory capability case absent")?;
         let (line, column) = location(include_str!("../main.rs"), &case)?;
-        // Captured failure shape from the PR#204 CI artifact: this is an assertion kill,
-        // with three additional always-compiled DB selector tests, not a setup failure.
+        // The native-diagnose-only binary has exactly two tests (recorded --list).
+        // This production capability mutation must reach the owned boolean assertion.
         let out = format!(
             r#"
 running 1 test
@@ -609,15 +610,15 @@ failures:
 
 thread '{t}' (11394) panicked at {p}:{line}:{column}:
 assertion `left == right` failed
-  left: "0"
- right: "1"
+  left: false
+ right: true
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
 
 failures:
     {t}
 
-test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
 
 "#,
             t = case.test,
@@ -636,9 +637,9 @@ test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; 
             )
         };
         assert!(check(&out, err));
-        for count in [2, 4, 6] {
+        for count in [0, 2, 4, 5, 6] {
             assert!(!check(
-                &out.replace("5 filtered out", &format!("{count} filtered out")),
+                &out.replace("1 filtered out", &format!("{count} filtered out")),
                 err
             ));
         }
