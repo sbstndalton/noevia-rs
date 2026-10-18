@@ -13,11 +13,14 @@
 //!   `GET /api/v1/backends` answers without its `stats` and `history`;
 //! - `activeDownloads`: this process's own download table (the caller passes its count).
 //!
+//! One answer makes one Docker discovery, which both the snapshot and the fit inventory read, so
+//! `loaded` and `fit` describe the same set of backends (Python rediscovers for each).
+//!
 //! A snapshot Python would have ended with an exception is `Fail::Raised` (the route's plain 500),
 //! one this side cannot follow exactly `Fail::Refused` (the native 503), as for
 //! `GET /api/v1/backends`; an inventory that cannot be judged (HOST_RAM_RESERVE_GB unread) is
 //! `Fail::Refused`.
-use super::{fit, render_backend, s, Backend, BackendStats, Fail};
+use super::{discover, fit, render_backend, s, Backend, BackendStats, Fail};
 
 /// `api._loaded_map()` as JSON.
 fn loaded_json(backends: &[Backend]) -> String {
@@ -57,9 +60,10 @@ impl BackendStats {
     /// `{"loaded": api._loaded_map(), "fit": vram_fit_chips(bytes) if fit else []}` as
     /// `JSONResponse` renders it.
     pub async fn detail_runtime(&self, bytes: u128, fit: bool) -> Result<Vec<u8>, Fail> {
-        let loaded = loaded_json(&self.snapshot().await?);
+        let discovered = discover(self.docker.as_ref()).await;
+        let loaded = loaded_json(&self.snapshot(&discovered).await?);
         let chips = if fit {
-            let inv = self.inventory().await.ok_or(Fail::Refused)?;
+            let inv = self.inventory_from(&discovered).ok_or(Fail::Refused)?;
             fit::chips(bytes, &inv, fit::Floats::Raise)?
         } else {
             "[]".to_owned()
@@ -70,10 +74,11 @@ impl BackendStats {
     /// `{"loaded": api._loaded_map(), "fit": [vram_fit_chips(b) for b in sizes]}` as the routes
     /// render a dict (pydantic's JSON mode).
     pub async fn models_runtime(&self, sizes: &[u128]) -> Result<Vec<u8>, Fail> {
-        let loaded = loaded_json(&self.snapshot().await?);
+        let discovered = discover(self.docker.as_ref()).await;
+        let loaded = loaded_json(&self.snapshot(&discovered).await?);
         let mut out = format!("{{\"loaded\":{loaded},\"fit\":[");
         if !sizes.is_empty() {
-            let inv = self.inventory().await.ok_or(Fail::Refused)?;
+            let inv = self.inventory_from(&discovered).ok_or(Fail::Refused)?;
             for (i, size) in sizes.iter().enumerate() {
                 if i > 0 {
                     out.push(',');
@@ -87,7 +92,7 @@ impl BackendStats {
 
     /// `{"backends": [...], "activeDownloads": active}` as the routes render a dict.
     pub async fn overview_runtime(&self, active: usize) -> Result<Vec<u8>, Fail> {
-        let backends = self.snapshot().await?;
+        let backends = self.snapshot(&discover(self.docker.as_ref()).await).await?;
         let mut out = String::from("{\"backends\":[");
         for (i, b) in backends.iter().enumerate() {
             if i > 0 {

@@ -354,9 +354,13 @@ impl BackendStats {
 
     /// The fit inventory of one answer; `None` when the usable RAM cannot be judged exactly.
     pub async fn inventory(&self) -> Option<Inventory> {
+        self.inventory_from(&discover(self.docker.as_ref()).await)
+    }
+
+    /// The fit inventory over a discovery the caller already made.
+    pub(super) fn inventory_from(&self, discovered: &[(String, String)]) -> Option<Inventory> {
         let ram = self.usable_ram()?;
-        let discovered = discover(self.docker.as_ref()).await;
-        let names = effective(&self.config.configured, &discovered);
+        let names = effective(&self.config.configured, discovered);
         let mut gpu = Vec::new();
         for n in &names {
             let declared = self.declared(n);
@@ -370,7 +374,7 @@ impl BackendStats {
             }
         }
         let mut cpu = Vec::new();
-        for (n, tag) in &discovered {
+        for (n, tag) in discovered {
             let vendor = if tag.contains("rocm") {
                 "rocm"
             } else if tag.contains("cuda") {
