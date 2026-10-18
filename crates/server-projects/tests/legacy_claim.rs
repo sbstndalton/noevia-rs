@@ -118,6 +118,67 @@ fn nonlegacy_fast_path_does_not_create_claim_coordination_file() {
     assert!(!root.path().join("legacy-owner.json.lock").exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn refuses_symlink_and_hardlinked_root_lock_without_changing_external_file() {
+    use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
+
+    let external = tempfile::tempdir().unwrap();
+    let outside_file = external.path().join("outside-lock-target");
+    fs::write(&outside_file, b"keep external bytes and mode").unwrap();
+    fs::set_permissions(&outside_file, fs::Permissions::from_mode(0o644)).unwrap();
+
+    let hardlinked_root = tempfile::tempdir().unwrap();
+    fs::write(
+        hardlinked_root.path().join("projects.json"),
+        r#"{"projects":[]}"#,
+    )
+    .unwrap();
+    fs::hard_link(
+        &outside_file,
+        hardlinked_root.path().join("legacy-owner.json.lock"),
+    )
+    .unwrap();
+    let before = fs::metadata(&outside_file).unwrap();
+    assert_eq!(before.nlink(), 2);
+    assert!(matches!(
+        claim(hardlinked_root.path(), OWNER),
+        Err(ClaimError::Unsafe)
+    ));
+    let after = fs::metadata(&outside_file).unwrap();
+    assert_eq!(
+        fs::read(&outside_file).unwrap(),
+        b"keep external bytes and mode"
+    );
+    assert_eq!(after.permissions().mode() & 0o777, 0o644);
+    assert_eq!(after.ino(), before.ino());
+    assert_eq!(after.nlink(), before.nlink());
+
+    let symlinked_root = tempfile::tempdir().unwrap();
+    fs::write(
+        symlinked_root.path().join("projects.json"),
+        r#"{"projects":[]}"#,
+    )
+    .unwrap();
+    symlink(
+        &outside_file,
+        symlinked_root.path().join("legacy-owner.json.lock"),
+    )
+    .unwrap();
+    assert!(matches!(
+        claim(symlinked_root.path(), OWNER),
+        Err(ClaimError::Unsafe)
+    ));
+    assert_eq!(
+        fs::read(&outside_file).unwrap(),
+        b"keep external bytes and mode"
+    );
+    assert_eq!(
+        fs::metadata(&outside_file).unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+}
+
 #[test]
 fn root_claim_lock_is_private_stable_metadata_and_changes_no_other_node_tree_data() {
     let root = tempfile::tempdir().unwrap();

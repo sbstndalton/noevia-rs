@@ -124,12 +124,17 @@ fn acquire_root_lock(root: &OwnedFd) -> Result<RootLock, ClaimError> {
     let fd = openat(
         root.as_fd(),
         name.as_str(),
-        OFlags::RDWR | OFlags::CREATE | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+        OFlags::RDWR
+            | OFlags::CREATE
+            | OFlags::CLOEXEC
+            | OFlags::NOFOLLOW
+            | OFlags::NONBLOCK
+            | OFlags::NOCTTY,
         Mode::from_raw_mode(0o600),
     )
     .map_err(rustix_error)?;
     let meta = fstat(&fd).map_err(rustix_error)?;
-    if FileType::from_raw_mode(meta.st_mode) != FileType::RegularFile {
+    if FileType::from_raw_mode(meta.st_mode) != FileType::RegularFile || meta.st_nlink != 1 {
         return Err(ClaimError::Unsafe);
     }
     fchmod(&fd, Mode::from_raw_mode(0o600)).map_err(rustix_error)?;
