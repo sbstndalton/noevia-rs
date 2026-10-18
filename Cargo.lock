@@ -1609,6 +1609,7 @@ name = "noevia-model-manager"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "backend-telemetry",
  "bollard",
  "bytes",
  "chrono",
@@ -1618,6 +1619,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "indexmap",
  "model-autoconfig",
  "model-files",
  "proptest",

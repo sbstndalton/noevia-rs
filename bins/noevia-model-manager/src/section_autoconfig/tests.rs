@@ -76,28 +76,50 @@ pub(crate) fn settings(models: &Path, cache_cap: i64) -> Settings {
 pub(crate) struct Stand {
     pub(crate) reply: Option<(u16, String)>,
     pub(crate) seen: Vec<(Option<String>, String)>,
+    /// noevia#1318 step 3d: whether the child advertises its telemetry guard.
+    pub(crate) guard: bool,
 }
 
 /// A loopback child answering only the private runtime call.
 pub(crate) async fn stand_in() -> (String, Arc<Mutex<Stand>>) {
     let shared = Arc::new(Mutex::new(Stand::default()));
     let state = shared.clone();
-    let app = axum::Router::new().route(
-        RUNTIME_PATH,
-        axum::routing::post(move |headers: axum::http::HeaderMap, body: String| {
-            let state = state.clone();
-            async move {
-                let mut stand = state.lock().unwrap();
-                let token = headers
-                    .get("x-model-loader-token")
-                    .and_then(|v| v.to_str().ok())
-                    .map(str::to_owned);
-                stand.seen.push((token, body));
-                let (status, body) = stand.reply.clone().unwrap_or((404, String::new()));
-                (axum::http::StatusCode::from_u16(status).unwrap(), body)
-            }
-        }),
-    );
+    let app = axum::Router::new()
+        .route(
+            "/api/v1/internal/telemetry-guard",
+            axum::routing::get({
+                let state = shared.clone();
+                move || {
+                    let guard = state.lock().unwrap().guard;
+                    async move {
+                        if guard {
+                            (axum::http::StatusCode::OK, r#"{"telemetry_guard":1}"#)
+                        } else {
+                            (
+                                axum::http::StatusCode::NOT_FOUND,
+                                r#"{"detail":"Not Found"}"#,
+                            )
+                        }
+                    }
+                }
+            }),
+        )
+        .route(
+            RUNTIME_PATH,
+            axum::routing::post(move |headers: axum::http::HeaderMap, body: String| {
+                let state = state.clone();
+                async move {
+                    let mut stand = state.lock().unwrap();
+                    let token = headers
+                        .get("x-model-loader-token")
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_owned);
+                    stand.seen.push((token, body));
+                    let (status, body) = stand.reply.clone().unwrap_or((404, String::new()));
+                    (axum::http::StatusCode::from_u16(status).unwrap(), body)
+                }
+            }),
+        );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

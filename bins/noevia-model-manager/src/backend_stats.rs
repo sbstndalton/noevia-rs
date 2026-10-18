@@ -1513,7 +1513,90 @@ pub enum Outcome {
     Refused,
 }
 
+/// noevia#1318 step 3d: one backend's log as `telemetry.ingest` reads it.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Logs {
+    /// `raw.decode("utf-8", errors="replace")`.
+    Text(String),
+    /// Python's `continue`: no Docker client, the container or its log could not be read.
+    Skip,
+    /// Past the read cap: Python would read on; this side does not follow.
+    TooLarge,
+}
+
+/// docker-py's `_multiplexed_buffer_helper`: each frame's payload, a short last header ends it, a
+/// short last payload is what remains.
+pub fn demultiplex(buf: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(buf.len());
+    let mut walker = 0usize;
+    while let Some(header) = buf.get(walker..walker + 8) {
+        let size: [u8; 4] = header
+            .get(4..8)
+            .and_then(|s| s.try_into().ok())
+            .unwrap_or_default();
+        let length = u32::from_be_bytes(size) as usize;
+        let start = walker + 8;
+        let end = start.saturating_add(length);
+        out.extend_from_slice(buf.get(start..end.min(buf.len())).unwrap_or_default());
+        walker = end;
+    }
+    out
+}
+
 impl BackendStats {
+    /// `services._effective_container_names()`.
+    pub async fn effective_names(&self) -> Vec<String> {
+        effective(
+            &self.config.configured,
+            &discover(self.docker.as_ref()).await,
+        )
+    }
+
+    /// `client.containers.get(name).logs(tail=20000, stdout=True, stderr=True,
+    /// timestamps=True).decode("utf-8", errors="replace")`.
+    pub async fn telemetry_logs(&self, name: &str) -> Logs {
+        let docker = self.docker.as_ref();
+        let Some(api) = client(docker).await else {
+            return Logs::Skip;
+        };
+        let Ok(attrs) = inspect(docker, &api, name).await else {
+            return Logs::Skip;
+        };
+        let Some(J::Str(id)) = attrs.get("Id") else {
+            return Logs::Skip;
+        };
+        // `_check_is_tty`: `inspect_container(id)['Config']['Tty']` (a KeyError is the except).
+        let tty = match attrs.get("Config") {
+            Some(c @ J::Obj(_)) => match c.get("Tty") {
+                Some(t) => t.truthy(),
+                None => return Logs::Skip,
+            },
+            _ => return Logs::Skip,
+        };
+        if !sendable(id) {
+            return Logs::Skip;
+        }
+        let path = format!(
+            "/containers/{}/logs?{}",
+            quote(id),
+            crate::docker::TELEMETRY_LOGS_QUERY
+        );
+        let raw = match docker.get(&path).await {
+            Ok(raw) => raw,
+            Err(e) if e == crate::docker::EXCEEDED => return Logs::TooLarge,
+            Err(_) => return Logs::Skip,
+        };
+        if !(200..300).contains(&raw.status) {
+            return Logs::Skip;
+        }
+        let bytes = if tty {
+            raw.body
+        } else {
+            demultiplex(&raw.body)
+        };
+        Logs::Text(String::from_utf8_lossy(&bytes).into_owned())
+    }
+
     pub fn new(config: Config, docker: Arc<dyn DockerApi>) -> Result<Self, reqwest::Error> {
         Self::with_clock(config, docker, Arc::new(wall))
     }

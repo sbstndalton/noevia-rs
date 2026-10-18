@@ -1027,6 +1027,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
         }
     }
+    // noevia#1318 step 3d: one telemetry writer, decided before the child starts.
+    #[cfg(feature = "native-backends")]
+    let telemetry_ready = backend_stats.is_some() && section_autoconfig.settings.is_some();
+    #[cfg(not(feature = "native-backends"))]
+    let telemetry_ready = false;
+    let telemetry_native = noevia_model_manager::telemetry_cmd::select(
+        &std::env::vars_os().collect::<Vec<_>>(),
+        telemetry_ready,
+    )?;
+    noevia_model_manager::telemetry_cmd::child(&mut child_command, telemetry_native);
     let mut child = child_command.spawn()?;
     #[cfg(feature = "native-backends")]
     let _backend_sampler = backend_stats.as_ref().map(|stats| stats.start());
@@ -1092,6 +1102,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(feature = "native-backends")]
             if let (Some(native), Some(stats)) = (native.as_ref(), backend_stats.as_ref()) {
                 native.set_stats(stats.clone());
+                // noevia#1318 step 3d: and the telemetry, when it is native.
+                #[cfg(feature = "native-telemetry")]
+                if telemetry_native {
+                    native.set_telemetry(std::sync::Arc::new(
+                        noevia_model_manager::section_autoconfig::telemetry::Telemetry::new(
+                            std::path::Path::new(&data_dir()?),
+                            stats.clone(),
+                        ),
+                    ));
+                }
             }
             native
         },

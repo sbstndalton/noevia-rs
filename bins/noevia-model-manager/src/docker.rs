@@ -101,10 +101,13 @@ where
     B::Data: Send,
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
-    send_request_full(socket, method, request)
+    send_request_full(socket, method, request, LOG_CAP)
         .await
         .map(|(status, _, body)| (status, body))
 }
+
+/// The error of a response past its cap.
+pub const EXCEEDED: &str = "Docker response exceeded limit";
 
 /// As [`send_request`], with the reason phrase of the status line (what docker-py's error text
 /// shows: the daemon's own phrase when it is not the canonical one).
@@ -112,6 +115,7 @@ async fn send_request_full<B>(
     socket: &std::path::Path,
     method: &'static str,
     request: Request<B>,
+    cap: usize,
 ) -> Result<(StatusCode, String, Vec<u8>), &'static str>
 where
     B: hyper::body::Body + Send + 'static,
@@ -131,7 +135,7 @@ where
     // cancellation), the driver is aborted and its join handed to the request's [`ORPHANS`],
     // which the admission observes before the permit is returned (noevia#1385).
     let driver = AbortDriver::spawn(connection);
-    let result = exchange(&mut sender, method, request).await;
+    let result = exchange(&mut sender, method, request, cap).await;
     driver.finish().await;
     result
 }
@@ -140,6 +144,7 @@ async fn exchange<B>(
     sender: &mut http1::SendRequest<B>,
     method: &'static str,
     request: Request<B>,
+    cap: usize,
 ) -> Result<(StatusCode, String, Vec<u8>), &'static str>
 where
     B: hyper::body::Body + Send + 'static,
@@ -174,8 +179,8 @@ where
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
             .ok_or("Docker content length refused")?;
-        if length > LOG_CAP {
-            return Err("Docker response exceeded limit");
+        if length > cap {
+            return Err(EXCEEDED);
         }
     }
     let status = response.status();
@@ -194,8 +199,8 @@ where
     while let Some(frame) = body.frame().await {
         let frame = frame.map_err(|_| "Docker response truncated")?;
         let data = frame.into_data().map_err(|_| "Docker trailers refused")?;
-        if raw.len().saturating_add(data.len()) > LOG_CAP {
-            return Err("Docker response exceeded limit");
+        if raw.len().saturating_add(data.len()) > cap {
+            return Err(EXCEEDED);
         }
         raw.try_reserve(data.len())
             .map_err(|_| "allocation refused")?;
@@ -485,6 +490,12 @@ pub fn allowed_backend_restart(path: &str, container: &str) -> bool {
         && path == format!("/containers/{container}/restart?t=15")
 }
 
+/// noevia#1318 step 3d: the query of `telemetry.ingest`'s `c.logs(tail=20000, stdout=True,
+/// stderr=True, timestamps=True)` as docker-py sends it.
+pub const TELEMETRY_LOGS_QUERY: &str = "stderr=1&stdout=1&timestamps=1&follow=0&tail=20000";
+/// The largest such answer read (20,000 lines of a backend's log).
+pub const TELEMETRY_LOG_CAP: usize = 64 * 1024 * 1024;
+
 /// noevia#1318 slice 13: the read-only GETs of the native backend sampler and `GET /backends`:
 /// the daemon version, the container list, container and image inspect, and one-shot container
 /// stats. Never exec, create, start, stop or kill.
@@ -502,6 +513,7 @@ pub fn allowed_backend_read(path: &str) -> bool {
     match parts.as_slice() {
         ["", "containers" | "images", id, "json"] => query.is_empty() && id_ok(id),
         ["", "containers", id, "stats"] => query == "stream=false" && id_ok(id),
+        ["", "containers", id, "logs"] => query == TELEMETRY_LOGS_QUERY && id_ok(id),
         _ => false,
     }
 }
@@ -520,7 +532,14 @@ impl crate::backend_stats::DockerApi for UnixDocker {
                 .header("connection", "close")
                 .body(Empty::<Bytes>::new())
                 .map_err(|_| "Docker request refused")?;
-            let (status, reason, body) = send_request_full(&self.socket, "GET", request).await?;
+            // Only the telemetry log read is larger than the other reads' cap.
+            let cap = if path.contains("/logs?") {
+                TELEMETRY_LOG_CAP
+            } else {
+                LOG_CAP
+            };
+            let (status, reason, body) =
+                send_request_full(&self.socket, "GET", request, cap).await?;
             Ok(crate::backend_stats::Raw {
                 status: status.as_u16(),
                 reason,
@@ -920,6 +939,41 @@ mod tests {
             docker.read("/containers/synthetic/json").await,
             Err("Docker response exceeded limit")
         ));
+        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+        peer.await.unwrap();
+    }
+
+    /// noevia#1318 step 3d: the telemetry log read has its own 64 MiB cap; every other read keeps
+    /// the 1 MiB one. Past the cap the answer is [`EXCEEDED`], which the ingest skips and backs off.
+    #[cfg(feature = "native-backends")]
+    #[tokio::test]
+    async fn the_telemetry_log_read_has_its_own_cap() {
+        use crate::backend_stats::DockerApi;
+        let _serial = SERIAL.lock().await;
+        let logs = format!("/containers/{}/logs?{TELEMETRY_LOGS_QUERY}", "a".repeat(64));
+        let body = vec![b'x'; LOG_CAP + 1];
+        let mut answer =
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes();
+        answer.extend_from_slice(&body);
+        let (_root, socket, peer) = serve(answer.clone());
+        let raw = UnixDocker { socket }.get(&logs).await.unwrap();
+        assert_eq!(raw.body.len(), LOG_CAP + 1);
+        peer.await.unwrap();
+        let (_root, socket, peer) = serve(answer);
+        let other = format!("/containers/{}/json", "a".repeat(64));
+        assert_eq!(
+            UnixDocker { socket }.get(&other).await.err(),
+            Some(EXCEEDED)
+        );
+        peer.await.unwrap();
+        let (_root, socket, peer) = serve(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+                TELEMETRY_LOG_CAP + 1
+            )
+            .into_bytes(),
+        );
+        assert_eq!(UnixDocker { socket }.get(&logs).await.err(), Some(EXCEEDED));
         assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
         peer.await.unwrap();
     }

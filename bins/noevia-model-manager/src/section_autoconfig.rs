@@ -28,6 +28,8 @@ mod files;
 mod inventory;
 pub mod query;
 mod render;
+#[cfg(feature = "native-telemetry")]
+pub mod telemetry;
 
 use crate::model_updates::{read_ini, Stop};
 use crate::sections::{access::Root, Error as WalkError};
@@ -92,6 +94,9 @@ pub struct SectionAutoconfig {
     /// noevia#1318 step 3b: the native sampler, when this process samples the backends.
     #[cfg(feature = "native-backends")]
     stats: std::sync::OnceLock<Arc<crate::backend_stats::BackendStats>>,
+    /// noevia#1318 step 3d: the native telemetry, under `MODEL_MANAGER_TELEMETRY_IMPL=rust`.
+    #[cfg(feature = "native-telemetry")]
+    telemetry: std::sync::OnceLock<Arc<telemetry::Telemetry>>,
 }
 
 /// `GET /api/v1/sections/{name}/autoconfig`, the name segment percent-decoded as uvicorn does;
@@ -139,7 +144,65 @@ impl SectionAutoconfig {
             open,
             #[cfg(feature = "native-backends")]
             stats: std::sync::OnceLock::new(),
+            #[cfg(feature = "native-telemetry")]
+            telemetry: std::sync::OnceLock::new(),
         }
+    }
+
+    /// noevia#1318 step 3d: the live inputs come from this side (once; later calls are ignored).
+    /// Needs the sampler ([`Self::set_stats`]) too.
+    #[cfg(feature = "native-telemetry")]
+    pub fn set_telemetry(&self, telemetry: Arc<telemetry::Telemetry>) {
+        let _ = self.telemetry.set(telemetry);
+    }
+
+    /// The whole runtime natively: the measurements and the backend list. `None`: not native.
+    #[cfg(feature = "native-telemetry")]
+    async fn native_runtime(
+        &self,
+        child: &Child<'_>,
+        name: &str,
+        model_rel: &str,
+    ) -> Option<Result<Runtime, Outcome>> {
+        let telemetry = self.telemetry.get()?;
+        let Some(stats) = self.stats.get() else {
+            return Some(Err(Outcome::Refused));
+        };
+        match telemetry.owner(child).await {
+            None => return Some(Err(Outcome::Unavailable)),
+            // The confirmation has already disabled a guarded child's writer. Without
+            // its advertisement no process can safely claim ownership (#2041).
+            Some(false) => return Some(Err(Outcome::Refused)),
+            Some(true) => {}
+        }
+        let measured = match telemetry.measure(name, model_rel).await {
+            Ok(m) => m,
+            Err(_) => return Some(Err(Outcome::Refused)),
+        };
+        // `_backend_list()`: with no child list to keep, a list this side cannot build refuses.
+        let backends = match tokio::time::timeout(inventory::TIMEOUT, stats.descriptors()).await {
+            Ok(Ok(descriptors)) => match inventory::backend_list(&descriptors) {
+                Some(list) => list,
+                None => return Some(Err(Outcome::Refused)),
+            },
+            _ => return Some(Err(Outcome::Refused)),
+        };
+        Some(Ok(Runtime {
+            measured: measured.measured,
+            history: measured.history,
+            prompt_tps: measured.prompt_tps,
+            backends,
+        }))
+    }
+
+    #[cfg(not(feature = "native-telemetry"))]
+    async fn native_runtime(
+        &self,
+        _: &Child<'_>,
+        _: &str,
+        _: &str,
+    ) -> Option<Result<Runtime, Outcome>> {
+        None
     }
 
     /// noevia#1318 step 3b: the backend inventory comes from this sampler (once; later calls are
@@ -220,11 +283,18 @@ impl SectionAutoconfig {
             Ok(files::Part::Located(located)) => located,
             Err(outcome) => return outcome,
         };
-        let mut runtime = match ask(&child, name, &located.model_rel).await {
-            Ok(runtime) => runtime,
-            Err(outcome) => return outcome,
+        let runtime = match self.native_runtime(&child, name, &located.model_rel).await {
+            Some(Ok(runtime)) => runtime,
+            Some(Err(outcome)) => return outcome,
+            None => {
+                let mut runtime = match ask(&child, name, &located.model_rel).await {
+                    Ok(runtime) => runtime,
+                    Err(outcome) => return outcome,
+                };
+                self.inventory(&mut runtime).await;
+                runtime
+            }
         };
-        self.inventory(&mut runtime).await;
         let (settings, open, section) = (self.settings.clone(), self.open, name.to_owned());
         match self
             .blocking(move || answer(&settings, open, &section, &params, &located, runtime))
