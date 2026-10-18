@@ -134,6 +134,27 @@ fn source_stat(root: &OwnedFd, rel: &Path) -> Result<Option<rustix::fs::Stat>, C
     };
     fstat(&fd).map(Some).map_err(rustix_error)
 }
+fn source_regular_file(
+    root: &OwnedFd,
+    rel: &Path,
+    expected_size: i64,
+) -> Result<(OwnedFd, rustix::fs::Stat), ClaimError> {
+    // NONBLOCK ensures an entry swapped to a FIFO after source_stat cannot hold the
+    // auth writer transaction indefinitely. Verify the opened inode before reading it.
+    let fd = source_fd(
+        root,
+        rel,
+        OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOCTTY,
+    )?;
+    let opened = fstat(&fd).map_err(rustix_error)?;
+    if FileType::from_raw_mode(opened.st_mode) != FileType::RegularFile
+        || opened.st_size < 0
+        || opened.st_size != expected_size
+    {
+        return Err(ClaimError::Unsafe);
+    }
+    Ok((fd, opened))
+}
 fn directory_names_fd(
     dirfd: &OwnedFd,
     start: Instant,
@@ -227,7 +248,7 @@ fn owner(root: &OwnedFd) -> Result<Option<String>, ClaimError> {
     if FileType::from_raw_mode(meta.st_mode) != FileType::RegularFile || meta.st_size > 4096 {
         return Ok(Some(String::new()));
     }
-    let fd = source_fd(root, path, OFlags::RDONLY)?;
+    let (fd, _) = source_regular_file(root, path, meta.st_size)?;
     let file = File::from(fd);
     let mut bytes = Vec::with_capacity(4097);
     file.take(4097).read_to_end(&mut bytes)?;
@@ -309,13 +330,7 @@ fn inspect(root: &OwnedFd, candidates: &[String], start: Instant) -> Result<Vec<
             if *bytes > MAX_BYTES {
                 return Err(ClaimError::Limit);
             }
-            let fd = source_fd(root, rel, OFlags::RDONLY)?;
-            let opened = fstat(&fd).map_err(rustix_error)?;
-            if FileType::from_raw_mode(opened.st_mode) != FileType::RegularFile
-                || opened.st_size != meta.st_size
-            {
-                return Err(ClaimError::Unsafe);
-            }
+            let (fd, _) = source_regular_file(root, rel, meta.st_size)?;
             let mut input = File::from(fd);
             let mut hash = Sha256::new();
             let mut read = 0u64;
@@ -433,13 +448,7 @@ fn copy_tree(
         if u64::try_from(meta.st_size).map_err(|_| ClaimError::Unsafe)? != item.size {
             return Err(ClaimError::Unsafe);
         }
-        let fd = source_fd(root, rel, OFlags::RDONLY)?;
-        let opened = fstat(&fd).map_err(rustix_error)?;
-        if FileType::from_raw_mode(opened.st_mode) != FileType::RegularFile
-            || opened.st_size != meta.st_size
-        {
-            return Err(ClaimError::Unsafe);
-        }
+        let (fd, _) = source_regular_file(root, rel, meta.st_size)?;
         let mut input = File::from(fd);
         let output_fd = openat(
             dest_parent.as_fd(),
@@ -786,6 +795,54 @@ mod security_tests {
             fs::read(root.path().join("rag/added-after-preflight")).unwrap(),
             vec![0u8; 128]
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn fifo_replacement_does_not_block_regular_file_open() {
+        const CHILD_ROOT: &str = "NOEVIA_FIFO_REPLACEMENT_ROOT";
+        if let Some(root) = std::env::var_os(CHILD_ROOT) {
+            let root = PathBuf::from(root);
+            let root_fd = open_root(&root).unwrap();
+            for name in [OWNER, "projects.json"] {
+                let path = Path::new(name);
+                fs::write(root.join(path), b"synthetic regular file").unwrap();
+                let before = source_stat(&root_fd, path).unwrap().unwrap();
+                assert_eq!(
+                    FileType::from_raw_mode(before.st_mode),
+                    FileType::RegularFile
+                );
+                fs::remove_file(root.join(path)).unwrap();
+                rustix::fs::mkfifoat(root_fd.as_fd(), name, Mode::from_raw_mode(0o600)).unwrap();
+                assert!(matches!(
+                    source_regular_file(&root_fd, path, before.st_size),
+                    Err(ClaimError::Unsafe)
+                ));
+            }
+            return;
+        }
+
+        let root = tempdir().unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg("legacy_claim::security_tests::fifo_replacement_does_not_block_regular_file_open")
+            .arg("--nocapture")
+            .env(CHILD_ROOT, root.path())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + std::time::Duration::from_secs(3);
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert!(status.success(), "FIFO child failed: {status}");
+                break;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("opening a swapped FIFO exceeded the bounded child deadline");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     #[cfg(unix)]
