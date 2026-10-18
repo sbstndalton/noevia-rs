@@ -2128,3 +2128,9 @@ impl Drop for Sampler {
 
 #[cfg(test)]
 mod tests;
+
+/// The recorded fake Docker world of the lib tests, for other modules' tests.
+#[cfg(all(test, feature = "native-search"))]
+pub(crate) fn tests_world(world: Option<serde_json::Value>) -> impl DockerApi {
+    tests::World(Mutex::new(world))
+}

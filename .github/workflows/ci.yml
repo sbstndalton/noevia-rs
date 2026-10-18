@@ -1018,6 +1018,7 @@ jobs:
         run: |
           cargo test --locked -p noevia-model-manager --features native-search --test search --test lifecycle --bin noevia-model-manager
           cargo test --locked -p noevia-model-manager --features native-search --lib search::
+          cargo test --locked -p noevia-model-manager --features native-search,native-backends --lib search::live
           cargo test --locked -p noevia-model-manager --features native-search --lib draft_heads::
           cargo test --locked -p noevia-model-manager --features native-search --lib check_updates::
           cargo test --locked -p noevia-model-manager --features native-search --lib hub_page::

@@ -20,7 +20,7 @@ fn fixture() -> V {
 }
 
 /// The recorded Docker world, answered as the fake daemon of the generator answers it.
-pub(super) struct World(pub(super) Mutex<Option<V>>);
+pub(crate) struct World(pub(crate) Mutex<Option<V>>);
 
 fn answer(status: u16, body: &V) -> Raw {
     let reason = match status {

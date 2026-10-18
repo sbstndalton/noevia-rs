@@ -64,3 +64,39 @@ It also records Python's answers for the grammars: 17,000 query values for pydan
 - The two private calls keep this slice dependent on the Python child for live state. They go when the backend sampler (`MODEL_MANAGER_BACKENDS_IMPL`, already native but dark), the download history and the autoconfig (`analyze`) are native; the budget, the downloaded map, the chips and the estimates would then be computed here from the same figures.
 - The trusted publisher sets are defined in `discover.py`; the native side reads them per request. They move to configuration when the child retires.
 - Outside this repository: the services Dockerfile pin, and the compose passthrough `MODEL_MANAGER_SEARCH_IMPL: ${MODEL_MANAGER_SEARCH_IMPL:-python}` in the model-loader environment (noevia). Nothing is flipped by this change.
+
+## Native search runtime (noevia#1318 step 1c)
+
+While this process samples the backends (`MODEL_MANAGER_BACKENDS_IMPL=rust`), the body of
+`GET /api/v1/internal/search-runtime` is produced natively (`search/live.rs`) and that call is
+no longer made:
+
+| Field | Python | Native |
+| --- | --- | --- |
+| `budget` | `max(vram_gb of helpers._backend_list())` | `fit::budget` over the native descriptors |
+| `downloaded` | `helpers._downloaded_and_still_present()` | the `done` rows of `download_history`, newest first, kept while the file (or its last path part) is in the models-folder snapshot |
+| `quantisers`, `labs` | `discover.TRUSTED_QUANTISERS`, `TRUSTED_LABS` | a deployment file, see below |
+
+**Trusted publisher sets.** They are deployment data, not source. At startup the native side
+reads `SEARCH_TRUSTED_PATH` (default `/config/search-trusted.json`), a JSON object
+`{"quantisers": [...], "labs": [...]}` with exactly those two keys. When the file is absent the
+sets are empty. A file of any other shape is logged, and the search runtime then stays with the
+child. The deploy side seeds the file from the services image (sbstndalton/noevia
+`deploy/tools/seed-search-trusted.sh`), so that ranking is unchanged.
+
+**Store readiness.** The child's startup creates the store, so the first native answer waits
+once for the child's `GET /api/v1/health`. Until the child has answered, the search answers the
+forwarded route's 502.
+
+**Snapshot errors.** A models-folder snapshot this side cannot follow exactly answers the native
+503, where Python could answer an empty set or its 500. That covers a walk refusal, a
+zero-sized filesystem and an unreadable `models.ini`. A stored value Python would trip over
+answers the 500.
+
+**Still from the child.** `POST /api/v1/internal/search-repo-runtime` still provides the
+repository read's fit chips and context estimates, because the estimates need
+`autoconfig.analyze`.
+
+**Differential.** `tools/gen-fit-oracle.py` records `main._search_runtime` with synthetic
+trusted sets (the real ones never enter this repository). `search::live::tests` reproduces
+those answers byte for byte.

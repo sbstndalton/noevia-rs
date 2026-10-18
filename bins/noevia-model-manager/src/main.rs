@@ -997,6 +997,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )),
         None => None,
     };
+    // noevia#1318 step 1c: the search runtime is native while this process samples the backends.
+    #[cfg(all(feature = "native-search", feature = "native-backends"))]
+    if let (Some(search), Some(stats), Some(roots)) = (
+        search.as_ref(),
+        backend_stats.as_ref(),
+        search_roots.as_ref(),
+    ) {
+        let path = environment(
+            "SEARCH_TRUSTED_PATH",
+            noevia_model_manager::search::live::TRUSTED_PATH,
+        )?;
+        match noevia_model_manager::search::live::load_trusted(std::path::Path::new(&path)) {
+            Ok(trusted) => search.set_live(noevia_model_manager::search::live::Source {
+                stats: stats.clone(),
+                models: roots.models.clone().into(),
+                ini: roots.ini.clone().into(),
+                trusted,
+            }),
+            Err(reason) => {
+                eprintln!("native-search: {reason}; the search runtime stays with the python child")
+            }
+        }
+    }
     let mut child = child_command.spawn()?;
     #[cfg(feature = "native-backends")]
     let _backend_sampler = backend_stats.as_ref().map(|stats| stats.start());
