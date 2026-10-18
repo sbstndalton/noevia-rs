@@ -337,9 +337,21 @@ fn files_of(payload: String) -> Result<Vec<model_files::HfFile>, Lookup> {
     model_files::files_from_tree(&value).map_err(|_| Lookup::Failed)
 }
 
+/// Which cap an entry would take a [`Projected`] listing past (noevia#1318 search: the routes
+/// answer them differently).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Exceeded {
+    /// The payload would pass `model_files::MAX_INPUT_BYTES` (the binary refuses it).
+    Bytes,
+    /// More than `model_files::MAX_ENTRIES` entries (the binary refuses it).
+    Entries,
+    /// More than [`PROJECTED_NODES`] values and keys (a bound of this side).
+    Nodes,
+}
+
 /// `json.dumps([_project(e) for e in entries])`, built entry by entry under the input cap.
 #[derive(Default)]
-struct Projected {
+pub(crate) struct Projected {
     out: String,
     /// noevia#1995: entries appended, at most `model_files::MAX_ENTRIES` (the binary refuses
     /// more, so the answer is the same).
@@ -359,25 +371,34 @@ impl Projected {
     /// noevia#1995: likewise once the payload would hold more than `model_files::MAX_ENTRIES`
     /// entries or [`PROJECTED_NODES`] nodes (the enclosing array is one).
     fn push(&mut self, entry: &Value) -> Option<()> {
+        self.try_push(entry).ok()
+    }
+
+    /// [`Projected::push`], telling which cap was reached.
+    pub(crate) fn try_push(&mut self, entry: &Value) -> Result<(), Exceeded> {
         let separator = if self.out.is_empty() { "[" } else { ", " };
         let mut size = Count::default();
         dump_projected(entry, &mut size);
         let len = self
             .out
             .len()
-            .checked_add(separator.len())?
-            .checked_add(size.bytes)?;
+            .checked_add(separator.len())
+            .and_then(|len| len.checked_add(size.bytes))
+            .ok_or(Exceeded::Bytes)?;
         // The closing `]` counts too.
         if len >= model_files::MAX_INPUT_BYTES {
-            return None;
+            return Err(Exceeded::Bytes);
         }
-        let entries = self.entries.checked_add(1)?;
-        let nodes = self.nodes.checked_add(size.nodes)?;
-        if entries > model_files::MAX_ENTRIES || nodes.checked_add(1)? > PROJECTED_NODES {
-            return None;
+        let entries = self.entries.checked_add(1).ok_or(Exceeded::Entries)?;
+        let nodes = self.nodes.checked_add(size.nodes).ok_or(Exceeded::Nodes)?;
+        if entries > model_files::MAX_ENTRIES {
+            return Err(Exceeded::Entries);
+        }
+        if nodes.checked_add(1).ok_or(Exceeded::Nodes)? > PROJECTED_NODES {
+            return Err(Exceeded::Nodes);
         }
         // Room for the closing `]` too, so `finish` never reallocates (len < the cap here).
-        let room = len.checked_add(1)?;
+        let room = len.checked_add(1).ok_or(Exceeded::Bytes)?;
         if self.out.capacity() < room {
             let grown = self
                 .out
@@ -385,16 +406,18 @@ impl Projected {
                 .saturating_mul(2)
                 .max(room)
                 .min(model_files::MAX_INPUT_BYTES);
-            self.out.try_reserve_exact(grown - self.out.len()).ok()?;
+            self.out
+                .try_reserve_exact(grown - self.out.len())
+                .map_err(|_| Exceeded::Bytes)?;
         }
         self.out.push_str(separator);
         dump_projected(entry, &mut self.out);
         self.entries = entries;
         self.nodes = nodes;
-        Some(())
+        Ok(())
     }
 
-    fn finish(mut self) -> String {
+    pub(crate) fn finish(mut self) -> String {
         if self.out.is_empty() {
             self.out.push('[');
         }
@@ -476,7 +499,7 @@ fn pathlib_suffix(name: &str) -> &str {
 }
 
 /// (scheme, host, port) of a URL, as an origin.
-fn origin_of(url: &str) -> Option<(String, String, u16)> {
+pub(crate) fn origin_of(url: &str) -> Option<(String, String, u16)> {
     let parsed = reqwest::Url::parse(url).ok()?;
     Some((
         parsed.scheme().to_owned(),
@@ -487,7 +510,7 @@ fn origin_of(url: &str) -> Option<(String, String, u16)> {
 
 /// `tree.headers.get("link", "")`: every `Link` value joined with `", "`, decoded as httpx
 /// decodes header bytes (ASCII, else UTF-8, else Latin-1, decided over all headers).
-fn link_header(headers: &reqwest::header::HeaderMap) -> String {
+pub(crate) fn link_header(headers: &reqwest::header::HeaderMap) -> String {
     let all_ascii = headers.iter().all(|(_, v)| v.as_bytes().is_ascii());
     let all_utf8 = headers
         .iter()
@@ -508,7 +531,7 @@ fn link_header(headers: &reqwest::header::HeaderMap) -> String {
 }
 
 /// `_NEXT_LINK_RE.search(link)`: `<([^>]+)>\s*;\s*rel="next"`.
-fn next_link(link: &str) -> Option<String> {
+pub(crate) fn next_link(link: &str) -> Option<String> {
     static NEXT: std::sync::OnceLock<Option<regex::Regex>> = std::sync::OnceLock::new();
     let re = NEXT
         .get_or_init(|| regex::Regex::new(r#"<([^>]+)>\s*;\s*rel="next""#).ok())

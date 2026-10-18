@@ -93,6 +93,8 @@ fn state(stats: Option<Arc<BackendStats>>, legacy_base: &str) -> Arc<StateData> 
         model_delete: None,
         #[cfg(feature = "native-draft-heads")]
         draft_heads: None,
+        #[cfg(feature = "native-search")]
+        search: None,
         backend_stats: stats,
         #[cfg(feature = "native-benchmark-runner")]
         bench_runner: None,

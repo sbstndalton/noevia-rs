@@ -34,6 +34,9 @@ native-model-delete = ["native-model-detail", "native-prompts", "native-download
 # noevia#1318 slice 12: GET /api/v1/sections/{name}/draft-heads (the model-detail snapshot and ini
 # reader, the Hub client and token of the update check).
 native-draft-heads = ["native-model-detail", "native-check-updates"]
+# noevia#1318 slice 14: GET /api/v1/search and /api/v1/search/repo (the Hub lookups, the ranking
+# rules and the avatar cache; the live GPU, download and estimate state is asked of the child).
+native-search = ["native-draft-heads"]
 # noevia#1318 slice 13: the backend sampler (read-only Docker, sysfs, GPU_VRAM; exec stays in the
 # child) and GET /api/v1/backends. It needs the native restart's error store.
 native-backends = ["native-backend-control"]
