@@ -5,8 +5,12 @@ fn actual_asgi_framework_route_method_redirect_oracle() {
     let fx: serde_json::Value =
         serde_json::from_str(include_str!("../../tests/fixtures/routing-python.v1.json")).unwrap();
     assert_eq!(fx["framework"]["starlette"], "0.41.3");
-    let registration=ROUTES.iter().take_while(|(_,path)|*path!="/api/v1/health").map(|(method,path)|serde_json::json!([method,path])).collect::<Vec<_>>();
-    assert_eq!(fx["registered"],serde_json::json!(registration));
+    let registration = ROUTES
+        .iter()
+        .take_while(|(_, path)| *path != "/api/v1/health")
+        .map(|(method, path)| serde_json::json!([method, path]))
+        .collect::<Vec<_>>();
+    assert_eq!(fx["registered"], serde_json::json!(registration));
     for case in fx["cases"].as_array().unwrap() {
         if case["auth"] == false {
             continue;
@@ -70,16 +74,16 @@ async fn router_framework_answers_match_without_body_reads_or_a_child() {
         if case["auth"] == true {
             req = req.header("x-model-loader-token", "qa-token");
         }
-        let response = app
-            .clone()
-            .oneshot(
-                req.body(Body::from(
-                    case["request_body"].as_str().unwrap().to_owned(),
-                ))
-                .unwrap(),
-            )
-            .await
-            .unwrap();
+        let body = Body::from_stream(futures_util::stream::pending::<
+            Result<bytes::Bytes, std::io::Error>,
+        >());
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            app.clone().oneshot(req.body(body).unwrap()),
+        )
+        .await
+        .unwrap()
+        .unwrap();
         assert_eq!(response.status().as_u16(), expected, "{case}");
         for (key, value) in case["headers"].as_object().unwrap() {
             assert_eq!(
@@ -102,6 +106,32 @@ async fn router_framework_answers_match_without_body_reads_or_a_child() {
             .await
             .unwrap();
         assert_eq!(response.status(), expected);
+    }
+    for (path, token, status) in [
+        (
+            format!("/api/v1/settings?qa={}", "a".repeat(8192)),
+            "wrong",
+            401,
+        ),
+        (
+            format!("/api/v1/settings?qa={}", "a".repeat(8192)),
+            "qa-token",
+            414,
+        ),
+        (format!("/api/v1/%68ealth?qa={}", "a".repeat(8192)), "", 414),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header("x-model-loader-token", token)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status);
     }
     let unavailable = app
         .oneshot(
