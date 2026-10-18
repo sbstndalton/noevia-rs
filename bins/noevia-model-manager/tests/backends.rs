@@ -274,13 +274,12 @@ async fn child(probes: Arc<Mutex<Value>>, pushed: Arc<Mutex<Vec<String>>>) -> St
                     q.lock().unwrap().push(String::from_utf8(body).unwrap());
                     r#"{"ok":true}"#.to_owned()
                 } else {
-                    let query = line.split(' ').nth(1).unwrap().split_once('?').unwrap().1;
-                    let pairs: Vec<(&str, &str)> = query
-                        .split('&')
-                        .map(|kv| kv.split_once('=').unwrap())
-                        .collect();
-                    let key = format!("{} {}", pairs[0].1, pairs[1].1);
-                    json!({"gpu": p.lock().unwrap()[key].clone()}).to_string()
+                    // noevia#1318 step 2: never asked for a GPU read; recorded so the case fails.
+                    let _ = &p;
+                    q.lock()
+                        .unwrap()
+                        .push(format!("UNEXPECTED CHILD REQUEST {line}"));
+                    json!({"gpu": null}).to_string()
                 };
                 let out = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",

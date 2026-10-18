@@ -102,3 +102,41 @@ exact name. Other forms, including some pydantic accepts, leave the inventory un
 `host_ram_reserve_gb`), which the child's settings would also read, makes the chips refuse too.
 The oracle records pydantic's own reading of every accepted form, and the native value must
 equal it. A container command holding anything but strings refuses the descriptors.
+
+## Step 2 (noevia#1318): no GPU reads through the child, one restart-error owner
+
+**Vendor-tool reads dropped.** The sampler no longer asks the child's
+`GET /api/v1/internal/gpu-exec-probe` for `nvidia-smi` or `rocm-smi` reads. The owner decided that
+only the current integrated-GPU profile has to keep working, so those reads are dropped rather
+than ported. The sysfs path (`hw._read_drm`), the Vulkan-over-sysfs path and the `GPU_VRAM`
+declaration are unchanged and exact. A backend whose image names a vendor tool is sampled as
+Python samples it when the tool is absent from the image:
+
+| Image vendor | Before | Now |
+| --- | --- | --- |
+| CUDA/NVIDIA | `nvidia-smi` | no GPU figures |
+| ROCm/HIP | `rocm-smi`, else sysfs | sysfs |
+| Vulkan | sysfs, else `rocm-smi`/`nvidia-smi`, else the declaration | sysfs, else the declaration |
+
+`tools/gen-backends-oracle.py` now answers every `docker exec` as a missing tool, so the
+differential still compares against Python's own answers. The fake children fail a case if they
+are asked for a GPU read. Docker access stays read-only: nothing here runs `exec`.
+
+**Restart errors.** The native mirror serves the native `GET /api/v1/backends` and the native
+model reads' live fields. The child's copy is still set and cleared on every native restart,
+because the child's own backend snapshot is still read: `/overview`'s `backends[]` under
+`MODEL_MANAGER_OVERVIEW_IMPL=python`, the native overview without a native download table (its
+child runtime call), and every route under the python backends selector. The copy can go when
+those paths are retired. `tests/backend_control.rs` checks that the child is told even while the
+sampler is native.
+
+**Cache push kept.** The push of the sampler cache to the child (`PUT /api/v1/internal/backend-stats`)
+stays, because child code still reads `hw.stats_for` through it:
+
+- the repository read's fit chips and context estimates (`search-repo-runtime`, `autoconfig.analyze`);
+- the section autoconfig's backend inventory (`helpers._backend_list`);
+- the benchmark runs' `capacity_gb` (`bench-run-runtime`);
+- the child's own `/backends`, model and search routes under the python selectors.
+
+It can be retired once those reads are native.
+
