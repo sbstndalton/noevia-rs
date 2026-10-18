@@ -2090,11 +2090,200 @@
      "path": null
     }
    ]
+  },
+  {
+   "answers": [
+    {
+     "body": "[\"other\",\"x\"]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    },
+    {
+     "body": "[]",
+     "content_type": null,
+     "plan": null,
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [],
+   "final": {
+    "ini": "[laya-x]\n\n[laya_y]\n\n[laya.z]\n\n[laya-w]\n\n[laya-v]\n\n[laya-o]\n\n[other]\ncache-ram = 1024\n\n[x]\ncache-ram = 1024\n",
+    "listing": [
+     "models.ini",
+     "models.ini.bak-20261016-120000",
+     "models.roles.json"
+    ],
+    "roles": "{\"laya-x\": 5, \"laya_y\": null, \"laya.z\": \"laya\", \"laya-w\": \"\", \"laya-v\": [\"laya\"], \"laya-o\": {\"r\": \"laya\"}, \"other\": 5, \"x\": null}"
+   },
+   "hard": 2048,
+   "id": "migrate-roles-not-strings",
+   "impl": "rust",
+   "ini": "[laya-x]\n\n[laya_y]\n\n[laya.z]\n\n[laya-w]\n\n[laya-v]\n\n[laya-o]\n\n[other]\n\n[x]\n",
+   "roles": "{\"laya-x\": 5, \"laya_y\": null, \"laya.z\": \"laya\", \"laya-w\": \"\", \"laya-v\": [\"laya\"], \"laya-o\": {\"r\": \"laya\"}, \"other\": 5, \"x\": null}",
+   "steps": [
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    },
+    {
+     "body": null,
+     "content_type": null,
+     "method": "MIGRATE",
+     "path": null
+    }
+   ]
   }
  ],
  "epoch": 1792152000,
+ "migrate_flag": [
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "true",
+   true
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   " true",
+   null
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "true ",
+   null
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "TRUE",
+   true
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "tRuE",
+   true
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "1",
+   true
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "on",
+   true
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "t",
+   true
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "y",
+   true
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "yes",
+   true
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "YES",
+   true
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "0",
+   false
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "no",
+   false
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "No",
+   false
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "off",
+   false
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "f",
+   false
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "n",
+   false
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "false",
+   false
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "FALSE",
+   false
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "",
+   null
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "2",
+   null
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "-1",
+   null
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "1.0",
+   null
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "enabled",
+   null
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "truee",
+   null
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   "none",
+   null
+  ],
+  [
+   "migrate_cache_ram_on_start",
+   "false",
+   false
+  ],
+  [
+   "MIGRATE_CACHE_RAM_ON_START",
+   null,
+   true
+  ]
+ ],
  "oracle": {
   "api.py": "eb8e12f6929baf15d2b1a1998aceff9529fbe48ca8242094ac6b7526c253a91d",
+  "config.py": "ab6e348127b65f224d58fa2f805fefdfc7a472e14eb9e9ff540120e51f21f57f",
   "helpers.py": "fcf2ccb14e5e068f97bb7a4b7985ab7f4f4855b940eb6d9e3838f239ad97918d",
   "ini.py": "450a042cbecc36ea7ab68d6e08a10ffa2400c35721f78e62fe592d2a67e41ef0",
   "main.py": "fcd84c9d7396b2851cabd2077072ac392b5dae0b272149efec616eebdb8e4899"

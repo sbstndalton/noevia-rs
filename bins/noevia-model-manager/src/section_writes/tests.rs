@@ -120,24 +120,27 @@ proptest! {
 }
 
 #[test]
-fn laya_name_rule_matches_python() {
-    // `re.match(r"^laya(?:[_.-]|$)", part, re.I)`.
+fn system_routing_name_rule_matches_python() {
+    // `re.match(r"^<role>(?:[_.-]|$)", part, re.I)` for the system routing role.
+    let role = SYSTEM_ROUTING_ROLE;
+    let upper = role.to_uppercase();
+    let short = &role[..role.len() - 1];
     for (part, want) in [
-        ("laya", true),
-        ("LAYA", true),
-        ("Laya_x", true),
-        ("laya.gguf", true),
-        ("laya-", true),
-        ("laya\n", true),
-        ("laya\nnext", false),
-        ("layab", false),
-        ("lay", false),
-        ("xlaya", false),
-        ("", false),
-        ("lay\u{e4}", false),
-        ("laya \u{e4}", false),
+        (role.to_owned(), true),
+        (upper.clone(), true),
+        (format!("{upper}_x"), true),
+        (format!("{role}.gguf"), true),
+        (format!("{role}-"), true),
+        (format!("{role}\n"), true),
+        (format!("{role}\nnext"), false),
+        (format!("{role}b"), false),
+        (short.to_owned(), false),
+        (format!("x{role}"), false),
+        (String::new(), false),
+        (format!("{short}\u{e4}"), false),
+        (format!("{role} \u{e4}"), false),
     ] {
-        assert_eq!(laya_name(part), want, "{part:?}");
+        assert_eq!(system_routing_name(&part), want, "{part:?}");
     }
 }
 
@@ -199,7 +202,9 @@ async fn startup_migration_holds_the_write_lock_across_the_write() {
 
 #[tokio::test]
 async fn startup_migration_is_idempotent_and_writes_nothing_when_nothing_changes() {
-    let (dir, ini) = migration_dir("[chat]\n\n[my-embed]\n\n[laya_router]\n");
+    let (dir, ini) = migration_dir(&format!(
+        "[chat]\n\n[my-embed]\n\n[{SYSTEM_ROUTING_ROLE}_router]\n"
+    ));
     let writes = Arc::new(SectionWrites::new(&ini, (512, 2048)));
     assert_eq!(
         writes.clone().migrate_cache_ram_at_startup().await.unwrap(),
