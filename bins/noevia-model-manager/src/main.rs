@@ -1533,9 +1533,8 @@ fn backends_fallback(
     noevia_model_manager::backend_stats::gpu_vram_map(&gpu_vram)
 }
 
-/// noevia#1318 step 1: HOST_RAM_RESERVE_GB for the fit chips' usable RAM, a strict subset of what
-/// the child's settings read. `None` (the chips are refused) for a case-variant key, which the
-/// child would also read, or a value that is not a plain decimal.
+/// HOST_RAM_RESERVE_GB for the fit chips' usable RAM: the finite Python-compatible
+/// numeric grammar in backend_stats::fit, with case-variant environment keys refused.
 #[cfg(feature = "native-backends")]
 #[cfg(any(test, feature = "native-routing"))]
 fn ram_reserve(values: Vec<(std::ffi::OsString, std::ffi::OsString)>) -> Option<f64> {
@@ -1576,8 +1575,16 @@ mod backends_command_tests {
         assert_eq!(reserve(&[]), Some(32.0));
         assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", " 8.5 ")]), Some(8.5));
         assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "-4")]), Some(-4.0));
-        assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "1e3")]), None);
+        // Actual source-bound pydantic results are frozen in fit-python.v1.json;
+        // backend_stats::fit::tests::every_accepted_reserve_is_pydantics_reading
+        // compares every accepted native spelling against that independent oracle.
+        let oracle: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/fit-python.v1.json")).unwrap();
+        assert_eq!(oracle["reserve_forms"]["1e3"], "1000.0");
+        assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "1e3")]), Some(1000.0));
+        // Nonfinite values are deliberately refused by the bounded native fit reader.
         assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "inf")]), None);
+        assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "not-a-float")]), None);
         assert_eq!(reserve(&[("host_ram_reserve_gb", "8")]), None);
         assert_eq!(reserve(&[("OTHER", "8")]), Some(32.0));
     }
