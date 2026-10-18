@@ -1219,6 +1219,9 @@ sleep-idle-seconds = 1800
             "[\u{a0}*] ;",
             "[*]\u{1f}",
             "[*]\u{a0};c",
+            "[ * ]",
+            "[\t*]",
+            "[a\rb]",
         ] {
             let parser = crate::section_writes::cfg::header_match(line).map(|(a, b)| &line[a..b]);
             assert_eq!(header(line), parser, "{line:?}");
