@@ -2221,7 +2221,7 @@ jobs:
       PYTHON: python3
       NOEVIA_PROMPTS_APP: ${{ github.workspace }}/integration-prompts-services/model-manager/app
       STARTUP_TEST_APP: ${{ github.workspace }}/integration-startup-services/model-manager
-      NOEVIA_DIAGNOSE_SDK_ORACLE: ${{ runner.temp }}/integration-diagnose-sdk.json
+      NOEVIA_DIAGNOSE_SDK_ORACLE: ${{ github.workspace }}/integration-diagnose-sdk.json
       NOEVIA_DIAGNOSE_SERVICES_SOURCE: ${{ github.workspace }}/integration-diagnose-services
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
