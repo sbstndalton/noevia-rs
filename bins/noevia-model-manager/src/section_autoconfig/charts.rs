@@ -7,7 +7,7 @@ impl SectionAutoconfig {
     /// always answers locally, including optional discovery/file failures (zero/null).
     pub async fn chart_runtime(&self, aliases: &[String]) -> Option<Vec<u8>> {
         let stats = self.stats.get()?;
-        let backends = match tokio::time::timeout(inventory::TIMEOUT, stats.descriptors()).await {
+        let backends = match stats.fallback_reads.run(stats.descriptors()).await {
             Ok(Ok(descriptors)) => inventory::backend_list(&descriptors),
             _ => None,
         };
