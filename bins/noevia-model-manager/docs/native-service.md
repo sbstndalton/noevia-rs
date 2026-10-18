@@ -26,7 +26,7 @@ jobs, then drain admissions/their registered work, diagnosis, and independent na
 Worker lifetimes register BEFORE spawning and release from the actual worker. Cancellation
 alone is not completion. Both clean and deadline exits retain StateData/writer leases until
 OS process termination. No destructor releases a lock while another worker is alive. On
-deadline the process logs and exits; the kernel stops same-process workers before releasing
+deadline the process exits124 without potentially blocking log I/O; the kernel stops same-process workers before releasing
 leases. SQLite transactions preserve atomic rollback.
 
 ## Qualification

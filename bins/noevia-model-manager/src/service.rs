@@ -68,12 +68,11 @@ impl Ready {
             crate::work::drain(deadline).await
         };
         let drained = matches!(tokio::time::timeout_at(deadline, drain).await, Ok(Ok(())));
-        if !drained {
-            eprintln!("native shutdown grace expired; terminating with writer leases held");
-        }
         // Keep self/state alive across exit. Dropping Tokio/Store could join a blocked thread
         // forever or release another lease early; process::exit does neither.
-        std::process::exit(if result.is_some_and(|r| r.is_err()) {
+        std::process::exit(if !drained {
+            124 // No blocking log I/O can precede deadline termination.
+        } else if result.is_some_and(|r| r.is_err()) {
             1
         } else {
             0
@@ -238,14 +237,11 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(10));
         };
-        assert!(status.success());
+        assert_eq!(status.code(), Some(124));
         assert!(
             started.elapsed() >= Duration::from_secs(7),
             "background drain skipped"
         );
-        assert!(fs::read_to_string(dir.path().join("stderr"))
-            .unwrap()
-            .contains("native shutdown grace expired"));
         lock.try_lock().unwrap();
         let db = rusqlite::Connection::open(dir.path().join("model_loader.db")).unwrap();
         assert_eq!(
