@@ -10,7 +10,7 @@
 //! exactly as `DownloadManager._make_job` would, then answers the route's own status and body.
 //!
 //! Every place `downloader.py` reads `time.time()`, this reads the injected clock.
-mod engine;
+pub(crate) mod engine;
 pub mod pyfmt;
 mod store;
 
@@ -440,6 +440,8 @@ pub struct Downloads {
     http: engine::Http,
     ids: std::collections::hash_map::RandomState,
     serial: std::sync::atomic::AtomicU64,
+    #[cfg(feature = "native-download-plan")]
+    planner: std::sync::OnceLock<crate::download_plan::Planner>,
 }
 
 impl Downloads {
@@ -455,7 +457,20 @@ impl Downloads {
             reserved: Mutex::new(Reserved::default()),
             ids: std::collections::hash_map::RandomState::new(),
             serial: std::sync::atomic::AtomicU64::new(0),
+            #[cfg(feature = "native-download-plan")]
+            planner: std::sync::OnceLock::new(),
         }))
+    }
+
+    #[cfg(feature = "native-download-plan")]
+    pub fn set_planner(&self, planner: crate::download_plan::Planner) -> Result<(), &'static str> {
+        self.planner
+            .set(planner)
+            .map_err(|_| "download planner already installed")
+    }
+    #[cfg(feature = "native-download-plan")]
+    pub(crate) fn planner(&self) -> Option<&crate::download_plan::Planner> {
+        self.planner.get()
     }
 
     fn now(&self) -> f64 {

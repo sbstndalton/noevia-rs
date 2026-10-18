@@ -1,0 +1,4212 @@
+{
+  "cases": [
+    {
+      "body": {},
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "missing-repo",
+      "jobs": [],
+      "response": {
+        "detail": "Choose a Hugging Face repository"
+      },
+      "section": null,
+      "status": 400
+    },
+    {
+      "body": {
+        "target": "nope"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "bad-target",
+      "jobs": [],
+      "response": {
+        "detail": "Choose one of the offered download locations"
+      },
+      "section": null,
+      "status": 400
+    },
+    {
+      "body": {
+        "path": "missing",
+        "repo": "qa-owner/qa-repo"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "missing-file",
+      "jobs": [],
+      "response": {
+        "detail": "That file is not in the repository"
+      },
+      "section": null,
+      "status": 404
+    },
+    {
+      "body": {
+        "path": "qa-main.gguf",
+        "repo": "qa-owner/qa-repo"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "main",
+      "jobs": [
+        {
+          "filename": "qa-main/qa-main.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 100,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/qa-main.gguf"
+        },
+        {
+          "filename": "qa-main/mmproj-0.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 1,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-0.gguf"
+        },
+        {
+          "filename": "qa-main/mmproj-1.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 2,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-1.gguf"
+        },
+        {
+          "filename": "qa-main/mmproj-2.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 3,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-2.gguf"
+        },
+        {
+          "filename": "qa-main/mmproj-3.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 4,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-3.gguf"
+        },
+        {
+          "filename": "qa-main/qa-mtp-small.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 20,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/qa-mtp-small.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa-main.gguf",
+          "mmproj-0.gguf",
+          "mmproj-1.gguf",
+          "mmproj-2.gguf",
+          "mmproj-3.gguf",
+          "qa-mtp-small.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "repo": "qa-owner/qa-repo",
+        "shardBase": "qa-split.gguf"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "shards",
+      "jobs": [
+        {
+          "filename": "qa-split/qa-split-00001-of-00002.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 60,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/parts/qa-split-00001-of-00002.gguf"
+        },
+        {
+          "filename": "qa-split/qa-split-00002-of-00002.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 70,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/parts/qa-split-00002-of-00002.gguf"
+        },
+        {
+          "filename": "qa-split/mmproj-0.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 1,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-0.gguf"
+        },
+        {
+          "filename": "qa-split/mmproj-1.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 2,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-1.gguf"
+        },
+        {
+          "filename": "qa-split/mmproj-2.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 3,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-2.gguf"
+        },
+        {
+          "filename": "qa-split/mmproj-3.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 4,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-3.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "parts/qa-split-00001-of-00002.gguf",
+          "parts/qa-split-00002-of-00002.gguf",
+          "mmproj-0.gguf",
+          "mmproj-1.gguf",
+          "mmproj-2.gguf",
+          "mmproj-3.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "repo": "qa-owner/qa-repo",
+        "shardBase": "../escape.gguf"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "wrong-shard",
+      "jobs": [],
+      "response": {
+        "detail": "That shard set is not in the repository"
+      },
+      "section": null,
+      "status": 400
+    },
+    {
+      "body": {
+        "path": "mmproj-0.gguf",
+        "repo": "qa-owner/qa-repo"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "projector",
+      "jobs": [
+        {
+          "filename": "mmproj-0/mmproj-0.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 1,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-0.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "mmproj-0.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "path": "imatrix.dat",
+        "repo": "qa-owner/qa-repo"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "imatrix",
+      "jobs": [],
+      "response": {
+        "detail": "That is an imatrix calibration file, not a model \u2014 it cannot be downloaded as one"
+      },
+      "section": null,
+      "status": 400
+    },
+    {
+      "body": {
+        "path": "qa-main.gguf",
+        "repo": "qa-owner/qa-repo",
+        "target": "qa-target"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "target",
+      "jobs": [
+        {
+          "filename": "qa-target/qa-main/qa-main.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 100,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/qa-main.gguf"
+        },
+        {
+          "filename": "qa-target/qa-main/mmproj-0.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 1,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-0.gguf"
+        },
+        {
+          "filename": "qa-target/qa-main/mmproj-1.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 2,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-1.gguf"
+        },
+        {
+          "filename": "qa-target/qa-main/mmproj-2.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 3,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-2.gguf"
+        },
+        {
+          "filename": "qa-target/qa-main/mmproj-3.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 4,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-3.gguf"
+        },
+        {
+          "filename": "qa-target/qa-main/qa-mtp-small.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 20,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/qa-mtp-small.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa-main.gguf",
+          "mmproj-0.gguf",
+          "mmproj-1.gguf",
+          "mmproj-2.gguf",
+          "mmproj-3.gguf",
+          "qa-mtp-small.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "url": "https://example.test/qa-file.gguf"
+      },
+      "calls": [
+        [
+          "head",
+          "https://example.test/qa-file.gguf"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url",
+      "jobs": [
+        {
+          "filename": "qa-file/qa-file.gguf",
+          "repo_id": "example.test",
+          "total_bytes": 123,
+          "url": "https://example.test/qa-file.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa-file.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "filename": " q.bin ",
+        "url": "http://example.test/path"
+      },
+      "calls": [
+        [
+          "head",
+          "http://example.test/path"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-explicit",
+      "jobs": [
+        {
+          "filename": "q.bin/q.bin",
+          "repo_id": "example.test",
+          "total_bytes": 123,
+          "url": "http://example.test/path"
+        }
+      ],
+      "response": {
+        "queued": [
+          "q.bin"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "url": "https://example.test/qa.gguf;parameter"
+      },
+      "calls": [
+        [
+          "head",
+          "https://example.test/qa.gguf;parameter"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-params",
+      "jobs": [
+        {
+          "filename": "qa/qa.gguf",
+          "repo_id": "example.test",
+          "total_bytes": 123,
+          "url": "https://example.test/qa.gguf;parameter"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "url": "https://example.test/qa%3Bparameter.gguf"
+      },
+      "calls": [
+        [
+          "head",
+          "https://example.test/qa%3Bparameter.gguf"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-encoded-semicolon",
+      "jobs": [
+        {
+          "filename": "qa;parameter/qa;parameter.gguf",
+          "repo_id": "example.test",
+          "total_bytes": 123,
+          "url": "https://example.test/qa%3Bparameter.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa;parameter.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "url": "https://example.test/parent;parameter/qa.gguf"
+      },
+      "calls": [
+        [
+          "head",
+          "https://example.test/parent;parameter/qa.gguf"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-parent-params",
+      "jobs": [
+        {
+          "filename": "qa/qa.gguf",
+          "repo_id": "example.test",
+          "total_bytes": 123,
+          "url": "https://example.test/parent;parameter/qa.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "url": "http://[broken]/x.gguf"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-broken-bracket",
+      "jobs": [],
+      "response": {
+        "exception": "ValueError"
+      },
+      "section": null,
+      "status": 500
+    },
+    {
+      "body": {
+        "filename": "qa.gguf",
+        "url": "http://[broken]/x.gguf"
+      },
+      "calls": [
+        [
+          "head",
+          "http://[broken]/x.gguf"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-broken-bracket-explicit",
+      "jobs": [],
+      "response": {
+        "exception": "ValueError"
+      },
+      "section": null,
+      "status": 500
+    },
+    {
+      "body": {
+        "url": "http://[::1/x.gguf"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-missing-bracket",
+      "jobs": [],
+      "response": {
+        "exception": "ValueError"
+      },
+      "section": null,
+      "status": 500
+    },
+    {
+      "body": {
+        "url": "http://[127.0.0.1]/qa.gguf"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-bracket-ipv4",
+      "jobs": [],
+      "response": {
+        "exception": "ValueError"
+      },
+      "section": null,
+      "status": 500
+    },
+    {
+      "body": {
+        "url": "http://[v1.qa]/qa.gguf"
+      },
+      "calls": [
+        [
+          "head",
+          "http://[v1.qa]/qa.gguf"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-ipvfuture",
+      "jobs": [
+        {
+          "filename": "qa/qa.gguf",
+          "repo_id": "[v1.qa]",
+          "total_bytes": 123,
+          "url": "http://[v1.qa]/qa.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "url": "http://[fe80::1%25qa]/qa.gguf"
+      },
+      "calls": [
+        [
+          "head",
+          "http://[fe80::1%25qa]/qa.gguf"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-ipv6-scope",
+      "jobs": [
+        {
+          "filename": "qa/qa.gguf",
+          "repo_id": "[fe80::1%25qa]",
+          "total_bytes": 123,
+          "url": "http://[fe80::1%25qa]/qa.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "url": "https://qa\uff0fexample.test/qa.gguf"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-nfkc-delimiter",
+      "jobs": [],
+      "response": {
+        "exception": "ValueError"
+      },
+      "section": null,
+      "status": 500
+    },
+    {
+      "body": {
+        "url": "https://example.test/qa%20file.gguf"
+      },
+      "calls": [
+        [
+          "head",
+          "https://example.test/qa%20file.gguf"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-unquote",
+      "jobs": [
+        {
+          "filename": "qa file/qa file.gguf",
+          "repo_id": "example.test",
+          "total_bytes": 123,
+          "url": "https://example.test/qa%20file.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa file.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "url": "https://example.test/qa%2Fescape.gguf"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-bad-name",
+      "jobs": [],
+      "response": {
+        "detail": "Set a plain file name for this URL"
+      },
+      "section": null,
+      "status": 400
+    },
+    {
+      "body": {
+        "url": "https://example.test/"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-no-name",
+      "jobs": [],
+      "response": {
+        "detail": "Set a plain file name for this URL"
+      },
+      "section": null,
+      "status": 400
+    },
+    {
+      "body": {
+        "url": "file:///qa.gguf"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-bad-scheme",
+      "jobs": [],
+      "response": {
+        "detail": "URL must start with http:// or https://"
+      },
+      "section": null,
+      "status": 400
+    },
+    {
+      "body": {
+        "url": "https://example.test/IMATRIX.dat"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "url-imatrix",
+      "jobs": [],
+      "response": {
+        "detail": "That is an imatrix calibration file, not a model \u2014 it cannot be downloaded as one"
+      },
+      "section": null,
+      "status": 400
+    },
+    {
+      "body": {
+        "url": "https://example.test/qa-file.gguf"
+      },
+      "calls": [
+        [
+          "head",
+          "https://example.test/qa-file.gguf"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 503,
+      "id": "url-head-fail",
+      "jobs": [
+        {
+          "filename": "qa-file/qa-file.gguf",
+          "repo_id": "example.test",
+          "total_bytes": 0,
+          "url": "https://example.test/qa-file.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa-file.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "url": "https://example.test/qa-file.gguf"
+      },
+      "calls": [
+        [
+          "head",
+          "https://example.test/qa-file.gguf"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": null,
+      "head_status": 200,
+      "id": "url-head-missing",
+      "jobs": [
+        {
+          "filename": "qa-file/qa-file.gguf",
+          "repo_id": "example.test",
+          "total_bytes": 0,
+          "url": "https://example.test/qa-file.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa-file.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "url": "https://example.test/qa-file.gguf"
+      },
+      "calls": [
+        [
+          "head",
+          "https://example.test/qa-file.gguf"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "invalid",
+      "head_status": 200,
+      "id": "url-head-invalid",
+      "jobs": [],
+      "response": {
+        "exception": "ValueError"
+      },
+      "section": null,
+      "status": 500
+    },
+    {
+      "body": {
+        "path": "..",
+        "repo": "qa-owner/qa-repo"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "..",
+          "quant": null,
+          "shard_base": "..",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "escape",
+      "jobs": [],
+      "response": {
+        "detail": "That download would land outside the models folder"
+      },
+      "section": null,
+      "status": 400
+    },
+    {
+      "body": {
+        "path": "qa-main.gguf",
+        "repo": "qa-owner/qa-repo"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 0
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "zero-head",
+      "jobs": [
+        {
+          "filename": "qa-main/qa-main.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 100,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/qa-main.gguf"
+        },
+        {
+          "filename": "qa-main/mmproj-0.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 1,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-0.gguf"
+        },
+        {
+          "filename": "qa-main/mmproj-1.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 2,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-1.gguf"
+        },
+        {
+          "filename": "qa-main/mmproj-2.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 3,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-2.gguf"
+        },
+        {
+          "filename": "qa-main/mmproj-3.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 4,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/mmproj-3.gguf"
+        },
+        {
+          "filename": "qa-main/qa-mtp-small.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 0,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/qa-mtp-small.gguf"
+        }
+      ],
+      "response": {
+        "queued": [
+          "qa-main.gguf",
+          "mmproj-0.gguf",
+          "mmproj-1.gguf",
+          "mmproj-2.gguf",
+          "mmproj-3.gguf",
+          "qa-mtp-small.gguf"
+        ]
+      },
+      "section": null,
+      "status": 200
+    },
+    {
+      "body": {
+        "path": "qa-mtp-small.gguf"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "draft",
+      "jobs": [
+        {
+          "filename": "qa-folder/qa-mtp-small.gguf",
+          "repo_id": "qa-owner/qa-repo",
+          "total_bytes": 20,
+          "url": "https://huggingface.co/qa-owner/qa-repo/resolve/main/qa-mtp-small.gguf"
+        }
+      ],
+      "response": {
+        "folder": "qa-folder",
+        "queued": [
+          "qa-mtp-small.gguf"
+        ]
+      },
+      "section": "qa",
+      "status": 200
+    },
+    {
+      "body": {
+        "path": "nope"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "draft-missing",
+      "jobs": [],
+      "response": {
+        "detail": "that file is not a draft head for this model"
+      },
+      "section": "qa",
+      "status": 400
+    },
+    {
+      "body": {
+        "path": "qa-mtp-small.gguf"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "draft-no-folder",
+      "jobs": [],
+      "response": {
+        "detail": "no model folder for this section"
+      },
+      "section": "missing",
+      "status": 404
+    },
+    {
+      "body": {
+        "path": "qa-mtp-small.gguf"
+      },
+      "calls": [],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 80
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "draft-unknown-source",
+      "jobs": [],
+      "response": {
+        "detail": "this model was not downloaded from Hugging Face here, so its source repository is unknown"
+      },
+      "section": "unknown",
+      "status": 409
+    },
+    {
+      "body": {
+        "path": "qa-mtp-large.gguf"
+      },
+      "calls": [
+        [
+          "repo",
+          "qa-owner/qa-repo"
+        ]
+      ],
+      "files": [
+        {
+          "path": "qa-main.gguf",
+          "quant": null,
+          "shard_base": "qa-main.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 100
+        },
+        {
+          "path": "parts/qa-split-00001-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 1,
+          "shard_total": 2,
+          "size": 60
+        },
+        {
+          "path": "parts/qa-split-00002-of-00002.gguf",
+          "quant": null,
+          "shard_base": "qa-split.gguf",
+          "shard_index": 2,
+          "shard_total": 2,
+          "size": 70
+        },
+        {
+          "path": "mmproj-0.gguf",
+          "quant": null,
+          "shard_base": "mmproj-0.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 1
+        },
+        {
+          "path": "mmproj-1.gguf",
+          "quant": null,
+          "shard_base": "mmproj-1.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2
+        },
+        {
+          "path": "mmproj-2.gguf",
+          "quant": null,
+          "shard_base": "mmproj-2.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 3
+        },
+        {
+          "path": "mmproj-3.gguf",
+          "quant": null,
+          "shard_base": "mmproj-3.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 4
+        },
+        {
+          "path": "mmproj-4.gguf",
+          "quant": null,
+          "shard_base": "mmproj-4.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        },
+        {
+          "path": "qa-mtp-large.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-large.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 2147483649
+        },
+        {
+          "path": "qa-mtp-small.gguf",
+          "quant": null,
+          "shard_base": "qa-mtp-small.gguf",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 20
+        },
+        {
+          "path": "imatrix.dat",
+          "quant": null,
+          "shard_base": "imatrix.dat",
+          "shard_index": null,
+          "shard_total": null,
+          "size": 5
+        }
+      ],
+      "head_length": "123",
+      "head_status": 200,
+      "id": "draft-oversize",
+      "jobs": [],
+      "response": {
+        "detail": "that file is not a draft head for this model"
+      },
+      "section": "qa",
+      "status": 400
+    }
+  ],
+  "source_sha256": {
+    "api.py": "034885124b805d513dd43fbbdade52c1cc13ca225233c576d1b1d42e2ad64680",
+    "downloader.py": "b279254f87769a41643dcc7f5674ee6f5372f649a445d94b796313de4218edff",
+    "helpers.py": "fcf2ccb14e5e068f97bb7a4b7985ab7f4f4855b940eb6d9e3838f239ad97918d"
+  }
+}

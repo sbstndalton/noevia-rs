@@ -53,9 +53,11 @@ native-section-autoconfig = ["native-draft-heads"]
 native-telemetry = ["native-section-autoconfig", "native-backends", "dep:backend-telemetry", "dep:indexmap"]
 native-bench-observe = ["native-benchmark-runner", "native-backends", "dep:backend-telemetry"]
 native-safe-defaults = ["native-section-writes", "native-section-autoconfig"]
+native-download-plan = ["native-downloads", "native-download-targets", "native-draft-heads", "dep:unicode-normalization"]
 [lints]
 workspace = true
 [dependencies]
+unicode-normalization = { version = "0.1", optional = true }
 bytes = "1"
 chrono = { version = "=0.4.45", default-features = false, features = ["std"], optional = true }
 http-body-util = "0.1"

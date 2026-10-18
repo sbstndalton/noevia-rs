@@ -163,6 +163,67 @@ impl DraftHeads {
         })
     }
 
+    /// Planning uses a fixed authenticated origin with redirects disabled (no credential forwarding).
+    #[cfg(feature = "native-download-plan")]
+    pub(crate) fn planning(models: &Path, ini: &Path, data: &Path) -> Result<Self, &'static str> {
+        Self::planning_with_hub(models, ini, data, HF_API)
+    }
+    #[cfg(feature = "native-download-plan")]
+    pub(crate) fn planning_with_hub(
+        models: &Path,
+        ini: &Path,
+        data: &Path,
+        api: &str,
+    ) -> Result<Self, &'static str> {
+        let mut value = Self::with_hub(models, ini, data, api)?;
+        value.client = reqwest::Client::builder()
+            .connect_timeout(HTTP_TIMEOUT)
+            .read_timeout(HTTP_TIMEOUT)
+            .timeout(REQUEST_BUDGET)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| "download planner client unavailable")?;
+        Ok(value)
+    }
+    #[cfg(feature = "native-download-plan")]
+    pub(crate) async fn planning_files(&self, repo: &str) -> Result<Vec<model_files::HfFile>, ()> {
+        let permit = Arc::new(self.lookups.clone().acquire_owned().await.map_err(|_| ())?);
+        self.repo_detail(repo, &permit).await.map_err(|_| ())
+    }
+    #[cfg(feature = "native-download-plan")]
+    pub(crate) async fn planning_source(
+        &self,
+        name: &str,
+    ) -> Result<Option<(String, Option<String>)>, Stop> {
+        let (models, ini, database, open, section) = (
+            self.models.clone(),
+            self.ini.clone(),
+            self.database.clone(),
+            self.open,
+            name.to_owned(),
+        );
+        let permit = self
+            .reads
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| Stop::Refused)?;
+        crate::docker::spawn_blocking_admitted(move || {
+            let _permit = permit;
+            let Some((rel, _, _, _)) = resolve_source(&models, &ini, &database, &section, open)?
+            else {
+                return Ok(None);
+            };
+            if !rel.contains('/') {
+                return Ok(None);
+            }
+            let repo = repo_for_file(&database, &pathlib_name(&rel))?;
+            Ok(Some((rel, repo)))
+        })
+        .await
+        .map_err(|_| Stop::Refused)?
+    }
+
     /// The answer for one (percent-decoded) section name.
     pub async fn get(&self, name: &str) -> Outcome {
         let Ok(permit) = self.reads.clone().acquire_owned().await else {
@@ -742,13 +803,14 @@ fn dump_str(s: &str, out: &mut (impl Sink + ?Sized)) {
 }
 
 /// The file part: `None` for the 404.
-fn locate(
+fn resolve_source(
     models: &Path,
     ini_path: &Path,
     database: &Path,
     name: &str,
     open: fn(&Path) -> Result<Root, WalkError>,
-) -> Result<Option<Local>, Stop> {
+) -> Result<Option<(String, String, Root, PathBuf)>, Stop> {
+    let _ = database;
     // `ini.get_section(name)` (read_ini() raises for a file it cannot parse).
     let parsed = read_ini(ini_path)?;
     let mut budget = Budget::default();
@@ -821,6 +883,20 @@ fn locate(
         }
     } else {
         rel.clone()
+    };
+    Ok(Some((rel, gguf_rel, root, base)))
+}
+
+fn locate(
+    models: &Path,
+    ini_path: &Path,
+    database: &Path,
+    name: &str,
+    open: fn(&Path) -> Result<Root, WalkError>,
+) -> Result<Option<Local>, Stop> {
+    let Some((rel, gguf_rel, root, base)) = resolve_source(models, ini_path, database, name, open)?
+    else {
+        return Ok(None);
     };
     let subdir = rel.rsplit_once('/').map_or("", |(d, _)| d);
     let local = find_mtp(&root, &base, name, subdir)?;

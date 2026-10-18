@@ -66,6 +66,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-benchmark-runner") {
                 output.write_all(b"native-benchmark-runner\n")?;
             }
+            if cfg!(feature = "native-download-plan") {
+                output.write_all(b"native-download-plan\n")?;
+            }
             if cfg!(feature = "native-downloads") {
                 output.write_all(b"native-downloads\n")?;
             }
@@ -398,6 +401,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    let download_plan_mode = environment("MODEL_MANAGER_DOWNLOAD_PLAN_IMPL", "python")?;
+    if !matches!(download_plan_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_DOWNLOAD_PLAN_IMPL must be python or rust".into());
+    }
+    if download_plan_mode == "rust"
+        && (!cfg!(feature = "native-download-plan") || downloads_mode != "rust")
+    {
+        return Err(
+            "native download planning requires compiled native-download-plan and native downloads"
+                .into(),
+        );
+    }
     // noevia#1318: model deletion (the whole POST /api/v1/models/delete).
     let delete_mode = environment("MODEL_MANAGER_MODEL_DELETE_IMPL", "python")?;
     if !matches!(delete_mode.as_str(), "python" | "rust") {
@@ -1004,6 +1019,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?),
         None => None,
     };
+    #[cfg(feature = "native-download-plan")]
+    if download_plan_mode == "rust" {
+        let (Some(table), Some(roots)) = (downloads.as_ref(), downloads_roots.as_ref()) else {
+            return Err("native download planning needs usable native download roots".into());
+        };
+        let resolved = model_updates_roots(std::env::vars_os().collect())?;
+        let targets = download_targets_roots(std::env::vars_os().collect())?;
+        table.set_planner(noevia_model_manager::download_plan::Planner::new(
+            &roots.models,
+            std::path::Path::new(&resolved.ini),
+            std::path::Path::new(&roots.data),
+            &targets.declared,
+        )?)?;
+    }
     #[cfg(feature = "native-model-delete")]
     let model_delete = delete_roots
         .as_ref()
