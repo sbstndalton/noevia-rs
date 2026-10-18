@@ -530,20 +530,34 @@ fn native_writer_migrates_after_the_reconcile_and_before_the_child_starts() {
     let ini = models.path().join("models.ini");
     let old = tempfile::tempdir().unwrap();
     let old_ini = old.path().join("models.ini");
-    for original in [
-        "[chat]\nmodel = /models/synthetic.gguf\n",
-        "version = 1\n[*] ; shared\ncache-ram = -1\n\n[chat]\nmodel = m\n\n[my-embed]\n",
-        "[*]trailing\nsleep-idle-seconds = 60\ncache-ram = 99999\n[chat]\n",
-        "[*]\n[chat]\ncache-ram = 512\n",
-        "[a] trailing\nmodel = m\n[b];c\nk : v\n",
+    for (original, refused) in [
+        ("[chat]\nmodel = /models/synthetic.gguf\n", false),
+        // The reconcile does not recognise this `[*]` header and adds a second `[*]`, so the
+        // migration then refuses the repeated section (as Python's does).
+        (
+            "version = 1\n[*] ; shared\ncache-ram = -1\n\n[chat]\nmodel = m\n\n[my-embed]\n",
+            true,
+        ),
+        (
+            "[*]trailing\nsleep-idle-seconds = 60\ncache-ram = 99999\n[chat]\n",
+            false,
+        ),
+        ("[*]\n[chat]\ncache-ram = 512\n", false),
+        ("[a] trailing\nmodel = m\n[b];c\nk : v\n", false),
     ] {
         for setting in [None, Some("false")] {
             // The old order: the reconcile, then the (byte-identical) migration.
             std::fs::write(&old_ini, original).unwrap();
-            let _ = idle_unload::reconcile_file(&old_ini, Some(idle_unload::DEFAULT_SECONDS));
+            idle_unload::reconcile_file(&old_ini, Some(idle_unload::DEFAULT_SECONDS))
+                .expect("the reference reconcile");
             let reconciled = std::fs::read_to_string(&old_ini).unwrap();
             if setting.is_none() {
-                let _ = SectionWrites::new(&old_ini, (1024, 2048)).migrate_cache_ram();
+                let migrated = SectionWrites::new(&old_ini, (1024, 2048)).migrate_cache_ram();
+                if refused {
+                    migrated.expect_err("the reference migration refuses the repeated [*]");
+                } else {
+                    migrated.expect("the reference migration");
+                }
             }
             let want = format!("1|{}", std::fs::read_to_string(&old_ini).unwrap());
             std::fs::write(&ini, original).unwrap();

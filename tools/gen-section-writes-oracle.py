@@ -254,8 +254,10 @@ CASES += [
          ini=f"[{ROLE}-x]\n\n[{ROLE}_y]\n\n[{ROLE}.z]\n\n[{ROLE}-w]\n\n[{ROLE}-v]\n\n[{ROLE}-o]\n\n[other]\n\n[x]\n"),
 ]
 
-# noevia#2010: MIGRATE_CACHE_RAM_ON_START as the pinned `Settings` reads it (the native parent
-# must agree; None is a value Settings refuses, so the child would not start).
+# noevia#2010: MIGRATE_CACHE_RAM_ON_START as the pinned `Settings` reads it; the native parent must
+# agree. Each `migrate_flag` entry is [name, value, result]. A `None` value means the variable is
+# unset; a `None` result means Settings refuses the value (a ValidationError, so the child would not
+# start).
 FLAG = "MIGRATE_CACHE_RAM_ON_START"
 FLAG_VALUES = ["true", " true", "true ", "TRUE", "tRuE", "1", "on", "t", "y", "yes", "YES", "0", "no",
                "No", "off", "f", "n", "false", "FALSE", "", "2", "-1", "1.0", "enabled", "truee", "none"]
@@ -273,6 +275,7 @@ def main() -> int:
 
     from app import config, db, ini  # noqa: E402
     from app.main import app  # noqa: E402
+    from pydantic import ValidationError  # noqa: E402
 
     ini.time = types.SimpleNamespace(strftime=lambda fmt, *a: STAMP if fmt == "%Y%m%d-%H%M%S" else real_time.strftime(fmt, *a),
                                      monotonic_ns=real_time.monotonic_ns)
@@ -284,7 +287,7 @@ def main() -> int:
             os.environ[name] = value
         try:
             got = config.Settings().migrate_cache_ram_on_start
-        except Exception:  # noqa: BLE001 - pydantic's ValidationError: the child would not start
+        except ValidationError:  # Settings refuses the value: the child would not start
             got = None
         os.environ.pop(name, None)
         flags.append([name, value, got])
