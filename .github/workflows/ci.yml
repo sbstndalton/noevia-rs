@@ -2151,7 +2151,7 @@ jobs:
         run: |
           cargo build --locked -p noevia-model-manager --no-default-features --features native-logs --target-dir target/token-omission
           if MODEL_MANAGER_TOKEN_TEST_IMPL=rust MODEL_MANAGER_SETTINGS_WRITE_IMPL=rust target/token-omission/debug/noevia-model-manager > token-omission.log 2>&1; then exit 1; fi
-          grep -q 'native-token-test requires native settings writer and compiled native-token-test feature' token-omission.log
+          grep -Fxq 'Error: "mandatory native-routing capability is not compiled"' token-omission.log
 
   native-db-init:
     name: Native database bootstrap, actual Python schema and omission (#1318)
