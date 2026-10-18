@@ -6,8 +6,8 @@ capabilities described below. Unselected endpoint/method pairs remain Python-own
 Full S1 remains open.
 
 The native parent is permanent (noevia#1071): there is no Python-only mode and no uvicorn
-exec on the public port. `MODEL_MANAGER_IMPL` is retired; a leftover `rust` is accepted
-silently and any other value is ignored with one warning. The binary requires the
+exec on the public port. `MODEL_MANAGER_IMPL` and `MODEL_FILES_IMPL` are retired and not
+read (noevia#2011). The binary requires the
 `native-logs` compiled feature (a build without it refuses at startup) and valid configuration
 before any child starts. Rust supervises one existing Python app on fixed private loopback
 port 8091; Python retains its existing DB/seed/reap/sampler/INI startup for unported work.

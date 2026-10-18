@@ -151,36 +151,35 @@ fn native_child_record(cmd: &mut Command, marker: &std::path::Path) -> (Option<S
         (None, stderr)
     }
 }
+/// noevia#2011: the retired MODEL_MANAGER_IMPL and MODEL_FILES_IMPL keys are not read at all: a
+/// leftover value of either changes nothing and is not reported, and the parent is always native.
 #[test]
-fn retired_selector_is_ignored_and_native_parent_is_unconditional() {
+fn retired_keys_are_not_read_and_native_parent_is_unconditional() {
     let (dir, marker) = owned_uvicorn();
-    let retired = "MODEL_MANAGER_IMPL is retired and ignored";
-    for selected in [
-        None,
-        Some("rust"),
-        Some("python"),
-        Some("invalid"),
-        Some(""),
-    ] {
-        let mut cmd = command(dir.path(), &marker);
-        cmd.env("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED", "hostile");
-        if let Some(value) = selected {
-            cmd.env("MODEL_MANAGER_IMPL", value);
+    for key in [None, Some("MODEL_MANAGER_IMPL"), Some("MODEL_FILES_IMPL")] {
+        for value in ["rust", "python", "invalid", ""] {
+            let mut cmd = command(dir.path(), &marker);
+            cmd.env("NOEVIA_NATIVE_MODEL_MANAGER_CONFIRMED", "hostile")
+                .env_remove("MODEL_FILES_IMPL");
+            if let Some(key) = key {
+                cmd.env(key, value);
+            }
+            let (record, stderr) = native_child_record(&mut cmd, &marker);
+            // Never the old public uvicorn exec on 8090: only the private loopback child. A build
+            // without native-logs refuses before any child (native_child_record checks that).
+            if cfg!(feature = "native-logs") {
+                assert_eq!(
+                    record.expect("the native parent started the child"),
+                    "1\napp.main:app\n--host\n127.0.0.1\n--port\n8091\n",
+                    "{key:?}={value:?}"
+                );
+            } else {
+                assert_eq!(record, None, "{key:?}={value:?}");
+            }
+            for retired in ["MODEL_MANAGER_IMPL", "MODEL_FILES_IMPL", "retired"] {
+                assert!(!stderr.contains(retired), "{key:?}={value:?}: {stderr}");
+            }
         }
-        let (record, stderr) = native_child_record(&mut cmd, &marker);
-        // Never the old public uvicorn exec on 8090: only the private loopback child.
-        if let Some(record) = record {
-            assert_eq!(
-                record, "1\napp.main:app\n--host\n127.0.0.1\n--port\n8091\n",
-                "{selected:?}"
-            );
-        }
-        let warned = !matches!(selected, None | Some("rust"));
-        assert_eq!(
-            stderr.matches(retired).count(),
-            usize::from(warned),
-            "{selected:?}"
-        );
     }
 }
 #[test]
@@ -510,6 +509,87 @@ fn section_writes_selector_omission_and_python_confirmation_are_closed_before_ch
         }
         if let (Some(record), _) = native_child_record(&mut cmd, &marker) {
             assert_eq!(record, "0");
+        }
+    }
+}
+
+/// noevia#2010: with the native writer selected the parent migrates models.ini after the
+/// idle-unload reconcile (#1747) and before the child starts, the old order (the child that used to
+/// migrate starts after the reconcile). The child sees exactly reconcile-then-migration bytes,
+/// odd `[*]` headers included, and the confirmation that makes it skip its own run;
+/// MIGRATE_CACHE_RAM_ON_START=false leaves only the reconcile.
+#[cfg(all(feature = "native-section-writes", feature = "native-logs"))]
+#[test]
+fn native_writer_migrates_after_the_reconcile_and_before_the_child_starts() {
+    use noevia_model_manager::{idle_unload, section_writes::SectionWrites};
+    let (dir, marker) = owned_uvicorn();
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script, "#!/bin/sh\nprintf '%s|' \"$NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED\" > \"$S1_TEST_MARKER\"\n/bin/cat \"$MODELS_INI_PATH\" >> \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let models = tempfile::tempdir().unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let ini = models.path().join("models.ini");
+    let old = tempfile::tempdir().unwrap();
+    let old_ini = old.path().join("models.ini");
+    for (original, refused) in [
+        ("[chat]\nmodel = /models/synthetic.gguf\n", false),
+        // The reconcile does not recognise this `[*]` header and adds a second `[*]`, so the
+        // migration then refuses the repeated section (as Python's does).
+        (
+            "version = 1\n[*] ; shared\ncache-ram = -1\n\n[chat]\nmodel = m\n\n[my-embed]\n",
+            true,
+        ),
+        (
+            "[*]trailing\nsleep-idle-seconds = 60\ncache-ram = 99999\n[chat]\n",
+            false,
+        ),
+        ("[*]\n[chat]\ncache-ram = 512\n", false),
+        ("[a] trailing\nmodel = m\n[b];c\nk : v\n", false),
+    ] {
+        for setting in [None, Some("false")] {
+            // The old order: the reconcile, then the (byte-identical) migration.
+            std::fs::write(&old_ini, original).unwrap();
+            idle_unload::reconcile_file(&old_ini, Some(idle_unload::DEFAULT_SECONDS))
+                .expect("the reference reconcile");
+            let reconciled = std::fs::read_to_string(&old_ini).unwrap();
+            if setting.is_none() {
+                let migrated = SectionWrites::new(&old_ini, (1024, 2048)).migrate_cache_ram();
+                if refused {
+                    migrated.expect_err("the reference migration refuses the repeated [*]");
+                } else {
+                    migrated.expect("the reference migration");
+                }
+            }
+            let want = format!("1|{}", std::fs::read_to_string(&old_ini).unwrap());
+            std::fs::write(&ini, original).unwrap();
+            let mut cmd = command(dir.path(), &marker);
+            cmd.env("MODEL_MANAGER_SECTION_WRITES_IMPL", "rust")
+                .env("TZ", "UTC")
+                .env("MODELS_INI_PATH", &ini)
+                .env("DATA_DIR", data.path())
+                .env_remove("MIGRATE_CACHE_RAM_ON_START");
+            if let Some(value) = setting {
+                cmd.env("MIGRATE_CACHE_RAM_ON_START", value);
+            }
+            let (record, stderr) = native_child_record(&mut cmd, &marker);
+            let record = record.expect("the native parent started the child");
+            assert_eq!(record, want, "{original:?} {setting:?}: {stderr}");
+            if original.starts_with("[chat]") {
+                // Not a vacuous comparison: the reconcile wrote, and the migration did too.
+                assert!(
+                    reconciled.contains("sleep-idle-seconds = 1800"),
+                    "{reconciled}"
+                );
+                assert_eq!(
+                    record.contains("cache-ram = 1024"),
+                    setting.is_none(),
+                    "{record}"
+                );
+                assert_eq!(
+                    stderr.contains("set an explicit bounded cache-ram in 1 section(s): chat"),
+                    setting.is_none(),
+                    "{stderr}"
+                );
+            }
         }
     }
 }
