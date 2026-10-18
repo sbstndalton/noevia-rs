@@ -32,6 +32,8 @@ pub mod idle_unload;
 pub mod model_delete;
 #[cfg(feature = "native-model-detail")]
 pub mod model_detail;
+#[cfg(feature = "native-model-list")]
+pub mod model_list;
 #[cfg(feature = "native-model-updates")]
 pub mod model_updates;
 #[cfg(feature = "native-prompts")]
@@ -158,6 +160,10 @@ pub struct StateData {
     /// `fit`) are asked of the Python child, never re-implemented.
     #[cfg(feature = "native-model-detail")]
     pub model_detail: Option<Arc<model_detail::ModelDetail>>,
+    /// noevia#1318: native read-only `GET /api/v1/models` and `GET /api/v1/overview`; their live
+    /// fields (loaded models, fit chips, backends) are asked of the Python child.
+    #[cfg(feature = "native-model-list")]
+    pub model_list: Option<Arc<model_list::ModelList>>,
     /// noevia#1318: native read-only `GET /api/v1/benchmark/runs/{id}`; its live chart values
     /// (`capacity_gb`, `vram_predicted`) are asked of the Python child.
     #[cfg(feature = "native-bench-runs")]
@@ -477,6 +483,8 @@ pub(crate) mod test_support {
             model_updates: None,
             #[cfg(feature = "native-model-detail")]
             model_detail: None,
+            #[cfg(feature = "native-model-list")]
+            model_list: None,
             #[cfg(feature = "native-bench-runs")]
             bench_runs: None,
             #[cfg(feature = "native-section-writes")]
@@ -1340,6 +1348,12 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             };
         }
     }
+    #[cfg(feature = "native-model-list")]
+    if let Some(list) = state.model_list.clone() {
+        if let Some(route) = list.route(req.method(), path) {
+            return native_model_list(&state, &list, route).await;
+        }
+    }
     #[cfg(feature = "native-model-detail")]
     if native_model_detail_route(&state, req.method(), path) {
         if let Some(detail) = state.model_detail.clone() {
@@ -1430,6 +1444,46 @@ async fn native_model_detail(
         }
         model_detail::Outcome::Unavailable => {
             detail_response(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable")
+        }
+    }
+}
+
+/// noevia#1318: the list and the overview: the file part natively, then the live fields from the
+/// child. They wait on the child, so they keep a forwarded route's budget.
+#[cfg(feature = "native-model-list")]
+async fn native_model_list(
+    state: &StateData,
+    list: &model_list::ModelList,
+    route: model_list::Route,
+) -> Response {
+    let child = model_list::Child {
+        client: &state.legacy,
+        base: &state.legacy_base,
+        token: &state.token,
+    };
+    let outcome = match route {
+        model_list::Route::Models => list.models(child).await,
+        model_list::Route::Overview => {
+            // While this process owns the download table the child's own is empty.
+            #[cfg(feature = "native-downloads")]
+            let active = state.downloads.as_ref().map(|table| table.active());
+            #[cfg(not(feature = "native-downloads"))]
+            let active = None;
+            list.overview(child, active).await
+        }
+    };
+    match outcome {
+        model_list::Outcome::Json(bytes) => (
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            bytes,
+        )
+            .into_response(),
+        model_list::Outcome::Failed => internal_error(),
+        model_list::Outcome::Refused => {
+            detail(StatusCode::SERVICE_UNAVAILABLE, model_list::REFUSAL)
+        }
+        model_list::Outcome::Unavailable => {
+            detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable")
         }
     }
 }

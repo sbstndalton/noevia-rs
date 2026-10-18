@@ -175,6 +175,8 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
         model_updates: None,
         #[cfg(feature = "native-model-detail")]
         model_detail: None,
+        #[cfg(feature = "native-model-list")]
+        model_list: None,
         prompts: Some(std::sync::Arc::new(
             Prompts::open_with_clock(root, || Ok(1_700_000_000.125))
                 .await
