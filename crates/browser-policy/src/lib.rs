@@ -1,7 +1,6 @@
 //! noevia-core's `server/browser-policy.cjs` in Rust, exported from `dav-parse.wasm`
-//! (BROWSER_POLICY_IMPL, retired in noevia-core#188): what noevia decides before every browser
-//! action, from the facts the executor read off the real page (never from the model's description
-//! of it).
+//! (BROWSER_POLICY_IMPL): what noevia decides before every browser action, from the facts the
+//! executor read off the real page (never from the model's description of it).
 //!
 //! - [`classify`]: `classifyAction`, `allow`, `needs_approval` or `blocked` for one action.
 //! - [`navigation`]: `checkNavigation`, where the browser may go (http(s) only, no embedded
@@ -12,17 +11,17 @@
 //! - [`fold`]: the label folding (`NFKD`, U+0300..U+036F removed, `toLowerCase`, `\s+` to one
 //!   space, trimmed) the consequential-control check reads.
 //!
-//! The host (browser-policy.cjs; its JS rules were deleted in noevia-core#188) sends this crate the
-//! projections and applies its answer alone. An unknown, a refusal or a fault asks (a navigation is
-//! blocked, and so is any call that has no approval step). So wherever the port cannot be sure it
-//! says so ([`Status`] `None`).
+//! The host (browser-policy.cjs under BROWSER_POLICY_IMPL=wasm) computes the JS answer first. An
+//! action is allowed only if both allow it; it asks if either asks; it is blocked if either blocks;
+//! an unknown, a refusal or a fault asks (or blocks, where the JS blocks or the caller has no
+//! approval step). So wherever the port cannot be sure it says so ([`Status`] `None`).
 //!
 //! Form buttons (noevia#1218) and local names with trailing dots (noevia#1219) are decided as the
-//! former JS decided them when it was deleted: a `<button>` in a form submits unless its type is
-//! exactly (ASCII case-insensitively) `button` or `reset`, and the local suffixes are checked on
-//! the host with and without its trailing dots.
+//! JS now decides them: a `<button>` in a form submits unless its type is exactly (ASCII
+//! case-insensitively) `button` or `reset`, and the local suffixes are checked on the host with
+//! and without its trailing dots.
 //!
-//! # Where the port is stricter than the former JS (by design)
+//! # Where the port is stricter than the JS (by design)
 //!
 //! - **Text outside [`KNOWN_RANGES`]** (a lone surrogate, or a code point outside the Latin, Greek,
 //!   Cyrillic, Hebrew, Arabic, Devanagari, Thai, punctuation, arrows, symbols and dingbats, kana,
@@ -59,7 +58,7 @@ pub const WORK_FLOOR: u64 = 1 << 16;
 /// JSON nesting kept: the outer array, the projections, and their arrays.
 const JSON_CAP: usize = 4;
 
-/// `CONSEQUENTIAL`, in the former JS's order.
+/// `CONSEQUENTIAL`, in the JS's order.
 pub const CONSEQUENTIAL: [&str; 61] = [
     // en
     "send",
@@ -233,9 +232,9 @@ fn cat(parts: &[&[u16]]) -> Vec<u16> {
 
 // ── fold ────────────────────────────────────────────────────────────────────
 
-/// The former JS `fold(text)` of a string (the host passes `String(text || '')`): NFKD,
-/// U+0300..U+036F removed, `toLowerCase`, every `\s+` run one space, trimmed. `None` when `text`
-/// holds a lone surrogate or a code point outside [`KNOWN_RANGES`].
+/// The JS `fold(text)` of a string (the host passes `String(text || '')`): NFKD, U+0300..U+036F
+/// removed, `toLowerCase`, every `\s+` run one space, trimmed. `None` when `text` holds a lone
+/// surrogate or a code point outside [`KNOWN_RANGES`].
 pub fn fold(text: &[u16], work: &mut Work) -> R<Option<Vec<u16>>> {
     work.charge(text.len())?;
     if text.iter().all(|&c| c < 0x80) {
@@ -458,7 +457,7 @@ pub enum Decision {
 }
 
 impl Decision {
-    /// The string the former JS used.
+    /// The JS string.
     pub fn as_str(self) -> &'static str {
         match self {
             Decision::Allow => "allow",
@@ -553,7 +552,7 @@ fn click(el: &Element, work: &mut Work) -> R<Verdict> {
         return Ok(unknown());
     };
     // HTML: a <button>'s missing or invalid type is the Submit Button state; only an exact (ASCII
-    // case-insensitive) `button` or `reset` does not submit (noevia#1218, as the former JS did).
+    // case-insensitive) `button` or `reset` does not submit (noevia#1218, now also the JS).
     let raw_kind: Vec<u16> = el
         .kind
         .iter()
