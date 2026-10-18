@@ -187,3 +187,5 @@ Docker services or production data are used.
 `native-downloads` and `MODEL_MANAGER_DOWNLOADS_IMPL=rust` own the download job table: list, start (planned by the Python child), cancel, clear and the overview's active count, default off. See [native downloads](docs/native-downloads.md).
 
 `native-model-delete` and `MODEL_MANAGER_MODEL_DELETE_IMPL=rust` serve `POST /api/v1/models/delete` (the container check and every deletion), default off. See [native model delete](docs/native-model-delete.md).
+
+native-db-init and MODEL_MANAGER_DB_INIT_IMPL=rust move full schema bootstrap onto the secure prompt-store connection, default off; see [schema bootstrap ownership](docs/native-db-init.md).
