@@ -89,6 +89,8 @@ fn state(heads: Option<DraftHeads>, legacy_base: &str) -> Arc<StateData> {
         #[cfg(feature = "native-model-delete")]
         model_delete: None,
         draft_heads: heads.map(Arc::new),
+        #[cfg(feature = "native-search")]
+        search: None,
         #[cfg(feature = "native-backends")]
         backend_stats: None,
         #[cfg(feature = "native-benchmark-runner")]

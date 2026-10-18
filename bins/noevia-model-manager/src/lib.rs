@@ -38,6 +38,8 @@ pub mod model_list;
 pub mod model_updates;
 #[cfg(feature = "native-prompts")]
 pub mod prompts;
+#[cfg(feature = "native-search")]
+pub mod search;
 #[cfg(feature = "native-section-writes")]
 pub mod section_writes;
 pub mod sections;
@@ -138,6 +140,10 @@ pub struct StateData {
     pub model_delete: Option<Arc<model_delete::ModelDelete>>,
     #[cfg(feature = "native-draft-heads")]
     pub draft_heads: Option<Arc<draft_heads::DraftHeads>>,
+    /// noevia#1318 slice 14: native `GET /api/v1/search` and `GET /api/v1/search/repo`; the
+    /// live state they judge against is asked of the Python child.
+    #[cfg(feature = "native-search")]
+    pub search: Option<Arc<search::Search>>,
     /// noevia#1318 slice 13: the native backend sampler and `GET /api/v1/backends`.
     #[cfg(feature = "native-backends")]
     pub backend_stats: Option<Arc<backend_stats::BackendStats>>,
@@ -469,6 +475,8 @@ pub(crate) mod test_support {
             model_delete: None,
             #[cfg(feature = "native-draft-heads")]
             draft_heads: None,
+            #[cfg(feature = "native-search")]
+            search: None,
             #[cfg(feature = "native-backends")]
             backend_stats: None,
             #[cfg(feature = "native-benchmark-runner")]
@@ -724,6 +732,29 @@ pub fn draft_heads_route(method: &Method, path: &str) -> Option<String> {
     }
     let name = lossy_unquote(seg);
     (!name.contains('/')).then_some(name)
+}
+
+/// noevia#1318 slice 14: which of the two search reads a request is.
+#[cfg(feature = "native-search")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchRoute {
+    Search,
+    Repo,
+}
+
+/// `GET /api/v1/search` and `GET /api/v1/search/repo`, judged on the path as Starlette routes it
+/// (percent-decoded once); other methods get the front's 405 and the slash variants a redirect
+/// from the child.
+#[cfg(feature = "native-search")]
+pub fn search_route(method: &Method, path: &str) -> Option<SearchRoute> {
+    if *method != Method::GET {
+        return None;
+    }
+    match percent_decode_lossy(path).as_str() {
+        "/api/v1/search" => Some(SearchRoute::Search),
+        "/api/v1/search/repo" => Some(SearchRoute::Repo),
+        _ => None,
+    }
 }
 
 /// FastAPI's answer to an unhandled exception, byte for byte.
@@ -1263,6 +1294,31 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
                 draft_heads::Outcome::Failed => internal_error(),
                 draft_heads::Outcome::Refused => {
                     detail(StatusCode::SERVICE_UNAVAILABLE, draft_heads::REFUSAL)
+                }
+            };
+        }
+    }
+    #[cfg(feature = "native-search")]
+    if let Some(route) = search_route(req.method(), path) {
+        if let Some(search) = state.search.clone() {
+            let query = req.uri().query().unwrap_or_default();
+            let outcome = match route {
+                SearchRoute::Search => search.search(query).await,
+                SearchRoute::Repo => search.repo(query).await,
+            };
+            return match outcome {
+                search::Outcome::Json(status, bytes) => (
+                    StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                    bytes,
+                )
+                    .into_response(),
+                search::Outcome::Failed => internal_error(),
+                search::Outcome::Refused => {
+                    detail(StatusCode::SERVICE_UNAVAILABLE, search::REFUSAL)
+                }
+                search::Outcome::Unavailable => {
+                    detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable")
                 }
             };
         }

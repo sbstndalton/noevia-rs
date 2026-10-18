@@ -144,6 +144,8 @@ fn state(
         model_delete: delete.map(Arc::new),
         #[cfg(feature = "native-draft-heads")]
         draft_heads: None,
+        #[cfg(feature = "native-search")]
+        search: None,
         #[cfg(feature = "native-backends")]
         backend_stats: None,
         #[cfg(feature = "native-benchmark-runner")]

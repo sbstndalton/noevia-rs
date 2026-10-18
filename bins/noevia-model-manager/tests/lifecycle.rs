@@ -1154,6 +1154,9 @@ fn advertised_feature_matches_build_and_never_spawns_child() {
         if cfg!(feature = "native-backends") {
             expected.push_str("native-backends\n");
         }
+        if cfg!(feature = "native-search") {
+            expected.push_str("native-search\n");
+        }
         if cfg!(feature = "native-model-list") {
             expected.push_str("native-model-list\n");
         }
@@ -1444,6 +1447,66 @@ fn draft_heads_selector_and_confirmation() {
         }
         if let (Some(record), _) = native_child_record(&mut cmd, &marker) {
             assert_eq!(record, expected, "{selected:?}");
+        }
+    }
+}
+
+/// noevia#1318 slice 14: the search selector is closed before any child, and the native parent
+/// hands the child the exact confirmation (over an inherited value).
+#[test]
+fn search_selector_and_confirmation() {
+    let (dir, marker) = owned_uvicorn();
+    for value in ["invalid", "Rust", ""] {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_SEARCH_IMPL", value)
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success(), "{value:?}");
+        assert!(!marker.exists());
+    }
+    if !cfg!(feature = "native-search") {
+        let output = command(dir.path(), &marker)
+            .env("MODEL_MANAGER_SEARCH_IMPL", "rust")
+            .prompt_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("compiled native-search"));
+        assert!(!marker.exists());
+    }
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script, "#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    let mut cases = vec![(None, "0"), (Some("python"), "0")];
+    if cfg!(feature = "native-search") {
+        cases.push((Some("rust"), "1"));
+    }
+    for (selected, expected) in cases {
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env("NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED", "hostile")
+            .env_remove("MODEL_MANAGER_SEARCH_IMPL");
+        if let Some(value) = selected {
+            cmd.env("MODEL_MANAGER_SEARCH_IMPL", value);
+        }
+        if let (Some(record), _) = native_child_record(&mut cmd, &marker) {
+            assert_eq!(record, expected, "{selected:?}");
+        }
+    }
+}
+
+/// noevia#1318 slice 14: a case-folded spelling of a path the native search shares with the child
+/// keeps Python serving the routes (one log line), and the child is told so.
+#[cfg(feature = "native-search")]
+#[test]
+fn search_with_a_folded_root_spelling_stays_with_python() {
+    let (dir, marker) = owned_uvicorn();
+    let script = dir.path().join("uvicorn");
+    std::fs::write(&script, "#!/bin/sh\nprintf '%s' \"${NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED-unset}\" > \"$S1_TEST_MARKER\"\nexit 42\n").unwrap();
+    for alias in ["models_dir", "Models_Ini_Path", "data_dir"] {
+        let mut cmd = command(dir.path(), &marker);
+        cmd.env("MODEL_MANAGER_SEARCH_IMPL", "rust")
+            .env("NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED", "hostile")
+            .env(alias, "/synthetic");
+        if let (Some(record), _) = native_child_record(&mut cmd, &marker) {
+            assert_eq!(record, "0", "{alias}");
         }
     }
 }
