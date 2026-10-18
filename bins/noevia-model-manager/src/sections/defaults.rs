@@ -58,7 +58,7 @@ fn greater_than(value: &gguf::PyInt, minimum: i128) -> bool {
         gguf::PyInt::Big(decimal) => !decimal.starts_with('-'),
     }
 }
-fn gguf_suffix(name: &str) -> bool {
+pub(super) fn gguf_suffix(name: &str) -> bool {
     std::path::Path::new(name)
         .extension()
         .and_then(std::ffi::OsStr::to_str)

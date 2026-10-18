@@ -77,6 +77,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-model-list") {
                 output.write_all(b"native-model-list\n")?;
             }
+            if cfg!(feature = "native-safe-defaults") {
+                output.write_all(b"native-safe-defaults\n")?;
+            }
             if cfg!(feature = "native-section-autoconfig") {
                 output.write_all(b"native-section-autoconfig\n")?;
             }
@@ -262,6 +265,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None
             }
         }
+    } else {
+        None
+    };
+    // Optional read-only planning moves only with the native models.ini writer.
+    let safe_defaults_mode = environment("MODEL_MANAGER_SAFE_DEFAULTS_IMPL", "python")?;
+    if !matches!(safe_defaults_mode.as_str(), "python" | "rust") {
+        return Err("MODEL_MANAGER_SAFE_DEFAULTS_IMPL must be python or rust".into());
+    }
+    if safe_defaults_mode == "rust"
+        && (!cfg!(feature = "native-safe-defaults") || writes_mode != "rust")
+    {
+        return Err("native safe defaults requires the compiled native-safe-defaults feature and native section writes".into());
+    }
+    #[cfg(feature = "native-safe-defaults")]
+    let safe_defaults_settings = if safe_defaults_mode == "rust" {
+        Some(section_autoconfig_cmd::settings(
+            &std::env::vars_os().collect::<Vec<_>>(),
+        )?)
     } else {
         None
     };
@@ -772,6 +793,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::Path::new(root),
         ))
     });
+    #[cfg(feature = "native-safe-defaults")]
+    if let Some(settings) = safe_defaults_settings {
+        let writes = section_writes
+            .as_ref()
+            .ok_or("native section writes unavailable")?;
+        if writes.ini != std::path::Path::new(&settings.ini) {
+            return Err("safe-default settings differ from the native writer".into());
+        }
+        writes.set_safe_models(std::path::Path::new(&settings.models));
+    }
     let mut child_command = legacy_command(
         tokio::process::Command::new("uvicorn"),
         &prompts_mode,

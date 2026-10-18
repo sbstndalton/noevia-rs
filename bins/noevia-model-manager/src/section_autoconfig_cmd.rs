@@ -68,7 +68,7 @@ fn plain_int(values: &Vars, name: &str, default: i64) -> Result<i64, &'static st
     }
 }
 
-fn settings(values: &Vars) -> Result<Settings, &'static str> {
+pub(crate) fn settings(values: &Vars) -> Result<Settings, &'static str> {
     let models = canonical(values, "MODELS_DIR")?.unwrap_or_else(|| "/models".to_owned());
     let normal = models.starts_with('/')
         && (models == "/"

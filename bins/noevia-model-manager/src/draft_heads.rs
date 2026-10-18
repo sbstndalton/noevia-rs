@@ -955,7 +955,7 @@ pub(crate) fn find_mtp(
 
 /// `api._builtin_mtp_layers(gguf_path)`: the summary's `nextn_predict_layers`, 0 where Python
 /// catches the error (`GgufMetaError`, `OSError`).
-fn builtin_layers(root: &Root, base: &Path, rel: &str) -> Result<String, Stop> {
+pub(crate) fn builtin_layers(root: &Root, base: &Path, rel: &str) -> Result<String, Stop> {
     let rel = normal(rel)?;
     let mut budget = Budget::default();
     let file = match root.file(&rel, false, &mut budget) {
