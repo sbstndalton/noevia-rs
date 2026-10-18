@@ -35,8 +35,11 @@ pub mod telemetry;
 
 use crate::model_updates::{read_ini, Stop};
 use crate::sections::{access::Root, Error as WalkError};
+#[cfg(test)]
 use futures_util::StreamExt;
-use model_files::json::{Limits, Value};
+#[cfg(test)]
+use model_files::json::Limits;
+use model_files::json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     path::{Path, PathBuf},
@@ -57,6 +60,7 @@ pub const CONCURRENT_READS: usize = 2;
 /// One blocking part, waiting for its slot included.
 const DEADLINE: Duration = Duration::from_secs(60);
 /// The child's ingest reads up to 20,000 log lines per backend.
+#[cfg(test)]
 const CHILD_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, PartialEq, Eq)]
@@ -167,7 +171,7 @@ impl SectionAutoconfig {
     #[cfg(feature = "native-telemetry")]
     async fn native_runtime(
         &self,
-        child: &Child<'_>,
+        _child: &Child<'_>,
         name: &str,
         model_rel: &str,
     ) -> Option<Result<Runtime, Outcome>> {
@@ -175,7 +179,9 @@ impl SectionAutoconfig {
         let Some(stats) = self.stats.get() else {
             return Some(Err(Outcome::Refused));
         };
-        match telemetry.owner(child).await {
+        // Mandatory bootstrap initialized the schema; no second process can own telemetry.
+        #[cfg(test)]
+        match telemetry.owner(_child).await {
             None => return Some(Err(Outcome::Unavailable)),
             // The confirmation has already disabled a guarded child's writer. Without
             // its advertisement no process can safely claim ownership (#2041).
@@ -314,6 +320,7 @@ impl SectionAutoconfig {
 }
 
 /// `{"section": name, "model": model_rel}`.
+#[cfg(test)]
 pub(crate) fn runtime_request(name: &str, model_rel: &str) -> String {
     format!(
         "{{\"section\":{},\"model\":{}}}",
@@ -324,6 +331,7 @@ pub(crate) fn runtime_request(name: &str, model_rel: &str) -> String {
 
 /// The child's live inputs. Its own unhandled error is Python's 500; anything else it cannot
 /// answer is the forwarded route's 502, and an answer that is not the expected shape refuses.
+#[cfg(test)]
 async fn ask(child: &Child<'_>, name: &str, model_rel: &str) -> Result<Runtime, Outcome> {
     let mut request = child
         .client
@@ -351,8 +359,14 @@ async fn ask(child: &Child<'_>, name: &str, model_rel: &str) -> Result<Runtime, 
         _ => Err(Outcome::Unavailable),
     }
 }
+#[cfg(not(test))]
+async fn ask(child: &Child<'_>, name: &str, model_rel: &str) -> Result<Runtime, Outcome> {
+    let _ = (child, name, model_rel);
+    Err(Outcome::Refused)
+}
 
 /// `{"measured": {...}, "history": [...], "promptTps": "<repr>", "backends": "<json>"}`.
+#[cfg(test)]
 fn parse_runtime(bytes: &[u8]) -> Option<Runtime> {
     use serde_json::value::RawValue;
     let fields: std::collections::BTreeMap<String, Box<RawValue>> =
@@ -385,6 +399,7 @@ fn parse_runtime(bytes: &[u8]) -> Option<Runtime> {
 }
 
 /// A float's `repr`: `inf`, `-inf`, `nan`, or the shortest round-trip decimal.
+#[cfg(test)]
 fn parse_repr(text: &str) -> Option<f64> {
     match text {
         "inf" => Some(f64::INFINITY),

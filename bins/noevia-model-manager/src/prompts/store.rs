@@ -38,6 +38,7 @@ struct Job {
     hook: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 pub struct Prompts {
+    schema_initialized: bool,
     send: Option<mpsc::Sender<Job>>,
     permits: Arc<Semaphore>,
     worker: Option<std::thread::JoinHandle<()>>,
@@ -51,6 +52,11 @@ impl Drop for Prompts {
     }
 }
 impl Prompts {
+    /// Full schema plus prompt seeding completed on the lifetime writer worker.
+    pub fn schema_initialized(&self) -> bool {
+        self.schema_initialized
+    }
+
     pub async fn open(root: &Path) -> Result<Self> {
         Self::open_with_schema(root, false).await
     }
@@ -140,6 +146,7 @@ impl Prompts {
             };
         }
         Ok(Self {
+            schema_initialized: full_schema,
             send: Some(send),
             permits: Arc::new(Semaphore::new(4)),
             worker: Some(worker),

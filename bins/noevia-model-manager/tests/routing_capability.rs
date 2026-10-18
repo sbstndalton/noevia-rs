@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::panic)]
+#[cfg(not(feature = "native-routing"))]
 #[test]
-fn explicit_routing_refuses_before_child_when_compilation_or_helpers_are_missing() {
+fn missing_mandatory_capability_refuses_before_startup() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_noevia-model-manager"))
         .env_clear()
         .env("MODEL_MANAGER_ROUTING_IMPL", "rust")
@@ -9,10 +10,7 @@ fn explicit_routing_refuses_before_child_when_compilation_or_helpers_are_missing
     assert!(!output.status.success());
     let error = String::from_utf8_lossy(&output.stderr);
     assert!(
-        error.contains("native routing requires compiled native-routing")
-            || error.contains(
-                "native routing requires every public owner and private helper selected natively"
-            ),
+        error.contains("mandatory native-routing capability is not compiled"),
         "{error}"
     );
 }

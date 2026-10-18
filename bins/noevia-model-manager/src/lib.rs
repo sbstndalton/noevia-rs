@@ -54,6 +54,8 @@ pub mod section_autoconfig;
 #[cfg(feature = "native-section-writes")]
 pub mod section_writes;
 pub mod sections;
+#[cfg(feature = "native-routing")]
+pub mod service;
 #[cfg(feature = "native-settings")]
 pub mod settings;
 #[cfg(feature = "native-settings-write")]
@@ -69,11 +71,13 @@ pub mod sqlite_read;
     all(feature = "native-model-list", feature = "native-backends"),
     all(feature = "native-search", feature = "native-backends")
 ))]
+#[cfg(test)]
 mod startup;
 pub mod telemetry_cmd;
 #[cfg(feature = "native-token-test")]
 mod token_test;
 pub mod validation;
+mod work;
 
 use axum::{
     body::{to_bytes, Body},
@@ -82,6 +86,15 @@ use axum::{
     response::{IntoResponse, Response},
     Json, Router,
 };
+#[cfg(any(
+    test,
+    feature = "native-model-detail",
+    feature = "native-bench-runs",
+    feature = "native-benchmark-overview",
+    feature = "native-downloads",
+    feature = "native-section-writes",
+    feature = "native-settings-write"
+))]
 use futures_util::StreamExt;
 use regex::Regex;
 use serde_json::json;
@@ -572,7 +585,7 @@ pub(crate) mod test_support {
         /// Waits until the hook has been entered.
         pub(crate) async fn entered(self) -> mpsc::Sender<()> {
             let Self { entered, open, .. } = self;
-            tokio::task::spawn_blocking(move || entered.recv_timeout(Duration::from_secs(30)))
+            crate::work::spawn_blocking(move || entered.recv_timeout(Duration::from_secs(30)))
                 .await
                 .unwrap()
                 .unwrap();
@@ -589,7 +602,7 @@ pub(crate) mod test_support {
         gate: Gate,
     ) -> mpsc::Sender<()> {
         use tower::ServiceExt;
-        let task = tokio::spawn(router(state.clone()).oneshot(request));
+        let task = crate::work::spawn(router(state.clone()).oneshot(request));
         drop_once_entered(task, gate).await
     }
 
@@ -603,7 +616,7 @@ pub(crate) mod test_support {
     ) -> mpsc::Sender<()> {
         use tower::ServiceExt;
         let gate = Gate::new();
-        let task = tokio::spawn(
+        let task = crate::work::spawn(
             docker::BLOCKING_HOOK.scope(gate.hook.clone(), router(state.clone()).oneshot(request)),
         );
         let open = drop_once_entered(task, gate).await;
@@ -1865,16 +1878,6 @@ async fn native_section_write(
         Ok(e) => e,
         Err(outcome) => return section_outcome(outcome),
     };
-    if !crate::startup::ready(
-        &state.legacy,
-        &state.legacy_base,
-        &state.token,
-        &writes.started,
-    )
-    .await
-    {
-        return unavailable();
-    }
     let guard = writes.lock().await;
     let plan = if let SectionWrite::SafeDefaults(name) = &route {
         if writes.has_native_defaults() {
@@ -2064,6 +2067,7 @@ pub fn max_tokens(value: Option<&prompts::JsonValue>) -> Option<i64> {
 /// still shows it in `/overview`'s `backends[]` under `MODEL_MANAGER_OVERVIEW_IMPL=python`, and in
 /// the native overview without a native download table (its child runtime call).
 #[cfg(feature = "native-backend-control")]
+#[cfg(test)]
 async fn set_restart_error(
     legacy: &reqwest::Client,
     base: &str,
@@ -2091,6 +2095,16 @@ async fn set_restart_error(
     eprintln!(
         "model-manager backend restart: the child did not record the restart state for a backend"
     );
+}
+#[cfg(all(feature = "native-backend-control", not(test)))]
+async fn set_restart_error(
+    legacy: &reqwest::Client,
+    base: &str,
+    token: &str,
+    name: &str,
+    error: Option<&str>,
+) {
+    let _ = (legacy, base, token, name, error);
 }
 
 #[cfg(feature = "native-backend-control")]
@@ -2153,7 +2167,7 @@ async fn native_backend_control(
         }
         set_restart_error(&state.legacy, &state.legacy_base, &state.token, &name, None).await;
         let task_state = state.clone();
-        tokio::spawn(async move {
+        crate::work::spawn(async move {
             let outcome = tokio::time::timeout(
                 Duration::from_secs(60),
                 task_state.docker.restart_backend(&name),
@@ -2248,6 +2262,8 @@ async fn native_settings_write(
     feature = "native-section-writes",
     feature = "native-settings-write"
 ))]
+// Historical child fixture oracle only; not linked into production.
+#[cfg(test)]
 async fn child_runtime(
     state: &StateData,
     path: &str,
@@ -2284,6 +2300,25 @@ async fn child_runtime(
     }
 }
 
+#[cfg(all(
+    not(test),
+    any(
+        feature = "native-bench-runs",
+        feature = "native-section-writes",
+        feature = "native-settings-write"
+    )
+))]
+async fn child_runtime(
+    state: &StateData,
+    path: &str,
+    query: &str,
+    cap: usize,
+) -> Result<Vec<u8>, bool> {
+    let _ = (state, path, query, cap);
+    Err(false)
+}
+
+#[cfg(test)]
 async fn forward(state: Arc<StateData>, req: Request) -> Response {
     #[cfg(feature = "native-routing")]
     if req.extensions().get::<routing::Routed>().is_some() {
@@ -2369,10 +2404,22 @@ async fn forward(state: Arc<StateData>, req: Request) -> Response {
         .into_response()
 }
 
+#[cfg(not(test))]
+async fn forward(_state: Arc<StateData>, req: Request) -> Response {
+    if python_owned(req.method().as_str(), req.uri().path()) {
+        return detail(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Native route owner is unavailable",
+        );
+    }
+    detail(StatusCode::NOT_FOUND, "Not Found")
+}
+
 /// #1747: a models.ini save may have dropped the chat preset's global idle key (the raw editor
 /// saves whatever text it was given). Put it back, and report the revision of the file as it now
 /// is, so the editor's next save is not refused as a conflict with our own rewrite. Only the
 /// models.ini save routes get here, and their `revision` is always the models.ini revision.
+#[cfg(test)]
 async fn after_preset_write(reconciler: &idle_unload::Reconciler, bytes: Vec<u8>) -> Vec<u8> {
     let Ok(Some(revision)) = reconciler.reconcile().await else {
         return bytes;

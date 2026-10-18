@@ -237,11 +237,6 @@ impl Search {
         let _ = self.live.set(source);
     }
 
-    /// Wait for the exact private advertisement after the child's schema startup.
-    async fn child_started(&self) -> bool {
-        crate::startup::ready(&self.legacy, &self.legacy_base, &self.token, &self.started).await
-    }
-
     #[cfg(test)]
     pub(crate) async fn startup_fixture_runtime(&self, source: &Source) -> Option<Vec<u8>> {
         self.native_runtime(source).await.ok()
@@ -249,9 +244,6 @@ impl Search {
 
     /// `main._search_runtime`'s body, byte for byte.
     pub(super) async fn native_runtime(&self, source: &Source) -> Result<Vec<u8>, Stop> {
-        if !self.child_started().await {
-            return Err(Stop::Unavailable);
-        }
         let descriptors = source.stats.descriptors().await.map_err(|f| match f {
             Fail::Raised => Stop::Failed,
             Fail::Refused => Stop::Refused,

@@ -328,6 +328,7 @@ pub struct Search {
     live: std::sync::OnceLock<live::Source>,
     /// Set once the child advertises completed startup (its schema initialization ran).
     #[cfg(feature = "native-backends")]
+    #[allow(dead_code)] // removed with reviewed repository-runtime integration
     started: std::sync::atomic::AtomicBool,
     /// Lib tests: runs before the final parse of every listing.
     #[cfg(test)]

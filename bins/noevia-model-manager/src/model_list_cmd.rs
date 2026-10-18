@@ -39,6 +39,7 @@ fn value(values: &Vars, key: &str, default: &str) -> Result<String, &'static str
     }
 }
 
+#[cfg(test)]
 fn mode(values: &Vars, key: &'static str) -> Result<bool, String> {
     match value(values, key, "python")?.as_str() {
         "python" => Ok(false),
@@ -94,7 +95,18 @@ fn roots(values: &Vars) -> Result<Roots, &'static str> {
     })
 }
 
+/// Mandatory production configuration; implementation selectors have no meaning here.
+#[cfg(feature = "native-routing")]
+pub(crate) fn native(values: &Vars) -> Result<Selection, String> {
+    let roots = roots(values)?;
+    Ok(Selection {
+        models: Some(roots.clone()),
+        overview: Some(roots),
+    })
+}
+
 /// The two selectors. `Err` refuses startup; a fallback is logged and keeps Python serving.
+#[cfg(test)]
 pub(crate) fn select(values: &Vars) -> Result<Selection, String> {
     let models = mode(values, "MODEL_MANAGER_MODELS_IMPL")?;
     let overview = mode(values, "MODEL_MANAGER_OVERVIEW_IMPL")?;
@@ -126,6 +138,7 @@ pub(crate) fn select(values: &Vars) -> Result<Selection, String> {
 
 /// The child refuses a route only when the native parent owns it (`1`; `0` otherwise, also over
 /// an inherited value), serves the matching private call, and reads the same settings.
+#[cfg(test)]
 pub(crate) fn child(command: &mut tokio::process::Command, selection: &Selection) {
     command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_MODELS_CONFIRMED",

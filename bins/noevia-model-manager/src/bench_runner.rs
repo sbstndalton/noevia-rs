@@ -1586,34 +1586,7 @@ pub fn production(p: Production) -> Result<Arc<Runner>, &'static str> {
         backends,
     ));
     let resolver_docker = sweep_docker.clone();
-    let (legacy, base, token) = (p.legacy, p.legacy_base, p.token);
-    let observe: Observer = Arc::new(move |query: String| {
-        let request = legacy
-            .get(format!("{base}{OBSERVE_PATH}?{query}"))
-            .timeout(Duration::from_secs(10));
-        let request = if token.is_empty() {
-            request
-        } else {
-            request.header("x-model-loader-token", token.clone())
-        };
-        Box::pin(async move {
-            use futures_util::StreamExt;
-            let response = request.send().await.ok()?;
-            if response.status() != reqwest::StatusCode::OK {
-                return None;
-            }
-            let mut stream = response.bytes_stream();
-            let mut body = Vec::new();
-            while let Some(chunk) = stream.next().await {
-                let chunk = chunk.ok()?;
-                if body.len().saturating_add(chunk.len()) > OBSERVE_CAP {
-                    return None;
-                }
-                body.extend_from_slice(&chunk);
-            }
-            parse_observed(&body)
-        })
-    });
+    let observe: Observer = Arc::new(|_query| Box::pin(async { None }));
     let resolve: Resolver = Arc::new(move |backend: String| {
         let docker = resolver_docker.clone();
         Box::pin(async move { docker.endpoint(&backend).await })
@@ -1637,7 +1610,7 @@ pub fn production(p: Production) -> Result<Arc<Runner>, &'static str> {
         &p.data,
         Clock::default(),
         Arc::new(|task| {
-            tokio::spawn(task);
+            crate::work::spawn(task);
         }),
         observe,
         resolve,

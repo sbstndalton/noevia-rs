@@ -1492,19 +1492,8 @@ pub struct BackendStats {
     pub(crate) fallback_reads: fallback::Reads,
     docker: Arc<dyn DockerApi>,
     probe: reqwest::Client,
-    child: reqwest::Client,
     clock: Clock,
     state: Mutex<Sampled>,
-    /// One log line per run of failures, not one per tick.
-    push_failing: std::sync::atomic::AtomicBool,
-}
-
-/// Logs `message` when `flag` turns on; clears it on success.
-fn note(flag: &std::sync::atomic::AtomicBool, failed: bool, message: &str) {
-    let was = flag.swap(failed, std::sync::atomic::Ordering::Relaxed);
-    if failed && !was {
-        eprintln!("{message}");
-    }
 }
 
 fn lock(m: &Mutex<Sampled>) -> std::sync::MutexGuard<'_, Sampled> {
@@ -1628,10 +1617,8 @@ impl BackendStats {
                 .read_timeout(Duration::from_secs(3))
                 .timeout(Duration::from_secs(10))
                 .build()?,
-            child: base().timeout(Duration::from_secs(30)).build()?,
             clock,
             state: Mutex::new(Sampled::default()),
-            push_failing: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -1733,7 +1720,7 @@ impl BackendStats {
         let drm = || {
             let (root, attrs) = (root.clone(), attrs.clone());
             async move {
-                tokio::task::spawn_blocking(move || read_drm(&root, &attrs))
+                crate::work::spawn_blocking(move || read_drm(&root, &attrs))
                     .await
                     .unwrap_or(Err(()))
             }
@@ -1864,7 +1851,7 @@ impl BackendStats {
                 st.cache.retain(|(c, _)| *c != k);
             }
         }
-        self.push().await;
+        // Native owners read this sampler directly; there is no mirror writer.
     }
 
     /// The cache as the child's `PUT /api/v1/internal/backend-stats` body.
@@ -1883,35 +1870,10 @@ impl BackendStats {
         Some(out)
     }
 
-    async fn push(&self) {
-        let Some(body) = self.push_body() else {
-            eprintln!("model-manager backend sampler: a sample could not be written for the child");
-            return;
-        };
-        let mut request = self
-            .child
-            .put(format!("{}{PUSH_PATH}", self.config.legacy_base))
-            .header("content-type", "application/json")
-            .body(body);
-        if !self.config.token.is_empty() {
-            request = request.header("x-model-loader-token", &self.config.token);
-        }
-        let taken = request
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false);
-        note(
-            &self.push_failing,
-            !taken,
-            "model-manager backend sampler: the child did not take the backend samples",
-        );
-    }
-
     /// Runs the sampler every [`INTERVAL`] until the returned handle is dropped.
     pub fn start(self: &Arc<Self>) -> Sampler {
         let me = self.clone();
-        Sampler(tokio::spawn(async move {
+        Sampler(crate::work::spawn(async move {
             loop {
                 if tokio::time::timeout(TICK_BUDGET, me.tick()).await.is_err() {
                     eprintln!("model-manager backend sampler: a tick did not finish in time");

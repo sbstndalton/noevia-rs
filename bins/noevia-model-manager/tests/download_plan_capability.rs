@@ -1,7 +1,6 @@
 #![allow(clippy::unwrap_used)]
-// Explicit selection must refuse startup when either compiled planning or native jobs is absent.
 #[test]
-fn explicit_planning_requires_both_capabilities_before_child_start() {
+fn retired_planning_selectors_cannot_restore_child_ownership() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_noevia-model-manager"))
         .env_clear()
         .env("MODEL_MANAGER_DOWNLOAD_PLAN_IMPL", "rust")
@@ -9,7 +8,10 @@ fn explicit_planning_requires_both_capabilities_before_child_start() {
         .output()
         .unwrap();
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains(
-        "native download planning requires compiled native-download-plan and native downloads"
-    ));
+    let expected = if cfg!(feature = "native-routing") {
+        "mandatory native service requires exact TZ=UTC"
+    } else {
+        "mandatory native-routing capability is not compiled"
+    };
+    assert!(String::from_utf8_lossy(&output.stderr).contains(expected));
 }

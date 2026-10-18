@@ -525,7 +525,7 @@ impl Downloads {
         let started = started.filter(|t| *t != 0.0).unwrap_or_else(|| self.now());
         let database = self.config.database.clone();
         let (repo, filename, dest) = (job.repo_id.clone(), job.filename.clone(), job.dest.clone());
-        let _ = tokio::task::spawn_blocking(move || {
+        let _ = crate::work::spawn_blocking(move || {
             super::store::record(
                 &database,
                 &repo,

@@ -606,6 +606,13 @@ impl Downloads {
         lock(&self.reserved).whole
     }
 
+    /// Stop admission-independent transfer workers during native service shutdown.
+    pub fn cancel_all(&self) {
+        for job in self.jobs.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+            job.cancel.send_replace(true);
+        }
+    }
+
     /// `manager.cancel(job_id)`.
     pub fn cancel(&self, id: &str) -> bool {
         let job = lock(&self.jobs).iter().find(|j| j.id == id).cloned();
@@ -686,7 +693,7 @@ impl Downloads {
         }
         for job in started {
             let me = self.clone();
-            tokio::spawn(async move { me.run(job).await });
+            crate::work::spawn(async move { me.run(job).await });
         }
         Queued::Done
     }

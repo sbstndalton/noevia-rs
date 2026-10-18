@@ -156,7 +156,7 @@ impl Sections {
             .map_err(|_| Error::Refused)?;
         let reader = self.reader.clone();
         // The blocking operation retains admission even when this future is dropped/timed out.
-        let task = tokio::task::spawn_blocking(move || {
+        let task = crate::work::spawn_blocking(move || {
             let _permit = permit;
             reader.response(name.as_deref(), defaults)
         });

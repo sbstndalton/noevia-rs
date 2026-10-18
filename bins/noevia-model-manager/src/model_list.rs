@@ -47,6 +47,7 @@ use crate::bench_runs::{Row, Val};
 use crate::model_detail::{self, Entry, Watched};
 use crate::model_updates::{exists, json_string, py_float_repr, read_ini, Stop};
 use crate::sections::{access::Root, Error as WalkError};
+#[cfg(test)]
 use futures_util::StreamExt;
 use rusqlite::{types::ValueRef, Connection};
 use std::{
@@ -71,6 +72,7 @@ pub const SHAPE_CACHE: usize = 4096;
 /// The file part of one answer (the walk and, for the list, every model header not cached yet).
 const DEADLINE: Duration = Duration::from_secs(60);
 /// The child's live fields probe every backend and ask Docker for every model's chips.
+#[cfg(test)]
 const CHILD_TIMEOUT: Duration = Duration::from_secs(120);
 /// Most badge rows read.
 const ROW_CAP: usize = 100_000;
@@ -846,6 +848,7 @@ pub(crate) fn splice_overview(counted: &Counted, runtime: &[u8], active: Option<
 // --- the child's private calls ------------------------------------------------------------------
 
 /// `{"bytes": [...]}` as the child reads it: the sizes in list order.
+#[cfg(test)]
 pub(crate) fn runtime_request(sizes: &[u128]) -> String {
     let items: Vec<String> = sizes.iter().map(u128::to_string).collect();
     format!("{{\"bytes\":[{}]}}", items.join(","))
@@ -868,18 +871,23 @@ async fn post_runtime(
     #[cfg(feature = "native-backends")]
     if let Some(live) = child.live {
         let body = live.models_runtime(sizes).await.map_err(live_failed)?;
-        if !crate::startup::ready(child.client, child.base, child.token, started).await {
-            return Err(Outcome::Unavailable);
-        }
         return Ok(body);
     }
-    let _ = started;
-    let request = child
-        .client
-        .post(format!("{}{MODELS_RUNTIME_PATH}", child.base))
-        .header("content-type", "application/json")
-        .body(runtime_request(sizes));
-    read_child(child, request).await
+    #[cfg(test)]
+    {
+        let _ = started;
+        let request = child
+            .client
+            .post(format!("{}{MODELS_RUNTIME_PATH}", child.base))
+            .header("content-type", "application/json")
+            .body(runtime_request(sizes));
+        read_child(child, request).await
+    }
+    #[cfg(not(test))]
+    {
+        let _ = (child, sizes, started);
+        Err(Outcome::Refused)
+    }
 }
 
 async fn get_runtime(child: &Child<'_>, active: Option<usize>) -> Result<Vec<u8>, Outcome> {
@@ -888,15 +896,24 @@ async fn get_runtime(child: &Child<'_>, active: Option<usize>) -> Result<Vec<u8>
     if let (Some(live), Some(active)) = (child.live, active) {
         return live.overview_runtime(active).await.map_err(live_failed);
     }
-    let _ = active;
-    let request = child
-        .client
-        .get(format!("{}{OVERVIEW_RUNTIME_PATH}", child.base));
-    read_child(child, request).await
+    #[cfg(test)]
+    {
+        let _ = active;
+        let request = child
+            .client
+            .get(format!("{}{OVERVIEW_RUNTIME_PATH}", child.base));
+        read_child(child, request).await
+    }
+    #[cfg(not(test))]
+    {
+        let _ = (child, active);
+        Err(Outcome::Refused)
+    }
 }
 
 /// The child's answer: its own unhandled error is Python's 500; anything else it cannot answer
 /// is the forwarded route's 502.
+#[cfg(test)]
 async fn read_child(
     child: &Child<'_>,
     mut request: reqwest::RequestBuilder,

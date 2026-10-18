@@ -347,6 +347,12 @@ impl EmbeddingService {
 
     /// Boot (a restart of the container behind our back is `watch`'s job): load the saved models so the
     /// router reports them `loaded`, which is what noevia's identity check requires.
+    /// End a previous warm worker at its next bounded operation during process shutdown.
+    pub fn cancel_warm(&self) {
+        self.warm_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
     pub fn start_warm(self: &Arc<Self>) {
         let Ok(Some(saved)) = self.saved() else {
             return;
@@ -361,7 +367,7 @@ impl EmbeddingService {
     fn spawn_warm(self: &Arc<Self>, models: Vec<String>) {
         let generation = self.next_warm_generation();
         let this = self.clone();
-        tokio::spawn(async move {
+        crate::work::spawn(async move {
             this.warm_generation_run(&models, generation).await;
         });
     }
@@ -375,7 +381,7 @@ impl EmbeddingService {
     /// once until the models load again. Off (an empty saved set) never warms.
     pub fn watch(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
         let this = self.clone();
-        tokio::spawn(async move {
+        crate::work::spawn(async move {
             let mut failures: u32 = 0;
             let mut wait: u32 = 1;
             loop {
@@ -529,7 +535,7 @@ impl EmbeddingService {
     /// connection) can never leave it half done.
     pub async fn apply(self: &Arc<Self>, desired: Desired) -> Result<Saved, Refusal> {
         let this = self.clone();
-        tokio::spawn(async move { this.apply_held(desired).await })
+        crate::work::spawn(async move { this.apply_held(desired).await })
             .await
             .map_err(|_| Refusal::Unavailable("embedding service change failed"))?
     }

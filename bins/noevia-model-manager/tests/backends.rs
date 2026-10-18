@@ -429,8 +429,12 @@ async fn recorded_worlds_through_the_router_and_the_unix_transport() {
                 *probes.lock().unwrap() = step["probes"].clone();
                 pushed.lock().unwrap().clear();
                 stats.tick().await;
-                let pushed: Value = serde_json::from_str(&pushed.lock().unwrap()[0]).unwrap();
-                assert_eq!(pushed["backends"], step["cache"], "{ctx}");
+                assert!(
+                    pushed.lock().unwrap().is_empty(),
+                    "{ctx}: unexpected private mirror"
+                );
+                let sampled: Value = serde_json::from_str(&stats.push_body().unwrap()).unwrap();
+                assert_eq!(sampled["backends"], step["cache"], "{ctx}");
             } else {
                 let mut servers = Vec::new();
                 for c in step["docker"]["containers"]
