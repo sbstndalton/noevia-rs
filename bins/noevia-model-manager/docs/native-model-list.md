@@ -78,8 +78,15 @@ for:
 - the overview: a disk usage query that fails (Python reports it with an errno text in `error`),
   a free size above the total, or a `MODELS_DIR` that is not UTF-8.
 
-The shape cache holds at most 4096 entries and is cleared when full. The badge read is bounded
-(100 000 rows, 16 MiB per value, 3 s busy wait, 3.5 s deadline) and answers 500 past those bounds.
+The shape cache holds at most 4096 entries and is cleared when full.
+
+The blocking reads run one at a time per slot, and the deadlines are checked between reads,
+so a hung filesystem read holds its slot and the request's admission permit until it returns.
+The list's file part and its badge read share one slot; the overview has its own, so a list
+stuck on a hung read never holds the overview up (a read hung in the models folder itself
+would hold both). The badge read is bounded
+(100 000 rows, 16 MiB per value, 64 MiB of text and blob values in all, 3 s busy wait,
+3.5 s deadline) and answers 500 past those bounds.
 
 ## Startup `db.init`
 

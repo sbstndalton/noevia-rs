@@ -71,6 +71,8 @@ const CHILD_TIMEOUT: Duration = Duration::from_secs(120);
 /// Most badge rows read.
 const ROW_CAP: usize = 100_000;
 const VALUE_CAP: i32 = 16 * 1024 * 1024;
+/// The badge rows' text and blob bytes together (the bench run reader's response bound).
+const STORE_BYTES: usize = 64 * 1024 * 1024;
 const BUSY_WAIT: Duration = Duration::from_millis(3000);
 const STORE_DEADLINE: Duration = Duration::from_millis(3500);
 /// `services.snapshot_models_dir()`'s error for a missing folder.
@@ -139,8 +141,11 @@ pub struct ModelList {
     database: Option<PathBuf>,
     host_path: Option<String>,
     disk: DiskUsage,
-    /// One file part at a time: the list may read many headers.
+    /// One list file part (or badge read) at a time: the list may read many headers. A hung
+    /// filesystem read holds its slot and the request's admission permit until it returns.
     reads: Arc<tokio::sync::Semaphore>,
+    /// The overview's own slot, so a list stuck on a hung read never holds the overview up.
+    counts: Arc<tokio::sync::Semaphore>,
     shapes: Arc<Mutex<HashMap<ShapeKey, String>>>,
 }
 
@@ -153,6 +158,7 @@ impl ModelList {
             host_path: settings.host_path,
             disk,
             reads: Arc::new(tokio::sync::Semaphore::new(1)),
+            counts: Arc::new(tokio::sync::Semaphore::new(1)),
             shapes: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -170,15 +176,14 @@ impl ModelList {
         }
     }
 
-    /// Runs `work` on a blocking thread after taking the one read slot (waiting counts against
-    /// the file part's deadline). The slot and the request's admission live as long as the work.
+    /// Runs `work` on a blocking thread after taking `slot` (waiting counts against the file
+    /// part's deadline). The slot and the request's admission live as long as the work.
     async fn blocking<T: Send + 'static>(
-        &self,
+        slot: &Arc<tokio::sync::Semaphore>,
         work: impl FnOnce(Instant) -> Result<T, Stop> + Send + 'static,
     ) -> Result<T, Outcome> {
         let deadline = Instant::now() + DEADLINE;
-        let Ok(Ok(permit)) =
-            tokio::time::timeout(DEADLINE, self.reads.clone().acquire_owned()).await
+        let Ok(Ok(permit)) = tokio::time::timeout(DEADLINE, slot.clone().acquire_owned()).await
         else {
             return Err(Outcome::Refused);
         };
@@ -198,9 +203,10 @@ impl ModelList {
         };
         let (models, ini, shapes) = (self.models.clone(), self.ini.clone(), self.shapes.clone());
         let disk = self.disk.clone();
-        let listed = match self
-            .blocking(move |deadline| list(&models, &ini, &disk, deadline, Root::new, &shapes))
-            .await
+        let listed = match Self::blocking(&self.reads, move |deadline| {
+            list(&models, &ini, &disk, deadline, Root::new, &shapes)
+        })
+        .await
         {
             Ok(listed) => listed,
             Err(outcome) => return outcome,
@@ -211,9 +217,10 @@ impl ModelList {
         };
         // The store is read once the child has answered: its startup (`db.init()`) has run.
         let keys = listed.keys.clone();
-        let badges = match self
-            .blocking(move |_| badges(&database, &keys, Instant::now() + STORE_DEADLINE))
-            .await
+        let badges = match Self::blocking(&self.reads, move |_| {
+            badges(&database, &keys, Instant::now() + STORE_DEADLINE)
+        })
+        .await
         {
             Ok(badges) => badges,
             Err(outcome) => return outcome,
@@ -228,9 +235,10 @@ impl ModelList {
             return Outcome::Failed;
         };
         let (models, ini, disk) = (self.models.clone(), self.ini.clone(), self.disk.clone());
-        let counted = match self
-            .blocking(move |_| count(&models, &ini, &host_path, &disk, Root::new))
-            .await
+        let counted = match Self::blocking(&self.counts, move |_| {
+            count(&models, &ini, &host_path, &disk, Root::new)
+        })
+        .await
         {
             Ok(counted) => counted,
             Err(outcome) => return outcome,
@@ -534,7 +542,11 @@ pub(crate) fn badges(
     deadline: Instant,
 ) -> Result<HashMap<String, String>, Stop> {
     let db = open_store(database, deadline)?;
-    let rows = read_rows(&db, "SELECT * FROM model_badge ORDER BY alias, category")?;
+    let rows = read_rows(
+        &db,
+        "SELECT * FROM model_badge ORDER BY alias, category",
+        STORE_BYTES,
+    )?;
     // db.badges_by_alias(): rows grouped by alias, in query order. Only a text alias can be
     // looked up by a section name.
     let mut by_alias: HashMap<&str, Vec<&Row>> = HashMap::new();
@@ -595,7 +607,7 @@ fn open_store(database: &Path, deadline: Instant) -> Result<Connection, Stop> {
 }
 
 /// `dict(r) for r in cursor`; TEXT that is not UTF-8 raises in Python's sqlite3.
-fn read_rows(db: &Connection, sql: &str) -> Result<Vec<Row>, Stop> {
+fn read_rows(db: &Connection, sql: &str, mut budget: usize) -> Result<Vec<Row>, Stop> {
     let mut statement = db.prepare(sql).map_err(|_| Stop::Failed)?;
     let names: Vec<String> = statement
         .column_names()
@@ -615,9 +627,13 @@ fn read_rows(db: &Connection, sql: &str) -> Result<Vec<Row>, Stop> {
                 ValueRef::Integer(n) => Val::Int(n),
                 ValueRef::Real(f) => Val::Real(f),
                 ValueRef::Text(t) => {
+                    budget = budget.checked_sub(t.len()).ok_or(Stop::Failed)?;
                     Val::Text(std::str::from_utf8(t).map_err(|_| Stop::Failed)?.to_owned())
                 }
-                ValueRef::Blob(b) => Val::Blob(b.to_vec()),
+                ValueRef::Blob(b) => {
+                    budget = budget.checked_sub(b.len()).ok_or(Stop::Failed)?;
+                    Val::Blob(b.to_vec())
+                }
             };
             fields.push((name.clone(), value));
         }

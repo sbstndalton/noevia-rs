@@ -719,3 +719,55 @@ fn the_revision_is_the_sha256_of_the_file_bytes() {
     std::fs::create_dir(&ini).unwrap();
     assert!(matches!(revision(&ini), Err(Stop::Failed)));
 }
+
+/// A list stuck on a hung read holds only the list's slot: the overview has its own.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_held_list_slot_never_holds_up_the_overview() {
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir(&models).unwrap();
+    let list = ModelList::new(
+        Settings {
+            models: models.clone(),
+            ini: models.join("models.ini"),
+            data: Some(dir.path().join("data")),
+            host_path: Some(String::new()),
+        },
+        statvfs_usage(),
+    );
+    let _held = list.reads.clone().try_acquire_owned().unwrap();
+    let client = reqwest::Client::new();
+    // Nothing listens on port 9: the overview's file part runs, then its child call fails.
+    let child = || Child {
+        client: &client,
+        base: "http://127.0.0.1:9",
+        token: "",
+    };
+    let overview = tokio::time::timeout(Duration::from_secs(10), list.overview(child(), None))
+        .await
+        .unwrap();
+    assert!(matches!(overview, Outcome::Unavailable));
+    // The list itself still waits for its slot.
+    let waiting = tokio::time::timeout(Duration::from_millis(300), list.models(child())).await;
+    assert!(waiting.is_err());
+}
+
+#[test]
+fn the_badge_rows_are_bounded_in_total_bytes() {
+    let db = Connection::open_in_memory().unwrap();
+    db.execute_batch(
+        "CREATE TABLE t(a TEXT, b BLOB); \
+         INSERT INTO t VALUES('abcd', x'0102'); INSERT INTO t VALUES('ef', NULL);",
+    )
+    .unwrap();
+    // 4 + 2 + 2 bytes of text and blob in all.
+    assert_eq!(
+        read_rows(&db, "SELECT * FROM t", 8).ok().map(|r| r.len()),
+        Some(2)
+    );
+    assert!(matches!(
+        read_rows(&db, "SELECT * FROM t", 7),
+        Err(Stop::Failed)
+    ));
+}
