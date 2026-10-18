@@ -172,7 +172,8 @@ pub(crate) fn state(
     )))
 }
 
-#[cfg(test)]
+// Gated like the other slices' bin tests: the diagnosis mutation check pins the bin's test count.
+#[cfg(all(test, feature = "native-model-list"))]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
     use super::*;

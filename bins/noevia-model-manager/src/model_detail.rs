@@ -266,9 +266,12 @@ pub(crate) struct Snapshot {
     pub(crate) entries: Vec<Entry>,
     /// noevia#1318: what the model list also needs from the same reads: every file of the walk
     /// (`utils.iter_gguf` order), the files some section configures (`ini.sections_by_file()`'s
-    /// keys) and the section names (`ini.section_names()`).
+    /// keys) and the section names (`ini.section_names()`). Only the list reads them.
+    #[cfg_attr(not(feature = "native-model-list"), allow(dead_code))]
     pub(crate) found: Vec<Found>,
+    #[cfg_attr(not(feature = "native-model-list"), allow(dead_code))]
     pub(crate) claimed: std::collections::HashSet<String>,
+    #[cfg_attr(not(feature = "native-model-list"), allow(dead_code))]
     pub(crate) names: Vec<String>,
 }
 
