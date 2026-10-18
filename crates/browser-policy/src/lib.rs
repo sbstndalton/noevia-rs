@@ -35,9 +35,8 @@
 //! - Requests over [`MAX_INPUT_BYTES`] (`too_large`), and requests that would need more than their
 //!   work budget (`too_large`), which the host treats as a fault.
 //!
-//! URLs are parsed with the `url` crate (the WHATWG URL Standard, like Node's). Where the two
-//! parsers may differ, the crate refuses inputs outside its qualified subset and the host fails
-//! closed.
+//! URLs are parsed with the `url` crate (the WHATWG URL Standard, like Node's). The host applies
+//! the crate's navigation and substitution answers; an unknown, refusal or fault fails closed.
 //!
 //! Linear in the input: every loop is charged to a work budget proportional to the request size
 //! ([`WORK_PER_BYTE`]), recursion is one level (a key press judged as a click), no panics.
