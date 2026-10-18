@@ -395,6 +395,31 @@ impl BackendStats {
         Some(Inventory { gpu, cpu, ram })
     }
 
+    /// The backends `helpers._preset_estimates_with_reason` sizes against: every `_fit_backends()`
+    /// entry of `inv`, its VRAM as there, with `hw.gpu_count_for`, `hw.card_vram_gb_for` and
+    /// `hw.host_ram_gb()`; `vendor` is always `cuda` there and `baseline_args` is unused (empty).
+    pub fn estimate_descriptors(&self, inv: &Inventory) -> Vec<Descriptor> {
+        let ram = host_ram_gb(&self.config.meminfo);
+        inv.gpu
+            .iter()
+            .map(|(n, vram)| {
+                let stats = self.cached(n);
+                let gpu = stats.as_ref().filter(|s| s.ok).and_then(|s| s.gpu.as_ref());
+                Descriptor {
+                    name: n.clone(),
+                    vendor: "cuda",
+                    vram_gb: *vram,
+                    gpu_count: gpu.map(|g| g.gpu_count).filter(|c| *c > 0).unwrap_or(1),
+                    card_vram_gb: gpu
+                        .map(|g| g.cards.iter().map(|c| c.vram_total_gb).collect())
+                        .unwrap_or_default(),
+                    host_ram_gb: ram,
+                    baseline_args: Vec::new(),
+                }
+            })
+            .collect()
+    }
+
     /// `helpers._backend_list()` without `baseline`; `Err(Refused)` for a container command this
     /// side does not render.
     pub async fn descriptors(&self) -> Result<Vec<Descriptor>, Fail> {
@@ -452,4 +477,4 @@ impl BackendStats {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

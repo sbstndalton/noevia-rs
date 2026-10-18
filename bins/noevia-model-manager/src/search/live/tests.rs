@@ -128,6 +128,7 @@ async fn the_search_runtime_is_the_childs() {
             models: models.clone(),
             ini: models.join("models.ini"),
             trusted: load_trusted(&trusted_file).unwrap(),
+            estimates_cache_cap_mib: None,
         });
         let source = search.live.get().unwrap();
         for _ in 0..2 {
@@ -162,6 +163,7 @@ async fn before_the_child_has_answered_the_runtime_is_unavailable() {
         models: dir.path().join("models"),
         ini: dir.path().join("models.ini"),
         trusted: Trusted::default(),
+        estimates_cache_cap_mib: None,
     });
     let source = search.live.get().unwrap();
     assert!(matches!(

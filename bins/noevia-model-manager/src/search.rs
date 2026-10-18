@@ -30,6 +30,8 @@
 //! patterns are applied, hub fields of odd JSON types, numbers past 64 bits, a page past the
 //! `hub_page` bounds); a repository id that is not Hub-shaped is not sent to the Hub.
 mod discover;
+#[cfg(all(feature = "native-backends", feature = "native-section-autoconfig"))]
+mod estimates;
 #[cfg(feature = "native-backends")]
 pub mod live;
 mod net;
@@ -1212,7 +1214,10 @@ impl Search {
         let live = if groups.is_empty() {
             Vec::new()
         } else {
-            self.repo_runtime(&groups, summary.as_deref()).await?
+            match self.native_repo_runtime(&groups, summary.as_deref()).await {
+                Some(live) => live,
+                None => self.repo_runtime(&groups, summary.as_deref()).await?,
+            }
         };
         let mut out = format!("{{\"repo\":{},\"groups\":[", json_string(repo));
         for (i, (group, extra)) in groups.iter().zip(live).enumerate() {
@@ -1337,6 +1342,56 @@ impl Search {
         let summary: Arc<str> = Arc::from(summary);
         self.store_header(epoch, key, Some(summary.clone()), Gate::Lift(repo));
         Ok((Some(summary), None))
+    }
+
+    /// noevia#1318 step 3a: the groups' fit chips and estimates natively (see `estimates`);
+    /// `None` keeps the child's answer.
+    #[cfg(all(feature = "native-backends", feature = "native-section-autoconfig"))]
+    async fn native_repo_runtime(
+        &self,
+        groups: &[Group],
+        summary: Option<&str>,
+    ) -> Option<Vec<Live>> {
+        let source = self.live.get()?;
+        let cache_cap = source.estimates_cache_cap_mib?;
+        let mut asks = Vec::with_capacity(groups.len());
+        for g in groups {
+            asks.push(estimates::Ask {
+                bytes: u128::try_from(g.bytes).ok()?,
+                estimate: summary.is_some() && g.is_gguf && !g.projector,
+            });
+        }
+        let mmproj = groups
+            .iter()
+            .filter(|g| g.projector)
+            .map(|g| g.bytes)
+            .min()
+            .map(u128::try_from)
+            .transpose()
+            .ok()?;
+        let summary = match summary {
+            Some(text) => Some(model_files::json::parse(text).ok()?),
+            None => None,
+        };
+        let inventory = source.stats.inventory().await?;
+        let descriptors = source.stats.estimate_descriptors(&inventory);
+        self.blocking(move || {
+            estimates::groups(
+                &asks,
+                mmproj,
+                summary.as_ref(),
+                &inventory,
+                &descriptors,
+                cache_cap,
+            )
+        })
+        .await
+        .ok()?
+    }
+
+    #[cfg(not(all(feature = "native-backends", feature = "native-section-autoconfig")))]
+    async fn native_repo_runtime(&self, _: &[Group], _: Option<&str>) -> Option<Vec<Live>> {
+        None
     }
 
     /// The child's fit chips and estimates for the groups.

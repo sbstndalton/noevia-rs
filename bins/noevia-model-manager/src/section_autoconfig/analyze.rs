@@ -26,10 +26,20 @@ const SPEC_SECTION_KEYS: [&str; 6] = [
 /// `SPEC_PROFILES` as `_plain` writes them (a fixed list; the differential checks it).
 const SPEC_PROFILES: &str = r#"[{"key":"off","label":"Off","icon":"x","blurb":"No speculation. Always correct, never slower than the model itself.","spec_type":"","needs_head":false,"knobs":{}},{"key":"balanced","label":"Balanced","icon":"gauge","blurb":"Mixed use. Barely above llama.cpp's own defaults, with a mild confidence gate.","spec_type":"draft-mtp","needs_head":true,"knobs":{"spec-draft-n-max":"4","spec-draft-p-min":"0.25"}},{"key":"coding","label":"Coding","icon":"terminal","blurb":"Deep drafts, loose gate. Code repeats itself, so guesses land and guessing further pays.","spec_type":"draft-mtp,ngram-simple","needs_head":true,"knobs":{"spec-draft-n-max":"8","spec-draft-n-min":"1","spec-draft-p-min":"0.05"}},{"key":"writing","label":"Creative writing","icon":"pencil","blurb":"Shallow drafts, tight gate. Prose is unpredictable, so bad bets cost more than good ones pay.","spec_type":"draft-mtp","needs_head":true,"knobs":{"spec-draft-n-max":"2","spec-draft-p-min":"0.60"}},{"key":"ngram","label":"N-gram only","icon":"hash","blurb":"No draft head required. Replays literal repeats from the prompt: strong on edits and refactors, inert on new prose.","spec_type":"ngram-simple","needs_head":false,"knobs":{}}]"#;
 
-/// What the route hands `analyze()`.
-pub(super) struct Inputs<'a> {
+/// `models_dir`, when `analyze()` reads the files beside the model (`models_dir is not None and
+/// bool(section_name)`).
+pub(crate) struct Files<'a> {
+    /// `str(settings.models_dir)`.
+    pub models_text: &'a str,
+    pub root: &'a Root,
+    pub base: &'a Path,
+}
+
+/// What a caller hands `analyze()`.
+pub(crate) struct Inputs<'a> {
     pub name: &'a str,
-    pub summary: &'a gguf::Json,
+    /// The GGUF summary as the dict Python holds.
+    pub summary: &'a Value,
     pub file_size: u128,
     /// `budget_backends(_backend_list(), budget_gib)`.
     pub backends: Value,
@@ -46,17 +56,17 @@ pub(super) struct Inputs<'a> {
     pub mode: &'a str,
     /// `settings.cache_ram_limits[0]`.
     pub cache_ram_cap_mib: i64,
-    /// `str(settings.models_dir)`.
-    pub models_text: &'a str,
-    pub root: &'a Root,
-    pub base: &'a Path,
+    /// `None` is `models_dir=None` (the search estimates): no file beside the model is read.
+    pub files: Option<Files<'a>>,
+    /// `mmproj_gb_override`.
+    pub mmproj_gb_override: Option<f64>,
 }
 
 pub(super) fn s(text: &str) -> Value {
     Value::Str(text.to_owned())
 }
 
-pub(super) fn int(n: i128) -> Value {
+pub(crate) fn int(n: i128) -> Value {
     Value::Int(
         model_files::BigInt::from_ascii_decimal(&n.to_string())
             .unwrap_or_else(model_files::BigInt::zero),
@@ -235,7 +245,7 @@ fn set(pairs: &mut Vec<(String, Value)>, key: &str, value: Value) {
 
 /// `Path(str(p).replace("/models", str(models_dir), 1)).stat().st_size / 1024**3`, 0.0 when it
 /// does not exist. Only a path inside the models folder is read; any other refuses.
-fn stat_gb(inputs: &Inputs<'_>, path: &str) -> Result<f64, Stop> {
+fn stat_gb(inputs: &Files<'_>, path: &str) -> Result<f64, Stop> {
     if path.contains('\0') {
         return Err(Stop::Failed); // pathlib raises ValueError: unhandled
     }
@@ -263,11 +273,11 @@ fn pick(call: Value) -> Result<Answer, Stop> {
 }
 
 /// `autoconfig._find_mmproj(models_dir, section, subdir)`.
-fn find_mmproj(inputs: &Inputs<'_>) -> Result<String, Stop> {
+fn find_mmproj(files: &Files<'_>, inputs: &Inputs<'_>) -> Result<String, Stop> {
     let call = if inputs.model_subdir.is_empty() {
         obj(vec![
             ("rule", s("mmproj_flat")),
-            ("listing", rule_listing(inputs.root, inputs.base, ".")?),
+            ("listing", rule_listing(files.root, files.base, ".")?),
             ("section", s(inputs.name)),
         ])
     } else {
@@ -275,7 +285,7 @@ fn find_mmproj(inputs: &Inputs<'_>) -> Result<String, Stop> {
             ("rule", s("mmproj_subdir")),
             (
                 "listing",
-                rule_listing(inputs.root, inputs.base, inputs.model_subdir)?,
+                rule_listing(files.root, files.base, inputs.model_subdir)?,
             ),
             ("subdir", s(inputs.model_subdir)),
         ])
@@ -542,11 +552,11 @@ fn items_obj(current: &ini::Items) -> Value {
 
 /// `autoconfig.analyze(...)` for the route: the recommendation as `_plain` writes it.
 #[allow(clippy::too_many_lines)]
-pub(super) fn analyze(inputs: &Inputs<'_>) -> Result<Value, Stop> {
+pub(crate) fn analyze(inputs: &Inputs<'_>) -> Result<Value, Stop> {
     let n_sessions = inputs.n_sessions.clamp(1, 8);
     let summary = inputs.summary;
-    let model = summary.get("model").map_or(Value::Null, from_summary);
-    let arch = summary.get("arch").map_or(Value::Null, from_summary);
+    let model = summary.get("model").cloned().unwrap_or(Value::Null);
+    let arch = summary.get("arch").cloned().unwrap_or(Value::Null);
     let file_size = model_files::BigInt::from_ascii_decimal(&inputs.file_size.to_string())
         .ok_or(Stop::Refused)?;
     let prep_in = obj(vec![
@@ -575,49 +585,58 @@ pub(super) fn analyze(inputs: &Inputs<'_>) -> Result<Value, Stop> {
         })
     };
     // The projector that will actually be loaded: the saved one, else the one beside the model.
-    let mm_saved = get("mmproj").unwrap_or_default().to_owned();
+    let files = inputs.files.as_ref();
+    let mm_saved = match files {
+        Some(_) => get("mmproj").unwrap_or_default().to_owned(),
+        None => String::new(),
+    };
     let mut mm_found = String::new();
-    let mm_path = if ini::strip(&mm_saved).is_empty() {
-        mm_found = find_mmproj(inputs)?;
-        mm_found.clone()
-    } else {
-        ini::strip(&mm_saved).to_owned()
-    };
-    let mm_gb = if mm_path.is_empty() {
-        0.0
-    } else {
-        stat_gb(inputs, &mm_path)?
-    };
+    let mut mm_gb = 0.0;
+    if let Some(files) = files {
+        let mm_path = if ini::strip(&mm_saved).is_empty() {
+            mm_found = find_mmproj(files, inputs)?;
+            mm_found.clone()
+        } else {
+            ini::strip(&mm_saved).to_owned()
+        };
+        if !mm_path.is_empty() {
+            mm_gb = stat_gb(files, &mm_path)?;
+        }
+    }
     let Answer::Projector {
         mmproj_rel,
         mmproj_gb,
         available,
     } = pick(obj(vec![
         ("rule", s("projector")),
-        ("files", Value::Bool(true)),
+        ("files", Value::Bool(files.is_some())),
         ("current", s(&mm_saved)),
         ("found", s(&mm_found)),
         ("stat_gb", Value::Float(mm_gb)),
         ("vision", Value::Bool(inputs.vision)),
-        ("override", Value::Null),
+        (
+            "override",
+            inputs.mmproj_gb_override.map_or(Value::Null, Value::Float),
+        ),
     ]))?
     else {
         return Err(Stop::Refused);
     };
     // The draft head: the saved one, else the smallest beside the model.
     let mut mtp_found = String::new();
-    let saved_head = ini::strip(get("spec-draft-model").unwrap_or_default()).to_owned();
-    let mtp_rel = if saved_head.is_empty() {
-        mtp_found = find_mtp(inputs.root, inputs.base, inputs.name, inputs.model_subdir)?;
-        mtp_found.clone()
-    } else {
-        saved_head
-    };
-    let mtp_gb = if mtp_rel.is_empty() {
-        0.0
-    } else {
-        stat_gb(inputs, &mtp_rel)?
-    };
+    let mut mtp_gb = 0.0;
+    if let Some(files) = files {
+        let saved_head = ini::strip(get("spec-draft-model").unwrap_or_default()).to_owned();
+        let mtp_rel = if saved_head.is_empty() {
+            mtp_found = find_mtp(files.root, files.base, inputs.name, inputs.model_subdir)?;
+            mtp_found.clone()
+        } else {
+            saved_head
+        };
+        if !mtp_rel.is_empty() {
+            mtp_gb = stat_gb(files, &mtp_rel)?;
+        }
+    }
     let has_mmproj = !mmproj_rel.is_empty();
     let projector = obj(vec![
         ("has_mmproj", Value::Bool(has_mmproj)),
@@ -765,7 +784,7 @@ fn spec(
         ),
         ("spec_profile", s(inputs.spec_profile)),
         ("mode", s(inputs.mode)),
-        ("files", Value::Bool(true)),
+        ("files", Value::Bool(inputs.files.is_some())),
         ("found_mtp", s(&st.mtp_found)),
         (
             "nextn",
@@ -837,10 +856,11 @@ fn finish(inputs: &Inputs<'_>, st: Planned) -> Result<Value, Stop> {
     let sized = matches!(field(plan, "sized")?, Value::Bool(true));
     let rec_ctx = field(plan, if sized { "ctx" } else { "initial_ctx" })?.clone();
     let rec_ctx_n = int_of(&rec_ctx)?;
-    let chat_template = truthy(summary.get("chat_template"));
+    let chat_template = summary.get("chat_template").is_some_and(Value::truthy);
     let features = summary
         .get("chat_template_features")
-        .map_or(Value::Null, from_summary);
+        .cloned()
+        .unwrap_or(Value::Null);
     let plan_part = Value::Obj(
         ["initial_ctx", "sized", "ctx", "ngl", "fit", "cache_ram"]
             .iter()
@@ -916,7 +936,7 @@ fn finish(inputs: &Inputs<'_>, st: Planned) -> Result<Value, Stop> {
         ("model_rel", s(inputs.model_rel)),
         (
             "general",
-            summary.get("general").map_or(Value::Null, from_summary),
+            summary.get("general").cloned().unwrap_or(Value::Null),
         ),
     ]);
     let mut work = Work::new(model_autoconfig::MAX_PREP_WORK);
@@ -949,8 +969,23 @@ fn finish(inputs: &Inputs<'_>, st: Planned) -> Result<Value, Stop> {
         ("current_preset", s(&report.current_preset)),
         ("has_unsaved", Value::Bool(!report.current_diff.is_empty())),
         ("active_preset", field(plan, "active_preset")?.clone()),
-        ("spec_profiles", back(SPEC_PROFILES)?),
-        ("active_spec_profile", s(&spec.key)),
+        // `if section_name`: the search estimates name no section.
+        (
+            "spec_profiles",
+            if inputs.name.is_empty() {
+                Value::Arr(Vec::new())
+            } else {
+                back(SPEC_PROFILES)?
+            },
+        ),
+        (
+            "active_spec_profile",
+            s(if inputs.name.is_empty() {
+                ""
+            } else {
+                &spec.key
+            }),
+        ),
         ("current_spec_profile", s(spec.saved)),
         ("spec_head_rel", s(&spec.head)),
         ("vision_available", s(&st.available)),

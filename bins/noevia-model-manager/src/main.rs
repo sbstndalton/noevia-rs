@@ -1014,6 +1014,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 models: roots.models.clone().into(),
                 ini: roots.ini.clone().into(),
                 trusted,
+                // noevia#1318 step 3a: the repository estimates read the native autoconfig's cap.
+                #[cfg(feature = "native-section-autoconfig")]
+                estimates_cache_cap_mib: section_autoconfig.settings.as_ref().map(|s| s.cache_cap),
+                #[cfg(not(feature = "native-section-autoconfig"))]
+                estimates_cache_cap_mib: None,
             }),
             Err(reason) => eprintln!(
                 "native-search: WARNING {reason} ({path}); the search runtime (budget, downloaded \

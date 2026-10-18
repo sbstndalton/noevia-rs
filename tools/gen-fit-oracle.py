@@ -23,6 +23,11 @@ clock pinned. The native reads now produce those bytes themselves.
 Recorded per search case (step 1c): the answer of `main._search_runtime` (the GPU budget, the
 downloaded files still on disk, and the trusted publisher sets, which the oracle replaces with
 synthetic ones: the real sets are deployment data and never enter this repository).
+
+Recorded per repository case (step 3a): the answer of `main._search_repo_runtime` (each group's
+fit chips and, for a model file with a header summary, `_preset_estimates_with_reason` and the
+native context) for synthetic GGUF headers summarised by the app's own `gguf_meta`, with the
+inventory, the estimate backends and the cache-ram cap it read.
 """
 from __future__ import annotations
 
@@ -42,6 +47,9 @@ HERE = Path(__file__).resolve().parent
 _spec = importlib.util.spec_from_file_location("backends_oracle", HERE / "gen-backends-oracle.py")
 bo = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bo)
+_spec = importlib.util.spec_from_file_location("section_oracle", HERE / "gen-section-autoconfig-oracle.py")
+so = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(so)
 
 GIB = 1024 ** 3
 container, image, world, cid, iid = bo.container, bo.image, bo.world, bo.cid, bo.iid
@@ -236,6 +244,46 @@ def search_cases():
     ]
 
 
+def repo_cases():
+    """(id, env, meminfo, docker, cache, [(header kwargs or None, groups, mmproj bytes)])."""
+    one = world([container(60, "llama-cuda", 60)], [image(60, [CUDA])])
+    two = world([container(61, "llama-cuda", 61), container(62, "llama-igpu", 62)],
+                [image(61, [CUDA]), image(62, [VULKAN])])
+    plain = {"layers": 32, "ctx": 32768}
+    moe = {"layers": 48, "ctx": 262144, "embed": 2048, "heads": 32, "kv": 4,
+           "extra": {"synth.expert_count": ["u32", 128], "synth.expert_used_count": ["u32", 8]}}
+    return [
+        # A model that fits, its projector beside it (the smallest one is the override), a shard
+        # and a group without an estimate.
+        {"id": "fits", "env": {}, "meminfo": meminfo(gib_kib(64)), "docker": one,
+         "cache": {"llama-cuda": ok(gpu(24.0, vendor="nvidia", cards=[card(0, 24.0)]))},
+         "asks": [(plain, [(4 * GIB, True), (GIB, False), (GIB // 2, False), (9 * GIB, True)], GIB // 2),
+                  (plain, [(4 * GIB, True)], None), (None, [(4 * GIB, False), (GIB, False)], None)]},
+        # Two cards, a long-context mixture of experts that must offload at its native context.
+        {"id": "two-cards-moe", "env": {"HOST_RAM_RESERVE_GB": "8"}, "meminfo": meminfo(gib_kib(128)),
+         "docker": two,
+         "cache": {"llama-cuda": ok(gpu(32, vendor="nvidia", count=2, cards=[card(0, 16), card(1, 16.0)])),
+                   "llama-igpu": ok(gpu(15.55))},
+         "asks": [(moe, [(20 * GIB, True), (60 * GIB, True), (GIB, False)], GIB),
+                  (moe, [(200 * GIB, True)], None)]},
+        # No GPU backend: only a CPU one, so the reason says nothing can be sized.
+        {"id": "cpu-only", "env": {}, "meminfo": meminfo(gib_kib(64)),
+         "docker": world([container(63, "llama-cpu", 63)], [image(63, [CPU])]), "cache": {"llama-cpu": ok(None)},
+         "asks": [(plain, [(4 * GIB, True)], None)]},
+        # A declared backend without Docker; an implausible block count; a header without a KV
+        # shape; a file too large for VRAM plus RAM.
+        {"id": "refusals", "env": {"LLAMA_CONTAINERS": "llama-gone", "GPU_VRAM": "llama-gone:12"},
+         "meminfo": meminfo(gib_kib(16)), "docker": None, "cache": {},
+         "asks": [({"layers": 5000}, [(4 * GIB, True)], None), ({"kv": None, "heads": 0}, [(4 * GIB, True)], None),
+                  (plain, [(400 * GIB, True)], None), (plain, [(3 * GIB, True)], 3 * GIB)]},
+        # A small model at a small native context: one answer, the duplicate chips collapse.
+        {"id": "collapse", "env": {}, "meminfo": meminfo(gib_kib(64)), "docker": one,
+         "cache": {"llama-cuda": ok(gpu(48.0, vendor="nvidia", cards=[card(0, 48.0)]))},
+         "asks": [({"layers": 16, "ctx": 4096, "embed": 1024, "heads": 8, "kv": 8}, [(GIB, True)], None),
+                  ({"layers": 16, "ctx": 4000, "embed": 1024, "heads": 8, "kv": 8}, [(GIB, True)], None)]},
+    ]
+
+
 TRUST_QUANTISERS = ["Synthetic-Mixed", "synthetic-quant-a"]
 TRUST_LABS = ["synthetic-lab-a"]
 TRUST_OWNERS = ["synthetic-quant-a", "Synthetic-Quant-A", "synthetic-mixed", "Synthetic-Mixed",
@@ -411,6 +459,39 @@ def main() -> None:
                            "rows": [list(row) for row in case["rows"]],
                            "trusted": {"quantisers": SEARCH_QUANTISERS, "labs": SEARCH_LABS},
                            "status": r.status_code, "body": r.text})
+    from app import gguf_meta
+    repo_out = []
+    for case in repo_cases():
+        env = case["env"]
+        settings.llama_containers = env.get("LLAMA_CONTAINERS", "")
+        settings.gpu_vram = env.get("GPU_VRAM", "")
+        settings.host_ram_reserve_gb = float(env.get("HOST_RAM_RESERVE_GB", "32"))
+        mem["text"] = case["meminfo"]
+        w = case["docker"]
+        bo.STATE["world"] = w
+        os.environ["DOCKER_HOST"] = f"unix://{sock_path}" if w is not None else f"unix://{root}/absent.sock"
+        hw.load_pushed(case["cache"])
+        fit_backends = services._fit_backends()
+        backends = [{"name": n, "vram": repr(v), "gpu_count": hw.gpu_count_for(n),
+                     "cards": json.dumps(hw.card_vram_gb_for(n))} for n, v in fit_backends.items()]
+        asks = []
+        for header, groups, mm in case["asks"]:
+            summary = None
+            if header is not None:
+                summary = gguf_meta.summarize_bytes(so.build_gguf(so.model(**header)["gguf"]))
+            body = {"groups": [{"bytes": b, "estimate": e and summary is not None} for b, e in groups],
+                    "mmprojBytes": mm, "summary": summary}
+            r = client.post("/api/v1/internal/search-repo-runtime", content=json.dumps(body))
+            asks.append({"groups": [[str(b), e and summary is not None] for b, e in groups],
+                         "mmproj": None if mm is None else str(mm),
+                         "summary": None if summary is None else json.dumps(summary, ensure_ascii=False),
+                         "status": r.status_code, "body": r.text})
+        repo_out.append({"id": case["id"], "env": env, "meminfo": case["meminfo"], "docker": w,
+                         "cache": json.dumps(case["cache"], ensure_ascii=False),
+                         "cache_cap": settings.cache_ram_limits[0],
+                         "inventory": {"gpu": [[k, repr(v)] for k, v in fit_backends.items()],
+                                       "cpu": services._cpu_backends(), "ram": repr(hw.usable_ram_gb())},
+                         "backends": backends, "host_ram": repr(hw.host_ram_gb()), "asks": asks})
     discover.TRUSTED_LABS = set(TRUST_LABS)
     trust = {"quantisers": TRUST_QUANTISERS, "labs": TRUST_LABS, "last_modified": TRUST_MODIFIED, "owners": {
         owner: discover.judge(discover.Candidate(id=f"{owner}/synthetic-repo", owner=owner,
@@ -421,9 +502,9 @@ def main() -> None:
     server.shutdown()
     shutil.rmtree(root, ignore_errors=True)
     sources = {name: hashlib.sha256((app_dir / name).read_bytes()).hexdigest()
-               for name in ("api.py", "config.py", "db.py", "discover.py", "helpers.py", "hw.py", "main.py",
-                            "services.py")}
-    json.dump({"sources": sources, "cases": out_cases, "runtime": runtime_out, "search": search_out, "trust": trust,
+               for name in ("api.py", "autoconfig.py", "autoconfig_core.py", "config.py", "db.py", "discover.py",
+                            "gguf_meta.py", "helpers.py", "hw.py", "main.py", "services.py")}
+    json.dump({"sources": sources, "cases": out_cases, "runtime": runtime_out, "search": search_out, "repo": repo_out, "trust": trust,
                "reserve_forms": reserve_forms}, sys.stdout, indent=1, sort_keys=True, ensure_ascii=True)
     sys.stdout.write("\n")
 
