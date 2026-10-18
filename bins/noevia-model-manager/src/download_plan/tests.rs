@@ -310,12 +310,15 @@ async fn native_start_validates_auth_then_downloads_synthetic_bytes_without_a_ch
     let hits = Arc::new(AtomicUsize::new(0));
     let seen = hits.clone();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}/qa.gguf", listener.local_addr().unwrap());
+    let url = format!(
+        "http://{}/qa.gguf;parameter",
+        listener.local_addr().unwrap()
+    );
     let server = tokio::spawn(async move {
         axum::serve(
             listener,
             axum::Router::new().route(
-                "/qa.gguf",
+                "/qa.gguf;parameter",
                 get(move || {
                     let seen = seen.clone();
                     async move {
@@ -356,29 +359,44 @@ async fn native_start_validates_auth_then_downloads_synthetic_bytes_without_a_ch
         )
         .unwrap();
     let mut state = crate::test_support::test_state("http://127.0.0.1:9");
-    state.downloads = Some(table);
+    state.downloads = Some(table.clone());
     state.token = "qa-auth".into();
     let app = crate::router(Arc::new(state));
     let body = serde_json::json!({"url":url}).to_string();
-    let request = |token: &str| {
+    let request = |token: &str, body: &str| {
         Request::builder()
             .method("POST")
             .uri("/api/v1/downloads")
             .header("content-type", "application/json")
             .header("x-model-loader-token", token)
-            .body(Body::from(body.clone()))
+            .body(Body::from(body.to_owned()))
             .unwrap()
     };
     assert_eq!(
         app.clone()
-            .oneshot(request("wrong"))
+            .oneshot(request("wrong", &body))
             .await
             .unwrap()
             .status(),
         401
     );
     assert_eq!(hits.load(Ordering::SeqCst), 0);
-    let response = app.oneshot(request("qa-auth")).await.unwrap();
+    for invalid in [
+        serde_json::json!({"url":"http://[broken]/x.gguf"}),
+        serde_json::json!({"url":"http://[broken]/x.gguf","filename":"qa.gguf"}),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(request("qa-auth", &invalid.to_string()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 500);
+        assert_eq!(table.list(), "{\"jobs\":[]}");
+        assert!(!dir.path().join("qa").exists());
+        assert!(!dir.path().join("x").exists());
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+    }
+    let response = app.oneshot(request("qa-auth", &body)).await.unwrap();
     assert_eq!(response.status(), 200);
     let response = response.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(
@@ -411,7 +429,8 @@ fn actual_python_url_success_responses_and_job_names_match() {
         let body = crate::prompts::parse_json(&c["body"].to_string()).unwrap();
         let url = model_autoconfig::pyval::py_strip(&text(&body, "url").unwrap()).to_owned();
         let total = c["jobs"][0]["total_bytes"].as_i64().unwrap();
-        let plan = url_plan(&body, &url, "", total).unwrap();
+        let mut plan = url_plan(&body, &url, "", total).unwrap();
+        finish_url_plan(&url, &mut plan).unwrap();
         assert_eq!(
             serde_json::from_str::<V>(&plan.body).unwrap(),
             c["response"],
@@ -476,4 +495,59 @@ async fn authenticated_hub_redirects_refuse_without_contacting_a_second_origin()
     assert_eq!(hits.load(Ordering::SeqCst), 0);
     first_server.abort();
     second_server.abort();
+}
+
+#[tokio::test]
+async fn actual_python_urlparse_failures_and_head_order_never_queue_or_create_files() {
+    let fx = fixture();
+    let dir = temporary();
+    for c in fx["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["body"]["url"].is_string())
+    {
+        let body = crate::prompts::parse_json(&c["body"].to_string()).unwrap();
+        let url = model_autoconfig::pyval::py_strip(&text(&body, "url").unwrap()).to_owned();
+        let mut calls = Vec::new();
+        let plan = url_plan_with_head(&body, &url, "", || {
+            calls.push(serde_json::json!(["head", url]));
+            let total = if c["head_status"].as_u64().unwrap() >= 400 {
+                Ok(0)
+            } else {
+                c["head_length"]
+                    .as_str()
+                    .unwrap_or("0")
+                    .parse::<i64>()
+                    .map_err(|_| Error::Failed)
+            };
+            std::future::ready(total)
+        })
+        .await;
+        assert_eq!(serde_json::json!(calls), c["calls"], "{}", c["id"]);
+        if c["status"] == 500 {
+            assert!(matches!(plan, Err(Error::Failed)), "{}", c["id"]);
+        } else {
+            let plan = validate(dir.path().to_str().unwrap(), plan.unwrap(), false).unwrap();
+            assert_eq!(
+                plan.status,
+                c["status"].as_u64().unwrap() as u16,
+                "{}",
+                c["id"]
+            );
+            assert_eq!(
+                serde_json::from_str::<V>(&plan.body).unwrap(),
+                c["response"],
+                "{}",
+                c["id"]
+            );
+            assert_eq!(jobs(&plan), c["jobs"], "{}", c["id"]);
+        }
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            1,
+            "{} created files",
+            c["id"]
+        );
+    }
 }

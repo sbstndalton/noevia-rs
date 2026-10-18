@@ -1634,6 +1634,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tower",
+ "unicode-normalization",
 ]
 
 [[package]]

@@ -197,14 +197,13 @@ impl Planner {
         })
     }
     async fn url(&self, body: &Value, url: &str, prefix: &str) -> Result<Plan, Error> {
-        let mut plan = url_plan(body, url, prefix, 0)?;
-        if let Some(job) = plan.jobs.first_mut() {
-            job.total_bytes = match reqwest::Url::parse(url) {
-                Ok(parsed) => self.head_size(parsed).await?,
-                Err(_) => 0,
-            };
-        }
-        Ok(plan)
+        url_plan_with_head(body, url, prefix, || async {
+            match reqwest::Url::parse(url) {
+                Ok(parsed) => self.head_size(parsed).await,
+                Err(_) => Ok(0),
+            }
+        })
+        .await
     }
     async fn head_size(&self, mut url: reqwest::Url) -> Result<i64, Error> {
         let result = tokio::time::timeout(HEAD_DEADLINE, async {
@@ -255,17 +254,12 @@ fn url_plan(body: &Value, url: &str, prefix: &str, total: i64) -> Result<Plan, E
         return Ok(message(400, "URL must start with http:// or https://"));
     }
     let explicit = model_autoconfig::pyval::py_strip(&text(body, "filename")?).to_owned();
-    let clean = url.replace(['\t', '\r', '\n'], "");
-    let rest = clean.split_once("://").map(|(_, r)| r).unwrap_or_default();
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    let path = rest
-        .get(authority.len()..)
-        .unwrap_or_default()
-        .split(['?', '#'])
-        .next()
-        .unwrap_or_default();
+    // Python short-circuits urlparse when an explicit filename is present. Its
+    // enqueue_url parses netloc only after HEAD; preserve that error ordering.
     let filename = if explicit.is_empty() {
-        crate::py_unquote(path.rsplit('/').next().unwrap_or_default())
+        let (_, path) = python_url_parts(url)?;
+        let last = path.rsplit('/').next().unwrap_or_default();
+        crate::py_unquote(last.split(';').next().unwrap_or_default())
     } else {
         explicit
     };
@@ -278,21 +272,110 @@ fn url_plan(body: &Value, url: &str, prefix: &str, total: i64) -> Result<Plan, E
             "That is an imatrix calibration file, not a model — it cannot be downloaded as one",
         ));
     }
-    let authority = if authority.is_empty() {
-        "url"
-    } else {
-        authority
-    };
     Ok(Plan {
         status: 200,
         body: serde_json::json!({"queued":[filename]}).to_string(),
         jobs: vec![Planned {
-            repo_id: authority.into(),
+            repo_id: String::new(),
             filename: format!("{prefix}{}/{filename}", stem(&filename)),
             url: url.into(),
             total_bytes: total,
         }],
     })
+}
+
+/// urllib.parse.urlparse's raw authority/path behavior, without WHATWG URL
+/// normalization. In particular netloc validation raises even though no hostname
+/// or port property is requested, and literal last-segment params are separate.
+fn python_url_parts(url: &str) -> Result<(String, String), Error> {
+    use unicode_normalization::UnicodeNormalization;
+    let clean = url.replace(['\t', '\r', '\n'], "");
+    let rest = clean.split_once("://").map(|(_, r)| r).unwrap_or_default();
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let path = rest
+        .get(authority.len()..)
+        .unwrap_or_default()
+        .split(['?', '#'])
+        .next()
+        .unwrap_or_default();
+    let open = authority.contains('[');
+    let close = authority.contains(']');
+    if open != close {
+        return Err(Error::Failed);
+    }
+    if open {
+        let host_port = authority.rsplit('@').next().unwrap_or_default();
+        let host = if let Some((before, bracketed)) = host_port.split_once('[') {
+            if !before.is_empty() {
+                return Err(Error::Failed);
+            }
+            let (host, after) = bracketed.split_once(']').ok_or(Error::Failed)?;
+            if !after.is_empty() && !after.starts_with(':') {
+                return Err(Error::Failed);
+            }
+            host
+        } else {
+            host_port.split(':').next().unwrap_or_default()
+        };
+        if let Some(future) = host.strip_prefix('v') {
+            let (version, address) = future.split_once('.').ok_or(Error::Failed)?;
+            if version.is_empty()
+                || !version.bytes().all(|b| b.is_ascii_hexdigit())
+                || address.is_empty()
+            {
+                return Err(Error::Failed);
+            }
+        } else {
+            let address = if let Some((address, scope)) = host.split_once('%') {
+                if scope.is_empty() || scope.contains('%') {
+                    return Err(Error::Failed);
+                }
+                address
+            } else {
+                host
+            };
+            address
+                .parse::<std::net::Ipv6Addr>()
+                .map_err(|_| Error::Failed)?;
+        }
+    }
+    if !authority.is_ascii() {
+        let stripped = authority.replace(['@', ':', '#', '?'], "");
+        let normalized: String = stripped.nfkc().collect();
+        if normalized != stripped && normalized.contains(['/', '?', '#', '@', ':']) {
+            return Err(Error::Failed);
+        }
+    }
+    Ok((authority.into(), path.into()))
+}
+fn finish_url_plan(url: &str, plan: &mut Plan) -> Result<(), Error> {
+    if let Some(job) = plan.jobs.first_mut() {
+        let (authority, _) = python_url_parts(url)?;
+        job.repo_id = if authority.is_empty() {
+            "url".into()
+        } else {
+            authority
+        };
+    }
+    Ok(())
+}
+
+async fn url_plan_with_head<F, Fut>(
+    body: &Value,
+    url: &str,
+    prefix: &str,
+    head: F,
+) -> Result<Plan, Error>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<i64, Error>>,
+{
+    let mut plan = url_plan(body, url, prefix, 0)?;
+    if let Some(job) = plan.jobs.first_mut() {
+        job.total_bytes = head().await?;
+    }
+    finish_url_plan(url, &mut plan)?;
+    Ok(plan)
 }
 
 fn repository_plan(

@@ -27,10 +27,16 @@ An abstract malformed Content-Length raises; malformed raw HTTP framing can fail
 HTTP client and retain size-zero behavior.
 
 The actual Python generator runs api.start_download/download_draft_head under real PLANNING,
-with synthetic listing/HEAD adapters and temporary SQLite/config/files. Its 26-case source-hashed
+with synthetic listing/HEAD adapters and temporary SQLite/config/files. Its 36-case source-hashed
 fixture covers response/job choices. Rust tests cover plans, target/destination validation,
 anonymous local HTTP, redirect limits, cancellation/auth and native routing with an unavailable
 child. Only three synthetic bytes transfer. No real models, Docker or external network are used.
 
 Rollback: select python and restart, retaining native download jobs. Keep the compatibility child
 installed until the separately qualified child-retirement step.
+
+URL parsing follows Python urlparse independently of the transport URL parser: literal semicolon
+parameters on the last path segment are removed before filename unquoting, while encoded `%3B`
+is preserved until unquoting. Raw netloc is retained for job metadata. Malformed bracketed hosts
+and NFKC delimiter ambiguities raise without queueing. Implicit filename parsing occurs before
+HEAD; explicit filenames defer URL netloc validation until after HEAD, matching Python order.
