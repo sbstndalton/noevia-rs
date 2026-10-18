@@ -784,6 +784,8 @@ jobs:
         run: |
           cargo test --locked -p noevia-model-manager --features native-logs --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+      - name: Prime actual mandatory-native worker drain and deadline proof
+        run: cargo test --locked -p noevia-model-manager --all-features --lib service::tests
       - name: Native prompt behavior mutations must fail assertions
         run: cargo run --locked -q -p noevia-model-manager --bin check-prompts-mutations
       - name: Actual public front, Node proxy and native prompt binary differential
