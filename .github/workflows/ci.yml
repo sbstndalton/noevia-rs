@@ -1728,7 +1728,7 @@ jobs:
           }
       - name: Actual child startup and native readiness barrier (#2044)
         run: |
-          STARTUP_TEST_PYTHON="$(command -v python3)" STARTUP_TEST_APP="$PWD/startup-ready-services/model-manager" cargo test --locked -p noevia-model-manager --features native-section-writes,native-model-list,native-backends,native-downloads --lib startup::
+          STARTUP_TEST_PYTHON="$(command -v python3)" STARTUP_TEST_APP="$PWD/startup-ready-services/model-manager" cargo test --locked -p noevia-model-manager --features native-section-writes,native-model-list,native-backends,native-downloads,native-search --lib startup::
           cargo test --locked -p noevia-model-manager --features native-section-writes,native-model-list,native-backends,native-downloads --test model_list --test section_writes
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-section-writes -- -D warnings

@@ -25,7 +25,7 @@
 //! `POST /api/v1/internal/search-repo-runtime`.
 //!
 //! The badge store's schema is created by the child's startup, so the first native answer waits
-//! once for the child's `GET /api/v1/health` (502 until it has answered, as when the runtime call
+//! once for the child's exact private startup-ready advertisement (502 until ready, as when the runtime call
 //! came first). A snapshot this side cannot follow exactly (a walk refusal, a models folder on a
 //! zero-sized filesystem, an unreadable `models.ini`) answers the native 503 where Python could
 //! have answered an empty set or its 500; a stored value Python would trip over answers the 500.
@@ -225,23 +225,14 @@ impl Search {
         let _ = self.live.set(source);
     }
 
-    /// The badge store exists once the child's startup is over (its health check answered).
+    /// Wait for the exact private advertisement after the child's schema startup.
     async fn child_started(&self) -> bool {
-        use std::sync::atomic::Ordering;
-        if self.started.load(Ordering::Acquire) {
-            return true;
-        }
-        let ok = self
-            .child(
-                self.legacy
-                    .get(format!("{}/api/v1/health", self.legacy_base)),
-            )
-            .await
-            .is_ok();
-        if ok {
-            self.started.store(true, Ordering::Release);
-        }
-        ok
+        crate::startup::ready(&self.legacy, &self.legacy_base, &self.token, &self.started).await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn startup_fixture_runtime(&self, source: &Source) -> Option<Vec<u8>> {
+        self.native_runtime(source).await.ok()
     }
 
     /// `main._search_runtime`'s body, byte for byte.

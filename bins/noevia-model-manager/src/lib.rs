@@ -57,7 +57,8 @@ pub mod settings_write;
 pub mod sqlite_read;
 #[cfg(any(
     feature = "native-section-writes",
-    all(feature = "native-model-list", feature = "native-backends")
+    all(feature = "native-model-list", feature = "native-backends"),
+    all(feature = "native-search", feature = "native-backends")
 ))]
 mod startup;
 pub mod telemetry_cmd;

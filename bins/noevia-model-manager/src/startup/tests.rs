@@ -115,8 +115,52 @@ async fn the_actual_child_startup_advertisement_satisfies_the_production_barrier
             .status(),
         401
     );
-    child.kill().await.unwrap();
-    child.wait().await.unwrap();
+    #[cfg(all(feature = "native-search", feature = "native-backends"))]
+    {
+        use crate::backend_stats::{BackendStats, Config};
+        let stats = BackendStats::new(
+            Config {
+                configured: Vec::new(),
+                gpu_vram: Vec::new(),
+                default_port: Some(8080),
+                drm_root: dir.path().join("drm"),
+                legacy_base: base.clone(),
+                token: token.into(),
+                meminfo: dir.path().join("meminfo"),
+                ram_reserve_gb: Some(2.0),
+            },
+            std::sync::Arc::new(crate::backend_stats::tests_world(None)),
+        )
+        .unwrap();
+        let source = crate::search::live::Source {
+            stats: std::sync::Arc::new(stats),
+            models: models.clone(),
+            ini: models.join("models.ini"),
+            trusted: crate::search::live::Trusted::default(),
+            estimates_cache_cap_mib: None,
+        };
+        let search = crate::search::Search::new(&dir.path().join("data"), &base, token).unwrap();
+        // This actual production search runtime used to ask public child health and fail.
+        let body = search
+            .startup_fixture_runtime(&source)
+            .await
+            .expect("native search runtime after actual schema startup");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+            serde_json::json!({
+                "budget":"0.0", "downloaded":{}, "quantisers":[], "labs":[]
+            })
+        );
+        // Success remains per Search instance, even when the companion is gone.
+        child.kill().await.unwrap();
+        child.wait().await.unwrap();
+        assert!(search.startup_fixture_runtime(&source).await.is_some());
+    }
+    #[cfg(not(all(feature = "native-search", feature = "native-backends")))]
+    {
+        child.kill().await.unwrap();
+        child.wait().await.unwrap();
+    }
 }
 
 #[tokio::test]
