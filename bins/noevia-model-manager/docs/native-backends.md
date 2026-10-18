@@ -95,11 +95,10 @@ are Python's. Differential-tested against the pinned services app by `tools/gen-
 meminfo, an impossible machine, and empty and mixed stores.
 
 Deliberate differences: Python rediscovers the containers up to four times for one chip list
-(and again for every model of a list); one inventory is read per answer here. HOST_RAM_RESERVE_GB
-is read as a strict subset of what pydantic reads: a plain decimal under its exact name. Other
-forms, including some pydantic accepts, leave the inventory unavailable (`None`), so a reader
-refuses rather than guessing the reserve. A case-variant key (for example
+(and again for every model of a list); this side makes one Docker discovery per answer.
+HOST_RAM_RESERVE_GB is read as a strict subset of what pydantic reads: a plain decimal under its
+exact name. Other forms, including some pydantic accepts, leave the inventory unavailable
+(`None`), so a reader refuses rather than guessing the reserve. A case-variant key (for example
 `host_ram_reserve_gb`), which the child's settings would also read, makes the chips refuse too.
 The oracle records pydantic's own reading of every accepted form, and the native value must
-equal it. A container
-command holding anything but strings refuses the descriptors.
+equal it. A container command holding anything but strings refuses the descriptors.
