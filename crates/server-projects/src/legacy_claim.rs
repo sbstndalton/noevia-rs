@@ -128,7 +128,8 @@ fn previous_owner(root: &Path, start: Instant) -> Result<Option<String>, ClaimEr
         return Err(ClaimError::Unsafe);
     }
     let mut scanned = 0usize;
-    for entry in fs::read_dir(users)? {
+    let mut ids = Vec::new();
+    for entry in fs::read_dir(&users)? {
         check_time(start)?;
         scanned += 1;
         if scanned > MAX_ENTRIES {
@@ -136,10 +137,16 @@ fn previous_owner(root: &Path, start: Instant) -> Result<Option<String>, ClaimEr
         }
         let entry = entry?;
         let id = entry.file_name().to_string_lossy().into_owned();
-        if !uuid(&id) {
-            continue;
+        if uuid(&id) {
+            ids.push(id);
         }
-        let d = entry.path();
+    }
+    // Node sorts readdirSync results before examining migration records. Preserve
+    // that first-owner choice independently of filesystem iteration order.
+    ids.sort();
+    for id in ids {
+        check_time(start)?;
+        let d = users.join(&id);
         let migration = d.join("migration.json");
         if let (Some(ds), Some(ms)) = (lstat(&d)?, lstat(&migration)?) {
             if ds.is_dir()
