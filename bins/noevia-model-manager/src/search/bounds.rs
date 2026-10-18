@@ -471,7 +471,7 @@ fn search_only() -> Search {
 fn the_listing_cache_is_cleared_past_400_entries_and_past_its_byte_bound() {
     let search = search_only();
     for i in 0..=401 {
-        search.remember(&format!("o/r{i}"), Arc::new(Vec::new()));
+        search.remember(Epoch(Some(0)), &format!("o/r{i}"), Arc::new(Vec::new()));
     }
     // 401 entries stand; the next insert finds more than 400 and clears first.
     assert_eq!(lock(&search.files).map.len(), 1);
@@ -480,7 +480,7 @@ fn the_listing_cache_is_cleared_past_400_entries_and_past_its_byte_bound() {
         path: "x".repeat(FILES_CACHE_BYTES + 1),
         size: 1,
     }]);
-    search.remember("o/huge", huge);
+    search.remember(Epoch(Some(0)), "o/huge", huge);
     assert!(!lock(&search.files).map.contains_key("o/huge"));
     // Two that do not fit together: the older goes.
     let big = |n: &str| {
@@ -493,9 +493,9 @@ fn the_listing_cache_is_cleared_past_400_entries_and_past_its_byte_bound() {
         )
     };
     let (a, files) = big("o/a");
-    search.remember(&a, files);
+    search.remember(Epoch(Some(0)), &a, files);
     let (b, files) = big("o/b");
-    search.remember(&b, files);
+    search.remember(Epoch(Some(0)), &b, files);
     let cache = lock(&search.files);
     assert!(cache.map.contains_key("o/b") && !cache.map.contains_key("o/a"));
     assert!(cache.bytes <= FILES_CACHE_BYTES);
@@ -778,4 +778,132 @@ async fn what_was_learnt_under_another_token_is_dropped() {
         auth.contains(&"Bearer first-token".to_owned())
             && auth.contains(&"Bearer second-token".to_owned())
     );
+}
+
+// ---- a token that changes while a request is under way ---------------------------------------
+
+fn set_token(r: &Rig, token: &str) {
+    let db = rusqlite::Connection::open(r.dir.path().join("model_loader.db")).unwrap();
+    db.execute("DELETE FROM kv WHERE key = 'hf_token'", [])
+        .unwrap();
+    db.execute("INSERT INTO kv(key, value) VALUES('hf_token', ?1)", [token])
+        .unwrap();
+}
+
+/// Waits until the Hub has been asked for `needle` (it answers slowly: the request is under way).
+async fn hub_asked(r: &Rig, needle: &str, count: usize) {
+    for _ in 0..500 {
+        let asked = r
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|row| row["path"].as_str().unwrap().contains(needle))
+            .count();
+        if asked >= count {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("the Hub was not asked for {needle}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_listing_fetched_under_the_old_token_is_not_remembered_after_a_change() {
+    let mut hub = one_model(&[file("a-Q4_K_M.gguf", GB)]);
+    hub[tree("lab-one/m-GGUF")]["delay"] = json!(2.0);
+    let r = rig(hub).await;
+    set_token(&r, "first-token");
+    let search = r.search.clone();
+    let slow = tokio::spawn(async move { search.search(ALL).await });
+    // The listing is on its way under the first token.
+    hub_asked(&r, "/tree/", 1).await;
+    set_token(&r, "second-token");
+    // A request under the second token moves the generation on.
+    r.search.gguf_header("o/r", "other.gguf").await.unwrap();
+    let body = body_of(slow.await.unwrap());
+    // The caller still gets what it fetched ...
+    assert!(body.contains(r#""path":"a-Q4_K_M.gguf""#), "{body}");
+    // ... and the cache holds nothing the first token fetched.
+    assert!(lock(&r.search.files).map.is_empty());
+    let before = tree_requests(&r);
+    body_of(r.search.search(ALL).await);
+    assert_eq!(tree_requests(&r), before + 1);
+    assert_eq!(
+        lock(&r.search.files).map.len(),
+        1,
+        "a request under the current token is kept"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_header_fetched_under_the_old_token_is_not_remembered_after_a_change() {
+    let header = gguf(&[("arch.context_length", 4, 4096u32.to_le_bytes().to_vec())]);
+    let hub = json!({
+        "/o/r/resolve/main/slow.gguf": padded_delay(ans(206, &header), 2.0),
+        "/o/gate/resolve/main/slow.gguf": padded_delay(ans(401, b"{}"), 2.0),
+    });
+    let r = rig(hub).await;
+    set_token(&r, "first-token");
+    let (a, b) = (r.search.clone(), r.search.clone());
+    let slow = tokio::spawn(async move { a.gguf_header("o/r", "slow.gguf").await });
+    let gated = tokio::spawn(async move { b.gguf_header("o/gate", "slow.gguf").await });
+    hub_asked(&r, "/resolve/", 2).await;
+    set_token(&r, "second-token");
+    r.search.gguf_header("o/r", "fast.gguf").await.unwrap();
+    assert!(
+        slow.await.unwrap().unwrap().is_some(),
+        "the caller still gets it"
+    );
+    assert!(gated.await.unwrap().unwrap().is_none());
+    let cache = lock(&r.search.headers);
+    assert!(!cache.map.contains_key("o/r/slow.gguf"));
+    assert!(cache.gated.is_empty(), "{:?}", cache.gated);
+    assert!(cache.map.contains_key("o/r/fast.gguf"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_read_that_ends_late_does_not_move_the_token_back() {
+    let r = rig(one_model(&[file("a-Q4_K_M.gguf", GB)])).await;
+    set_token(&r, "new-token");
+    body_of(r.search.search(ALL).await);
+    assert_eq!(lock(&r.search.files).map.len(), 1);
+    let generation = r.search.generation.load(Ordering::SeqCst);
+    // A read that began before the newest one (its ticket is lower) ends now, having seen the
+    // old token: it neither clears nor moves the ledger, and stores nothing.
+    lock(&r.search.last_auth).applied = 1_000;
+    r.search.tickets.store(10, Ordering::SeqCst);
+    set_token(&r, "old-token");
+    let (_, epoch) = r.search.auth().await.unwrap();
+    assert!(epoch.0.is_none());
+    assert_eq!(r.search.generation.load(Ordering::SeqCst), generation);
+    assert_eq!(lock(&r.search.files).map.len(), 1);
+    assert!(lock(&r.search.last_auth).last == Some(Token::Value(b"Bearer new-token".to_vec())));
+    // A late read of the current token is as good as any.
+    set_token(&r, "new-token");
+    let (_, epoch) = r.search.auth().await.unwrap();
+    assert_eq!(epoch.0, Some(generation));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_token_the_client_refuses_drops_what_was_learnt_before_it_and_after() {
+    let hub = json!({"/o/r/resolve/main/a.gguf": ans(404, b"{}")});
+    let r = rig(hub).await;
+    set_token(&r, "good-token");
+    r.search.gguf_header("o/r", "a.gguf").await.unwrap();
+    assert_eq!(lock(&r.search.headers).map.len(), 1);
+    // A token h11 refuses: what the good one learnt goes, and the refusal is learnt.
+    set_token(&r, "tok ");
+    r.search.gguf_header("o/r", "b.gguf").await.unwrap();
+    {
+        let cache = lock(&r.search.headers);
+        assert!(!cache.map.contains_key("o/r/a.gguf"));
+        assert!(cache.map.contains_key("o/r/b.gguf"));
+    }
+    // Back to a good one: nothing stored under the refused one survives.
+    set_token(&r, "good-token");
+    r.search.gguf_header("o/r", "a.gguf").await.unwrap();
+    let cache = lock(&r.search.headers);
+    assert!(!cache.map.contains_key("o/r/b.gguf"));
+    assert!(cache.map.contains_key("o/r/a.gguf"));
 }

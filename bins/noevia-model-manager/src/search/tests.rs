@@ -759,6 +759,42 @@ fn unicode_classes_are_pythons() {
             problems.push(format!("\\s {c:#x}: python {}", space[c as usize]));
         }
     }
+    // A character Python's database does not assign is no letter, digit or space for it. The
+    // tables here are newer and call some of them that: those are the ones `beyond_python` names,
+    // and a text with one is refused. Any other is a failure, and so is a table that names none.
+    assert_eq!(
+        u["unicode_version"].as_str().unwrap(),
+        discover::PYTHON_UNICODE,
+        "the Unicode version of the oracle's Python changed"
+    );
+    let mut skew: Vec<String> = Vec::new();
+    for c in (0..0x11_0000u32).filter(|c| !assigned[*c as usize]) {
+        let Some(ch) = char::from_u32(c) else {
+            continue;
+        };
+        let text = ch.to_string();
+        let taken = discover::is_word(ch).unwrap() || nd.is_match(&text) || blank.is_match(&text);
+        if taken != discover::beyond_python(ch) {
+            skew.push(format!("{c:#x}: matched {taken}"));
+        }
+    }
+    assert!(
+        skew.is_empty(),
+        "beyond Python's Unicode {}: {} characters, from {:?}",
+        u["unicode_version"],
+        skew.len(),
+        skew.iter().take(8).collect::<Vec<_>>()
+    );
+    // Such a text is refused, not judged, wherever the patterns would read it.
+    for point in [0x1c89, 0x2ebf0, 0x10d40] {
+        let name = format!("m-{}-Q4_K_M.gguf", char::from_u32(point).unwrap());
+        assert!(
+            discover::quant_of(&name).is_err() && discover::params_from(&name).is_err(),
+            "{name}"
+        );
+    }
+    let known = format!("m-{}-Q4_K_M.gguf", char::from_u32(0x6a21).unwrap());
+    assert!(discover::quant_of(&known).is_ok());
     for pair in u["digit_values"].as_array().unwrap() {
         let (c, v) = (
             pair[0].as_u64().unwrap() as u32,

@@ -26,6 +26,70 @@ pub(super) const DIGIT: &str = r"\p{Nd}";
 /// Python's `\s`: what `str.isspace` is true for.
 pub(super) const SPACE: &str = r"[\x09-\x0d\x1c-\x20\x{85}\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}]";
 
+/// Python's Unicode database: the version the oracle fixture names and the services image
+/// ships. The regex tables here are newer, so a letter, digit or space assigned after this version
+/// is one Python does not take for one.
+#[cfg(test)]
+pub(super) const PYTHON_UNICODE: &str = "15.0.0";
+
+/// The characters the tables here take for a word character, a digit or a space that Python's database of
+/// `PYTHON_UNICODE` does not assign (inclusive ranges, ascending). A text with one of them is
+/// not judged: the answer would depend on a Unicode version, so it is refused.
+const BEYOND_PYTHON: [(u32, u32); 27] = [
+    (0x1c89, 0x1c8a),
+    (0xa7cb, 0xa7cd),
+    (0xa7da, 0xa7dc),
+    (0x105c0, 0x105f3),
+    (0x10d40, 0x10d65),
+    (0x10d6f, 0x10d85),
+    (0x10ec2, 0x10ec4),
+    (0x11380, 0x11389),
+    (0x1138b, 0x1138b),
+    (0x1138e, 0x1138e),
+    (0x11390, 0x113b5),
+    (0x113b7, 0x113b7),
+    (0x113d1, 0x113d1),
+    (0x113d3, 0x113d3),
+    (0x116d0, 0x116e3),
+    (0x11bc0, 0x11be0),
+    (0x11bf0, 0x11bf9),
+    (0x13460, 0x143fa),
+    (0x16100, 0x1611d),
+    (0x16130, 0x16139),
+    (0x16d40, 0x16d6c),
+    (0x16d70, 0x16d79),
+    (0x18cff, 0x18cff),
+    (0x1ccf0, 0x1ccf9),
+    (0x1e5d0, 0x1e5ed),
+    (0x1e5f0, 0x1e5fa),
+    (0x2ebf0, 0x2ee5d),
+];
+
+/// Whether `c` is assigned after Python's database and taken for a word, digit or space here.
+pub(super) fn beyond_python(c: char) -> bool {
+    let c = u32::from(c);
+    BEYOND_PYTHON
+        .binary_search_by(|&(low, high)| {
+            if c < low {
+                std::cmp::Ordering::Greater
+            } else if c > high {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        })
+        .is_ok()
+}
+
+/// Refuses a text the patterns would read differently from Python.
+fn exact(text: &str) -> Result<(), Unsupported> {
+    if text.chars().any(beyond_python) {
+        Err(Unsupported)
+    } else {
+        Ok(())
+    }
+}
+
 /// The non-ASCII characters Python's `re.I` matches with the ASCII letter `letter`.
 pub(super) fn folded(letter: char) -> &'static [char] {
     match letter {
@@ -156,6 +220,7 @@ fn has_mtp_word(name: &str) -> Result<bool, Unsupported> {
 
 /// `COMPANION.search(name)`.
 fn is_companion(name: &str) -> Result<bool, Unsupported> {
+    exact(name)?;
     Ok(companion_pattern()?.is_match(name) || has_mtp_word(name)?)
 }
 
@@ -184,6 +249,7 @@ fn before_final_newline(text: &str) -> &str {
 
 /// `discover.quant_of(path)`.
 pub fn quant_of(path: &str) -> Result<Option<String>, Unsupported> {
+    exact(path)?;
     let name = before_final_newline(basename(path));
     Ok(quant_pattern()?
         .captures(name)
@@ -244,6 +310,7 @@ fn ascii_number(text: &str) -> Option<f64> {
 
 /// `discover.params_from(name)`: (total B, active B), the largest total in the name.
 pub fn params_from(name: &str) -> Result<(Option<f64>, Option<f64>), Unsupported> {
+    exact(name)?;
     let mut best: Option<(f64, Option<f64>)> = None;
     for m in params_pattern()?.captures_iter(before_final_newline(name)) {
         let total = m
@@ -377,6 +444,7 @@ fn build_options(candidate: &Candidate, budget_gb: f64) -> Result<Vec<Opt>, Unsu
         if !file.path.to_lowercase().ends_with(".gguf") || is_companion(basename(&file.path))? {
             continue;
         }
+        exact(&file.path)?;
         let base = shard_pattern()?.replace_all(&file.path, "").into_owned();
         let at = match index.get(&base) {
             Some(i) => *i,

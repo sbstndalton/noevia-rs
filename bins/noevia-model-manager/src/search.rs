@@ -46,7 +46,10 @@ use serde_json::value::RawValue;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 use tree::TreeError;
@@ -236,6 +239,35 @@ enum Auth {
     Refused,
 }
 
+/// What the stored token amounts to, to tell one token from another. Every token the client
+/// cannot send (not ASCII, or refused by h11) is one: no request carries it.
+#[derive(PartialEq, Eq)]
+enum Token {
+    Absent,
+    Value(Vec<u8>),
+    Unusable,
+}
+
+/// The token the newest `auth()` read saw.
+#[derive(Default)]
+struct Ledger {
+    /// The ticket of the newest read that was applied: an older one that ends later is not.
+    applied: u64,
+    last: Option<Token>,
+}
+
+/// The cache generation a request was made under, or none when its token read was superseded by
+/// a newer one that saw another token: its results are not remembered.
+#[derive(Clone, Copy)]
+struct Epoch(Option<u64>);
+
+/// What a stored header does to the gated repositories.
+enum Gate<'a> {
+    Keep,
+    Lift(&'a str),
+    Set(&'a str, &'static str),
+}
+
 /// `api._REPO_FILES`.
 #[derive(Default)]
 struct FilesCache {
@@ -274,9 +306,14 @@ pub struct Search {
     avatar_client: reqwest::Client,
     lookups: Arc<tokio::sync::Semaphore>,
     listing_deadline: Duration,
-    /// The `Authorization` the last request carried (`Some(None)`: none): caches filled under
-    /// another token are dropped, since a listing or header may be private to a token.
-    last_auth: Mutex<Option<Option<Vec<u8>>>>,
+    /// The token the newest read saw: caches filled under another token are dropped, since a
+    /// listing or a header may be private to a token.
+    last_auth: Mutex<Ledger>,
+    /// Numbers the token reads, before each one starts.
+    tickets: AtomicU64,
+    /// Bumped, before the caches are cleared, whenever the token changes: a request that read
+    /// the token under an older generation does not store what it learnt.
+    generation: AtomicU64,
     files: Mutex<FilesCache>,
     headers: Mutex<HeaderCache>,
     /// Lib tests: runs before the final parse of every listing.
@@ -342,7 +379,9 @@ impl Search {
             avatar_client: client(timeouts.avatar, true)?,
             lookups: Arc::new(tokio::sync::Semaphore::new(CONCURRENT_LOOKUPS)),
             listing_deadline: timeouts.listings,
-            last_auth: Mutex::new(None),
+            last_auth: Mutex::new(Ledger::default()),
+            tickets: AtomicU64::new(0),
+            generation: AtomicU64::new(0),
             files: Mutex::new(FilesCache::default()),
             headers: Mutex::new(HeaderCache::default()),
             #[cfg(test)]
@@ -399,35 +438,83 @@ impl Search {
             .map_err(|_| Stop::Failed)
     }
 
-    /// `_auth_headers()`: the stored token as the `Authorization` value.
-    async fn auth(&self) -> Result<Auth, Stop> {
+    /// `_auth_headers()`: the stored token as the `Authorization` value, and the generation the
+    /// request's results may be stored under.
+    async fn auth(&self) -> Result<(Auth, Epoch), Stop> {
+        let ticket = self.tickets.fetch_add(1, Ordering::SeqCst) + 1;
         let database = self.database.clone();
         let read = self.blocking(move || hub_auth(&database)).await?;
-        let carried = match &read {
-            HubAuth::Absent => Some(None),
-            HubAuth::Value(value) => Some(Some(value.as_bytes().to_vec())),
-            _ => None,
+        let seen = match &read {
+            HubAuth::Absent => Token::Absent,
+            HubAuth::Value(value) => Token::Value(value.as_bytes().to_vec()),
+            HubAuth::NotAscii | HubAuth::Refused => Token::Unusable,
+            HubAuth::Failed => return Err(Stop::Failed),
         };
-        if let Some(carried) = carried {
-            let mut last = lock(&self.last_auth);
-            if last.as_ref().is_some_and(|before| *before != carried) {
-                // Another token: what was learnt under the old one may not hold.
-                let mut files = lock(&self.files);
-                files.map.clear();
-                files.bytes = 0;
-                let mut headers = lock(&self.headers);
-                headers.map.clear();
-                headers.gated.clear();
+        let epoch = {
+            let mut ledger = lock(&self.last_auth);
+            let same = ledger.last.as_ref() == Some(&seen);
+            if ticket <= ledger.applied {
+                // A newer read already ended: this one only moves nothing forward. Its token is
+                // the current one or an older one, and an older one's results are not kept.
+                Epoch(same.then(|| self.generation.load(Ordering::SeqCst)))
+            } else {
+                ledger.applied = ticket;
+                if !same && ledger.last.is_some() {
+                    // Another token: what was learnt under the old one may not hold. The
+                    // generation moves first, so that a request still under the old one that
+                    // stores afterwards (it checks it under the cache's lock) finds it changed.
+                    self.generation.fetch_add(1, Ordering::SeqCst);
+                    self.drop_learnt();
+                }
+                ledger.last = Some(seen);
+                Epoch(Some(self.generation.load(Ordering::SeqCst)))
             }
-            *last = Some(carried);
-        }
-        Ok(match read {
+        };
+        let auth = match read {
             HubAuth::Absent => Auth::None,
             HubAuth::Value(value) => Auth::Header(value),
             HubAuth::NotAscii => Auth::NotAscii,
             HubAuth::Refused => Auth::Refused,
             HubAuth::Failed => return Err(Stop::Failed),
-        })
+        };
+        Ok((auth, epoch))
+    }
+
+    /// Everything learnt from the Hub that a token may have shaped.
+    fn drop_learnt(&self) {
+        let mut files = lock(&self.files);
+        files.map.clear();
+        files.bytes = 0;
+        let mut headers = lock(&self.headers);
+        headers.map.clear();
+        headers.gated.clear();
+    }
+
+    /// Whether a request made under `epoch` may still store what it learnt. Called with the
+    /// cache's lock held.
+    fn current(&self, epoch: Epoch) -> bool {
+        epoch.0 == Some(self.generation.load(Ordering::SeqCst))
+    }
+
+    /// `_HEADER_CACHE[key] = value` and the gate the answer set or lifted.
+    fn store_header(&self, epoch: Epoch, key: String, value: Option<Arc<str>>, gate: Gate<'_>) {
+        let mut cache = lock(&self.headers);
+        if !self.current(epoch) {
+            return;
+        }
+        match gate {
+            Gate::Keep => {}
+            Gate::Lift(repo) => {
+                cache.gated.remove(repo);
+            }
+            Gate::Set(repo, reason) => {
+                if cache.gated.len() >= GATED_MAX {
+                    cache.gated.clear();
+                }
+                cache.gated.insert(repo.to_owned(), reason);
+            }
+        }
+        cache.put(key, value);
     }
 
     /// One call of the child's private API.
@@ -523,7 +610,7 @@ impl Search {
                 discover::judge(candidate, budget_gb, &quantisers, &labs, instant).inspect_err(
                     |_| {
                         eprintln!(
-                            "search: refusing the answer, {} cannot be judged exactly",
+                            "search: refusing the answer, {:?} cannot be judged exactly",
                             candidate.id
                         );
                     },
@@ -596,7 +683,7 @@ impl Search {
         sort: &str,
         limit: i64,
     ) -> Result<Vec<Model>, SearchError> {
-        let header = match self.auth().await? {
+        let header = match self.auth().await?.0 {
             Auth::None => None,
             Auth::Header(value) => Some(value),
             // The client cannot be built: UnicodeEncodeError, not an `HTTPError`.
@@ -647,7 +734,7 @@ impl Search {
             request = request.header(reqwest::header::AUTHORIZATION, value.clone());
         }
         let response = request.send().await.map_err(|error| {
-            eprintln!("hub search transport error: {}", net::describe(&error));
+            eprintln!("hub search transport error: {:?}", net::describe(&error));
             reach()
         })?;
         let status = response.status().as_u16();
@@ -719,13 +806,15 @@ impl Search {
             return Ok(found.into_iter().flatten().collect());
         }
         // Any failure to list is `files = []`, and is not cached.
-        let header = match self.auth().await {
-            Ok(Auth::None) => Some(None),
-            Ok(Auth::Header(value)) => Some(Some(value)),
-            Ok(Auth::NotAscii | Auth::Refused) => None,
-            Err(Stop::Failed) => None,
+        let (header, epoch) = match self.auth().await {
+            Ok((Auth::None, epoch)) => (Some(None), epoch),
+            Ok((Auth::Header(value), epoch)) => (Some(Some(value)), epoch),
+            Ok((Auth::NotAscii | Auth::Refused, epoch)) => (None, epoch),
+            Err(Stop::Failed) => (None, Epoch(None)),
             Err(other) => return Err(other),
         };
+        let cut_off = std::sync::atomic::AtomicUsize::new(0);
+        let cut_off = &cut_off;
         let deadline = tokio::time::Instant::now() + self.listing_deadline;
         let lookups = repos
             .iter()
@@ -761,13 +850,22 @@ impl Search {
                     match tokio::time::timeout_at(deadline, work).await {
                         Ok(result) => result,
                         Err(_) => {
-                            eprintln!("search: the listing of {repo} did not finish in time");
+                            cut_off.fetch_add(1, Ordering::Relaxed);
                             Ok(None)
                         }
                     }
                 }
             });
         let results = futures_util::future::join_all(lookups).await;
+        let cut_off = cut_off.load(Ordering::Relaxed);
+        if cut_off > 0 {
+            // Not an empty repository: its listing did not finish.
+            eprintln!(
+                "search: {cut_off} of {} listings were cut off by the {:?} listing deadline",
+                results.len(),
+                self.listing_deadline
+            );
+        }
         let mut results = results.into_iter();
         for (repo, slot) in repos.iter().zip(found.iter_mut()) {
             if slot.is_some() {
@@ -780,7 +878,7 @@ impl Search {
             match files {
                 Some(files) => {
                     let files = Arc::new(files);
-                    self.remember(repo, files.clone());
+                    self.remember(epoch, repo, files.clone());
                     *slot = Some(files);
                 }
                 None => *slot = Some(Arc::new(Vec::new())),
@@ -790,12 +888,15 @@ impl Search {
     }
 
     /// `_REPO_FILES[repo] = (time.time(), files)`, clearing a cache past its bounds first.
-    fn remember(&self, repo: &str, files: Arc<Vec<File>>) {
+    fn remember(&self, epoch: Epoch, repo: &str, files: Arc<Vec<File>>) {
         let weight: usize = files.iter().map(|f| f.path.len() + 48).sum::<usize>() + repo.len();
         if weight > FILES_CACHE_BYTES {
             return;
         }
         let mut cache = lock(&self.files);
+        if !self.current(epoch) {
+            return;
+        }
         if cache.map.len() > FILES_MAX || cache.bytes + weight > FILES_CACHE_BYTES {
             cache.map.clear();
             cache.bytes = 0;
@@ -887,11 +988,11 @@ impl Search {
             return Ok(result);
         }
         let header = match self.auth().await {
-            Ok(Auth::None) => Some(None),
-            Ok(Auth::Header(value)) => Some(Some(value)),
+            Ok((Auth::None, _)) => Some(None),
+            Ok((Auth::Header(value), _)) => Some(Some(value)),
             // Each request fails in h11: every owner caches "no avatar".
-            Ok(Auth::Refused) => None,
-            Ok(Auth::NotAscii) | Err(_) => return Err(AvatarError::Raised),
+            Ok((Auth::Refused, _)) => None,
+            Ok((Auth::NotAscii, _)) | Err(_) => return Err(AvatarError::Raised),
         };
         let fetches = to_fetch.iter().map(|owner| {
             let header = header.clone();
@@ -1004,7 +1105,7 @@ impl Search {
                 json_string(&message)
             ))
         };
-        let header = match self.auth().await? {
+        let header = match self.auth().await?.0 {
             Auth::None => None,
             Auth::Header(value) => Some(value),
             Auth::NotAscii => return Err(Stop::Failed),
@@ -1030,7 +1131,13 @@ impl Search {
         let listed = match tokio::time::timeout_at(deadline, listing).await {
             Ok(listed) => listed,
             // A timeout has no message in httpx.
-            Err(_) => Err(TreeError::Transport(String::new())),
+            Err(_) => {
+                eprintln!(
+                    "search: the listing of {repo:?} was cut off by the {:?} listing deadline",
+                    self.listing_deadline
+                );
+                Err(TreeError::Transport(String::new()))
+            }
         };
         drop(lookup);
         let files = match listed {
@@ -1117,11 +1224,12 @@ impl Search {
         if have != wanted {
             return Err(Stop::Refused);
         }
-        let header = match self.auth().await? {
+        let (auth, epoch) = self.auth().await?;
+        let header = match auth {
             Auth::None => None,
             Auth::Header(value) => Some(value),
             Auth::NotAscii | Auth::Refused => {
-                lock(&self.headers).put(key, None);
+                self.store_header(epoch, key, None, Gate::Keep);
                 return Ok(None);
             }
         };
@@ -1133,7 +1241,7 @@ impl Search {
             request = request.header(reqwest::header::AUTHORIZATION, value);
         }
         let failed = |this: &Self| {
-            lock(&this.headers).put(key.clone(), None);
+            this.store_header(epoch, key.clone(), None, Gate::Keep);
         };
         let Ok(response) = request.send().await else {
             failed(self);
@@ -1157,12 +1265,7 @@ impl Search {
             } else {
                 "your token lacks access \u{2014} accept this model's licence on its HF page"
             };
-            let mut cache = lock(&self.headers);
-            if cache.gated.len() >= GATED_MAX {
-                cache.gated.clear();
-            }
-            cache.gated.insert(repo.to_owned(), reason);
-            cache.put(key, None);
+            self.store_header(epoch, key, None, Gate::Set(repo, reason));
             return Ok(None);
         }
         if (status != 200 && status != 206) || body.is_empty() {
@@ -1188,9 +1291,7 @@ impl Search {
             return Ok(None);
         };
         let summary: Arc<str> = Arc::from(summary);
-        let mut cache = lock(&self.headers);
-        cache.gated.remove(repo);
-        cache.put(key, Some(summary.clone()));
+        self.store_header(epoch, key, Some(summary.clone()), Gate::Lift(repo));
         Ok(Some(summary))
     }
 
