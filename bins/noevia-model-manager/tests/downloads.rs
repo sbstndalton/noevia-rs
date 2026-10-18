@@ -1302,7 +1302,8 @@ async fn a_stalled_native_delete_body_never_holds_the_table() {
             },
             Arc::new(NoDocker),
         )
-        .with_downloads(table.clone()),
+        .with_downloads(table.clone())
+        .into(),
     );
     let state = Arc::new(native_state);
     // The first part of the body arrives; the rest never does.
