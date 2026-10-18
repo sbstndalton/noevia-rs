@@ -9,7 +9,9 @@
 //! A write passes the gate again right before it touches a file (sbstndalton/noevia#1425): the
 //! body is read between the two, for as long as the client takes, and an account removed (or a
 //! session revoked) meanwhile must not write. The gate only reads the store, so running it twice
-//! changes nothing. The store underneath never recreates a removed user's directory either.
+//! changes nothing. The store underneath never recreates a removed user's directory either; only the
+//! first gate, which has just confirmed the session, makes a missing one, as Node's workspace load
+//! did (#2026).
 
 use crate::identity::{self, Rejection};
 use crate::reply;
@@ -138,6 +140,58 @@ pub async fn serve(
             Ok(Err(rejection)) => return rejection.into_response(),
             Err(_) => return Rejection::Unavailable.into_response(),
         };
+    // Node's workspace load makes the directory of every signed-in user on that user's first
+    // request, whichever route it is (core index.cjs handleRequestInner). The stores here never
+    // do, a missing directory there being a removed account (#1425), so a new account's first
+    // request needs it made, once, right after the gate has confirmed the session and before
+    // the body is read. Node refuses a removed account in process (`removed`); here the account
+    // may be removed between the gate and the mkdir, so the gate runs once more after it, and a
+    // directory this request made for an account that is gone is taken away again. Only the
+    // gate's own user id reaches the path, as `users/<uuid>` (#2026).
+    let step = {
+        let (data_dir, user) = (data_dir.clone(), authn.user.id.clone());
+        let (layer, creds, path) = (
+            Arc::clone(&regate_layer),
+            regate_creds.clone(),
+            path.clone(),
+        );
+        tokio::task::spawn_blocking(move || {
+            #[cfg(debug_assertions)]
+            hooks::before_ensure(&user);
+            let made = match server_projects::store::ensure_user_dir(&data_dir, &user) {
+                Ok(server_projects::store::Ensured::Created(dir)) => Some(dir),
+                Ok(server_projects::store::Ensured::Existed(_)) => None,
+                Ok(server_projects::store::Ensured::LegacyPending) => return Step::SettingUp,
+                Err(_) => return Step::Failed,
+            };
+            match regate(&layer, &creds, &path, now, &data_dir, &user) {
+                Ok(()) => Step::Go,
+                Err(refused) => {
+                    let (undo, refused) = after_second_gate(made.is_some(), refused);
+                    if let (true, Some(dir)) = (undo, made) {
+                        // Not recursive: a directory this call has just made holds nothing.
+                        let _ = std::fs::remove_dir(&dir);
+                    }
+                    Step::Refused(refused)
+                }
+            }
+        })
+        .await
+    };
+    match step {
+        Ok(Step::Go) => {}
+        Ok(Step::SettingUp) => {
+            return reply::error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Your account is still being set up; try again in a moment.",
+                true,
+            )
+        }
+        Ok(Step::Refused(refused)) => return refusal(refused),
+        Ok(Step::Failed) | Err(_) => {
+            return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true)
+        }
+    }
     let limit = match &route {
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
@@ -200,13 +254,75 @@ pub async fn serve(
     .await;
     match done {
         Ok(Ok(r)) => respond(r),
-        Ok(Err(Refused::Removed)) => reply::json(
+        Ok(Err(refused)) => refusal(refused),
+        Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+    }
+}
+
+/// The answer to a request the gate refused on a later pass.
+fn refusal(refused: Refused) -> Response<Body> {
+    match refused {
+        Refused::Removed => reply::json(
             StatusCode::GONE,
             &serde_json::json!({"error": "account no longer exists"}),
             true,
         ),
-        Ok(Err(Refused::Gate(rejection))) => rejection.into_response(),
-        Err(_) => reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+        Refused::Gate(rejection) => rejection.into_response(),
+    }
+}
+
+/// How the first pass after the first gate ended.
+enum Step {
+    Go,
+    /// Node's legacy claim for this user is still to come: nothing is served yet (503).
+    SettingUp,
+    Refused(Refused),
+    Failed,
+}
+
+/// What the second gate's refusal means for the directory this request just made. Only a session
+/// the gate no longer knows (Unauthorized: the account was removed) takes it away, and that is the
+/// removed account's 410; a transient refusal (the gate unavailable, a rate limit) leaves it, since a
+/// concurrent request of the same user may already have seen it as existing and be using it.
+/// Returns whether to remove the directory, and the answer.
+fn after_second_gate(created: bool, refused: Refused) -> (bool, Refused) {
+    match refused {
+        Refused::Gate(Rejection::Refused(server_auth::Refusal::Unauthorized)) if created => {
+            (true, Refused::Removed)
+        }
+        other => (false, other),
+    }
+}
+
+/// Test hooks, compiled in debug builds only (`cargo test` and the CI replays); a release build has
+/// neither the module nor the lock. (A cargo feature turned on by a dev-dependency of the package
+/// on itself would also have changed which features `--features noevia-server/...` builds select.)
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub mod hooks {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    type Hook = Arc<dyn Fn() + Send + Sync>;
+    static BEFORE_ENSURE: Mutex<Option<HashMap<String, Hook>>> = Mutex::new(None);
+
+    /// Runs `hook` when this user's request has passed the first gate and not yet made the
+    /// user's directory (a test removes the account there).
+    pub fn on_before_ensure(user: &str, hook: impl Fn() + Send + Sync + 'static) {
+        if let Ok(mut map) = BEFORE_ENSURE.lock() {
+            map.get_or_insert_with(HashMap::new)
+                .insert(user.to_string(), Arc::new(hook));
+        }
+    }
+
+    pub(crate) fn before_ensure(user: &str) {
+        let hook = BEFORE_ENSURE
+            .lock()
+            .ok()
+            .and_then(|map| map.as_ref().and_then(|m| m.get(user).cloned()));
+        if let Some(hook) = hook {
+            hook();
+        }
     }
 }
 
@@ -250,6 +366,29 @@ fn regate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_an_unknown_session_takes_the_new_directory_away() {
+        let (undo, answer) = after_second_gate(
+            true,
+            Refused::Gate(Rejection::Refused(server_auth::Refusal::Unauthorized)),
+        );
+        assert!(undo && matches!(answer, Refused::Removed));
+        // Transient or other refusals keep it: a concurrent request may be using it.
+        for refusal in [
+            Rejection::Unavailable,
+            Rejection::Refused(server_auth::Refusal::Csrf),
+        ] {
+            let (undo, answer) = after_second_gate(true, Refused::Gate(refusal));
+            assert!(!undo && matches!(answer, Refused::Gate(_)));
+        }
+        // A directory that was already there is never taken away.
+        let (undo, _) = after_second_gate(
+            false,
+            Refused::Gate(Rejection::Refused(server_auth::Refusal::Unauthorized)),
+        );
+        assert!(!undo);
+    }
 
     #[test]
     fn free_chat_list_matchers() {

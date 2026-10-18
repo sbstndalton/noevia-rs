@@ -50,6 +50,100 @@ pub fn user_dir(data_dir: &Path, user_id: &str) -> Result<PathBuf, StoreError> {
     Ok(data_dir.join("users").join(user_id))
 }
 
+/// What [`ensure_user_dir`] found or did.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Ensured {
+    /// The directory was already there (left as it is).
+    Existed(PathBuf),
+    /// This call made it. A caller whose later check finds the account gone removes it again
+    /// (non-recursively: nothing else can be in it yet).
+    Created(PathBuf),
+    /// Not made: the directory is absent and Node's `claimLegacy` could still move the legacy root
+    /// data into it for this user, which it does only while the directory does not exist. A
+    /// Node-routed request has to make it first.
+    LegacyPending,
+}
+
+/// workspace.cjs `claimLegacy`'s trigger (`hasLegacy`): a root-level `projects.json`,
+/// `providers.json` or `history-*.json`.
+fn has_legacy_root(data_dir: &Path) -> Result<bool, StoreError> {
+    for name in [PROJECTS_FILE, "providers.json"] {
+        if data_dir.join(name).exists() {
+            return Ok(true);
+        }
+    }
+    let entries = match std::fs::read_dir(data_dir) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(StoreError::Io(e)),
+    };
+    for entry in entries {
+        let name = entry?.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("history-") && name.ends_with(".json") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Whether `claimLegacy` would still claim for this user: `legacy-owner.json` is not written yet
+/// (the first administrator to arrive becomes the owner) or names this user. Node reads an
+/// unreadable owner file as `{}`: no claim.
+fn legacy_claim_open(data_dir: &Path, user_id: &str) -> bool {
+    match read_json(&data_dir.join("legacy-owner.json")) {
+        Ok(Some(owner)) => owner.get("userId").as_str() == Some(user_id),
+        Ok(None) => !data_dir.join("legacy-owner.json").exists(),
+        Err(_) => false,
+    }
+}
+
+/// The signed-in user's directory, made when it is absent: workspace.cjs `get` runs
+/// `fs.mkdirSync(userDir(id), { recursive: true, mode: 0o700 })` for every authenticated request
+/// (core index.cjs `handleRequestInner`, before any route), so a new account has its directory
+/// from its first request, whichever route that is (sbstndalton/noevia#2026). The stores below
+/// never make it themselves ([`StoreError::Gone`]: a missing directory there is a removed
+/// account), so a handler the front answers calls this first, only for a user the request gate
+/// has just let through, never for an id that is not a user id (`users/<uuid>` only, so nothing
+/// can name a path elsewhere). Every directory it makes is mode 0700 (as Node, before the umask);
+/// one that exists is left as it is.
+///
+/// Node's `claimLegacy` moves a pre-multi-user data dir's root files into the administrator's
+/// directory only while that directory does not exist, and this port does not do the claim: while
+/// it could still happen for this user nothing is made ([`Ensured::LegacyPending`]).
+pub fn ensure_user_dir(data_dir: &Path, user_id: &str) -> Result<Ensured, StoreError> {
+    let dir = user_dir(data_dir, user_id)?;
+    match std::fs::metadata(&dir) {
+        Ok(m) if m.is_dir() => return Ok(Ensured::Existed(dir)),
+        Ok(_) => return Err(StoreError::Corrupt),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(StoreError::Io(e)),
+    }
+    if has_legacy_root(data_dir)? && legacy_claim_open(data_dir, user_id) {
+        return Ok(Ensured::LegacyPending);
+    }
+    let builder = || {
+        let mut make = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            make.mode(0o700);
+        }
+        make
+    };
+    if let Some(parent) = dir.parent() {
+        builder().recursive(true).create(parent)?;
+    }
+    match builder().create(&dir) {
+        Ok(()) => Ok(Ensured::Created(dir)),
+        // Made meanwhile by another request of this user: it is theirs to undo, not ours.
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && dir.is_dir() => {
+            Ok(Ensured::Existed(dir))
+        }
+        Err(e) => Err(StoreError::Io(e)),
+    }
+}
+
 /// workspace.cjs `assetDir(projectId)`: `project-assets/<id reduced to [A-Za-z0-9_-]>`.
 pub fn asset_dir(user_dir: &Path, project_id: &str) -> PathBuf {
     let id = crate::js::id_chars(project_id);
@@ -253,6 +347,127 @@ mod tests {
             asset_dir(Path::new("/u"), "../.."),
             Path::new("/u/project-assets")
         );
+    }
+
+    #[test]
+    fn ensure_user_dir_makes_users_uuid_dir_0700_and_nothing_else() {
+        let root = tempfile::tempdir().unwrap();
+        let id = "11111111-2222-4333-8444-555555555555";
+        let made = ensure_user_dir(root.path(), id).unwrap();
+        let dir = root.path().join("users").join(id);
+        assert_eq!(made, Ensured::Created(dir.clone()));
+        assert_eq!(dir, root.path().join("users").join(id));
+        assert!(dir.is_dir());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+            // The mode is subject to the umask, as Node's: never wider than 0700.
+            assert_eq!(mode(&dir) & 0o077, 0);
+            assert_eq!(mode(&root.path().join("users")) & 0o077, 0);
+        }
+        // Existing: left as it is, with what it holds, and not reported as made.
+        std::fs::write(dir.join("projects.json"), "{}").unwrap();
+        assert_eq!(
+            ensure_user_dir(root.path(), id).unwrap(),
+            Ensured::Existed(dir.clone())
+        );
+        assert_eq!(std::fs::read(dir.join("projects.json")).unwrap(), b"{}");
+        // Not a user id: refused, nothing made.
+        let other = tempfile::tempdir().unwrap();
+        for bad in [
+            "",
+            "..",
+            "../../x/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "g1111111-2222-4333-8444-555555555555",
+        ] {
+            assert!(
+                matches!(
+                    ensure_user_dir(other.path(), bad),
+                    Err(StoreError::InvalidUser)
+                ),
+                "{bad}"
+            );
+        }
+        assert_eq!(std::fs::read_dir(other.path()).unwrap().count(), 0);
+        // Something that is not a directory is in the way: an error, not replaced.
+        let blocked = tempfile::tempdir().unwrap();
+        std::fs::write(blocked.path().join("users"), "x").unwrap();
+        assert!(ensure_user_dir(blocked.path(), id).is_err());
+        assert_eq!(std::fs::read(blocked.path().join("users")).unwrap(), b"x");
+    }
+
+    /// Node claims the legacy root data for the owner only while the directory is absent, so the
+    /// directory is not made while that claim could still happen (and never made when it cannot).
+    #[test]
+    fn ensure_user_dir_leaves_the_legacy_claim_to_node() {
+        let id = "11111111-2222-4333-8444-555555555555";
+        let other = "99999999-2222-4333-8444-555555555555";
+        for legacy in ["projects.json", "providers.json", "history-a.json"] {
+            let root = tempfile::tempdir().unwrap();
+            std::fs::write(root.path().join(legacy), "{}").unwrap();
+            // No owner yet: the first administrator to arrive would become it.
+            assert_eq!(
+                ensure_user_dir(root.path(), id).unwrap(),
+                Ensured::LegacyPending,
+                "{legacy}"
+            );
+            assert!(
+                !root.path().join("users").exists(),
+                "{legacy}: nothing made"
+            );
+            // Owned by this user: its claim is still to come.
+            std::fs::write(
+                root.path().join("legacy-owner.json"),
+                format!(r#"{{"userId":"{id}"}}"#),
+            )
+            .unwrap();
+            assert_eq!(
+                ensure_user_dir(root.path(), id).unwrap(),
+                Ensured::LegacyPending,
+                "{legacy}"
+            );
+            assert!(!root.path().join("users").exists());
+            // Owned by another user (the legacy files stay for recovery): nothing to claim.
+            assert!(matches!(
+                ensure_user_dir(root.path(), other).unwrap(),
+                Ensured::Created(_)
+            ));
+            std::fs::write(
+                root.path().join("legacy-owner.json"),
+                format!(r#"{{"userId":"{other}"}}"#),
+            )
+            .unwrap();
+            assert!(
+                matches!(
+                    ensure_user_dir(root.path(), id).unwrap(),
+                    Ensured::Created(_)
+                ),
+                "{legacy}"
+            );
+        }
+        // Root files that do not start a claim (Node's hasLegacy): the directory is made.
+        let root = tempfile::tempdir().unwrap();
+        for f in [
+            "free-chats.json",
+            "auto-roles.json",
+            "history.json",
+            "legacy-owner.json.bak",
+        ] {
+            std::fs::write(root.path().join(f), "{}").unwrap();
+        }
+        assert!(matches!(
+            ensure_user_dir(root.path(), id).unwrap(),
+            Ensured::Created(_)
+        ));
+        // An existing directory is never held back.
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("projects.json"), "{}").unwrap();
+        std::fs::create_dir_all(root.path().join("users").join(id)).unwrap();
+        assert!(matches!(
+            ensure_user_dir(root.path(), id).unwrap(),
+            Ensured::Existed(_)
+        ));
     }
 
     #[test]

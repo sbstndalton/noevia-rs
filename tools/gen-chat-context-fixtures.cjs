@@ -72,17 +72,29 @@ for (const method of ['GET', 'POST']) {
   add(`${m}-lone-surrogate-kept`, ws((p) => { p.projects[0].name = 'A\ud83d'; }), method, 'n5');
   add(`${m}-instruction-skills-array`, ws((p) => { p.projects[0].instructionSkills = []; }), method, 'n6');
 }
+// #2026: a brand-new account. Its directory does not exist when the request arrives; Node's
+// workspace load (workspace.cjs get, run for every signed-in request) makes it, mode 0700, before
+// the route runs. The case records that as well as the answer.
+const ABSENT = { projects: null, tombstones: null, absent: true };
+for (const method of ['GET', 'POST']) {
+  const m = method.toLowerCase();
+  add(`${m}-absent-dir`, ABSENT, method, 'n1');
+  add(`${m}-absent-dir-malformed-escape`, ABSENT, method, 'bad%E0%A4%A');
+  add(`${m}-absent-dir-invalid`, ABSENT, method, 'a.b');
+}
 
 // ── Node, one fresh workspace per case ──────────────────────────────────────
 async function run(c) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chat-context-fixture-'));
   const dir = path.join(root, 'users', USER);
-  fs.mkdirSync(dir, { recursive: true });
-  if (c.ws.projects !== null) fs.writeFileSync(path.join(dir, 'projects.json'), c.ws.projects);
-  if (c.ws.tombstones !== null) fs.writeFileSync(path.join(dir, 'deleted-chats.json'), c.ws.tombstones);
-  const texts = path.join(dir, 'project-sources', 'cowork-chat-context-skill');
-  fs.mkdirSync(texts, { recursive: true });
-  fs.writeFileSync(path.join(texts, `${textRef(SKILL)}.txt`), SKILL);
+  if (!c.ws.absent) {
+    fs.mkdirSync(dir, { recursive: true });
+    if (c.ws.projects !== null) fs.writeFileSync(path.join(dir, 'projects.json'), c.ws.projects);
+    if (c.ws.tombstones !== null) fs.writeFileSync(path.join(dir, 'deleted-chats.json'), c.ws.tombstones);
+    const texts = path.join(dir, 'project-sources', 'cowork-chat-context-skill');
+    fs.mkdirSync(texts, { recursive: true });
+    fs.writeFileSync(path.join(texts, `${textRef(SKILL)}.txt`), SKILL);
+  }
   const file = path.join(dir, 'projects.json');
   const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
   let status = null, text = null;
@@ -117,8 +129,15 @@ async function run(c) {
     http.json(res, failure.status, failure.body);
   }
   const after = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+  const result = { status, body: text, projectsAfter: after === before ? null : after };
+  if (c.ws.absent) {
+    // Whether the request made the user's directory, and that it is private to its owner
+    // (mode 0700 before the umask: no group or other bits), as the only thing under users/.
+    const made = fs.existsSync(dir) && fs.statSync(dir).isDirectory();
+    result.userDir = { made, private: made && (fs.statSync(dir).mode & 0o077) === 0, users: fs.readdirSync(path.join(root, 'users')) };
+  }
   fs.rmSync(root, { recursive: true, force: true });
-  return { status, body: text, projectsAfter: after === before ? null : after };
+  return result;
 }
 
 (async () => {

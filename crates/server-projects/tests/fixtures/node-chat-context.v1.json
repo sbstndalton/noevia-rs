@@ -632,6 +632,144 @@
     "body": "{\"project\":{\"id\":\"cowork-chat-context-n6\",\"name\":\"Chat attachments n6\",\"goal\":\"\",\"instructions\":\"\",\"files\":[],\"assets\":[],\"memories\":[],\"chats\":[],\"sourceFolders\":[],\"toolboxes\":[\"core\"],\"routing\":\"auto\",\"createdAt\":1700000000123,\"updatedAt\":1700000000123,\"toolsMode\":\"auto\",\"instructionSkills\":{}}}",
     "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"proj-a\",\n      \"name\": \"Alpha\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-c1\",\n      \"name\": \"Chat attachments c1\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\",\n      \"toolboxes\": [\n        \"core\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-heal\",\n      \"name\": \"Chat attachments heal\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-chosen\",\n      \"name\": \"Chat attachments chosen\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-skill\",\n      \"name\": \"Chat attachments skill\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"auto\",\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"73a4516fe389b0c2ae81d7995a989a3913aa29653fe66773fbd2644867a38c31\",\n          \"chars\": 35,\n          \"skillHeader\": true\n        }\n      ],\n      \"instructionSkills\": {\n        \"docs/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"proj-no-skills\",\n      \"name\": \"No skills yet\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-n6\",\n      \"name\": \"Chat attachments n6\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"assets\": [],\n      \"memories\": [],\n      \"chats\": [],\n      \"sourceFolders\": [],\n      \"toolboxes\": [\n        \"core\"\n      ],\n      \"routing\": \"auto\",\n      \"createdAt\": 1700000000123,\n      \"updatedAt\": 1700000000123,\n      \"toolsMode\": \"auto\",\n      \"instructionSkills\": {}\n    }\n  ]\n}"
    }
+  },
+  {
+   "name": "get-absent-dir",
+   "ws": {
+    "projects": null,
+    "tombstones": null,
+    "absent": true
+   },
+   "method": "GET",
+   "chat": "n1",
+   "now": 1700000000123,
+   "expected": {
+    "status": 200,
+    "body": "{\"project\":null}",
+    "projectsAfter": null,
+    "userDir": {
+     "made": true,
+     "private": true,
+     "users": [
+      "11111111-2222-4333-8444-555555555555"
+     ]
+    }
+   }
+  },
+  {
+   "name": "get-absent-dir-malformed-escape",
+   "ws": {
+    "projects": null,
+    "tombstones": null,
+    "absent": true
+   },
+   "method": "GET",
+   "chat": "bad%E0%A4%A",
+   "now": 1700000000123,
+   "expected": {
+    "status": 500,
+    "body": "{\"error\":\"Internal error\"}",
+    "projectsAfter": null,
+    "userDir": {
+     "made": true,
+     "private": true,
+     "users": [
+      "11111111-2222-4333-8444-555555555555"
+     ]
+    }
+   }
+  },
+  {
+   "name": "get-absent-dir-invalid",
+   "ws": {
+    "projects": null,
+    "tombstones": null,
+    "absent": true
+   },
+   "method": "GET",
+   "chat": "a.b",
+   "now": 1700000000123,
+   "expected": {
+    "status": 400,
+    "body": "{\"error\":\"Invalid chat identifier\"}",
+    "projectsAfter": null,
+    "userDir": {
+     "made": true,
+     "private": true,
+     "users": [
+      "11111111-2222-4333-8444-555555555555"
+     ]
+    }
+   }
+  },
+  {
+   "name": "post-absent-dir",
+   "ws": {
+    "projects": null,
+    "tombstones": null,
+    "absent": true
+   },
+   "method": "POST",
+   "chat": "n1",
+   "now": 1700000000123,
+   "expected": {
+    "status": 200,
+    "body": "{\"project\":{\"id\":\"cowork-chat-context-n1\",\"name\":\"Chat attachments n1\",\"goal\":\"\",\"instructions\":\"\",\"files\":[],\"assets\":[],\"memories\":[],\"chats\":[],\"sourceFolders\":[],\"toolboxes\":[\"core\"],\"routing\":\"auto\",\"createdAt\":1700000000123,\"updatedAt\":1700000000123,\"toolsMode\":\"auto\",\"instructionSkills\":{}}}",
+    "projectsAfter": "{\n  \"projects\": [\n    {\n      \"id\": \"cowork-chat-context-n1\",\n      \"name\": \"Chat attachments n1\",\n      \"goal\": \"\",\n      \"instructions\": \"\",\n      \"files\": [],\n      \"assets\": [],\n      \"memories\": [],\n      \"chats\": [],\n      \"sourceFolders\": [],\n      \"toolboxes\": [\n        \"core\"\n      ],\n      \"routing\": \"auto\",\n      \"createdAt\": 1700000000123,\n      \"updatedAt\": 1700000000123,\n      \"toolsMode\": \"auto\",\n      \"instructionSkills\": {}\n    }\n  ]\n}",
+    "userDir": {
+     "made": true,
+     "private": true,
+     "users": [
+      "11111111-2222-4333-8444-555555555555"
+     ]
+    }
+   }
+  },
+  {
+   "name": "post-absent-dir-malformed-escape",
+   "ws": {
+    "projects": null,
+    "tombstones": null,
+    "absent": true
+   },
+   "method": "POST",
+   "chat": "bad%E0%A4%A",
+   "now": 1700000000123,
+   "expected": {
+    "status": 500,
+    "body": "{\"error\":\"Internal error\"}",
+    "projectsAfter": null,
+    "userDir": {
+     "made": true,
+     "private": true,
+     "users": [
+      "11111111-2222-4333-8444-555555555555"
+     ]
+    }
+   }
+  },
+  {
+   "name": "post-absent-dir-invalid",
+   "ws": {
+    "projects": null,
+    "tombstones": null,
+    "absent": true
+   },
+   "method": "POST",
+   "chat": "a.b",
+   "now": 1700000000123,
+   "expected": {
+    "status": 400,
+    "body": "{\"error\":\"Invalid chat identifier\"}",
+    "projectsAfter": null,
+    "userDir": {
+     "made": true,
+     "private": true,
+     "users": [
+      "11111111-2222-4333-8444-555555555555"
+     ]
+    }
+   }
   }
  ]
 }
