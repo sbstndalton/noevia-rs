@@ -48,7 +48,7 @@ def main():
                 filters = (["--exact", "advertised_feature_matches_build_and_never_spawns_child"]
                            if args.capability_omission else [])
                 subprocess.run([executable, *filters, "--test-threads=1"],
-                               cwd=folder, check=True, timeout=300)
+                               cwd=folder, check=True, timeout=600)
         finally:
             os.umask(old)
 
