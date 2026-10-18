@@ -66,8 +66,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     mutation(
         Path::new("bins/noevia-model-manager/src/lib.rs"),
-        "if path != \"/api/v1/health\" && !state.token.is_empty() {",
-        "if path != \"/api/v1/health\" && path != \"/api/v1/host\" && !state.token.is_empty() {",
+        "if auth_path != \"/api/v1/health\" && !state.token.is_empty() {",
+        "if auth_path != \"/api/v1/health\" && auth_path != \"/api/v1/host\" && !state.token.is_empty() {",
         "policy",
         "native_host_auth_method_empty_and_history_use_only_rust_state",
     )?;
