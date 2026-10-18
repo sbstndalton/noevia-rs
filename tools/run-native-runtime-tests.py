@@ -41,17 +41,27 @@ def main():
         raise SystemExit("required test harness artifacts missing")
     if not args.capability_omission:
         mapping = json.loads((root / "bins/noevia-model-manager/docs/retirement-test-mapping.json").read_text())
-        expected = {(item["target"], name) for item in mapping for name in item["archived"]}
+        expected_names = [(item["target"], name) for item in mapping for name in item["archived"]]
+        expected = set(expected_names)
+        if len(expected_names) != len(expected):
+            raise SystemExit("duplicate historical oracle in manifest")
         actual = set()
         for executable in artifacts:
             listing = subprocess.run([executable, "--list"], check=True, capture_output=True, text=True).stdout
             for line in listing.splitlines():
-                if line.startswith("historical_") and line.endswith(": test"):
+                if line.endswith(": test"):
                     parts = line.removesuffix(": test").split("::")
-                    actual.add((parts[0].removeprefix("historical_"), parts[-1]))
-        if actual != expected or len(actual) != 57:
+                    historical = [part for part in parts[:-1] if part.startswith("historical_")]
+                    if historical:
+                        if len(historical) != 1:
+                            raise SystemExit("ambiguous historical oracle path")
+                        contract = (historical[0].removeprefix("historical_"), parts[-1])
+                        if contract in actual:
+                            raise SystemExit(f"duplicate historical oracle: {contract}")
+                        actual.add(contract)
+        if actual != expected or len(actual) != 58:
             raise SystemExit(f"historical oracle inventory changed: expected {len(expected)}, got {len(actual)}")
-        print("Required historical private-input contracts: 57", flush=True)
+        print("Required historical private-input contracts: 58", flush=True)
     with tempfile.TemporaryDirectory(prefix="qa-native-runtime-tests-", dir="/tmp") as folder:
         os.chmod(folder, 0o700)
         old = os.umask(0o077)

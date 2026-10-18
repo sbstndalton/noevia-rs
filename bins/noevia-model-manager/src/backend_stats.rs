@@ -13,10 +13,8 @@
 //! llama-server probes and the answer. The GPU reads that need `docker exec` (`nvidia-smi`,
 //! `rocm-smi`) are not made at all (noevia#1318 step 2): only the integrated-GPU sysfs profile is
 //! kept, and an image whose vendor tool would have answered is sampled as if the tool were absent.
-//! This side never runs `exec` and never asks the child for a GPU read. After every tick the cache
-//! is pushed to the child (`PUT /api/v1/internal/backend-stats`), whose other readers (fit chips,
-//! autoconfig, the benchmark observer) keep reading it through `hw.stats_for`; the child no longer
-//! samples the backends itself.
+//! This side never runs `exec` or asks a child for a GPU read. Native fit, autoconfig and
+//! benchmark observers read this sampler's cache directly; no private mirror is written.
 //!
 //! Python arithmetic is reproduced exactly where it shapes the answer: `round()` (ties to even on
 //! the exact value), `round(x)` giving an int, `sum()` of floats with Python 3.12's Neumaier
@@ -1817,8 +1815,7 @@ impl BackendStats {
         Ok(vendor)
     }
 
-    /// One pass of `hw._sample_loop` (without the host part, which has its own native owner or
-    /// stays with the child), then the push of the cache to the child.
+    /// One pass of `hw._sample_loop`; cache/history stay in their native owner.
     pub async fn tick(&self) {
         let discovered = discover(self.docker.as_ref()).await;
         let names = effective(&self.config.configured, &discovered);
@@ -1856,7 +1853,7 @@ impl BackendStats {
         // Native owners read this sampler directly; there is no mirror writer.
     }
 
-    /// The cache as the child's `PUT /api/v1/internal/backend-stats` body.
+    /// A native cache snapshot, retaining the former mirror's exact JSON rendering.
     pub fn push_body(&self) -> Option<String> {
         let st = lock(&self.state);
         let mut out = String::from("{\"backends\":{");

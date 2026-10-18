@@ -1318,7 +1318,17 @@ fn featureless_control() -> Result<()> {
         .env("DATA_DIR", &data)
         .env("DIAGNOSE_CHILD_MARKER", &marker);
     let output = process::bounded(command, Vec::new(), Duration::from_secs(2))?;
-    require(output.status.code()==Some(1) && output.stdout.is_empty() && output.stderr==b"Error: \"native-diagnose requires rust model manager and compiled native-diagnose feature\"\n","featureless diagnosis startup refusal")?;
+    require(
+        output.status.code() == Some(1)
+            && output.stdout.is_empty()
+            && output.stderr == b"Error: \"mandatory native-routing capability is not compiled\"\n",
+        &format!(
+            "featureless diagnosis startup refusal: status={:?}, stdout={:?}, stderr={:?}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    )?;
     require(
         !data.exists() && !marker.exists(),
         "featureless startup touched child/store",

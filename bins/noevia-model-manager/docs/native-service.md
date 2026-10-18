@@ -67,8 +67,10 @@ Compose/pins remain release-preparation scope. N5 remains sysfs-only; no real jo
 ## Preserved qualification
 
 retirement-test-mapping.json records every original integration source hash and
-selected historical test name. The 57 private-input/forwarding contracts live in
-tests/historical_oracles and compile only into the library's cfg(test) build.
+selected historical test name. The 57 archived integration contracts live in
+tests/historical_oracles; the additional backend sampler contract lives in
+src/backend_stats/tests.rs::historical_backend_stats. All58 compile only into the
+library's cfg(test) build.
 Their recorded API response, file-tree, revision and source-fixture assertions
 remain unchanged. The required combined-runtime runner compares the exact named
 inventory against this manifest before running all emitted harnesses. No
@@ -94,3 +96,8 @@ The download transfer integration replays the same frozen plans directly into th
 native queue while retaining all job/file/history/wire assertions. Native Planner has its
 separate actual-source parity suite; a production-route partial delete body test installs
 both native Planner and native delete owner and proves queue progress and zero private RPC.
+
+The original backend sampler differential also remains required under a cfg(test)-only
+historical adapter that sends the former mirror after each real native tick. Its native
+variant compares the identical recorded cache/public responses directly and requires zero
+private HTTP requests. No production switch or mirror sender is restored.

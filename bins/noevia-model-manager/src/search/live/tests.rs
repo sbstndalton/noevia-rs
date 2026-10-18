@@ -152,6 +152,8 @@ async fn the_search_runtime_is_the_childs() {
 #[tokio::test]
 async fn native_runtime_does_not_require_a_child_startup_advertisement() {
     let dir = tempfile::tempdir().unwrap();
+    // The production native bootstrap creates this source-derived history schema first.
+    history(dir.path(), &serde_json::json!([]));
     let closed = {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", l.local_addr().unwrap());

@@ -340,5 +340,19 @@
     ],
     "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
     "source_sha256": "bf33d129b8355a1035a1cf1804cb969b7d572860f1318af0d303376812c20f29"
+  },
+  {
+    "target": "backend_stats",
+    "original_count": 1,
+    "archived": [
+      "actual_python_differential"
+    ],
+    "integration_remaining": [],
+    "native_replacements": [
+      "backend_stats::tests::native_cache_and_public_responses_match_actual_python_without_mirrors"
+    ],
+    "source_path": "bins/noevia-model-manager/src/backend_stats/tests.rs",
+    "source_ref": "32bf0b34d666e6599a7d79682e624a7303b5c9ab",
+    "source_sha256": "d96ba531e1270e2df4bfed7fbd48217e39344b1eb4db791954aa58660d3a6584"
   }
 ]
