@@ -345,9 +345,9 @@ async fn a_page_over_the_node_limit_records_no_dates() {
         .find(|c| c["id"] == "invalid-json")
         .unwrap()
         .clone();
-    let nodes = noevia_model_manager::check_updates::UPDATE_PAGE_NODES;
+    let nodes = noevia_model_manager::hub_page::PAGE_NODES;
     let page = format!("[{}]", vec!["1"; nodes].join(","));
-    assert!(page.len() < noevia_model_manager::check_updates::UPDATE_PAGE_CAP);
+    assert!(page.len() < noevia_model_manager::hub_page::PAGE_CAP);
     for answer in case["hub"].as_object_mut().unwrap().values_mut() {
         if answer["status"] == 200 {
             answer["body"] = json!(hex(page.as_bytes()));

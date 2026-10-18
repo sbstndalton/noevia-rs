@@ -5,6 +5,10 @@
 //! the recorded answers: the status, the body and the Hub requests (path, query and token) must
 //! match. Every name is synthetic.
 use super::*;
+use crate::hub_page::measure::{
+    charged, filled, fixture_pages, heap, read_page, tree_bound, GGUF_LARGE, MIB, PICKLE_IMPORTS,
+};
+use crate::hub_page::PAGE_STRING_CHARS;
 use serde_json::Value as J;
 use std::sync::Mutex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -558,175 +562,50 @@ async fn remote_lookups_are_bounded() {
 }
 
 // ---- noevia#1985: memory under a hostile Hub page ---------------------------------------------
+// The page limits (read cap, nodes, strings, depth) are tested once, in `hub_page`; what follows
+// is the lookup's own: what it holds beside a page.
 
-const MIB: usize = 1024 * 1024;
-
-/// Heap bytes a parsed tree holds, from its buffer capacities (deterministic: no allocator
-/// hooks, which `unsafe_code = "forbid"` rules out). Each allocation is charged as glibc's
-/// malloc does: at least 24 usable bytes, plus an 8-byte header, in 16-byte steps.
-fn charged(bytes: usize) -> usize {
-    if bytes == 0 {
-        0
-    } else {
-        (bytes.max(24) + 8).div_ceil(16) * 16
-    }
+/// noevia#1995: while a page is read and parsed, the listing projected from the earlier pages is
+/// held too (at most `MAX_INPUT_BYTES`, see `projected_entries_...`), so that stage is at most
+/// page + tree + listing = 16 + 68 + 16 = 100 MiB; projecting the page (tree + listing) is less.
+/// The final parse of the listing and its file list are `final_stage_is_bounded`. It was 1-2 GiB
+/// per page.
+#[test]
+fn the_page_stage_of_a_lookup_is_within_100_mib() {
+    assert!(tree_bound() + PAGE_CAP + model_files::MAX_INPUT_BYTES <= 100 * MIB);
 }
 
-fn heap(value: &Value) -> usize {
-    match value {
-        Value::Null | Value::Bool(_) | Value::Float(_) => 0,
-        // `BigInt` keeps its digits in a `String` reserved exactly (`try_reserve_exact`).
-        Value::Int(i) => charged(i.to_string().trim_start_matches('-').len()),
-        Value::Str(s) => charged(s.capacity()),
-        Value::Arr(items) => {
-            charged(items.capacity() * std::mem::size_of::<Value>())
-                + items.iter().map(heap).sum::<usize>()
-        }
-        Value::Obj(pairs) => {
-            charged(pairs.capacity() * std::mem::size_of::<(String, Value)>())
-                + pairs
-                    .iter()
-                    .map(|(k, v)| charged(k.capacity()) + heap(v))
-                    .sum::<usize>()
-        }
-    }
-}
-
-/// The most a page's tree may hold: per node, a slot in its parent (an object pair is the larger)
-/// with the parent's doubling slack, plus its own smallest allocation; and every string byte
-/// twice (strings grow by doubling as they are unescaped), at most the page's bytes.
-fn tree_bound() -> usize {
-    let per_node = 2 * std::mem::size_of::<(String, Value)>() + charged(1);
-    PAGE_NODES * per_node + 2 * PAGE_CAP
-}
-
-/// `text` repeated into exactly `len` bytes between `open` and `close`.
-fn filled(open: &str, unit: &str, close: &str, len: usize) -> Vec<u8> {
-    let mut page = String::with_capacity(len);
-    page.push_str(open);
-    while page.len() + unit.len() + close.len() <= len {
-        page.push_str(unit);
-    }
-    while page.len() + close.len() < len {
-        page.push(' ');
-    }
-    page.push_str(close);
-    assert_eq!(page.len(), len);
-    page.into_bytes()
-}
-
-/// Streams `page` in 48 KiB chunks through the capped reader, as a Hub response arrives (not a
-/// power of two, so plain doubling would overshoot the cap: 12 MiB, then 24 MiB).
-async fn read_page(page: &[u8]) -> Option<Vec<u8>> {
-    let chunks: Vec<Result<bytes::Bytes, std::io::Error>> = page
-        .chunks(48 * 1024)
-        .map(|c| Ok(bytes::Bytes::copy_from_slice(c)))
-        .collect();
-    read_capped(futures_util::stream::iter(chunks), PAGE_CAP).await
-}
-
-/// noevia#1985 (the peak-buffer assertion #1973 asked for): hostile pages at the page cap are
-/// refused, and nothing on the way holds more than a fixed bound. The raw buffer never grows past
-/// `PAGE_CAP`; a page one byte over is not read. The parse stops at the first node or string
-/// character over its limit, so what a refused page allocated is a prefix of a page the limits
-/// admit; the largest admitted trees of each shape (bare numbers, object keys, long strings,
-/// nested single-element arrays) are measured by their buffer capacities and stay under
-/// `tree_bound()` (68 MiB). While a page is read and parsed, the listing projected from the
-/// earlier pages is held too (at most `MAX_INPUT_BYTES`, see `projected_entries_…`), so that
-/// stage is at most page + tree + listing = 16 + 68 + 16 = 100 MiB (noevia#1995); projecting it
-/// (tree + listing) is less. The final parse of the listing and its file list are
-/// `final_stage_is_bounded`. It was 1-2 GiB per page.
+/// noevia#1999: the real Hub listings (`tests/fixtures/hub-tree`) are read as the lookup reads
+/// them: every page parses under the shared limits, every entry projects within the running
+/// caps, and the finished payload builds the file list (every `.gguf` file of the listing, and
+/// the support files the lookup keeps).
 #[tokio::test]
-async fn hostile_pages_are_refused_within_a_bound() {
-    // Escaped non-ASCII text (`\u00e9` is 6 page bytes for one character) and raw 4-byte text.
-    let hostile = [
-        ("bare numbers", filled("[1", ",1", "]", PAGE_CAP)),
-        ("deep nesting", filled("", "[", "", PAGE_CAP)),
-        ("escaped text", filled("[\"", "\\u00e9", "\"]", PAGE_CAP)),
-        (
-            "raw 4-byte text",
-            filled("[\"", "\u{1F600}", "\"]", PAGE_CAP),
-        ),
-        (
-            "object keys",
-            filled("{\"k\": 1", ", \"k\": 1", "}", PAGE_CAP),
-        ),
-        ("empty arrays", filled("[[]", ", []", "]", PAGE_CAP)),
-    ];
-    for (name, page) in hostile {
-        let body = read_page(&page).await.unwrap_or_else(|| panic!("{name}"));
-        assert_eq!(body.len(), PAGE_CAP, "{name}");
-        assert!(body.capacity() <= PAGE_CAP, "{name}: {}", body.capacity());
-        assert!(parse_page(body).is_none(), "{name} was parsed");
+async fn real_hub_listings_project_into_files() {
+    for (name, fixture) in [("gguf", GGUF_LARGE), ("pickle", PICKLE_IMPORTS)] {
+        let (mut projected, mut gguf_in_tree) = (Projected::default(), 0);
+        for page in fixture_pages(fixture) {
+            let body = read_page(&page).await.unwrap();
+            let Some(Value::Arr(items)) = parse_page(body) else {
+                panic!("{name}: a real page is refused")
+            };
+            for item in &items {
+                let path = match item.get("path") {
+                    Some(Value::Str(path)) => path.to_lowercase(),
+                    _ => String::new(),
+                };
+                gguf_in_tree += usize::from(path.ends_with(".gguf"));
+                projected
+                    .push(item)
+                    .unwrap_or_else(|| panic!("{name}: refused"));
+            }
+        }
+        let files = files_of(projected.finish()).unwrap_or_else(|_| panic!("{name}"));
+        let gguf = files
+            .iter()
+            .filter(|f| f.path.to_lowercase().ends_with(".gguf"))
+            .count();
+        assert_eq!(gguf, gguf_in_tree, "{name}");
     }
-    let mut over = filled("[1", ",1", "]", PAGE_CAP);
-    over.push(b' ');
-    assert!(read_page(&over).await.is_none());
-
-    let largest = [
-        ("bare numbers", filled("[1", ",1", "]", 2 * PAGE_NODES - 1)),
-        (
-            "object keys",
-            format!("{{{}}}", vec!["\"k\": 1"; PAGE_NODES / 2 - 1].join(", ")).into_bytes(),
-        ),
-        // noevia#1995: nested single-element arrays, the most heap per node (each level a
-        // `Vec` of 4 values), 501 levels deep.
-        (
-            "nested arrays",
-            filled(
-                "[",
-                &format!("{}1{}, ", "[".repeat(500), "]".repeat(500)),
-                "1]",
-                1003 * (PAGE_NODES / 501 - 1) + 3,
-            ),
-        ),
-        // Strings one character past a power of two: the most doubling slack.
-        (
-            "long strings",
-            filled(
-                "[\"\"",
-                &format!(", \"{}\"", "\u{1F600}".repeat(8 * 1024 + 1)),
-                "]",
-                PAGE_CAP,
-            ),
-        ),
-    ];
-    let bound = tree_bound();
-    assert!(
-        bound + PAGE_CAP + model_files::MAX_INPUT_BYTES <= 100 * MIB,
-        "{bound}"
-    );
-    for (name, page) in largest {
-        let body = read_page(&page).await.unwrap_or_else(|| panic!("{name}"));
-        assert!(body.capacity() <= PAGE_CAP, "{name}");
-        let tree = parse_page(body).unwrap_or_else(|| panic!("{name}"));
-        let held = heap(&tree);
-        assert!(held <= bound, "{name}: {held} > {bound}");
-        eprintln!(
-            "{name}: tree {:.1} MiB (bound {:.1} MiB)",
-            held as f64 / MIB as f64,
-            bound as f64 / MIB as f64
-        );
-    }
-    // One node or one character more is refused.
-    let numbers = filled("[1", ",1", "]", 2 * PAGE_NODES + 1);
-    assert!(parse_page(numbers).is_none());
-    let long = format!("[\"{}\"]", "a".repeat(PAGE_STRING_CHARS + 1)).into_bytes();
-    assert!(parse_page(long).is_none());
-    let longest = format!("[\"{}\"]", "a".repeat(PAGE_STRING_CHARS)).into_bytes();
-    assert!(parse_page(longest).is_some());
-    // A UTF-16 page (decoded, the raw bytes dropped before the parse) still reads.
-    let utf16: Vec<u8> = "[1, \"x\"]"
-        .encode_utf16()
-        .flat_map(u16::to_le_bytes)
-        .collect();
-    assert_eq!(
-        parse_page(utf16),
-        Some(Value::Arr(vec![
-            Value::Int(model_files::BigInt::from_u64(1)),
-            Value::Str("x".into())
-        ]))
-    );
 }
 
 /// noevia#1985: an entry is measured before it is appended. One whose projection would pass the

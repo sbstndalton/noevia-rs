@@ -15,8 +15,9 @@
 //! `GET /api/v1/models/updates` answer, read after the writes. Every place Python's handler raises
 //! answers FastAPI's plain 500, after the writes it had already made. Deliberate differences are
 //! in `docs/native-check-updates.md`.
+use crate::hub_page::{parse_page, read_capped, PAGE_CAP};
 use crate::model_updates::{self, py_float_repr, ModelUpdates};
-use model_files::json::{Limits, Value as Json};
+use model_files::json::Value as Json;
 use rusqlite::{types::Value, Connection, OpenFlags};
 use std::{
     path::{Path, PathBuf},
@@ -26,17 +27,6 @@ use std::{
 
 /// `hf.HF_API`.
 pub const HF_API: &str = "https://huggingface.co/api";
-/// noevia#1996: largest tree listing the update check reads; a larger one is treated as a failed
-/// request (no dates). The check reads one page per repository (the Hub pages the listing; real
-/// pages are a few thousand entries at most, well under 1 MiB).
-pub const UPDATE_PAGE_CAP: usize = 16 * 1024 * 1024;
-/// noevia#1996: most JSON values and keys in that page (an `expand=true` entry is about 30-60, so
-/// several thousand entries). A page of bare numbers at the cap would be about 8 million, each an
-/// allocated big integer. Over it, a failed request.
-pub const UPDATE_PAGE_NODES: usize = 256 * 1024;
-/// noevia#1996: longest string in that page, in characters (paths, dates and commit titles are
-/// far shorter). Over it, a failed request.
-pub const UPDATE_PAGE_STRING_CHARS: usize = 64 * 1024;
 /// Most download records handled; more answers 500 instead of thousands of Hub requests.
 pub const RECORD_CAP: usize = 4096;
 /// httpx's `timeout=15.0` (connect and each read).
@@ -45,8 +35,6 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 const REQUEST_BUDGET: Duration = Duration::from_secs(120);
 /// sqlite3's default `timeout=5.0`.
 const BUSY_WAIT: Duration = Duration::from_millis(5000);
-/// CPython parses deeper JSON (until RecursionError); this bound is a failed request instead.
-pub(crate) const JSON_DEPTH: usize = 512;
 
 pub type Clock = fn() -> f64;
 
@@ -221,7 +209,7 @@ impl CheckUpdates {
         if response.status() != reqwest::StatusCode::OK {
             return Ok(Vec::new());
         }
-        let Some(body) = read_capped(response.bytes_stream(), UPDATE_PAGE_CAP).await else {
+        let Some(body) = read_capped(response.bytes_stream(), PAGE_CAP).await else {
             return Ok(Vec::new());
         };
         self.blocking(move || entries(body)).await
@@ -256,62 +244,6 @@ fn splice(checked: usize, status: &[u8]) -> Option<Vec<u8>> {
     let mut out = format!("{{\"checked\":{checked},").into_bytes();
     out.extend_from_slice(rest);
     Some(out)
-}
-
-/// A response body of at most `cap` bytes (`None` past it or on a transport error). The buffer
-/// grows by doubling but never beyond `cap` (noevia#1996).
-async fn read_capped<S, E>(mut stream: S, cap: usize) -> Option<Vec<u8>>
-where
-    S: futures_util::Stream<Item = Result<bytes::Bytes, E>> + Unpin,
-{
-    use futures_util::StreamExt;
-    let mut body: Vec<u8> = Vec::new();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.ok()?;
-        let len = body.len().checked_add(chunk.len())?;
-        if len > cap {
-            return None;
-        }
-        if body.capacity() < len {
-            let grown = body.capacity().saturating_mul(2).max(len).min(cap);
-            body.try_reserve_exact(grown - body.len()).ok()?;
-        }
-        body.extend_from_slice(&chunk);
-    }
-    Some(body)
-}
-
-/// The parse limits of the update check's page (noevia#1996).
-fn page_limits() -> Limits {
-    Limits {
-        bytes: UPDATE_PAGE_CAP,
-        depth: JSON_DEPTH,
-        nodes: UPDATE_PAGE_NODES,
-        string_chars: UPDATE_PAGE_STRING_CHARS,
-        ..Limits::default()
-    }
-}
-
-/// `tree.json()` of the page: `None` where `json.loads` raises, and (noevia#1996) for a page over
-/// the node or string limits, a failed request like a page over the size cap. A UTF-8 page is
-/// parsed where it lies; a UTF-16 or UTF-32 one is decoded, its raw bytes dropped and the text
-/// shrunk to its length before the parse. Only the tree outlives this call.
-fn parse_page(body: Vec<u8>) -> Option<Json> {
-    let decoded = match crate::prompts::decode_json_bytes(&body, UPDATE_PAGE_CAP).ok()? {
-        std::borrow::Cow::Borrowed(_) => None,
-        std::borrow::Cow::Owned(text) => Some(text),
-    };
-    match decoded {
-        Some(mut text) => {
-            drop(body);
-            text.shrink_to_fit();
-            model_files::json::parse_with_limits(&text, page_limits()).ok()
-        }
-        None => {
-            let text = crate::prompts::decode_json_bytes(&body, UPDATE_PAGE_CAP).ok()?;
-            model_files::json::parse_with_limits(&text, page_limits()).ok()
-        }
-    }
 }
 
 /// The store as Python's `_conn()` opens it for a write (never created here).
@@ -557,8 +489,14 @@ fn entries(body: Vec<u8>) -> Result<Vec<(String, Json)>, Raised> {
         Json::Str(s) if s.is_empty() => return Ok(Vec::new()),
         _ => return Err(Raised),
     };
+    collect(&list)
+}
+
+/// The `(path, date)` pairs of a parsed listing, built while the whole tree is still held
+/// (noevia#2000: a check holds the tree and this output together).
+fn collect(list: &[Json]) -> Result<Vec<(String, Json)>, Raised> {
     let mut out = Vec::new();
-    for e in &list {
+    for e in list {
         let Json::Obj(_) = e else {
             return Err(Raised);
         };
@@ -625,6 +563,10 @@ fn set_update_check(
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
     use super::*;
+    use crate::hub_page::measure::{
+        charged, filled, fixture_pages, heap, read_page, GGUF_LARGE, MIB, PICKLE_IMPORTS,
+    };
+    use crate::hub_page::PAGE_NODES;
 
     #[test]
     fn header_rules_follow_httpx_and_h11() {
@@ -725,88 +667,20 @@ mod tests {
         assert_eq!(g[1].1, vec![t("b"), t("d")]);
     }
 
-    // ---- noevia#1996: memory under a hostile tree page ------------------------------------
+    // ---- noevia#1996, noevia#2000: memory under a hostile tree page -------------------------
+    // The page limits themselves (read cap, nodes, strings, depth) are tested once, in
+    // `hub_page`. What is the update check's: what it holds beside the tree.
 
-    const MIB: usize = 1024 * 1024;
-
-    /// Heap bytes of a buffer, charged as glibc's malloc does (at least 24 usable bytes, an 8-byte
-    /// header, 16-byte steps). Deterministic: capacities, no allocator hooks (`unsafe_code` is
-    /// forbidden).
-    fn charged(bytes: usize) -> usize {
-        if bytes == 0 {
-            0
-        } else {
-            (bytes.max(24) + 8).div_ceil(16) * 16
-        }
-    }
-
-    fn heap(value: &Json) -> usize {
-        match value {
-            Json::Null | Json::Bool(_) | Json::Float(_) => 0,
-            // `BigInt` keeps its digits in a `String` reserved exactly.
-            Json::Int(i) => charged(i.to_string().trim_start_matches('-').len()),
-            Json::Str(s) => charged(s.capacity()),
-            Json::Arr(items) => {
-                charged(items.capacity() * std::mem::size_of::<Json>())
-                    + items.iter().map(heap).sum::<usize>()
-            }
-            Json::Obj(pairs) => {
-                charged(pairs.capacity() * std::mem::size_of::<(String, Json)>())
-                    + pairs
-                        .iter()
-                        .map(|(k, v)| charged(k.capacity()) + heap(v))
-                        .sum::<usize>()
-            }
-        }
-    }
-
-    /// Per node a slot in its parent (an object pair is the larger) with doubling slack plus its
-    /// own smallest allocation; every string byte twice (unescaped strings grow by doubling).
-    fn tree_bound() -> usize {
-        let per_node = 2 * std::mem::size_of::<(String, Json)>() + charged(1);
-        UPDATE_PAGE_NODES * per_node + 2 * UPDATE_PAGE_CAP
-    }
-
-    /// `unit` repeated into exactly `len` bytes between `open` and `close`.
-    fn filled(open: &str, unit: &str, close: &str, len: usize) -> Vec<u8> {
-        let mut page = String::with_capacity(len);
-        page.push_str(open);
-        while page.len() + unit.len() + close.len() <= len {
-            page.push_str(unit);
-        }
-        while page.len() + close.len() < len {
-            page.push(' ');
-        }
-        page.push_str(close);
-        assert_eq!(page.len(), len);
-        page.into_bytes()
-    }
-
-    /// Streams `page` in 48 KiB chunks (not a power of two: plain doubling would reach 24 MiB).
-    async fn read_page(page: &[u8]) -> Option<Vec<u8>> {
-        let chunks: Vec<Result<bytes::Bytes, std::io::Error>> = page
-            .chunks(48 * 1024)
-            .map(|c| Ok(bytes::Bytes::copy_from_slice(c)))
-            .collect();
-        read_capped(futures_util::stream::iter(chunks), UPDATE_PAGE_CAP).await
-    }
-
-    /// noevia#1996: hostile pages at the cap are refused as a failed request (no dates) with the
-    /// read buffer never past the cap, a page one byte over is not read, and the largest trees
-    /// the limits admit (each shape) stay under `tree_bound()` (68 MiB): with the page, at most
-    /// 84 MiB per check, where a 64 MiB page of bare numbers was about 2 GiB. The parse stops
-    /// at the first node or character over a limit, so a refused page allocated less than an
-    /// admitted one.
+    /// The page limits as the check applies them: a hostile page is a failed request (no dates),
+    /// not a 500 and not a partial answer.
     #[tokio::test]
-    async fn hostile_pages_are_refused_within_a_bound() {
-        let cap = UPDATE_PAGE_CAP;
+    async fn hostile_pages_record_no_dates() {
+        let cap = PAGE_CAP;
         let hostile = [
             ("bare numbers", filled("[1", ",1", "]", cap)),
             ("deep nesting", filled("", "[", "", cap)),
             ("escaped text", filled("[\"", "\\u00e9", "\"]", cap)),
-            ("raw 4-byte text", filled("[\"", "\u{1F600}", "\"]", cap)),
             ("object keys", filled("{\"k\": 1", ", \"k\": 1", "}", cap)),
-            ("empty objects", filled("[{}", ", {}", "]", cap)),
             (
                 "file entries",
                 filled(
@@ -819,62 +693,136 @@ mod tests {
         ];
         for (name, page) in hostile {
             let body = read_page(&page).await.unwrap();
-            assert_eq!(body.len(), cap, "{name}");
-            assert!(body.capacity() <= cap, "{name}: {}", body.capacity());
-            assert!(parse_page(body.clone()).is_none(), "{name} was parsed");
             assert!(entries(body).unwrap().is_empty(), "{name}");
         }
         let mut over = filled("[", " ", "]", cap);
         over.push(b' ');
         assert!(read_page(&over).await.is_none());
+    }
 
-        let bound = tree_bound();
-        assert!(bound + cap <= 84 * MIB, "{bound}");
-        let largest = [
+    /// Heap bytes of `entries()`' output: the vector's buffer (by capacity) and what each pair
+    /// holds (the path and the cloned date).
+    fn output_heap(out: &Vec<(String, Json)>) -> usize {
+        charged(out.capacity() * std::mem::size_of::<(String, Json)>())
+            + out
+                .iter()
+                .map(|(path, date)| charged(path.capacity()) + heap(date))
+                .sum::<usize>()
+    }
+
+    /// One file entry of a page.
+    fn file(path: &str, date: &str) -> String {
+        format!(r#"{{"type":"file","path":{path},"lastCommit":{{"date":{date}}}}}"#)
+    }
+
+    /// noevia#2000: `entries()` builds its output while the whole tree is still held, so past the
+    /// parse a check holds the tree plus the output (the raw page is gone by then: `parse_page`
+    /// drops it, and while parsing a check holds the page plus the tree, 84 MiB at most, see
+    /// `hub_page`). The output copies a path and a date per file entry, so the worst page for it
+    /// has dates that are big values (copies of parts of the tree), beside strings that take the
+    /// most heap in the tree (one character past a power of two, so the parse doubled them) and
+    /// are copied whole. Measured by buffer capacities, with the output vector's previous buffer
+    /// (kept while it grows), the shapes below hold 13 to 88 MiB, the worst being the page that
+    /// combines both (a date of nested arrays beside long paths). The test bounds each shape at
+    /// 90 MiB, which `docs/native-check-updates.md` reports as a measurement of these shapes.
+    #[tokio::test]
+    async fn entries_beside_the_tree_are_bounded() {
+        let nested_unit = format!("{}1{}, ", "[".repeat(500), "]".repeat(500));
+        let nested = format!("[{}1]", nested_unit.repeat(PAGE_NODES / 501 - 12));
+        let long = format!("\"{}\"", "\u{1F600}".repeat(8 * 1024 + 1));
+        let escaped = format!("\"{}\"", "\\u00e9".repeat(10_000));
+        let numbers = format!("[{}]", vec!["1"; PAGE_NODES - 16].join(","));
+        let keys = format!("{{{}}}", vec!["\"k\": 1"; PAGE_NODES / 2 - 8].join(", "));
+        let shapes: Vec<(&str, String)> = vec![
+            // The most pairs: 9 nodes a file entry.
             (
-                "bare numbers",
-                filled("[1", ",1", "]", 2 * UPDATE_PAGE_NODES - 1),
-            ),
-            (
-                "object keys",
+                "minimal entries",
                 format!(
-                    "{{{}}}",
-                    vec!["\"k\": 1"; UPDATE_PAGE_NODES / 2 - 1].join(", ")
-                )
-                .into_bytes(),
-            ),
-            (
-                "nested arrays",
-                filled(
-                    "[",
-                    &format!("{}1{}, ", "[".repeat(500), "]".repeat(500)),
-                    "1]",
-                    1003 * (UPDATE_PAGE_NODES / 501 - 1) + 3,
+                    "[{}]",
+                    vec![file("\"a\"", "\"d\""); PAGE_NODES / 9 - 1].join(",")
                 ),
             ),
+            // The largest dates the node cap admits, each shape once.
+            ("nested-array date", format!("[{}]", file("\"a\"", &nested))),
+            (
+                "number-array date",
+                format!("[{}]", file("\"a\"", &numbers)),
+            ),
+            ("object date", format!("[{}]", file("\"a\"", &keys))),
+            // The most string bytes: both fields one character past a power of two.
             (
                 "long strings",
-                filled(
-                    "[\"\"",
-                    &format!(", \"{}\"", "\u{1F600}".repeat(8 * 1024 + 1)),
-                    "]",
-                    cap,
+                format!("[{}]", vec![file(&long, &long); 240].join(",")),
+            ),
+            (
+                "escaped strings",
+                format!("[{}]", vec![file(&escaped, &escaped); 130].join(",")),
+            ),
+            (
+                "nested-array date and long strings",
+                format!(
+                    "[{},{}]",
+                    file("\"a\"", &nested),
+                    vec![file(&long, &long); 220].join(",")
                 ),
             ),
         ];
-        for (name, page) in largest {
-            let body = read_page(&page).await.unwrap();
-            assert!(body.capacity() <= cap, "{name}");
-            let tree = parse_page(body).unwrap_or_else(|| panic!("{name}"));
-            let held = heap(&tree);
-            assert!(held <= bound, "{name}: {held} > {bound}");
+        let mut worst = 0;
+        for (name, page) in shapes {
+            assert!(page.len() <= PAGE_CAP, "{name}: {}", page.len());
+            let body = read_page(page.as_bytes()).await.unwrap();
+            let tree = parse_page(body).unwrap_or_else(|| panic!("{name} was refused"));
+            let Json::Arr(list) = &tree else {
+                panic!("{name}")
+            };
+            let out = collect(list).unwrap();
+            assert!(!out.is_empty(), "{name}");
+            // The vector grows by doubling: its previous buffer is held while it is copied.
+            let growing = charged(out.capacity() / 2 * std::mem::size_of::<(String, Json)>());
+            let (held, copied) = (heap(&tree), output_heap(&out) + growing);
+            let together = held + copied;
+            eprintln!(
+                "{name}: page {:.1} MiB, tree {:.1} MiB, output {:.1} MiB ({} pairs), together {:.1} MiB",
+                page.len() as f64 / MIB as f64,
+                held as f64 / MIB as f64,
+                copied as f64 / MIB as f64,
+                out.len(),
+                together as f64 / MIB as f64
+            );
+            assert!(together <= 90 * MIB, "{name}: {together}");
+            worst = worst.max(together);
         }
-        let numbers = filled("[1", ",1", "]", 2 * UPDATE_PAGE_NODES + 1);
-        assert!(parse_page(numbers).is_none());
-        let long = format!("[\"{}\"]", "a".repeat(UPDATE_PAGE_STRING_CHARS + 1)).into_bytes();
-        assert!(parse_page(long).is_none());
-        let longest = format!("[\"{}\"]", "a".repeat(UPDATE_PAGE_STRING_CHARS)).into_bytes();
-        assert!(parse_page(longest).is_some());
+        // The worst shape measured 88.3 MiB, past the 84 MiB of the parse (page + tree), which
+        // left the output out. No lower bound is asserted: a leaner parser must not fail this.
+        eprintln!("worst: {:.1} MiB", worst as f64 / MIB as f64);
+    }
+
+    /// noevia#1999: every file entry of the real Hub pages (`tests/fixtures/hub-tree`) gives one
+    /// path and date, as the check reads a page.
+    #[tokio::test]
+    async fn real_hub_pages_give_a_date_per_file() {
+        for (name, fixture) in [("gguf", GGUF_LARGE), ("pickle", PICKLE_IMPORTS)] {
+            let mut files = 0;
+            let mut pairs = Vec::new();
+            for page in fixture_pages(fixture) {
+                let tree: serde_json::Value = serde_json::from_slice(&page).unwrap();
+                files += tree
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|e| e["type"] == "file")
+                    .count();
+                pairs.extend(entries(read_page(&page).await.unwrap()).unwrap());
+            }
+            assert!(files > 0, "{name}");
+            assert_eq!(pairs.len(), files, "{name}");
+            assert!(
+                pairs
+                    .iter()
+                    .all(|(_, date)| matches!(date, Json::Str(d) if d.len() == 24)),
+                "{name}"
+            );
+        }
     }
 
     /// noevia#1996: an ordinary page reads exactly as before, also as UTF-16 (decoded, the raw
