@@ -1,0 +1,18 @@
+[package]
+name = "backend-telemetry"
+version = "0.1.0"
+description = "noevia model-manager passive request telemetry (telemetry.py), the pure parts, matching Python"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+regex = "1"
+
+[dev-dependencies]
+gguf = { path = "../gguf" }
+serde_json = "1"
