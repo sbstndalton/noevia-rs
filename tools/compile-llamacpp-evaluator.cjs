@@ -30,6 +30,7 @@ const ast = acorn.parse(source, {ecmaVersion:2022});
 const functions = [];
 const code = [];
 let unique = 0;
+let compilingFunction = '';
 const emit = (op, n = 0, text = '') => { code.push({op,n,text}); return code.length-1; };
 const host = (op, n = 0, data = null) => emit('Host', n, JSON.stringify({op,data}));
 const lit = value => host('literal', 0, value);
@@ -147,11 +148,15 @@ function stmt(s){
   if(s.alternate){const end=emit('Jump');patch(no);stmt(s.alternate);patch(end);}else patch(no);return;
  }
  case 'ForStatement': {
+   let sum;
+   if(compilingFunction==='kvCacheBytes'){for(const name of ['pattern','headSeq','period','reps','kvHeads','localElem','window','globalElem','ctx'])load(name);sum=emit('KvSum');}
    enter();
    if(s.init)s.init.type==='VariableDeclaration'?stmt(s.init):(expr(s.init),emit('Pop'));
    const start=code.length;let end;
    if(s.test){expr(s.test);end=branch('truthy',true);}
-   stmt(s.body);cloneScope();if(s.update){expr(s.update);emit('Pop');}emit('Jump',start);if(end!==undefined)patch(end);leave();return;
+   stmt(s.body);cloneScope();if(s.update){expr(s.update);emit('Pop');}emit('Jump',start);if(end!==undefined)patch(end);leave();
+   if(sum!==undefined){const done=emit('Jump');patch(sum);store('total');emit('Pop');patch(done);}
+   return;
  }
  case 'ForOfStatement': {
   enter();
@@ -160,7 +165,23 @@ function stmt(s){
   const start=code.length;load(iter);host('next',1);store(next,true);emit('Pop');
   load(next);lit('done');host('get',2);const end=branch('truthy');
   enter();load(next);lit('value');host('get',2);bind(s.left.declarations[0].id);
-  stmt(s.body);leave();emit('Jump',start);patch(end);leave();return;
+  // IteratorStep/Value errors do not close; abrupt loop bodies do. Preserve the
+  // original thrown completion even if reading/calling return also throws.
+  const bodyCatch=emit('Catch');
+  stmt(s.body);emit('Uncatch');leave();emit('Jump',start);
+  patch(bodyCatch);
+  const error='@loopError'+unique, actual='@actualIterator'+unique;
+  store(error,true);emit('Pop');
+  const closeCatch=emit('Catch');
+  load(iter);lit('iterator');host('get',2);store(actual,true);emit('Pop');
+  load(actual);lit('return');host('get',2);emit('Dup');
+  const absent=branch('nullish');
+  load(actual);host('call',2);emit('Pop');const called=emit('Jump');
+  patch(absent);emit('Pop');patch(called);emit('Uncatch');
+  const closed=emit('Jump');patch(closeCatch);emit('Pop');patch(closed);
+  load(error);host('throw',1);emit('Pop');
+  leave();emit('Jump',start);
+  patch(end);leave();return;
  }
  case 'TryStatement': {
    const mark=emit('Catch');stmt(s.block);emit('Uncatch');const end=emit('Jump');patch(mark);
@@ -173,7 +194,7 @@ function stmt(s){
 }
 functions.push({node:{params:[],body:{type:'BlockStatement',body:ast.body}},name:'@initialize',pc:0});
 for(let i=0;i<functions.length;i++){
- const f=functions[i];f.pc=code.length;
+ const f=functions[i];f.pc=code.length;compilingFunction=f.name;
  f.node.params.forEach((p,index)=>{load('@args');lit(index);host('get',2);bind(p);});
  let booleanPeriod;
  if(f.name==='periodOf'){load('seq');booleanPeriod=emit('BooleanPeriod');}
@@ -184,7 +205,7 @@ for(let i=0;i<functions.length;i++){
 const q = x => JSON.stringify(x).replace(/\\u([0-9a-fA-F]{4})/g,(_,h)=>'\\u{'+h+'}');
 const out = '// Generated from frozen source SHA-256 66b436f5e2fda9719470fbc18bd92d7b1b52eb6e881885167cdbbebd02eaa040.\n'
  + 'const ENTRIES: &[usize] = &['+functions.map(f=>f.pc).join(',')+'];\n'
- + 'const PROGRAM: &[Instruction] = &[\n'+code.map((i,pc)=>(functions.filter(f=>f.pc===pc).map(f=>'// '+(f.name||'callback')+' (function '+functions.indexOf(f)+')').join('\n')+'\n')+'Instruction::'+i.op+(i.op==='Host'?'('+i.n+','+q(i.text)+')':i.op==='If'||i.op==='Unless'?'('+i.n+','+q(i.text)+')':i.op==='Jump'||i.op==='Catch'||i.op==='BooleanPeriod'?'('+i.n+')':'')+',').join('\n')+'\n];\n';
+ + 'const PROGRAM: &[Instruction] = &[\n'+code.map((i,pc)=>(functions.filter(f=>f.pc===pc).map(f=>'// '+(f.name||'callback')+' (function '+functions.indexOf(f)+')').join('\n')+'\n')+'Instruction::'+i.op+(i.op==='Host'?'('+i.n+','+q(i.text)+')':i.op==='If'||i.op==='Unless'?'('+i.n+','+q(i.text)+')':i.op==='Jump'||i.op==='Catch'||i.op==='BooleanPeriod'||i.op==='KvSum'?'('+i.n+')':'')+',').join('\n')+'\n];\n';
 fs.writeFileSync(rs+'/evaluator_program.rs',out);
 require('node:child_process').execFileSync('rustfmt', [rs+'/evaluator_program.rs']);
 

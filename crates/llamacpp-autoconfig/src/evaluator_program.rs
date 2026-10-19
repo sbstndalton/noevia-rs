@@ -1,7 +1,7 @@
 // Generated from frozen source SHA-256 66b436f5e2fda9719470fbc18bd92d7b1b52eb6e881885167cdbbebd02eaa040.
 const ENTRIES: &[usize] = &[
-    0, 324, 351, 494, 553, 1174, 1246, 2008, 2376, 2450, 2522, 2932, 3016, 3051, 3072, 3196, 3312,
-    3584, 3758, 3781, 3804, 3827, 3848, 3956, 3977, 4018, 4063, 4098, 4207, 4245,
+    0, 324, 351, 530, 589, 1233, 1305, 2067, 2435, 2509, 2581, 2991, 3075, 3110, 3131, 3255, 3371,
+    3643, 3817, 3840, 3863, 3886, 3907, 4015, 4036, 4077, 4122, 4157, 4266, 4304,
 ];
 const PROGRAM: &[Instruction] = &[
 // @initialize (function 0)
@@ -799,7 +799,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"length\"}"),
 
 Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
-Instruction::Unless(489,"truthy"),
+Instruction::Unless(525,"truthy"),
 
 Instruction::Env,
 
@@ -859,7 +859,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"done\"}"),
 
 Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
-Instruction::If(467,"truthy"),
+Instruction::If(503,"truthy"),
 
 Instruction::Env,
 
@@ -880,6 +880,8 @@ Instruction::Env,
 Instruction::Host(2,"{\"op\":\"declare\",\"data\":\"v\"}"),
 
 Instruction::Pop,
+
+Instruction::Catch(469),
 
 Instruction::Env,
 
@@ -917,7 +919,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(459,"truthy"),
+Instruction::If(460,"truthy"),
 
 Instruction::Pop,
 
@@ -928,6 +930,76 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":1}"),
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"+\"}"),
 
 Instruction::Host(4,"{\"op\":\"call\",\"data\":null}"),
+
+Instruction::Pop,
+
+Instruction::Uncatch,
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"parent\",\"data\":null}"),
+
+Instruction::UseEnv,
+
+Instruction::Jump(417),
+
+Instruction::Env,
+
+Instruction::Host(2,"{\"op\":\"declare\",\"data\":\"@loopError1\"}"),
+
+Instruction::Pop,
+
+Instruction::Catch(494),
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"@iterator1\"}"),
+
+Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"iterator\"}"),
+
+Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
+
+Instruction::Env,
+
+Instruction::Host(2,"{\"op\":\"declare\",\"data\":\"@actualIterator1\"}"),
+
+Instruction::Pop,
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"@actualIterator1\"}"),
+
+Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"return\"}"),
+
+Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
+
+Instruction::Dup,
+
+Instruction::If(491,"nullish"),
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"@actualIterator1\"}"),
+
+Instruction::Host(2,"{\"op\":\"call\",\"data\":null}"),
+
+Instruction::Pop,
+
+Instruction::Jump(492),
+
+Instruction::Pop,
+
+Instruction::Uncatch,
+
+Instruction::Jump(495),
+
+Instruction::Pop,
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"@loopError1\"}"),
+
+Instruction::Host(1,"{\"op\":\"throw\",\"data\":null}"),
 
 Instruction::Pop,
 
@@ -1011,7 +1083,7 @@ Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"seq\"}"),
 
-Instruction::BooleanPeriod(552),
+Instruction::BooleanPeriod(588),
 
 Instruction::Env,
 
@@ -1041,7 +1113,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"<=\"}"),
 
-Instruction::Unless(542,"truthy"),
+Instruction::Unless(578,"truthy"),
 
 Instruction::Env,
 
@@ -1061,7 +1133,7 @@ Instruction::Host(1,"{\"op\":\"closureLinear\",\"data\":{\"arity\":2,\"tree\":[\
 
 Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Unless(532,"truthy"),
+Instruction::Unless(568,"truthy"),
 
 Instruction::Env,
 
@@ -1087,7 +1159,7 @@ Instruction::Host(2,"{\"op\":\"store\",\"data\":\"p\"}"),
 
 Instruction::Pop,
 
-Instruction::Jump(511),
+Instruction::Jump(547),
 
 Instruction::Env,
 
@@ -1149,7 +1221,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(575,"truthy"),
+Instruction::If(611,"truthy"),
 
 Instruction::Pop,
 
@@ -1171,7 +1243,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(586,"truthy"),
+Instruction::If(622,"truthy"),
 
 Instruction::Pop,
 
@@ -1187,7 +1259,7 @@ Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"heads\"}"),
 
-Instruction::Unless(611,"truthy"),
+Instruction::Unless(647,"truthy"),
 
 Instruction::Env,
 
@@ -1211,7 +1283,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(606,"truthy"),
+Instruction::If(642,"truthy"),
 
 Instruction::Pop,
 
@@ -1225,7 +1297,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"/\"}"),
 
 Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Jump(612),
+Instruction::Jump(648),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
@@ -1279,7 +1351,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(641,"truthy"),
+Instruction::If(677,"truthy"),
 
 Instruction::Pop,
 
@@ -1311,7 +1383,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(657,"truthy"),
+Instruction::If(693,"truthy"),
 
 Instruction::Pop,
 
@@ -1335,7 +1407,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(671,"truthy"),
+Instruction::Unless(707,"truthy"),
 
 Instruction::Pop,
 
@@ -1349,7 +1421,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(678,"truthy"),
+Instruction::Unless(714,"truthy"),
 
 Instruction::Pop,
 
@@ -1363,7 +1435,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(685,"truthy"),
+Instruction::Unless(721,"truthy"),
 
 Instruction::Pop,
 
@@ -1377,7 +1449,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(692,"truthy"),
+Instruction::Unless(728,"truthy"),
 
 Instruction::Pop,
 
@@ -1391,7 +1463,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(696,"truthy"),
+Instruction::Unless(732,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
@@ -1445,7 +1517,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"interval\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(726,"truthy"),
+Instruction::Unless(762,"truthy"),
 
 Instruction::Pop,
 
@@ -1457,7 +1529,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":1}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
-Instruction::Unless(774,"truthy"),
+Instruction::Unless(810,"truthy"),
 
 Instruction::Env,
 
@@ -1589,7 +1661,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(795,"truthy"),
+Instruction::If(831,"truthy"),
 
 Instruction::Pop,
 
@@ -1619,7 +1691,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(815,"truthy"),
+Instruction::Unless(851,"truthy"),
 
 Instruction::Pop,
 
@@ -1635,7 +1707,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
-Instruction::Unless(1141,"truthy"),
+Instruction::Unless(1200,"truthy"),
 
 Instruction::Env,
 
@@ -1683,7 +1755,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(843,"truthy"),
+Instruction::If(879,"truthy"),
 
 Instruction::Pop,
 
@@ -1709,7 +1781,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(856,"truthy"),
+Instruction::If(892,"truthy"),
 
 Instruction::Pop,
 
@@ -1809,7 +1881,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(913,"truthy"),
+Instruction::Unless(949,"truthy"),
 
 Instruction::Pop,
 
@@ -1831,7 +1903,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"layers\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(919,"truthy"),
+Instruction::Unless(955,"truthy"),
 
 Instruction::Env,
 
@@ -1841,7 +1913,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"slidingWindowPattern\"}"),
 
 Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
-Instruction::Jump(920),
+Instruction::Jump(956),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":null}"),
 
@@ -1875,7 +1947,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(946,"truthy"),
+Instruction::Unless(982,"truthy"),
 
 Instruction::Pop,
 
@@ -1897,7 +1969,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"layers\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(952,"truthy"),
+Instruction::Unless(988,"truthy"),
 
 Instruction::Env,
 
@@ -1907,7 +1979,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"headCountKv\"}"),
 
 Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
-Instruction::Jump(953),
+Instruction::Jump(989),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":null}"),
 
@@ -1921,7 +1993,7 @@ Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"pattern\"}"),
 
-Instruction::Unless(1081,"truthy"),
+Instruction::Unless(1140,"truthy"),
 
 Instruction::Env,
 
@@ -1979,6 +2051,44 @@ Instruction::Pop,
 
 Instruction::Env,
 
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"pattern\"}"),
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"headSeq\"}"),
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"period\"}"),
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"reps\"}"),
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"kvHeads\"}"),
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"localElem\"}"),
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"window\"}"),
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"globalElem\"}"),
+
+Instruction::Env,
+
+Instruction::Host(1,"{\"op\":\"load\",\"data\":\"ctx\"}"),
+
+Instruction::KvSum(1131),
+
+Instruction::Env,
+
 Instruction::Host(1,"{\"op\":\"scope\",\"data\":null}"),
 
 Instruction::UseEnv,
@@ -2001,7 +2111,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"period\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"<\"}"),
 
-Instruction::Unless(1072,"truthy"),
+Instruction::Unless(1127,"truthy"),
 
 Instruction::Env,
 
@@ -2013,7 +2123,7 @@ Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"headSeq\"}"),
 
-Instruction::Unless(1019,"truthy"),
+Instruction::Unless(1074,"truthy"),
 
 Instruction::Env,
 
@@ -2041,7 +2151,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(4,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Jump(1021),
+Instruction::Jump(1076),
 
 Instruction::Env,
 
@@ -2067,7 +2177,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"i\"}"),
 
 Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
-Instruction::Unless(1044,"truthy"),
+Instruction::Unless(1099,"truthy"),
 
 Instruction::Env,
 
@@ -2091,7 +2201,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"window\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"*\"}"),
 
-Instruction::Jump(1055),
+Instruction::Jump(1110),
 
 Instruction::Env,
 
@@ -2147,13 +2257,21 @@ Instruction::Host(2,"{\"op\":\"store\",\"data\":\"i\"}"),
 
 Instruction::Pop,
 
-Instruction::Jump(993),
+Instruction::Jump(1048),
 
 Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"parent\",\"data\":null}"),
 
 Instruction::UseEnv,
+
+Instruction::Jump(1134),
+
+Instruction::Env,
+
+Instruction::Host(2,"{\"op\":\"store\",\"data\":\"total\"}"),
+
+Instruction::Pop,
 
 Instruction::Env,
 
@@ -2391,7 +2509,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(1196,"truthy"),
+Instruction::If(1255,"truthy"),
 
 Instruction::Pop,
 
@@ -2411,7 +2529,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(1210,"truthy"),
+Instruction::If(1269,"truthy"),
 
 Instruction::Pop,
 
@@ -2425,7 +2543,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(1213,"truthy"),
+Instruction::Unless(1272,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
@@ -2539,7 +2657,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(1270,"undefined"),
+Instruction::Unless(1329,"undefined"),
 
 Instruction::Pop,
 
@@ -2571,7 +2689,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(1286,"undefined"),
+Instruction::Unless(1345,"undefined"),
 
 Instruction::Pop,
 
@@ -2591,7 +2709,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(1296,"undefined"),
+Instruction::Unless(1355,"undefined"),
 
 Instruction::Pop,
 
@@ -2611,7 +2729,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"meta\"}"),
 
 Instruction::Dup,
 
-Instruction::If(1306,"truthy"),
+Instruction::If(1365,"truthy"),
 
 Instruction::Pop,
 
@@ -2635,7 +2753,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(1321,"truthy"),
+Instruction::Unless(1380,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"object\",\"data\":null}"),
 
@@ -2659,7 +2777,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(1343,"truthy"),
+Instruction::If(1402,"truthy"),
 
 Instruction::Pop,
 
@@ -2683,7 +2801,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(1342,"truthy"),
+Instruction::If(1401,"truthy"),
 
 Instruction::Pop,
 
@@ -2691,7 +2809,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"\"}"),
 
 Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Unless(1349,"truthy"),
+Instruction::Unless(1408,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"object\",\"data\":null}"),
 
@@ -2721,7 +2839,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"<=\"}"),
 
-Instruction::Unless(1373,"truthy"),
+Instruction::Unless(1432,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"object\",\"data\":null}"),
 
@@ -2739,7 +2857,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(1370,"truthy"),
+Instruction::If(1429,"truthy"),
 
 Instruction::Pop,
 
@@ -2761,7 +2879,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(1386,"truthy"),
+Instruction::Unless(1445,"truthy"),
 
 Instruction::Pop,
 
@@ -2779,7 +2897,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(1400,"truthy"),
+Instruction::Unless(1459,"truthy"),
 
 Instruction::Pop,
 
@@ -2805,7 +2923,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"-\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
-Instruction::Unless(1406,"truthy"),
+Instruction::Unless(1465,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"object\",\"data\":null}"),
 
@@ -2859,7 +2977,7 @@ Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"hasMmproj\"}"),
 
-Instruction::Unless(1504,"truthy"),
+Instruction::Unless(1563,"truthy"),
 
 Instruction::Env,
 
@@ -2901,7 +3019,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(1451,"truthy"),
+Instruction::If(1510,"truthy"),
 
 Instruction::Pop,
 
@@ -2969,7 +3087,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(1485,"truthy"),
+Instruction::If(1544,"truthy"),
 
 Instruction::Pop,
 
@@ -2987,7 +3105,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(1494,"truthy"),
+Instruction::If(1553,"truthy"),
 
 Instruction::Pop,
 
@@ -3023,7 +3141,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(1512,"truthy"),
+Instruction::If(1571,"truthy"),
 
 Instruction::Pop,
 
@@ -3041,7 +3159,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"native\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(1527,"truthy"),
+Instruction::Unless(1586,"truthy"),
 
 Instruction::Pop,
 
@@ -3059,7 +3177,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"<\"}"),
 
-Instruction::Unless(1547,"truthy"),
+Instruction::Unless(1606,"truthy"),
 
 Instruction::Env,
 
@@ -3165,7 +3283,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(1583,"truthy"),
+Instruction::If(1642,"truthy"),
 
 Instruction::Pop,
 
@@ -3241,7 +3359,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(1654,"truthy"),
+Instruction::Unless(1713,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"object\",\"data\":null}"),
 
@@ -3517,7 +3635,7 @@ Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"hasMmproj\"}"),
 
-Instruction::Unless(1845,"truthy"),
+Instruction::Unless(1904,"truthy"),
 
 Instruction::Env,
 
@@ -3593,7 +3711,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(1797,"truthy"),
+Instruction::If(1856,"truthy"),
 
 Instruction::Pop,
 
@@ -3625,7 +3743,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(1813,"truthy"),
+Instruction::If(1872,"truthy"),
 
 Instruction::Pop,
 
@@ -3643,7 +3761,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"batch\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(1832,"truthy"),
+Instruction::Unless(1891,"truthy"),
 
 Instruction::Pop,
 
@@ -3669,7 +3787,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"<\"}"),
 
-Instruction::Unless(1842,"truthy"),
+Instruction::Unless(1901,"truthy"),
 
 Instruction::Env,
 
@@ -3707,7 +3825,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
-Instruction::Unless(1874,"truthy"),
+Instruction::Unless(1933,"truthy"),
 
 Instruction::Env,
 
@@ -3751,7 +3869,7 @@ Instruction::Host(1,"{\"op\":\"parent\",\"data\":null}"),
 
 Instruction::UseEnv,
 
-Instruction::Jump(1902),
+Instruction::Jump(1961),
 
 Instruction::Env,
 
@@ -3765,7 +3883,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"draft-mtp\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(1902,"truthy"),
+Instruction::Unless(1961,"truthy"),
 
 Instruction::Env,
 
@@ -3815,7 +3933,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"native\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(1914,"truthy"),
+Instruction::Unless(1973,"truthy"),
 
 Instruction::Pop,
 
@@ -3833,7 +3951,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"native\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(1934,"truthy"),
+Instruction::Unless(1993,"truthy"),
 
 Instruction::Env,
 
@@ -3871,7 +3989,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Pop,
 
-Instruction::Jump(1957),
+Instruction::Jump(2016),
 
 Instruction::Env,
 
@@ -3891,7 +4009,7 @@ Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"native\"}"),
 
-Instruction::Unless(1953,"truthy"),
+Instruction::Unless(2012,"truthy"),
 
 Instruction::Env,
 
@@ -3909,7 +4027,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"en-US\"}"),
 
 Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Jump(1954),
+Instruction::Jump(2013),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"an unknown number of\"}"),
 
@@ -3925,7 +4043,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"hasMmproj\"}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(1970,"truthy"),
+Instruction::Unless(2029,"truthy"),
 
 Instruction::Env,
 
@@ -4063,7 +4181,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(2032,"undefined"),
+Instruction::Unless(2091,"undefined"),
 
 Instruction::Pop,
 
@@ -4083,7 +4201,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(2042,"undefined"),
+Instruction::Unless(2101,"undefined"),
 
 Instruction::Pop,
 
@@ -4103,7 +4221,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"meta\"}"),
 
 Instruction::Dup,
 
-Instruction::If(2052,"truthy"),
+Instruction::If(2111,"truthy"),
 
 Instruction::Pop,
 
@@ -4129,7 +4247,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(2079,"truthy"),
+Instruction::Unless(2138,"truthy"),
 
 Instruction::Pop,
 
@@ -4153,7 +4271,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2077,"truthy"),
+Instruction::If(2136,"truthy"),
 
 Instruction::Pop,
 
@@ -4185,7 +4303,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
-Instruction::Unless(2167,"truthy"),
+Instruction::Unless(2226,"truthy"),
 
 Instruction::Env,
 
@@ -4227,7 +4345,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2114,"truthy"),
+Instruction::If(2173,"truthy"),
 
 Instruction::Pop,
 
@@ -4295,7 +4413,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2148,"truthy"),
+Instruction::If(2207,"truthy"),
 
 Instruction::Pop,
 
@@ -4313,7 +4431,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2157,"truthy"),
+Instruction::If(2216,"truthy"),
 
 Instruction::Pop,
 
@@ -4349,7 +4467,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2175,"truthy"),
+Instruction::If(2234,"truthy"),
 
 Instruction::Pop,
 
@@ -4389,7 +4507,7 @@ Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"sizeable\"}"),
 
-Instruction::Unless(2210,"truthy"),
+Instruction::Unless(2269,"truthy"),
 
 Instruction::Env,
 
@@ -4423,7 +4541,7 @@ Instruction::Host(1,"{\"op\":\"closure\",\"data\":{\"entry\":24,\"arity\":1,\"na
 
 Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Jump(2211),
+Instruction::Jump(2270),
 
 Instruction::Host(0,"{\"op\":\"array\",\"data\":null}"),
 
@@ -4449,7 +4567,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2228,"truthy"),
+Instruction::If(2287,"truthy"),
 
 Instruction::Pop,
 
@@ -4465,7 +4583,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2233,"truthy"),
+Instruction::If(2292,"truthy"),
 
 Instruction::Pop,
 
@@ -4491,7 +4609,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"string\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(2249,"truthy"),
+Instruction::Unless(2308,"truthy"),
 
 Instruction::Env,
 
@@ -4501,7 +4619,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"cache-type-k\"}"),
 
 Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
-Instruction::Jump(2250),
+Instruction::Jump(2309),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":null}"),
 
@@ -4541,7 +4659,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2271,"truthy"),
+Instruction::If(2330,"truthy"),
 
 Instruction::Pop,
 
@@ -4557,7 +4675,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"native\"}"),
 
 Instruction::Dup,
 
-Instruction::If(2279,"truthy"),
+Instruction::If(2338,"truthy"),
 
 Instruction::Pop,
 
@@ -4631,7 +4749,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(2321,"truthy"),
+Instruction::Unless(2380,"truthy"),
 
 Instruction::Pop,
 
@@ -4715,7 +4833,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Unless(2371,"truthy"),
+Instruction::Unless(2430,"truthy"),
 
 Instruction::Env,
 
@@ -4745,7 +4863,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"/\"}"),
 
 Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Jump(2372),
+Instruction::Jump(2431),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":null}"),
 
@@ -4781,7 +4899,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(2391,"undefined"),
+Instruction::Unless(2450,"undefined"),
 
 Instruction::Pop,
 
@@ -4815,7 +4933,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2412,"truthy"),
+Instruction::If(2471,"truthy"),
 
 Instruction::Pop,
 
@@ -4831,7 +4949,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2420,"truthy"),
+Instruction::If(2479,"truthy"),
 
 Instruction::Pop,
 
@@ -4847,7 +4965,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2428,"truthy"),
+Instruction::If(2487,"truthy"),
 
 Instruction::Pop,
 
@@ -4863,7 +4981,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2447,"truthy"),
+Instruction::If(2506,"truthy"),
 
 Instruction::Pop,
 
@@ -4889,7 +5007,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"model\"}"),
 
 Instruction::Dup,
 
-Instruction::If(2445,"truthy"),
+Instruction::If(2504,"truthy"),
 
 Instruction::Pop,
 
@@ -4927,11 +5045,11 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":null}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"==\"}"),
 
-Instruction::Unless(2464,"truthy"),
+Instruction::Unless(2523,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"\"}"),
 
-Instruction::Jump(2475),
+Instruction::Jump(2534),
 
 Instruction::Env,
 
@@ -4969,7 +5087,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(2486,"truthy"),
+Instruction::Unless(2545,"truthy"),
 
 Instruction::Env,
 
@@ -5015,7 +5133,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(2509,"truthy"),
+Instruction::Unless(2568,"truthy"),
 
 Instruction::Env,
 
@@ -5031,13 +5149,13 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"<\"}"),
 
-Instruction::Unless(2517,"truthy"),
+Instruction::Unless(2576,"truthy"),
 
 Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"Infinity\"}"),
 
-Instruction::Jump(2519),
+Instruction::Jump(2578),
 
 Instruction::Env,
 
@@ -5091,7 +5209,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(2546,"undefined"),
+Instruction::Unless(2605,"undefined"),
 
 Instruction::Pop,
 
@@ -5111,7 +5229,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(2556,"undefined"),
+Instruction::Unless(2615,"undefined"),
 
 Instruction::Pop,
 
@@ -5131,7 +5249,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(2566,"undefined"),
+Instruction::Unless(2625,"undefined"),
 
 Instruction::Pop,
 
@@ -5151,7 +5269,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"meta\"}"),
 
 Instruction::Dup,
 
-Instruction::If(2576,"truthy"),
+Instruction::If(2635,"truthy"),
 
 Instruction::Pop,
 
@@ -5173,7 +5291,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2587,"truthy"),
+Instruction::If(2646,"truthy"),
 
 Instruction::Pop,
 
@@ -5201,7 +5319,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2604,"truthy"),
+Instruction::If(2663,"truthy"),
 
 Instruction::Pop,
 
@@ -5217,7 +5335,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2610,"truthy"),
+Instruction::If(2669,"truthy"),
 
 Instruction::Pop,
 
@@ -5227,7 +5345,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"native\"}"),
 
 Instruction::Dup,
 
-Instruction::If(2614,"truthy"),
+Instruction::If(2673,"truthy"),
 
 Instruction::Pop,
 
@@ -5327,7 +5445,7 @@ Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"sizeable\"}"),
 
-Instruction::Unless(2686,"truthy"),
+Instruction::Unless(2745,"truthy"),
 
 Instruction::Env,
 
@@ -5375,7 +5493,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"GIB\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"/\"}"),
 
-Instruction::Jump(2687),
+Instruction::Jump(2746),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
@@ -5401,7 +5519,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\">\"}"),
 
-Instruction::Unless(2775,"truthy"),
+Instruction::Unless(2834,"truthy"),
 
 Instruction::Env,
 
@@ -5443,7 +5561,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2722,"truthy"),
+Instruction::If(2781,"truthy"),
 
 Instruction::Pop,
 
@@ -5511,7 +5629,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2756,"truthy"),
+Instruction::If(2815,"truthy"),
 
 Instruction::Pop,
 
@@ -5529,7 +5647,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2765,"truthy"),
+Instruction::If(2824,"truthy"),
 
 Instruction::Pop,
 
@@ -5569,7 +5687,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(2785,"truthy"),
+Instruction::If(2844,"truthy"),
 
 Instruction::Pop,
 
@@ -5603,11 +5721,11 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"options\"}"),
 
 Instruction::Host(4,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Unless(2802,"truthy"),
+Instruction::Unless(2861,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":0}"),
 
-Instruction::Jump(2810),
+Instruction::Jump(2869),
 
 Instruction::Env,
 
@@ -5641,13 +5759,13 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"Infinity\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(2822,"truthy"),
+Instruction::Unless(2881,"truthy"),
 
 Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"Infinity\"}"),
 
-Instruction::Jump(2826),
+Instruction::Jump(2885),
 
 Instruction::Env,
 
@@ -5789,11 +5907,11 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"Infinity\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(2895,"truthy"),
+Instruction::Unless(2954,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":null}"),
 
-Instruction::Jump(2901),
+Instruction::Jump(2960),
 
 Instruction::Env,
 
@@ -5835,11 +5953,11 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"Infinity\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(2918,"truthy"),
+Instruction::Unless(2977,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":null}"),
 
-Instruction::Jump(2924),
+Instruction::Jump(2983),
 
 Instruction::Env,
 
@@ -5905,7 +6023,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"value\"}"),
 
 Instruction::Dup,
 
-Instruction::If(2953,"truthy"),
+Instruction::If(3012,"truthy"),
 
 Instruction::Pop,
 
@@ -5927,7 +6045,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"match\"}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(2964,"truthy"),
+Instruction::Unless(3023,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":null}"),
 
@@ -6061,7 +6179,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(3035,"truthy"),
+Instruction::Unless(3094,"truthy"),
 
 Instruction::Pop,
 
@@ -6077,7 +6195,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(3048,"truthy"),
+Instruction::Unless(3107,"truthy"),
 
 Instruction::Pop,
 
@@ -6131,13 +6249,13 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"number\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(3067,"truthy"),
+Instruction::Unless(3126,"truthy"),
 
 Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"v\"}"),
 
-Instruction::Jump(3069),
+Instruction::Jump(3128),
 
 Instruction::Env,
 
@@ -6191,7 +6309,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(3096,"truthy"),
+Instruction::Unless(3155,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -6213,7 +6331,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(3112,"truthy"),
+Instruction::Unless(3171,"truthy"),
 
 Instruction::Pop,
 
@@ -6229,7 +6347,7 @@ Instruction::Host(0,"{\"op\":\"undefined\",\"data\":null}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(3115,"truthy"),
+Instruction::Unless(3174,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":true}"),
 
@@ -6255,7 +6373,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3134,"truthy"),
+Instruction::If(3193,"truthy"),
 
 Instruction::Pop,
 
@@ -6275,7 +6393,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3146,"truthy"),
+Instruction::If(3205,"truthy"),
 
 Instruction::Pop,
 
@@ -6297,7 +6415,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(3149,"truthy"),
+Instruction::Unless(3208,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -6367,7 +6485,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
-Instruction::Unless(3184,"truthy"),
+Instruction::Unless(3243,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -6439,7 +6557,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(3220,"truthy"),
+Instruction::Unless(3279,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -6457,7 +6575,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":true}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(3229,"truthy"),
+Instruction::Unless(3288,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":true}"),
 
@@ -6485,7 +6603,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Unless(3243,"truthy"),
+Instruction::Unless(3302,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":true}"),
 
@@ -6507,7 +6625,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3259,"truthy"),
+Instruction::If(3318,"truthy"),
 
 Instruction::Pop,
 
@@ -6523,7 +6641,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
-Instruction::Unless(3262,"truthy"),
+Instruction::Unless(3321,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -6545,7 +6663,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3279,"truthy"),
+Instruction::If(3338,"truthy"),
 
 Instruction::Pop,
 
@@ -6563,7 +6681,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"number\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
-Instruction::Unless(3282,"truthy"),
+Instruction::Unless(3341,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -6583,7 +6701,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(3297,"truthy"),
+Instruction::Unless(3356,"truthy"),
 
 Instruction::Pop,
 
@@ -6599,7 +6717,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":true}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
-Instruction::Unless(3300,"truthy"),
+Instruction::Unless(3359,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -6673,7 +6791,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3343,"truthy"),
+Instruction::If(3402,"truthy"),
 
 Instruction::Pop,
 
@@ -6693,7 +6811,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3358,"truthy"),
+Instruction::If(3417,"truthy"),
 
 Instruction::Pop,
 
@@ -6723,7 +6841,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3373,"truthy"),
+Instruction::If(3432,"truthy"),
 
 Instruction::Pop,
 
@@ -6751,7 +6869,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(3376,"truthy"),
+Instruction::Unless(3435,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -6785,7 +6903,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3401,"truthy"),
+Instruction::If(3460,"truthy"),
 
 Instruction::Pop,
 
@@ -6809,7 +6927,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3413,"truthy"),
+Instruction::If(3472,"truthy"),
 
 Instruction::Pop,
 
@@ -6831,7 +6949,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
-Instruction::Unless(3416,"truthy"),
+Instruction::Unless(3475,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -6857,7 +6975,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3437,"truthy"),
+Instruction::If(3496,"truthy"),
 
 Instruction::Pop,
 
@@ -6881,7 +6999,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3449,"truthy"),
+Instruction::If(3508,"truthy"),
 
 Instruction::Pop,
 
@@ -6903,7 +7021,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
-Instruction::Unless(3452,"truthy"),
+Instruction::Unless(3511,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -6929,7 +7047,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3473,"truthy"),
+Instruction::If(3532,"truthy"),
 
 Instruction::Pop,
 
@@ -6953,7 +7071,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3489,"truthy"),
+Instruction::If(3548,"truthy"),
 
 Instruction::Pop,
 
@@ -6985,7 +7103,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3505,"truthy"),
+Instruction::If(3564,"truthy"),
 
 Instruction::Pop,
 
@@ -7015,7 +7133,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
-Instruction::Unless(3508,"truthy"),
+Instruction::Unless(3567,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -7059,7 +7177,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3542,"truthy"),
+Instruction::If(3601,"truthy"),
 
 Instruction::Pop,
 
@@ -7089,7 +7207,7 @@ Instruction::Host(4,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(3545,"truthy"),
+Instruction::Unless(3604,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -7109,7 +7227,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(3567,"truthy"),
+Instruction::Unless(3626,"truthy"),
 
 Instruction::Pop,
 
@@ -7139,7 +7257,7 @@ Instruction::Host(4,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(3570,"truthy"),
+Instruction::Unless(3629,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -7269,7 +7387,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(3638,"truthy"),
+Instruction::Unless(3697,"truthy"),
 
 Instruction::Pop,
 
@@ -7283,7 +7401,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(3648,"truthy"),
+Instruction::Unless(3707,"truthy"),
 
 Instruction::Pop,
 
@@ -7301,7 +7419,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"text\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(3658,"truthy"),
+Instruction::Unless(3717,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"object\",\"data\":null}"),
 
@@ -7329,7 +7447,7 @@ Instruction::Host(2,"{\"op\":\"declare\",\"data\":\"ok\"}"),
 
 Instruction::Pop,
 
-Instruction::Catch(3718),
+Instruction::Catch(3777),
 
 Instruction::Env,
 
@@ -7345,7 +7463,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":1}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(3682,"truthy"),
+Instruction::Unless(3741,"truthy"),
 
 Instruction::Env,
 
@@ -7367,7 +7485,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(4,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Jump(3708),
+Instruction::Jump(3767),
 
 Instruction::Env,
 
@@ -7377,7 +7495,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":2}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
-Instruction::Unless(3698,"truthy"),
+Instruction::Unless(3757,"truthy"),
 
 Instruction::Env,
 
@@ -7399,7 +7517,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Host(4,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Jump(3708),
+Instruction::Jump(3767),
 
 Instruction::Env,
 
@@ -7439,7 +7557,7 @@ Instruction::UseEnv,
 
 Instruction::Uncatch,
 
-Instruction::Jump(3729),
+Instruction::Jump(3788),
 
 Instruction::Pop,
 
@@ -7467,7 +7585,7 @@ Instruction::Env,
 
 Instruction::Host(1,"{\"op\":\"load\",\"data\":\"ok\"}"),
 
-Instruction::Unless(3741,"truthy"),
+Instruction::Unless(3800,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"object\",\"data\":null}"),
 
@@ -7485,7 +7603,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"candidate\"}"),
 
 Instruction::Host(3,"{\"op\":\"define\",\"data\":null}"),
 
-Instruction::Jump(3755),
+Instruction::Jump(3814),
 
 Instruction::Host(0,"{\"op\":\"object\",\"data\":null}"),
 
@@ -7505,11 +7623,11 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"refused\"}"),
 
 Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
-Instruction::Unless(3753,"truthy"),
+Instruction::Unless(3812,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"impl_refused\"}"),
 
-Instruction::Jump(3754),
+Instruction::Jump(3813),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"impl_mismatch\"}"),
 
@@ -7681,7 +7799,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3845,"truthy"),
+Instruction::If(3904,"truthy"),
 
 Instruction::Pop,
 
@@ -7939,7 +8057,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(3974,"truthy"),
+Instruction::If(4033,"truthy"),
 
 Instruction::Pop,
 
@@ -8095,7 +8213,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(4048,"nullish"),
+Instruction::Unless(4107,"nullish"),
 
 Instruction::Pop,
 
@@ -8161,7 +8279,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"t\"}"),
 
 Instruction::Dup,
 
-Instruction::If(4081,"truthy"),
+Instruction::If(4140,"truthy"),
 
 Instruction::Pop,
 
@@ -8183,7 +8301,7 @@ Instruction::Host(2,"{\"op\":\"get\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::If(4095,"truthy"),
+Instruction::If(4154,"truthy"),
 
 Instruction::Pop,
 
@@ -8251,7 +8369,7 @@ Instruction::Host(4,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
-Instruction::Unless(4126,"truthy"),
+Instruction::Unless(4185,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -8315,7 +8433,7 @@ Instruction::Host(1,"{\"op\":\"load\",\"data\":\"k\"}"),
 
 Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
-Instruction::Unless(4162,"truthy"),
+Instruction::Unless(4221,"truthy"),
 
 Instruction::Env,
 
@@ -8351,7 +8469,7 @@ Instruction::Host(1,"{\"op\":\"unary\",\"data\":\"!\"}"),
 
 Instruction::Dup,
 
-Instruction::If(4180,"truthy"),
+Instruction::If(4239,"truthy"),
 
 Instruction::Pop,
 
@@ -8367,7 +8485,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
 Instruction::Dup,
 
-Instruction::If(4188,"truthy"),
+Instruction::If(4247,"truthy"),
 
 Instruction::Pop,
 
@@ -8381,7 +8499,7 @@ Instruction::Host(0,"{\"op\":\"literal\",\"data\":\"string\"}"),
 
 Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"!==\"}"),
 
-Instruction::Unless(4191,"truthy"),
+Instruction::Unless(4250,"truthy"),
 
 Instruction::Host(0,"{\"op\":\"literal\",\"data\":false}"),
 
@@ -8459,7 +8577,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(4234,"truthy"),
+Instruction::Unless(4293,"truthy"),
 
 Instruction::Pop,
 
@@ -8475,7 +8593,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(4242,"truthy"),
+Instruction::Unless(4301,"truthy"),
 
 Instruction::Pop,
 
@@ -8537,7 +8655,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(4279,"truthy"),
+Instruction::Unless(4338,"truthy"),
 
 Instruction::Pop,
 
@@ -8565,7 +8683,7 @@ Instruction::Host(3,"{\"op\":\"call\",\"data\":null}"),
 
 Instruction::Dup,
 
-Instruction::Unless(4296,"truthy"),
+Instruction::Unless(4355,"truthy"),
 
 Instruction::Pop,
 
@@ -8599,7 +8717,7 @@ Instruction::Host(2,"{\"op\":\"binary\",\"data\":\"===\"}"),
 
 Instruction::Dup,
 
-Instruction::Unless(4316,"truthy"),
+Instruction::Unless(4375,"truthy"),
 
 Instruction::Pop,
 

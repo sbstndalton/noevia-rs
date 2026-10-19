@@ -21,6 +21,7 @@ enum Instruction {
     Catch(usize),
     Uncatch,
     BooleanPeriod(usize),
+    KvSum(usize),
     Return,
 }
 include!("evaluator_program.rs");
@@ -220,6 +221,73 @@ fn hex(text: &[u16]) -> R<Vec<u8>> {
         .collect()
 }
 
+struct Sum {
+    cache: Period,
+    raw: Vec<u64>,
+    numbers: [f64; 6],
+    total: f64,
+}
+fn read_bits(v: Option<&Value>) -> R<f64> {
+    let Some(text) = v.and_then(Value::as_str) else {
+        return Err(Refusal::Input);
+    };
+    if text.len() != 16 {
+        return Err(Refusal::Input);
+    }
+    let mut bits = 0_u64;
+    for &c in text {
+        let digit = match c {
+            0x30..=0x39 => c - 0x30,
+            0x61..=0x66 => c - 0x61 + 10,
+            _ => return Err(Refusal::Input),
+        };
+        bits = (bits << 4) | u64::from(digit);
+    }
+    Ok(f64::from_bits(bits))
+}
+impl Sum {
+    fn read(v: &Value) -> R<Self> {
+        let cache = Period::read(v.get("cache").ok_or(Refusal::Input)?)?;
+        let raw = refs(v.get("raw"))?;
+        if !raw.is_empty() && raw.len() != 8 {
+            return Err(Refusal::Input);
+        }
+        let Some(Value::Arr(numbers)) = v.get("numbers") else {
+            return Err(Refusal::Input);
+        };
+        if numbers.len() != 6 {
+            return Err(Refusal::Input);
+        }
+        let mut values = [0.0; 6];
+        for (destination, source) in values.iter_mut().zip(numbers) {
+            *destination = read_bits(Some(source))?;
+        }
+        Ok(Self {
+            cache,
+            raw,
+            numbers: values,
+            total: read_bits(v.get("total"))?,
+        })
+    }
+    fn write(&self, out: &mut Out) {
+        out.raw("{").key("cache");
+        self.cache.write(out);
+        out.raw(",").key("raw");
+        write_refs(out, &self.raw);
+        out.raw(",").key("numbers").raw("[");
+        for (i, n) in self.numbers.iter().enumerate() {
+            if i != 0 {
+                out.raw(",");
+            }
+            out.str(&format!("{:016x}", n.to_bits()));
+        }
+        out.raw("],")
+            .key("total")
+            .str(&format!("{:016x}", self.total.to_bits()))
+            .raw("}");
+    }
+}
+
 struct State {
     pc: usize,
     env: u64,
@@ -228,6 +296,7 @@ struct State {
     mode: u8,
     target: usize,
     period: Option<Period>,
+    sum: Option<Sum>,
 }
 fn integer(v: Option<&Value>) -> R<u64> {
     let Some(Value::Num(n)) = v else {
@@ -281,12 +350,16 @@ impl State {
             catches,
             mode: u8::try_from(integer(v.get("mode"))?).map_err(|_| Refusal::Input)?,
             target: index(v.get("target"))?,
+            sum: match v.get("sum") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(Sum::read(v)?),
+            },
             period: match v.get("period") {
                 None | Some(Value::Null) => None,
                 Some(v) => Some(Period::read(v)?),
             },
         };
-        if state.pc >= PROGRAM.len() || state.mode > 4 {
+        if state.pc >= PROGRAM.len() || state.mode > 7 {
             return Err(Refusal::Input);
         }
         Ok(state)
@@ -324,6 +397,12 @@ impl State {
             .key("period");
         if let Some(period) = &self.period {
             period.write(out);
+        } else {
+            out.raw("null");
+        }
+        out.raw(",").key("sum");
+        if let Some(sum) = &self.sum {
+            sum.write(out);
         } else {
             out.raw("null");
         }
@@ -384,6 +463,7 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
             mode: 0,
             target: 0,
             period: None,
+            sum: None,
         }
     } else {
         let mut state = State::read(args.get("state").ok_or(Refusal::Input)?)?;
@@ -398,6 +478,77 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
             } else {
                 return Ok(end("throw", thrown));
             }
+        } else if state.mode == 5 {
+            let Some(Value::Arr(facts)) = frame.get("numbers") else {
+                return Err(Refusal::Input);
+            };
+            if facts.len() != 8 {
+                return Err(Refusal::Input);
+            }
+            let is_null = matches!(facts.first().and_then(|v| v.get("kind")).and_then(Value::as_str),Some(s) if s.iter().copied().eq("null".encode_utf16()));
+            let all_numbers = facts.iter().skip(1).all(|v| matches!(v.get("kind").and_then(Value::as_str),Some(s) if s.iter().copied().eq("number".encode_utf16())));
+            if !is_null || !all_numbers {
+                state.sum = None;
+                state.mode = 0;
+            } else {
+                let length = read_bits(facts.get(1).and_then(|v| v.get("bits")))?;
+                if !length.is_finite()
+                    || length < 0.0
+                    || length.fract() != 0.0
+                    || length > f64::from(u32::MAX)
+                {
+                    state.sum = None;
+                    state.mode = 0;
+                } else {
+                    let sum = state.sum.as_mut().ok_or(Refusal::Input)?;
+                    sum.cache.len = length as usize;
+                    sum.raw.clear();
+                    for (destination, fact) in sum.numbers.iter_mut().zip(facts.iter().skip(2)) {
+                        *destination = read_bits(fact.get("bits"))?;
+                    }
+                    state.mode = 6;
+                    let seq = sum.cache.seq;
+                    return Ok(batch(&[request(
+                        &state,
+                        r#"{"op":"booleanArrayFacts","data":null}"#,
+                        &[seq],
+                        0,
+                    )]));
+                }
+            }
+        } else if state.mode == 6 {
+            let facts = frame.get("facts").ok_or(Refusal::Input)?;
+            let safe = matches!(facts.get("safe"), Some(Value::Bool(true)));
+            if safe
+                && index(facts.get("len"))? >= state.sum.as_ref().ok_or(Refusal::Input)?.cache.len
+            {
+                state.mode = 7;
+            } else {
+                state.sum = None;
+                state.mode = 0;
+            }
+        } else if state.mode == 7 {
+            let sum = state.sum.as_mut().ok_or(Refusal::Input)?;
+            let text = frame
+                .get("bits")
+                .and_then(Value::as_str)
+                .ok_or(Refusal::Input)?;
+            let nibbles = hex(text)?;
+            let count = sum
+                .cache
+                .len
+                .saturating_sub(sum.cache.need)
+                .min(BOOLEAN_CHUNK);
+            if nibbles.len() != count.div_ceil(4) {
+                return Err(Refusal::Input);
+            }
+            if sum.cache.chunks.len() == BOOLEAN_CACHE {
+                sum.cache.chunks.remove(0);
+            }
+            sum.cache.chunks.push(Chunk {
+                base: sum.cache.need,
+                nibbles,
+            });
         } else if state.mode == 3 {
             let facts = frame.get("facts").ok_or(Refusal::Input)?;
             let Some(Value::Bool(safe)) = facts.get("safe") else {
@@ -447,6 +598,51 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
     };
     let mut requests = Vec::new();
     loop {
+        if state.mode == 7 && state.sum.is_some() {
+            let sum = state.sum.as_mut().ok_or(Refusal::Input)?;
+            let mut missing = None;
+            while sum.cache.i < sum.cache.len {
+                let Some(local) = sum.cache.bit(sum.cache.i) else {
+                    missing = Some(sum.cache.i);
+                    break;
+                };
+                let a = *sum.numbers.first().ok_or(Refusal::Input)?;
+                let h = *sum.numbers.get(1).ok_or(Refusal::Input)?;
+                let element = *sum
+                    .numbers
+                    .get(if local { 2 } else { 4 })
+                    .ok_or(Refusal::Input)?;
+                let context = *sum
+                    .numbers
+                    .get(if local { 3 } else { 5 })
+                    .ok_or(Refusal::Input)?;
+                let first = a * h;
+                let second = first * element;
+                let term = second * context;
+                sum.total += term;
+                sum.cache.i += 1;
+            }
+            if let Some(position) = missing {
+                sum.cache.need = position / BOOLEAN_CHUNK * BOOLEAN_CHUNK;
+                let count = sum
+                    .cache
+                    .len
+                    .saturating_sub(sum.cache.need)
+                    .min(BOOLEAN_CHUNK);
+                let operation = format!(
+                    r#"{{"op":"booleanChunk","data":{{"start":{},"count":{count}}}}}"#,
+                    sum.cache.need
+                );
+                let seq = sum.cache.seq;
+                return Ok(batch(&[request(&state, &operation, &[seq], 0)]));
+            }
+            let answer = sum.total;
+            state.pc = sum.cache.return_pc;
+            state.sum = None;
+            state.mode = 0;
+            let operation = format!(r#"{{"op":"floatBits","data":"{:016x}"}}"#, answer.to_bits());
+            return Ok(batch(&[request(&state, &operation, &[], VIRTUAL_BASE + 1)]));
+        }
         if state.mode == 4 && state.period.is_some() {
             let period = state.period.as_mut().ok_or(Refusal::Input)?;
             let mut answer = period.covered_period()?;
@@ -551,6 +747,37 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
             Instruction::Uncatch => {
                 state.catches.pop().ok_or(Refusal::Input)?;
             }
+            Instruction::KvSum(return_pc) => {
+                if !requests.is_empty() {
+                    return Ok(batch(&requests));
+                }
+                if state.stack.len() < 9 {
+                    return Err(Refusal::Input);
+                }
+                let mut arguments = state.stack.split_off(state.stack.len() - 9);
+                let seq = arguments.remove(0);
+                state.sum = Some(Sum {
+                    cache: Period {
+                        seq,
+                        return_pc,
+                        len: 0,
+                        p: 1,
+                        i: 0,
+                        need: 0,
+                        chunks: Vec::new(),
+                    },
+                    raw: arguments.clone(),
+                    numbers: [0.0; 6],
+                    total: 0.0,
+                });
+                state.mode = 5;
+                return Ok(batch(&[request(
+                    &state,
+                    r#"{"op":"numberFacts","data":null}"#,
+                    &arguments,
+                    0,
+                )]));
+            }
             Instruction::BooleanPeriod(return_pc) => {
                 if !requests.is_empty() {
                     return Ok(batch(&requests));
@@ -626,6 +853,11 @@ mod tests {
                         work.push((target, depth + 1));
                     }
                     Instruction::Uncatch => work.push((next, depth)),
+                    Instruction::KvSum(target) => {
+                        assert_eq!(depth, 9);
+                        work.push((next, 0));
+                        work.push((target, 1));
+                    }
                     Instruction::BooleanPeriod(target) => {
                         assert_eq!(depth, 1);
                         work.push((next, 0));
