@@ -127,3 +127,27 @@ fn identity_projection_cannot_bypass_rust_stale_state_check() {
     );
     assert_eq!(reply.get("throws").map(text).as_deref(), Some("stale"));
 }
+
+#[test]
+fn raw_advance_identity_precedes_validation_but_cannot_forge_known_states() {
+    for body in [r#"[7,null,null,true]"#, r#"[7,"planned","planned",false]"#] {
+        let (status, reply) = ask(body);
+        assert_eq!(status, 0);
+        assert_eq!(reply.get("unchanged"), Some(&Value::Bool(true)));
+    }
+    for body in [
+        r#"[7,"planned","verifying",true]"#,
+        r#"[7,"planned",null,true]"#,
+        r#"[7,null,"planned",true]"#,
+        r#"[7,null,null,false]"#,
+    ] {
+        let (status, reply) = ask(body);
+        assert_eq!(status, 0);
+        assert!(reply.get("throws").is_some(), "{body}");
+    }
+    let (_, reply) = ask(r#"[7,"planned","implementing",true]"#);
+    assert_eq!(
+        reply.get("state").map(text).as_deref(),
+        Some("implementing")
+    );
+}

@@ -241,7 +241,7 @@ pub(super) fn call(args: &[Value]) -> Result<String, Refusal> {
     let Some(Value::Num(number)) = args.first() else {
         return Err(Refusal::Input);
     };
-    let tag = (0_u8..=6)
+    let tag = (0_u8..=7)
         .find(|n| f64::from(*n) == *number)
         .ok_or(Refusal::Input)?;
     match (tag, args) {
@@ -263,6 +263,22 @@ pub(super) fn call(args: &[Value]) -> Result<String, Refusal> {
                 Ok(Step::State(state)) => Ok(outcome_json(Ok(state))),
                 Err(Fault::Policy(error)) => Ok(error.json()),
                 Err(Fault::Refused(error)) => Err(error),
+            }
+        }
+        (7, [_, from, to, Value::Bool(same)]) => {
+            // JS advance checks raw strict identity before validating either state. The host
+            // supplies identity only for unrepresentable values; known strings compare here.
+            let known_from = State::from_value(Some(from));
+            let known_to = State::from_value(Some(to));
+            let identical = match (known_from, known_to) {
+                (Some(a), Some(b)) => a == b,
+                (None, None) => *same,
+                _ => false,
+            };
+            if identical {
+                Ok(r#"{"unchanged":true}"#.into())
+            } else {
+                Ok(pair_result(2, from, to))
             }
         }
         _ => Err(Refusal::Input),
