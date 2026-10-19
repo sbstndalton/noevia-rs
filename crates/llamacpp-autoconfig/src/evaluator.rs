@@ -51,6 +51,14 @@ impl Out {
         self.0.extend(digits.into_iter().skip(start));
         self
     }
+    fn private_ref(&mut self, reference: u64, signed: bool) -> &mut Self {
+        if signed && reference > VIRTUAL_BASE && reference <= VIRTUAL_BASE + BATCH_OPERATIONS as u64
+        {
+            self.raw("-").private_uint(reference - VIRTUAL_BASE)
+        } else {
+            self.private_uint(reference)
+        }
+    }
 }
 
 const BOOLEAN_CHUNK: usize = 4096;
@@ -115,9 +123,12 @@ impl Period {
         Ok(period)
     }
     fn write(&self, out: &mut Out) {
+        self.write_refs(out, false);
+    }
+    fn write_refs(&self, out: &mut Out, signed: bool) {
         out.raw("{")
             .raw("\"seq\":")
-            .private_uint(self.seq)
+            .private_ref(self.seq, signed)
             .raw(",")
             .raw("\"returnPc\":")
             .private_uint(self.return_pc as u64)
@@ -291,10 +302,13 @@ impl Sum {
         })
     }
     fn write(&self, out: &mut Out) {
+        self.write_refs(out, false);
+    }
+    fn write_refs(&self, out: &mut Out, signed: bool) {
         out.raw("{").raw("\"cache\":");
-        self.cache.write(out);
+        self.cache.write_refs(out, signed);
         out.raw(",").raw("\"raw\":");
-        write_refs(out, &self.raw);
+        write_refs_mode(out, &self.raw, signed);
         out.raw(",").raw("\"numbers\":").raw("[");
         for (i, n) in self.numbers.iter().enumerate() {
             if i != 0 {
@@ -464,6 +478,9 @@ impl State {
         out.raw("}");
     }
     fn write_wire(&self, out: &mut Out, compact: bool) {
+        self.write_wire_refs(out, compact, false);
+    }
+    fn write_wire_refs(&self, out: &mut Out, compact: bool, signed: bool) {
         if !compact {
             self.write(out);
             return;
@@ -471,9 +488,9 @@ impl State {
         out.raw("[")
             .private_uint(self.pc as u64)
             .raw(",")
-            .private_uint(self.env)
+            .private_ref(self.env, signed)
             .raw(",");
-        write_refs(out, &self.stack);
+        write_refs_mode(out, &self.stack, signed);
         out.raw(",[");
         for (index, (pc, depth, env)) in self.catches.iter().enumerate() {
             if index != 0 {
@@ -484,7 +501,7 @@ impl State {
                 .raw(",")
                 .private_uint(*depth as u64)
                 .raw(",")
-                .private_uint(*env)
+                .private_ref(*env, signed)
                 .raw("]");
         }
         out.raw("],")
@@ -493,13 +510,13 @@ impl State {
             .private_uint(self.target as u64)
             .raw(",");
         if let Some(period) = &self.period {
-            period.write(out);
+            period.write_refs(out, signed);
         } else {
             out.raw("null");
         }
         out.raw(",");
         if let Some(sum) = &self.sum {
-            sum.write(out);
+            sum.write_refs(out, signed);
         } else {
             out.raw("null");
         }
@@ -517,12 +534,15 @@ impl State {
     }
 }
 fn write_refs(out: &mut Out, refs: &[u64]) {
+    write_refs_mode(out, refs, false);
+}
+fn write_refs_mode(out: &mut Out, refs: &[u64], signed: bool) {
     out.raw("[");
     for (i, value) in refs.iter().enumerate() {
         if i != 0 {
             out.raw(",");
         }
-        out.private_uint(*value);
+        out.private_ref(*value, signed);
     }
     out.raw("]");
 }
@@ -537,6 +557,22 @@ fn request(state: &State, operation: &str, args: &[u64], result: u64, compact: b
         .raw("\"args\":");
     write_refs(&mut out, args);
     out.raw(",").raw("\"ref\":").private_uint(result).raw("}");
+    out.text()
+}
+fn request_v2(state: &State, operation: &str, args: &[u64], result: u64) -> String {
+    let mut out = Out(Vec::new());
+    out.raw("{").raw("\"state\":");
+    state.write_wire_refs(&mut out, true, true);
+    out.raw(",")
+        .raw("\"request\":")
+        .raw(operation)
+        .raw(",")
+        .raw("\"args\":");
+    write_refs_mode(&mut out, args, true);
+    out.raw(",")
+        .raw("\"ref\":")
+        .private_ref(result, true)
+        .raw("}");
     out.text()
 }
 fn batch(requests: &[String], compact: bool) -> String {
@@ -556,14 +592,126 @@ fn end(key: &str, reference: u64, compact: bool) -> String {
     out.text()
 }
 
-pub(super) fn call(op: u8, args: &Value) -> R<String> {
-    let compact = matches!(args.get("wire").and_then(Value::as_str),
-        Some(tag) if tag.iter().copied().eq("state-v1".encode_utf16()));
-    let request = |state: &State, operation: &str, args: &[u64], result: u64| {
-        request(state, operation, args, result, compact)
+fn end_v2(key: &str, reference: u64) -> String {
+    let mut out = Out(Vec::new());
+    out.raw("{");
+    out.raw(r#""wire":"state-v2","#);
+    out.key(key).private_ref(reference, true).raw("}");
+    out.text()
+}
+
+fn v2_integer(value: Option<&Value>, positive: bool) -> R<()> {
+    let n = integer(value)?;
+    if positive && n == 0 || matches!(value, Some(Value::Num(n)) if n.is_sign_negative()) {
+        return Err(Refusal::Input);
+    }
+    Ok(())
+}
+fn v2_refs(value: Option<&Value>) -> R<()> {
+    let Some(Value::Arr(values)) = value else {
+        return Err(Refusal::Input);
     };
-    let batch = |requests: &[String]| batch(requests, compact);
-    let end = |key: &str, reference: u64| end(key, reference, compact);
+    for value in values {
+        v2_integer(Some(value), true)?;
+    }
+    Ok(())
+}
+fn v2_period(value: Option<&Value>) -> R<()> {
+    let Some(value) = value else {
+        return Err(Refusal::Input);
+    };
+    if matches!(value, Value::Null) {
+        return Ok(());
+    }
+    v2_integer(value.get("seq"), true)?;
+    for key in ["returnPc", "len", "p", "i", "need"] {
+        v2_integer(value.get(key), false)?;
+    }
+    let Some(Value::Arr(chunks)) = value.get("chunks") else {
+        return Err(Refusal::Input);
+    };
+    for chunk in chunks {
+        v2_integer(chunk.get("base"), false)?;
+    }
+    Ok(())
+}
+fn v2_input(op: u8, args: &Value) -> R<()> {
+    if op == 11 {
+        v2_integer(args.get("function"), false)?;
+        return v2_integer(args.get("env"), true);
+    }
+    let Some(Value::Arr(fields)) = args.get("state") else {
+        return Err(Refusal::Input);
+    };
+    let [pc, env, stack, catches, mode, target, period, sum] = fields.as_slice() else {
+        return Err(Refusal::Input);
+    };
+    for value in [pc, mode, target] {
+        v2_integer(Some(value), false)?;
+    }
+    v2_integer(Some(env), true)?;
+    v2_refs(Some(stack))?;
+    let Value::Arr(catches) = catches else {
+        return Err(Refusal::Input);
+    };
+    for catch in catches {
+        let Value::Arr(catch) = catch else {
+            return Err(Refusal::Input);
+        };
+        let [pc, depth, env] = catch.as_slice() else {
+            return Err(Refusal::Input);
+        };
+        v2_integer(Some(pc), false)?;
+        v2_integer(Some(depth), false)?;
+        v2_integer(Some(env), true)?;
+    }
+    v2_period(Some(period))?;
+    if !matches!(sum, Value::Null) {
+        v2_period(sum.get("cache"))?;
+        v2_refs(sum.get("raw"))?;
+    }
+    let frame = args.get("frame").ok_or(Refusal::Input)?;
+    for key in ["value", "thrown"] {
+        if let Some(value) = frame.get(key) {
+            v2_integer(Some(value), true)?;
+        }
+    }
+    if let Some(len) = frame.get("facts").and_then(|facts| facts.get("len")) {
+        v2_integer(Some(len), false)?;
+    }
+    Ok(())
+}
+
+pub(super) fn call(op: u8, args: &Value) -> R<String> {
+    let signed = matches!(args.get("wire").and_then(Value::as_str),
+        Some(tag) if tag.iter().copied().eq("state-v2".encode_utf16()));
+    let compact = signed
+        || matches!(args.get("wire").and_then(Value::as_str),
+        Some(tag) if tag.iter().copied().eq("state-v1".encode_utf16()));
+    if signed {
+        v2_input(op, args)?;
+    }
+    let request = |state: &State, operation: &str, args: &[u64], result: u64| {
+        if signed {
+            request_v2(state, operation, args, result)
+        } else {
+            request(state, operation, args, result, compact)
+        }
+    };
+    let batch = |requests: &[String]| {
+        if signed {
+            format!(r#"{{"wire":"state-v2","batch":[{}]}}"#, requests.join(","))
+        } else {
+            batch(requests, compact)
+        }
+    };
+    let end = |key: &str, reference: u64| {
+        if signed {
+            end_v2(key, reference)
+        } else {
+            end(key, reference, compact)
+        }
+    };
     let mut state = if op == 11 {
         let function = index(args.get("function"))?;
         let pc = *ENTRIES.get(function).ok_or(Refusal::Input)?;
@@ -1318,6 +1466,233 @@ mod tests {
         )
         .unwrap();
         assert_eq!(plain, unknown);
+    }
+
+    #[test]
+    fn state_v2_aliases_only_the_32_virtual_output_references() {
+        for reference in (1..=32).map(|n| VIRTUAL_BASE + n).chain([
+            0,
+            1,
+            VIRTUAL_BASE - 1,
+            VIRTUAL_BASE,
+            VIRTUAL_BASE + 33,
+            9_007_199_254_740_991,
+        ]) {
+            let mut plain = Out(Vec::new());
+            plain.private_ref(reference, false);
+            let mut legacy = Out(Vec::new());
+            legacy.private_uint(reference);
+            assert_eq!(plain.0, legacy.0);
+            let mut signed = Out(Vec::new());
+            signed.private_ref(reference, true);
+            let expected = if reference > VIRTUAL_BASE && reference <= VIRTUAL_BASE + 32 {
+                format!("-{}", reference - VIRTUAL_BASE)
+            } else {
+                reference.to_string()
+            };
+            assert_eq!(signed.text(), expected);
+        }
+    }
+
+    #[test]
+    fn state_v2_nested_snapshots_preserve_counters_business_data_and_float_bits() {
+        let period = |seq| Period {
+            seq,
+            return_pc: 1,
+            len: 4096,
+            p: 1,
+            i: 0,
+            need: 0,
+            chunks: vec![Chunk {
+                base: 0,
+                nibbles: vec![0, 15],
+            }],
+        };
+        let state = State {
+            pc: 1,
+            env: VIRTUAL_BASE + 1,
+            stack: (1..=32).map(|n| VIRTUAL_BASE + n).collect(),
+            catches: vec![(1, 1, VIRTUAL_BASE + 2)],
+            mode: 7,
+            target: VIRTUAL_BASE as usize + 1,
+            period: Some(period(VIRTUAL_BASE + 3)),
+            sum: Some(Sum {
+                cache: period(VIRTUAL_BASE + 4),
+                raw: (5..=12).map(|n| VIRTUAL_BASE + n).collect(),
+                numbers: [
+                    -0.0,
+                    f64::NAN,
+                    f64::INFINITY,
+                    f64::NEG_INFINITY,
+                    f64::from_bits(1),
+                    -1.0,
+                ],
+                total: f64::from_bits(0x7ff8_0000_0000_0001),
+            }),
+        };
+        let data = r#"{"op":"literal","data":{"ref":-32,"env":8000000000000001,"value":-1,"bits":"8000000000000000"}}"#;
+        let operation = transport_parse(&request_v2(
+            &state,
+            data,
+            &[VIRTUAL_BASE + 13, 1],
+            VIRTUAL_BASE + 32,
+        ));
+        let Value::Arr(fields) = operation.get("state").unwrap() else {
+            panic!("tuple")
+        };
+        assert_eq!(fields[1], Value::Num(-1.0));
+        assert_eq!(fields[5], Value::Num((VIRTUAL_BASE + 1) as f64));
+        let Value::Arr(stack) = &fields[2] else {
+            panic!("stack")
+        };
+        assert_eq!(
+            *stack,
+            (1..=32)
+                .map(|n| Value::Num(-f64::from(n)))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(fields[3], transport_parse("[[1,1,-2]]"));
+        assert_eq!(fields[6].get("seq"), Some(&Value::Num(-3.0)));
+        assert_eq!(fields[6].get("len"), Some(&Value::Num(4096.0)));
+        assert_eq!(
+            fields[7].get("cache").unwrap().get("seq"),
+            Some(&Value::Num(-4.0))
+        );
+        assert_eq!(
+            fields[7].get("raw"),
+            Some(&transport_parse("[-5,-6,-7,-8,-9,-10,-11,-12]"))
+        );
+        assert_eq!(
+            fields[7].get("total"),
+            Some(&transport_parse(r#""7ff8000000000001""#))
+        );
+        assert_eq!(
+            fields[7].get("numbers").unwrap(),
+            &transport_parse(
+                r#"["8000000000000000","7ff8000000000000","7ff0000000000000","fff0000000000000","0000000000000001","bff0000000000000"]"#
+            )
+        );
+        assert_eq!(operation.get("request"), Some(&transport_parse(data)));
+        assert_eq!(operation.get("args"), Some(&transport_parse("[-13,1]")));
+        assert_eq!(operation.get("ref"), Some(&Value::Num(-32.0)));
+        assert_eq!(
+            transport_parse(&end_v2("done", VIRTUAL_BASE + 1)),
+            transport_parse(r#"{"wire":"state-v2","done":-1}"#)
+        );
+        assert_eq!(
+            transport_parse(&end_v2("throw", VIRTUAL_BASE + 32)),
+            transport_parse(r#"{"wire":"state-v2","throw":-32}"#)
+        );
+        assert_eq!(
+            transport_parse(&request_v2(&state, data, &[], 0)).get("ref"),
+            Some(&Value::Num(0.0))
+        );
+    }
+
+    #[test]
+    fn state_v2_input_authority_requires_resolved_positive_refs_and_nonnegative_counters() {
+        let make = |state: &str, frame: &str| {
+            transport_parse(&format!(
+                r#"{{"wire":"state-v2","state":{state},"frame":{frame}}}"#
+            ))
+        };
+        let valid = "[1,1,[2],[[1,1,3]],0,0,null,null]";
+        assert!(v2_input(12, &make(valid, r#"{"value":4}"#)).is_ok());
+        for reference in (1..=32).map(|n| format!("-{n}")).chain([
+            "-0".to_owned(),
+            "0".to_owned(),
+            "-33".to_owned(),
+            "0.5".to_owned(),
+        ]) {
+            for state in [
+                format!("[1,{reference},[2],[],0,0,null,null]"),
+                format!("[1,1,[{reference}],[],0,0,null,null]"),
+                format!("[1,1,[],[[1,0,{reference}]],0,0,null,null]"),
+                format!(
+                    r#"[1,1,[],[],0,0,{{"seq":{reference},"returnPc":1,"len":1,"p":1,"i":0,"need":0,"chunks":[]}},null]"#
+                ),
+                format!(
+                    r#"[1,1,[],[],0,0,null,{{"cache":{{"seq":{reference},"returnPc":1,"len":1,"p":1,"i":0,"need":0,"chunks":[]}},"raw":[],"numbers":[],"total":""}}]"#
+                ),
+                format!(
+                    r#"[1,1,[],[],0,0,null,{{"cache":{{"seq":1,"returnPc":1,"len":1,"p":1,"i":0,"need":0,"chunks":[]}},"raw":[{reference}],"numbers":[],"total":""}}]"#
+                ),
+            ] {
+                assert!(
+                    v2_input(12, &make(&state, r#"{"value":4}"#)).is_err(),
+                    "{state}"
+                );
+            }
+            for key in ["value", "thrown"] {
+                assert!(
+                    v2_input(12, &make(valid, &format!(r#"{{"{key}":{reference}}}"#))).is_err()
+                );
+            }
+            assert!(call(
+                11,
+                &transport_parse(&format!(
+                    r#"{{"wire":"state-v2","function":0,"env":{reference}}}"#
+                ))
+            )
+            .is_err());
+        }
+        for counter in ["-0", "-1", "-32", "0.5"] {
+            for state in [
+                format!("[{counter},1,[],[],0,0,null,null]"),
+                format!("[1,1,[],[[{counter},0,1]],0,0,null,null]"),
+                format!("[1,1,[],[[1,{counter},1]],0,0,null,null]"),
+                format!("[1,1,[],[],{counter},0,null,null]"),
+                format!("[1,1,[],[],0,{counter},null,null]"),
+                format!(
+                    r#"[1,1,[],[],0,0,{{"seq":1,"returnPc":1,"len":1,"p":1,"i":0,"need":0,"chunks":[{{"base":{counter},"hex":""}}]}},null]"#
+                ),
+            ] {
+                assert!(v2_input(12, &make(&state, r#"{"value":4}"#)).is_err());
+            }
+        }
+        // Raw number bits are business values; even a negative-zero bit pattern is untouched.
+        assert!(v2_input(
+            12,
+            &make(
+                valid,
+                r#"{"numbers":[{"kind":"number","bits":"8000000000000000"}]}"#
+            )
+        )
+        .is_ok());
+        assert!(v2_input(12, &make(valid, r#"{"facts":{"len":-0}}"#)).is_err());
+    }
+
+    #[test]
+    fn state_v2_is_opt_in_and_echoes_initial_batches_and_terminal_paths() {
+        let input = transport_parse(r#"{"function":0,"env":1,"wire":"state-v2"}"#);
+        let reply = transport_parse(&call(11, &input).unwrap());
+        assert_eq!(reply.get("wire"), Some(&transport_parse(r#""state-v2""#)));
+        assert!(matches!(reply.get("batch"), Some(Value::Arr(batch)) if !batch.is_empty()));
+        let return_pc = PROGRAM
+            .iter()
+            .position(|i| matches!(i, Instruction::Return))
+            .unwrap();
+        for key in ["value", "thrown"] {
+            let args = transport_parse(&format!(
+                r#"{{"wire":"state-v2","state":[{return_pc},1,[],[],0,0,null,null],"frame":{{"{key}":42}}}}"#
+            ));
+            let reply = transport_parse(&call(12, &args).unwrap());
+            assert_eq!(reply.get("wire"), Some(&transport_parse(r#""state-v2""#)));
+            assert_eq!(
+                reply.get(if key == "value" { "done" } else { "throw" }),
+                Some(&Value::Num(42.0))
+            );
+        }
+        for wire in ["state-v0", "state-v3"] {
+            assert_eq!(
+                call(11, &transport_parse(r#"{"function":0,"env":1}"#)).unwrap(),
+                call(
+                    11,
+                    &transport_parse(&format!(r#"{{"function":0,"env":1,"wire":"{wire}"}}"#))
+                )
+                .unwrap()
+            );
+        }
     }
 
     #[test]
