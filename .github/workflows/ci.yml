@@ -2218,6 +2218,10 @@ jobs:
           cargo build --locked -p model-files-cli
           MODEL_FILES_BIN="$PWD/target/debug/model-files" python3 -I tools/gen-safe-defaults-oracle.py safe-defaults-services/model-manager/app > "$RUNNER_TEMP/safe-defaults.json"
           cmp bins/noevia-model-manager/tests/fixtures/safe-defaults-python.v1.json "$RUNNER_TEMP/safe-defaults.json"
+          MODEL_FILES_BIN="$PWD/target/debug/model-files" python3 -I tools/gen-safe-defaults-oracle.py safe-defaults-services/model-manager/app --projector-order a-first > "$RUNNER_TEMP/safe-defaults-a-first.json"
+          MODEL_FILES_BIN="$PWD/target/debug/model-files" python3 -I tools/gen-safe-defaults-oracle.py safe-defaults-services/model-manager/app --projector-order z-first > "$RUNNER_TEMP/safe-defaults-z-first.json"
+          python3 -I tools/gen-safe-defaults-oracle.py safe-defaults-services/model-manager/app --assemble-order-variants "$RUNNER_TEMP/safe-defaults-a-first.json" "$RUNNER_TEMP/safe-defaults-z-first.json" > "$RUNNER_TEMP/safe-defaults-projector-order.json"
+          cmp bins/noevia-model-manager/tests/fixtures/safe-defaults-projector-order-python.v1.json "$RUNNER_TEMP/safe-defaults-projector-order.json"
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-safe-defaults -- -D warnings
       - run: cargo test --locked -p noevia-model-manager --features native-safe-defaults --lib sections::safe_defaults

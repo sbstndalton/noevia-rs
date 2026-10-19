@@ -260,25 +260,15 @@ impl Files {
             let relative_folder = folder.replacen("/models", "", 1);
             let relative_folder = relative_folder.trim_start_matches('/');
             // Preserve the existing unsorted first companion selection.
-            for entry in self.models.entries(relative_folder, budget)? {
-                if !entry.directory
-                    && gguf_suffix(&entry.name)
-                    && entry.name.to_lowercase().contains("mmproj")
-                {
-                    let relative = format!("{relative_folder}/{}", entry.name);
-                    if self.models.file(&relative, false, budget)?.is_none() {
-                        continue;
-                    }
-                    let mmproj = format!("{folder}/{}", entry.name);
-                    budget.charge(mmproj.len() + 128)?;
-                    fields.insert("mmproj".into(), json!(mmproj));
-                    hints.insert(
-                        0,
-                        format!("Companion mmproj found → `mmproj = {mmproj}` pre-filled."),
-                    );
-                    break;
-                }
-            }
+            let entries = self.models.entries(relative_folder, budget)?;
+            self.fill_first_companion(
+                entries,
+                relative_folder,
+                folder,
+                fields,
+                &mut hints,
+                budget,
+            )?;
             let filename = model_rel.rsplit('/').next().ok_or(Error::Refused)?;
             let (_, part, total) = shard(filename)?;
             hints.insert(0,if let Some(total) = total.filter(|t| part.is_some() && *t>1) {
@@ -286,5 +276,99 @@ impl Files {
             } else { format!("Model lives in a subdir → `model = {model_rel}` pre-filled with the absolute path.") });
         }
         Ok((values, hints))
+    }
+
+    fn fill_first_companion(
+        &self,
+        entries: Vec<super::access::Entry>,
+        relative_folder: &str,
+        folder: &str,
+        fields: &mut serde_json::Map<String, Value>,
+        hints: &mut Vec<String>,
+        budget: &mut Budget,
+    ) -> Result<(), Error> {
+        for entry in entries {
+            if !entry.directory
+                && gguf_suffix(&entry.name)
+                && entry.name.to_lowercase().contains("mmproj")
+            {
+                let relative = format!("{relative_folder}/{}", entry.name);
+                if self.models.file(&relative, false, budget)?.is_none() {
+                    continue;
+                }
+                let mmproj = format!("{folder}/{}", entry.name);
+                budget.charge(mmproj.len() + 128)?;
+                fields.insert("mmproj".into(), json!(mmproj));
+                hints.insert(
+                    0,
+                    format!("Companion mmproj found → `mmproj = {mmproj}` pre-filled."),
+                );
+                break;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod companion_order_tests {
+    use super::super::access::Entry;
+    use super::*;
+
+    #[test]
+    fn first_companion_preserves_both_explicit_orders() -> Result<(), std::io::Error> {
+        for order in [
+            ["a-mmproj.gguf", "z-mmproj.gguf"],
+            ["z-mmproj.gguf", "a-mmproj.gguf"],
+        ] {
+            let dir = tempfile::tempdir()?;
+            let models = dir.path().join("models");
+            std::fs::create_dir_all(models.join("syn-folder"))?;
+            for name in ["a-mmproj.gguf", "z-mmproj.gguf"] {
+                std::fs::write(
+                    models.join("syn-folder").join(name),
+                    b"synthetic guarded file",
+                )?;
+            }
+            let files = Files::new(&models, &models.join("models.ini"))
+                .map_err(|error| std::io::Error::other(format!("{error:?}")))?;
+            let entries = order
+                .iter()
+                .map(|name| Entry {
+                    name: (*name).to_owned(),
+                    directory: false,
+                })
+                .collect();
+            let mut fields = serde_json::Map::new();
+            let mut hints = vec!["existing hint".to_owned()];
+            files
+                .fill_first_companion(
+                    entries,
+                    "syn-folder",
+                    "/models/syn-folder",
+                    &mut fields,
+                    &mut hints,
+                    &mut Budget::default(),
+                )
+                .map_err(|error| std::io::Error::other(format!("{error:?}")))?;
+            let expected = format!(
+                "/models/syn-folder/{}",
+                order
+                    .first()
+                    .ok_or_else(|| std::io::Error::other("fixture order"))?
+            );
+            assert_eq!(
+                serde_json::Value::Object(fields),
+                json!({"mmproj":expected.as_str()})
+            );
+            assert_eq!(
+                hints,
+                vec![
+                    format!("Companion mmproj found → `mmproj = {expected}` pre-filled."),
+                    "existing hint".to_owned()
+                ]
+            );
+        }
+        Ok(())
     }
 }
