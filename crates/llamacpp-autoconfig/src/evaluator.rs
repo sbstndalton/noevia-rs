@@ -32,6 +32,27 @@ const CATCH_REGISTERS: usize = 8;
 const BATCH_OPERATIONS: usize = 32;
 const VIRTUAL_BASE: u64 = 8_000_000_000_000_000;
 
+// Only evaluator control integers use this writer. Accepted refs/indices are
+// nonnegative exact f64 integers <= 2^53-1; generated refs are VIRTUAL_BASE+1..32.
+// Their ECMAScript JSON spelling is exactly unsigned decimal (all are < 1e21).
+// Business numbers retain Out::num or their existing raw-bit representation.
+impl Out {
+    fn private_uint(&mut self, mut value: u64) -> &mut Self {
+        let mut digits = [0_u8; 20];
+        let mut start = digits.len();
+        for digit in digits.iter_mut().rev() {
+            *digit = b'0' + (value % 10) as u8;
+            start -= 1;
+            value /= 10;
+            if value == 0 {
+                break;
+            }
+        }
+        self.0.extend(digits.into_iter().skip(start));
+        self
+    }
+}
+
 const BOOLEAN_CHUNK: usize = 4096;
 const BOOLEAN_CACHE: usize = 2;
 #[derive(Clone)]
@@ -95,25 +116,25 @@ impl Period {
     }
     fn write(&self, out: &mut Out) {
         out.raw("{")
-            .key("seq")
-            .num(self.seq as f64)
+            .raw("\"seq\":")
+            .private_uint(self.seq)
             .raw(",")
-            .key("returnPc")
-            .num(self.return_pc as f64)
+            .raw("\"returnPc\":")
+            .private_uint(self.return_pc as u64)
             .raw(",")
-            .key("len")
-            .num(self.len as f64)
+            .raw("\"len\":")
+            .private_uint(self.len as u64)
             .raw(",")
-            .key("p")
-            .num(self.p as f64)
+            .raw("\"p\":")
+            .private_uint(self.p as u64)
             .raw(",")
-            .key("i")
-            .num(self.i as f64)
+            .raw("\"i\":")
+            .private_uint(self.i as u64)
             .raw(",")
-            .key("need")
-            .num(self.need as f64)
+            .raw("\"need\":")
+            .private_uint(self.need as u64)
             .raw(",")
-            .key("chunks")
+            .raw("\"chunks\":")
             .raw("[");
         for (i, chunk) in self.chunks.iter().enumerate() {
             if i != 0 {
@@ -132,10 +153,10 @@ impl Period {
                 })
                 .collect();
             out.raw("{")
-                .key("base")
-                .num(chunk.base as f64)
+                .raw("\"base\":")
+                .private_uint(chunk.base as u64)
                 .raw(",")
-                .key("hex")
+                .raw("\"hex\":")
                 .str16(&text)
                 .raw("}");
         }
@@ -270,11 +291,11 @@ impl Sum {
         })
     }
     fn write(&self, out: &mut Out) {
-        out.raw("{").key("cache");
+        out.raw("{").raw("\"cache\":");
         self.cache.write(out);
-        out.raw(",").key("raw");
+        out.raw(",").raw("\"raw\":");
         write_refs(out, &self.raw);
-        out.raw(",").key("numbers").raw("[");
+        out.raw(",").raw("\"numbers\":").raw("[");
         for (i, n) in self.numbers.iter().enumerate() {
             if i != 0 {
                 out.raw(",");
@@ -282,7 +303,7 @@ impl Sum {
             out.str(&format!("{:016x}", n.to_bits()));
         }
         out.raw("],")
-            .key("total")
+            .raw("\"total\":")
             .str(&format!("{:016x}", self.total.to_bits()))
             .raw("}");
     }
@@ -366,41 +387,41 @@ impl State {
     }
     fn write(&self, out: &mut Out) {
         out.raw("{")
-            .key("pc")
-            .num(self.pc as f64)
+            .raw("\"pc\":")
+            .private_uint(self.pc as u64)
             .raw(",")
-            .key("env")
-            .num(self.env as f64)
+            .raw("\"env\":")
+            .private_uint(self.env)
             .raw(",")
-            .key("stack");
+            .raw("\"stack\":");
         write_refs(out, &self.stack);
-        out.raw(",").key("catches").raw("[");
+        out.raw(",").raw("\"catches\":").raw("[");
         for (i, (pc, depth, env)) in self.catches.iter().enumerate() {
             if i != 0 {
                 out.raw(",");
             }
             out.raw("[")
-                .num(*pc as f64)
+                .private_uint(*pc as u64)
                 .raw(",")
-                .num(*depth as f64)
+                .private_uint(*depth as u64)
                 .raw(",")
-                .num(*env as f64)
+                .private_uint(*env)
                 .raw("]");
         }
         out.raw("],")
-            .key("mode")
-            .num(f64::from(self.mode))
+            .raw("\"mode\":")
+            .private_uint(u64::from(self.mode))
             .raw(",")
-            .key("target")
-            .num(self.target as f64)
+            .raw("\"target\":")
+            .private_uint(self.target as u64)
             .raw(",")
-            .key("period");
+            .raw("\"period\":");
         if let Some(period) = &self.period {
             period.write(out);
         } else {
             out.raw("null");
         }
-        out.raw(",").key("sum");
+        out.raw(",").raw("\"sum\":");
         if let Some(sum) = &self.sum {
             sum.write(out);
         } else {
@@ -425,21 +446,21 @@ fn write_refs(out: &mut Out, refs: &[u64]) {
         if i != 0 {
             out.raw(",");
         }
-        out.num(*value as f64);
+        out.private_uint(*value);
     }
     out.raw("]");
 }
 fn request(state: &State, operation: &str, args: &[u64], result: u64) -> String {
     let mut out = Out(Vec::new());
-    out.raw("{").key("state");
+    out.raw("{").raw("\"state\":");
     state.write(&mut out);
     out.raw(",")
-        .key("request")
+        .raw("\"request\":")
         .raw(operation)
         .raw(",")
-        .key("args");
+        .raw("\"args\":");
     write_refs(&mut out, args);
-    out.raw(",").key("ref").num(result as f64).raw("}");
+    out.raw(",").raw("\"ref\":").private_uint(result).raw("}");
     out.text()
 }
 fn batch(requests: &[String]) -> String {
@@ -447,7 +468,7 @@ fn batch(requests: &[String]) -> String {
 }
 fn end(key: &str, reference: u64) -> String {
     let mut out = Out(Vec::new());
-    out.raw("{").key(key).num(reference as f64).raw("}");
+    out.raw("{").key(key).private_uint(reference).raw("}");
     out.text()
 }
 
@@ -867,6 +888,172 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn assert_private_uint_bytes(value: u64) {
+        assert!(value <= 9_007_199_254_740_991);
+        let mut direct = Out(Vec::new());
+        direct.private_uint(value);
+        let mut legacy = Out(Vec::new());
+        legacy.num(value as f64);
+        assert_eq!(direct.0, legacy.0, "private integer {value}");
+    }
+
+    #[test]
+    fn private_integer_decimal_bytes_match_legacy_boundaries_and_seeded_values() {
+        const MAX_SAFE: u64 = 9_007_199_254_740_991;
+        for value in [0, 1, u64::from(u32::MAX), MAX_SAFE - 1, MAX_SAFE] {
+            assert_private_uint_bytes(value);
+        }
+        for power in 0..=53 {
+            let center = 1_u64 << power;
+            for value in [center - 1, center, center + 1] {
+                if value <= MAX_SAFE {
+                    assert_private_uint_bytes(value);
+                }
+            }
+        }
+        for power in 0..=15 {
+            let center = 10_u64.pow(power);
+            for value in [center - 1, center, center + 1] {
+                assert_private_uint_bytes(value);
+            }
+        }
+        for value in VIRTUAL_BASE - 32..=VIRTUAL_BASE + BATCH_OPERATIONS as u64 {
+            assert_private_uint_bytes(value);
+        }
+        let mut seed = 0x1071_ee12_5384_aa99_u64;
+        for _ in 0..16_384 {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            assert_private_uint_bytes(seed >> 11);
+        }
+    }
+
+    // Re-emit complete private frames through the unchanged legacy number
+    // formatter, retaining the parser's original object order and scalar bits.
+    fn legacy_frame_bytes(text: &str) -> Vec<u8> {
+        fn write(out: &mut Out, value: &Value) {
+            match value {
+                Value::Null => {
+                    out.raw("null");
+                }
+                Value::Bool(value) => {
+                    out.bool(*value);
+                }
+                Value::Num(value) => {
+                    out.num(*value);
+                }
+                Value::Str(value) => {
+                    out.str16(value);
+                }
+                Value::Arr(values) => {
+                    out.raw("[");
+                    for (index, value) in values.iter().enumerate() {
+                        if index != 0 {
+                            out.raw(",");
+                        }
+                        write(out, value);
+                    }
+                    out.raw("]");
+                }
+                Value::Obj(values) => {
+                    out.raw("{");
+                    for (index, (key, value)) in values.iter().enumerate() {
+                        if index != 0 {
+                            out.raw(",");
+                        }
+                        out.str16(key).raw(":");
+                        write(out, value);
+                    }
+                    out.raw("}");
+                }
+                Value::Deep => panic!("bounded test frame"),
+            }
+        }
+        let parsed = prompt_framing::json::parse_utf8(text.as_bytes(), 32).unwrap();
+        let mut legacy = Out(Vec::new());
+        write(&mut legacy, &parsed);
+        legacy.0
+    }
+
+    #[test]
+    fn private_state_requests_and_terminal_frames_keep_legacy_bytes() {
+        const MAX_SAFE: u64 = 9_007_199_254_740_991;
+        let period = || Period {
+            seq: MAX_SAFE,
+            return_pc: PROGRAM.len() - 1,
+            len: u32::MAX as usize,
+            p: 4096,
+            i: 8192,
+            need: 4096,
+            chunks: vec![Chunk {
+                base: 4096,
+                nibbles: vec![0, 15, 1, 10],
+            }],
+        };
+        let mut state = State {
+            pc: PROGRAM.len() - 1,
+            env: MAX_SAFE,
+            stack: vec![0, 1, MAX_SAFE, VIRTUAL_BASE + BATCH_OPERATIONS as u64],
+            catches: vec![(PROGRAM.len() - 1, STACK_REGISTERS, MAX_SAFE); CATCH_REGISTERS],
+            mode: 7,
+            target: PROGRAM.len() - 1,
+            period: Some(period()),
+            sum: Some(Sum {
+                cache: period(),
+                raw: vec![MAX_SAFE; 8],
+                numbers: [
+                    0.0,
+                    -0.0,
+                    f64::NAN,
+                    f64::INFINITY,
+                    f64::NEG_INFINITY,
+                    f64::from_bits(1),
+                ],
+                total: f64::from_bits(0x7ff8_0000_0000_0001),
+            }),
+        };
+        for specialized in [true, false] {
+            if !specialized {
+                state.period = None;
+                state.sum = None;
+                state.mode = 0;
+            }
+            let text = request(
+                &state,
+                r#"{"op":"get","data":null}"#,
+                &[0, MAX_SAFE, VIRTUAL_BASE + 1],
+                MAX_SAFE,
+            );
+            assert_eq!(text.as_bytes(), legacy_frame_bytes(&text));
+            let mut out = Out(Vec::new());
+            state.write(&mut out);
+            let text = out.text();
+            assert_eq!(text.as_bytes(), legacy_frame_bytes(&text));
+        }
+        for key in ["done", "throw"] {
+            let text = end(key, MAX_SAFE);
+            assert_eq!(text.as_bytes(), legacy_frame_bytes(&text));
+        }
+        // A complete batch captured directly from the generated program, rather
+        // than a mirrored expected-state constructor.
+        let input =
+            prompt_framing::json::parse_utf8(br#"{"function":0,"env":9007199254740991}"#, 8)
+                .unwrap();
+        let text = call(11, &input).unwrap();
+        assert_eq!(text.as_bytes(), legacy_frame_bytes(&text));
+    }
+
+    #[test]
+    fn private_integer_input_domain_remains_exact_and_safe() {
+        for value in [-1.0, 0.5, 9_007_199_254_740_992.0, f64::NAN, f64::INFINITY] {
+            assert!(integer(Some(&Value::Num(value))).is_err());
+        }
+        assert_eq!(integer(Some(&Value::Num(-0.0))).unwrap(), 0);
+        assert_eq!(
+            integer(Some(&Value::Num(9_007_199_254_740_991.0))).unwrap(),
+            9_007_199_254_740_991
+        );
     }
 
     #[test]
