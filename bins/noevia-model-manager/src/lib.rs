@@ -97,8 +97,10 @@ pub const LOG_CAP: usize = 1024 * 1024;
 const INVENTORY_CAP: usize = 1024;
 const REQUEST_CAP: usize = 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(test)]
 pub const LEGACY_BASE: &str = "http://127.0.0.1:8091";
 pub const LEGACY_TIMEOUT: Duration = Duration::from_secs(600);
+#[cfg(test)]
 pub fn legacy_client() -> Result<reqwest::Client, reqwest::Error> {
     reqwest::Client::builder()
         .no_proxy()
@@ -218,8 +220,10 @@ pub struct StateData {
     pub docker: Arc<dyn DockerRead>,
     pub redactor: Redactor,
     pub permits: Semaphore,
+    #[cfg(test)]
     pub legacy: reqwest::Client,
-    /// The legacy child's address (production: LEGACY_BASE); tests use an ephemeral port.
+    /// The historical test child's address; no production private endpoint exists.
+    #[cfg(test)]
     pub legacy_base: String,
     /// #1747: keeps the chat preset's global `sleep-idle-seconds` in line with the setting.
     pub idle_unload: Option<Arc<idle_unload::Reconciler>>,
@@ -1655,23 +1659,28 @@ async fn native_model_detail(
 /// child. They wait on the child, so they keep a forwarded route's budget.
 #[cfg(feature = "native-model-list")]
 async fn native_model_list(
-    state: &StateData,
+    _state: &StateData,
     list: &model_list::ModelList,
     route: model_list::Route,
 ) -> Response {
     let child = model_list::Child {
-        client: &state.legacy,
-        base: &state.legacy_base,
-        token: &state.token,
+        #[cfg(not(any(test, feature = "native-backends")))]
+        _lifetime: std::marker::PhantomData,
+        #[cfg(test)]
+        client: &_state.legacy,
+        #[cfg(test)]
+        base: &_state.legacy_base,
+        #[cfg(test)]
+        token: &_state.token,
         #[cfg(feature = "native-backends")]
-        live: state.backend_stats.as_deref(),
+        live: _state.backend_stats.as_deref(),
     };
     let outcome = match route {
         model_list::Route::Models => list.models(child).await,
         model_list::Route::Overview => {
             // While this process owns the download table the child's own is empty.
             #[cfg(feature = "native-downloads")]
-            let active = state.downloads.as_ref().map(|table| table.active());
+            let active = _state.downloads.as_ref().map(|table| table.active());
             #[cfg(not(feature = "native-downloads"))]
             let active = None;
             list.overview(child, active).await
@@ -3295,15 +3304,20 @@ pub fn python_owned(method: &str, path: &str) -> bool {
 /// child, then the analysis. It waits on the child, so it keeps a forwarded route's budget.
 #[cfg(feature = "native-section-autoconfig")]
 async fn native_section_autoconfig(
-    state: &StateData,
+    _state: &StateData,
     autoconfig: &section_autoconfig::SectionAutoconfig,
     name: &str,
     query: &str,
 ) -> Response {
     let child = section_autoconfig::Child {
-        client: &state.legacy,
-        base: &state.legacy_base,
-        token: &state.token,
+        #[cfg(not(test))]
+        _lifetime: std::marker::PhantomData,
+        #[cfg(test)]
+        client: &_state.legacy,
+        #[cfg(test)]
+        base: &_state.legacy_base,
+        #[cfg(test)]
+        token: &_state.token,
     };
     match autoconfig.get(name, query, child).await {
         section_autoconfig::Outcome::Json(status, bytes) => (

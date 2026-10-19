@@ -77,7 +77,7 @@ async fn fake_python(ini: PathBuf, text: &'static str, fail: bool) -> String {
     base
 }
 
-fn state(base: &str, reconciler: Option<Arc<Reconciler>>) -> Arc<StateData> {
+fn state(_legacy_trap_base: &str, reconciler: Option<Arc<Reconciler>>) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -99,8 +99,6 @@ fn state(base: &str, reconciler: Option<Arc<Reconciler>>) -> Arc<StateData> {
         docker: Arc::new(NoDocker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(2),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: base.to_owned(),
         idle_unload: reconciler,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,

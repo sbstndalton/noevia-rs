@@ -37,6 +37,7 @@ fn bounded_response_fragmentation_and_rejections() {
         (Phase::Tls, TransportFailure::Tls),
         (Phase::Headers, TransportFailure::PreHeaderReset),
         (Phase::Body, TransportFailure::Body),
+        (Phase::Body, TransportFailure::Timeout),
         (Phase::Tcp, TransportFailure::Timeout),
     ] {
         let bytes = response_ipc::encode(Reply::Failure { phase, failure }, 32)
@@ -51,6 +52,15 @@ fn bounded_response_fragmentation_and_rejections() {
             failure: TransportFailure::PreHeaderReset
         },
         32
+    )
+    .is_err());
+    // The parent-only projection must not add a child wire code (#2085).
+    assert!(response_ipc::encode(
+        Reply::Failure {
+            phase: Phase::Body,
+            failure: TransportFailure::BodyTimeout,
+        },
+        32,
     )
     .is_err());
     let capped = response_ipc::encode(

@@ -64,7 +64,7 @@ impl DockerRead for FakeDocker {
     }
 }
 
-fn state(docker: FakeDocker, child: &str, backends: Backends) -> Arc<StateData> {
+fn state(docker: FakeDocker, _legacy_trap_base: &str, backends: Backends) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -127,8 +127,6 @@ fn state(docker: FakeDocker, child: &str, backends: Backends) -> Arc<StateData> 
         docker: Arc::new(docker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(4),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: child.into(),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,

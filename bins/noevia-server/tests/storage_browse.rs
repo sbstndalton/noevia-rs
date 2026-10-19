@@ -203,13 +203,17 @@ fn handle_conn(mut stream: TcpStream, seen: &Mutex<Vec<Seen>>) {
     seen.lock()
         .unwrap()
         .push((method.clone(), target.clone(), headers));
-    if target == "/dav/docs/slow.md" {
-        // Headers at once, then the body stalls past the 20 s read timeout.
+    if target == "/dav/docs/slow.md" || target == "/dav/docs/broken.md" {
+        // Same partial body, with distinct early EOF and deadline-abort controls (#2085).
         let _ = stream.write_all(
             b"HTTP/1.1 200 Synthetic\r\nContent-Length: 10\r\nConnection: close\r\n\r\nhalf",
         );
         let _ = stream.flush();
-        std::thread::sleep(Duration::from_secs(23));
+        std::thread::sleep(if target.ends_with("broken.md") {
+            Duration::from_millis(100)
+        } else {
+            Duration::from_secs(23)
+        });
         return;
     }
     let (status, extra, body) = answer(&method, &target);
@@ -303,6 +307,11 @@ fn cases(port: u16) -> Vec<Case> {
         ),
         read("dav 500", r#"{"path":"docs/err.md"}"#, dav("webdav")),
         read(
+            "dav broken body",
+            r#"{"path":"docs/broken.md"}"#,
+            dav("webdav"),
+        ),
+        read(
             "dav body stall",
             r#"{"path":"docs/slow.md"}"#,
             dav("webdav"),
@@ -350,7 +359,17 @@ fn node_answers(core: &str, cases: &[Case]) -> Vec<(u16, String)> {
         .collect::<Vec<_>>());
     let mut child =
         Command::new(std::env::var("NOEVIA_STORAGE_ORACLE_NODE").unwrap_or_else(|_| "node".into()))
-            .args(["-e", SEAM, core])
+            // Keep the actual Node oracle out of idle/minor GC during the bounded body
+            // deadline. Undici weakly retains its internal abort controller; collecting it
+            // after headers otherwise changes an abort into the fixture's later EOF (#2085).
+            // No core source, fetch implementation, timer or error reply is replaced.
+            .args([
+                "--max-semi-space-size=64",
+                "--no-memory-reducer",
+                "-e",
+                SEAM,
+                core,
+            ])
             .env("NODE_PATH", format!("{core}/server/node_modules"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

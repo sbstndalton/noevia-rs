@@ -43,8 +43,8 @@ fn phase(code: u8) -> Result<Phase, Error> {
         _ => Err(Error::Protocol),
     }
 }
-fn failure_code(failure: TransportFailure) -> u8 {
-    match failure {
+fn failure_code(failure: TransportFailure) -> Result<u8, Error> {
+    Ok(match failure {
         TransportFailure::PreHeaderReset => 1,
         TransportFailure::PreHeaderAborted => 2,
         TransportFailure::PreHeaderBrokenPipe => 3,
@@ -56,7 +56,10 @@ fn failure_code(failure: TransportFailure) -> u8 {
         TransportFailure::Header => 9,
         TransportFailure::Body => 10,
         TransportFailure::Other => 11,
-    }
+        // BodyTimeout is derived by the parent from the existing phase/body + timeout tag.
+        // It cannot expand the child protocol or appear as a new wire failure code.
+        TransportFailure::BodyTimeout => return Err(Error::Protocol),
+    })
 }
 fn failure(code: u8) -> Result<TransportFailure, Error> {
     match code {
@@ -110,7 +113,7 @@ pub fn encode(reply: Reply<'_>, cap: usize) -> Result<Vec<u8>, Error> {
             if !combination(phase, failure) {
                 return Err(Error::Protocol);
             }
-            (1, phase_code(phase), 0, failure_code(failure), 0, &[][..])
+            (1, phase_code(phase), 0, failure_code(failure)?, 0, &[][..])
         }
     };
     let mut bytes = Vec::new();
