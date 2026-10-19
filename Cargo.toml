@@ -21,7 +21,7 @@ indexing_slicing = "deny"
 # tools/build-dav-parse-wasm.sh; its sha256 is pinned by noevia-core.
 [profile.wasm-release]
 inherits = "release"
-opt-level = "s"
+opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
