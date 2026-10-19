@@ -265,9 +265,6 @@ async fn service() -> Result<(), Box<dyn std::error::Error>> {
                     socket: docker.socket.clone(),
                     docker: docker.clone(),
                     configured: configured.clone(),
-                    legacy: legacy_client()?,
-                    legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
-                    token: token.clone(),
                 },
             )?;
             Some(runner)
