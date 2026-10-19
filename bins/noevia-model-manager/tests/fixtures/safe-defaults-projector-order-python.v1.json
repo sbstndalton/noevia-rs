@@ -1,0 +1,179 @@
+{
+ "epoch": 1792152000,
+ "oracle": {
+  "api.py": "034885124b805d513dd43fbbdade52c1cc13ca225233c576d1b1d42e2ad64680",
+  "config.py": "4708a112769dbc3b9da6c49eeb7057e02d06868ca4af0e0bf4567971a267581a",
+  "helpers.py": "fcf2ccb14e5e068f97bb7a4b7985ab7f4f4855b940eb6d9e3838f239ad97918d",
+  "ini.py": "b3cb05fd382b5f408ad16430db8841d40c82a3714115233f2e35b2f7f3b61740",
+  "main.py": "8a336283aaa001a8eca2f3476e2d85e0ae17bc8b72f0bf8fb13b64993339212a"
+ },
+ "stamp": "20261016-120000",
+ "variants": {
+  "a-first": {
+   "answers": [
+    {
+     "body": "{\"detail\":\"no downloaded GGUF matches this name\"}",
+     "content_type": "application/json",
+     "plan": {
+      "body": "{\"status\":404,\"detail\":\"no downloaded GGUF matches this name\"}",
+      "status": 200
+     },
+     "status": 404
+    },
+    {
+     "body": "{\"ok\":true,\"revision\":\"3d332893dac42e6b5177f9bde1734f3596346cba76af9c99e463be5805665b4c\",\"section\":{\"model\":\"/models/syn-folder/syn-folder-Q4.gguf\",\"ctx-size\":\"8192\",\"ngl\":\"999\",\"flash-attn\":\"on\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"q8_0\",\"parallel\":\"1\",\"split-mode\":\"layer\",\"mmproj\":\"/models/syn-folder/a-mmproj.gguf\",\"spec-type\":\"draft-mtp\",\"spec-draft-model\":\"/models/syn-folder/z-syn-folder-draft-Q8.gguf\",\"cache-ram\":\"1024\"},\"mtp\":true}",
+     "content_type": "application/json",
+     "plan": {
+      "body": "{\"status\":200,\"values\":{\"ctx-size\":\"8192\",\"ngl\":\"999\",\"flash-attn\":\"on\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"q8_0\",\"parallel\":\"1\",\"split-mode\":\"layer\",\"model\":\"/models/syn-folder/syn-folder-Q4.gguf\",\"mmproj\":\"/models/syn-folder/a-mmproj.gguf\",\"spec-type\":\"draft-mtp\",\"spec-draft-model\":\"/models/syn-folder/z-syn-folder-draft-Q8.gguf\"},\"mtp\":true}",
+      "status": 200
+     },
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [
+    [
+     "syn-folder/syn-folder-Q4.gguf",
+     {
+      "gguf": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468140000000000000073796e74682e636f6e746578745f6c656e67746804000000008000001a0000000000000073796e74682e6e6578746e5f707265646963745f6c61796572730400000001000000"
+     },
+     1600000000
+    ],
+    [
+     "syn-folder/z-mmproj.gguf",
+     {
+      "gguf": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000"
+     },
+     1600000000
+    ],
+    [
+     "syn-folder/a-mmproj.gguf",
+     {
+      "gguf": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000"
+     },
+     1600000000
+    ],
+    [
+     "syn-folder/z-syn-folder-draft-Q8.gguf",
+     {
+      "gguf": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000"
+     },
+     1600000000
+    ]
+   ],
+   "final": {
+    "ini": "[syn-folder-Q4]\nmodel = /models/syn-folder/syn-folder-Q4.gguf\nctx-size = 8192\nngl = 999\nflash-attn = on\ncache-type-k = q8_0\ncache-type-v = q8_0\nparallel = 1\nsplit-mode = layer\nmmproj = /models/syn-folder/a-mmproj.gguf\nspec-type = draft-mtp\nspec-draft-model = /models/syn-folder/z-syn-folder-draft-Q8.gguf\ncache-ram = 1024\n",
+    "listing": [
+     "models.ini",
+     "syn-folder/a-mmproj.gguf",
+     "syn-folder/syn-folder-Q4.gguf",
+     "syn-folder/z-mmproj.gguf",
+     "syn-folder/z-syn-folder-draft-Q8.gguf"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "folder-head-projector-priority",
+   "impl": "python",
+   "ini": null,
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": "application/json",
+     "method": "POST",
+     "path": "/api/v1/sections/syn-folder/safe-defaults"
+    },
+    {
+     "body": null,
+     "content_type": "application/json",
+     "method": "POST",
+     "path": "/api/v1/sections/syn-folder-Q4/safe-defaults"
+    }
+   ]
+  },
+  "z-first": {
+   "answers": [
+    {
+     "body": "{\"detail\":\"no downloaded GGUF matches this name\"}",
+     "content_type": "application/json",
+     "plan": {
+      "body": "{\"status\":404,\"detail\":\"no downloaded GGUF matches this name\"}",
+      "status": 200
+     },
+     "status": 404
+    },
+    {
+     "body": "{\"ok\":true,\"revision\":\"01d73541110f2776622c3ed5c25f3cb8a38008b91b2303f3f43c11c36ab81186\",\"section\":{\"model\":\"/models/syn-folder/syn-folder-Q4.gguf\",\"ctx-size\":\"8192\",\"ngl\":\"999\",\"flash-attn\":\"on\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"q8_0\",\"parallel\":\"1\",\"split-mode\":\"layer\",\"mmproj\":\"/models/syn-folder/z-mmproj.gguf\",\"spec-type\":\"draft-mtp\",\"spec-draft-model\":\"/models/syn-folder/z-syn-folder-draft-Q8.gguf\",\"cache-ram\":\"1024\"},\"mtp\":true}",
+     "content_type": "application/json",
+     "plan": {
+      "body": "{\"status\":200,\"values\":{\"ctx-size\":\"8192\",\"ngl\":\"999\",\"flash-attn\":\"on\",\"cache-type-k\":\"q8_0\",\"cache-type-v\":\"q8_0\",\"parallel\":\"1\",\"split-mode\":\"layer\",\"model\":\"/models/syn-folder/syn-folder-Q4.gguf\",\"mmproj\":\"/models/syn-folder/z-mmproj.gguf\",\"spec-type\":\"draft-mtp\",\"spec-draft-model\":\"/models/syn-folder/z-syn-folder-draft-Q8.gguf\"},\"mtp\":true}",
+      "status": 200
+     },
+     "status": 200
+    }
+   ],
+   "cap": 1024,
+   "files": [
+    [
+     "syn-folder/syn-folder-Q4.gguf",
+     {
+      "gguf": "474755460300000000000000000000000300000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468140000000000000073796e74682e636f6e746578745f6c656e67746804000000008000001a0000000000000073796e74682e6e6578746e5f707265646963745f6c61796572730400000001000000"
+     },
+     1600000000
+    ],
+    [
+     "syn-folder/z-mmproj.gguf",
+     {
+      "gguf": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000"
+     },
+     1600000000
+    ],
+    [
+     "syn-folder/a-mmproj.gguf",
+     {
+      "gguf": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000"
+     },
+     1600000000
+    ],
+    [
+     "syn-folder/z-syn-folder-draft-Q8.gguf",
+     {
+      "gguf": "474755460300000000000000000000000200000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468140000000000000073796e74682e636f6e746578745f6c656e6774680400000000800000"
+     },
+     1600000000
+    ]
+   ],
+   "final": {
+    "ini": "[syn-folder-Q4]\nmodel = /models/syn-folder/syn-folder-Q4.gguf\nctx-size = 8192\nngl = 999\nflash-attn = on\ncache-type-k = q8_0\ncache-type-v = q8_0\nparallel = 1\nsplit-mode = layer\nmmproj = /models/syn-folder/z-mmproj.gguf\nspec-type = draft-mtp\nspec-draft-model = /models/syn-folder/z-syn-folder-draft-Q8.gguf\ncache-ram = 1024\n",
+    "listing": [
+     "models.ini",
+     "syn-folder/a-mmproj.gguf",
+     "syn-folder/syn-folder-Q4.gguf",
+     "syn-folder/z-mmproj.gguf",
+     "syn-folder/z-syn-folder-draft-Q8.gguf"
+    ],
+    "roles": null
+   },
+   "hard": 2048,
+   "id": "folder-head-projector-priority",
+   "impl": "python",
+   "ini": null,
+   "roles": null,
+   "steps": [
+    {
+     "body": null,
+     "content_type": "application/json",
+     "method": "POST",
+     "path": "/api/v1/sections/syn-folder/safe-defaults"
+    },
+    {
+     "body": null,
+     "content_type": "application/json",
+     "method": "POST",
+     "path": "/api/v1/sections/syn-folder-Q4/safe-defaults"
+    }
+   ]
+  }
+ }
+}

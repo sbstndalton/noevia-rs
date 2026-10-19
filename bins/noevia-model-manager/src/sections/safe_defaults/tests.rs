@@ -11,6 +11,49 @@ fn fixture() -> V {
     ))
     .unwrap()
 }
+fn order_fixture() -> V {
+    serde_json::from_str(include_str!(
+        "../../../tests/fixtures/safe-defaults-projector-order-python.v1.json"
+    ))
+    .unwrap()
+}
+fn raw_folder_names(models: &Path) -> Vec<String> {
+    std::fs::read_dir(models.join("syn-folder"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect()
+}
+fn ordered_case<'a>(original: &'a V, orders: &'a V, names: &[String]) -> &'a V {
+    assert_eq!(names.len(), 4);
+    for known in [
+        "a-mmproj.gguf",
+        "z-mmproj.gguf",
+        "syn-folder-Q4.gguf",
+        "z-syn-folder-draft-Q8.gguf",
+    ] {
+        assert_eq!(
+            names.iter().filter(|name| name.as_str() == known).count(),
+            1,
+            "unexpected synthetic directory input"
+        );
+    }
+    let a = names
+        .iter()
+        .position(|name| name == "a-mmproj.gguf")
+        .unwrap();
+    let z = names
+        .iter()
+        .position(|name| name == "z-mmproj.gguf")
+        .unwrap();
+    let variant = if a < z { "a-first" } else { "z-first" };
+    let case = &orders["variants"][variant];
+    for key in [
+        "id", "steps", "files", "ini", "roles", "cap", "hard", "impl",
+    ] {
+        assert_eq!(case[key], original[key], "ordered fixture input {key}");
+    }
+    case
+}
 fn hex(s: &str) -> Vec<u8> {
     (0..s.len())
         .step_by(2)
@@ -70,10 +113,29 @@ fn listing(root: &Path, prefix: &str, out: &mut Vec<String>) {
 #[tokio::test]
 async fn actual_python_plans_responses_and_final_files() {
     let fx = fixture();
-    for case in fx["cases"].as_array().unwrap() {
+    let orders = order_fixture();
+    for key in ["oracle", "epoch", "stamp"] {
+        assert_eq!(fx[key], orders[key], "ordered fixture provenance {key}");
+    }
+    let mut keys: Vec<_> = orders["variants"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort();
+    assert_eq!(keys, vec!["a-first", "z-first"]);
+    for original in fx["cases"].as_array().unwrap() {
         let dir = tempfile::tempdir().unwrap();
         let models = dir.path().join("models");
-        build(&models, case);
+        build(&models, original);
+        // Directory enumeration is an input, observed before native output exists.
+        let before =
+            (original["id"] == "folder-head-projector-priority").then(|| raw_folder_names(&models));
+        let case = match before.as_deref() {
+            Some(names) => ordered_case(original, &orders, names),
+            None => original,
+        };
         let ini = models.join("models.ini");
         let epoch = fx["epoch"].as_u64().unwrap();
         let writes = SectionWrites::with_clock(
@@ -122,6 +184,13 @@ async fn actual_python_plans_responses_and_final_files() {
                 Outcome::Failed => panic!("{} failed", case["id"]),
             }
             drop(guard);
+            if let Some(names) = &before {
+                assert_eq!(
+                    &raw_folder_names(&models),
+                    names,
+                    "companion order changed during native replay"
+                );
+            }
         }
         assert_eq!(
             std::fs::read_to_string(&ini).ok().as_deref(),
@@ -129,6 +198,13 @@ async fn actual_python_plans_responses_and_final_files() {
             "{}",
             case["id"]
         );
+        if let Some(names) = &before {
+            assert_eq!(
+                &raw_folder_names(&models),
+                names,
+                "companion order changed after native replay"
+            );
+        }
         let mut names = Vec::new();
         listing(&models, "", &mut names);
         names.sort();

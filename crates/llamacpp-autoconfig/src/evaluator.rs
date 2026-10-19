@@ -36,19 +36,63 @@ const VIRTUAL_BASE: u64 = 8_000_000_000_000_000;
 // nonnegative exact f64 integers <= 2^53-1; generated refs are VIRTUAL_BASE+1..32.
 // Their ECMAScript JSON spelling is exactly unsigned decimal (all are < 1e21).
 // Business numbers retain Out::num or their existing raw-bit representation.
+const PRIVATE_DECIMAL_PAIRS: &[u8; 200] = b"00010203040506070809101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899";
+
 impl Out {
     fn private_uint(&mut self, mut value: u64) -> &mut Self {
+        const CHUNK: u64 = 100_000_000;
         let mut digits = [0_u8; 20];
-        let mut start = digits.len();
-        for digit in digits.iter_mut().rev() {
-            *digit = b'0' + (value % 10) as u8;
-            start -= 1;
-            value /= 10;
-            if value == 0 {
-                break;
+        let start = {
+            let mut cursor = digits.iter_mut().rev();
+            // A u64 has at most twenty digits: at most two eight-digit chunks,
+            // followed by an unpadded leading chunk. With two lower chunks the
+            // remaining value is at most 1844 (four digits); otherwise it is <10^8.
+            while value >= CHUNK {
+                let quotient = value / CHUNK;
+                // quotient * CHUNK <= value; the remainder is below 10^8.
+                let mut chunk = (value - quotient * CHUNK) as u32;
+                value = quotient;
+                for _ in 0..4 {
+                    let quotient = chunk / 100;
+                    let pair = ((chunk - quotient * 100) * 2) as usize;
+                    // Every pair is 0..=198, so both table bytes always exist.
+                    if let Some(bytes) = PRIVATE_DECIMAL_PAIRS.get(pair..pair + 2) {
+                        for (output, byte) in cursor.by_ref().take(2).zip(bytes.iter().rev()) {
+                            *output = *byte;
+                        }
+                    }
+                    chunk = quotient;
+                }
             }
-        }
-        self.0.extend(digits.into_iter().skip(start));
+            let mut leading = value as u32;
+            while leading >= 100 {
+                let quotient = leading / 100;
+                let pair = ((leading - quotient * 100) * 2) as usize;
+                if let Some(bytes) = PRIVATE_DECIMAL_PAIRS.get(pair..pair + 2) {
+                    for (output, byte) in cursor.by_ref().take(2).zip(bytes.iter().rev()) {
+                        *output = *byte;
+                    }
+                }
+                leading = quotient;
+            }
+            if leading < 10 {
+                // The total decimal length is <=20, so this slot always exists.
+                if let Some(output) = cursor.next() {
+                    *output = b'0' + leading as u8;
+                }
+            } else {
+                let pair = leading as usize * 2;
+                if let Some(bytes) = PRIVATE_DECIMAL_PAIRS.get(pair..pair + 2) {
+                    for (output, byte) in cursor.by_ref().take(2).zip(bytes.iter().rev()) {
+                        *output = *byte;
+                    }
+                }
+            }
+            cursor.len()
+        };
+        // start is the unconsumed prefix length, necessarily within 0..=20.
+        self.0
+            .extend_from_slice(digits.get(start..).unwrap_or_default());
         self
     }
 }
@@ -526,6 +570,74 @@ fn write_refs(out: &mut Out, refs: &[u64]) {
     }
     out.raw("]");
 }
+// One call owns one lazily-started output buffer. Each append serializes the
+// complete snapshot immediately; later VM mutations cannot change queued bytes.
+fn write_request(
+    out: &mut Out,
+    state: &State,
+    operation: &str,
+    args: &[u64],
+    result: u64,
+    compact: bool,
+) {
+    out.raw("{").raw("\"state\":");
+    state.write_wire(out, compact);
+    out.raw(",")
+        .raw("\"request\":")
+        .raw(operation)
+        .raw(",")
+        .raw("\"args\":");
+    write_refs(out, args);
+    out.raw(",").raw("\"ref\":").private_uint(result).raw("}");
+}
+
+struct RequestBatch {
+    out: Out,
+    count: usize,
+    compact: bool,
+}
+impl RequestBatch {
+    fn new(compact: bool) -> Self {
+        Self {
+            out: Out(Vec::new()),
+            count: 0,
+            compact,
+        }
+    }
+    fn len(&self) -> usize {
+        self.count
+    }
+    fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+    fn prefix(&mut self) {
+        if self.compact {
+            self.out.raw(r#"{"wire":"state-v1","batch":["#);
+        } else {
+            self.out.raw(r#"{"batch":["#);
+        }
+    }
+    fn append(&mut self, state: &State, operation: &str, args: &[u64], result: u64) {
+        if self.count == 0 {
+            self.prefix();
+        } else {
+            self.out.raw(",");
+        }
+        write_request(&mut self.out, state, operation, args, result, self.compact);
+        self.count += 1;
+    }
+    fn finish(mut self) -> String {
+        if self.count == 0 {
+            self.prefix();
+        }
+        self.out.raw("]}");
+        self.out.text()
+    }
+}
+
+// Byte oracles frozen from noevia-rs 17140326 evaluator.rs529-547. Only the
+// cfg(test) attributes were added; both original writer bodies remain unchanged.
+#[cfg(test)]
 fn request(state: &State, operation: &str, args: &[u64], result: u64, compact: bool) -> String {
     let mut out = Out(Vec::new());
     out.raw("{").raw("\"state\":");
@@ -539,6 +651,7 @@ fn request(state: &State, operation: &str, args: &[u64], result: u64, compact: b
     out.raw(",").raw("\"ref\":").private_uint(result).raw("}");
     out.text()
 }
+#[cfg(test)]
 fn batch(requests: &[String], compact: bool) -> String {
     if compact {
         format!(r#"{{"wire":"state-v1","batch":[{}]}}"#, requests.join(","))
@@ -559,10 +672,7 @@ fn end(key: &str, reference: u64, compact: bool) -> String {
 pub(super) fn call(op: u8, args: &Value) -> R<String> {
     let compact = matches!(args.get("wire").and_then(Value::as_str),
         Some(tag) if tag.iter().copied().eq("state-v1".encode_utf16()));
-    let request = |state: &State, operation: &str, args: &[u64], result: u64| {
-        request(state, operation, args, result, compact)
-    };
-    let batch = |requests: &[String]| batch(requests, compact);
+    let mut requests = RequestBatch::new(compact);
     let end = |key: &str, reference: u64| end(key, reference, compact);
     let mut state = if op == 11 {
         let function = index(args.get("function"))?;
@@ -623,7 +733,8 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                     let count = sum.cache.len;
                     let operation =
                         format!(r#"{{"op":"ownBooleanPrefixFacts","data":{{"count":{count}}}}}"#);
-                    return Ok(batch(&[request(&state, &operation, &[seq], 0)]));
+                    requests.append(&state, &operation, &[seq], 0);
+                    return Ok(requests.finish());
                 }
             }
         } else if state.mode == 6 {
@@ -706,7 +817,6 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
         }
         state
     };
-    let mut requests = Vec::new();
     loop {
         if state.mode == 7 && state.sum.is_some() {
             let sum = state.sum.as_mut().ok_or(Refusal::Input)?;
@@ -744,14 +854,16 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                     sum.cache.need
                 );
                 let seq = sum.cache.seq;
-                return Ok(batch(&[request(&state, &operation, &[seq], 0)]));
+                requests.append(&state, &operation, &[seq], 0);
+                return Ok(requests.finish());
             }
             let answer = sum.total;
             state.pc = sum.cache.return_pc;
             state.sum = None;
             state.mode = 0;
             let operation = format!(r#"{{"op":"floatBits","data":"{:016x}"}}"#, answer.to_bits());
-            return Ok(batch(&[request(&state, &operation, &[], VIRTUAL_BASE + 1)]));
+            requests.append(&state, &operation, &[], VIRTUAL_BASE + 1);
+            return Ok(requests.finish());
         }
         if state.mode == 4 && state.period.is_some() {
             let period = state.period.as_mut().ok_or(Refusal::Input)?;
@@ -786,7 +898,8 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                 state.period = None;
                 state.mode = 0;
                 let operation = format!(r#"{{"op":"literal","data":{answer}}}"#);
-                return Ok(batch(&[request(&state, &operation, &[], VIRTUAL_BASE + 1)]));
+                requests.append(&state, &operation, &[], VIRTUAL_BASE + 1);
+                return Ok(requests.finish());
             }
             let position = missing.ok_or(Refusal::Input)?;
             period.need = (position / BOOLEAN_CHUNK) * BOOLEAN_CHUNK;
@@ -796,7 +909,8 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                 period.need
             );
             let seq = period.seq;
-            return Ok(batch(&[request(&state, &operation, &[seq], 0)]));
+            requests.append(&state, &operation, &[seq], 0);
+            return Ok(requests.finish());
         }
         let instruction = *PROGRAM.get(state.pc).ok_or(Refusal::Input)?;
         state.pc += 1;
@@ -808,10 +922,10 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                 let arguments = state.stack.split_off(state.stack.len() - count);
                 state.mode = 0;
                 let result = VIRTUAL_BASE + requests.len() as u64 + 1;
-                requests.push(request(&state, operation, &arguments, result));
+                requests.append(&state, operation, &arguments, result);
                 state.push(result)?;
                 if requests.len() == BATCH_OPERATIONS {
-                    return Ok(batch(&requests));
+                    return Ok(requests.finish());
                 }
             }
             Instruction::Env => {
@@ -845,8 +959,8 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                 };
                 state.target = pc;
                 let operation = format!(r#"{{"op":"test","data":"{kind}"}}"#);
-                requests.push(request(&state, &operation, &[reference], 0));
-                return Ok(batch(&requests));
+                requests.append(&state, &operation, &[reference], 0);
+                return Ok(requests.finish());
             }
             Instruction::Catch(pc) => {
                 if state.catches.len() >= CATCH_REGISTERS {
@@ -859,7 +973,7 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
             }
             Instruction::KvSum(return_pc) => {
                 if !requests.is_empty() {
-                    return Ok(batch(&requests));
+                    return Ok(requests.finish());
                 }
                 if state.stack.len() < 9 {
                     return Err(Refusal::Input);
@@ -881,16 +995,12 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                     total: 0.0,
                 });
                 state.mode = 5;
-                return Ok(batch(&[request(
-                    &state,
-                    r#"{"op":"numberFacts","data":null}"#,
-                    &arguments,
-                    0,
-                )]));
+                requests.append(&state, r#"{"op":"numberFacts","data":null}"#, &arguments, 0);
+                return Ok(requests.finish());
             }
             Instruction::BooleanPeriod(return_pc) => {
                 if !requests.is_empty() {
-                    return Ok(batch(&requests));
+                    return Ok(requests.finish());
                 }
                 let seq = state.pop()?;
                 state.period = Some(Period {
@@ -903,16 +1013,17 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                     chunks: Vec::new(),
                 });
                 state.mode = 3;
-                return Ok(batch(&[request(
+                requests.append(
                     &state,
                     r#"{"op":"booleanArrayFacts","data":null}"#,
                     &[seq],
                     0,
-                )]));
+                );
+                return Ok(requests.finish());
             }
             Instruction::Return => {
                 if !requests.is_empty() {
-                    return Ok(batch(&requests));
+                    return Ok(requests.finish());
                 }
                 return Ok(end("done", state.pop()?));
             }
@@ -925,6 +1036,344 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    // Frozen verbatim from preserved evaluator 10c7b7fe, with method name only
+    // changed. This test-only oracle retains its original div/rem10 and copy path.
+    impl Out {
+        fn private_uint_10c(&mut self, mut value: u64) -> &mut Self {
+            let mut digits = [0_u8; 20];
+            let mut start = digits.len();
+            for digit in digits.iter_mut().rev() {
+                *digit = b'0' + (value % 10) as u8;
+                start -= 1;
+                value /= 10;
+                if value == 0 {
+                    break;
+                }
+            }
+            self.0.extend(digits.into_iter().skip(start));
+            self
+        }
+    }
+
+    fn assert_private_uint_chunk_bytes(value: u64) {
+        let mut actual = Out(b"prefix:".to_vec());
+        actual.private_uint(value).raw(":suffix");
+        let mut frozen = Out(b"prefix:".to_vec());
+        frozen.private_uint_10c(value).raw(":suffix");
+        assert_eq!(actual.0, frozen.0, "frozen writer: {value}");
+        assert_eq!(
+            actual.0,
+            format!("prefix:{value}:suffix").as_bytes(),
+            "u64 Display: {value}"
+        );
+    }
+
+    #[test]
+    fn private_uint_chunks_match_both_oracles_at_full_u64_boundaries() {
+        for value in [
+            0,
+            1,
+            9,
+            10,
+            99,
+            100,
+            u64::from(u32::MAX),
+            u64::MAX - 1,
+            u64::MAX,
+        ] {
+            assert_private_uint_chunk_bytes(value);
+        }
+        for power in 0..=63 {
+            let center = 1_u64 << power;
+            for value in [center.checked_sub(1), Some(center), center.checked_add(1)]
+                .into_iter()
+                .flatten()
+            {
+                assert_private_uint_chunk_bytes(value);
+            }
+        }
+        for power in 0..=19 {
+            let center = 10_u64.pow(power);
+            for value in [center - 1, center, center + 1] {
+                assert_private_uint_chunk_bytes(value);
+            }
+        }
+        for center in [100_000_000_u64, 10_000_000_000_000_000] {
+            for value in [center - 1, center, center + 1] {
+                assert_private_uint_chunk_bytes(value);
+            }
+        }
+    }
+
+    #[test]
+    fn private_uint_chunks_preserve_zero_padding_and_every_decimal_pair() {
+        const CHUNK: u64 = 100_000_000;
+        for prefix in [1, 9, 99, 10_000_000, CHUNK - 1] {
+            for low in [0, 1, 9, 10, 99, 100, 10_000, 1_000_000, CHUNK - 1] {
+                assert_private_uint_chunk_bytes(prefix * CHUNK + low);
+            }
+        }
+        for prefix in [1_u64, 999, 1844] {
+            for middle in [0, 1, 99, CHUNK - 1] {
+                for low in [0, 1, 9, 99, 100, CHUNK - 1] {
+                    if let Some(value) = prefix
+                        .checked_mul(CHUNK)
+                        .and_then(|n| n.checked_add(middle))
+                        .and_then(|n| n.checked_mul(CHUNK))
+                        .and_then(|n| n.checked_add(low))
+                    {
+                        assert_private_uint_chunk_bytes(value);
+                    }
+                }
+            }
+        }
+        for prefix in [
+            0,
+            1,
+            99,
+            CHUNK / 100 - 1,
+            CHUNK / 100,
+            CHUNK / 100 + 1,
+            99_999_999_999_999,
+            u64::MAX / 100,
+        ] {
+            for remainder in 0..100 {
+                if let Some(value) = prefix
+                    .checked_mul(100)
+                    .and_then(|n| n.checked_add(remainder))
+                {
+                    assert_private_uint_chunk_bytes(value);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn private_uint_chunks_match_both_oracles_for_full_width_seeded_values() {
+        let mut seed = 0x1071_deca_1c8f_9327_u64;
+        for _ in 0..16_384 {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            assert_private_uint_chunk_bytes(seed);
+        }
+    }
+
+    fn output_buffer_state(mode: u8) -> State {
+        let period = || Period {
+            seq: 9_007_199_254_740_991,
+            return_pc: PROGRAM.len() - 1,
+            len: 4096,
+            p: 16,
+            i: 7,
+            need: 0,
+            chunks: vec![Chunk {
+                base: 0,
+                nibbles: vec![0, 1, 10, 15],
+            }],
+        };
+        State {
+            pc: 1,
+            env: 9_007_199_254_740_991,
+            stack: vec![1, VIRTUAL_BASE + 1],
+            catches: vec![(PROGRAM.len() - 1, 1, 17)],
+            mode,
+            target: PROGRAM.len() - 1,
+            period: matches!(mode, 3 | 4).then(period),
+            sum: matches!(mode, 5..=7).then(|| Sum {
+                cache: period(),
+                raw: vec![1, 9_007_199_254_740_991],
+                numbers: [
+                    0.0,
+                    -0.0,
+                    f64::NAN,
+                    f64::INFINITY,
+                    f64::NEG_INFINITY,
+                    f64::from_bits(1),
+                ],
+                total: f64::from_bits(0x7ff8_0000_0000_0001),
+            }),
+        }
+    }
+
+    #[test]
+    fn output_buffer_batches_match_frozen_171_writers_in_both_wire_forms() {
+        let operations = [
+            r#"{"op":"get","data":null}"#,
+            r#"{"op":"literal","data":"quote\" slash\\ newline\n nul\u0000 lone\ud800"}"#,
+            r#"{"op":"floatBits","data":"8000000000000000"}"#,
+        ];
+        for compact in [false, true] {
+            for count in [0, 1, 2, 31, 32] {
+                for mode in 0..=7 {
+                    let mut state = output_buffer_state(mode);
+                    let mut actual = RequestBatch::new(compact);
+                    // An empty/done-only call has not started or allocated a batch.
+                    assert!(actual.out.0.is_empty());
+                    assert_eq!(actual.out.0.capacity(), 0);
+                    let mut expected = Vec::new();
+                    for index in 0..count {
+                        let operation = operations[index % operations.len()];
+                        let args = [1, VIRTUAL_BASE + index as u64, 9_007_199_254_740_991];
+                        let result = VIRTUAL_BASE + actual.len() as u64 + 1;
+                        expected.push(request(&state, operation, &args, result, compact));
+                        actual.append(&state, operation, &args, result);
+                        assert_eq!(actual.len(), index + 1);
+                        // Queue snapshots must remain independent of subsequent steps.
+                        state.pc += 1;
+                        state.env = result;
+                        state.stack.push(result);
+                        if let Some(period) = state.period.as_mut() {
+                            period.i += 1;
+                            period.chunks[0].nibbles[0] ^= 1;
+                        }
+                        if let Some(sum) = state.sum.as_mut() {
+                            sum.raw.push(result);
+                            sum.total = f64::from_bits(sum.total.to_bits() ^ 1);
+                        }
+                    }
+                    assert_eq!(
+                        actual.finish(),
+                        batch(&expected, compact),
+                        "count {count}, mode {mode}, compact {compact}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn output_buffer_append_freezes_before_result_push_and_borrowed_data_mutation() {
+        for compact in [false, true] {
+            let mut state = output_buffer_state(0);
+            state.stack.clear();
+            state.catches.clear();
+            let mut operation = String::from(r#"{"op":"literal","data":"before\n"}"#);
+            let mut arguments = vec![7];
+            let mut actual = RequestBatch::new(compact);
+            let first = VIRTUAL_BASE + actual.len() as u64 + 1;
+            let mut expected = vec![request(&state, &operation, &arguments, first, compact)];
+            actual.append(&state, &operation, &arguments, first);
+            state.push(first).unwrap();
+            state.pc += 1;
+            let second = VIRTUAL_BASE + actual.len() as u64 + 1;
+            expected.push(request(&state, &operation, &arguments, second, compact));
+            actual.append(&state, &operation, &arguments, second);
+            state.stack.clear();
+            state.env = 41;
+            operation.clear();
+            arguments.clear();
+            let text = actual.finish();
+            assert_eq!(text, batch(&expected, compact));
+            let reply = prompt_framing::json::parse_utf8(text.as_bytes(), 32).unwrap();
+            let Value::Arr(operations) = reply.get("batch").unwrap() else {
+                panic!("batch");
+            };
+            let before = State::read_wire(operations[0].get("state").unwrap(), compact).unwrap();
+            let after = State::read_wire(operations[1].get("state").unwrap(), compact).unwrap();
+            assert!(before.stack.is_empty());
+            assert_eq!(after.stack, vec![first]);
+            assert!(!after.stack.contains(&second));
+        }
+    }
+
+    fn output_buffer_resume(state: &State, compact: bool) -> Value {
+        let mut out = Out(Vec::new());
+        out.raw(r#"{"state":"#);
+        state.write_wire(&mut out, compact);
+        out.raw(r#","frame":{"value":41}"#);
+        if compact {
+            out.raw(r#","wire":"state-v1""#);
+        }
+        out.raw("}");
+        prompt_framing::json::parse_utf8(out.text().as_bytes(), 32).unwrap()
+    }
+
+    #[test]
+    fn output_buffer_keeps_pending_host_snapshots_at_control_boundaries() {
+        for compact in [false, true] {
+            for boundary in 0..5 {
+                let (pc, count) = PROGRAM
+                    .windows(2)
+                    .enumerate()
+                    .find_map(|(pc, pair)| {
+                        let Instruction::Host(count, _) = pair[0] else {
+                            return None;
+                        };
+                        let matches = matches!(
+                            (boundary, pair[1]),
+                            (0, Instruction::Return)
+                                | (1, Instruction::KvSum(_))
+                                | (2, Instruction::BooleanPeriod(_))
+                                | (3, Instruction::If(_, _))
+                                | (4, Instruction::Unless(_, _))
+                        );
+                        matches.then_some((pc, count))
+                    })
+                    .unwrap();
+                let mut state = output_buffer_state(0);
+                state.pc = pc;
+                state.env = 1;
+                state.catches.clear();
+                state.stack = vec![2; count.saturating_sub(1)];
+                let text = call(12, &output_buffer_resume(&state, compact)).unwrap();
+                let reply = prompt_framing::json::parse_utf8(text.as_bytes(), 32).unwrap();
+                let Value::Arr(operations) = reply.get("batch").unwrap() else {
+                    panic!("batch");
+                };
+                assert_eq!(operations.len(), if boundary >= 3 { 2 } else { 1 });
+                let first = State::read_wire(operations[0].get("state").unwrap(), compact).unwrap();
+                assert_eq!(first.pc, pc + 1);
+                assert!(first.period.is_none() && first.sum.is_none());
+                assert!(!first.stack.contains(&(VIRTUAL_BASE + 1)));
+                assert_eq!(integer(operations[0].get("ref")).unwrap(), VIRTUAL_BASE + 1);
+                if boundary >= 3 {
+                    let last =
+                        State::read_wire(operations[1].get("state").unwrap(), compact).unwrap();
+                    assert_eq!(last.mode, if boundary == 3 { 1 } else { 2 });
+                    assert_eq!(integer(operations[1].get("ref")).unwrap(), 0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn output_buffer_generated_entries_keep_32_bound_and_preappend_virtual_refs() {
+        for compact in [false, true] {
+            let mut saw_full = false;
+            for function in 0..ENTRIES.len() {
+                let text = if compact {
+                    format!(r#"{{"function":{function},"env":1,"wire":"state-v1"}}"#)
+                } else {
+                    format!(r#"{{"function":{function},"env":1}}"#)
+                };
+                let input = prompt_framing::json::parse_utf8(text.as_bytes(), 8).unwrap();
+                let text = call(11, &input).unwrap();
+                let reply = prompt_framing::json::parse_utf8(text.as_bytes(), 32).unwrap();
+                let Some(Value::Arr(operations)) = reply.get("batch") else {
+                    continue;
+                };
+                assert!(!operations.is_empty() && operations.len() <= BATCH_OPERATIONS);
+                saw_full |= operations.len() == BATCH_OPERATIONS;
+                for (index, operation) in operations.iter().enumerate() {
+                    let result = integer(operation.get("ref")).unwrap();
+                    if result != 0 {
+                        assert_eq!(result, VIRTUAL_BASE + index as u64 + 1);
+                        let state =
+                            State::read_wire(operation.get("state").unwrap(), compact).unwrap();
+                        assert!(!state.stack.contains(&result));
+                        assert!(state
+                            .stack
+                            .iter()
+                            .all(|value| *value < VIRTUAL_BASE || *value < result));
+                    }
+                }
+            }
+            assert!(
+                saw_full,
+                "actual generated entry must exercise the 32-operation flush"
+            );
+        }
+    }
 
     #[test]
     fn generated_program_has_fixed_bounded_register_depth() {
