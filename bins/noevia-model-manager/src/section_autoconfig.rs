@@ -86,11 +86,16 @@ pub struct Settings {
     pub cache_ram_cap_mib: i64,
 }
 
-/// How the parent reaches its child.
+/// The historical private transport exists only in library tests.
 pub struct Child<'a> {
+    #[cfg(test)]
     pub client: &'a reqwest::Client,
+    #[cfg(test)]
     pub base: &'a str,
+    #[cfg(test)]
     pub token: &'a str,
+    #[cfg(not(test))]
+    pub(crate) _lifetime: std::marker::PhantomData<&'a ()>,
 }
 
 pub struct SectionAutoconfig {

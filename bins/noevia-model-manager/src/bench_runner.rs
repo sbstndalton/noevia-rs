@@ -1552,12 +1552,9 @@ pub struct Production {
     pub socket: PathBuf,
     pub docker: Arc<dyn crate::DockerRead>,
     pub configured: Vec<String>,
-    pub legacy: reqwest::Client,
-    pub legacy_base: String,
-    pub token: String,
 }
 
-/// The runner `main` builds: workers on tokio, observations from the child's private route,
+/// The runner `main` builds: workers on tokio with the installed native observer,
 /// backends resolved and sweep containers handled through the sweep allowlist, and backend
 /// restarts limited to the effective backends.
 pub fn production(p: Production) -> Result<Arc<Runner>, &'static str> {

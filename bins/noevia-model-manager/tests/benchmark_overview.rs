@@ -48,7 +48,7 @@ impl DockerRead for FakeDocker {
 
 fn state(
     root: Option<&Path>,
-    legacy_base: &str,
+    _legacy_trap_base: &str,
     configured: Vec<String>,
     docker: FakeDocker,
 ) -> Arc<StateData> {
@@ -98,8 +98,6 @@ fn state(
         docker: Arc::new(docker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(4),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: legacy_base.into(),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,

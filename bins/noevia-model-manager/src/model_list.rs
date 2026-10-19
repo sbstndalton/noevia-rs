@@ -132,14 +132,18 @@ pub struct Settings {
     pub host_path: Option<String>,
 }
 
-/// How the parent reaches its child, and the native live fields when this process samples the
-/// backends.
+/// Native live inputs; the historical private transport exists only in library tests.
 pub struct Child<'a> {
+    #[cfg(test)]
     pub client: &'a reqwest::Client,
+    #[cfg(test)]
     pub base: &'a str,
+    #[cfg(test)]
     pub token: &'a str,
     #[cfg(feature = "native-backends")]
     pub live: Option<&'a crate::backend_stats::BackendStats>,
+    #[cfg(not(any(test, feature = "native-backends")))]
+    pub(crate) _lifetime: std::marker::PhantomData<&'a ()>,
 }
 
 type ShapeKey = (PathBuf, i128, u64);
