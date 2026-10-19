@@ -620,12 +620,10 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                     }
                     state.mode = 6;
                     let seq = sum.cache.seq;
-                    return Ok(batch(&[request(
-                        &state,
-                        r#"{"op":"booleanArrayFacts","data":null}"#,
-                        &[seq],
-                        0,
-                    )]));
+                    let count = sum.cache.len;
+                    let operation =
+                        format!(r#"{{"op":"ownBooleanPrefixFacts","data":{{"count":{count}}}}}"#);
+                    return Ok(batch(&[request(&state, &operation, &[seq], 0)]));
                 }
             }
         } else if state.mode == 6 {
@@ -1320,6 +1318,94 @@ mod tests {
         )
         .unwrap();
         assert_eq!(plain, unknown);
+    }
+
+    #[test]
+    fn own_prefix_request_follows_existing_scalar_head_and_numeric_gates() {
+        let return_pc = PROGRAM
+            .iter()
+            .position(|instruction| matches!(instruction, Instruction::Return))
+            .unwrap();
+        let frame = |head_null: bool, period: f64, nonnumber: bool| {
+            let number = |value: f64| {
+                transport_parse(&format!(
+                    r#"{{"kind":"number","bits":"{:016x}"}}"#,
+                    value.to_bits()
+                ))
+            };
+            let mut facts = vec![
+                if head_null {
+                    transport_parse(r#"{"kind":"null"}"#)
+                } else {
+                    number(1.0)
+                },
+                number(period),
+            ];
+            facts.extend([1.0, 8.0, 256.0, 64.0, 256.0, 4096.0].map(number));
+            if nonnumber {
+                facts[4] = transport_parse(r#"{"kind":"other"}"#);
+            }
+            Value::Obj(vec![(
+                "numbers".encode_utf16().collect(),
+                Value::Arr(facts),
+            )])
+        };
+        let run = |frame: Value| {
+            let state = State {
+                pc: return_pc,
+                env: 1,
+                stack: vec![99],
+                catches: Vec::new(),
+                mode: 5,
+                target: 0,
+                period: None,
+                sum: Some(Sum {
+                    cache: Period {
+                        seq: 9,
+                        return_pc,
+                        len: 0,
+                        p: 1,
+                        i: 0,
+                        need: 0,
+                        chunks: Vec::new(),
+                    },
+                    raw: vec![1; 8],
+                    numbers: [0.0; 6],
+                    total: 0.0,
+                }),
+            };
+            let mut out = Out(Vec::new());
+            state.write(&mut out);
+            call(
+                12,
+                &transport_args(transport_parse(&out.text()), frame, false),
+            )
+            .unwrap()
+        };
+        for count in [0.0, 3.0, 80.0, f64::from(u32::MAX)] {
+            let reply = transport_parse(&run(frame(true, count, false)));
+            let Value::Arr(batch) = reply.get("batch").unwrap() else {
+                panic!("batch")
+            };
+            let request = batch[0].get("request").unwrap();
+            assert_eq!(
+                request.get("op").unwrap().as_str().unwrap(),
+                "ownBooleanPrefixFacts".encode_utf16().collect::<Vec<_>>()
+            );
+            assert_eq!(
+                request.get("data").unwrap().get("count"),
+                Some(&Value::Num(count))
+            );
+        }
+        for facts in [
+            frame(false, 3.0, false),
+            frame(true, 3.0, true),
+            frame(true, 0.5, false),
+            frame(true, f64::NAN, false),
+            frame(true, f64::INFINITY, false),
+        ] {
+            assert_eq!(run(facts), r#"{"done":99}"#);
+        }
     }
 
     #[test]
