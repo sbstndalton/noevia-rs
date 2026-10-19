@@ -12,9 +12,11 @@
 //!
 //! Every answer is written exactly as `JSON.stringify` writes the JS's answer (same key order,
 //! `Number#toString`, non-finite numbers as `null`), so the host compares the texts byte for byte.
-//! The host (noevia-core) always computes the JS answer and returns it; this port only confirms it.
+//! Operations 11–12 run the complete historical estimator and confirmation program through a
+//! stateless opaque-reference evaluator. The host performs only the ECMAScript primitives
+//! requested by that Rust program; it does not select sizing or conservative policy.
 //!
-//! # JS semantics
+//! # Strict operations 1–6: JS semantics
 //!
 //! Arithmetic is f64 in the JS's evaluation order; `Math.min`/`Math.max` propagate NaN and order
 //! `-0` below `+0`; `Math.round` rounds half up; `Number(…)` is ECMAScript `StringToNumber`
@@ -46,11 +48,15 @@
 //! - a successful suggestion whose native context is not an integer up to 2^53 - 1: the note
 //!   formats it with `toLocaleString('en-US')`, whose digits past that depend on ICU (#1115).
 //!
-//! Linear time, bounded input and output, no panics.
+//! These strict operations retain their existing bounded domain. Operations 11–12 preserve the
+//! historical raw domain and evaluation complexity, with bounded continuation registers and no
+//! growing input projection. Neither path uses unsafe code or panics on caller input.
 
 #![forbid(unsafe_code)]
 // `!(a > b)` is deliberate throughout: it is the JS's own test, true for NaN.
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
+
+mod evaluator;
 
 use prompt_framing::js::trim;
 use prompt_framing::json::{self, Value};
@@ -1268,7 +1274,9 @@ fn parse_memory_limit(v: Option<&Value>) -> R<Option<f64>> {
 /// 3 `estimateFootprint(args)` (args the JS's parameter object; an absent member is
 /// `undefined`), 4 `{"value":v}` → `{"mib":n}` / `{"unbounded":true}` (cacheRamMibOf),
 /// 5 `{"model":m,"options":o}` → `{"free":bool}` (isPromptCacheFree), 6 `{"value":v}` →
-/// `{"gib":n|null|"Infinity"}` (parseMemoryLimit). Status 0 with the reply, or 1 with
+/// `{"gib":n|null|"Infinity"}` (parseMemoryLimit). Op 11 begins the Rust program with an
+/// opaque environment reference; op 12 resumes a serialized continuation with one host frame.
+/// Neither operation serializes the caller input tree. Status 0 with the reply, or 1 with
 /// `{"error":"input"|"too_large"|"ambiguous"}`.
 pub fn call(input: &[u8]) -> (u32, String) {
     match call_inner(input) {
@@ -1284,7 +1292,15 @@ fn call_inner(input: &[u8]) -> R<String> {
     let Some((&op, body)) = input.split_first() else {
         return Err(Refusal::Input);
     };
-    let args = json::parse_utf8(body, WIRE_DEPTH).ok_or(Refusal::Input)?;
+    let parse_depth = if matches!(op, 11 | 12) {
+        WIRE_DEPTH + 4
+    } else {
+        WIRE_DEPTH
+    };
+    let args = json::parse_utf8(body, parse_depth).ok_or(Refusal::Input)?;
+    if matches!(op, 11 | 12) {
+        return evaluator::call(op, &args);
+    }
     if !matches!(args, Value::Obj(_)) {
         return Err(Refusal::Input);
     }
