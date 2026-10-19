@@ -117,8 +117,6 @@ fn world(mode: u8) -> (Arc<BackendStats>, Arc<World>) {
             gpu_vram: Vec::new(),
             default_port: Some(8080),
             drm_root: "/nonexistent-qa-drm".into(),
-            legacy_base: "http://127.0.0.1:9".into(),
-            token: String::new(),
             meminfo: "/nonexistent-qa-meminfo".into(),
             ram_reserve_gb: Some(0.0),
         },

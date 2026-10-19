@@ -41,8 +41,6 @@ use std::{
     time::Duration,
 };
 
-/// The child's private call (never forwarded from outside: `is_internal_path`).
-pub const PUSH_PATH: &str = "/api/v1/internal/backend-stats";
 /// `hw._DRM_ROOT`.
 pub const DRM_ROOT: &str = "/sys/class/drm";
 /// The native 503 body when this side cannot answer exactly.
@@ -1446,8 +1444,6 @@ pub struct Config {
     /// LLAMA_DEFAULT_PORT (0 is none).
     pub default_port: Option<u16>,
     pub drm_root: PathBuf,
-    pub legacy_base: String,
-    pub token: String,
     /// What `hw.host_ram_gb` reads (`fit::MEMINFO`).
     pub meminfo: PathBuf,
     /// HOST_RAM_RESERVE_GB (`fit::reserve_gb`); `None` when it is not a value this side reads,

@@ -770,25 +770,6 @@ fn all_hex_container_names_are_refused() {
     assert!(ScopedControl::new("/x".into(), "cowork-embed-1").is_ok());
 }
 
-#[test]
-fn the_python_child_learns_which_container_and_address_are_guarded() {
-    let on = noevia_model_manager::embed_guard_env(Some(("cowork-embed-1", "http://embed:8080")));
-    assert_eq!(
-        on.map(|(k, v)| (k, v.unwrap_or_default())),
-        [
-            ("NOEVIA_EMBED_SERVICE_GUARDED", "1".to_owned()),
-            (
-                "NOEVIA_EMBED_SERVICE_CONTAINER",
-                "cowork-embed-1".to_owned()
-            ),
-            ("NOEVIA_EMBED_SERVICE_URL", "http://embed:8080".to_owned()),
-        ]
-    );
-    assert!(noevia_model_manager::embed_guard_env(None)
-        .iter()
-        .all(|(_, v)| v.is_none()));
-}
-
 #[tokio::test]
 async fn a_change_that_cannot_get_the_lock_in_time_gives_up_and_never_applies_later() {
     // #1677: the caller's request budget is ACT_TIMEOUT + LOCK_WAIT; past it the caller was told

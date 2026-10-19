@@ -124,8 +124,6 @@ async fn the_actual_child_startup_advertisement_satisfies_the_production_barrier
                 gpu_vram: Vec::new(),
                 default_port: Some(8080),
                 drm_root: dir.path().join("drm"),
-                legacy_base: base.clone(),
-                token: token.into(),
                 meminfo: dir.path().join("meminfo"),
                 ram_reserve_gb: Some(2.0),
             },

@@ -229,25 +229,6 @@ pub struct StateData {
     pub section_autoconfig: Option<Arc<section_autoconfig::SectionAutoconfig>>,
 }
 
-/// #1668: what the Python child is told about the guarded embedding service: its container and
-/// address, so it skips only env names that point at it. `None` clears them all.
-pub fn embed_guard_env(service: Option<(&str, &str)>) -> [(&'static str, Option<String>); 3] {
-    [
-        (
-            "NOEVIA_EMBED_SERVICE_GUARDED",
-            service.map(|_| "1".to_owned()),
-        ),
-        (
-            "NOEVIA_EMBED_SERVICE_CONTAINER",
-            service.map(|(c, _)| c.to_owned()),
-        ),
-        (
-            "NOEVIA_EMBED_SERVICE_URL",
-            service.map(|(_, u)| u.to_owned()),
-        ),
-    ]
-}
-
 /// #1668: PUT /api/v1/embedding-service restarts and stops a container, so it is never left open.
 pub fn require_embed_token(container: &str, token: &str) -> Result<(), &'static str> {
     if !container.is_empty() && token.is_empty() {
@@ -2109,17 +2090,6 @@ async fn set_restart_error(
         "model-manager backend restart: the child did not record the restart state for a backend"
     );
 }
-#[cfg(all(feature = "native-backend-control", not(test)))]
-async fn set_restart_error(
-    legacy: &reqwest::Client,
-    base: &str,
-    token: &str,
-    name: &str,
-    error: Option<&str>,
-) {
-    let _ = (legacy, base, token, name, error);
-}
-
 #[cfg(feature = "native-backend-control")]
 async fn native_backend_control(
     state: Arc<StateData>,
@@ -2178,6 +2148,7 @@ async fn native_backend_control(
         if let Some(stats) = &state.backend_stats {
             stats.set_restart_error(&name, None);
         }
+        #[cfg(test)]
         set_restart_error(&state.legacy, &state.legacy_base, &state.token, &name, None).await;
         let task_state = state.clone();
         crate::work::spawn(async move {
@@ -2186,21 +2157,22 @@ async fn native_backend_control(
                 task_state.docker.restart_backend(&name),
             )
             .await;
-            let error = match outcome {
+            let _error = match outcome {
                 Ok(Ok(())) => return,
                 Ok(Err(e)) => format!("APIError: {e}"),
                 Err(_) => "APIError: the restart did not finish in time".to_owned(),
             };
             #[cfg(feature = "native-backends")]
             if let Some(stats) = &task_state.backend_stats {
-                stats.set_restart_error(&name, Some(&error));
+                stats.set_restart_error(&name, Some(&_error));
             }
+            #[cfg(test)]
             set_restart_error(
                 &task_state.legacy,
                 &task_state.legacy_base,
                 &task_state.token,
                 &name,
-                Some(&error),
+                Some(&_error),
             )
             .await;
         });

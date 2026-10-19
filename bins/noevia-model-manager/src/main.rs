@@ -567,8 +567,6 @@ async fn service() -> Result<(), Box<dyn std::error::Error>> {
                     gpu_vram,
                     default_port,
                     drm_root: noevia_model_manager::backend_stats::DRM_ROOT.into(),
-                    legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
-                    token: token.clone(),
                     meminfo: noevia_model_manager::backend_stats::fit::MEMINFO.into(),
                     ram_reserve_gb,
                 },
