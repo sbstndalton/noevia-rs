@@ -121,12 +121,26 @@ fn header_of(head: &str, name: &str) -> Option<String> {
 pub(super) type Answers = Arc<Mutex<J>>;
 
 /// Requests a fake Hub is serving now, and the most it served at once.
-#[derive(Default)]
 pub(super) struct Gauge {
     pub live: AtomicUsize,
     pub peak: AtomicUsize,
     /// Set by a case to let go the answers marked `"hold"`: they wait for it, not for a time.
     pub released: std::sync::atomic::AtomicBool,
+    /// Completed responses parked by the publication-order regression only.
+    pub published: AtomicUsize,
+    pub finish_published: tokio::sync::Semaphore,
+}
+
+impl Default for Gauge {
+    fn default() -> Self {
+        Self {
+            live: AtomicUsize::new(0),
+            peak: AtomicUsize::new(0),
+            released: std::sync::atomic::AtomicBool::new(false),
+            published: AtomicUsize::new(0),
+            finish_published: tokio::sync::Semaphore::new(0),
+        }
+    }
 }
 
 struct Serving(Arc<Gauge>);
@@ -175,7 +189,7 @@ pub(super) async fn hub_gauged(
                 let Some(head) = read_head(&mut sock).await else {
                     return;
                 };
-                let _serving = Serving::begin(&gauge);
+                let mut serving = Some(Serving::begin(&gauge));
                 let text = String::from_utf8_lossy(&head).into_owned();
                 let path = text
                     .split("\r\n")
@@ -235,10 +249,44 @@ pub(super) async fn hub_gauged(
                 out.push_str(&format!(
                     "content-length: {declared}\r\nconnection: close\r\n\r\n"
                 ));
-                let _ = sock.write_all(out.as_bytes()).await;
-                let _ = sock.write_all(&body).await;
-                if extra["mode"] == "partial" {
-                    let _ = sock.shutdown().await;
+                // Stop counting before publishing the byte (or EOF) that lets the
+                // client finish and admit its successor. Task lifetime extends beyond
+                // response lifetime; RAII still accounts for every earlier error.
+                let partial = extra["mode"] == "partial";
+                if body.is_empty() && !partial {
+                    drop(serving.take());
+                }
+                if sock.write_all(out.as_bytes()).await.is_err() {
+                    return;
+                }
+                if partial {
+                    if sock.write_all(&body).await.is_err() {
+                        return;
+                    }
+                    drop(serving.take());
+                    if sock.shutdown().await.is_err() {
+                        return;
+                    }
+                } else if let Some((last, prefix)) = body.split_last() {
+                    if sock.write_all(prefix).await.is_err() {
+                        return;
+                    }
+                    drop(serving.take());
+                    if sock.write_all(std::slice::from_ref(last)).await.is_err() {
+                        return;
+                    }
+                }
+                if extra["hold_after_publication"] == true {
+                    gauge.published.fetch_add(1, Ordering::SeqCst);
+                    // A finite, explicitly released test gate, never a timing delay.
+                    if let Ok(Ok(permit)) = tokio::time::timeout(
+                        Duration::from_secs(10),
+                        gauge.finish_published.acquire(),
+                    )
+                    .await
+                    {
+                        permit.forget();
+                    }
                 }
             });
         }
