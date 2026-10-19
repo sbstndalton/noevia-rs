@@ -1,5 +1,5 @@
 //! Bounded GGUF metadata reader for noevia (strangler slice of
-//! `services/model-manager/app/gguf_meta.py`).
+//! `<noevia-services>/model-manager/app/gguf_meta.py`).
 //!
 //! [`read_raw`] / [`read_raw_bytes`] parse the key/value header without trusting any declared
 //! length; [`summarize`] builds the same summary shape the Python service returns.
