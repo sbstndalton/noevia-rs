@@ -1935,7 +1935,7 @@ jobs:
           test "$result" -eq 0
           grep -Fx 'test diagnose_docker::transport_error_tests::connected_unix_unread_request_reset_is_ordinary_after_actual_driver_join ... ok' "$evidence/control.stdout"
           grep -E '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+$' "$evidence/control.stdout"
-      - name: Whole actual public front and explicit default-off controls
+      - name: Whole actual public front and mandatory native ownership
         env:
           NOEVIA_DIAGNOSE_CORE_SOURCE: ${{ github.workspace }}/diagnose-core
           NOEVIA_DIAGNOSE_SERVICES_SOURCE: ${{ github.workspace }}/diagnose-services
@@ -1945,7 +1945,7 @@ jobs:
           cp target/debug/noevia-model-manager /tmp/s1-diagnose-featureless-manager
           cargo build --locked -p replay --bin diagnose-contracts --bin corpus-launcher
           target/debug/diagnose-contracts --featureless
-          cargo build --locked -p noevia-model-manager --bin noevia-model-manager --features native-diagnose
+          cargo build --locked -p noevia-model-manager --bin noevia-model-manager --features native-routing
           cargo build --locked -p noevia-server --bin noevia-server
           cargo clippy --locked -p replay --bin diagnose-contracts -- -D warnings
           cargo test --locked -p replay --bin diagnose-contracts
