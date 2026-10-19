@@ -141,15 +141,7 @@ function stmt(s){
  case 'VariableDeclaration':for(const d of s.declarations){expr(d.init);bind(d.id);}return;
  case 'FunctionDeclaration':{const id=functionId(s,s.id.name);emit('Env');host('closure',1,closureDescriptor(s,id));store(s.id.name,true);emit('Pop');return;}
  case 'ExpressionStatement':expr(s.expression);emit('Pop');return;
- case 'BlockStatement': {
-  // Only after the original number/Array.isArray/length tests have executed.
-  const modeBlock=compilingFunction==='kvHeadsOf' && s.body[0]?.type==='VariableDeclaration' && s.body[0].declarations[0]?.id.name==='counts';
-  let numeric;
-  if(modeBlock){load('value');numeric=emit('NumericHeadMode');}
-  enter();for(const st of s.body)stmt(st);leave();
-  if(numeric!==undefined){const done=emit('Jump');patch(numeric);emit('Return');patch(done);}
-  return;
- }
+ case 'BlockStatement':enter();for(const st of s.body)stmt(st);leave();return;
  case 'ReturnStatement':expr(s.argument);emit('Return');return;
  case 'IfStatement': {
   expr(s.test);const no=branch('truthy',true);stmt(s.consequent);
@@ -213,7 +205,7 @@ for(let i=0;i<functions.length;i++){
 const q = x => JSON.stringify(x).replace(/\\u([0-9a-fA-F]{4})/g,(_,h)=>'\\u{'+h+'}');
 const out = '// Generated from frozen source SHA-256 66b436f5e2fda9719470fbc18bd92d7b1b52eb6e881885167cdbbebd02eaa040.\n'
  + 'const ENTRIES: &[usize] = &['+functions.map(f=>f.pc).join(',')+'];\n'
- + 'const PROGRAM: &[Instruction] = &[\n'+code.map((i,pc)=>(functions.filter(f=>f.pc===pc).map(f=>'// '+(f.name||'callback')+' (function '+functions.indexOf(f)+')').join('\n')+'\n')+'Instruction::'+i.op+(i.op==='Host'?'('+i.n+','+q(i.text)+')':i.op==='If'||i.op==='Unless'?'('+i.n+','+q(i.text)+')':i.op==='Jump'||i.op==='Catch'||i.op==='BooleanPeriod'||i.op==='KvSum'||i.op==='NumericHeadMode'?'('+i.n+')':'')+',').join('\n')+'\n];\n';
+ + 'const PROGRAM: &[Instruction] = &[\n'+code.map((i,pc)=>(functions.filter(f=>f.pc===pc).map(f=>'// '+(f.name||'callback')+' (function '+functions.indexOf(f)+')').join('\n')+'\n')+'Instruction::'+i.op+(i.op==='Host'?'('+i.n+','+q(i.text)+')':i.op==='If'||i.op==='Unless'?'('+i.n+','+q(i.text)+')':i.op==='Jump'||i.op==='Catch'||i.op==='BooleanPeriod'||i.op==='KvSum'?'('+i.n+')':'')+',').join('\n')+'\n];\n';
 fs.writeFileSync(rs+'/evaluator_program.rs',out);
 require('node:child_process').execFileSync('rustfmt', [rs+'/evaluator_program.rs']);
 
