@@ -28,6 +28,7 @@ default = [
     "rust-free-chats",
     "rust-project-chats",
     "rust-chatgpt-status",
+    "rust-project-writes",
 ]
 rust-reasoning-settings = []
 rust-routing-mode = []
@@ -47,7 +48,7 @@ rust-chatgpt-status = ["dep:server-chatgpt-status", "dep:zeroize"]
 rust-project-chats = []
 # M4's third slice: the free-chat list (permanent since #1071; src/routes.rs FREE_CHATS).
 rust-free-chats = []
-# sbstndalton/noevia#1264: project writes still Node's, under NOEVIA_RUST_PROJECT_WRITES
+# sbstndalton/noevia#1071: GET/POST chat context are permanent native routes.
 # (src/routes.rs PROJECT_WRITES; slice 1: a free chat's attachments project).
 rust-project-writes = []
 

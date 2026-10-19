@@ -38,7 +38,6 @@ storage_reads_confirmed=""
 storage_browse_confirmed=""
 export_confirmed=""
 chatgpt_status_confirmed=""
-project_writes_confirmed=""
 # Capture once on the first needed check, before confirming ownership.
 features=""
 features_loaded=""
@@ -84,17 +83,13 @@ store_port=$((port + 2000))
 store_token="$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"
 [ "${#store_token}" -eq 64 ] || { echo "replay-front: could not make the project store secret" >&2; exit 2; }
 store_confirmed=1
-# sbstndalton/noevia#1264: the project writes ported so far; Node refuses them (core
-# rust-projects.cjs projectWritesEnabledFrom) only once the front lists rust-project-writes, over
-# confirmed projects.
-if [ "${NOEVIA_RUST_PROJECT_WRITES:-}" = 1 ]; then
-  has_feature rust-project-writes || { echo "replay-front: no rust-project-writes" >&2; exit 2; }
-  project_writes_confirmed=1
-fi
+# Context GET/POST are permanently native (#1071). Retired caller values cannot opt out.
+has_feature rust-project-writes || { echo "replay-front: no rust-project-writes" >&2; exit 2; }
+unset NOEVIA_RUST_PROJECT_WRITES NOEVIA_RUST_PROJECT_WRITES_CONFIRMED
 UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CONFIRMED="$confirmed" NOEVIA_RUST_PROJECTS=1 \
   NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_PROJECT_CHATS_CONFIRMED="$project_chats_confirmed" NOEVIA_RUST_FREE_CHATS_CONFIRMED="$free_chats_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$reasoning_confirmed" \
   NOEVIA_RUST_ROUTING_MODE_CONFIRMED="$routing_confirmed" NOEVIA_RUST_STATS_CONFIRMED="$stats_confirmed" NOEVIA_RUST_EXPORT_CONFIRMED="$export_confirmed" \
-  NOEVIA_RUST_STORAGE_READS_CONFIRMED="$storage_reads_confirmed" NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED="$storage_browse_confirmed" NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED="$chatgpt_status_confirmed" NOEVIA_RUST_PROJECT_WRITES_CONFIRMED="$project_writes_confirmed" \
+  NOEVIA_RUST_STORAGE_READS_CONFIRMED="$storage_reads_confirmed" NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED="$storage_browse_confirmed" NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED="$chatgpt_status_confirmed" \
   NOEVIA_RUST_PROJECT_STORE_CONFIRMED="$store_confirmed" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" \
   "$(dirname "$front")/corpus-launcher" serve "$core" &
 node_pid=$!

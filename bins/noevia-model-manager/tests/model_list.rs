@@ -410,8 +410,6 @@ mod linux {
                     gpu_vram: vec![("llama-a".into(), 12.0)],
                     default_port: Some(8080),
                     drm_root: dir.path().join("drm"),
-                    legacy_base: "http://127.0.0.1:9".into(),
-                    token: TOKEN.into(),
                     meminfo,
                     ram_reserve_gb: Some(32.0),
                 },

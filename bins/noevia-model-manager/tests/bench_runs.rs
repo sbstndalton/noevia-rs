@@ -254,8 +254,6 @@ async fn native_chart_runtime_answers_without_any_child() {
                 gpu_vram: vec![],
                 default_port: Some(8080),
                 drm_root: dir.path().join("drm"),
-                legacy_base: DEAD.into(),
-                token: TOKEN.into(),
                 meminfo: dir.path().join("meminfo"),
                 ram_reserve_gb: Some(32.0),
             },

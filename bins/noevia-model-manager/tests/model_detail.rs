@@ -383,8 +383,6 @@ mod linux {
                         gpu_vram,
                         default_port: Some(8080),
                         drm_root: dir.path().join("drm"),
-                        legacy_base: closed.clone(),
-                        token: TOKEN.into(),
                         meminfo: meminfo.clone(),
                         ram_reserve_gb: reserve,
                     },

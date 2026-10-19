@@ -2,8 +2,8 @@
 //! /api/chats/{chatId}/context`, with the store calls they make (projects.cjs `getProject`,
 //! `saveProjects`; diary-extras.cjs `chatProjectId`, `newProject`; chat-lists.cjs
 //! `readTombstones`), answer for answer. The first project-writes slice of sbstndalton/noevia#1264;
-//! the front answers it only in a build with the cargo feature `rust-project-writes`, under the
-//! switch `NOEVIA_RUST_PROJECT_WRITES` (off by default, separate from `NOEVIA_RUST_PROJECTS`).
+//! the front always owns these two methods and requires the compiled `rust-project-writes`
+//! capability at startup (#1071). Other project writers remain with their existing owner.
 //!
 //! - The chat id from the URL is percent-decoded, then must match `^[a-zA-Z0-9_-]{1,100}$`; the
 //!   project is `cowork-chat-context-<chat id>`. Anything else is 400 `Invalid chat identifier`.

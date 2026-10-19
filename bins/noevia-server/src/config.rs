@@ -59,10 +59,6 @@ pub struct Config {
     /// disk: always on (#1071), since free-chats.json on disk is the list (Rust is its only writer,
     /// the owner's 2026-10-12 condition).
     pub rust_export: bool,
-    /// NOEVIA_RUST_PROJECT_WRITES=1 (sbstndalton/noevia#1264): the project writes ported from
-    /// Node so far. Refused without the compiled rust-project-writes feature and without
-    /// UI_DATA_DIR; any other value is off.
-    pub rust_project_writes: bool,
     /// The internal store Node writes projects.json and free-chats.json through
     /// (src/project_store.rs, sbstndalton/noevia#1264), on 127.0.0.1 at NOEVIA_PROJECT_STORE_PORT
     /// with the secret NOEVIA_PROJECT_STORE_TOKEN (at least 32 bytes). Permanent: the
@@ -178,9 +174,7 @@ impl std::fmt::Debug for ProjectStoreConfig {
 impl Config {
     /// The deployment switches that are on.
     pub fn switches(&self) -> crate::routes::Switches {
-        crate::routes::Switches {
-            rust_project_writes: self.rust_project_writes,
-        }
+        crate::routes::Switches::default()
     }
 
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
@@ -219,19 +213,6 @@ impl Config {
         // GET /api/export/conversations reads the free-chat list from disk, which Rust alone
         // writes (the owner's 2026-10-12 condition): always the front's (#1071).
         let rust_export = true;
-        let rust_project_writes = if get("NOEVIA_RUST_PROJECT_WRITES").as_deref() == Some("1") {
-            if !cfg!(feature = "rust-project-writes") {
-                return Err(
-                    "NOEVIA_RUST_PROJECT_WRITES=1 needs compiled rust-project-writes".into(),
-                );
-            }
-            if get("UI_DATA_DIR").filter(|d| !d.is_empty()).is_none() {
-                return Err("NOEVIA_RUST_PROJECT_WRITES=1 needs UI_DATA_DIR".into());
-            }
-            true
-        } else {
-            false
-        };
         let project_store = if get("NOEVIA_PROJECT_STORE_PORT").is_some_and(|p| !p.is_empty()) {
             if get("UI_DATA_DIR").filter(|d| !d.is_empty()).is_none() {
                 return Err(
@@ -312,7 +293,6 @@ impl Config {
             rust_routing_default,
             rust_stats,
             rust_export,
-            rust_project_writes,
             project_store,
             rust_chatgpt_status,
             usage_clock: server_usage::summary::Clock::system(&get),
@@ -324,6 +304,8 @@ impl Config {
 /// The deployment switches retired by sbstndalton/noevia#1071: the routes they moved are always
 /// the front's. A leftover value only earns a warning.
 pub const RETIRED_SWITCHES: &[&str] = &[
+    "NOEVIA_RUST_PROJECT_WRITES",
+    "NOEVIA_RUST_PROJECT_WRITES_CONFIRMED",
     "NOEVIA_RUST_AUTH",
     "NOEVIA_RUST_CHATGPT_STATUS",
     "NOEVIA_RUST_STORAGE_READS",
@@ -341,6 +323,7 @@ pub const RETIRED_SWITCHES: &[&str] = &[
 /// The cargo features the permanent front routes need, and whether this build has each. The
 /// web supervisor checks the same names in `--features` before starting either process.
 pub const FRONT_ROUTE_FEATURES: &[(&str, bool)] = &[
+    ("rust-project-writes", cfg!(feature = "rust-project-writes")),
     ("rust-chatgpt-status", cfg!(feature = "rust-chatgpt-status")),
     ("rust-storage-reads", cfg!(feature = "rust-storage-reads")),
     ("rust-storage-browse", cfg!(feature = "rust-storage-browse")),
@@ -770,47 +753,30 @@ mod export_tests {
         }
     }
 
-    const WRITES: (&str, &str) = ("NOEVIA_RUST_PROJECT_WRITES", "1");
-
-    // #1264: the ported writes are Node's by default; only this switch moves them.
     #[test]
-    fn project_writes_switch_is_exact_default_off_and_separate_from_projects() {
-        for value in [
-            None,
-            Some("0"),
-            Some("true"),
-            Some(" 1"),
-            Some("1 "),
-            Some(""),
-        ] {
-            let mut pairs = vec![UP, DATA];
-            if let Some(v) = value {
-                pairs.push(("NOEVIA_RUST_PROJECT_WRITES", v));
+    fn context_ownership_ignores_retired_values() {
+        for value in ["", "0", "1", "true", " 1", "1 ", "hostile"] {
+            let result = lookup(&[
+                UP,
+                DATA,
+                ("NOEVIA_RUST_PROJECT_WRITES", value),
+                ("NOEVIA_RUST_PROJECT_WRITES_CONFIRMED", value),
+            ]);
+            if !FRONT_ROUTE_FEATURES.iter().all(|(_, on)| *on) {
+                let error = result.unwrap_err();
+                assert!(error.contains("compiled"), "{error}");
+                continue;
             }
-            let c = lookup(&pairs).unwrap();
-            assert!(!c.rust_project_writes);
+            let c = result.unwrap();
             assert!(!c.switches().on("NOEVIA_RUST_PROJECT_WRITES"));
+            assert!(c.retired.contains(&"NOEVIA_RUST_PROJECT_WRITES"));
+            assert!(c.retired.contains(&"NOEVIA_RUST_PROJECT_WRITES_CONFIRMED"));
+            for method in ["GET", "POST"] {
+                assert_eq!(
+                    crate::routes::dispatch_under(method, "/api/chats/c1/context", c.switches()),
+                    Some(crate::routes::Native::Projects)
+                );
+            }
         }
-        assert!(!lookup(&[UP, DATA]).unwrap().rust_project_writes);
-    }
-
-    #[test]
-    fn project_writes_need_the_compiled_slice_and_a_data_dir() {
-        // #1071: no longer the retired projects switch.
-        let enabled = lookup(&[UP, WRITES, DATA]);
-        assert_eq!(
-            crate::FEATURES.contains(&"rust-project-writes"),
-            cfg!(feature = "rust-project-writes")
-        );
-        if !cfg!(feature = "rust-project-writes") {
-            assert!(enabled
-                .unwrap_err()
-                .contains("compiled rust-project-writes"));
-            return;
-        }
-        let c = enabled.unwrap();
-        assert!(c.rust_project_writes && c.switches().on("NOEVIA_RUST_PROJECT_WRITES"));
-        let err = lookup(&[UP, WRITES]).unwrap_err();
-        assert!(err.contains("UI_DATA_DIR"), "{err}");
     }
 }

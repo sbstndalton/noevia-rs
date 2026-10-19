@@ -1,7 +1,6 @@
 //! sbstndalton/noevia#1264 slice 1: `GET`/`POST /api/chats/{chatId}/context` through the whole
-//! front. With NOEVIA_RUST_PROJECT_WRITES=1 the front answers them and writes projects.json
-//! itself; without it (live today) they go to Node, which is not running here, so nothing is
-//! written. Synthetic data only.
+//! front. Ownership is permanent, including absent or hostile retired deployment keys.
+//! Node is not running here. Synthetic data only.
 #![cfg(feature = "rust-project-writes")]
 #![allow(
     clippy::unwrap_used,
@@ -74,6 +73,10 @@ async fn front(writes: bool) -> Front {
 
 /// A signed-in account that has made no request yet: its directory does not exist.
 async fn front_new_account(writes: bool) -> Front {
+    front_with_retired_value(writes.then_some("1")).await
+}
+
+async fn front_with_retired_value(value: Option<&str>) -> Front {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
     let c = Connection::open(server_store::db_path(&data)).unwrap();
@@ -90,8 +93,9 @@ async fn front_new_account(writes: bool) -> Front {
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
     env.insert("PUBLIC_ORIGIN", ORIGIN.into());
-    if writes {
-        env.insert("NOEVIA_RUST_PROJECT_WRITES", "1".into());
+    if let Some(value) = value {
+        env.insert("NOEVIA_RUST_PROJECT_WRITES", value.into());
+        env.insert("NOEVIA_RUST_PROJECT_WRITES_CONFIRMED", value.into());
     }
     let app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -360,15 +364,15 @@ async fn a_tombstone_blocks_only_creation_and_get_never_recreates_context() {
 }
 
 #[tokio::test]
-async fn without_the_switch_the_context_routes_stay_nodes() {
+async fn without_the_retired_switch_the_context_routes_are_native() {
     let f = front(false).await;
-    for m in ["GET", "POST"] {
-        let (status, _, body) = call(f.addr, m, "/api/chats/c1/context", &headers(&f), "").await;
-        // Proxied to Node, which is not running: never the front's own 200.
-        assert_ne!(status, 200, "{m}: {body}");
-        assert!(!body.contains("cowork-chat-context-c1"), "{m}: {body}");
-    }
-    assert_eq!(projects_json(&f), None);
+    let (status, _, body) = call(f.addr, "POST", "/api/chats/c1/context", &headers(&f), "").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains("cowork-chat-context-c1"), "{body}");
+    let (status, _, body) = call(f.addr, "GET", "/api/chats/c1/context", &headers(&f), "").await;
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains("cowork-chat-context-c1"), "{body}");
+    assert!(projects_json(&f).is_some());
 }
 
 fn mode_of(p: &std::path::Path) -> u32 {
@@ -639,4 +643,20 @@ async fn a_concurrent_account_delete_wins_before_the_legacy_claim() {
     assert!(!f.data.join("users").exists());
     assert!(!f.data.join("legacy-owner.json").exists());
     assert!(f.data.join("projects.json").is_file());
+}
+
+#[tokio::test]
+async fn hostile_retired_values_cannot_disable_native_context() {
+    for value in ["", "0", "true", " 1", "hostile"] {
+        let f = front_with_retired_value(Some(value)).await;
+        let (status, _, body) =
+            call(f.addr, "POST", "/api/chats/c1/context", &headers(&f), "").await;
+        assert_eq!(status, 200, "{value:?}: {body}");
+        assert!(body.contains("cowork-chat-context-c1"), "{value:?}: {body}");
+        let (status, _, body) =
+            call(f.addr, "GET", "/api/chats/c1/context", &headers(&f), "").await;
+        assert_eq!(status, 200, "{value:?}: {body}");
+        assert!(body.contains("cowork-chat-context-c1"), "{value:?}: {body}");
+        assert!(projects_json(&f).is_some());
+    }
 }
