@@ -83,6 +83,15 @@ for (const method of ['GET', 'POST']) {
   add(`${m}-absent-dir-invalid`, ABSENT, method, 'a.b');
 }
 
+// A matching context project remains readable even when its chat id is tombstoned.
+const existingTombstone = ws((p) => {
+  const project = JSON.parse(JSON.stringify(p.projects[1]));
+  project.id = 'cowork-chat-context-dead-1';
+  project.name = 'Existing tombstoned context';
+  p.projects.push(project);
+});
+add('post-existing-tombstoned', existingTombstone, 'POST', 'dead-1');
+
 // ── Node, one fresh workspace per case ──────────────────────────────────────
 async function run(c) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chat-context-fixture-'));
