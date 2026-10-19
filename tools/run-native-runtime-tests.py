@@ -59,9 +59,9 @@ def main():
                         if contract in actual:
                             raise SystemExit(f"duplicate historical oracle: {contract}")
                         actual.add(contract)
-        if actual != expected or len(actual) != 58:
+        if actual != expected or len(actual) != 59:
             raise SystemExit(f"historical oracle inventory changed: expected {len(expected)}, got {len(actual)}")
-        print("Required historical private-input contracts: 58", flush=True)
+        print("Required historical private-input contracts: 59", flush=True)
     with tempfile.TemporaryDirectory(prefix="qa-native-runtime-tests-", dir="/tmp") as folder:
         os.chmod(folder, 0o700)
         old = os.umask(0o077)

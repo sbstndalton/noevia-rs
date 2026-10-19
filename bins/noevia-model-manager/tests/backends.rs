@@ -366,7 +366,7 @@ async fn recorded_worlds_through_the_router_and_the_unix_transport() {
         daemon(&socket, world.clone(), seen.clone());
         let probes = Arc::new(Mutex::new(Value::Null));
         let pushed = Arc::new(Mutex::new(Vec::new()));
-        let base = child(probes.clone(), pushed.clone()).await;
+        let _legacy_trap_base = child(probes.clone(), pushed.clone()).await;
         let now = Arc::new(AtomicU64::new(0));
         let n = now.clone();
         let env = &case["env"];

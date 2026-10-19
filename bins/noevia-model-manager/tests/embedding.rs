@@ -7,9 +7,6 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-#[path = "historical_oracles/embed_guard_env.rs"]
-mod historical_embed_guard_env;
-
 use axum::{body::Body, http::Request};
 use http_body_util::BodyExt;
 use noevia_model_manager::{
