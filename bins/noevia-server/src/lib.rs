@@ -55,8 +55,7 @@ use std::sync::Arc;
 /// (#1373); the supervisor confirms it to Node (NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED), which then
 /// refuses that GET. `rust-project-writes` (cargo feature of that name): it answers the project
 /// writes ported for sbstndalton/noevia#1264 (so far `GET`/`POST /api/chats/{chatId}/context`)
-/// under NOEVIA_RUST_PROJECT_WRITES; the supervisor confirms it to Node
-/// (NOEVIA_RUST_PROJECT_WRITES_CONFIRMED), which then refuses those writes.
+/// permanently (#1071); Node refuses these two methods without a deployment switch.
 ///
 /// `project-store`: this build serves the internal project store Node writes projects.json and
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the

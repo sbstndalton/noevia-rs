@@ -36,7 +36,7 @@ pub enum Route {
     FreeChats,
     /// POST /api/freechats
     SaveFreeChats,
-    /// GET (`create: false`) or POST /api/chats/{chatId}/context (#1264, NOEVIA_RUST_PROJECT_WRITES)
+    /// GET (`create: false`) or POST /api/chats/{chatId}/context (#1264, permanently native under #1071)
     Context { chat: String, create: bool },
 }
 

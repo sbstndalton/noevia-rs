@@ -68,6 +68,8 @@ fn replay_probe(front: &str) -> std::process::Output {
         .args(["/nonexistent-synthetic-core", front])
         .env("UI_PORT", "18021")
         .env("NOEVIA_RUST_AUTH", "1")
+        .env("NOEVIA_RUST_PROJECT_WRITES", "0")
+        .env("NOEVIA_RUST_PROJECT_WRITES_CONFIRMED", "hostile")
         .env("NOEVIA_RUST_USAGE", "1")
         .env("NOEVIA_RUST_SAMPLING_SETTINGS", "1")
         .env("NOEVIA_RUST_REASONING_SETTINGS", "1")
@@ -106,4 +108,66 @@ fn featureless_replay_checks_all_switches_from_one_complete_probe() {
     }
     assert!(!stderr.contains("corpus-launcher"));
     assert!(!stderr.contains("panicked"));
+}
+
+/// Run this target with the other ten default features and rust-project-writes omitted.
+/// The production binary must refuse before touching the synthetic data path or binding.
+#[cfg(not(feature = "rust-project-writes"))]
+#[test]
+fn missing_context_capability_refuses_before_startup_for_every_retired_value() {
+    let root = tempfile::tempdir().expect("private synthetic root");
+    let data = root.path().join("must-not-exist");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("reserve startup port");
+    let port = listener.local_addr().expect("local address").port();
+    for value in [None, Some(""), Some("0"), Some("1"), Some("hostile")] {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_noevia-server"));
+        command
+            .env_clear()
+            .env("UI_HOST", "127.0.0.1")
+            .env("UI_PORT", port.to_string())
+            .env("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9")
+            .env("UI_DATA_DIR", &data);
+        if let Some(value) = value {
+            command
+                .env("NOEVIA_RUST_PROJECT_WRITES", value)
+                .env("NOEVIA_RUST_PROJECT_WRITES_CONFIRMED", value);
+        }
+        let output = command.output().expect("run omission control");
+        assert_eq!(output.status.code(), Some(2), "{value:?}");
+        assert!(output.stdout.is_empty());
+        let error = String::from_utf8(output.stderr).expect("UTF-8 refusal");
+        assert!(
+            error.contains("needs compiled rust-project-writes"),
+            "{error}"
+        );
+        assert!(!error.contains("Address already in use"), "{error}");
+        assert!(!data.exists(), "startup mutated the data path");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn replay_requires_context_capability_even_with_retired_switch_off() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().expect("private probe directory");
+    let probe = dir.path().join("front");
+    let features = noevia_server::FEATURES
+        .iter()
+        .filter(|f| **f != "rust-project-writes")
+        .map(|f| format!("{f}\n"))
+        .collect::<String>();
+    // Use the default/full build for this specific omission, with every earlier capability present.
+    if noevia_server::config::FRONT_ROUTE_FEATURES
+        .iter()
+        .any(|(f, on)| *f != "rust-project-writes" && !on)
+    {
+        return;
+    }
+    std::fs::write(&probe, format!("#!/bin/sh\nprintf '%s' '{}'", features)).expect("write probe");
+    std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o700)).expect("probe mode");
+    let output = replay_probe(probe.to_str().expect("UTF-8 probe"));
+    assert_eq!(output.status.code(), Some(2));
+    let error = String::from_utf8(output.stderr).expect("UTF-8 refusal");
+    assert!(error.contains("no rust-project-writes"), "{error}");
+    assert!(!error.contains("corpus-launcher"), "{error}");
 }

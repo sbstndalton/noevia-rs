@@ -1,10 +1,7 @@
 //! Route ownership, from contracts/http/routes.toml (compiled in by build.rs). One owner per
 //! route: a request whose route is owner = "rust" (for one of its methods) is answered natively,
-//! everything else goes to Node through the legacy proxy. A route with a `switch` is Rust's only
-//! while that deployment switch is on (NOEVIA_RUST_PROJECT_WRITES, #1264, see [`Switches`]);
-//! off, it is Node's. Sign-in and the account (M3), the front read routes and the M4 project
-//! routes and export have no switch any more (sbstndalton/noevia#1071: NOEVIA_RUST_AUTH and
-//! NOEVIA_RUST_PROJECTS are retired): they are always Rust's, and Node no longer answers them.
+//! everything else goes to Node through the legacy proxy. Native ownership is permanent
+//! (#1071); stale deployment switches are rejected by the build schema.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Owner {
@@ -28,18 +25,11 @@ pub struct Route {
 /// routes, the M4 project routes and the export have none (sbstndalton/noevia#1071): they are
 /// always Rust's.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Switches {
-    /// NOEVIA_RUST_PROJECT_WRITES=1 (#1264, config.rs): the project writes ported from Node so
-    /// far ([`PROJECT_WRITES`]).
-    pub rust_project_writes: bool,
-}
+pub struct Switches {}
 
 impl Switches {
-    pub fn on(&self, name: &str) -> bool {
-        match name {
-            "NOEVIA_RUST_PROJECT_WRITES" => self.rust_project_writes,
-            _ => false,
-        }
+    pub fn on(&self, _name: &str) -> bool {
+        false
     }
 }
 
@@ -120,10 +110,8 @@ const PROJECT_CHATS: &str = "/api/projects/{projectId}/chats";
 /// `DELETE /api/freechats/{chatId}` is Node's in every build (routes.toml).
 const FREE_CHATS: &str = "/api/freechats";
 
-/// The project writes ported from Node for sbstndalton/noevia#1264 ([`Native::Projects`] too),
-/// under their own switch NOEVIA_RUST_PROJECT_WRITES (off by default) and answered only in a build with the cargo feature
-/// `rust-project-writes` (listed by `--features`; the supervisor confirms it to Node,
-/// NOEVIA_RUST_PROJECT_WRITES_CONFIRMED). Slice 1: a free chat's attachments project.
+/// GET/POST chat context, permanently native (#1071), requiring the compiled
+/// `rust-project-writes` capability. This does not port other project writers.
 const PROJECT_WRITES: &[&str] = &[CHAT_CONTEXT];
 const CHAT_CONTEXT: &str = "/api/chats/{chatId}/context";
 
@@ -197,9 +185,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         ("/api/ready", None) => Some(Native::Ready),
         (p, None) if is_account_path(p) => Some(Native::Account),
         (p, None) if PROJECT_ROUTES.contains(&p) => Some(Native::Projects),
-        (p, Some("NOEVIA_RUST_PROJECT_WRITES")) if PROJECT_WRITES.contains(&p) => {
-            Some(Native::Projects)
-        }
+        (p, None) if PROJECT_WRITES.contains(&p) => Some(Native::Projects),
         _ => None,
     }
 }
@@ -372,9 +358,7 @@ mod tests {
     #[test]
     fn switches_by_name() {
         let off = Switches::default();
-        let on = Switches {
-            rust_project_writes: true,
-        };
+        let on = Switches::default();
         // Retired (#1071): the names mean nothing, sign-in and the projects are Rust's regardless.
         for s in [off, on] {
             assert!(!s.on("NOEVIA_RUST_PROJECTS"));
@@ -382,7 +366,7 @@ mod tests {
             assert!(!s.on("NOEVIA_SOMETHING_ELSE"));
         }
         assert!(!off.on("NOEVIA_RUST_PROJECT_WRITES"));
-        assert!(on.on("NOEVIA_RUST_PROJECT_WRITES"));
+        assert!(!on.on("NOEVIA_RUST_PROJECT_WRITES"));
     }
 
     // #1071: NOEVIA_RUST_PROJECTS is retired; the project routes are Rust's with no switch.
@@ -396,13 +380,7 @@ mod tests {
         ] {
             assert_eq!(dispatch(m, p), Some(Native::Projects), "{m} {p}");
             assert_eq!(
-                dispatch_under(
-                    m,
-                    p,
-                    Switches {
-                        rust_project_writes: true
-                    }
-                ),
+                dispatch_under(m, p, Switches::default()),
                 Some(Native::Projects),
                 "{m} {p}"
             );
@@ -567,14 +545,11 @@ mod tests {
         );
     }
 
-    // #1264: the ported project writes are Node's by default (live today); only
-    // NOEVIA_RUST_PROJECT_WRITES, in a build with the slice, moves them to Rust.
+    // #1071: only these two context methods are permanently native.
     #[test]
-    fn project_writes_are_rusts_only_under_their_own_switch() {
+    fn context_routes_are_permanently_rusts_without_broadening_other_writes() {
         let projects = Switches::default();
-        let on = Switches {
-            rust_project_writes: true,
-        };
+        let on = Switches::default();
         let answered = cfg!(feature = "rust-project-writes").then_some(Native::Projects);
         assert_eq!(
             crate::FEATURES.contains(&"rust-project-writes"),
@@ -582,8 +557,8 @@ mod tests {
         );
         for m in ["GET", "POST"] {
             let p = "/api/chats/c1/context";
-            assert_eq!(dispatch(m, p), None, "{m}");
-            assert_eq!(dispatch_under(m, p, projects), None, "{m}: off = Node");
+            assert_eq!(dispatch(m, p), answered, "{m}");
+            assert_eq!(dispatch_under(m, p, projects), answered, "{m}: permanent");
             assert_eq!(dispatch_under(m, p, on), answered, "{m}: on = Rust");
         }
         for (m, p) in [
@@ -596,7 +571,7 @@ mod tests {
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
         }
-        assert!(on.on("NOEVIA_RUST_PROJECT_WRITES"));
+        assert!(!on.on("NOEVIA_RUST_PROJECT_WRITES"));
         assert!(!projects.on("NOEVIA_RUST_PROJECT_WRITES"));
     }
 
