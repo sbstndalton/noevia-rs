@@ -180,6 +180,32 @@ fn insert_member_session(f: &Front) -> (String, String) {
     )
 }
 
+fn insert_second_admin_session(f: &Front) -> (String, String, String) {
+    let user = "33333333-2222-4333-8444-555555555555";
+    let token = "synthetic-second-admin-session-token";
+    let csrf = "synthetic-second-admin-csrf-token";
+    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
+    c.execute(
+        "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,'second-admin','second-admin','Synthetic second admin','admin','x',?1,1,1)",
+        [user],
+    )
+    .unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    c.execute(
+        "INSERT INTO sessions(id_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at,user_agent,ip) VALUES(?1,?2,?3,?4,?4,?5,'synthetic','127.0.0.1')",
+        (server_auth::js::digest(token), user, server_auth::js::digest(csrf), now, now + 86_400_000),
+    )
+    .unwrap();
+    (
+        user.to_string(),
+        format!("cowork_session={token}; cowork_csrf={csrf}"),
+        csrf.to_string(),
+    )
+}
+
 #[tokio::test]
 async fn the_front_answers_and_writes_the_context_project_under_the_switch() {
     let f = front(true).await;
@@ -203,6 +229,13 @@ async fn the_front_answers_and_writes_the_context_project_under_the_switch() {
         stored.contains(r#""id": "cowork-chat-context-c1""#),
         "{stored}"
     );
+    let returned: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let saved: serde_json::Value = serde_json::from_str(&stored).unwrap();
+    for project in [&returned["project"], &saved["projects"][0]] {
+        assert_eq!(project["routing"], "auto");
+        assert_eq!(project["toolsMode"], "auto");
+        assert_eq!(project["toolboxes"], serde_json::json!(["core"]));
+    }
     // Created once: a second POST answers the stored project and leaves the file as it is.
     let (status, _, again) = call(f.addr, "POST", "/api/chats/c1/context", &headers(&f), "").await;
     assert_eq!((status, again.as_str()), (200, body.as_str()));
@@ -232,6 +265,98 @@ async fn the_front_answers_and_writes_the_context_project_under_the_switch() {
     assert!(!projects_json(&f)
         .unwrap()
         .contains("cowork-chat-context-c2"));
+}
+
+#[tokio::test]
+async fn the_same_chat_id_is_isolated_between_accounts_in_one_data_root() {
+    let f = front(true).await;
+    let (status, _, body) = call(
+        f.addr,
+        "POST",
+        "/api/chats/shared/context",
+        &headers(&f),
+        "",
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let owner_before = projects_json(&f).unwrap();
+
+    let (second_user, second_cookie, second_csrf) = insert_second_admin_session(&f);
+    let other_headers = [
+        ("cookie", second_cookie.as_str()),
+        ("x-csrf-token", second_csrf.as_str()),
+        ("origin", ORIGIN),
+    ];
+    let second_dir = f.data.join("users").join(&second_user);
+    let (status, _, body) = call(
+        f.addr,
+        "GET",
+        "/api/chats/shared/context",
+        &other_headers,
+        "",
+    )
+    .await;
+    assert_eq!((status, body.as_str()), (200, r#"{"project":null}"#));
+    assert_eq!(
+        std::fs::read_to_string(f.user_dir().join("projects.json")).unwrap(),
+        owner_before
+    );
+
+    let (status, _, body) = call(
+        f.addr,
+        "POST",
+        "/api/chats/shared/context",
+        &other_headers,
+        "",
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let created: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(created["project"]["id"], "cowork-chat-context-shared");
+    let second_projects: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(second_dir.join("projects.json")).unwrap()).unwrap();
+    assert_eq!(second_projects["projects"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        second_projects["projects"][0]["id"],
+        "cowork-chat-context-shared"
+    );
+    assert_eq!(
+        std::fs::read_to_string(f.user_dir().join("projects.json")).unwrap(),
+        owner_before
+    );
+}
+
+#[tokio::test]
+async fn a_tombstone_blocks_only_creation_and_get_never_recreates_context() {
+    let f = front(true).await;
+    let dir = f.user_dir();
+    let empty = "{\n  \"projects\": []\n}\n";
+    std::fs::write(dir.join("projects.json"), empty).unwrap();
+    std::fs::write(dir.join("deleted-chats.json"), r#"["gone"]"#).unwrap();
+
+    let (status, _, body) = call(f.addr, "POST", "/api/chats/gone/context", &headers(&f), "").await;
+    assert_eq!(
+        (status, body.as_str()),
+        (410, r#"{"error":"This chat was deleted."}"#)
+    );
+    let (status, _, body) = call(f.addr, "GET", "/api/chats/gone/context", &headers(&f), "").await;
+    assert_eq!((status, body.as_str()), (200, r#"{"project":null}"#));
+    assert_eq!(
+        std::fs::read_to_string(dir.join("projects.json")).unwrap(),
+        empty
+    );
+
+    let existing = r#"{"projects":[{"id":"cowork-chat-context-gone","name":"Existing tombstoned context","modes":["chat"],"routing":"auto","toolboxes":["core"],"chats":[],"instructionSkills":{}}]}"#;
+    std::fs::write(dir.join("projects.json"), existing).unwrap();
+    let (status, _, body) = call(f.addr, "POST", "/api/chats/gone/context", &headers(&f), "").await;
+    assert_eq!(status, 200, "{body}");
+    let returned: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(returned["project"]["id"], "cowork-chat-context-gone");
+    assert_eq!(returned["project"]["name"], "Existing tombstoned context");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("projects.json")).unwrap(),
+        existing
+    );
 }
 
 #[tokio::test]

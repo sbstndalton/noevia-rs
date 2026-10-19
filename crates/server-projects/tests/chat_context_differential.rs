@@ -111,6 +111,9 @@ fn every_case_answers_and_writes_as_node() {
     let mut fixed_seen = 0;
     let mut wrote = 0;
     let mut absent_seen = 0;
+    let mut existing_tombstone_seen = false;
+    let mut missing_tombstone_get_seen = false;
+    let mut missing_tombstone_post_seen = false;
     for c in cases {
         let name = c["name"].as_str().unwrap();
         let (status, text, after, (made, private, users)) = run_case(c, user);
@@ -128,6 +131,29 @@ fn every_case_answers_and_writes_as_node() {
             continue;
         }
         let expected = &c["expected"];
+        match name {
+            "post-existing-tombstoned" => {
+                existing_tombstone_seen = true;
+                assert_eq!(status, 200, "{name}");
+                assert!(text.contains("cowork-chat-context-dead-1"), "{text}");
+                assert!(text.contains("Existing tombstoned context"), "{text}");
+                assert_eq!(after, None, "{name}: existing context is not recreated");
+            }
+            "get-tombstoned" => {
+                missing_tombstone_get_seen = true;
+                assert_eq!((status, text.as_str()), (200, r#"{"project":null}"#));
+                assert_eq!(after, None, "{name}: GET never writes");
+            }
+            "post-tombstoned" => {
+                missing_tombstone_post_seen = true;
+                assert_eq!(
+                    (status, text.as_str()),
+                    (410, r#"{"error":"This chat was deleted."}"#)
+                );
+                assert_eq!(after, None, "{name}: tombstone blocks creation");
+            }
+            _ => {}
+        }
         if c["ws"]["absent"].as_bool() == Some(true) {
             // The new account's first request: Node made the directory (and only it), private.
             let dir = &expected["userDir"];
@@ -156,6 +182,18 @@ fn every_case_answers_and_writes_as_node() {
         wrote += usize::from(after.is_some());
     }
     assert_eq!(fixed_seen, FIXED.len());
+    assert!(
+        existing_tombstone_seen,
+        "matching tombstoned context case ran"
+    );
+    assert!(
+        missing_tombstone_get_seen,
+        "missing tombstoned GET case ran"
+    );
+    assert!(
+        missing_tombstone_post_seen,
+        "missing tombstoned POST case ran"
+    );
     assert_eq!(absent_seen, 6, "the new-account cases ran");
     // The fixture exercises the writes, not only the reads.
     assert!(wrote >= 10, "{wrote}");
