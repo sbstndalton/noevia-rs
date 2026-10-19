@@ -81,6 +81,8 @@ pub enum TransportFailure {
     Dns,
     Header,
     Body,
+    /// Parent projection of an existing Body-phase Timeout frame; never sent on IPC.
+    BodyTimeout,
     Other,
 }
 impl TransportFailure {
@@ -98,18 +100,19 @@ impl TransportFailure {
     /// under `redirect: 'error'`, a malformed or reset response before its headers). A timeout
     /// (`TimeoutError`) and anything after the headers are not retried.
     pub fn node_retries(self) -> bool {
-        !matches!(self, Self::Timeout | Self::Body)
+        !matches!(self, Self::Timeout | Self::Body | Self::BodyTimeout)
     }
     /// The answer core gives (storage-client.cjs `transportError`, then the route): a timeout
     /// before the headers is 504 "the storage server did not answer in time", any other
     /// transport failure before them 502 "the storage server could not be reached". After the
-    /// headers the body read's own error passes through, which undici reports as `terminated`
-    /// both for a broken body and for the abort signal firing mid-body (measured against the
-    /// pinned core by tests/storage_browse.rs).
+    /// headers the body read's own error passes through: a broken stream is `terminated`,
+    /// while the active request deadline aborts it with a TimeoutError. Keep that phase
+    /// distinct from a pre-header timeout (tests/storage_browse.rs, noevia#2085).
     pub fn public(self) -> Failure {
         match self {
             Self::Timeout => Failure::new(504, "the storage server did not answer in time"),
             Self::Body => Failure::new(502, "terminated"),
+            Self::BodyTimeout => Failure::new(502, "The operation was aborted due to timeout"),
             _ => Failure::new(502, "the storage server could not be reached"),
         }
     }
