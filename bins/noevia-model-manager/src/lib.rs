@@ -2157,14 +2157,14 @@ async fn native_backend_control(
                 task_state.docker.restart_backend(&name),
             )
             .await;
-            let error = match outcome {
+            let _error = match outcome {
                 Ok(Ok(())) => return,
                 Ok(Err(e)) => format!("APIError: {e}"),
                 Err(_) => "APIError: the restart did not finish in time".to_owned(),
             };
             #[cfg(feature = "native-backends")]
             if let Some(stats) = &task_state.backend_stats {
-                stats.set_restart_error(&name, Some(&error));
+                stats.set_restart_error(&name, Some(&_error));
             }
             #[cfg(test)]
             set_restart_error(
@@ -2172,7 +2172,7 @@ async fn native_backend_control(
                 &task_state.legacy_base,
                 &task_state.token,
                 &name,
-                Some(&error),
+                Some(&_error),
             )
             .await;
         });
