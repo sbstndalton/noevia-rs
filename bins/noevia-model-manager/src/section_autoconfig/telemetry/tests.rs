@@ -179,8 +179,6 @@ fn world(
             gpu_vram: Vec::new(),
             default_port: Some(8080),
             drm_root: dir.join("drm"),
-            legacy_base: "http://127.0.0.1:9".into(),
-            token: String::new(),
             meminfo: dir.join("meminfo"),
             ram_reserve_gb: Some(32.0),
         },
