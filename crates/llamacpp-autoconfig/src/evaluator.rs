@@ -22,6 +22,7 @@ enum Instruction {
     Uncatch,
     BooleanPeriod(usize),
     KvSum(usize),
+    NumericHeadMode(usize),
     Return,
 }
 include!("evaluator_program.rs");
@@ -231,6 +232,9 @@ fn read_bits(v: Option<&Value>) -> R<f64> {
     let Some(text) = v.and_then(Value::as_str) else {
         return Err(Refusal::Input);
     };
+    read_bits_text(text)
+}
+fn read_bits_text(text: &[u16]) -> R<f64> {
     if text.len() != 16 {
         return Err(Refusal::Input);
     }
@@ -288,6 +292,114 @@ impl Sum {
     }
 }
 
+// Optimization registers only; capacity overflow resumes the original program.
+const HEAD_CHUNK: usize = 128;
+const HEAD_KEYS: usize = 128;
+struct Heads {
+    seq: u64,
+    return_pc: usize,
+    len: usize,
+    pos: usize,
+    bins: Vec<(f64, u64)>,
+}
+impl Heads {
+    fn read(v: &Value) -> R<Self> {
+        let Some(Value::Arr(bins)) = v.get("bins") else {
+            return Err(Refusal::Input);
+        };
+        if bins.len() > HEAD_KEYS {
+            return Err(Refusal::Input);
+        }
+        let bins = bins
+            .iter()
+            .map(|bin| {
+                let Some(Value::Arr(pair)) = Some(bin) else {
+                    return Err(Refusal::Input);
+                };
+                if pair.len() != 2 {
+                    return Err(Refusal::Input);
+                }
+                Ok((read_bits(pair.first())?, integer(pair.get(1))?))
+            })
+            .collect::<R<Vec<_>>>()?;
+        let h = Self {
+            seq: integer(v.get("seq"))?,
+            return_pc: index(v.get("returnPc"))?,
+            len: index(v.get("len"))?,
+            pos: index(v.get("pos"))?,
+            bins,
+        };
+        if h.len > u32::MAX as usize
+            || h.pos > h.len
+            || h.return_pc >= PROGRAM.len()
+            || h.bins.iter().any(|(_, n)| *n == 0 || *n > h.pos as u64)
+            || h.bins.iter().map(|(_, n)| *n).sum::<u64>() != h.pos as u64
+        {
+            return Err(Refusal::Input);
+        }
+        Ok(h)
+    }
+    fn write(&self, out: &mut Out) {
+        out.raw("{")
+            .key("kind")
+            .str("heads")
+            .raw(",")
+            .key("seq")
+            .num(self.seq as f64)
+            .raw(",")
+            .key("returnPc")
+            .num(self.return_pc as f64)
+            .raw(",")
+            .key("len")
+            .num(self.len as f64)
+            .raw(",")
+            .key("pos")
+            .num(self.pos as f64)
+            .raw(",")
+            .key("bins")
+            .raw("[");
+        for (i, (n, count)) in self.bins.iter().enumerate() {
+            if i != 0 {
+                out.raw(",");
+            }
+            out.raw("[")
+                .str(&format!("{:016x}", n.to_bits()))
+                .raw(",")
+                .num(*count as f64)
+                .raw("]");
+        }
+        out.raw("]}");
+    }
+    fn add(&mut self, value: f64) -> bool {
+        // Map uses SameValueZero and stores +0 for either zero key. Retain the
+        // first NaN key's bits; equality groups every NaN without coercion.
+        let value = if value == 0.0 { 0.0 } else { value };
+        if let Some((_, count)) = self
+            .bins
+            .iter_mut()
+            .find(|(key, _)| *key == value || key.is_nan() && value.is_nan())
+        {
+            *count += 1;
+        } else {
+            if self.bins.len() == HEAD_KEYS {
+                return false;
+            }
+            self.bins.push((value, 1));
+        }
+        self.pos += 1;
+        true
+    }
+    fn answer(&self) -> R<f64> {
+        let mut best = self.bins.first().copied().ok_or(Refusal::Input)?;
+        for &(value, count) in self.bins.iter().skip(1) {
+            if count > best.1 {
+                best = (value, count);
+            }
+        }
+        Ok(best.0)
+    }
+}
+
 struct State {
     pc: usize,
     env: u64,
@@ -297,6 +409,7 @@ struct State {
     target: usize,
     period: Option<Period>,
     sum: Option<Sum>,
+    heads: Option<Heads>,
 }
 fn integer(v: Option<&Value>) -> R<u64> {
     let Some(Value::Num(n)) = v else {
@@ -350,7 +463,14 @@ impl State {
             catches,
             mode: u8::try_from(integer(v.get("mode"))?).map_err(|_| Refusal::Input)?,
             target: index(v.get("target"))?,
+            heads: match v.get("sum") {
+                Some(v) if matches!(v.get("kind").and_then(Value::as_str),Some(s) if s.iter().copied().eq("heads".encode_utf16())) => {
+                    Some(Heads::read(v)?)
+                }
+                _ => None,
+            },
             sum: match v.get("sum") {
+                Some(v) if v.get("kind").is_some() => None,
                 None | Some(Value::Null) => None,
                 Some(v) => Some(Sum::read(v)?),
             },
@@ -359,7 +479,10 @@ impl State {
                 Some(v) => Some(Period::read(v)?),
             },
         };
-        if state.pc >= PROGRAM.len() || state.mode > 7 {
+        if state.pc >= PROGRAM.len()
+            || state.mode > 9
+            || (state.heads.is_some() != (state.mode >= 8))
+        {
             return Err(Refusal::Input);
         }
         Ok(state)
@@ -401,7 +524,9 @@ impl State {
             out.raw("null");
         }
         out.raw(",").key("sum");
-        if let Some(sum) = &self.sum {
+        if let Some(heads) = &self.heads {
+            heads.write(out);
+        } else if let Some(sum) = &self.sum {
             sum.write(out);
         } else {
             out.raw("null");
@@ -464,6 +589,7 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
             target: 0,
             period: None,
             sum: None,
+            heads: None,
         }
     } else {
         let mut state = State::read(args.get("state").ok_or(Refusal::Input)?)?;
@@ -477,6 +603,40 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                 state.push(thrown)?;
             } else {
                 return Ok(end("throw", thrown));
+            }
+        } else if state.mode == 8 {
+            let facts = frame.get("facts").ok_or(Refusal::Input)?;
+            if matches!(facts.get("safe"), Some(Value::Bool(true))) {
+                let len = index(facts.get("len"))?;
+                if len == 0 || len > u32::MAX as usize {
+                    return Err(Refusal::Input);
+                }
+                state.heads.as_mut().ok_or(Refusal::Input)?.len = len;
+                state.mode = 9;
+            } else {
+                state.heads = None;
+                state.mode = 0;
+            }
+        } else if state.mode == 9 {
+            let text = frame
+                .get("numberBits")
+                .and_then(Value::as_str)
+                .ok_or(Refusal::Input)?;
+            let heads = state.heads.as_mut().ok_or(Refusal::Input)?;
+            let count = (heads.len - heads.pos).min(HEAD_CHUNK);
+            if text.len() != count * 16 {
+                return Err(Refusal::Input);
+            }
+            let mut overflow = false;
+            for bits in text.as_chunks::<16>().0 {
+                if !heads.add(read_bits_text(bits)?) {
+                    overflow = true;
+                    break;
+                }
+            }
+            if overflow {
+                state.heads = None;
+                state.mode = 0;
             }
         } else if state.mode == 5 {
             let Some(Value::Arr(facts)) = frame.get("numbers") else {
@@ -598,6 +758,24 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
     };
     let mut requests = Vec::new();
     loop {
+        if state.mode == 9 && state.heads.is_some() {
+            let heads = state.heads.as_ref().ok_or(Refusal::Input)?;
+            if heads.pos == heads.len {
+                let value = heads.answer()?;
+                state.pc = heads.return_pc;
+                state.heads = None;
+                state.mode = 0;
+                let operation =
+                    format!(r#"{{"op":"floatBits","data":"{:016x}"}}"#, value.to_bits());
+                return Ok(batch(&[request(&state, &operation, &[], VIRTUAL_BASE + 1)]));
+            }
+            let operation = format!(
+                r#"{{"op":"numberChunk","data":{{"start":{},"count":{}}}}}"#,
+                heads.pos,
+                (heads.len - heads.pos).min(HEAD_CHUNK)
+            );
+            return Ok(batch(&[request(&state, &operation, &[heads.seq], 0)]));
+        }
         if state.mode == 7 && state.sum.is_some() {
             let sum = state.sum.as_mut().ok_or(Refusal::Input)?;
             let mut missing = None;
@@ -747,6 +925,26 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
             Instruction::Uncatch => {
                 state.catches.pop().ok_or(Refusal::Input)?;
             }
+            Instruction::NumericHeadMode(return_pc) => {
+                if !requests.is_empty() {
+                    return Ok(batch(&requests));
+                }
+                let seq = state.pop()?;
+                state.heads = Some(Heads {
+                    seq,
+                    return_pc,
+                    len: 0,
+                    pos: 0,
+                    bins: Vec::new(),
+                });
+                state.mode = 8;
+                return Ok(batch(&[request(
+                    &state,
+                    r#"{"op":"numericHeadFacts","data":null}"#,
+                    &[seq],
+                    0,
+                )]));
+            }
             Instruction::KvSum(return_pc) => {
                 if !requests.is_empty() {
                     return Ok(batch(&requests));
@@ -858,7 +1056,7 @@ mod tests {
                         work.push((next, 0));
                         work.push((target, 1));
                     }
-                    Instruction::BooleanPeriod(target) => {
+                    Instruction::NumericHeadMode(target) | Instruction::BooleanPeriod(target) => {
                         assert_eq!(depth, 1);
                         work.push((next, 0));
                         work.push((target, 1));
@@ -867,6 +1065,47 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn numeric_head_registers_preserve_same_value_zero_and_stable_ties() {
+        let fresh = || Heads {
+            seq: 1,
+            return_pc: 0,
+            len: 1024,
+            pos: 0,
+            bins: Vec::new(),
+        };
+        let mut zero = fresh();
+        assert!(zero.add(-0.0));
+        assert!(zero.add(0.0));
+        assert_eq!(zero.bins.len(), 1);
+        assert_eq!(zero.answer().unwrap().to_bits(), 0);
+        let mut nan = fresh();
+        let first = f64::from_bits(0x7ff8_0000_0000_0001);
+        for v in [first, f64::NAN, 2.0] {
+            assert!(nan.add(v));
+        }
+        assert_eq!(nan.answer().unwrap().to_bits(), first.to_bits());
+        let mut tie = fresh();
+        for v in [2.0, 3.0, 3.0, 2.0] {
+            assert!(tie.add(v));
+        }
+        assert_eq!(tie.answer().unwrap(), 2.0);
+        let mut capacity = fresh();
+        for v in 0..HEAD_KEYS {
+            assert!(capacity.add(v as f64));
+        }
+        assert!(!capacity.add(129.0));
+        assert_eq!(capacity.pos, HEAD_KEYS);
+        assert!(capacity.add(127.0));
+        assert_eq!(capacity.answer().unwrap(), 127.0);
+        let mut out = Out(Vec::new());
+        capacity.write(&mut out);
+        let value = prompt_framing::json::parse_utf8(out.text().as_bytes(), 16).unwrap();
+        let again = Heads::read(&value).unwrap();
+        assert_eq!(again.answer().unwrap(), 127.0);
+        assert_eq!(again.pos, HEAD_KEYS + 1);
     }
 
     #[test]
