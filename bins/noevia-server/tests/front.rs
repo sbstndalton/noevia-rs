@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpSocket, TcpStream};
 use tokio::sync::{mpsc, oneshot};
 
 type UpBody = http_body_util::combinators::BoxBody<Bytes, std::convert::Infallible>;
@@ -509,12 +509,23 @@ async fn check_request_body_cap(tag: &str, route: &str, accepted_route: &str, ca
 
 #[tokio::test]
 async fn node_down_is_a_502_and_ready_is_a_503() {
-    // A port nothing listens on.
-    let free = TcpListener::bind("127.0.0.1:0")
-        .await
-        .unwrap()
-        .local_addr()
-        .unwrap();
+    // Reserve a port without listening. Dropping a temporary listener lets the front
+    // or a concurrent fixture reuse this address, making the dead backend live.
+    let reserved = TcpSocket::new_v4().unwrap();
+    reserved.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let free = reserved.local_addr().unwrap();
+    assert_eq!(
+        TcpListener::bind(free).await.unwrap_err().kind(),
+        std::io::ErrorKind::AddrInUse
+    );
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(free))
+            .await
+            .expect("the reserved, unlistened backend must refuse promptly")
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::ConnectionRefused
+    );
     let dist = dist_dir("down");
     std::fs::remove_file(dist.join("version.json")).unwrap();
     let front = start_front(free, &dist, false).await;
@@ -527,6 +538,7 @@ async fn node_down_is_a_502_and_ready_is_a_503() {
     // The bundle is still served.
     let (res, _c) = call(front, "GET", "/c/x", &[], b"").await;
     assert_eq!(res.status(), 200);
+    drop(reserved);
 }
 
 #[tokio::test]
