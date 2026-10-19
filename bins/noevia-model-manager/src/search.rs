@@ -362,10 +362,20 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 impl Search {
     pub fn native(data: &Path) -> Result<Self, &'static str> {
-        Self::new(data, "", "")
+        Self::init(
+            data,
+            Hub::default(),
+            now,
+            Timeouts::default(),
+            #[cfg(test)]
+            "",
+            #[cfg(test)]
+            "",
+        )
     }
 
-    /// `data` is Python's `DATA_DIR`; the child is at `legacy_base` and takes `token`.
+    /// Historical fixtures retain their original private-child transport inputs.
+    #[cfg(test)]
     pub fn new(data: &Path, legacy_base: &str, token: &str) -> Result<Self, &'static str> {
         Self::with(
             data,
@@ -378,6 +388,7 @@ impl Search {
     }
 
     /// Tests point the Hub at a local fake, fix the clock and shorten the timeouts.
+    #[cfg(test)]
     pub fn with(
         data: &Path,
         hub: Hub,
@@ -386,7 +397,17 @@ impl Search {
         clock: Clock,
         timeouts: Timeouts,
     ) -> Result<Self, &'static str> {
-        let _ = (legacy_base, token);
+        Self::init(data, hub, clock, timeouts, legacy_base, token)
+    }
+
+    fn init(
+        data: &Path,
+        hub: Hub,
+        clock: Clock,
+        timeouts: Timeouts,
+        #[cfg(test)] legacy_base: &str,
+        #[cfg(test)] token: &str,
+    ) -> Result<Self, &'static str> {
         Ok(Self {
             database: data.join("model_loader.db"),
             hub: Hub {
