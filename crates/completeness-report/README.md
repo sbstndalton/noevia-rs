@@ -19,6 +19,10 @@ memory; total runtime/output is not bounded for arbitrarily large or endless ite
 
 The original property/method/coercion schedule is observable and is preserved, including
 custom collection methods, sparse iteration, changing getters and first thrown errors.
+Private callback implementation representation (source text, inferred name and stack) changes
+as part of retiring JavaScript policy. Source-introspective custom methods can therefore
+observe different callback text; this is an intentional structural refactor distinction,
+not an ordinary business-data refusal or a reason to retain policy source/patch globals.
 TypeError text is qualified against the same pinned Node 22 source. The mechanical
 canonical/reportHash codec is unchanged. Opcode 1 remains the independent final
 representation/refusal comparison: ordinary over-limit or non-JSON inputs retain their
