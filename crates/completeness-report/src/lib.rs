@@ -785,10 +785,18 @@ pub fn reply(r: &Report) -> String {
     }
 }
 
+mod policy;
+
 /// The `completeness_report` export: `u8(1)` and the UTF-8 JSON `[job, expectedArtifacts]`
 /// (`JSON.stringify`, `expectedArtifacts ?? null`). Status 0 with [`reply`], or status 1 with a
 /// [`Refusal`].
 pub fn call(input: &[u8]) -> (u32, String) {
+    if let Some((&2, body)) = input.split_first() {
+        return match policy::call(body) {
+            Ok(reply) => (0, reply),
+            Err(error) => (1, error.json().to_owned()),
+        };
+    }
     match call_inner(input) {
         Ok(r) => (0, reply(&r)),
         Err(e) => (1, e.json().to_owned()),

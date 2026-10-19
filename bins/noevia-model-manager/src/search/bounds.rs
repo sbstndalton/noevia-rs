@@ -563,6 +563,51 @@ async fn at_most_two_listings_run_at_once() {
     assert!(peak >= 1);
 }
 
+/// Completing a response can admit a successor before the fake server task exits.
+/// Park every completed handler to expose that handoff without a scheduler race.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn completed_hub_handlers_do_not_inflate_listing_admission() {
+    let mut answers = serde_json::Map::new();
+    let ids: Vec<String> = (0..8).map(|i| format!("lab-one/handoff{i}-GGUF")).collect();
+    answers.insert(
+        MODELS.into(),
+        ok(&J::Array(ids.iter().map(|id| item(id)).collect())),
+    );
+    for id in &ids {
+        let mut answer = ok(&json!([file("m-Q4_K_M.gguf", GB)]));
+        answer["hold"] = json!(true);
+        answer["hold_after_publication"] = json!(true);
+        answers.insert(tree(id), answer);
+    }
+    let r = rig(J::Object(answers)).await;
+    let search = r.search.clone();
+    let request = tokio::spawn(async move { search.search(ALL).await });
+    hub_asked(&r, "/tree/", CONCURRENT_LOOKUPS).await;
+    // The original real admission cap is exercised, not merely a serial client.
+    assert_eq!(r.gauge.live.load(Ordering::SeqCst), CONCURRENT_LOOKUPS);
+    r.gauge.released.store(true, Ordering::SeqCst);
+    let body = body_of(request.await.unwrap());
+    // Wait for every publication hook, not for completed server tasks to return.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while r.gauge.published.load(Ordering::SeqCst) != ids.len() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let peak = r.gauge.peak.load(Ordering::SeqCst);
+    let live = r.gauge.live.load(Ordering::SeqCst);
+    // Release before assertions so a failing control also lets server tasks finish.
+    r.gauge.finish_published.add_permits(ids.len());
+    for id in &ids {
+        assert!(body.contains(id), "missing {id}: {body}");
+    }
+    assert_eq!(tree_requests(&r), ids.len());
+    assert!(peak <= CONCURRENT_LOOKUPS, "{peak}");
+    assert!(peak >= 1);
+    assert_eq!(live, 0, "completed handlers remain counted");
+}
+
 /// noevia#1998: a request that is dropped while its listing is parsed gives back neither the
 /// lookup nor anything else until the parse has returned.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

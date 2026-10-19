@@ -397,17 +397,15 @@ fn sorted(seen: &Seen) -> Value {
 // A refusal is the native 503, an unreachable child the forwarded 502, a failed handler the plain
 // 500, and the 422 FastAPI's.
 
-// With no native search (the default) the paths are forwarded to the child like any other.
-
-// The child's private calls are the parent's own: a client cannot reach them through the front's
-// forwarder, in any spelling, with the native search on or off. The child sees nothing.
+// Private search-runtime calls are never public routes, with or without a native Search.
+// The retained fake child must see no requests in either configuration.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_client_cannot_reach_the_private_search_calls() {
     let (child_base, script, child_task) = child().await;
     let dir = tempfile::tempdir().unwrap();
     for native in [true, false] {
-        let search = native.then(|| Search::new(dir.path(), &child_base, TOKEN).unwrap());
-        // The front forwards to the child's address, so a leak would reach the fake.
+        let search = native.then(|| Search::native(dir.path()).unwrap());
+        // Keep the historical fake and assert that neither configuration contacts it.
         let shared = state(search, &child_base);
         for method in ["GET", "POST", "PUT"] {
             for uri in [

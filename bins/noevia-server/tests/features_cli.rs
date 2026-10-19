@@ -3,8 +3,13 @@
 
 use std::process::{Command, Stdio};
 
+// Keep executable-fixture writes and every process launch in this test binary
+// disjoint. A concurrent child can inherit a writer before its CLOEXEC boundary.
+static CLI_PROBE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn features_cli_outputs_only_the_compiled_capabilities() {
+    let _probe_guard = CLI_PROBE_LOCK.lock().expect("serialize CLI fixtures");
     let output = Command::new(env!("CARGO_BIN_EXE_noevia-server"))
         .arg("--features")
         .env("UI_PORT", "invalid-port")
@@ -47,6 +52,7 @@ fn features_cli_outputs_only_the_compiled_capabilities() {
 #[cfg(unix)]
 #[test]
 fn features_cli_closed_stdout_fails_without_panicking() {
+    let _probe_guard = CLI_PROBE_LOCK.lock().expect("serialize CLI fixtures");
     let (reader, writer) = std::os::unix::net::UnixStream::pair().expect("synthetic stdout pair");
     drop(reader);
     let output = Command::new(env!("CARGO_BIN_EXE_noevia-server"))
@@ -81,6 +87,7 @@ fn replay_probe(front: &str) -> std::process::Output {
 #[cfg(unix)]
 #[test]
 fn replay_refuses_failed_capability_producer_before_launching() {
+    let _probe_guard = CLI_PROBE_LOCK.lock().expect("serialize CLI fixtures");
     let output = replay_probe("/usr/bin/false");
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).expect("ASCII refusal");
@@ -90,8 +97,89 @@ fn replay_refuses_failed_capability_producer_before_launching() {
 
 #[cfg(all(unix, not(feature = "rust-reasoning-settings")))]
 #[test]
-fn featureless_replay_checks_all_switches_from_one_complete_probe() {
-    let output = replay_probe(env!("CARGO_BIN_EXE_noevia-server"));
+fn featureless_replay_refuses_first_missing_permanent_capability() {
+    let _probe_guard = CLI_PROBE_LOCK.lock().expect("serialize CLI fixtures");
+    let front = env!("CARGO_BIN_EXE_noevia-server");
+    let output = replay_probe(front);
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).expect("ASCII refusal");
+    // Permanent M4 checks precede reasoning. A real featureless front must
+    // refuse at the first absent capability, without reaching later guards.
+    let order = [
+        "rust-auth",
+        "rust-projects",
+        "rust-project-chats",
+        "rust-free-chats",
+        "rust-export",
+        "project-store",
+        "rust-usage",
+        "rust-sampling-settings",
+        "rust-reasoning-settings",
+    ];
+    let first = order
+        .iter()
+        .position(|feature| !noevia_server::FEATURES.contains(feature))
+        .expect("this profile omits reasoning or an earlier permanent route");
+    let missing = *order
+        .get(first)
+        .expect("first missing permanent capability");
+    let suffix = if [
+        "rust-projects",
+        "rust-project-chats",
+        "rust-free-chats",
+        "rust-export",
+        "project-store",
+    ]
+    .contains(&missing)
+    {
+        " (the project routes are the front's, #1071)"
+    } else {
+        ""
+    };
+    let refusal = format!("replay-front: {front} has no {missing}{suffix}");
+    assert!(stderr.lines().any(|line| line == refusal), "{stderr}");
+    assert_eq!(stderr.matches(" --features").count(), 1);
+    let reached: Vec<&str> = stderr
+        .lines()
+        .filter_map(|line| line.strip_prefix("+ has_feature "))
+        .collect();
+    assert_eq!(
+        reached,
+        order
+            .get(..=first)
+            .expect("all guards through the first refusal")
+    );
+    assert!(!stderr.contains("corpus-launcher"));
+    assert!(!stderr.contains("panicked"));
+}
+
+#[cfg(unix)]
+#[test]
+fn replay_checks_reasoning_omission_from_one_complete_probe() {
+    use std::os::unix::fs::PermissionsExt;
+    let _probe_guard = CLI_PROBE_LOCK.lock().expect("serialize CLI fixtures");
+    let dir = tempfile::tempdir().expect("private reasoning probe directory");
+    let probe = dir.path().join("front");
+    // Keep the original reasoning-specific proof in every build profile: all
+    // other capabilities are advertised, independently of this binary's flags.
+    let features = noevia_server::FEATURES
+        .iter()
+        .copied()
+        .chain(
+            noevia_server::config::FRONT_ROUTE_FEATURES
+                .iter()
+                .map(|(name, _)| *name),
+        )
+        .filter(|feature| *feature != "rust-reasoning-settings")
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .map(|feature| format!("{feature}\n"))
+        .collect::<String>();
+    std::fs::write(&probe, format!("#!/bin/sh\nprintf '%s' '{}'", features))
+        .expect("write reasoning probe");
+    std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o700))
+        .expect("reasoning probe mode");
+    let output = replay_probe(probe.to_str().expect("UTF-8 reasoning probe"));
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr).expect("ASCII refusal");
     assert!(stderr.contains("no rust-reasoning-settings"));
@@ -106,6 +194,9 @@ fn featureless_replay_checks_all_switches_from_one_complete_probe() {
     ] {
         assert!(stderr.contains(&format!("+ has_feature {feature}")));
     }
+    for feature in ["rust-export", "project-store"] {
+        assert!(stderr.contains(&format!("+ has_feature {feature}")));
+    }
     assert!(!stderr.contains("corpus-launcher"));
     assert!(!stderr.contains("panicked"));
 }
@@ -115,6 +206,7 @@ fn featureless_replay_checks_all_switches_from_one_complete_probe() {
 #[cfg(not(feature = "rust-project-writes"))]
 #[test]
 fn missing_context_capability_refuses_before_startup_for_every_retired_value() {
+    let _probe_guard = CLI_PROBE_LOCK.lock().expect("serialize CLI fixtures");
     let root = tempfile::tempdir().expect("private synthetic root");
     let data = root.path().join("must-not-exist");
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("reserve startup port");
@@ -149,6 +241,7 @@ fn missing_context_capability_refuses_before_startup_for_every_retired_value() {
 #[test]
 fn replay_requires_context_capability_even_with_retired_switch_off() {
     use std::os::unix::fs::PermissionsExt;
+    let _probe_guard = CLI_PROBE_LOCK.lock().expect("serialize CLI fixtures");
     let dir = tempfile::tempdir().expect("private probe directory");
     let probe = dir.path().join("front");
     let features = noevia_server::FEATURES
