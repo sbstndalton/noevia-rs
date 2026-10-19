@@ -1292,6 +1292,17 @@ fn call_inner(input: &[u8]) -> R<String> {
     let Some((&op, body)) = input.split_first() else {
         return Err(Refusal::Input);
     };
+    if op == 12 {
+        if let Some(result) = evaluator::try_canonical_resume(body) {
+            return result;
+        }
+    }
+    call_generic(op, body)
+}
+
+// Kept as the single unchanged general-parser route, including every malformed
+// or noncanonical private request and all strict operations.
+fn call_generic(op: u8, body: &[u8]) -> R<String> {
     let parse_depth = if matches!(op, 11 | 12) {
         WIRE_DEPTH + 4
     } else {
@@ -1476,5 +1487,48 @@ mod tests {
                 r#"{"error":"No inference memory budget is configured to size against."}"#
             )
         );
+    }
+    #[test]
+    fn canonical_dispatch_keeps_outer_size_zero_and_strict_contracts() {
+        let legacy = |input: &[u8]| {
+            let result = if input.len() > MAX_INPUT_BYTES {
+                Err(Refusal::TooLarge)
+            } else if let Some((&op, body)) = input.split_first() {
+                call_generic(op, body)
+            } else {
+                Err(Refusal::Input)
+            };
+            match result {
+                Ok(text) => (0, text),
+                Err(error) => (1, error.json().to_owned()),
+            }
+        };
+        let bodies: &[&[u8]] = &[
+            br#"{"value":0}"#,
+            br#"{"value":null}"#,
+            br#"{"function":0,"env":0,"wire":"state-v1"}"#,
+            br#"{"state":[0,0,[],[],0,0,null,null],"frame":{"thrown":0},"wire":"state-v1"}"#,
+        ];
+        for op in [0, 1, 2, 3, 4, 5, 6, 11, 12, 255] {
+            for body in bodies {
+                let mut input = vec![op];
+                input.extend_from_slice(body);
+                assert_eq!(call(&input), legacy(&input));
+            }
+        }
+        for input in [vec![], vec![12], vec![12, 0xff]] {
+            assert_eq!(call(&input), legacy(&input));
+        }
+        let mut input = vec![12];
+        input.extend_from_slice(bodies.last().unwrap());
+        assert_eq!(
+            call(&input),
+            (0, r#"{"wire":"state-v1","throw":0}"#.to_owned())
+        );
+        input.resize(MAX_INPUT_BYTES, b' ');
+        assert_eq!(call(&input), legacy(&input));
+        input.push(b' ');
+        assert_eq!(call(&input), (1, Refusal::TooLarge.json().to_owned()));
+        assert_eq!(call(&input), legacy(&input));
     }
 }
