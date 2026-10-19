@@ -342,7 +342,41 @@ fn refs(v: Option<&Value>) -> R<Vec<u64>> {
 }
 impl State {
     fn read(v: &Value) -> R<Self> {
-        let Some(Value::Arr(catches)) = v.get("catches") else {
+        Self::read_fields([
+            v.get("pc"),
+            v.get("env"),
+            v.get("stack"),
+            v.get("catches"),
+            v.get("mode"),
+            v.get("target"),
+            v.get("period"),
+            v.get("sum"),
+        ])
+    }
+    fn read_wire(v: &Value, compact: bool) -> R<Self> {
+        if !compact {
+            return Self::read(v);
+        }
+        let Value::Arr(values) = v else {
+            return Err(Refusal::Input);
+        };
+        let [pc, env, stack, catches, mode, target, period, sum] = values.as_slice() else {
+            return Err(Refusal::Input);
+        };
+        Self::read_fields([
+            Some(pc),
+            Some(env),
+            Some(stack),
+            Some(catches),
+            Some(mode),
+            Some(target),
+            Some(period),
+            Some(sum),
+        ])
+    }
+    fn read_fields(fields: [Option<&Value>; 8]) -> R<Self> {
+        let [pc, env, stack, catches, mode, target, period, sum] = fields;
+        let Some(Value::Arr(catches)) = catches else {
             return Err(Refusal::Input);
         };
         if catches.len() > CATCH_REGISTERS {
@@ -365,17 +399,17 @@ impl State {
             })
             .collect::<R<Vec<_>>>()?;
         let state = Self {
-            pc: index(v.get("pc"))?,
-            env: integer(v.get("env"))?,
-            stack: refs(v.get("stack"))?,
+            pc: index(pc)?,
+            env: integer(env)?,
+            stack: refs(stack)?,
             catches,
-            mode: u8::try_from(integer(v.get("mode"))?).map_err(|_| Refusal::Input)?,
-            target: index(v.get("target"))?,
-            sum: match v.get("sum") {
+            mode: u8::try_from(integer(mode)?).map_err(|_| Refusal::Input)?,
+            target: index(target)?,
+            sum: match sum {
                 None | Some(Value::Null) => None,
                 Some(v) => Some(Sum::read(v)?),
             },
-            period: match v.get("period") {
+            period: match period {
                 None | Some(Value::Null) => None,
                 Some(v) => Some(Period::read(v)?),
             },
@@ -429,6 +463,48 @@ impl State {
         }
         out.raw("}");
     }
+    fn write_wire(&self, out: &mut Out, compact: bool) {
+        if !compact {
+            self.write(out);
+            return;
+        }
+        out.raw("[")
+            .private_uint(self.pc as u64)
+            .raw(",")
+            .private_uint(self.env)
+            .raw(",");
+        write_refs(out, &self.stack);
+        out.raw(",[");
+        for (index, (pc, depth, env)) in self.catches.iter().enumerate() {
+            if index != 0 {
+                out.raw(",");
+            }
+            out.raw("[")
+                .private_uint(*pc as u64)
+                .raw(",")
+                .private_uint(*depth as u64)
+                .raw(",")
+                .private_uint(*env)
+                .raw("]");
+        }
+        out.raw("],")
+            .private_uint(u64::from(self.mode))
+            .raw(",")
+            .private_uint(self.target as u64)
+            .raw(",");
+        if let Some(period) = &self.period {
+            period.write(out);
+        } else {
+            out.raw("null");
+        }
+        out.raw(",");
+        if let Some(sum) = &self.sum {
+            sum.write(out);
+        } else {
+            out.raw("null");
+        }
+        out.raw("]");
+    }
     fn pop(&mut self) -> R<u64> {
         self.stack.pop().ok_or(Refusal::Input)
     }
@@ -450,10 +526,10 @@ fn write_refs(out: &mut Out, refs: &[u64]) {
     }
     out.raw("]");
 }
-fn request(state: &State, operation: &str, args: &[u64], result: u64) -> String {
+fn request(state: &State, operation: &str, args: &[u64], result: u64, compact: bool) -> String {
     let mut out = Out(Vec::new());
     out.raw("{").raw("\"state\":");
-    state.write(&mut out);
+    state.write_wire(&mut out, compact);
     out.raw(",")
         .raw("\"request\":")
         .raw(operation)
@@ -463,16 +539,31 @@ fn request(state: &State, operation: &str, args: &[u64], result: u64) -> String 
     out.raw(",").raw("\"ref\":").private_uint(result).raw("}");
     out.text()
 }
-fn batch(requests: &[String]) -> String {
-    format!(r#"{{"batch":[{}]}}"#, requests.join(","))
+fn batch(requests: &[String], compact: bool) -> String {
+    if compact {
+        format!(r#"{{"wire":"state-v1","batch":[{}]}}"#, requests.join(","))
+    } else {
+        format!(r#"{{"batch":[{}]}}"#, requests.join(","))
+    }
 }
-fn end(key: &str, reference: u64) -> String {
+fn end(key: &str, reference: u64, compact: bool) -> String {
     let mut out = Out(Vec::new());
-    out.raw("{").key(key).private_uint(reference).raw("}");
+    out.raw("{");
+    if compact {
+        out.raw(r#""wire":"state-v1","#);
+    }
+    out.key(key).private_uint(reference).raw("}");
     out.text()
 }
 
 pub(super) fn call(op: u8, args: &Value) -> R<String> {
+    let compact = matches!(args.get("wire").and_then(Value::as_str),
+        Some(tag) if tag.iter().copied().eq("state-v1".encode_utf16()));
+    let request = |state: &State, operation: &str, args: &[u64], result: u64| {
+        request(state, operation, args, result, compact)
+    };
+    let batch = |requests: &[String]| batch(requests, compact);
+    let end = |key: &str, reference: u64| end(key, reference, compact);
     let mut state = if op == 11 {
         let function = index(args.get("function"))?;
         let pc = *ENTRIES.get(function).ok_or(Refusal::Input)?;
@@ -487,7 +578,7 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
             sum: None,
         }
     } else {
-        let mut state = State::read(args.get("state").ok_or(Refusal::Input)?)?;
+        let mut state = State::read_wire(args.get("state").ok_or(Refusal::Input)?, compact)?;
         let frame = args.get("frame").ok_or(Refusal::Input)?;
         if let Some(thrown) = frame.get("thrown") {
             let thrown = integer(Some(thrown))?;
@@ -1024,6 +1115,7 @@ mod tests {
                 r#"{"op":"get","data":null}"#,
                 &[0, MAX_SAFE, VIRTUAL_BASE + 1],
                 MAX_SAFE,
+                false,
             );
             assert_eq!(text.as_bytes(), legacy_frame_bytes(&text));
             let mut out = Out(Vec::new());
@@ -1032,7 +1124,7 @@ mod tests {
             assert_eq!(text.as_bytes(), legacy_frame_bytes(&text));
         }
         for key in ["done", "throw"] {
-            let text = end(key, MAX_SAFE);
+            let text = end(key, MAX_SAFE, false);
             assert_eq!(text.as_bytes(), legacy_frame_bytes(&text));
         }
         // A complete batch captured directly from the generated program, rather
@@ -1054,6 +1146,180 @@ mod tests {
             integer(Some(&Value::Num(9_007_199_254_740_991.0))).unwrap(),
             9_007_199_254_740_991
         );
+    }
+
+    fn transport_parse(text: &str) -> Value {
+        prompt_framing::json::parse_utf8(text.as_bytes(), 32).unwrap()
+    }
+    fn transport_args(state: Value, frame: Value, compact: bool) -> Value {
+        let mut fields = vec![
+            ("state".encode_utf16().collect(), state),
+            ("frame".encode_utf16().collect(), frame),
+        ];
+        if compact {
+            fields.push((
+                "wire".encode_utf16().collect(),
+                Value::Str("state-v1".encode_utf16().collect()),
+            ));
+        }
+        Value::Obj(fields)
+    }
+
+    #[test]
+    fn state_v1_initial_batches_preserve_every_default_operation_snapshot() {
+        let plain = call(11, &transport_parse(r#"{"function":0,"env":1}"#)).unwrap();
+        let tagged = call(
+            11,
+            &transport_parse(r#"{"function":0,"env":1,"wire":"state-v1"}"#),
+        )
+        .unwrap();
+        let plain = transport_parse(&plain);
+        let tagged = transport_parse(&tagged);
+        assert!(plain.get("wire").is_none());
+        assert_eq!(
+            tagged.get("wire").unwrap().as_str().unwrap(),
+            "state-v1".encode_utf16().collect::<Vec<_>>()
+        );
+        let Value::Arr(a) = plain.get("batch").unwrap() else {
+            panic!("batch")
+        };
+        let Value::Arr(b) = tagged.get("batch").unwrap() else {
+            panic!("batch")
+        };
+        assert_eq!(a.len(), b.len());
+        for (plain, tagged) in a.iter().zip(b) {
+            for key in ["request", "args", "ref"] {
+                assert_eq!(plain.get(key), tagged.get(key), "{key}");
+            }
+            let mut old = Out(Vec::new());
+            State::read(plain.get("state").unwrap())
+                .unwrap()
+                .write(&mut old);
+            let mut expanded = Out(Vec::new());
+            State::read_wire(tagged.get("state").unwrap(), true)
+                .unwrap()
+                .write(&mut expanded);
+            assert_eq!(old.0, expanded.0);
+        }
+    }
+
+    #[test]
+    fn state_v1_round_trips_all_modes_nested_registers_and_terminal_paths() {
+        let period = || Period {
+            seq: 9_007_199_254_740_991,
+            return_pc: 1,
+            len: 4096,
+            p: 1,
+            i: 0,
+            need: 0,
+            chunks: vec![Chunk {
+                base: 0,
+                nibbles: vec![0, 15],
+            }],
+        };
+        for mode in 0..=7 {
+            let state = State {
+                pc: 1,
+                env: 9_007_199_254_740_991,
+                stack: vec![1, VIRTUAL_BASE + 32],
+                catches: vec![(1, 1, 9_007_199_254_740_991); CATCH_REGISTERS],
+                mode,
+                target: 1,
+                period: Some(period()),
+                sum: Some(Sum {
+                    cache: period(),
+                    raw: vec![1; 8],
+                    numbers: [
+                        -0.0,
+                        f64::NAN,
+                        f64::INFINITY,
+                        f64::NEG_INFINITY,
+                        f64::from_bits(1),
+                        1.0,
+                    ],
+                    total: f64::from_bits(0x7ff8_0000_0000_0001),
+                }),
+            };
+            let mut object = Out(Vec::new());
+            state.write(&mut object);
+            let mut tuple = Out(Vec::new());
+            state.write_wire(&mut tuple, true);
+            let decoded = State::read_wire(&transport_parse(&tuple.text()), true).unwrap();
+            let mut again = Out(Vec::new());
+            decoded.write(&mut again);
+            assert_eq!(object.0, again.0);
+        }
+
+        let return_pc = PROGRAM
+            .iter()
+            .position(|instruction| matches!(instruction, Instruction::Return))
+            .unwrap();
+        for thrown in [false, true] {
+            let state = State {
+                pc: return_pc,
+                env: 1,
+                stack: Vec::new(),
+                catches: Vec::new(),
+                mode: 0,
+                target: 0,
+                period: None,
+                sum: None,
+            };
+            let mut object = Out(Vec::new());
+            state.write(&mut object);
+            let mut tuple = Out(Vec::new());
+            state.write_wire(&mut tuple, true);
+            let frame = transport_parse(if thrown {
+                r#"{"thrown":42}"#
+            } else {
+                r#"{"value":42}"#
+            });
+            let plain = call(
+                12,
+                &transport_args(transport_parse(&object.text()), frame.clone(), false),
+            )
+            .unwrap();
+            let tagged = call(
+                12,
+                &transport_args(transport_parse(&tuple.text()), frame, true),
+            )
+            .unwrap();
+            let plain = transport_parse(&plain);
+            let tagged = transport_parse(&tagged);
+            let key = if thrown { "throw" } else { "done" };
+            assert_eq!(plain.get(key), tagged.get(key));
+            assert!(plain.get("wire").is_none());
+            assert!(tagged.get("wire").is_some());
+        }
+    }
+
+    #[test]
+    fn state_v1_rejects_wrong_tuple_arity_and_object_state_without_legacy_retry() {
+        let object = transport_parse(
+            r#"{"pc":0,"env":1,"stack":[],"catches":[],"mode":0,"target":0,"period":null,"sum":null}"#,
+        );
+        let frame = transport_parse(r#"{"value":1}"#);
+        assert!(call(12, &transport_args(object, frame.clone(), true)).is_err());
+        for tuple in [
+            "[0,1,[],[],0,0,null]",
+            "[0,1,[],[],0,0,null,null,null]",
+            "[0,1,[],[],8,0,null,null]",
+            "[0,-1,[],[],0,0,null,null]",
+        ] {
+            assert!(call(
+                12,
+                &transport_args(transport_parse(tuple), frame.clone(), true)
+            )
+            .is_err());
+        }
+        // Unrecognized tags do not alter default raw Rust operation bytes.
+        let plain = call(11, &transport_parse(r#"{"function":0,"env":1}"#)).unwrap();
+        let unknown = call(
+            11,
+            &transport_parse(r#"{"function":0,"env":1,"wire":"state-v0"}"#),
+        )
+        .unwrap();
+        assert_eq!(plain, unknown);
     }
 
     #[test]
