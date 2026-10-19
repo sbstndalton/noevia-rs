@@ -23,7 +23,7 @@
 //!   ([`store::update_free`]), which Node shares while the slice is on.
 //! - [`context`]: the first project-writes slice of sbstndalton/noevia#1264, a free chat's
 //!   attachments project (core routes/projects.cjs `GET` and `POST /api/chats/{chatId}/context`),
-//!   behind its own switch NOEVIA_RUST_PROJECT_WRITES (cargo feature `rust-project-writes`).
+//!   permanently native under #1071 (required cargo feature `rust-project-writes`).
 //! - [`js`]: the JavaScript built-ins those handlers rely on.
 //!
 //! The caller (bins/noevia-server) has already run Node's request gate (session, origin, CSRF);

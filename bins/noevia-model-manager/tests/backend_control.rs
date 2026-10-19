@@ -64,7 +64,7 @@ impl DockerRead for FakeDocker {
     }
 }
 
-fn state(docker: FakeDocker, child: &str, backends: Backends) -> Arc<StateData> {
+fn state(docker: FakeDocker, _legacy_trap_base: &str, backends: Backends) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -93,8 +93,6 @@ fn state(docker: FakeDocker, child: &str, backends: Backends) -> Arc<StateData> 
                     gpu_vram: vec![],
                     default_port: Some(8080),
                     drm_root: std::path::PathBuf::from("/qa-absent-drm"),
-                    legacy_base: child.into(),
-                    token: TOKEN.into(),
                     meminfo: std::path::PathBuf::from("/qa-absent-meminfo"),
                     ram_reserve_gb: Some(32.0),
                 },
@@ -129,8 +127,6 @@ fn state(docker: FakeDocker, child: &str, backends: Backends) -> Arc<StateData> 
         docker: Arc::new(docker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(4),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: child.into(),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,
@@ -441,8 +437,6 @@ async fn native_sampler_owns_restart_errors_without_child_mirrors() {
                 gpu_vram: vec![],
                 default_port: Some(8080),
                 drm_root: dir.path().join("drm"),
-                legacy_base: child.clone(),
-                token: TOKEN.into(),
                 meminfo: dir.path().join("meminfo"),
                 ram_reserve_gb: Some(32.0),
             },

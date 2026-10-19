@@ -40,7 +40,7 @@ impl DockerRead for NoDocker {
 }
 
 // `roots` is (models, ini); `None` is the default python selector.
-fn state(roots: Option<(&Path, &Path)>, legacy_base: &str) -> Arc<StateData> {
+fn state(roots: Option<(&Path, &Path)>, _legacy_trap_base: &str) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -60,8 +60,6 @@ fn state(roots: Option<(&Path, &Path)>, legacy_base: &str) -> Arc<StateData> {
         docker: Arc::new(NoDocker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(4),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: legacy_base.into(),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,
@@ -383,8 +381,6 @@ mod linux {
                         gpu_vram,
                         default_port: Some(8080),
                         drm_root: dir.path().join("drm"),
-                        legacy_base: closed.clone(),
-                        token: TOKEN.into(),
                         meminfo: meminfo.clone(),
                         ram_reserve_gb: reserve,
                     },

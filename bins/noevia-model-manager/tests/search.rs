@@ -53,7 +53,7 @@ impl DockerRead for NoDocker {
     }
 }
 
-fn state(search: Option<Search>, legacy_base: &str) -> Arc<StateData> {
+fn state(search: Option<Search>, _legacy_trap_base: &str) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -73,8 +73,6 @@ fn state(search: Option<Search>, legacy_base: &str) -> Arc<StateData> {
         docker: Arc::new(NoDocker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(4),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: legacy_base.into(),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,

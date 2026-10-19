@@ -97,8 +97,10 @@ pub const LOG_CAP: usize = 1024 * 1024;
 const INVENTORY_CAP: usize = 1024;
 const REQUEST_CAP: usize = 1024 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(test)]
 pub const LEGACY_BASE: &str = "http://127.0.0.1:8091";
 pub const LEGACY_TIMEOUT: Duration = Duration::from_secs(600);
+#[cfg(test)]
 pub fn legacy_client() -> Result<reqwest::Client, reqwest::Error> {
     reqwest::Client::builder()
         .no_proxy()
@@ -218,8 +220,10 @@ pub struct StateData {
     pub docker: Arc<dyn DockerRead>,
     pub redactor: Redactor,
     pub permits: Semaphore,
+    #[cfg(test)]
     pub legacy: reqwest::Client,
-    /// The legacy child's address (production: LEGACY_BASE); tests use an ephemeral port.
+    /// The historical test child's address; no production private endpoint exists.
+    #[cfg(test)]
     pub legacy_base: String,
     /// #1747: keeps the chat preset's global `sleep-idle-seconds` in line with the setting.
     pub idle_unload: Option<Arc<idle_unload::Reconciler>>,
@@ -227,25 +231,6 @@ pub struct StateData {
     /// backend inventory are asked of the child.
     #[cfg(feature = "native-section-autoconfig")]
     pub section_autoconfig: Option<Arc<section_autoconfig::SectionAutoconfig>>,
-}
-
-/// #1668: what the Python child is told about the guarded embedding service: its container and
-/// address, so it skips only env names that point at it. `None` clears them all.
-pub fn embed_guard_env(service: Option<(&str, &str)>) -> [(&'static str, Option<String>); 3] {
-    [
-        (
-            "NOEVIA_EMBED_SERVICE_GUARDED",
-            service.map(|_| "1".to_owned()),
-        ),
-        (
-            "NOEVIA_EMBED_SERVICE_CONTAINER",
-            service.map(|(c, _)| c.to_owned()),
-        ),
-        (
-            "NOEVIA_EMBED_SERVICE_URL",
-            service.map(|(_, u)| u.to_owned()),
-        ),
-    ]
 }
 
 /// #1668: PUT /api/v1/embedding-service restarts and stops a container, so it is never left open.
@@ -1674,23 +1659,28 @@ async fn native_model_detail(
 /// child. They wait on the child, so they keep a forwarded route's budget.
 #[cfg(feature = "native-model-list")]
 async fn native_model_list(
-    state: &StateData,
+    _state: &StateData,
     list: &model_list::ModelList,
     route: model_list::Route,
 ) -> Response {
     let child = model_list::Child {
-        client: &state.legacy,
-        base: &state.legacy_base,
-        token: &state.token,
+        #[cfg(not(any(test, feature = "native-backends")))]
+        _lifetime: std::marker::PhantomData,
+        #[cfg(test)]
+        client: &_state.legacy,
+        #[cfg(test)]
+        base: &_state.legacy_base,
+        #[cfg(test)]
+        token: &_state.token,
         #[cfg(feature = "native-backends")]
-        live: state.backend_stats.as_deref(),
+        live: _state.backend_stats.as_deref(),
     };
     let outcome = match route {
         model_list::Route::Models => list.models(child).await,
         model_list::Route::Overview => {
             // While this process owns the download table the child's own is empty.
             #[cfg(feature = "native-downloads")]
-            let active = state.downloads.as_ref().map(|table| table.active());
+            let active = _state.downloads.as_ref().map(|table| table.active());
             #[cfg(not(feature = "native-downloads"))]
             let active = None;
             list.overview(child, active).await
@@ -2109,17 +2099,6 @@ async fn set_restart_error(
         "model-manager backend restart: the child did not record the restart state for a backend"
     );
 }
-#[cfg(all(feature = "native-backend-control", not(test)))]
-async fn set_restart_error(
-    legacy: &reqwest::Client,
-    base: &str,
-    token: &str,
-    name: &str,
-    error: Option<&str>,
-) {
-    let _ = (legacy, base, token, name, error);
-}
-
 #[cfg(feature = "native-backend-control")]
 async fn native_backend_control(
     state: Arc<StateData>,
@@ -2178,6 +2157,7 @@ async fn native_backend_control(
         if let Some(stats) = &state.backend_stats {
             stats.set_restart_error(&name, None);
         }
+        #[cfg(test)]
         set_restart_error(&state.legacy, &state.legacy_base, &state.token, &name, None).await;
         let task_state = state.clone();
         crate::work::spawn(async move {
@@ -2186,21 +2166,22 @@ async fn native_backend_control(
                 task_state.docker.restart_backend(&name),
             )
             .await;
-            let error = match outcome {
+            let _error = match outcome {
                 Ok(Ok(())) => return,
                 Ok(Err(e)) => format!("APIError: {e}"),
                 Err(_) => "APIError: the restart did not finish in time".to_owned(),
             };
             #[cfg(feature = "native-backends")]
             if let Some(stats) = &task_state.backend_stats {
-                stats.set_restart_error(&name, Some(&error));
+                stats.set_restart_error(&name, Some(&_error));
             }
+            #[cfg(test)]
             set_restart_error(
                 &task_state.legacy,
                 &task_state.legacy_base,
                 &task_state.token,
                 &name,
-                Some(&error),
+                Some(&_error),
             )
             .await;
         });
@@ -3323,15 +3304,20 @@ pub fn python_owned(method: &str, path: &str) -> bool {
 /// child, then the analysis. It waits on the child, so it keeps a forwarded route's budget.
 #[cfg(feature = "native-section-autoconfig")]
 async fn native_section_autoconfig(
-    state: &StateData,
+    _state: &StateData,
     autoconfig: &section_autoconfig::SectionAutoconfig,
     name: &str,
     query: &str,
 ) -> Response {
     let child = section_autoconfig::Child {
-        client: &state.legacy,
-        base: &state.legacy_base,
-        token: &state.token,
+        #[cfg(not(test))]
+        _lifetime: std::marker::PhantomData,
+        #[cfg(test)]
+        client: &_state.legacy,
+        #[cfg(test)]
+        base: &_state.legacy_base,
+        #[cfg(test)]
+        token: &_state.token,
     };
     match autoconfig.get(name, query, child).await {
         section_autoconfig::Outcome::Json(status, bytes) => (

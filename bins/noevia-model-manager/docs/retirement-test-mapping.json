@@ -106,7 +106,8 @@
       "a_guarded_python_delete_holds_the_download_table_while_forwarded",
       "a_dropped_guarded_delete_keeps_the_hold_and_its_permit_until_the_child_answers",
       "a_dropped_guarded_python_delete_keeps_the_hold_table_and_permit_until_the_child_answers",
-      "switch_to_a_model_being_deleted_never_saves_it_as_served"
+      "switch_to_a_model_being_deleted_never_saves_it_as_served",
+      "the_python_child_learns_which_container_and_address_are_guarded"
     ],
     "integration_remaining": [
       "env_seeds_once_and_saved_state_wins_afterwards",
@@ -132,7 +133,6 @@
       "previous_keeps_each_model_once_even_when_not_adjacent",
       "the_service_route_is_never_left_without_a_token",
       "all_hex_container_names_are_refused",
-      "the_python_child_learns_which_container_and_address_are_guarded",
       "a_change_that_cannot_get_the_lock_in_time_gives_up_and_never_applies_later",
       "a_roll_back_never_loads_the_attempted_set",
       "a_stop_then_failed_start_never_lets_the_old_warm_up_load",

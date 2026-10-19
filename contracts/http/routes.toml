@@ -21,7 +21,7 @@
 # storage metadata/list/read) are permanent the same way; their old switches are retired too. So
 # are the M4 project routes (a project's images and chat list, the free-chat list) and the
 # conversation export: their switch NOEVIA_RUST_PROJECTS is retired (sbstndalton/noevia#1071).
-# `switch` now only names NOEVIA_RUST_PROJECT_WRITES (#1264).
+# Deployment ownership switches are retired (#1071); naming one fails the build.
 
 [[route]]
 path = "/api/account/instructions"
@@ -239,7 +239,6 @@ owner = "node"
 [[route]]
 path = "/api/chats/{chatId}/context"
 owner = "rust"
-switch = "NOEVIA_RUST_PROJECT_WRITES"
 methods = ["GET", "POST"]
 
 [[route]]

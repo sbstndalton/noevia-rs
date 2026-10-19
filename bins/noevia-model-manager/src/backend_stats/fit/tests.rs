@@ -38,8 +38,6 @@ pub(crate) fn stats_for(case: &V, dir: &Path) -> BackendStats {
             gpu_vram: gpu_vram_map(env["GPU_VRAM"].as_str().unwrap_or("")).unwrap(),
             default_port: Some(8080),
             drm_root: dir.join("drm"),
-            legacy_base: "http://127.0.0.1:9".into(),
-            token: String::new(),
             meminfo,
             ram_reserve_gb: reserve_gb(env["HOST_RAM_RESERVE_GB"].as_str()),
         },

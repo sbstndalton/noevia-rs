@@ -456,10 +456,10 @@ impl DockerRead for NoDocker {
 }
 
 fn state(service: Arc<EmbeddingService>) -> Arc<StateData> {
-    state_at(service, noevia_model_manager::LEGACY_BASE)
+    state_at(service, "http://127.0.0.1:8091")
 }
 
-fn state_at(service: Arc<EmbeddingService>, legacy_base: &str) -> Arc<StateData> {
+fn state_at(service: Arc<EmbeddingService>, _legacy_trap_base: &str) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -481,8 +481,6 @@ fn state_at(service: Arc<EmbeddingService>, legacy_base: &str) -> Arc<StateData>
         docker: Arc::new(NoDocker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(2),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: legacy_base.to_owned(),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,
@@ -768,25 +766,6 @@ fn all_hex_container_names_are_refused() {
         assert!(ScopedControl::new("/x".into(), id).is_err(), "{id}");
     }
     assert!(ScopedControl::new("/x".into(), "cowork-embed-1").is_ok());
-}
-
-#[test]
-fn the_python_child_learns_which_container_and_address_are_guarded() {
-    let on = noevia_model_manager::embed_guard_env(Some(("cowork-embed-1", "http://embed:8080")));
-    assert_eq!(
-        on.map(|(k, v)| (k, v.unwrap_or_default())),
-        [
-            ("NOEVIA_EMBED_SERVICE_GUARDED", "1".to_owned()),
-            (
-                "NOEVIA_EMBED_SERVICE_CONTAINER",
-                "cowork-embed-1".to_owned()
-            ),
-            ("NOEVIA_EMBED_SERVICE_URL", "http://embed:8080".to_owned()),
-        ]
-    );
-    assert!(noevia_model_manager::embed_guard_env(None)
-        .iter()
-        .all(|(_, v)| v.is_none()));
 }
 
 #[tokio::test]

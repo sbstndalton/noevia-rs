@@ -332,8 +332,6 @@ async fn native_cache_and_public_responses_match_actual_python_without_mirrors()
                 gpu_vram: gpu_vram_map(env["GPU_VRAM"].as_str().unwrap_or("")).unwrap(),
                 default_port,
                 drm_root: drm.clone(),
-                legacy_base: fake_child.base.clone(),
-                token: "synthetic-token".into(),
                 meminfo: "/nonexistent/meminfo".into(),
                 ram_reserve_gb: Some(32.0),
             },
@@ -523,8 +521,6 @@ async fn stats_that_are_not_json_give_the_generic_sampler_error() {
             gpu_vram: vec![],
             default_port: Some(18230),
             drm_root: dir.path().join("drm"),
-            legacy_base: "http://127.0.0.1:9".into(),
-            token: String::new(),
             meminfo: "/nonexistent/meminfo".into(),
             ram_reserve_gb: Some(32.0),
         },
@@ -588,6 +584,18 @@ fn gpu_vram_map_follows_settings() {
 // production BackendStats has no mirror field, path, switch or sending branch.
 mod historical_backend_stats {
     use super::*;
+    const PUSH_PATH: &str = "/api/v1/internal/backend-stats";
+    // Frozen child-era configuration belongs to this oracle, not production.
+    struct Config {
+        configured: Vec<String>,
+        gpu_vram: Vec<(String, f64)>,
+        default_port: Option<u16>,
+        drm_root: PathBuf,
+        legacy_base: String,
+        token: String,
+        meminfo: PathBuf,
+        ram_reserve_gb: Option<f64>,
+    }
     struct BackendStats {
         native: super::super::BackendStats,
         mirror: reqwest::Client,
@@ -609,7 +617,18 @@ mod historical_backend_stats {
             let base = config.legacy_base.clone();
             let token = config.token.clone();
             Ok(Self {
-                native: super::super::BackendStats::with_clock(config, docker, clock)?,
+                native: super::super::BackendStats::with_clock(
+                    super::super::Config {
+                        configured: config.configured,
+                        gpu_vram: config.gpu_vram,
+                        default_port: config.default_port,
+                        drm_root: config.drm_root,
+                        meminfo: config.meminfo,
+                        ram_reserve_gb: config.ram_reserve_gb,
+                    },
+                    docker,
+                    clock,
+                )?,
                 mirror: reqwest::Client::builder()
                     .no_proxy()
                     .redirect(reqwest::redirect::Policy::none())

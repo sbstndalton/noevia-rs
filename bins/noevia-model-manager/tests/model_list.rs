@@ -45,7 +45,7 @@ impl DockerRead for NoDocker {
     }
 }
 
-fn state(list: Option<Arc<ModelList>>, legacy_base: &str) -> Arc<StateData> {
+fn state(list: Option<Arc<ModelList>>, _legacy_trap_base: &str) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -64,8 +64,6 @@ fn state(list: Option<Arc<ModelList>>, legacy_base: &str) -> Arc<StateData> {
         docker: Arc::new(NoDocker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(4),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: legacy_base.into(),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,
@@ -410,8 +408,6 @@ mod linux {
                     gpu_vram: vec![("llama-a".into(), 12.0)],
                     default_port: Some(8080),
                     drm_root: dir.path().join("drm"),
-                    legacy_base: "http://127.0.0.1:9".into(),
-                    token: TOKEN.into(),
                     meminfo,
                     ram_reserve_gb: Some(32.0),
                 },

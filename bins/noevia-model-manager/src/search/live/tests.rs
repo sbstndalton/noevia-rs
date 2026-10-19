@@ -69,8 +69,6 @@ fn stats(case: &V, dir: &Path) -> Arc<BackendStats> {
             gpu_vram: gpu_vram_map(env["GPU_VRAM"].as_str().unwrap_or("")).unwrap(),
             default_port: Some(8080),
             drm_root: dir.join("drm"),
-            legacy_base: "http://127.0.0.1:9".into(),
-            token: String::new(),
             meminfo,
             ram_reserve_gb: reserve_gb(None),
         },

@@ -46,7 +46,7 @@ impl DockerRead for NoDocker {
     }
 }
 
-fn state(stats: Option<Arc<BackendStats>>, legacy_base: &str) -> Arc<StateData> {
+fn state(stats: Option<Arc<BackendStats>>, _legacy_trap_base: &str) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -68,8 +68,6 @@ fn state(stats: Option<Arc<BackendStats>>, legacy_base: &str) -> Arc<StateData> 
         docker: Arc::new(NoDocker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(4),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: legacy_base.into(),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,
@@ -366,7 +364,7 @@ async fn recorded_worlds_through_the_router_and_the_unix_transport() {
         daemon(&socket, world.clone(), seen.clone());
         let probes = Arc::new(Mutex::new(Value::Null));
         let pushed = Arc::new(Mutex::new(Vec::new()));
-        let base = child(probes.clone(), pushed.clone()).await;
+        let _legacy_trap_base = child(probes.clone(), pushed.clone()).await;
         let now = Arc::new(AtomicU64::new(0));
         let n = now.clone();
         let env = &case["env"];
@@ -396,8 +394,6 @@ async fn recorded_worlds_through_the_router_and_the_unix_transport() {
                     gpu_vram: gpu_vram_map(env["GPU_VRAM"].as_str().unwrap_or("")).unwrap(),
                     default_port,
                     drm_root: drm.clone(),
-                    legacy_base: base,
-                    token: TOKEN.into(),
                     meminfo: "/nonexistent/meminfo".into(),
                     ram_reserve_gb: Some(32.0),
                 },
@@ -490,8 +486,6 @@ async fn route_shapes_and_ownership() {
                 gpu_vram: vec![],
                 default_port: Some(8080),
                 drm_root: dir.path().join("drm"),
-                legacy_base: closed_port(),
-                token: TOKEN.into(),
                 meminfo: "/nonexistent/meminfo".into(),
                 ram_reserve_gb: Some(32.0),
             },

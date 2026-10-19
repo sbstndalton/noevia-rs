@@ -488,7 +488,7 @@ async fn child(plans: Arc<Mutex<Vec<(String, String, String)>>>) -> u16 {
     port
 }
 
-fn state(table: Arc<Downloads>, child_port: u16) -> Arc<StateData> {
+fn state(table: Arc<Downloads>, _legacy_trap_port: u16) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -535,8 +535,6 @@ fn state(table: Arc<Downloads>, child_port: u16) -> Arc<StateData> {
         docker: Arc::new(NoDocker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(16),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: format!("http://127.0.0.1:{child_port}"),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,
@@ -572,6 +570,38 @@ async fn jobs(state: &Arc<StateData>) -> Vec<Value> {
         .as_array()
         .unwrap()
         .clone()
+}
+
+fn refused_endpoint() -> tokio::net::TcpSocket {
+    let socket = tokio::net::TcpSocket::new_v4().unwrap();
+    socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    socket
+}
+
+#[tokio::test]
+async fn refused_endpoint_is_reserved_without_accepting_connections() {
+    let endpoint = refused_endpoint();
+    let address = endpoint.local_addr().unwrap();
+    assert_eq!(
+        tokio::net::TcpListener::bind(address)
+            .await
+            .unwrap_err()
+            .kind(),
+        std::io::ErrorKind::AddrInUse,
+    );
+    assert_eq!(
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            tokio::net::TcpStream::connect(address)
+        )
+        .await
+        .unwrap()
+        .unwrap_err()
+        .kind(),
+        std::io::ErrorKind::ConnectionRefused,
+    );
+    drop(endpoint);
+    let _rebound = tokio::net::TcpListener::bind(address).await.unwrap();
 }
 
 async fn wait(state: &Arc<StateData>, done: impl Fn(&[Value]) -> bool) -> Vec<Value> {
@@ -728,14 +758,13 @@ async fn native_transfer_table_matches_actual_python_jobs_files_and_history() {
         });
         serve(&fake, "hub").await;
         serve(&fake, "cdn").await;
-        let dead = {
-            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            l.local_addr().unwrap().port()
-        };
+        // Keep this port reserved throughout the case without listening. Releasing a
+        // listener here let the later child trap reuse DEAD and turn refusal into a stall.
+        let dead = refused_endpoint();
         let ports = Ports {
             hub: fake.host("hub"),
             cdn: fake.host("cdn"),
-            dead: format!("127.0.0.1:{dead}"),
+            dead: dead.local_addr().unwrap().to_string(),
         };
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();

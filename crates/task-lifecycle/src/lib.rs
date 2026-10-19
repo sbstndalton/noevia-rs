@@ -30,6 +30,18 @@
 //! (noevia#1126), but any full journal folds the same. The host
 //! (noevia-core TASK_LIFECYCLE_IMPL) refuses the transition whenever the port refuses or disagrees.
 //!
+//! # Additive diagnostics (opcode 6)
+//!
+//! The original five replies remain unchanged. Opcode 6 takes an operation tag followed by
+//! its arguments: 0 exposes the Rust state/transition/authority read model; 1-5 mirror the
+//! original operations and add bounded failure context; 6 performs one raw host step.
+//! Errors retain their code and add a site, optional event index, current state and target.
+//! The host formats errors using its original raw values, never a reserialized replacement.
+//! A raw-step no-op can return `{"unchanged":true}`, preserving even a non-state host value.
+//! Its strict-identity projection affects only error precedence for non-state raw values;
+//! known-state stale checks always compare the actual projected from field in Rust.
+//! The same policy implementation serves original folds and diagnostic folds in linear time.
+//!
 //! No Unicode tables, number formatting or locale data are involved: types, states and stages are
 //! compared as exact UTF-16 code units, so no answer depends on the Node/ICU version.
 //!
@@ -39,6 +51,8 @@
 #![forbid(unsafe_code)]
 
 use prompt_framing::json::{self, Value};
+
+mod diagnostic;
 
 /// The largest request [`call`] accepts (the op byte and the JSON).
 pub const MAX_INPUT_BYTES: usize = 8 * 1024 * 1024 + 1;
@@ -71,6 +85,7 @@ pub const STATES: [State; 7] = [
 
 /// `INITIAL_STATE`.
 pub const INITIAL_STATE: State = State::Planned;
+const AUTHORITY_TYPES: &[&str] = &["task.stage", "task.revision"];
 
 impl State {
     /// The JS name.
@@ -158,17 +173,6 @@ impl Refusal {
 /// A fold either ends in a state, or stops where the JS throws.
 pub type Outcome = Result<State, Throw>;
 
-enum Stop {
-    Throws(Throw),
-    Refused(Refusal),
-}
-
-impl From<Throw> for Stop {
-    fn from(t: Throw) -> Self {
-        Stop::Throws(t)
-    }
-}
-
 fn is(s: &[u16], ascii: &str) -> bool {
     s.iter().copied().eq(ascii.encode_utf16())
 }
@@ -219,68 +223,8 @@ fn field<'a>(data: Option<&'a Value>, key: &str) -> Option<&'a Value> {
     data.and_then(|d| d.get(key))
 }
 
-fn stage_step(state: State, data: Option<&Value>) -> Result<State, Stop> {
-    let to = State::from_value(field(data, "to")).ok_or(Throw::UnknownState)?;
-    let from_matches = field(data, "from")
-        .and_then(Value::as_str)
-        .is_some_and(|s| is(s, state.name()));
-    if !from_matches {
-        return Err(Throw::Stale.into());
-    }
-    if to == State::Reviewing && to != state && !report_hash_ok(field(data, "reportHash")) {
-        return Err(Throw::ReportHash.into());
-    }
-    Ok(assert_stage_move(state, to)?)
-}
-
 fn is_failure(ty: &[u16]) -> bool {
     is(ty, "job.failed") || is(ty, "job.cancelled") || is(ty, "job.interrupted")
-}
-
-/// `step(state, event, { authoritative })`.
-fn step(state: State, event: &Value, authoritative: bool) -> Result<State, Stop> {
-    // `!event || typeof event.type !== 'string'`: only an object can carry a string `type`.
-    let ty = match event {
-        Value::Obj(_) => match event.get("type") {
-            Some(Value::Str(t)) => t.as_slice(),
-            _ => return Ok(state),
-        },
-        Value::Deep => return Err(Stop::Refused(Refusal::Input)),
-        _ => return Ok(state),
-    };
-    let data = match event.get("data") {
-        Some(d @ Value::Obj(_)) => Some(d),
-        Some(Value::Deep) => return Err(Stop::Refused(Refusal::Input)),
-        _ => None,
-    };
-    if is(ty, "task.stage") {
-        return stage_step(state, data);
-    }
-    if is(ty, "task.revision") {
-        return Ok(state);
-    }
-    if authoritative {
-        if is_failure(ty) && state != State::Merged {
-            return Ok(advance(state, State::Blocked)?);
-        }
-        return Ok(state);
-    }
-    let next = if is(ty, "job.started") {
-        advance(state, State::Implementing)
-    } else if is(ty, "progress") {
-        match field(data, "stage").and_then(Value::as_str) {
-            Some(s) if is(s, "implementing") => advance(state, State::Implementing),
-            Some(s) if is(s, "verifying") => advance(state, State::Verifying),
-            _ => Ok(state),
-        }
-    } else if is(ty, "job.completed") {
-        advance(state, State::Verifying)
-    } else if is_failure(ty) {
-        advance(state, State::Blocked)
-    } else {
-        Ok(state)
-    };
-    Ok(next?)
 }
 
 fn events_of(events: &Value) -> Result<&[Value], Refusal> {
@@ -297,25 +241,14 @@ pub fn is_authoritative(events: &[Value]) -> bool {
         matches!(e, Value::Obj(_))
             && e.get("type")
                 .and_then(Value::as_str)
-                .is_some_and(|t| is(t, "task.stage") || is(t, "task.revision"))
+                .is_some_and(|t| AUTHORITY_TYPES.iter().any(|name| is(t, name)))
     })
 }
 
 /// `foldEvents(events, fromState, { authoritative })`: `events` is an array or `null`; `from` any
 /// value (a non-state throws `unknown_state`, as `assertKnownState` does).
 pub fn fold(events: &Value, from: &Value, authoritative: bool) -> Result<Outcome, Refusal> {
-    let list = events_of(events)?;
-    let Some(mut state) = State::from_value(Some(from)) else {
-        return Ok(Err(Throw::UnknownState));
-    };
-    for event in list {
-        match step(state, event, authoritative) {
-            Ok(next) => state = next,
-            Err(Stop::Throws(t)) => return Ok(Err(t)),
-            Err(Stop::Refused(r)) => return Err(r),
-        }
-    }
-    Ok(Ok(state))
+    diagnostic::fold(events, from, authoritative).map(|result| result.map_err(|error| error.code))
 }
 
 /// `deriveLifecycle(events)`.
@@ -363,6 +296,7 @@ fn run(op: u8, args: &[Value]) -> Result<String, Refusal> {
             fold(events, from, *authoritative).map(outcome_json)
         }
         (5, [events]) => derive(events).map(outcome_json),
+        (6, args) => diagnostic::call(args),
         _ => Err(Refusal::Input),
     }
 }
