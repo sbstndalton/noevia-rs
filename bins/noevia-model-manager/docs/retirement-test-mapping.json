@@ -1,0 +1,358 @@
+[
+  {
+    "target": "badges",
+    "original_count": 8,
+    "archived": [
+      "benchmark_run_reads_stay_with_python",
+      "native_route_keeps_auth_and_method_policy",
+      "python_mode_forwards_both_methods_unchanged"
+    ],
+    "integration_remaining": [
+      "fixture_provenance_is_the_pinned_services_source",
+      "actual_python_differential",
+      "oversized_body_is_refused_before_the_store",
+      "dropped_write_cannot_land_after_a_newer_write",
+      "lock_wait_is_bounded_by_the_request_deadline"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "304f187fdc6acda52714e06441fd89d83bf3ca24893bcbcc13eb3eb963e199ef"
+  },
+  {
+    "target": "bench_runs",
+    "original_count": 7,
+    "archived": [
+      "actual_asgi_path_integer_method_and_auth_contract",
+      "python_mode_retains_forwarding_and_private_paths_remain_blocked",
+      "child_failures_map_to_500_or_refusal",
+      "actual_python_differential"
+    ],
+    "integration_remaining": [
+      "fixture_provenance_is_the_pinned_services_source",
+      "missing_store_is_500_and_not_created",
+      "native_chart_runtime_answers_without_any_child"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "920ac62b5cb0866da57af82691f9ccd0d8e80137dfe657d6973d9350a1f1642d"
+  },
+  {
+    "target": "benchmark_overview",
+    "original_count": 5,
+    "archived": [
+      "actual_python_differential",
+      "child_that_cannot_answer_is_502_and_its_own_error_is_500",
+      "only_get_of_the_exact_path_is_native"
+    ],
+    "integration_remaining": [
+      "fixture_provenance_is_the_pinned_services_source",
+      "the_private_job_path_is_never_forwarded"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "4886bffd753ef4e90d13b3e96e80175c98361d4ebffd53888f2cdc84f82f65c0"
+  },
+  {
+    "target": "download_targets",
+    "original_count": 8,
+    "archived": [
+      "downloads_start_stays_with_python",
+      "native_route_keeps_auth_and_non_get_policy",
+      "python_mode_forwards_get_unchanged"
+    ],
+    "integration_remaining": [
+      "fixture_provenance_is_the_pinned_services_source",
+      "actual_python_differential",
+      "entry_cap_answers_500_instead_of_reading_on",
+      "oversized_mount_table_answers_500",
+      "non_utf8_names_match_python"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "1fc5e6191521f363893864fb13e82886a4eb2d777cdc9c3d601e8a24a877b733"
+  },
+  {
+    "target": "downloads",
+    "original_count": 7,
+    "archived": [
+      "failures_and_the_overview_count",
+      "python_delete_forward_reserves_the_whole_table",
+      "actual_python_differential",
+      "a_stalled_python_delete_body_never_holds_the_table"
+    ],
+    "integration_remaining": [
+      "fixture_provenance_is_the_pinned_services_source",
+      "safe_dest_matches_python",
+      "route_shapes",
+      "native_transfer_table_matches_actual_python_jobs_files_and_history",
+      "a_stalled_native_delete_body_never_holds_the_table"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "2812ea35fbd5ba95d0999f85357f3d26dbebd756ae87ab57e0ef7fe81c72395e"
+  },
+  {
+    "target": "draft_heads",
+    "original_count": 3,
+    "archived": [
+      "unowned_requests_are_not_answered_natively"
+    ],
+    "integration_remaining": [
+      "route_shapes",
+      "actual_python_differential_through_the_router"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "83ec3ecd4a57475d459bd034ae06baa44b5a3be1b3d94a00170e93ff62bdcf73"
+  },
+  {
+    "target": "embedding",
+    "original_count": 42,
+    "archived": [
+      "a_guarded_python_delete_holds_the_download_table_while_forwarded",
+      "a_dropped_guarded_delete_keeps_the_hold_and_its_permit_until_the_child_answers",
+      "a_dropped_guarded_python_delete_keeps_the_hold_table_and_permit_until_the_child_answers",
+      "switch_to_a_model_being_deleted_never_saves_it_as_served"
+    ],
+    "integration_remaining": [
+      "env_seeds_once_and_saved_state_wins_afterwards",
+      "unset_seed_means_off_and_preset_has_no_model",
+      "preset_is_rerendered_from_saved_state_on_boot",
+      "switch_serves_both_while_reindexing_then_frees_the_old_model",
+      "old_model_stays_protected_while_the_router_still_reports_it_loaded",
+      "turning_off_stops_the_service_and_frees_the_last_model",
+      "delete_protection_follows_running_state_not_only_saved_state",
+      "unreadable_saved_state_fails_closed",
+      "invalid_requests_are_refused_without_touching_docker",
+      "symlink_escape_from_models_dir_is_refused",
+      "router_status_values_decide_loaded",
+      "docker_writes_are_limited_to_the_configured_container",
+      "scoped_control_posts_restart_and_stop_to_the_unix_peer",
+      "delete_route_refuses_the_service_model_before_python_sees_it",
+      "service_route_reports_and_applies_choices",
+      "boot_warms_the_saved_models_so_the_router_reports_them_loaded",
+      "sharded_models_are_protected_by_their_shard_base_key",
+      "a_bad_state_file_or_read_only_config_leaves_an_error_state_that_refuses_deletes",
+      "an_empty_first_boot_seed_is_not_saved_as_off_for_good",
+      "a_docker_timeout_rolls_back_and_keeps_both_models_protected",
+      "previous_keeps_each_model_once_even_when_not_adjacent",
+      "the_service_route_is_never_left_without_a_token",
+      "all_hex_container_names_are_refused",
+      "the_python_child_learns_which_container_and_address_are_guarded",
+      "a_change_that_cannot_get_the_lock_in_time_gives_up_and_never_applies_later",
+      "a_roll_back_never_loads_the_attempted_set",
+      "a_stop_then_failed_start_never_lets_the_old_warm_up_load",
+      "a_roll_back_warms_the_restored_set_again",
+      "an_embed_restart_behind_our_back_is_warmed_within_the_probe_interval",
+      "the_watcher_never_warms_while_a_change_holds_the_lock",
+      "the_watcher_never_warms_when_embedding_is_off",
+      "the_watcher_only_loads_the_saved_models",
+      "a_failing_re_warm_backs_off",
+      "image_presets_are_off_unless_multimodal_rag_is_on",
+      "a_projector_beside_the_model_gets_its_own_preset_that_never_loads_at_start",
+      "a_model_without_exactly_one_projector_gets_no_image_preset",
+      "the_projector_of_a_served_model_cannot_be_deleted",
+      "a_loaded_image_preset_does_not_hold_back_releasing_the_old_model"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "e5f09c155d0bbd453268decc05dd68d30ed544daa03f8fd8fac62db87e138fc3"
+  },
+  {
+    "target": "idle_unload",
+    "original_count": 10,
+    "archived": [
+      "editor_save_without_the_key_gets_it_back_with_a_matching_revision",
+      "other_routes_keep_their_revision_and_never_reconcile",
+      "refused_writes_and_reads_leave_the_preset_alone",
+      "setting_persists_applies_at_once_and_clears_back_to_env",
+      "zero_disables_and_removes_the_global_key"
+    ],
+    "integration_remaining": [
+      "per_model_override_is_never_touched",
+      "setting_defaults_to_thirty_minutes",
+      "bad_requests_change_nothing",
+      "unreadable_store_falls_back_to_env",
+      "no_store_refuses_saves"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "61f9f3bf11c7c7b4df1303d994777ee0ca10b2a26043ed3345305622894fdad3"
+  },
+  {
+    "target": "model_delete",
+    "original_count": 5,
+    "archived": [
+      "selector_off_forwards"
+    ],
+    "integration_remaining": [
+      "the_token_is_checked_first",
+      "other_platforms_refuse",
+      "actual_python_differential_through_the_router",
+      "python_delete_is_refused_while_a_native_download_is_active"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "634dc70cf301bb92de2dad3f11ab33732c372dbbb370803736e42f7a29c9ba6f"
+  },
+  {
+    "target": "model_detail",
+    "original_count": 8,
+    "archived": [
+      "native_route_keeps_auth_and_non_get_policy",
+      "python_mode_forwards_get_unchanged",
+      "every_case_matches_the_actual_python_route_through_the_router",
+      "a_child_that_cannot_answer_is_never_guessed_around"
+    ],
+    "integration_remaining": [
+      "the_private_runtime_call_is_never_reachable_from_outside",
+      "without_the_contained_opener_the_route_refuses",
+      "a_link_leaving_the_models_folder_refuses",
+      "native_live_fields_need_no_child",
+      "missing_native_live_owner_refuses_without_private_rpc_and_invalid_files_still_match"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "e154c6a04a53b807082276d18b17e144a2d70ae3abfbb7ce38b312b097c07ab3"
+  },
+  {
+    "target": "model_list",
+    "original_count": 10,
+    "archived": [
+      "python_mode_forwards_both_routes_unchanged",
+      "native_routes_keep_auth_and_non_get_policy",
+      "every_case_matches_the_actual_python_routes_through_the_router",
+      "a_child_that_cannot_answer_is_never_guessed_around",
+      "a_store_without_the_badge_table_fails_the_list_after_the_child",
+      "a_section_path_leaving_the_folder_refuses_only_the_list",
+      "the_native_download_table_is_counted_instead_of_the_childs"
+    ],
+    "integration_remaining": [
+      "the_private_runtime_calls_are_never_reachable_from_outside",
+      "without_the_contained_opener_the_list_refuses",
+      "native_live_fields_replace_the_private_calls"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "11e2454ef54cf65f4556d812362c24b02e79abcf232b6495f3053f17fc845a3f"
+  },
+  {
+    "target": "model_updates",
+    "original_count": 6,
+    "archived": [
+      "native_route_keeps_auth_and_non_get_policy",
+      "neighbouring_routes_stay_with_python",
+      "python_mode_forwards_get_unchanged"
+    ],
+    "integration_remaining": [
+      "missing_models_folder_and_store_failures_have_pythons_shape",
+      "walk_refusal_is_the_native_503",
+      "actual_python_differential_through_router"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "5032828838840dcc5eb7e2be952e066b85132a7ea9da3a3b42731950125dd360"
+  },
+  {
+    "target": "policy",
+    "original_count": 12,
+    "archived": [
+      "internal_child_paths_get_404_and_never_reach_the_child",
+      "python_owned_response_can_exceed_native_log_timeout"
+    ],
+    "integration_remaining": [
+      "actual_python_policy_goldens",
+      "auth_before_docker_and_exact_health_exemption",
+      "native_error_never_falls_back_and_unknown_never_reads_logs",
+      "admission_and_ownership",
+      "concurrency_limit_refuses_before_docker_and_health_stays_light",
+      "timeout_returns_native_refusal_without_fallback",
+      "secret_filter_never_reveals_value",
+      "unicode_credentials_never_survive_output_or_secret_queries",
+      "counter_exemptions_require_a_single_ascii_word",
+      "native_host_auth_method_empty_and_history_use_only_rust_state"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "4cbf83b574703e94ad5a4de0f1b7e13e4f9a5a7485fc6597d5b3ca0dd98411a0"
+  },
+  {
+    "target": "search",
+    "original_count": 6,
+    "archived": [
+      "unowned_requests_are_not_answered_natively",
+      "without_the_native_search_the_routes_are_forwarded",
+      "actual_python_differential_through_the_router",
+      "refusal_bad_gateway_and_failure_answers"
+    ],
+    "integration_remaining": [
+      "route_shapes",
+      "a_client_cannot_reach_the_private_search_calls"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "4f7ce26fabbefb91ccbb27792ad0d5405ba43cb8f319dfed2f2890f519f28c48"
+  },
+  {
+    "target": "section_autoconfig",
+    "original_count": 8,
+    "archived": [
+      "an_unreachable_child_is_the_forwarded_routes_502",
+      "every_case_matches_the_actual_python_route_through_the_router",
+      "python_mode_forwards_the_route_unchanged"
+    ],
+    "integration_remaining": [
+      "other_methods_and_shapes_answer_as_in_python_mode",
+      "the_private_runtime_call_is_never_reachable_from_outside",
+      "the_native_route_keeps_the_token_check",
+      "without_the_contained_opener_the_route_refuses",
+      "a_link_out_of_the_models_folder_refuses"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "8e2d17e50242ca5da1f81f64eeeadeddd58058ea882da9b7e60e389b0dd6991c"
+  },
+  {
+    "target": "section_writes",
+    "original_count": 4,
+    "archived": [
+      "actual_python_differential",
+      "safe_defaults_plan_failures_and_name_checks"
+    ],
+    "integration_remaining": [
+      "non_native_shapes_never_write",
+      "native_safe_defaults_never_asks_child_for_a_plan"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "a05f3e62b3a047087eef6f4e8b722d2926da7b1347bd7957c346edd25e73d673"
+  },
+  {
+    "target": "settings",
+    "original_count": 8,
+    "archived": [
+      "native_route_keeps_auth_and_non_get_policy",
+      "put_stays_with_the_python_writer",
+      "python_mode_forwards_get_unchanged"
+    ],
+    "integration_remaining": [
+      "fixture_provenance_is_the_pinned_services_source",
+      "actual_python_differential",
+      "rollback_journal_store_is_not_converted_to_wal",
+      "oversized_value_is_refused_not_read",
+      "closed_wal_store_and_read_only_file_are_read"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "d4a4dcb603cbb3bbfc6596e9d4736e1ee69dc3a74b5769718fb8747ca4a0000c"
+  },
+  {
+    "target": "settings_write",
+    "original_count": 2,
+    "archived": [
+      "actual_python_differential"
+    ],
+    "integration_remaining": [
+      "unavailable_test_and_limits"
+    ],
+    "source_ref": "10e1b87d94be179458f2c9c068fe76aa1f148dd3",
+    "source_sha256": "bf33d129b8355a1035a1cf1804cb969b7d572860f1318af0d303376812c20f29"
+  },
+  {
+    "target": "backend_stats",
+    "original_count": 1,
+    "archived": [
+      "actual_python_differential"
+    ],
+    "integration_remaining": [],
+    "native_replacements": [
+      "backend_stats::tests::native_cache_and_public_responses_match_actual_python_without_mirrors"
+    ],
+    "source_path": "bins/noevia-model-manager/src/backend_stats/tests.rs",
+    "source_ref": "32bf0b34d666e6599a7d79682e624a7303b5c9ab",
+    "source_sha256": "d96ba531e1270e2df4bfed7fbd48217e39344b1eb4db791954aa58660d3a6584"
+  }
+]

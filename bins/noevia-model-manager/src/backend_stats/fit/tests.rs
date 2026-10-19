@@ -137,7 +137,7 @@ async fn an_unreadable_reserve_refuses_the_inventory() {
     let case = &fx["cases"][0];
     let dir = tempfile::tempdir().unwrap();
     let mut case = case.clone();
-    case["env"]["HOST_RAM_RESERVE_GB"] = V::String("1e3".into());
+    case["env"]["HOST_RAM_RESERVE_GB"] = V::String("not-a-float".into());
     let stats = stats_for(&case, dir.path());
     assert_eq!(stats.usable_ram(), None);
     assert!(stats.inventory().await.is_none());
@@ -167,7 +167,7 @@ fn reserve_and_ram_follow_python() {
     assert_eq!(reserve_gb(None), Some(DEFAULT_RESERVE_GB));
     assert_eq!(reserve_gb(Some("8")), Some(8.0));
     assert_eq!(reserve_gb(Some(" +8.25\n")), Some(8.25));
-    for bad in ["", "1e3", "inf", "nan", "8.", ".5", "1_0", "0x10", "8 kB"] {
+    for bad in ["", "inf", "nan", "0x10", "8 kB"] {
         assert_eq!(reserve_gb(Some(bad)), None, "{bad:?}");
     }
     assert_eq!(usable_ram_gb(0.0, -10.0), 0.0);
@@ -234,4 +234,186 @@ pub(crate) fn hung_stats(
     let mut stats = stats_for(&fixture()["repo"][0], dir);
     stats.docker = Arc::new(crate::docker::UnixDocker { socket });
     (stats, calls, server)
+}
+
+#[cfg(all(feature = "native-search", feature = "native-section-autoconfig"))]
+#[tokio::test]
+async fn authoritative_repository_timeout_retains_configured_cached_capacity_without_negative_cache(
+) {
+    use std::sync::atomic::Ordering;
+    let dir = tempfile::tempdir().unwrap();
+    let (mut stats, calls, server) = hung_stats(dir.path());
+    stats.config.configured = vec!["llama-cuda".into()];
+    // Existing seed holds a measured24GiB backend. Discovery failure must not erase it.
+    for expected in 1..=2 {
+        let started = std::time::Instant::now();
+        let inv = stats.repository_inventory().await.unwrap();
+        assert_eq!(inv.gpu, vec![("llama-cuda".to_owned(), 24.0)]);
+        assert_eq!(inv.ram, 32.0);
+        assert!(started.elapsed() >= std::time::Duration::from_secs(9));
+        assert!(started.elapsed() < std::time::Duration::from_secs(15));
+        assert_eq!(calls.load(Ordering::Relaxed), expected);
+    }
+    // Known declaration still wins a cached measurement after a failed discovery.
+    stats.config.gpu_vram = vec![("llama-cuda".into(), 12.0)];
+    let inv = stats.inventory_from(&[]).unwrap();
+    assert_eq!(inv.gpu, vec![("llama-cuda".to_owned(), 12.0)]);
+    server.abort();
+    let _ = server.await;
+}
+
+#[cfg(all(feature = "native-search", feature = "native-section-autoconfig"))]
+#[tokio::test]
+async fn authoritative_repository_discovery_cancellation_drops_work_without_poisoning_reads() {
+    use std::sync::atomic::Ordering;
+    let dir = tempfile::tempdir().unwrap();
+    let (stats, calls, server) = hung_stats(dir.path());
+    let stats = Arc::new(stats);
+    let worker = stats.clone();
+    let task = tokio::spawn(async move { worker.repository_inventory().await });
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while calls.load(Ordering::Relaxed) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+    // No optional negative-cache state was installed by the cancelled authoritative request.
+    assert!(stats.fallback_reads.run(async { 7 }).await.is_ok());
+    server.abort();
+    let _ = server.await;
+}
+
+/// Native replay of the actual SDK malformed-daemon source oracle.
+#[cfg(all(feature = "native-search", feature = "native-section-autoconfig"))]
+pub(crate) fn stats_with_reference_fault(case: &V, fault: &str, dir: &Path) -> BackendStats {
+    use crate::backend_stats::{DockerApi, Raw};
+    struct FaultDaemon {
+        base: World,
+        world: V,
+        fault: String,
+    }
+    impl DockerApi for FaultDaemon {
+        fn get<'a>(&'a self, path: &'a str) -> crate::Job<'a, Raw> {
+            Box::pin(async move {
+                let bare = path.split('?').next().unwrap();
+                let mut status = 200;
+                let body = if bare == "/containers/json" {
+                    match self.fault.as_str() {
+                        "bounded-json" => Some(serde_json::to_vec(&serde_json::json!({"qa":"q".repeat(super::super::DOCKER_JSON_CAP)})).unwrap()),
+                        "bounded-inventory" => Some(serde_json::to_vec(&vec![serde_json::json!({"Id":"qa"}); crate::INVENTORY_CAP + 1]).unwrap()),
+                        "api500-numeric-message" => {
+                            status = 500;
+                            Some(br#"{"message":123}"#.to_vec())
+                        }
+                        "api404-numeric-message" => {
+                            status = 404;
+                            Some(br#"{"message":123}"#.to_vec())
+                        }
+                        "api500-missing-message" => {
+                            status = 500;
+                            Some(b"{}".to_vec())
+                        }
+                        "api500-invalid-json" => {
+                            status = 500;
+                            Some(b"qa".to_vec())
+                        }
+                        "api500-long-message" => {
+                            status = 500;
+                            Some(
+                                serde_json::to_vec(
+                                    &serde_json::json!({"message":"q".repeat(8192)}),
+                                )
+                                .unwrap(),
+                            )
+                        }
+                        "invalid-json" => Some(b"{bad".to_vec()),
+                        "wrong-list-type" => Some(br#"{"wrong":[]}"#.to_vec()),
+                        "missing-list-id" => Some(b"[{}]".to_vec()),
+                        "list-timeout" => return std::future::pending().await,
+                        _ => None,
+                    }
+                } else if bare.starts_with("/containers/")
+                    && bare.ends_with("/json")
+                    && ["missing-name", "nonstring-name"].contains(&self.fault.as_str())
+                {
+                    let mut attrs = self.world["containers"][0].clone();
+                    attrs.as_object_mut().unwrap().remove("Name");
+                    if self.fault == "nonstring-name" {
+                        attrs["Name"] = V::from(123);
+                    }
+                    Some(serde_json::to_vec(&attrs).unwrap())
+                } else if bare.starts_with("/images/") && self.fault == "invalid-tags" {
+                    let mut attrs = self.world["images"][0].clone();
+                    attrs["RepoTags"] = serde_json::json!([1]);
+                    Some(serde_json::to_vec(&attrs).unwrap())
+                } else {
+                    None
+                };
+                match body {
+                    Some(body) => Ok(Raw {
+                        status,
+                        reason: "QA".into(),
+                        body,
+                    }),
+                    None => self.base.get(path).await,
+                }
+            })
+        }
+    }
+    let mut stats = stats_for(case, dir);
+    stats.config.configured = vec!["llama-cuda".into()];
+    stats.docker = Arc::new(FaultDaemon {
+        base: World(Mutex::new(Some(case["docker"].clone()))),
+        world: case["docker"].clone(),
+        fault: fault.to_owned(),
+    });
+    stats
+}
+
+#[cfg(all(feature = "native-search", feature = "native-section-autoconfig"))]
+#[tokio::test(start_paused = true)]
+async fn authoritative_discovery_distinguishes_actual_reference_docker_exception_boundaries() {
+    let fx: V = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/repo-runtime-python.v1.json"
+    ))
+    .unwrap();
+    let shapes = &fx["docker_shapes"];
+    assert_eq!(shapes["answers"].as_array().unwrap().len(), 12);
+    for answer in shapes["answers"].as_array().unwrap() {
+        let dir = tempfile::tempdir().unwrap();
+        let stats = stats_with_reference_fault(
+            &shapes["case"],
+            answer["fault"].as_str().unwrap(),
+            dir.path(),
+        );
+        let result = stats.repository_inventory().await;
+        if answer["status"] == 500 {
+            assert!(matches!(result, Err(Fail::Raised)), "{}", answer["fault"]);
+        } else {
+            let inv = result.unwrap();
+            assert_eq!(
+                inv.gpu,
+                vec![("llama-cuda".to_owned(), 24.0)],
+                "{}",
+                answer["fault"]
+            );
+        }
+    }
+}
+
+#[cfg(all(feature = "native-search", feature = "native-section-autoconfig"))]
+#[tokio::test]
+async fn authoritative_discovery_refuses_native_bounds_without_partial_inventory() {
+    let fx = fixture();
+    for fault in ["bounded-json", "bounded-inventory"] {
+        let dir = tempfile::tempdir().unwrap();
+        let stats = stats_with_reference_fault(&fx["repo"][0], fault, dir.path());
+        assert!(
+            matches!(stats.repository_inventory().await, Err(Fail::Refused)),
+            "{fault}"
+        );
+    }
 }

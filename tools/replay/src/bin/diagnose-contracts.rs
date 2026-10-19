@@ -131,8 +131,11 @@ impl FakeDocker {
                     .lines()
                     .next()
                     .ok_or("request line")?;
-                let body = if request
+                let body = if request == "GET /version HTTP/1.1" {
+                    br#"{"ApiVersion":"1.45"}"#.to_vec()
+                } else if request
                     == "GET /containers/json?all=true&limit=1025&size=false HTTP/1.1"
+                    || request == "GET /containers/json?all=true&filters=%7B%22label%22%3A%5B%22noevia.model-manager.bench%3D1%22%5D%7D HTTP/1.1"
                 {
                     b"[]".to_vec()
                 } else {
@@ -234,6 +237,43 @@ fn require(ok: bool, message: &str) -> Result<()> {
         Err(message.into())
     }
 }
+fn binary_sha256(path: &Path) -> Result<String> {
+    let mut file = fs::File::open(path)?;
+    require(
+        file.metadata()?.is_file(),
+        "binary artifact must be regular",
+    )?;
+    let mut total = 0usize;
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 65536];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        total = total.checked_add(n).ok_or("binary hash overflow")?;
+        require(total <= 512 * 1024 * 1024, "binary artifact cap")?;
+        hash.update(buffer.get(..n).ok_or("binary hash count")?);
+    }
+    Ok(format!("{:x}", hash.finalize()))
+}
+fn no_manager_children(manager: &Owned) -> Result<()> {
+    let mut count = 0usize;
+    for entry in fs::read_dir(format!("/proc/{}/task", manager.leader.child.id()))? {
+        count += 1;
+        require(count <= 128, "native manager thread inventory cap")?;
+        let entry = entry?;
+        let mut text = String::new();
+        fs::File::open(entry.path().join("children"))?
+            .take(4097)
+            .read_to_string(&mut text)?;
+        require(
+            text.len() <= 4096 && text.trim().is_empty(),
+            "native manager spawned a child",
+        )?;
+    }
+    Ok(())
+}
 fn artifact(path: &Path, value: &Value) -> Result<()> {
     struct Bounded(Vec<u8>);
     impl Write for Bounded {
@@ -293,6 +333,8 @@ enum RunMode {
     Rust,
     RustStartup,
     RustOff,
+    HistoricalConfirmed,
+    HistoricalUnconfirmed,
     PromptsAbsent,
     PromptsWrongToken,
     PromptsPortOmitted,
@@ -307,6 +349,8 @@ impl RunMode {
             "rust" => Ok(Self::Rust),
             "rust-startup" => Ok(Self::RustStartup),
             "rust-off" => Ok(Self::RustOff),
+            "historical-confirmed" => Ok(Self::HistoricalConfirmed),
+            "historical-unconfirmed" => Ok(Self::HistoricalUnconfirmed),
             "prompts-absent" => Ok(Self::PromptsAbsent),
             "prompts-wrong-token" => Ok(Self::PromptsWrongToken),
             "prompts-port-omitted" => Ok(Self::PromptsPortOmitted),
@@ -320,6 +364,8 @@ impl RunMode {
             Self::Rust => "rust",
             Self::RustStartup => "rust-startup",
             Self::RustOff => "rust-off",
+            Self::HistoricalConfirmed => "historical-confirmed",
+            Self::HistoricalUnconfirmed => "historical-unconfirmed",
             Self::PromptsAbsent => "prompts-absent",
             Self::PromptsWrongToken => "prompts-wrong-token",
             Self::PromptsPortOmitted => "prompts-port-omitted",
@@ -359,6 +405,8 @@ impl ExitObservation {
             && matches!(
                 mode,
                 RunMode::Python
+                    | RunMode::HistoricalConfirmed
+                    | RunMode::HistoricalUnconfirmed
                     | RunMode::PromptsAbsent
                     | RunMode::PromptsWrongToken
                     | RunMode::PromptsPortOmitted
@@ -1033,8 +1081,13 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
     fs::set_permissions(root, fs::Permissions::from_mode(0o700))?;
     for dir in ["bin", "models", "mm-data", "ui-data"] {
         fs::create_dir(root.join(dir))?;
+        fs::set_permissions(root.join(dir), fs::Permissions::from_mode(0o700))?;
     }
     fs::write(root.join("models/models.ini"), "version = 1\n")?;
+    fs::write(
+        root.join("search-trusted.json"),
+        br#"{"quantisers":["qa"],"labs":["qa"]}"#,
+    )?;
     artifact(&root.join("oracle.json"), oracle)?;
     let python = qualification_path("PYTHON", "/tmp/s1-prompts-native-venv/bin/python");
     require(
@@ -1097,11 +1150,29 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
             format!("unix://{}", root.join("docker.sock").display()),
         );
     if mode.starts_with("rust") {
-        manager.env("MODEL_MANAGER_IMPL", "rust").env(
-            "MODEL_MANAGER_DIAGNOSE_IMPL",
-            if mode == "rust-off" { "python" } else { "rust" },
-        );
+        // Both retired selectors are hostile inputs: the shipping owner remains native.
+        manager
+            .env("MODEL_MANAGER_IMPL", "python")
+            .env("SEARCH_TRUSTED_PATH", root.join("search-trusted.json"))
+            .env(
+                "MODEL_MANAGER_DIAGNOSE_IMPL",
+                if mode == "rust-startup" {
+                    "retired-invalid-value"
+                } else {
+                    "python"
+                },
+            );
     } else {
+        if mode.starts_with("historical-") {
+            manager.env(
+                "NOEVIA_NATIVE_MODEL_MANAGER_DIAGNOSE_CONFIRMED",
+                if mode == "historical-confirmed" {
+                    "1"
+                } else {
+                    "0"
+                },
+            );
+        }
         manager.arg("-B").arg(root.join("bin/uvicorn")).args([
             "app.main:app",
             "--host",
@@ -1111,7 +1182,14 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
         ]);
     }
     drop(guard_a);
-    drop(guard_b);
+    // Retain the pre-spawn listener through native readiness, requests and shutdown.
+    let private_trap = if mode.starts_with("rust") {
+        guard_b.set_nonblocking(true)?;
+        Some(guard_b)
+    } else {
+        drop(guard_b);
+        None
+    };
     let mut manager = Owned::spawn(
         manager,
         if mode.starts_with("rust") {
@@ -1138,45 +1216,20 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
             == 401,
         "direct wrong-token readiness gate",
     )?;
-    if mode == "rust-startup" || mode == "rust-off" {
-        let child = Base {
-            host: "127.0.0.1".into(),
-            port: 8091,
-        };
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            manager.pump()?;
-            require(Instant::now() < deadline, "owned child startup deadline")?;
-            if request(
-                &child,
-                "GET",
-                "/api/v1/backends/synthetic-only/diagnose",
-                &[("X-Model-Loader-Token".into(), "wrong".into())],
-                &[],
-            )
-            .is_ok_and(|response| response.status == 401)
-            {
-                break;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
+    if mode.starts_with("rust") {
+        no_manager_children(&manager)?;
+        require(private_trap.as_ref().is_some_and(|trap| matches!(trap.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)), "native startup attempted private RPC")?;
+    }
+    if mode.starts_with("historical-") {
         let response = request(
-            &child,
+            &manager_base,
             "GET",
             "/api/v1/backends/synthetic-only/diagnose",
             &[("X-Model-Loader-Token".into(), TOKEN.into())],
             &[],
         )?;
         let marker = dependencies::manifest(&root.join("child-confirmation"))?;
-        let selected = mode != "rust-off";
-        let rows = vec![
-            json!({"mode":mode,"child_confirmation":String::from_utf8(marker.clone())?,"direct_child":normalized(&response)?}),
-        ];
-        artifact(
-            &Path::new("/tmp").join(format!("s1-diagnose-startup-{mode}.json")),
-            &json!({"rows":rows,"test_only_guard":true}),
-        )?;
-
+        let selected = mode == "historical-confirmed";
         require(
             marker == if selected { b"1" } else { b"0" },
             "explicit child diagnosis confirmation",
@@ -1184,6 +1237,13 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
         require(
             response.status == if selected { 503 } else { 200 },
             "owned child diagnosis selection/refusal",
+        )?;
+        let rows = vec![
+            json!({"mode":mode,"child_confirmation":String::from_utf8(marker)?,"direct_child":normalized(&response)?}),
+        ];
+        artifact(
+            &Path::new("/tmp").join(format!("s1-diagnose-startup-{mode}.json")),
+            &json!({"rows":rows,"test_only_guard":true,"shipping_child":false}),
         )?;
         manager.finish()?;
         fake.finish()?;
@@ -1298,9 +1358,23 @@ fn run_mode(core: &Path, bins: &Path, mode: &str, oracle: &Value) -> Result<Vec<
         path,
         &[],
     )?);
+    if mode.starts_with("rust") {
+        no_manager_children(&manager)?;
+        require(
+            !root.join("child-confirmation").exists(),
+            "native manager invoked Python shim",
+        )?;
+        require(private_trap.as_ref().is_some_and(|trap| matches!(trap.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock)), "native manager attempted private RPC")?;
+    }
     front.finish()?;
     node.finish()?;
     manager.finish()?;
+    if let Some(trap) = &private_trap {
+        require(
+            matches!(trap.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock),
+            "native shutdown attempted private RPC",
+        )?;
+    }
     fake.finish()?;
     Ok(rows)
 }
@@ -1318,7 +1392,17 @@ fn featureless_control() -> Result<()> {
         .env("DATA_DIR", &data)
         .env("DIAGNOSE_CHILD_MARKER", &marker);
     let output = process::bounded(command, Vec::new(), Duration::from_secs(2))?;
-    require(output.status.code()==Some(1) && output.stdout.is_empty() && output.stderr==b"Error: \"native-diagnose requires rust model manager and compiled native-diagnose feature\"\n","featureless diagnosis startup refusal")?;
+    require(
+        output.status.code() == Some(1)
+            && output.stdout.is_empty()
+            && output.stderr == b"Error: \"mandatory native-routing capability is not compiled\"\n",
+        &format!(
+            "featureless diagnosis startup refusal: status={:?}, stdout={:?}, stderr={:?}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    )?;
     require(
         !data.exists() && !marker.exists(),
         "featureless startup touched child/store",
@@ -1336,6 +1420,45 @@ fn featureless_control() -> Result<()> {
         Path::new("/tmp/s1-diagnose-featureless-control.json"),
         &json!({"binary":binary,"status":output.status.code(),"capability_status":capability.status.code(),"child_marker_absent":!marker.exists(),"store_absent":!data.exists()}),
     )?;
+    Ok(())
+}
+fn require_frozen_corpus(rows: &[Value]) -> Result<()> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../contracts/http/corpus/model-manager-diagnose.v1");
+    let corpus = replay::corpus::load(&root)?;
+    require(
+        corpus.exchanges.len() == 9 && rows.len() == 9 && corpus.dropped == 0,
+        "all frozen diagnosis exchanges must remain",
+    )?;
+    for (row, exchange) in rows.iter().zip(&corpus.exchanges) {
+        let response = row.get("response").ok_or("fresh response")?;
+        let recorded = exchange.response();
+        // The saved corpus predates #1480. Preserve all old headers and require exactly
+        // the two subsequently shipped hardening additions (no generic header filtering).
+        let mut headers = recorded
+            .get("headers")
+            .and_then(Value::as_object)
+            .ok_or("recorded headers")?
+            .clone();
+        for (name, value) in [
+            ("strict-transport-security", "max-age=15552000"),
+            ("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()"),
+        ] {
+            require(headers.insert(name.into(), Value::String(value.into())).is_none(), "historical security header inventory changed")?;
+        }
+        let headers = Value::Object(headers);
+        require(
+            exchange.method() == "GET"
+                && row.pointer("/request/path").and_then(Value::as_str) == Some(exchange.path()),
+            "frozen diagnosis request changed",
+        )?;
+        require(
+            response.get("status") == recorded.get("status")
+                && response.get("headers") == Some(&headers)
+                && response.get("body") == recorded.pointer("/body/json"),
+            "frozen diagnosis answer changed",
+        )?;
+    }
     Ok(())
 }
 fn write_corpus(rows: &[Value], provenance: &Value, input: &Value) -> Result<()> {
@@ -1471,8 +1594,21 @@ fn main() -> Result<()> {
         oracle.insert("logs".into(), json!({"synthetic-only":""}));
         let input = Value::Object(oracle);
         if startup_only {
-            for mode in ["rust-startup", "rust-off"] {
+            // Preserve the historical guard explicitly in the frozen Python fixture.
+            for mode in ["historical-confirmed", "historical-unconfirmed"] {
                 run_mode(core, bins, mode, &input)?;
+            }
+            let baseline = run_mode(core, bins, "python", &input)?;
+            for mode in ["rust-startup", "rust-off"] {
+                let candidate = run_mode(core, bins, mode, &input)?;
+                require(
+                    baseline == candidate,
+                    "retired selectors changed native public diagnosis",
+                )?;
+                artifact(
+                    &Path::new("/tmp").join(format!("s1-diagnose-startup-{mode}.json")),
+                    &json!({"baseline":baseline,"candidate":candidate,"shipping_child":false,"retired_selectors_ignored":true}),
+                )?;
             }
         } else {
             for mode in [
@@ -1571,11 +1707,14 @@ fn main() -> Result<()> {
     let input = Value::Object(oracle);
     let baseline = run_mode(core, bins, "python", &input)?;
     let candidate = run_mode(core, bins, "rust", &input)?;
-    let provenance = json!({"core":revision,"core_sources":core_sources,"runtime":RUNTIME,"runtime_selected_sources":runtime_sources,"dependencies":dependency_provenance,"generator_sha256":format!("{:x}",Sha256::digest(include_bytes!("diagnose-contracts.rs"))),"owned_dependency_seam_sha256":format!("{:x}",Sha256::digest(include_bytes!("support/diagnose_dependencies.rs")))});
+    let provenance = json!({"core":revision,"core_sources":core_sources,"runtime":RUNTIME,"runtime_selected_sources":runtime_sources,"dependencies":dependency_provenance,"generator_sha256":format!("{:x}",Sha256::digest(include_bytes!("diagnose-contracts.rs"))),"owned_dependency_seam_sha256":format!("{:x}",Sha256::digest(include_bytes!("support/diagnose_dependencies.rs"))),"native_manager_sha256":binary_sha256(&bins.join("noevia-model-manager"))?,"native_front_sha256":binary_sha256(&bins.join("noevia-server"))?});
     artifact(
         Path::new("/tmp/s1-diagnose-public-current.json"),
         &json!({"baseline":baseline,"candidate":candidate,"provenance":provenance,"oracle_scope":"immutable selected AST functions, fixed fakes; native child guard is test-only"}),
     )?;
+    if !corpus_write {
+        require_frozen_corpus(&baseline)?;
+    }
     if corpus_write {
         write_corpus(&baseline, &provenance, &input)?;
     }

@@ -1,0 +1,5997 @@
+{
+  "cases": [
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/overview\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/overview/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/overview/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/overview/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/overview/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/overview/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/overview/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/overview?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/overview/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/overview\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/overview?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/models\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/models/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/models/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/models\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/models?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"query\",\"key\"],\"msg\":\"Field required\",\"input\":null}]}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 422
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/models/detail/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/models/detail/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models/detail/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models/detail/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models/detail/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models/detail/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/detail?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models/detail/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"query\",\"key\"],\"msg\":\"Field required\",\"input\":null}]}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/models/detail?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 422
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/models/delete/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/models/delete\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/models/delete/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models/delete/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models/delete/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models/delete/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models/delete/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/delete?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models/delete/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/models/delete\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/models/delete?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/sections?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}\",\"arguments\":{\"name\":\"qa-backend\",\"defaults\":false}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}\",\"arguments\":{\"name\":\"qa-backend\",\"body\":{}}}",
+      "headers": {},
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}\",\"arguments\":{\"name\":\"qa-backend\",\"baseRevision\":\"\"}}",
+      "headers": {},
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}\",\"arguments\":{\"name\":\"qa-backend\",\"defaults\":false}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/sections/qa-backend?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "GET",
+      "path": "/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/models-ini/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "POST",
+      "path": "/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/models-ini/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/models-ini\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "PUT",
+      "path": "/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models-ini/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models-ini/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models-ini/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models-ini/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models-ini?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models-ini/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/models-ini\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "PUT",
+      "path": "/%61pi/v1/models-ini?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/safe-defaults/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}/safe-defaults\",\"arguments\":{\"name\":\"qa-backend\"}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/safe-defaults/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/safe-defaults/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/safe-defaults/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/safe-defaults/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/safe-defaults/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/safe-defaults?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/safe-defaults/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}/safe-defaults\",\"arguments\":{\"name\":\"qa-backend\"}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/sections/qa-backend/safe-defaults?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}/draft-heads\",\"arguments\":{\"name\":\"qa-backend\"}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/draft-heads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/draft-heads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/draft-heads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/draft-heads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/draft-heads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/draft-heads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/draft-heads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}/draft-heads\",\"arguments\":{\"name\":\"qa-backend\"}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/sections/qa-backend/draft-heads?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/rename/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}/rename\",\"arguments\":{\"name\":\"qa-backend\",\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/rename/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/rename/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/rename/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/rename/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/rename/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/rename?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/rename/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}/rename\",\"arguments\":{\"name\":\"qa-backend\",\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/sections/qa-backend/rename?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}/autoconfig\",\"arguments\":{\"name\":\"qa-backend\",\"preset\":\"\",\"sessions\":1,\"spec\":\"\",\"vision\":true,\"verified_ctx\":0,\"prompt_budget_s\":120.0,\"mode\":\"\",\"budget_gib\":0.0}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/autoconfig/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/autoconfig/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/autoconfig/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/autoconfig/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/autoconfig/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/autoconfig/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/autoconfig?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/autoconfig/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}/autoconfig\",\"arguments\":{\"name\":\"qa-backend\",\"preset\":\"\",\"sessions\":1,\"spec\":\"\",\"vision\":true,\"verified_ctx\":0,\"prompt_budget_s\":120.0,\"mode\":\"\",\"budget_gib\":0.0}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/sections/qa-backend/autoconfig?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/backends\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/backends/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/backends/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/backends/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/backends/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/backends/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/backends/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/backends\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/backends?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/backends/qa-backend/restart/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/backends/{name}/restart\",\"arguments\":{\"name\":\"qa-backend\"}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/backends/qa-backend/restart/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/backends/qa-backend/restart/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/backends/qa-backend/restart/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/backends/qa-backend/restart/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/qa-backend/restart/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/restart?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/backends/qa-backend/restart/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/backends/{name}/restart\",\"arguments\":{\"name\":\"qa-backend\"}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/backends/qa-backend/restart?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/backends/qa-backend/test/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/backends/{name}/test\",\"arguments\":{\"name\":\"qa-backend\",\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/backends/qa-backend/test/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/backends/qa-backend/test/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/backends/qa-backend/test/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/backends/qa-backend/test/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/qa-backend/test/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/test?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/backends/qa-backend/test/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/backends/{name}/test\",\"arguments\":{\"name\":\"qa-backend\",\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/backends/qa-backend/test?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/host\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/host/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/host/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/host/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/host/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/host/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/host/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/host?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/host/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/host\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/host?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/backends/{name}/diagnose\",\"arguments\":{\"name\":\"qa-backend\"}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/backends/qa-backend/diagnose/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/backends/qa-backend/diagnose/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/backends/qa-backend/diagnose/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/backends/qa-backend/diagnose/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/backends/qa-backend/diagnose/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/backends/qa-backend/diagnose/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/backends/qa-backend/diagnose?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/backends/qa-backend/diagnose/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/backends/{name}/diagnose\",\"arguments\":{\"name\":\"qa-backend\"}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/backends/qa-backend/diagnose?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/settings\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/settings/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/settings/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/settings\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "PUT",
+      "path": "/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/settings/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/settings/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/settings/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/settings/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/settings?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/settings/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/settings\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/settings?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/search\",\"arguments\":{\"q\":\"\",\"sort\":\"fit\",\"limit\":30,\"trustedOnly\":true,\"showUnsuitable\":false,\"minGb\":null,\"maxGb\":null,\"quants\":\"\",\"minParams\":null,\"maxParams\":null,\"moe\":\"any\",\"vision\":false,\"license\":\"\",\"owner\":\"\"}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/search/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/search/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/search/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/search/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/search/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/search/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/search/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/search\",\"arguments\":{\"q\":\"\",\"sort\":\"fit\",\"limit\":30,\"trustedOnly\":true,\"showUnsuitable\":false,\"minGb\":null,\"maxGb\":null,\"quants\":\"\",\"minParams\":null,\"maxParams\":null,\"moe\":\"any\",\"vision\":false,\"license\":\"\",\"owner\":\"\"}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/search?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/search/repo\",\"arguments\":{\"repo\":\"qa-owner/qa-repo\"}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/search/repo/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/search/repo/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/search/repo/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/search/repo/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/search/repo/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/search/repo/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/search/repo?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/search/repo/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/search/repo\",\"arguments\":{\"repo\":\"qa-owner/qa-repo\"}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/search/repo?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/downloads\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/downloads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/downloads\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/downloads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/downloads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/downloads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/downloads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/downloads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/downloads/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/downloads\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/downloads?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/download-targets\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/download-targets/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/download-targets/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/download-targets/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/download-targets/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/download-targets/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/download-targets/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/download-targets?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/download-targets/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/download-targets\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/download-targets?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}/draft-heads/download\",\"arguments\":{\"name\":\"qa-backend\",\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa-backend/draft-heads/download?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/sections/qa-backend/draft-heads/download/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}/draft-heads/download\",\"arguments\":{\"name\":\"qa-backend\",\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/sections/qa-backend/draft-heads/download?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/downloads/qa-job/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/downloads/{job_id}/cancel\",\"arguments\":{\"job_id\":\"qa-job\"}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/downloads/qa-job/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/downloads/qa-job/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/downloads/qa-job/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/downloads/qa-job/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/downloads/qa-job/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/qa-job/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/downloads/qa-job/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/downloads/{job_id}/cancel\",\"arguments\":{\"job_id\":\"qa-job\"}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/downloads/qa-job/cancel?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/downloads/clear/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/downloads/clear\",\"arguments\":{}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/downloads/clear/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/downloads/clear/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/downloads/clear/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/downloads/clear/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/downloads/clear/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/downloads/clear?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/downloads/clear/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/downloads/clear\",\"arguments\":{}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/downloads/clear?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/models/check-updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/models/check-updates\",\"arguments\":{}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/models/check-updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models/check-updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models/check-updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models/check-updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models/check-updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/check-updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models/check-updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/models/check-updates\",\"arguments\":{}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/models/check-updates?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/models/updates\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/models/updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/models/updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/models/updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/models/updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/models/updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/models/updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/models/updates?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/models/updates/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/models/updates\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/models/updates?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/prompts\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/prompts/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/prompts\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/prompts/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/prompts/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/prompts/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/prompts/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/prompts/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/prompts/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/prompts\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/prompts?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "DELETE"
+      },
+      "method": "GET",
+      "path": "/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/prompts/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "DELETE"
+      },
+      "method": "POST",
+      "path": "/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/prompts/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "DELETE"
+      },
+      "method": "PUT",
+      "path": "/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/prompts/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/prompts/{pid}\",\"arguments\":{\"pid\":1}}",
+      "headers": {},
+      "method": "DELETE",
+      "path": "/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/prompts/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "DELETE"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/prompts/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "DELETE"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/prompts/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "DELETE"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/prompts/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/prompts/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/prompts/{pid}\",\"arguments\":{\"pid\":1}}",
+      "headers": {},
+      "method": "DELETE",
+      "path": "/%61pi/v1/prompts/1?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/benchmark/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/benchmark/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/benchmark?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/benchmark/start/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark/start\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/benchmark/start/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/start/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/start/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/start/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/start/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/start?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/start/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark/start\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/benchmark/start?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/benchmark/sweep/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark/sweep\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/benchmark/sweep/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/sweep/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/sweep/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/sweep/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/sweep/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/sweep?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/sweep/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark/sweep\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/benchmark/sweep?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark/progress\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/benchmark/progress/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/benchmark/progress/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/progress/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/progress/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/progress/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/progress/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/progress?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/progress/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark/progress\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/benchmark/progress?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "GET",
+      "path": "/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/benchmark/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark/cancel\",\"arguments\":{}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/benchmark/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "POST"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/cancel?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/cancel/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark/cancel\",\"arguments\":{}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/%61pi/v1/benchmark/cancel?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark/runs/{run_id}\",\"arguments\":{\"run_id\":1}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/benchmark/runs/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "POST",
+      "path": "/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/benchmark/runs/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/benchmark/runs/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/benchmark/runs/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/benchmark/runs/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/benchmark/runs/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "GET"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/benchmark/runs/1?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/benchmark/runs/1/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/benchmark/runs/{run_id}\",\"arguments\":{\"run_id\":1}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/%61pi/v1/benchmark/runs/1?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "GET",
+      "path": "/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "GET",
+      "path": "/api/v1/badges/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "POST",
+      "path": "/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "POST",
+      "path": "/api/v1/badges/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/badges\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "PUT",
+      "path": "/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PUT",
+      "path": "/api/v1/badges/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":[{\"type\":\"missing\",\"loc\":[\"query\",\"alias\"],\"msg\":\"Field required\",\"input\":null},{\"type\":\"missing\",\"loc\":[\"query\",\"category\"],\"msg\":\"Field required\",\"input\":null}]}",
+      "headers": {},
+      "method": "DELETE",
+      "path": "/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 422
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "DELETE",
+      "path": "/api/v1/badges/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/badges/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Method Not Allowed\"}",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "OPTIONS",
+      "path": "/api/v1/badges/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "allow": "PUT"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 405
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/badges?qa=%2F&repo=qa-owner%2Fqa-repo"
+      },
+      "method": "HEAD",
+      "path": "/api/v1/badges/?qa=%2F&repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/badges\",\"arguments\":{\"body\":{}}}",
+      "headers": {},
+      "method": "PUT",
+      "path": "/%61pi/v1/badges?repo=qa-owner%2Fqa-repo",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/backends/{name}/restart\",\"arguments\":{\"name\":\"qa-backend\"}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/backends/qa%2Dbackend/%72estart",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",1],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting property name enclosed in double quotes\"}}]}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/backends/qa%252Fbackend/test",
+      "request_body": "{bad",
+      "status": 422
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Not Found\"}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/backends/qa%2Fbackend/test",
+      "request_body": "{bad",
+      "status": 404
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":[{\"type\":\"json_invalid\",\"loc\":[\"body\",1],\"msg\":\"JSON decode error\",\"input\":{},\"ctx\":{\"error\":\"Expecting property name enclosed in double quotes\"}}]}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/backends/qa%2Dbackend/test",
+      "request_body": "{bad",
+      "status": 422
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/settings?qa=%2F"
+      },
+      "method": "PATCH",
+      "path": "/api/v1/settings///?qa=%2F",
+      "request_body": "{bad",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/settings"
+      },
+      "method": "GET",
+      "path": "/api%2Fv1%2Fsettings/",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa%2Fbad"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa%252Fbad/",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa#x?qa=%23"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa%23x/?qa=%23",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa?x?qa=%3F"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa%3Fx/?qa=%3F",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa%EF%BF%BD"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa%FF/",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "",
+      "headers": {
+        "location": "http://qa.example:8080/api/v1/sections/qa%zz"
+      },
+      "method": "GET",
+      "path": "/api/v1/sections/qa%zz/",
+      "request_body": "{}",
+      "status": 307
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/settings\",\"arguments\":{}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/settings%0A",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Not Found\"}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/settings%0A%0A",
+      "request_body": "{}",
+      "status": 404
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/backends/{name}/restart\",\"arguments\":{\"name\":\"qa\"}}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/backends/qa/restart%0A",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"owner\":\"/api/v1/sections/{name}\",\"arguments\":{\"name\":\"qa\\n\",\"defaults\":false}}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/sections/qa%0A",
+      "request_body": "{}",
+      "status": 200
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Not Found\"}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/unknown",
+      "request_body": "{bad",
+      "status": 404
+    },
+    {
+      "auth": true,
+      "body": "{\"detail\":\"Not Found\"}",
+      "headers": {},
+      "method": "GET",
+      "path": "/api/v1/settings/extra",
+      "request_body": "{}",
+      "status": 404
+    },
+    {
+      "auth": false,
+      "body": "",
+      "headers": {},
+      "method": "HEAD",
+      "path": "/api/v1/settings/",
+      "request_body": "{bad",
+      "status": 401
+    },
+    {
+      "auth": false,
+      "body": "{\"error\":\"unauthorized\"}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/settings",
+      "request_body": "{bad",
+      "status": 401
+    },
+    {
+      "auth": false,
+      "body": "{\"error\":\"unauthorized\"}",
+      "headers": {},
+      "method": "POST",
+      "path": "/api/v1/backends/qa/test",
+      "request_body": "{bad",
+      "status": 401
+    }
+  ],
+  "framework": {
+    "fastapi": "0.115.6",
+    "pydantic": "2.14.0",
+    "pydantic_core": "2.50.0",
+    "starlette": "0.41.3"
+  },
+  "registered": [
+    [
+      "GET",
+      "/api/v1/overview"
+    ],
+    [
+      "GET",
+      "/api/v1/models"
+    ],
+    [
+      "GET",
+      "/api/v1/models/detail"
+    ],
+    [
+      "POST",
+      "/api/v1/models/delete"
+    ],
+    [
+      "GET",
+      "/api/v1/sections"
+    ],
+    [
+      "GET",
+      "/api/v1/sections/{name}"
+    ],
+    [
+      "PUT",
+      "/api/v1/sections/{name}"
+    ],
+    [
+      "PUT",
+      "/api/v1/models-ini"
+    ],
+    [
+      "POST",
+      "/api/v1/sections/{name}/safe-defaults"
+    ],
+    [
+      "GET",
+      "/api/v1/sections/{name}/draft-heads"
+    ],
+    [
+      "POST",
+      "/api/v1/sections/{name}/rename"
+    ],
+    [
+      "DELETE",
+      "/api/v1/sections/{name}"
+    ],
+    [
+      "GET",
+      "/api/v1/sections/{name}/autoconfig"
+    ],
+    [
+      "GET",
+      "/api/v1/backends"
+    ],
+    [
+      "POST",
+      "/api/v1/backends/{name}/restart"
+    ],
+    [
+      "POST",
+      "/api/v1/backends/{name}/test"
+    ],
+    [
+      "GET",
+      "/api/v1/host"
+    ],
+    [
+      "GET",
+      "/api/v1/backends/{name}/diagnose"
+    ],
+    [
+      "GET",
+      "/api/v1/settings"
+    ],
+    [
+      "PUT",
+      "/api/v1/settings"
+    ],
+    [
+      "GET",
+      "/api/v1/search"
+    ],
+    [
+      "GET",
+      "/api/v1/search/repo"
+    ],
+    [
+      "GET",
+      "/api/v1/downloads"
+    ],
+    [
+      "GET",
+      "/api/v1/download-targets"
+    ],
+    [
+      "POST",
+      "/api/v1/sections/{name}/draft-heads/download"
+    ],
+    [
+      "POST",
+      "/api/v1/downloads"
+    ],
+    [
+      "POST",
+      "/api/v1/downloads/{job_id}/cancel"
+    ],
+    [
+      "POST",
+      "/api/v1/downloads/clear"
+    ],
+    [
+      "POST",
+      "/api/v1/models/check-updates"
+    ],
+    [
+      "GET",
+      "/api/v1/models/updates"
+    ],
+    [
+      "GET",
+      "/api/v1/prompts"
+    ],
+    [
+      "POST",
+      "/api/v1/prompts"
+    ],
+    [
+      "DELETE",
+      "/api/v1/prompts/{pid}"
+    ],
+    [
+      "GET",
+      "/api/v1/benchmark"
+    ],
+    [
+      "POST",
+      "/api/v1/benchmark/start"
+    ],
+    [
+      "POST",
+      "/api/v1/benchmark/sweep"
+    ],
+    [
+      "GET",
+      "/api/v1/benchmark/progress"
+    ],
+    [
+      "POST",
+      "/api/v1/benchmark/cancel"
+    ],
+    [
+      "GET",
+      "/api/v1/benchmark/runs/{run_id}"
+    ],
+    [
+      "PUT",
+      "/api/v1/badges"
+    ],
+    [
+      "DELETE",
+      "/api/v1/badges"
+    ]
+  ],
+  "source_sha256": {
+    "api.py": "034885124b805d513dd43fbbdade52c1cc13ca225233c576d1b1d42e2ad64680",
+    "main.py": "8a336283aaa001a8eca2f3476e2d85e0ae17bc8b72f0bf8fb13b64993339212a"
+  }
+}

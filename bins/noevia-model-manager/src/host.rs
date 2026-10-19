@@ -5,10 +5,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
-    sync::Mutex,
-};
+use tokio::sync::Mutex;
 
 pub const HISTORY_CAP: usize = 450;
 pub const RESPONSE_CAP: usize = 180;
@@ -198,33 +195,35 @@ pub fn gtt_used_bytes(drm: &std::path::Path) -> Option<u64> {
 }
 
 async fn read_fixed(path: &std::path::Path, first_line: bool) -> Result<String, &'static str> {
-    let file = tokio::fs::File::open(path)
-        .await
-        .map_err(|_| "proc read failed")?;
-    let reader = file.take((PROC_CAP + 1) as u64);
-    let mut reader = BufReader::new(reader);
-    let mut bytes = Vec::new();
-    if first_line {
-        reader
-            .read_until(b'\n', &mut bytes)
-            .await
-            .map_err(|_| "proc read failed")?;
-    } else {
-        reader
-            .read_to_end(&mut bytes)
-            .await
-            .map_err(|_| "proc read failed")?;
-    }
-    if bytes.len() > PROC_CAP {
-        return Err("proc input exceeded limit");
-    }
-    if first_line {
-        if let Some(end) = bytes.iter().position(|b| *b == b'\n') {
-            bytes.truncate(end);
+    let path = path.to_owned();
+    crate::work::spawn_blocking(move || {
+        use std::io::{BufRead, Read};
+        let file = std::fs::File::open(path).map_err(|_| "proc read failed")?;
+        let mut reader = std::io::BufReader::new(file.take((PROC_CAP + 1) as u64));
+        let mut bytes = Vec::new();
+        if first_line {
+            reader
+                .read_until(b'\n', &mut bytes)
+                .map_err(|_| "proc read failed")?;
+        } else {
+            reader
+                .read_to_end(&mut bytes)
+                .map_err(|_| "proc read failed")?;
         }
-    }
-    String::from_utf8(bytes).map_err(|_| "proc encoding refused")
+        if bytes.len() > PROC_CAP {
+            return Err("proc input exceeded limit");
+        }
+        if first_line {
+            if let Some(end) = bytes.iter().position(|b| *b == b'\n') {
+                bytes.truncate(end);
+            }
+        }
+        String::from_utf8(bytes).map_err(|_| "proc encoding refused")
+    })
+    .await
+    .map_err(|_| "proc worker failed")?
 }
+
 /// A single sequential task bounds work: timeout ends sampling, never spawning more reads.
 /// Drop aborts the sampler immediately; a pending fixed-path filesystem operation has at most
 /// one bounded read outstanding in Tokio's blocking pool.
@@ -253,7 +252,7 @@ impl HostSampler {
                 (stat, mem)
             },
             || async {
-                tokio::task::spawn_blocking(|| {
+                crate::work::spawn_blocking(|| {
                     gtt_used_bytes(std::path::Path::new("/sys/class/drm"))
                 })
                 .await
@@ -286,7 +285,7 @@ impl HostSampler {
     {
         let latest = Arc::new(std::sync::atomic::AtomicU64::new(GTT_NONE));
         let publish = latest.clone();
-        let gtt_task = tokio::spawn(async move {
+        let gtt_task = crate::work::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(2));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
@@ -303,7 +302,7 @@ impl HostSampler {
                 }
             }
         });
-        let task = tokio::spawn(async move {
+        let task = crate::work::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(2));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {

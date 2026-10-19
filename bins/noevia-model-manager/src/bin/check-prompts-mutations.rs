@@ -43,8 +43,8 @@ fn assertions(
         "canonical_root_default_and_alias_policy_is_pure" => ("main.rs", &["assert!(\n                super::prompt_data_dir_from([(alias.into(),"]),
         "schema_comments_strings_and_quoted_names_cannot_fake_autoincrement" => ("prompts/store_tests.rs", &["assert!(\n            matches!(open_retrying(root.path()), Err(Error::Store)),"]),
         "prompt_selector_preserves_unrelated_dispatch_and_auth_first" => ("prompts/tests.rs", &["assert_eq!(request(on.clone(), \"GET\", path, \"\", true).await.0, 404);"]),
-        "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap" if before == "let mut warned = false;" => ("child_lifecycle.rs", &["assert!(self.lease.upgrade().is_some());\n            self.kills", "assert!(self.lease.upgrade().is_some());\n            match self.waits"]),
-        "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap" => ("child_lifecycle.rs", &["assert!(child.waits.is_empty());"]),
+        "independent_blocking_worker_is_drained_or_keeps_lease_until_deadline_exit" if before.starts_with("124 //") => ("service.rs", &["assert_eq!(status.code(), Some(124));"]),
+        "independent_blocking_worker_is_drained_or_keeps_lease_until_deadline_exit" => ("service.rs", &["assert!(\n            child.try_wait().unwrap().is_none(),"]),
         "malformed_json_diagnostics_match_actual_fastapi_character_offsets" => ("prompts/tests.rs", &["assert_eq!(\n            response.0,\n            case[\"expected\"][\"status\"].as_u64().unwrap() as u16,"]),
         "explicit_raw_input_restrictions_have_actual_oracle_proof_and_no_writes" => ("prompts/tests.rs", &["assert_eq!(\n            actual.0,", "assert_eq!(actual.1, case[\"request\"][\"native_refusal\"][\"body\"]);"]),
         _ => return Err("mutation has no concrete assertion binding".into()),
@@ -52,12 +52,9 @@ fn assertions(
     let bytes = source(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join(path))?;
     let path = format!("bins/noevia-model-manager/src/{path}");
     let text = std::str::from_utf8(&bytes)?;
-    let start = if path.ends_with("child_lifecycle.rs") && before == "let mut warned = false;" {
-        0
-    } else {
-        text.find(&format!("fn {test}("))
-            .ok_or("assertion test missing")?
-    };
+    let start = text
+        .find(&format!("fn {test}("))
+        .ok_or("assertion test missing")?;
     let rest = text.get(start..).ok_or("assertion region")?;
     let region = if start == 0 {
         rest
@@ -155,7 +152,9 @@ fn semantic_failure(
             return location
                 && (message.starts_with("assertion `left == right` failed")
                     || message.starts_with("assertion failed:")
-                    || message.starts_with("PROMPTS_ASSERT:schema-autoincrement "));
+                    || message.starts_with("PROMPTS_ASSERT:schema-autoincrement ")
+                    || (test == "independent_blocking_worker_is_drained_or_keeps_lease_until_deadline_exit"
+                        && message == "background worker falsely counted as drained"));
         }
     }
     false
@@ -206,6 +205,10 @@ fn mutation(
         "main" => {
             command.args(["--bin", "noevia-model-manager"]);
         }
+        "service" => {
+            // Prime this exact profile first; compiler/setup/deadline failures are never kills.
+            command.args(["--all-features", "--lib"]);
+        }
         _ => return Err("unknown test target".into()),
     };
     command.arg(test);
@@ -248,7 +251,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if mode.is_none() || mode.as_deref() == Some("--coercion-only") {
         for (file,before,after,test,kind) in [
-        ("lib.rs","if path != \"/api/v1/health\" && !state.token.is_empty()","if path != \"/api/v1/health\" && !path.starts_with(\"/api/v1/prompts\") && !state.token.is_empty()","auth_precedes_method_path_body_and_no_fallback","lib"),
+        ("lib.rs","if auth_path != \"/api/v1/health\" && !state.token.is_empty()","if auth_path != \"/api/v1/health\" && !auth_path.starts_with(\"/api/v1/prompts\") && !state.token.is_empty()","auth_precedes_method_path_body_and_no_fallback","lib"),
         ("prompts/store.rs","if length > 0 {","if false && length > 0 {","independent_seed_commits_restart_and_deleted_seed_retention","lib"),
         ("prompts/literals.rs","Bench: coding","Bench: codinx","literal_bytes_and_python_coercion_from_real_oracle","lib"),
         ("prompts/store.rs","ORDER BY name COLLATE NOCASE LIMIT ?","ORDER BY name LIMIT ?","actual_python_seed_flags_case_variants_and_nocase_ties","lib"),
@@ -282,30 +285,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
     }
     if mode.is_none() || mode.as_deref() == Some("--shutdown-only") {
-        for (before, after) in [
+        for (file, before, after) in [
             (
-                "let mut warned = false;",
-                "let mut warned = false; drop(lease.take());",
+                "work.rs",
+                "let held = register();\n    tokio::task::spawn_blocking",
+                "let held = ();\n    tokio::task::spawn_blocking",
             ),
             (
-                "let mut failure = child.request_kill().err();",
-                "child.request_kill()?; let mut failure = None;",
+                "service.rs",
+                "crate::work::drain(deadline).await",
+                "Ok::<(), ()>(())",
             ),
             (
-                "Ok(Err(error)) => {",
-                "Ok(Err(error)) => {return Err(error); #[allow(unreachable_code)]",
+                "service.rs",
+                "SHUTDOWN_GRACE: Duration = Duration::from_secs(8)",
+                "SHUTDOWN_GRACE: Duration = Duration::from_secs(0)",
             ),
             (
-                "Err(_) => {}",
-                "Err(_) => {return Err(io::Error::other(\"synthetic premature timeout\"));}",
+                "service.rs",
+                "124 // No blocking log I/O",
+                "0 // No blocking log I/O",
             ),
         ] {
             mutation(
-                "child_lifecycle.rs",
+                file,
                 before,
                 after,
-                "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap",
-                "main",
+                "independent_blocking_worker_is_drained_or_keeps_lease_until_deadline_exit",
+                "service",
             )?;
         }
     }
@@ -340,28 +347,25 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
     #[test]
-    fn premature_lease_drop_binds_kill_and_wait_assertions_only() {
-        let test = "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap";
-        let expected = assertions("child_lifecycle.rs", "let mut warned = false;", test).unwrap();
-        assert_eq!(expected.len(), 2);
-        let other = assertions(
-            "child_lifecycle.rs",
-            "let mut failure = child.request_kill().err();",
-            test,
-        )
-        .unwrap();
-        assert_eq!(other.len(), 1);
-        let literal = assertions(
-            "prompts/literals.rs",
-            "Bench: coding",
-            "literal_bytes_and_python_coercion_from_real_oracle",
-        )
-        .unwrap();
-        for assertion in &expected {
-            let out=format!("\nrunning 1 test\nchild_lifecycle::tests::{test} --- FAILED\n\n---- child_lifecycle::tests::{test} stdout ----\nthread 'child_lifecycle::tests::{test}' (55) panicked at {}:{}:13:\nassertion failed: self.lease.upgrade().is_some()\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured;\n",assertion.path,assertion.line);
-            assert!(semantic_failure(Some(101), &out, "", test, &expected));
-            assert!(!semantic_failure(Some(101), &out, "", test, &other));
-            assert!(!semantic_failure(Some(101), &out, "", test, &literal));
+    fn native_worker_shutdown_binds_only_owned_drain_and_exit_assertions() {
+        let test = "independent_blocking_worker_is_drained_or_keeps_lease_until_deadline_exit";
+        let drain = assertions("work.rs", "blocking registration", test).unwrap();
+        let exit = assertions("service.rs", "124 // No blocking log I/O", test).unwrap();
+        assert_eq!(drain.len(), 1);
+        assert_eq!(exit.len(), 1);
+        let name = format!("service::tests::{test}");
+        for (expected, wrong, message) in [
+            (
+                &drain,
+                &exit,
+                "background worker falsely counted as drained",
+            ),
+            (&exit, &drain, "assertion `left == right` failed"),
+        ] {
+            let assertion = expected.first().expect("owned assertion is present");
+            let out=format!("\nrunning 1 test\ntest {name} ... FAILED\n\n---- {name} stdout ----\nthread '{name}' (55) panicked at {}:{}:13:\n{message}\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured;\n",assertion.path,assertion.line);
+            assert!(semantic_failure(Some(101), &out, "", test, expected));
+            assert!(!semantic_failure(Some(101), &out, "", test, wrong));
             for (code, invalid) in [
                 (Some(0), out.clone()),
                 (
@@ -375,19 +379,18 @@ mod tests {
                 (
                     Some(101),
                     out.replace(
-                        "assertion failed: self.lease.upgrade().is_some()",
+                        message,
                         "called `Result::unwrap()` on an `Err` value: setup",
                     ),
                 ),
                 (
                     Some(101),
-                    out.replace(
-                        "assertion failed: self.lease.upgrade().is_some()",
-                        "fixture setup failed",
-                    ),
+                    out.replace(message, "owned background fixture failed to reach worker"),
                 ),
+                (Some(101), out.replace(message, "shutdown unbounded")),
+                (Some(101), out.replace(message, "child deadline exceeded")),
             ] {
-                assert!(!semantic_failure(code, &invalid, "", test, &expected));
+                assert!(!semantic_failure(code, &invalid, "", test, expected));
             }
         }
     }
@@ -646,14 +649,14 @@ mod tests {
                 "prompt_selector_preserves_unrelated_dispatch_and_auth_first",
             ),
             (
-                "child_lifecycle.rs",
-                "let mut warned = false;",
-                "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap",
+                "work.rs",
+                "blocking registration",
+                "independent_blocking_worker_is_drained_or_keeps_lease_until_deadline_exit",
             ),
             (
-                "child_lifecycle.rs",
-                "",
-                "kill_failure_wait_error_and_timeout_cannot_release_lease_before_reap",
+                "service.rs",
+                "124 // No blocking log I/O",
+                "independent_blocking_worker_is_drained_or_keeps_lease_until_deadline_exit",
             ),
             (
                 "prompts/encoding.rs",

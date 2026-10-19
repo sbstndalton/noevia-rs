@@ -59,7 +59,8 @@ pub struct SectionWrites {
     /// `settings.cache_ram_limits`: (cap, hard maximum) in MiB.
     pub cache: (i64, i64),
     clock: Clock,
-    pub(crate) started: std::sync::atomic::AtomicBool,
+    #[cfg(feature = "native-safe-defaults")]
+    safe_models: std::sync::OnceLock<PathBuf>,
     lock: Arc<tokio::sync::Mutex<()>>,
 }
 
@@ -429,9 +430,38 @@ impl SectionWrites {
             ini: ini.to_owned(),
             cache,
             clock,
-            started: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(feature = "native-safe-defaults")]
+            safe_models: std::sync::OnceLock::new(),
             lock: Arc::new(tokio::sync::Mutex::new(())),
         }
+    }
+
+    #[cfg(feature = "native-safe-defaults")]
+    pub fn set_safe_models(&self, models: &Path) {
+        let _ = self.safe_models.set(models.to_owned());
+    }
+
+    pub fn has_native_defaults(&self) -> bool {
+        #[cfg(feature = "native-safe-defaults")]
+        {
+            self.safe_models.get().is_some()
+        }
+        #[cfg(not(feature = "native-safe-defaults"))]
+        {
+            false
+        }
+    }
+
+    pub fn native_defaults(&self, name: &str) -> Outcome {
+        #[cfg(feature = "native-safe-defaults")]
+        if let Some(models) = self.safe_models.get() {
+            return match crate::sections::safe_defaults::plan(models, &self.ini, name) {
+                Ok(plan) => self.safe_defaults(name, plan),
+                Err(_) => detail(503, "Native safe defaults are unavailable"),
+            };
+        }
+        let _ = name;
+        Outcome::Failed
     }
 
     pub async fn lock(&self) -> tokio::sync::OwnedMutexGuard<()> {
@@ -959,7 +989,7 @@ impl SectionWrites {
         self: Arc<Self>,
     ) -> Result<Vec<String>, &'static str> {
         let guard = self.lock().await;
-        tokio::task::spawn_blocking(move || {
+        crate::work::spawn_blocking(move || {
             let _guard = guard;
             self.migrate_cache_ram()
         })

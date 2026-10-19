@@ -13,10 +13,8 @@
 //! llama-server probes and the answer. The GPU reads that need `docker exec` (`nvidia-smi`,
 //! `rocm-smi`) are not made at all (noevia#1318 step 2): only the integrated-GPU sysfs profile is
 //! kept, and an image whose vendor tool would have answered is sampled as if the tool were absent.
-//! This side never runs `exec` and never asks the child for a GPU read. After every tick the cache
-//! is pushed to the child (`PUT /api/v1/internal/backend-stats`), whose other readers (fit chips,
-//! autoconfig, the benchmark observer) keep reading it through `hw.stats_for`; the child no longer
-//! samples the backends itself.
+//! This side never runs `exec` or asks a child for a GPU read. Native fit, autoconfig and
+//! benchmark observers read this sampler's cache directly; no private mirror is written.
 //!
 //! Python arithmetic is reproduced exactly where it shapes the answer: `round()` (ties to even on
 //! the exact value), `round(x)` giving an int, `sum()` of floats with Python 3.12's Neumaier
@@ -28,10 +26,14 @@
 use crate::Job;
 use model_files::json::Value as J;
 
+#[cfg(feature = "native-bench-observe")]
+mod bench_observe;
 #[cfg(feature = "native-section-autoconfig")]
 pub(crate) mod fallback;
 pub mod fit;
 pub mod live;
+#[cfg(all(feature = "native-search", feature = "native-section-autoconfig"))]
+mod repository;
 use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
@@ -1490,19 +1492,8 @@ pub struct BackendStats {
     pub(crate) fallback_reads: fallback::Reads,
     docker: Arc<dyn DockerApi>,
     probe: reqwest::Client,
-    child: reqwest::Client,
     clock: Clock,
     state: Mutex<Sampled>,
-    /// One log line per run of failures, not one per tick.
-    push_failing: std::sync::atomic::AtomicBool,
-}
-
-/// Logs `message` when `flag` turns on; clears it on success.
-fn note(flag: &std::sync::atomic::AtomicBool, failed: bool, message: &str) {
-    let was = flag.swap(failed, std::sync::atomic::Ordering::Relaxed);
-    if failed && !was {
-        eprintln!("{message}");
-    }
 }
 
 fn lock(m: &Mutex<Sampled>) -> std::sync::MutexGuard<'_, Sampled> {
@@ -1626,10 +1617,8 @@ impl BackendStats {
                 .read_timeout(Duration::from_secs(3))
                 .timeout(Duration::from_secs(10))
                 .build()?,
-            child: base().timeout(Duration::from_secs(30)).build()?,
             clock,
             state: Mutex::new(Sampled::default()),
-            push_failing: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -1731,7 +1720,7 @@ impl BackendStats {
         let drm = || {
             let (root, attrs) = (root.clone(), attrs.clone());
             async move {
-                tokio::task::spawn_blocking(move || read_drm(&root, &attrs))
+                crate::work::spawn_blocking(move || read_drm(&root, &attrs))
                     .await
                     .unwrap_or(Err(()))
             }
@@ -1826,8 +1815,7 @@ impl BackendStats {
         Ok(vendor)
     }
 
-    /// One pass of `hw._sample_loop` (without the host part, which has its own native owner or
-    /// stays with the child), then the push of the cache to the child.
+    /// One pass of `hw._sample_loop`; cache/history stay in their native owner.
     pub async fn tick(&self) {
         let discovered = discover(self.docker.as_ref()).await;
         let names = effective(&self.config.configured, &discovered);
@@ -1862,10 +1850,10 @@ impl BackendStats {
                 st.cache.retain(|(c, _)| *c != k);
             }
         }
-        self.push().await;
+        // Native owners read this sampler directly; there is no mirror writer.
     }
 
-    /// The cache as the child's `PUT /api/v1/internal/backend-stats` body.
+    /// A native cache snapshot, retaining the former mirror's exact JSON rendering.
     pub fn push_body(&self) -> Option<String> {
         let st = lock(&self.state);
         let mut out = String::from("{\"backends\":{");
@@ -1881,35 +1869,10 @@ impl BackendStats {
         Some(out)
     }
 
-    async fn push(&self) {
-        let Some(body) = self.push_body() else {
-            eprintln!("model-manager backend sampler: a sample could not be written for the child");
-            return;
-        };
-        let mut request = self
-            .child
-            .put(format!("{}{PUSH_PATH}", self.config.legacy_base))
-            .header("content-type", "application/json")
-            .body(body);
-        if !self.config.token.is_empty() {
-            request = request.header("x-model-loader-token", &self.config.token);
-        }
-        let taken = request
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false);
-        note(
-            &self.push_failing,
-            !taken,
-            "model-manager backend sampler: the child did not take the backend samples",
-        );
-    }
-
     /// Runs the sampler every [`INTERVAL`] until the returned handle is dropped.
     pub fn start(self: &Arc<Self>) -> Sampler {
         let me = self.clone();
-        Sampler(tokio::spawn(async move {
+        Sampler(crate::work::spawn(async move {
             loop {
                 if tokio::time::timeout(TICK_BUDGET, me.tick()).await.is_err() {
                     eprintln!("model-manager backend sampler: a tick did not finish in time");

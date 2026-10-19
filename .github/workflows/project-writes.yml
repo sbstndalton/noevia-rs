@@ -26,6 +26,18 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.23.3
+      - name: Read immutable legacy-claim Node oracle pin
+        id: legacy-claim
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < contracts/project-writes/legacy-claim-core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.legacy-claim.outputs.sha }}
+          path: legacy-claim-oracle
       - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
         with:
           components: clippy, rustfmt
@@ -35,6 +47,12 @@ jobs:
       - run: cargo clippy --locked -p server-projects -p noevia-server --all-targets --features noevia-server/rust-project-writes -- -D warnings
       - run: npm ci --no-fund --no-audit
         working-directory: core/server
+      - name: The committed legacy-claim fixture is the immutable Node store output
+        run: |
+          set -euo pipefail
+          node tools/gen-legacy-claim-fixtures.cjs "$GITHUB_WORKSPACE/legacy-claim-oracle" "$RUNNER_TEMP/node-legacy-claim.v1.json"
+          cmp crates/server-projects/tests/fixtures/node-legacy-claim.v1.json "$RUNNER_TEMP/node-legacy-claim.v1.json" \
+            || { echo "::error::regenerate the legacy-claim fixture from pinned legacy-claim-core.ref"; exit 1; }
       - name: The committed chat-context fixture is core.ref's route output
         run: |
           set -euo pipefail

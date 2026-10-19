@@ -16,7 +16,11 @@ fn mutation(
     fs::write(path, original.replace(before, after))?;
     let mut command = Command::new("cargo");
     command.args(["test", "--locked", "-q", "-p", package]);
-    if matches!(
+    if filter
+        == "shipping_process_has_no_child_and_retains_leases_through_graceful_and_deadline_exit"
+    {
+        command.args(["--all-features", "--test", "native_service"]);
+    } else if matches!(
         filter,
         "capability_closed_stdout_returns_error_without_panic_or_child"
             | "child_port_guard_excludes_second_fixed_port_owner"
@@ -42,21 +46,61 @@ fn mutation(
     {
         return Err(format!("mutation did not reach failing assertion: {filter}").into());
     }
+    if filter
+        == "shipping_process_has_no_child_and_retains_leases_through_graceful_and_deadline_exit"
+        && !stdout.contains("native process must own only the public API listener")
+    {
+        return Err("listener mutation did not fail the owned process-port assertion".into());
+    }
     println!("detected {filter}: {before}");
     Ok(())
+}
+fn auth_mutation() -> Result<(), Box<dyn std::error::Error>> {
+    mutation(
+        Path::new("bins/noevia-model-manager/src/lib.rs"),
+        "if auth_path != \"/api/v1/health\" && !state.token.is_empty()",
+        "if auth_path != \"/api/v1/health\" && auth_path != \"/api/v1/sections/tiny\" && !state.token.is_empty()",
+        "noevia-model-manager",
+        "actual_framework_query_redirect_method_and_auth_contract",
+        false,
+    )
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let mode = args.next();
     let metadata_only = mode.as_deref() == Some("--metadata-only");
     let repair_tail = mode.as_deref() == Some("--http-lifecycle-only");
+    let auth_only = mode.as_deref() == Some("--auth-only");
+    let listener_only = mode.as_deref() == Some("--native-listener-only");
     let repair_only = mode.as_deref() == Some("--repair-only") || repair_tail;
     match mode.as_deref() {
-        None | Some("--metadata-only" | "--repair-only" | "--http-lifecycle-only") => (),
+        None
+        | Some(
+            "--metadata-only"
+            | "--repair-only"
+            | "--http-lifecycle-only"
+            | "--auth-only"
+            | "--native-listener-only",
+        ) => (),
         _ => return Err("unexpected mutation group".into()),
     };
     if args.next().is_some() {
         return Err("unexpected argument".into());
+    }
+    if listener_only {
+        mutation(
+            Path::new("bins/noevia-model-manager/src/main.rs"),
+            "\"0.0.0.0:8090\"",
+            "\"0.0.0.0:8091\"",
+            "noevia-model-manager",
+            "shipping_process_has_no_child_and_retains_leases_through_graceful_and_deadline_exit",
+            false,
+        )?;
+        return Ok(());
+    }
+    if auth_only {
+        auth_mutation()?;
+        return Ok(());
     }
     let root = Path::new("bins/noevia-model-manager/src/sections");
     if !metadata_only && !repair_only {
@@ -93,7 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 false,
             )?;
         }
-        mutation(Path::new("bins/noevia-model-manager/src/lib.rs"),"if path != \"/api/v1/health\" && !state.token.is_empty()","if path != \"/api/v1/health\" && path != \"/api/v1/sections/tiny\" && !state.token.is_empty()","noevia-model-manager","actual_framework_query_redirect_method_and_auth_contract",false)?;
+        auth_mutation()?;
         mutation(
             Path::new("crates/gguf/src/raw.rs"),
             "if n > individual\n                || reservation.is_none_or",
@@ -155,7 +199,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "capability_closed_stdout_returns_error_without_panic_or_child",
             false,
         )?;
-        mutation(Path::new("bins/noevia-model-manager/tests/lifecycle.rs"), "CHILD_PORTS.lock().unwrap()", "{ static OTHER: std::sync::Mutex<()> = std::sync::Mutex::new(()); OTHER.lock().unwrap() }", "noevia-model-manager", "child_port_guard_excludes_second_fixed_port_owner", false)?;
+        mutation(
+            Path::new("bins/noevia-model-manager/src/main.rs"),
+            "\"0.0.0.0:8090\"",
+            "\"0.0.0.0:8091\"",
+            "noevia-model-manager",
+            "shipping_process_has_no_child_and_retains_leases_through_graceful_and_deadline_exit",
+            false,
+        )?;
     }
     if let Some(services) =
         std::env::var_os("NOEVIA_SECTIONS_SERVICES").filter(|_| !metadata_only && !repair_only)

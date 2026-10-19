@@ -144,14 +144,16 @@ async fn the_search_runtime_is_the_childs() {
                 "{id}"
             );
         }
-        // The private startup check is asked once; the runtime itself never reaches the child.
-        assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), 1, "{id}");
+        // Schema readiness is local; no private startup or runtime RPC is made.
+        assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), 0, "{id}");
     }
 }
 
 #[tokio::test]
-async fn before_the_child_has_answered_the_runtime_is_unavailable() {
+async fn native_runtime_does_not_require_a_child_startup_advertisement() {
     let dir = tempfile::tempdir().unwrap();
+    // The production native bootstrap creates this source-derived history schema first.
+    history(dir.path(), &serde_json::json!([]));
     let closed = {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", l.local_addr().unwrap());
@@ -168,10 +170,7 @@ async fn before_the_child_has_answered_the_runtime_is_unavailable() {
         estimates_cache_cap_mib: None,
     });
     let source = search.live.get().unwrap();
-    assert!(matches!(
-        search.native_runtime(source).await,
-        Err(Stop::Unavailable)
-    ));
+    assert!(search.native_runtime(source).await.is_ok());
 }
 
 #[test]

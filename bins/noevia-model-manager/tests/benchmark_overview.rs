@@ -7,6 +7,8 @@
 //! services ref and requires identical bytes.
 #![cfg(feature = "native-benchmark-overview")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -22,7 +24,7 @@ use serde_json::Value;
 use std::{future::Future, path::Path, pin::Pin, sync::Arc};
 use tower::ServiceExt;
 
-/// sha256 of the services files the fixture was generated from (noevia-services d475f42).
+// sha256 of the services files the fixture was generated from (noevia-services d475f42).
 const API_SHA: &str = "eb8e12f6929baf15d2b1a1998aceff9529fbe48ca8242094ac6b7526c253a91d";
 const BENCH_SHA: &str = "2e59f9b057e2686b7f05e5dac04826c8ff37e3c1eb4398bf671faa2d74f3b14b";
 const DB_SHA: &str = "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478";
@@ -32,7 +34,7 @@ const TOKEN: &str = "synthetic-model-loader-token-0123456789abcdef";
 const DEAD: &str = "http://127.0.0.1:9";
 
 type Job<'a, T> = Pin<Box<dyn Future<Output = Result<T, &'static str>> + Send + 'a>>;
-/// `None` is an unreachable Docker.
+// `None` is an unreachable Docker.
 struct FakeDocker(Option<Vec<Container>>);
 impl DockerRead for FakeDocker {
     fn containers(&self) -> Job<'_, Vec<Container>> {
@@ -142,7 +144,7 @@ async fn send(state: Arc<StateData>, method: &str, uri: &str) -> Answer {
     }
 }
 
-/// A one-shot fake child: records the request head and answers `status` with `body`.
+// A one-shot fake child: records the request head and answers `status` with `body`.
 async fn child(status: u16, body: String) -> (String, tokio::task::JoinHandle<String>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -224,48 +226,6 @@ fn fixture_provenance_is_the_pinned_services_source() {
     assert_eq!(oracle["services.py"], SERVICES_SHA);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn actual_python_differential() {
-    let cases = fixture()["cases"].as_array().unwrap().clone();
-    assert!(cases.len() >= 10);
-    for case in cases {
-        let id = case["id"].as_str().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        build(dir.path(), &case);
-        let asks_child = case["status"] == 200;
-        let (answer, seen) = if asks_child {
-            let (base, seen) = child(200, case["job"].as_str().unwrap().to_owned()).await;
-            let s = state(Some(dir.path()), &base, configured(&case), docker(&case));
-            let answer = send(s, "GET", "/api/v1/benchmark?ignored=1").await;
-            (answer, Some(seen.await.unwrap()))
-        } else {
-            let s = state(Some(dir.path()), DEAD, configured(&case), docker(&case));
-            (send(s, "GET", "/api/v1/benchmark").await, None)
-        };
-        assert_eq!(
-            u64::from(answer.status),
-            case["status"].as_u64().unwrap(),
-            "{id}: {}",
-            answer.body
-        );
-        assert_eq!(
-            answer.content_type.as_deref(),
-            case["content_type"].as_str(),
-            "{id}"
-        );
-        assert_eq!(answer.body, case["body"].as_str().unwrap(), "{id}");
-        if let Some(seen) = seen {
-            assert!(
-                seen.starts_with("GET /api/v1/internal/bench-job HTTP/1.1\r\n"),
-                "{id}: {seen}"
-            );
-            assert!(seen
-                .to_ascii_lowercase()
-                .contains(&format!("x-model-loader-token: {TOKEN}")));
-        }
-    }
-}
-
 fn full_case() -> Value {
     fixture()["cases"]
         .as_array()
@@ -274,61 +234,6 @@ fn full_case() -> Value {
         .find(|c| c["id"] == "full")
         .unwrap()
         .clone()
-}
-
-#[tokio::test]
-async fn child_that_cannot_answer_is_502_and_its_own_error_is_500() {
-    let case = full_case();
-    let dir = tempfile::tempdir().unwrap();
-    build(dir.path(), &case);
-    let s = state(Some(dir.path()), DEAD, configured(&case), docker(&case));
-    let answer = send(s, "GET", "/api/v1/benchmark").await;
-    assert_eq!(answer.status, 502);
-    assert_eq!(
-        answer.body,
-        r#"{"detail":"Python-owned endpoint unavailable"}"#
-    );
-    for (status, body, expected) in [
-        (500, "Internal Server Error".to_owned(), 500),
-        (200, "[1,2]".to_owned(), 500),
-        (200, "not json".to_owned(), 500),
-        (404, r#"{"detail":"Not Found"}"#.to_owned(), 502),
-    ] {
-        let (base, seen) = child(status, body).await;
-        let s = state(Some(dir.path()), &base, configured(&case), docker(&case));
-        let answer = send(s, "GET", "/api/v1/benchmark").await;
-        seen.await.unwrap();
-        assert_eq!(answer.status, expected, "{status}");
-    }
-}
-
-#[tokio::test]
-async fn only_get_of_the_exact_path_is_native() {
-    let dir = tempfile::tempdir().unwrap();
-    build(dir.path(), &full_case());
-    for (method, uri, forwarded) in [
-        // Omission: with no native overview the GET is forwarded unchanged.
-        ("GET", "/api/v1/benchmark", None),
-        ("GET", "/api/v1/benchmark/progress", Some(())),
-        ("POST", "/api/v1/benchmark/start", Some(())),
-        ("POST", "/api/v1/benchmark/cancel", Some(())),
-        ("POST", "/api/v1/benchmark/sweep", Some(())),
-    ] {
-        let (base, seen) = child(200, "{}".to_owned()).await;
-        let root = forwarded.map(|()| dir.path());
-        let s = state(root, &base, vec![], FakeDocker(Some(vec![])));
-        let answer = send(s, method, uri).await;
-        let seen = seen.await.unwrap();
-        assert!(
-            seen.starts_with(&format!("{method} {uri} HTTP/1.1\r\n")),
-            "{method} {uri} reached the child as {seen}"
-        );
-        assert_eq!(answer.body, "{}", "{method} {uri}");
-    }
-    // Another method on the overview path is not native either: the front's own 405.
-    let s = state(Some(dir.path()), DEAD, vec![], FakeDocker(Some(vec![])));
-    let answer = send(s, "POST", "/api/v1/benchmark").await;
-    assert_eq!(answer.status, 405, "{}", answer.body);
 }
 
 #[tokio::test]

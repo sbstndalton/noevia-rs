@@ -306,11 +306,15 @@ def main() -> int:
                 f = models / name
                 f.parent.mkdir(parents=True, exist_ok=True)
                 f.write_bytes(bytes.fromhex(content["gguf"]) if isinstance(content, dict) else content.encode())
+                if isinstance(content, dict) and "size" in content:
+                    with f.open("r+b") as sparse:
+                        sparse.truncate(content["size"])
                 os.utime(f, ns=(mtime * 10**9, mtime * 10**9))
             s = config.settings
             s.models_dir, s.models_ini_path, s.data_dir = models, path, root / "data"
             s.llamacpp_cache_ram_hard_max_mib, s.llamacpp_autoconfig_cache_ram_max_mib = c["hard"], c["cap"]
-            s.model_files_impl = c["impl"]
+            if "model_files_impl" in type(s).model_fields:
+                s.model_files_impl = c["impl"]
             db._DB_PATH = None
             answers = []
             for step in c["steps"]:

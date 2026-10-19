@@ -26,6 +26,7 @@ pub(crate) struct Settings {
 
 type Vars = [(OsString, OsString)];
 
+#[cfg(test)]
 const KEY: &str = "MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL";
 
 fn value(values: &Vars, key: &str) -> Result<Option<String>, &'static str> {
@@ -68,7 +69,7 @@ fn plain_int(values: &Vars, name: &str, default: i64) -> Result<i64, &'static st
     }
 }
 
-fn settings(values: &Vars) -> Result<Settings, &'static str> {
+pub(crate) fn settings(values: &Vars) -> Result<Settings, &'static str> {
     let models = canonical(values, "MODELS_DIR")?.unwrap_or_else(|| "/models".to_owned());
     let normal = models.starts_with('/')
         && (models == "/"
@@ -97,6 +98,7 @@ fn settings(values: &Vars) -> Result<Settings, &'static str> {
 }
 
 /// The selector. `Err` refuses startup; a fallback is logged and keeps Python serving.
+#[cfg(test)]
 pub(crate) fn select(values: &Vars) -> Result<Selection, String> {
     match value(values, KEY)?.as_deref().unwrap_or("python") {
         "python" => Ok(Selection::default()),
@@ -120,6 +122,7 @@ pub(crate) fn select(values: &Vars) -> Result<Selection, String> {
 
 /// The child refuses the route only when the native parent owns it (`1`; `0` otherwise, also
 /// over an inherited value), serves the private call then, and reads the same models settings.
+#[cfg(test)]
 pub(crate) fn child(command: &mut tokio::process::Command, selection: &Selection) {
     command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_SECTION_AUTOCONFIG_CONFIRMED",
@@ -137,7 +140,7 @@ pub(crate) fn child(command: &mut tokio::process::Command, selection: &Selection
 }
 
 /// The native route, when it is native.
-#[cfg(feature = "native-section-autoconfig")]
+#[cfg(all(feature = "native-section-autoconfig", feature = "native-routing"))]
 pub(crate) fn state(
     selection: &Selection,
 ) -> Option<std::sync::Arc<noevia_model_manager::section_autoconfig::SectionAutoconfig>> {

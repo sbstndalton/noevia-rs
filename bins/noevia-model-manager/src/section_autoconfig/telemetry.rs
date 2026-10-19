@@ -84,6 +84,7 @@ pub struct Telemetry {
     /// One ingest at a time (Python's `_LOCK` serialises its store calls).
     ingest: tokio::sync::Mutex<()>,
     /// Who ingests, once the child has answered ([`Telemetry::owner`]).
+    #[cfg(test)]
     owner: tokio::sync::OnceCell<bool>,
     /// Backends skipped by a bound, until this clock value.
     backoff: std::sync::Mutex<HashMap<String, f64>>,
@@ -92,7 +93,9 @@ pub struct Telemetry {
 }
 
 /// The child's telemetry guard advertisement (services, noevia#1318 step 3d).
+#[cfg(test)]
 pub(crate) const GUARD_PATH: &str = "/api/v1/internal/telemetry-guard";
+#[cfg(test)]
 pub(crate) const GUARD_BODY: &[u8] = br#"{"telemetry_guard":1}"#;
 /// How long a backend skipped by a bound is left unread.
 pub const BACKOFF_S: f64 = 600.0;
@@ -118,6 +121,7 @@ impl Telemetry {
             stats,
             clock,
             ingest: tokio::sync::Mutex::new(()),
+            #[cfg(test)]
             owner: tokio::sync::OnceCell::new(),
             backoff: std::sync::Mutex::new(HashMap::new()),
             logged: std::sync::Mutex::new(HashSet::new()),
@@ -133,6 +137,7 @@ impl Telemetry {
     /// The answer is kept for the life of this process. That is safe because the child is never
     /// respawned (its exit ends this process): its image, so its guard, cannot change under a
     /// kept answer, and the store it made persists.
+    #[cfg(test)]
     pub(crate) async fn owner(&self, child: &super::Child<'_>) -> Option<bool> {
         if let Some(native) = self.owner.get() {
             return Some(*native);

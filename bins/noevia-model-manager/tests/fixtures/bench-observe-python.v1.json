@@ -1,0 +1,1937 @@
+{
+  "contention": [
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "respawn",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18001] 0.05.690 I srv    load_model: loading model '/models/syn/a.gguf'\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.62963 ( 51 accepted / 81 generated), mean len = 2.13\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with name=syn-b on port 18002\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:01:00.000000001Z srv    load:   -m\n2026-10-18T10:01:00.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:01:00.000000001Z srv    load:   --ctx-size\n2026-10-18T10:01:00.000000001Z srv    load:   4096\n2026-10-18T10:01:00.000000001Z srv    load:   -np\n2026-10-18T10:01:00.000000001Z srv    load:   2\n2026-10-18T10:01:00.000000001Z srv    load:   --flash-attn\n2026-10-18T10:01:01.123456789Z [18002] 0.05.690 I srv    load_model: loading model '/models/syn/b.gguf'\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 10.5 ms / 12 tokens (0.15 ms per token, 1142.8 tokens per second)\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:02:00.000000001Z srv    load:   --model\n2026-10-18T10:02:00.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:02:00.000000001Z srv    load:   --alias\n2026-10-18T10:02:00.000000001Z srv    load:   syn-a\n2026-10-18T10:02:00.000000001Z srv    load:   --port\n2026-10-18T10:02:00.000000001Z srv    load:   18001\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  50.0 ms /  8 tokens (7.07 ms per token,  160.0 tokens per second)\n",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "respawn",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18001] 0.05.690 I srv    load_model: loading model '/models/syn/a.gguf'\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.62963 ( 51 accepted / 81 generated), mean len = 2.13\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with name=syn-b on port 18002\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:01:00.000000001Z srv    load:   -m\n2026-10-18T10:01:00.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:01:00.000000001Z srv    load:   --ctx-size\n2026-10-18T10:01:00.000000001Z srv    load:   4096\n2026-10-18T10:01:00.000000001Z srv    load:   -np\n2026-10-18T10:01:00.000000001Z srv    load:   2\n2026-10-18T10:01:00.000000001Z srv    load:   --flash-attn\n2026-10-18T10:01:01.123456789Z [18002] 0.05.690 I srv    load_model: loading model '/models/syn/b.gguf'\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 10.5 ms / 12 tokens (0.15 ms per token, 1142.8 tokens per second)\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:02:00.000000001Z srv    load:   --model\n2026-10-18T10:02:00.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:02:00.000000001Z srv    load:   --alias\n2026-10-18T10:02:00.000000001Z srv    load:   syn-a\n2026-10-18T10:02:00.000000001Z srv    load:   --port\n2026-10-18T10:02:00.000000001Z srv    load:   18001\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  50.0 ms /  8 tokens (7.07 ms per token,  160.0 tokens per second)\n",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "respawn",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18001] 0.05.690 I srv    load_model: loading model '/models/syn/a.gguf'\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.62963 ( 51 accepted / 81 generated), mean len = 2.13\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with name=syn-b on port 18002\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:01:00.000000001Z srv    load:   -m\n2026-10-18T10:01:00.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:01:00.000000001Z srv    load:   --ctx-size\n2026-10-18T10:01:00.000000001Z srv    load:   4096\n2026-10-18T10:01:00.000000001Z srv    load:   -np\n2026-10-18T10:01:00.000000001Z srv    load:   2\n2026-10-18T10:01:00.000000001Z srv    load:   --flash-attn\n2026-10-18T10:01:01.123456789Z [18002] 0.05.690 I srv    load_model: loading model '/models/syn/b.gguf'\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 10.5 ms / 12 tokens (0.15 ms per token, 1142.8 tokens per second)\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:02:00.000000001Z srv    load:   --model\n2026-10-18T10:02:00.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:02:00.000000001Z srv    load:   --alias\n2026-10-18T10:02:00.000000001Z srv    load:   syn-a\n2026-10-18T10:02:00.000000001Z srv    load:   --port\n2026-10-18T10:02:00.000000001Z srv    load:   18001\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  50.0 ms /  8 tokens (7.07 ms per token,  160.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "respawn",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18001] 0.05.690 I srv    load_model: loading model '/models/syn/a.gguf'\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.62963 ( 51 accepted / 81 generated), mean len = 2.13\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with name=syn-b on port 18002\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:01:00.000000001Z srv    load:   -m\n2026-10-18T10:01:00.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:01:00.000000001Z srv    load:   --ctx-size\n2026-10-18T10:01:00.000000001Z srv    load:   4096\n2026-10-18T10:01:00.000000001Z srv    load:   -np\n2026-10-18T10:01:00.000000001Z srv    load:   2\n2026-10-18T10:01:00.000000001Z srv    load:   --flash-attn\n2026-10-18T10:01:01.123456789Z [18002] 0.05.690 I srv    load_model: loading model '/models/syn/b.gguf'\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 10.5 ms / 12 tokens (0.15 ms per token, 1142.8 tokens per second)\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:02:00.000000001Z srv    load:   --model\n2026-10-18T10:02:00.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:02:00.000000001Z srv    load:   --alias\n2026-10-18T10:02:00.000000001Z srv    load:   syn-a\n2026-10-18T10:02:00.000000001Z srv    load:   --port\n2026-10-18T10:02:00.000000001Z srv    load:   18001\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  50.0 ms /  8 tokens (7.07 ms per token,  160.0 tokens per second)\n",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "respawn",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18001] 0.05.690 I srv    load_model: loading model '/models/syn/a.gguf'\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.62963 ( 51 accepted / 81 generated), mean len = 2.13\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with name=syn-b on port 18002\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:01:00.000000001Z srv    load:   -m\n2026-10-18T10:01:00.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:01:00.000000001Z srv    load:   --ctx-size\n2026-10-18T10:01:00.000000001Z srv    load:   4096\n2026-10-18T10:01:00.000000001Z srv    load:   -np\n2026-10-18T10:01:00.000000001Z srv    load:   2\n2026-10-18T10:01:00.000000001Z srv    load:   --flash-attn\n2026-10-18T10:01:01.123456789Z [18002] 0.05.690 I srv    load_model: loading model '/models/syn/b.gguf'\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 10.5 ms / 12 tokens (0.15 ms per token, 1142.8 tokens per second)\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:02:00.000000001Z srv    load:   --model\n2026-10-18T10:02:00.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:02:00.000000001Z srv    load:   --alias\n2026-10-18T10:02:00.000000001Z srv    load:   syn-a\n2026-10-18T10:02:00.000000001Z srv    load:   --port\n2026-10-18T10:02:00.000000001Z srv    load:   18001\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  50.0 ms /  8 tokens (7.07 ms per token,  160.0 tokens per second)\n",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "respawn",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18001] 0.05.690 I srv    load_model: loading model '/models/syn/a.gguf'\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.62963 ( 51 accepted / 81 generated), mean len = 2.13\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with name=syn-b on port 18002\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:01:00.000000001Z srv    load:   -m\n2026-10-18T10:01:00.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:01:00.000000001Z srv    load:   --ctx-size\n2026-10-18T10:01:00.000000001Z srv    load:   4096\n2026-10-18T10:01:00.000000001Z srv    load:   -np\n2026-10-18T10:01:00.000000001Z srv    load:   2\n2026-10-18T10:01:00.000000001Z srv    load:   --flash-attn\n2026-10-18T10:01:01.123456789Z [18002] 0.05.690 I srv    load_model: loading model '/models/syn/b.gguf'\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 10.5 ms / 12 tokens (0.15 ms per token, 1142.8 tokens per second)\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:02:00.000000001Z srv    load:   --model\n2026-10-18T10:02:00.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:02:00.000000001Z srv    load:   --alias\n2026-10-18T10:02:00.000000001Z srv    load:   syn-a\n2026-10-18T10:02:00.000000001Z srv    load:   --port\n2026-10-18T10:02:00.000000001Z srv    load:   18001\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  50.0 ms /  8 tokens (7.07 ms per token,  160.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "respawn",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18001] 0.05.690 I srv    load_model: loading model '/models/syn/a.gguf'\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.62963 ( 51 accepted / 81 generated), mean len = 2.13\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with name=syn-b on port 18002\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:01:00.000000001Z srv    load:   -m\n2026-10-18T10:01:00.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:01:00.000000001Z srv    load:   --ctx-size\n2026-10-18T10:01:00.000000001Z srv    load:   4096\n2026-10-18T10:01:00.000000001Z srv    load:   -np\n2026-10-18T10:01:00.000000001Z srv    load:   2\n2026-10-18T10:01:00.000000001Z srv    load:   --flash-attn\n2026-10-18T10:01:01.123456789Z [18002] 0.05.690 I srv    load_model: loading model '/models/syn/b.gguf'\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 10.5 ms / 12 tokens (0.15 ms per token, 1142.8 tokens per second)\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:02:00.000000001Z srv    load:   --model\n2026-10-18T10:02:00.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:02:00.000000001Z srv    load:   --alias\n2026-10-18T10:02:00.000000001Z srv    load:   syn-a\n2026-10-18T10:02:00.000000001Z srv    load:   --port\n2026-10-18T10:02:00.000000001Z srv    load:   18001\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  50.0 ms /  8 tokens (7.07 ms per token,  160.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "respawn",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18001] 0.05.690 I srv    load_model: loading model '/models/syn/a.gguf'\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.62963 ( 51 accepted / 81 generated), mean len = 2.13\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with name=syn-b on port 18002\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:01:00.000000001Z srv    load:   -m\n2026-10-18T10:01:00.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:01:00.000000001Z srv    load:   --ctx-size\n2026-10-18T10:01:00.000000001Z srv    load:   4096\n2026-10-18T10:01:00.000000001Z srv    load:   -np\n2026-10-18T10:01:00.000000001Z srv    load:   2\n2026-10-18T10:01:00.000000001Z srv    load:   --flash-attn\n2026-10-18T10:01:01.123456789Z [18002] 0.05.690 I srv    load_model: loading model '/models/syn/b.gguf'\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 10.5 ms / 12 tokens (0.15 ms per token, 1142.8 tokens per second)\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:02:00.000000001Z srv    load:   --model\n2026-10-18T10:02:00.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:02:00.000000001Z srv    load:   --alias\n2026-10-18T10:02:00.000000001Z srv    load:   syn-a\n2026-10-18T10:02:00.000000001Z srv    load:   --port\n2026-10-18T10:02:00.000000001Z srv    load:   18001\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  50.0 ms /  8 tokens (7.07 ms per token,  160.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "respawn",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18001] 0.05.690 I srv    load_model: loading model '/models/syn/a.gguf'\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:03.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:04.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.62963 ( 51 accepted / 81 generated), mean len = 2.13\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with name=syn-b on port 18002\n2026-10-18T10:01:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:01:00.000000001Z srv    load:   -m\n2026-10-18T10:01:00.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:01:00.000000001Z srv    load:   --ctx-size\n2026-10-18T10:01:00.000000001Z srv    load:   4096\n2026-10-18T10:01:00.000000001Z srv    load:   -np\n2026-10-18T10:01:00.000000001Z srv    load:   2\n2026-10-18T10:01:00.000000001Z srv    load:   --flash-attn\n2026-10-18T10:01:01.123456789Z [18002] 0.05.690 I srv    load_model: loading model '/models/syn/b.gguf'\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 10.5 ms / 12 tokens (0.15 ms per token, 1142.8 tokens per second)\n2026-10-18T10:01:02.123456789Z [18002] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with name=syn-a on port 18001\n2026-10-18T10:02:00.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:02:00.000000001Z srv    load:   --model\n2026-10-18T10:02:00.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:02:00.000000001Z srv    load:   --alias\n2026-10-18T10:02:00.000000001Z srv    load:   syn-a\n2026-10-18T10:02:00.000000001Z srv    load:   --port\n2026-10-18T10:02:00.000000001Z srv    load:   18001\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:02:01.123456789Z [18001] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  50.0 ms /  8 tokens (7.07 ms per token,  160.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "interleaved",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:00.123456789Z [18003] 0.05.690 I slot print_timing: id  0 | task 9 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\r\nno timestamp here\r\n[18004] 0.01.000 I srv    load_model: loading model '/models/syn/c.gguf'\r\n2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with name=syn-c on port 18004\u000b2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with name=syn-d on port 18005\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load:   -m\u001e2026-10-18T10:00:06.5Z srv    load:   /models/syn/b.gguf\u001e2026-10-18T10:00:06.5Z srv    load:   --ctx-size\u001e2026-10-18T10:00:06.5Z srv    load:   4096\u001e2026-10-18T10:00:06.5Z srv    load:   -np\u001e2026-10-18T10:00:06.5Z srv    load:   2\u001e2026-10-18T10:00:06.5Z srv    load:   --flash-attn\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u2028",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "interleaved",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:00.123456789Z [18003] 0.05.690 I slot print_timing: id  0 | task 9 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\r\nno timestamp here\r\n[18004] 0.01.000 I srv    load_model: loading model '/models/syn/c.gguf'\r\n2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with name=syn-c on port 18004\u000b2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with name=syn-d on port 18005\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load:   -m\u001e2026-10-18T10:00:06.5Z srv    load:   /models/syn/b.gguf\u001e2026-10-18T10:00:06.5Z srv    load:   --ctx-size\u001e2026-10-18T10:00:06.5Z srv    load:   4096\u001e2026-10-18T10:00:06.5Z srv    load:   -np\u001e2026-10-18T10:00:06.5Z srv    load:   2\u001e2026-10-18T10:00:06.5Z srv    load:   --flash-attn\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u2028",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "interleaved",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:00.123456789Z [18003] 0.05.690 I slot print_timing: id  0 | task 9 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\r\nno timestamp here\r\n[18004] 0.01.000 I srv    load_model: loading model '/models/syn/c.gguf'\r\n2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with name=syn-c on port 18004\u000b2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with name=syn-d on port 18005\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load:   -m\u001e2026-10-18T10:00:06.5Z srv    load:   /models/syn/b.gguf\u001e2026-10-18T10:00:06.5Z srv    load:   --ctx-size\u001e2026-10-18T10:00:06.5Z srv    load:   4096\u001e2026-10-18T10:00:06.5Z srv    load:   -np\u001e2026-10-18T10:00:06.5Z srv    load:   2\u001e2026-10-18T10:00:06.5Z srv    load:   --flash-attn\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u2028",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "interleaved",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:00.123456789Z [18003] 0.05.690 I slot print_timing: id  0 | task 9 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\r\nno timestamp here\r\n[18004] 0.01.000 I srv    load_model: loading model '/models/syn/c.gguf'\r\n2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with name=syn-c on port 18004\u000b2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with name=syn-d on port 18005\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load:   -m\u001e2026-10-18T10:00:06.5Z srv    load:   /models/syn/b.gguf\u001e2026-10-18T10:00:06.5Z srv    load:   --ctx-size\u001e2026-10-18T10:00:06.5Z srv    load:   4096\u001e2026-10-18T10:00:06.5Z srv    load:   -np\u001e2026-10-18T10:00:06.5Z srv    load:   2\u001e2026-10-18T10:00:06.5Z srv    load:   --flash-attn\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u2028",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "interleaved",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:00.123456789Z [18003] 0.05.690 I slot print_timing: id  0 | task 9 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\r\nno timestamp here\r\n[18004] 0.01.000 I srv    load_model: loading model '/models/syn/c.gguf'\r\n2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with name=syn-c on port 18004\u000b2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with name=syn-d on port 18005\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load:   -m\u001e2026-10-18T10:00:06.5Z srv    load:   /models/syn/b.gguf\u001e2026-10-18T10:00:06.5Z srv    load:   --ctx-size\u001e2026-10-18T10:00:06.5Z srv    load:   4096\u001e2026-10-18T10:00:06.5Z srv    load:   -np\u001e2026-10-18T10:00:06.5Z srv    load:   2\u001e2026-10-18T10:00:06.5Z srv    load:   --flash-attn\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u2028",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "interleaved",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:00.123456789Z [18003] 0.05.690 I slot print_timing: id  0 | task 9 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\r\nno timestamp here\r\n[18004] 0.01.000 I srv    load_model: loading model '/models/syn/c.gguf'\r\n2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with name=syn-c on port 18004\u000b2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with name=syn-d on port 18005\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load:   -m\u001e2026-10-18T10:00:06.5Z srv    load:   /models/syn/b.gguf\u001e2026-10-18T10:00:06.5Z srv    load:   --ctx-size\u001e2026-10-18T10:00:06.5Z srv    load:   4096\u001e2026-10-18T10:00:06.5Z srv    load:   -np\u001e2026-10-18T10:00:06.5Z srv    load:   2\u001e2026-10-18T10:00:06.5Z srv    load:   --flash-attn\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u2028",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "interleaved",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:00.123456789Z [18003] 0.05.690 I slot print_timing: id  0 | task 9 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\r\nno timestamp here\r\n[18004] 0.01.000 I srv    load_model: loading model '/models/syn/c.gguf'\r\n2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with name=syn-c on port 18004\u000b2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with name=syn-d on port 18005\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load:   -m\u001e2026-10-18T10:00:06.5Z srv    load:   /models/syn/b.gguf\u001e2026-10-18T10:00:06.5Z srv    load:   --ctx-size\u001e2026-10-18T10:00:06.5Z srv    load:   4096\u001e2026-10-18T10:00:06.5Z srv    load:   -np\u001e2026-10-18T10:00:06.5Z srv    load:   2\u001e2026-10-18T10:00:06.5Z srv    load:   --flash-attn\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u2028",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "interleaved",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:00.123456789Z [18003] 0.05.690 I slot print_timing: id  0 | task 9 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\r\nno timestamp here\r\n[18004] 0.01.000 I srv    load_model: loading model '/models/syn/c.gguf'\r\n2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with name=syn-c on port 18004\u000b2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with name=syn-d on port 18005\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load:   -m\u001e2026-10-18T10:00:06.5Z srv    load:   /models/syn/b.gguf\u001e2026-10-18T10:00:06.5Z srv    load:   --ctx-size\u001e2026-10-18T10:00:06.5Z srv    load:   4096\u001e2026-10-18T10:00:06.5Z srv    load:   -np\u001e2026-10-18T10:00:06.5Z srv    load:   2\u001e2026-10-18T10:00:06.5Z srv    load:   --flash-attn\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u2028",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "interleaved",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:00.123456789Z [18003] 0.05.690 I slot print_timing: id  0 | task 9 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\r\nno timestamp here\r\n[18004] 0.01.000 I srv    load_model: loading model '/models/syn/c.gguf'\r\n2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with name=syn-c on port 18004\u000b2026-10-18T10:00:05.000000001Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with name=syn-d on port 18005\u001e2026-10-18T10:00:06.5Z srv    load: spawning server instance with args:\u001e2026-10-18T10:00:06.5Z srv    load:   -m\u001e2026-10-18T10:00:06.5Z srv    load:   /models/syn/b.gguf\u001e2026-10-18T10:00:06.5Z srv    load:   --ctx-size\u001e2026-10-18T10:00:06.5Z srv    load:   4096\u001e2026-10-18T10:00:06.5Z srv    load:   -np\u001e2026-10-18T10:00:06.5Z srv    load:   2\u001e2026-10-18T10:00:06.5Z srv    load:   --flash-attn\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:07.123456789Z [18004] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\u001e2026-10-18T10:00:08.123456789Z [18005] 0.05.690 I slot print_timing: id  0 | task 3 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\u2028",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "edges",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-e on port 18006\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 | prompt eval time = 5 ms / 7 tokens (1 ms per token, 1400 tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 |  eval time = .5 ms / 0016 tokens ( .1 ms per token, 3200. tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 5 | draft acceptance = 1 ( 0 accepted / 0 generated), mean len = 0\n2026-10-18T10:00:03.123456789Z [18006] x slot print_timing: id 1 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 tokens per second)",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "edges",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-e on port 18006\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 | prompt eval time = 5 ms / 7 tokens (1 ms per token, 1400 tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 |  eval time = .5 ms / 0016 tokens ( .1 ms per token, 3200. tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 5 | draft acceptance = 1 ( 0 accepted / 0 generated), mean len = 0\n2026-10-18T10:00:03.123456789Z [18006] x slot print_timing: id 1 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 tokens per second)",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "edges",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-e on port 18006\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 | prompt eval time = 5 ms / 7 tokens (1 ms per token, 1400 tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 |  eval time = .5 ms / 0016 tokens ( .1 ms per token, 3200. tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 5 | draft acceptance = 1 ( 0 accepted / 0 generated), mean len = 0\n2026-10-18T10:00:03.123456789Z [18006] x slot print_timing: id 1 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "edges",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-e on port 18006\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 | prompt eval time = 5 ms / 7 tokens (1 ms per token, 1400 tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 |  eval time = .5 ms / 0016 tokens ( .1 ms per token, 3200. tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 5 | draft acceptance = 1 ( 0 accepted / 0 generated), mean len = 0\n2026-10-18T10:00:03.123456789Z [18006] x slot print_timing: id 1 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 tokens per second)",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "edges",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-e on port 18006\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 | prompt eval time = 5 ms / 7 tokens (1 ms per token, 1400 tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 |  eval time = .5 ms / 0016 tokens ( .1 ms per token, 3200. tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 5 | draft acceptance = 1 ( 0 accepted / 0 generated), mean len = 0\n2026-10-18T10:00:03.123456789Z [18006] x slot print_timing: id 1 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 tokens per second)",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "edges",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-e on port 18006\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 | prompt eval time = 5 ms / 7 tokens (1 ms per token, 1400 tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 |  eval time = .5 ms / 0016 tokens ( .1 ms per token, 3200. tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 5 | draft acceptance = 1 ( 0 accepted / 0 generated), mean len = 0\n2026-10-18T10:00:03.123456789Z [18006] x slot print_timing: id 1 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "edges",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-e on port 18006\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 | prompt eval time = 5 ms / 7 tokens (1 ms per token, 1400 tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 |  eval time = .5 ms / 0016 tokens ( .1 ms per token, 3200. tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 5 | draft acceptance = 1 ( 0 accepted / 0 generated), mean len = 0\n2026-10-18T10:00:03.123456789Z [18006] x slot print_timing: id 1 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "edges",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-e on port 18006\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 | prompt eval time = 5 ms / 7 tokens (1 ms per token, 1400 tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 |  eval time = .5 ms / 0016 tokens ( .1 ms per token, 3200. tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 5 | draft acceptance = 1 ( 0 accepted / 0 generated), mean len = 0\n2026-10-18T10:00:03.123456789Z [18006] x slot print_timing: id 1 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "edges",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-e on port 18006\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 | prompt eval time = 5 ms / 7 tokens (1 ms per token, 1400 tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 4 |  eval time = .5 ms / 0016 tokens ( .1 ms per token, 3200. tokens per second)\n2026-10-18T10:00:02.123456789Z [18006] x slot print_timing: id 12 | task 5 | draft acceptance = 1 ( 0 accepted / 0 generated), mean len = 0\n2026-10-18T10:00:03.123456789Z [18006] x slot print_timing: id 1 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "stamps",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:00Z [18007] x slot print_timing: id 0 | task 0 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.5+02:00 [18007] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00,25-01:30 [18007] x slot print_timing: id 0 | task 2 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00Z [18007] x slot print_timing: id 0 | task 3 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-02-30T10:00:00Z [18007] x slot print_timing: id 0 | task 4 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T24:00:00Z [18007] x slot print_timing: id 0 | task 5 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2024-02-29T23:59:59.9999999Z [18007] x slot print_timing: id 0 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n0000-01-01T00:00:00Z [18007] x slot print_timing: id 0 | task 7 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:60Z [18007] x slot print_timing: id 0 | task 8 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n1969-12-31T23:59:59.5Z [18007] x slot print_timing: id 0 | task 9 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-13-01T00:00:00+0000 [18007] x slot print_timing: id 0 | task 10 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00+0130 [18007] x slot print_timing: id 0 | task 11 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.000001-0045 [18007] x slot print_timing: id 0 | task 12 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "stamps",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:00Z [18007] x slot print_timing: id 0 | task 0 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.5+02:00 [18007] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00,25-01:30 [18007] x slot print_timing: id 0 | task 2 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00Z [18007] x slot print_timing: id 0 | task 3 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-02-30T10:00:00Z [18007] x slot print_timing: id 0 | task 4 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T24:00:00Z [18007] x slot print_timing: id 0 | task 5 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2024-02-29T23:59:59.9999999Z [18007] x slot print_timing: id 0 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n0000-01-01T00:00:00Z [18007] x slot print_timing: id 0 | task 7 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:60Z [18007] x slot print_timing: id 0 | task 8 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n1969-12-31T23:59:59.5Z [18007] x slot print_timing: id 0 | task 9 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-13-01T00:00:00+0000 [18007] x slot print_timing: id 0 | task 10 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00+0130 [18007] x slot print_timing: id 0 | task 11 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.000001-0045 [18007] x slot print_timing: id 0 | task 12 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "stamps",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:00Z [18007] x slot print_timing: id 0 | task 0 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.5+02:00 [18007] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00,25-01:30 [18007] x slot print_timing: id 0 | task 2 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00Z [18007] x slot print_timing: id 0 | task 3 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-02-30T10:00:00Z [18007] x slot print_timing: id 0 | task 4 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T24:00:00Z [18007] x slot print_timing: id 0 | task 5 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2024-02-29T23:59:59.9999999Z [18007] x slot print_timing: id 0 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n0000-01-01T00:00:00Z [18007] x slot print_timing: id 0 | task 7 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:60Z [18007] x slot print_timing: id 0 | task 8 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n1969-12-31T23:59:59.5Z [18007] x slot print_timing: id 0 | task 9 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-13-01T00:00:00+0000 [18007] x slot print_timing: id 0 | task 10 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00+0130 [18007] x slot print_timing: id 0 | task 11 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.000001-0045 [18007] x slot print_timing: id 0 | task 12 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "stamps",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:00Z [18007] x slot print_timing: id 0 | task 0 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.5+02:00 [18007] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00,25-01:30 [18007] x slot print_timing: id 0 | task 2 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00Z [18007] x slot print_timing: id 0 | task 3 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-02-30T10:00:00Z [18007] x slot print_timing: id 0 | task 4 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T24:00:00Z [18007] x slot print_timing: id 0 | task 5 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2024-02-29T23:59:59.9999999Z [18007] x slot print_timing: id 0 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n0000-01-01T00:00:00Z [18007] x slot print_timing: id 0 | task 7 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:60Z [18007] x slot print_timing: id 0 | task 8 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n1969-12-31T23:59:59.5Z [18007] x slot print_timing: id 0 | task 9 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-13-01T00:00:00+0000 [18007] x slot print_timing: id 0 | task 10 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00+0130 [18007] x slot print_timing: id 0 | task 11 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.000001-0045 [18007] x slot print_timing: id 0 | task 12 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "stamps",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:00Z [18007] x slot print_timing: id 0 | task 0 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.5+02:00 [18007] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00,25-01:30 [18007] x slot print_timing: id 0 | task 2 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00Z [18007] x slot print_timing: id 0 | task 3 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-02-30T10:00:00Z [18007] x slot print_timing: id 0 | task 4 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T24:00:00Z [18007] x slot print_timing: id 0 | task 5 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2024-02-29T23:59:59.9999999Z [18007] x slot print_timing: id 0 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n0000-01-01T00:00:00Z [18007] x slot print_timing: id 0 | task 7 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:60Z [18007] x slot print_timing: id 0 | task 8 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n1969-12-31T23:59:59.5Z [18007] x slot print_timing: id 0 | task 9 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-13-01T00:00:00+0000 [18007] x slot print_timing: id 0 | task 10 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00+0130 [18007] x slot print_timing: id 0 | task 11 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.000001-0045 [18007] x slot print_timing: id 0 | task 12 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "stamps",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:00Z [18007] x slot print_timing: id 0 | task 0 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.5+02:00 [18007] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00,25-01:30 [18007] x slot print_timing: id 0 | task 2 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00Z [18007] x slot print_timing: id 0 | task 3 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-02-30T10:00:00Z [18007] x slot print_timing: id 0 | task 4 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T24:00:00Z [18007] x slot print_timing: id 0 | task 5 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2024-02-29T23:59:59.9999999Z [18007] x slot print_timing: id 0 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n0000-01-01T00:00:00Z [18007] x slot print_timing: id 0 | task 7 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:60Z [18007] x slot print_timing: id 0 | task 8 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n1969-12-31T23:59:59.5Z [18007] x slot print_timing: id 0 | task 9 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-13-01T00:00:00+0000 [18007] x slot print_timing: id 0 | task 10 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00+0130 [18007] x slot print_timing: id 0 | task 11 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.000001-0045 [18007] x slot print_timing: id 0 | task 12 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "stamps",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:00Z [18007] x slot print_timing: id 0 | task 0 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.5+02:00 [18007] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00,25-01:30 [18007] x slot print_timing: id 0 | task 2 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00Z [18007] x slot print_timing: id 0 | task 3 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-02-30T10:00:00Z [18007] x slot print_timing: id 0 | task 4 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T24:00:00Z [18007] x slot print_timing: id 0 | task 5 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2024-02-29T23:59:59.9999999Z [18007] x slot print_timing: id 0 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n0000-01-01T00:00:00Z [18007] x slot print_timing: id 0 | task 7 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:60Z [18007] x slot print_timing: id 0 | task 8 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n1969-12-31T23:59:59.5Z [18007] x slot print_timing: id 0 | task 9 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-13-01T00:00:00+0000 [18007] x slot print_timing: id 0 | task 10 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00+0130 [18007] x slot print_timing: id 0 | task 11 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.000001-0045 [18007] x slot print_timing: id 0 | task 12 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "stamps",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:00Z [18007] x slot print_timing: id 0 | task 0 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.5+02:00 [18007] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00,25-01:30 [18007] x slot print_timing: id 0 | task 2 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00Z [18007] x slot print_timing: id 0 | task 3 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-02-30T10:00:00Z [18007] x slot print_timing: id 0 | task 4 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T24:00:00Z [18007] x slot print_timing: id 0 | task 5 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2024-02-29T23:59:59.9999999Z [18007] x slot print_timing: id 0 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n0000-01-01T00:00:00Z [18007] x slot print_timing: id 0 | task 7 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:60Z [18007] x slot print_timing: id 0 | task 8 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n1969-12-31T23:59:59.5Z [18007] x slot print_timing: id 0 | task 9 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-13-01T00:00:00+0000 [18007] x slot print_timing: id 0 | task 10 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00+0130 [18007] x slot print_timing: id 0 | task 11 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.000001-0045 [18007] x slot print_timing: id 0 | task 12 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "stamps",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:00Z [18007] x slot print_timing: id 0 | task 0 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.5+02:00 [18007] x slot print_timing: id 0 | task 1 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00,25-01:30 [18007] x slot print_timing: id 0 | task 2 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00Z [18007] x slot print_timing: id 0 | task 3 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-02-30T10:00:00Z [18007] x slot print_timing: id 0 | task 4 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T24:00:00Z [18007] x slot print_timing: id 0 | task 5 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2024-02-29T23:59:59.9999999Z [18007] x slot print_timing: id 0 | task 6 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n0000-01-01T00:00:00Z [18007] x slot print_timing: id 0 | task 7 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:60Z [18007] x slot print_timing: id 0 | task 8 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n1969-12-31T23:59:59.5Z [18007] x slot print_timing: id 0 | task 9 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-13-01T00:00:00+0000 [18007] x slot print_timing: id 0 | task 10 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00+0130 [18007] x slot print_timing: id 0 | task 11 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)\n2026-10-18T10:00:00.000001-0045 [18007] x slot print_timing: id 0 | task 12 |  eval time = 1 ms / 20 tokens (1 ms per token, 10.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "whitespace",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv\u001fload: spawning server instance with name=syn-f on port 18008\n2026-10-18T10:00:01.123456789Z srv\u3000load:\u2003\u2003--model\u00a0/models/syn/f.gguf\n2026-10-18T10:00:02.123456789Z [18008] x slot print_timing: id\u2009\u20090 | task 1 |\u00a0eval time = 1 ms /\u200020 tokens (1 ms per token, 11.0 tokens per second)\n",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "whitespace",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.123456789Z srv\u001fload: spawning server instance with name=syn-f on port 18008\n2026-10-18T10:00:01.123456789Z srv\u3000load:\u2003\u2003--model\u00a0/models/syn/f.gguf\n2026-10-18T10:00:02.123456789Z [18008] x slot print_timing: id\u2009\u20090 | task 1 |\u00a0eval time = 1 ms /\u200020 tokens (1 ms per token, 11.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "whitespace",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv\u001fload: spawning server instance with name=syn-f on port 18008\n2026-10-18T10:00:01.123456789Z srv\u3000load:\u2003\u2003--model\u00a0/models/syn/f.gguf\n2026-10-18T10:00:02.123456789Z [18008] x slot print_timing: id\u2009\u20090 | task 1 |\u00a0eval time = 1 ms /\u200020 tokens (1 ms per token, 11.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "whitespace",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv\u001fload: spawning server instance with name=syn-f on port 18008\n2026-10-18T10:00:01.123456789Z srv\u3000load:\u2003\u2003--model\u00a0/models/syn/f.gguf\n2026-10-18T10:00:02.123456789Z [18008] x slot print_timing: id\u2009\u20090 | task 1 |\u00a0eval time = 1 ms /\u200020 tokens (1 ms per token, 11.0 tokens per second)\n",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "whitespace",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.123456789Z srv\u001fload: spawning server instance with name=syn-f on port 18008\n2026-10-18T10:00:01.123456789Z srv\u3000load:\u2003\u2003--model\u00a0/models/syn/f.gguf\n2026-10-18T10:00:02.123456789Z [18008] x slot print_timing: id\u2009\u20090 | task 1 |\u00a0eval time = 1 ms /\u200020 tokens (1 ms per token, 11.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "whitespace",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv\u001fload: spawning server instance with name=syn-f on port 18008\n2026-10-18T10:00:01.123456789Z srv\u3000load:\u2003\u2003--model\u00a0/models/syn/f.gguf\n2026-10-18T10:00:02.123456789Z [18008] x slot print_timing: id\u2009\u20090 | task 1 |\u00a0eval time = 1 ms /\u200020 tokens (1 ms per token, 11.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "whitespace",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv\u001fload: spawning server instance with name=syn-f on port 18008\n2026-10-18T10:00:01.123456789Z srv\u3000load:\u2003\u2003--model\u00a0/models/syn/f.gguf\n2026-10-18T10:00:02.123456789Z [18008] x slot print_timing: id\u2009\u20090 | task 1 |\u00a0eval time = 1 ms /\u200020 tokens (1 ms per token, 11.0 tokens per second)\n",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "whitespace",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.123456789Z srv\u001fload: spawning server instance with name=syn-f on port 18008\n2026-10-18T10:00:01.123456789Z srv\u3000load:\u2003\u2003--model\u00a0/models/syn/f.gguf\n2026-10-18T10:00:02.123456789Z [18008] x slot print_timing: id\u2009\u20090 | task 1 |\u00a0eval time = 1 ms /\u200020 tokens (1 ms per token, 11.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "whitespace",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv\u001fload: spawning server instance with name=syn-f on port 18008\n2026-10-18T10:00:01.123456789Z srv\u3000load:\u2003\u2003--model\u00a0/models/syn/f.gguf\n2026-10-18T10:00:02.123456789Z [18008] x slot print_timing: id\u2009\u20090 | task 1 |\u00a0eval time = 1 ms /\u200020 tokens (1 ms per token, 11.0 tokens per second)\n",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "unit-separator",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv    load: spawning server instance with name=syn-q\u001fz on port 18020\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "unit-separator",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.123456789Z srv    load: spawning server instance with name=syn-q\u001fz on port 18020\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "unit-separator",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv    load: spawning server instance with name=syn-q\u001fz on port 18020\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "unit-separator",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv    load: spawning server instance with name=syn-q\u001fz on port 18020\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "unit-separator",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.123456789Z srv    load: spawning server instance with name=syn-q\u001fz on port 18020\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "unit-separator",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv    load: spawning server instance with name=syn-q\u001fz on port 18020\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "unit-separator",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv    load: spawning server instance with name=syn-q\u001fz on port 18020\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "unit-separator",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.123456789Z srv    load: spawning server instance with name=syn-q\u001fz on port 18020\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "unit-separator",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.123456789Z srv    load: spawning server instance with name=syn-q\u001fz on port 18020\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18020] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "empty",
+      "since": 0.0,
+      "text": "",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "empty",
+      "since": 1792317603.123456,
+      "text": "",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "empty",
+      "since": 9999999999.0,
+      "text": "",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "empty",
+      "since": 0.0,
+      "text": "",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "empty",
+      "since": 1792317603.123456,
+      "text": "",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "empty",
+      "since": 9999999999.0,
+      "text": "",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "empty",
+      "since": 0.0,
+      "text": "",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "empty",
+      "since": 1792317603.123456,
+      "text": "",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "empty",
+      "since": 9999999999.0,
+      "text": "",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "blank",
+      "since": 0.0,
+      "text": "  \n\t\n \u3000 ",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "blank",
+      "since": 1792317603.123456,
+      "text": "  \n\t\n \u3000 ",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "blank",
+      "since": 9999999999.0,
+      "text": "  \n\t\n \u3000 ",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "blank",
+      "since": 0.0,
+      "text": "  \n\t\n \u3000 ",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "blank",
+      "since": 1792317603.123456,
+      "text": "  \n\t\n \u3000 ",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "blank",
+      "since": 9999999999.0,
+      "text": "  \n\t\n \u3000 ",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "blank",
+      "since": 0.0,
+      "text": "  \n\t\n \u3000 ",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "blank",
+      "since": 1792317603.123456,
+      "text": "  \n\t\n \u3000 ",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "blank",
+      "since": 9999999999.0,
+      "text": "  \n\t\n \u3000 ",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "no-newline",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-r on port 18021\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "no-newline",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-r on port 18021\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "no-newline",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-r on port 18021\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "no-newline",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-r on port 18021\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "no-newline",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-r on port 18021\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "no-newline",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-r on port 18021\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "no-newline",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-r on port 18021\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "no-newline",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-r on port 18021\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "no-newline",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-r on port 18021\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18021] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "same-second",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-s on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-t on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "same-second",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-s on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-t on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "same-second",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-s on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-t on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "same-second",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-s on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-t on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "same-second",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-s on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-t on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "same-second",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-s on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-t on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "same-second",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-s on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-t on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "same-second",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-s on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-t on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "same-second",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-s on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-t on port 18022\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   -m\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/b.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   4096\n2026-10-18T10:00:01.000000001Z srv    load:   -np\n2026-10-18T10:00:01.000000001Z srv    load:   2\n2026-10-18T10:00:01.000000001Z srv    load:   --flash-attn\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:02.123456789Z [18022] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)",
+      "want": false
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "repeats",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-u on port 18023\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  1.0 ms /  20 tokens (7.07 ms per token,  10.0 tokens per second)\n2026-10-18T10:00:03.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  2.0 ms /  40 tokens (7.07 ms per token,  20.0 tokens per second)\n2026-10-18T10:00:04.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.5 ( 1 accepted / 2 generated), mean len = 1.5\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:06.123456789Z [18023] x slot print_timing: id  0 | task 3 |        eval time =  1 ms / 20 tokens (1 ms per token, 10.0 tokens per sec)",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "repeats",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-u on port 18023\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  1.0 ms /  20 tokens (7.07 ms per token,  10.0 tokens per second)\n2026-10-18T10:00:03.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  2.0 ms /  40 tokens (7.07 ms per token,  20.0 tokens per second)\n2026-10-18T10:00:04.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.5 ( 1 accepted / 2 generated), mean len = 1.5\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:06.123456789Z [18023] x slot print_timing: id  0 | task 3 |        eval time =  1 ms / 20 tokens (1 ms per token, 10.0 tokens per sec)",
+      "want": true
+    },
+    {
+      "aliases": [],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "repeats",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-u on port 18023\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  1.0 ms /  20 tokens (7.07 ms per token,  10.0 tokens per second)\n2026-10-18T10:00:03.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  2.0 ms /  40 tokens (7.07 ms per token,  20.0 tokens per second)\n2026-10-18T10:00:04.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.5 ( 1 accepted / 2 generated), mean len = 1.5\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:06.123456789Z [18023] x slot print_timing: id  0 | task 3 |        eval time =  1 ms / 20 tokens (1 ms per token, 10.0 tokens per sec)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "repeats",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-u on port 18023\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  1.0 ms /  20 tokens (7.07 ms per token,  10.0 tokens per second)\n2026-10-18T10:00:03.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  2.0 ms /  40 tokens (7.07 ms per token,  20.0 tokens per second)\n2026-10-18T10:00:04.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.5 ( 1 accepted / 2 generated), mean len = 1.5\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:06.123456789Z [18023] x slot print_timing: id  0 | task 3 |        eval time =  1 ms / 20 tokens (1 ms per token, 10.0 tokens per sec)",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "repeats",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-u on port 18023\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  1.0 ms /  20 tokens (7.07 ms per token,  10.0 tokens per second)\n2026-10-18T10:00:03.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  2.0 ms /  40 tokens (7.07 ms per token,  20.0 tokens per second)\n2026-10-18T10:00:04.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.5 ( 1 accepted / 2 generated), mean len = 1.5\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:06.123456789Z [18023] x slot print_timing: id  0 | task 3 |        eval time =  1 ms / 20 tokens (1 ms per token, 10.0 tokens per sec)",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "repeats",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-u on port 18023\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  1.0 ms /  20 tokens (7.07 ms per token,  10.0 tokens per second)\n2026-10-18T10:00:03.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  2.0 ms /  40 tokens (7.07 ms per token,  20.0 tokens per second)\n2026-10-18T10:00:04.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.5 ( 1 accepted / 2 generated), mean len = 1.5\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:06.123456789Z [18023] x slot print_timing: id  0 | task 3 |        eval time =  1 ms / 20 tokens (1 ms per token, 10.0 tokens per sec)",
+      "want": false
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "repeats",
+      "since": 0.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-u on port 18023\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  1.0 ms /  20 tokens (7.07 ms per token,  10.0 tokens per second)\n2026-10-18T10:00:03.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  2.0 ms /  40 tokens (7.07 ms per token,  20.0 tokens per second)\n2026-10-18T10:00:04.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.5 ( 1 accepted / 2 generated), mean len = 1.5\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:06.123456789Z [18023] x slot print_timing: id  0 | task 3 |        eval time =  1 ms / 20 tokens (1 ms per token, 10.0 tokens per sec)",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "repeats",
+      "since": 1792317603.123456,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-u on port 18023\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  1.0 ms /  20 tokens (7.07 ms per token,  10.0 tokens per second)\n2026-10-18T10:00:03.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  2.0 ms /  40 tokens (7.07 ms per token,  20.0 tokens per second)\n2026-10-18T10:00:04.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.5 ( 1 accepted / 2 generated), mean len = 1.5\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:06.123456789Z [18023] x slot print_timing: id  0 | task 3 |        eval time =  1 ms / 20 tokens (1 ms per token, 10.0 tokens per sec)",
+      "want": true
+    },
+    {
+      "aliases": [
+        "syn-a",
+        "syn-b",
+        "syn-c",
+        "syn-d",
+        "syn-e"
+      ],
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 400,
+          "timestamps": true
+        }
+      ],
+      "id": "repeats",
+      "since": 9999999999.0,
+      "text": "2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with name=syn-u on port 18023\n2026-10-18T10:00:01.000000001Z srv    load: spawning server instance with args:\n2026-10-18T10:00:01.000000001Z srv    load:   --model\n2026-10-18T10:00:01.000000001Z srv    load:   /models/syn/a.gguf\n2026-10-18T10:00:01.000000001Z srv    load:   --alias\n2026-10-18T10:00:01.000000001Z srv    load:   syn-a\n2026-10-18T10:00:01.000000001Z srv    load:   --port\n2026-10-18T10:00:01.000000001Z srv    load:   18001\n2026-10-18T10:00:01.000000001Z srv    load:   --ctx-size\n2026-10-18T10:00:01.000000001Z srv    load:   8192\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-type\n2026-10-18T10:00:01.000000001Z srv    load:   draft-mtp\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-n-max\n2026-10-18T10:00:01.000000001Z srv    load:   4\n2026-10-18T10:00:01.000000001Z srv    load:   --spec-draft-p-min\n2026-10-18T10:00:01.000000001Z srv    load:   0.25\n2026-10-18T10:00:01.000000001Z srv    load:   -ngl\n2026-10-18T10:00:01.000000001Z srv    load:   99\n2026-10-18T10:00:01.000000001Z srv    load:   --jinja\n2026-10-18T10:00:02.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  1.0 ms /  20 tokens (7.07 ms per token,  10.0 tokens per second)\n2026-10-18T10:00:03.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 1 |        eval time =  2.0 ms /  40 tokens (7.07 ms per token,  20.0 tokens per second)\n2026-10-18T10:00:04.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | draft acceptance = 0.5 ( 1 accepted / 2 generated), mean len = 1.5\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 | prompt eval time = 1239.27 ms / 8297 tokens (0.15 ms per token, 6695.1 tokens per second)\n2026-10-18T10:00:05.123456789Z [18023] 0.05.690 I slot print_timing: id  0 | task 2 |        eval time =  777.37 ms /  111 tokens (7.07 ms per token,  141.5 tokens per second)\n2026-10-18T10:00:06.123456789Z [18023] x slot print_timing: id  0 | task 3 |        eval time =  1 ms / 20 tokens (1 ms per token, 10.0 tokens per sec)",
+      "want": false
+    }
+  ],
+  "load": [
+    {
+      "alias": "qa-a",
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 800,
+          "timestamps": true
+        }
+      ],
+      "id": "empty",
+      "text": "",
+      "want": null
+    },
+    {
+      "alias": "qa-a",
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 800,
+          "timestamps": true
+        }
+      ],
+      "id": "free",
+      "text": "2026-10-18T10:00:01Z ensure_model: model name=qa-a is not loaded, loading...\n2026-10-18T10:00:02Z llama_server: listening on http://127.0.0.1:18001",
+      "want": 1000.0
+    },
+    {
+      "alias": "qa-a",
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 800,
+          "timestamps": true
+        }
+      ],
+      "id": "waiting",
+      "text": "2026-10-18T10:00:01Z ensure_model: model name=qa-a is not loaded, loading...\n2026-10-18T10:00:01.5Z ensure_model: waiting until model name=qa-a is fully loaded\n2026-10-18T10:00:02Z llama_server: listening on http://127.0.0.1:18001",
+      "want": 1000.0
+    },
+    {
+      "alias": "qa-a",
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 800,
+          "timestamps": true
+        }
+      ],
+      "id": "eviction",
+      "text": "2026-10-18T10:00:00Z ensure_model: evicting idle LRU name=old to make room for name=qa-a\n2026-10-18T10:00:01Z ensure_model: model name=qa-a is not loaded, loading...\n2026-10-18T10:00:02Z llama_server: listening on http://127.0.0.1:18001",
+      "want": 2000.0
+    },
+    {
+      "alias": "qa-a",
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 800,
+          "timestamps": true
+        }
+      ],
+      "id": "wrong-alias",
+      "text": "2026-10-18T10:00:01Z ensure_model: model name=qa-b is not loaded, loading...\n2026-10-18T10:00:02Z llama_server: listening on http://127.0.0.1:18001",
+      "want": null
+    },
+    {
+      "alias": "qa-a",
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 800,
+          "timestamps": true
+        }
+      ],
+      "id": "reversed",
+      "text": "2026-10-18T10:00:03Z ensure_model: model name=qa-a is not loaded, loading...\n2026-10-18T10:00:01Z llama_server: listening on http://127.0.0.1:18001",
+      "want": null
+    },
+    {
+      "alias": "qa-a",
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 800,
+          "timestamps": true
+        }
+      ],
+      "id": "invalid",
+      "text": "bad ensure_model: model name=qa-a is not loaded\n2026-10-18T10:00:02Z llama_server: listening on http://127.0.0.1:18001",
+      "want": null
+    },
+    {
+      "alias": "qa-a",
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 800,
+          "timestamps": true
+        }
+      ],
+      "id": "first-episode",
+      "text": "2026-10-18T10:00:01Z ensure_model: model name=qa-a is not loaded, loading...\n2026-10-18T10:00:02Z llama_server: listening on http://127.0.0.1:18001\n2026-10-18T10:00:05Z ensure_model: model name=qa-a is not loaded, loading...\n2026-10-18T10:00:08Z llama_server: listening on http://127.0.0.1:18001",
+      "want": 1000.0
+    },
+    {
+      "alias": "qa-a",
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 800,
+          "timestamps": true
+        }
+      ],
+      "id": "unicode-split",
+      "text": "2026-10-18T10:00:01Z ensure_model: model name=qa-a is not loaded, loading...\u20282026-10-18T10:00:02Z llama_server: listening on http://127.0.0.1:18001",
+      "want": 1000.0
+    },
+    {
+      "alias": "qa-a",
+      "calls": [
+        {
+          "stderr": true,
+          "stdout": true,
+          "tail": 800,
+          "timestamps": true
+        }
+      ],
+      "id": "fraction",
+      "text": "2026-10-18T10:00:01.123456789Z ensure_model: model name=qa-a is not loaded, loading...\n2026-10-18T10:00:02.234567891Z llama_server: listening on http://127.0.0.1:18001",
+      "want": 1111.1
+    }
+  ],
+  "peak": [
+    {
+      "aggregate": null,
+      "cards": [],
+      "want": "[]"
+    },
+    {
+      "aggregate": 2.675,
+      "cards": [],
+      "want": "[2.67]"
+    },
+    {
+      "aggregate": 9.0,
+      "cards": [
+        1.005,
+        2.675
+      ],
+      "want": "[1.0, 2.67]"
+    },
+    {
+      "aggregate": 0.0,
+      "cards": [
+        0.0,
+        -0.0,
+        1.125,
+        1.135
+      ],
+      "want": "[0.0, -0.0, 1.12, 1.14]"
+    },
+    {
+      "aggregate": 3,
+      "cards": [
+        1,
+        2
+      ],
+      "want": "[1, 2]"
+    }
+  ],
+  "source_sha256": {
+    "bench.py": "5fee93deebdfcb7d7a06edbe6c8aec3d3553ea513587b4589eb1d65099656519",
+    "telemetry.py": "5f390933bc0c734f1223229ddd7e19b73ed6f7abc8b382b2b228ddf81bb344bd"
+  }
+}

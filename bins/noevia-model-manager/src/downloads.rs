@@ -10,7 +10,7 @@
 //! exactly as `DownloadManager._make_job` would, then answers the route's own status and body.
 //!
 //! Every place `downloader.py` reads `time.time()`, this reads the injected clock.
-mod engine;
+pub(crate) mod engine;
 pub mod pyfmt;
 mod store;
 
@@ -440,6 +440,8 @@ pub struct Downloads {
     http: engine::Http,
     ids: std::collections::hash_map::RandomState,
     serial: std::sync::atomic::AtomicU64,
+    #[cfg(feature = "native-download-plan")]
+    planner: std::sync::OnceLock<crate::download_plan::Planner>,
 }
 
 impl Downloads {
@@ -455,7 +457,20 @@ impl Downloads {
             reserved: Mutex::new(Reserved::default()),
             ids: std::collections::hash_map::RandomState::new(),
             serial: std::sync::atomic::AtomicU64::new(0),
+            #[cfg(feature = "native-download-plan")]
+            planner: std::sync::OnceLock::new(),
         }))
+    }
+
+    #[cfg(feature = "native-download-plan")]
+    pub fn set_planner(&self, planner: crate::download_plan::Planner) -> Result<(), &'static str> {
+        self.planner
+            .set(planner)
+            .map_err(|_| "download planner already installed")
+    }
+    #[cfg(feature = "native-download-plan")]
+    pub(crate) fn planner(&self) -> Option<&crate::download_plan::Planner> {
+        self.planner.get()
     }
 
     fn now(&self) -> f64 {
@@ -591,6 +606,13 @@ impl Downloads {
         lock(&self.reserved).whole
     }
 
+    /// Stop admission-independent transfer workers during native service shutdown.
+    pub fn cancel_all(&self) {
+        for job in self.jobs.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+            job.cancel.send_replace(true);
+        }
+    }
+
     /// `manager.cancel(job_id)`.
     pub fn cancel(&self, id: &str) -> bool {
         let job = lock(&self.jobs).iter().find(|j| j.id == id).cloned();
@@ -671,7 +693,7 @@ impl Downloads {
         }
         for job in started {
             let me = self.clone();
-            tokio::spawn(async move { me.run(job).await });
+            crate::work::spawn(async move { me.run(job).await });
         }
         Queued::Done
     }

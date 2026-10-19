@@ -16,8 +16,6 @@ const CACHE_BYTES: f64 = 1.0625; // q8_0, autoconfig's KV cache type
 const MMPROJ_VRAM_MULT: f64 = 1.0;
 const MMPROJ_COMPUTE_GB: f64 = 0.5;
 const GIB: f64 = 1_073_741_824.0;
-/// Largest file size taken as an exact integer (Python divides big ints exactly).
-const MAX_EXACT: i128 = 1 << 53;
 
 /// A Python int that may be a bool (`_kv_first_int` hands a bool head count back unchanged).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -618,11 +616,14 @@ fn prepare_one(inp: &Value, work: &mut Work) -> Result<Prep, Error> {
     };
     let model_gb_raw = match field(inp, "file_size")? {
         Value::Bool(b) => f(i128::from(*b)) / GIB,
-        v @ Value::Int(_) => {
-            let n = crate::pyval::big(v, "file_size")?;
-            if n.abs() > MAX_EXACT {
-                return Err(Error::OutOfRange("file_size"));
-            }
+        Value::Int(value) => {
+            // Scaling by 2**30 is exact: rounding the integer before scaling is
+            // the same correctly rounded result as Python's int true division.
+            // File size is only converted here, never multiplied as a size-core int.
+            let n: i128 = value
+                .to_string()
+                .parse()
+                .map_err(|_| Error::OutOfRange("file_size"))?;
             f(n) / GIB
         }
         Value::Float(x) => x / GIB,

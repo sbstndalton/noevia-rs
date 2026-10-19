@@ -103,6 +103,7 @@ pub struct EmbeddingService {
     lock_wait: Duration,
     /// #1678: bumped by every new warm-up and by a roll-back; an older warm-up stops.
     warm_generation: std::sync::atomic::AtomicU64,
+    shutting_down: std::sync::atomic::AtomicBool,
     warm_interval: Duration,
     warm_attempts: u32,
     /// #1717: warm-ups currently running (boot, apply, roll-back or watcher).
@@ -192,6 +193,7 @@ impl EmbeddingService {
             act_timeout: ACT_TIMEOUT,
             lock_wait: LOCK_WAIT,
             warm_generation: std::sync::atomic::AtomicU64::new(0),
+            shutting_down: std::sync::atomic::AtomicBool::new(false),
             warm_interval: Duration::from_secs(2),
             warm_attempts: 90,
             warms_running: std::sync::atomic::AtomicUsize::new(0),
@@ -347,6 +349,14 @@ impl EmbeddingService {
 
     /// Boot (a restart of the container behind our back is `watch`'s job): load the saved models so the
     /// router reports them `loaded`, which is what noevia's identity check requires.
+    /// End a previous warm worker at its next bounded operation during process shutdown.
+    pub fn cancel_warm(&self) {
+        self.shutting_down
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.warm_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
     pub fn start_warm(self: &Arc<Self>) {
         let Ok(Some(saved)) = self.saved() else {
             return;
@@ -359,9 +369,15 @@ impl EmbeddingService {
 
     /// Start a warm-up for `models`; any earlier one stops at its next step.
     fn spawn_warm(self: &Arc<Self>, models: Vec<String>) {
+        if self
+            .shutting_down
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return;
+        }
         let generation = self.next_warm_generation();
         let this = self.clone();
-        tokio::spawn(async move {
+        crate::work::spawn(async move {
             this.warm_generation_run(&models, generation).await;
         });
     }
@@ -375,7 +391,7 @@ impl EmbeddingService {
     /// once until the models load again. Off (an empty saved set) never warms.
     pub fn watch(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
         let this = self.clone();
-        tokio::spawn(async move {
+        crate::work::spawn(async move {
             let mut failures: u32 = 0;
             let mut wait: u32 = 1;
             loop {
@@ -445,6 +461,12 @@ impl EmbeddingService {
     }
 
     fn warm_current(&self, generation: u64) -> bool {
+        if self
+            .shutting_down
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return false;
+        }
         self.warm_generation
             .load(std::sync::atomic::Ordering::SeqCst)
             == generation
@@ -529,7 +551,7 @@ impl EmbeddingService {
     /// connection) can never leave it half done.
     pub async fn apply(self: &Arc<Self>, desired: Desired) -> Result<Saved, Refusal> {
         let this = self.clone();
-        tokio::spawn(async move { this.apply_held(desired).await })
+        crate::work::spawn(async move { this.apply_held(desired).await })
             .await
             .map_err(|_| Refusal::Unavailable("embedding service change failed"))?
     }

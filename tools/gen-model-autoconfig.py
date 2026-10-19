@@ -196,7 +196,7 @@ def reference(core, req: dict) -> dict:
 # ---- slice 2: input prep and values assembly (`check` with one part) ----
 #
 # Case names starting "[stricter]" are inputs on which the port refuses (non-ASCII digits, a
-# string where a backend number belongs, a NaN in a compared name, a file size past 2^53) while
+# string where a backend number belongs, a NaN in a compared name) while
 # Python answers or raises: the expectation is still Python's, and the Rust test requires a
 # refusal that is not a Python exception there. Random cases stay inside the reproduced domain.
 
@@ -476,7 +476,7 @@ def check_handmade() -> list[tuple[str, dict]]:
         ("[stricter] prep: non-ASCII digits", p(model=mm(block_count="\u0663\u0662"))),
         ("[stricter] prep: a string VRAM", p(backends=[dict(one[0], vram_gb="24")])),
         ("[stricter] prep: a NaN backend name", p(backends=[dict(one[0], name=float("nan"))])),
-        ("[stricter] prep: a file size past 2^53", p(file_size=2**60, backends=[dict(one[0], host_ram_gb=0)])),
+        ("prep: a file size past 2^53", p(file_size=2**60, backends=[dict(one[0], host_ram_gb=0)])),
         ("[stricter] prep: a block count past 2^100", p(model=mm(block_count=2**110))),
         ("[stricter] prep: a per-layer head count past 2^100", p(arch="gemma4", model=dict(gemma4, attention_head_count_kv=
                                                                  {"_array": True, "count": 42, "sample": [1e300] * 8}))),

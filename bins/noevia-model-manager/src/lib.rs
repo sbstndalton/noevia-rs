@@ -5,6 +5,9 @@ pub mod backend_stats;
 pub mod backends;
 #[cfg(feature = "native-badges")]
 pub mod badges;
+#[cfg(feature = "native-bench-observe")]
+pub mod bench_observe;
+pub mod bench_observe_cmd;
 #[cfg(feature = "native-benchmark-runner")]
 pub mod bench_runner;
 #[cfg(feature = "native-bench-runs")]
@@ -17,6 +20,8 @@ pub mod diagnose;
 #[cfg(feature = "native-diagnose")]
 pub mod diagnose_docker;
 pub mod docker;
+#[cfg(feature = "native-download-plan")]
+pub mod download_plan;
 #[cfg(feature = "native-download-targets")]
 pub mod download_targets;
 #[cfg(feature = "native-downloads")]
@@ -24,6 +29,7 @@ pub mod downloads;
 #[cfg(feature = "native-draft-heads")]
 pub mod draft_heads;
 pub mod embedding;
+pub mod healthcheck;
 pub mod host;
 #[cfg(feature = "native-check-updates")]
 pub mod hub_page;
@@ -38,6 +44,9 @@ pub mod model_list;
 pub mod model_updates;
 #[cfg(feature = "native-prompts")]
 pub mod prompts;
+#[cfg(feature = "native-routing")]
+pub mod routing;
+pub mod routing_cmd;
 #[cfg(feature = "native-search")]
 pub mod search;
 #[cfg(feature = "native-section-autoconfig")]
@@ -45,6 +54,8 @@ pub mod section_autoconfig;
 #[cfg(feature = "native-section-writes")]
 pub mod section_writes;
 pub mod sections;
+#[cfg(feature = "native-routing")]
+pub mod service;
 #[cfg(feature = "native-settings")]
 pub mod settings;
 #[cfg(feature = "native-settings-write")]
@@ -60,11 +71,13 @@ pub mod sqlite_read;
     all(feature = "native-model-list", feature = "native-backends"),
     all(feature = "native-search", feature = "native-backends")
 ))]
+#[cfg(test)]
 mod startup;
 pub mod telemetry_cmd;
 #[cfg(feature = "native-token-test")]
 mod token_test;
 pub mod validation;
+mod work;
 
 use axum::{
     body::{to_bytes, Body},
@@ -73,6 +86,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json, Router,
 };
+#[cfg(test)]
 use futures_util::StreamExt;
 use regex::Regex;
 use serde_json::json;
@@ -563,7 +577,7 @@ pub(crate) mod test_support {
         /// Waits until the hook has been entered.
         pub(crate) async fn entered(self) -> mpsc::Sender<()> {
             let Self { entered, open, .. } = self;
-            tokio::task::spawn_blocking(move || entered.recv_timeout(Duration::from_secs(30)))
+            crate::work::spawn_blocking(move || entered.recv_timeout(Duration::from_secs(30)))
                 .await
                 .unwrap()
                 .unwrap();
@@ -580,7 +594,7 @@ pub(crate) mod test_support {
         gate: Gate,
     ) -> mpsc::Sender<()> {
         use tower::ServiceExt;
-        let task = tokio::spawn(router(state.clone()).oneshot(request));
+        let task = crate::work::spawn(router(state.clone()).oneshot(request));
         drop_once_entered(task, gate).await
     }
 
@@ -594,7 +608,7 @@ pub(crate) mod test_support {
     ) -> mpsc::Sender<()> {
         use tower::ServiceExt;
         let gate = Gate::new();
-        let task = tokio::spawn(
+        let task = crate::work::spawn(
             docker::BLOCKING_HOOK.scope(gate.hook.clone(), router(state.clone()).oneshot(request)),
         );
         let open = drop_once_entered(task, gate).await;
@@ -664,17 +678,6 @@ fn native_badges_route(state: &StateData, method: &Method, path: &str) -> bool {
     state.badges.is_some()
         && (*method == Method::PUT || *method == Method::DELETE)
         && path == "/api/v1/badges"
-}
-
-/// Only GET of a canonical id (`-?[0-9]+` inside i64) is native; other spellings, methods and
-/// the slash variant keep their existing forward/405/404 handling.
-#[cfg(feature = "native-bench-runs")]
-fn native_bench_run_id(state: &StateData, method: &Method, path: &str) -> Option<i64> {
-    if state.bench_runs.is_none() || *method != Method::GET {
-        return None;
-    }
-    path.strip_prefix("/api/v1/benchmark/runs/")
-        .and_then(bench_runs::canonical_id)
 }
 
 #[cfg(feature = "native-section-writes")]
@@ -791,11 +794,19 @@ fn detail(status: StatusCode, text: &'static str) -> Response {
     (status, Json(json!({"detail":text}))).into_response()
 }
 
-async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response {
+#[allow(unused_mut)]
+async fn handler(State(state): State<Arc<StateData>>, mut req: Request) -> Response {
     #[cfg(feature = "native-diagnose")]
     let diagnosis_deadline = std::time::Instant::now() + TIMEOUT;
     let path = req.uri().path();
-    if path != "/api/v1/health" && !state.token.is_empty() {
+    #[cfg(feature = "native-routing")]
+    let decoded_auth = (req.extensions().get::<routing::Enabled>().is_some() && path.len() <= 8192)
+        .then(|| percent_decode_lossy(path));
+    #[cfg(feature = "native-routing")]
+    let auth_path = decoded_auth.as_deref().unwrap_or(path);
+    #[cfg(not(feature = "native-routing"))]
+    let auth_path = path;
+    if auth_path != "/api/v1/health" && !state.token.is_empty() {
         let supplied = req
             .headers()
             .get("x-model-loader-token")
@@ -812,6 +823,63 @@ async fn handler(State(state): State<Arc<StateData>>, req: Request) -> Response 
     if req.uri().to_string().len() > 8192 {
         return detail(StatusCode::URI_TOO_LONG, "request URI exceeded limit");
     }
+    #[cfg(feature = "native-routing")]
+    if req.extensions().get::<routing::Enabled>().is_some() {
+        let decoded = decoded_auth.unwrap_or_else(|| percent_decode_lossy(req.uri().path()));
+        if is_internal_path(req.uri().path()) {
+            return routing::framework(StatusCode::NOT_FOUND, "Not Found", None, req.method());
+        }
+        match routing::classify(
+            req.method(),
+            &decoded,
+            state.embedding.is_some(),
+            state.idle_unload.is_some(),
+        ) {
+            routing::Route::NotFound => {
+                return routing::framework(StatusCode::NOT_FOUND, "Not Found", None, req.method())
+            }
+            routing::Route::Method(allowed) => {
+                return routing::framework(
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    "Method Not Allowed",
+                    Some(allowed),
+                    req.method(),
+                )
+            }
+            routing::Route::Redirect(path) => {
+                let host = req
+                    .headers()
+                    .get("host")
+                    .and_then(|h| h.to_str().ok())
+                    .unwrap_or("localhost");
+                let location = routing::location(&path, req.uri(), host);
+                return (
+                    StatusCode::TEMPORARY_REDIRECT,
+                    [(axum::http::header::LOCATION, location)],
+                    Body::empty(),
+                )
+                    .into_response();
+            }
+            routing::Route::Match { canonical, backend } => {
+                let original = req.uri().clone();
+                let query = original
+                    .query()
+                    .map(|q| format!("?{q}"))
+                    .unwrap_or_default();
+                let uri = match format!("{}{query}", routing::canonical_path(&canonical)).parse() {
+                    Ok(uri) => uri,
+                    Err(_) => return detail(StatusCode::BAD_REQUEST, "invalid request path"),
+                };
+                req.extensions_mut().insert(routing::Routed {
+                    original,
+                    decoded: canonical,
+                    backend,
+                });
+                *req.uri_mut() = uri;
+            }
+        }
+    }
+    let path = req.uri().path();
     #[cfg(feature = "native-diagnose")]
     if let Some(diagnosis) = &state.diagnosis {
         let route = diagnose_docker::classify(path);
@@ -963,7 +1031,7 @@ impl Drop for Admission {
         let (state, orphans) = (self.state.clone(), self.orphans.clone());
         match tokio::runtime::Handle::try_current() {
             Ok(runtime) => {
-                runtime.spawn(async move {
+                crate::work::spawn_on(&runtime, async move {
                     docker::observe(&orphans).await;
                     state.permits.add_permits(1);
                 });
@@ -1321,7 +1389,20 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
             let query = req.uri().query().unwrap_or_default();
             let outcome = match route {
                 SearchRoute::Search => search.search(query).await,
-                SearchRoute::Repo => search.repo(query).await,
+                SearchRoute::Repo => {
+                    #[cfg(feature = "native-routing")]
+                    let strict = req.extensions().get::<routing::Enabled>().is_some();
+                    #[cfg(feature = "native-routing")]
+                    if strict {
+                        search.repo_owned(query).await
+                    } else {
+                        search.repo(query).await
+                    }
+                    #[cfg(not(feature = "native-routing"))]
+                    {
+                        search.repo(query).await
+                    }
+                }
             };
             return match outcome {
                 search::Outcome::Json(status, bytes) => (
@@ -1380,7 +1461,16 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
     }
     #[cfg(feature = "native-backend-control")]
     if let Some(control) = state.backends.clone() {
-        if let Some((name, action)) = backend_control_route(req.method(), path) {
+        #[cfg(feature = "native-routing")]
+        let routed_control = req
+            .extensions()
+            .get::<routing::Routed>()
+            .and_then(|r| r.backend.clone());
+        #[cfg(not(feature = "native-routing"))]
+        let routed_control = None;
+        if let Some((name, action)) =
+            routed_control.or_else(|| backend_control_route(req.method(), path))
+        {
             return native_backend_control(state.clone(), control, name, action, req).await;
         }
     }
@@ -1397,9 +1487,63 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
         }
     }
     #[cfg(feature = "native-bench-runs")]
-    if let Some(run_id) = native_bench_run_id(&state, req.method(), path) {
-        if let Some(runs) = state.bench_runs.clone() {
-            return native_bench_run(&state, &runs, run_id).await;
+    if let Some(runs) = state.bench_runs.as_ref() {
+        use bench_runs::paths::{Id, Route};
+        let route = bench_runs::paths::classify(path);
+        if route != Route::NotOwned {
+            let mut answer = match route {
+                Route::NotOwned | Route::NotFound => detail(StatusCode::NOT_FOUND, "Not Found"),
+                Route::Redirect(canonical) => {
+                    let host = req
+                        .headers()
+                        .get("host")
+                        .and_then(|h| h.to_str().ok())
+                        .unwrap_or("localhost");
+                    (
+                        StatusCode::TEMPORARY_REDIRECT,
+                        [(
+                            axum::http::header::LOCATION,
+                            bench_runs::paths::location(host, &canonical, req.uri().query()),
+                        )],
+                    )
+                        .into_response()
+                }
+                Route::Item(_) if *req.method() != Method::GET => {
+                    let mut response = detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed");
+                    response.headers_mut().insert(
+                        axum::http::header::ALLOW,
+                        axum::http::HeaderValue::from_static("GET"),
+                    );
+                    response
+                }
+                Route::Item(raw) => {
+                    match bench_runs::paths::parse(&raw) {
+                        Id::Value(run_id) => native_bench_run(&state, runs, run_id).await,
+                        Id::Overflow => internal_error(),
+                        invalid => {
+                            let (kind, message) = if invalid == Id::TooLarge {
+                                ("int_parsing_size","Unable to parse input string as an integer, exceeded maximum size")
+                            } else {
+                                ("int_parsing","Input should be a valid integer, unable to parse string as an integer")
+                            };
+                            (
+                                StatusCode::UNPROCESSABLE_ENTITY,
+                                Json(validation::parsing(
+                                    kind,
+                                    &[validation::key("path"), validation::key("run_id")],
+                                    message,
+                                    &raw,
+                                )),
+                            )
+                                .into_response()
+                        }
+                    }
+                }
+            };
+            if *req.method() == Method::HEAD {
+                *answer.body_mut() = Body::empty();
+            }
+            return answer;
         }
     }
     #[cfg(feature = "native-badges")]
@@ -1591,33 +1735,41 @@ async fn model_detail_runtime(
                 backend_stats::Fail::Refused => model_detail::Outcome::Refused,
             });
     }
-    let query = model_detail::runtime_query(located);
-    let mut request = state.legacy.get(format!(
-        "{}{}?{query}",
-        state.legacy_base,
-        model_detail::RUNTIME_PATH
-    ));
-    if !state.token.is_empty() {
-        request = request.header("x-model-loader-token", &state.token);
-    }
-    let response = request
-        .send()
-        .await
-        .map_err(|_| model_detail::Outcome::Unavailable)?;
-    let status = response.status();
-    let mut chunks = response.bytes_stream();
-    let mut bytes = Vec::new();
-    while let Some(chunk) = chunks.next().await {
-        let chunk = chunk.map_err(|_| model_detail::Outcome::Unavailable)?;
-        if bytes.len().saturating_add(chunk.len()) > model_detail::RUNTIME_CAP {
-            return Err(model_detail::Outcome::Unavailable);
+    #[cfg(test)]
+    {
+        let query = model_detail::runtime_query(located);
+        let mut request = state.legacy.get(format!(
+            "{}{}?{query}",
+            state.legacy_base,
+            model_detail::RUNTIME_PATH
+        ));
+        if !state.token.is_empty() {
+            request = request.header("x-model-loader-token", &state.token);
         }
-        bytes.extend_from_slice(&chunk);
+        let response = request
+            .send()
+            .await
+            .map_err(|_| model_detail::Outcome::Unavailable)?;
+        let status = response.status();
+        let mut chunks = response.bytes_stream();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = chunks.next().await {
+            let chunk = chunk.map_err(|_| model_detail::Outcome::Unavailable)?;
+            if bytes.len().saturating_add(chunk.len()) > model_detail::RUNTIME_CAP {
+                return Err(model_detail::Outcome::Unavailable);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        match status {
+            StatusCode::OK => Ok(bytes),
+            StatusCode::INTERNAL_SERVER_ERROR => Err(model_detail::Outcome::Failed),
+            _ => Err(model_detail::Outcome::Unavailable),
+        }
     }
-    match status {
-        StatusCode::OK => Ok(bytes),
-        StatusCode::INTERNAL_SERVER_ERROR => Err(model_detail::Outcome::Failed),
-        _ => Err(model_detail::Outcome::Unavailable),
+    #[cfg(not(test))]
+    {
+        let _ = (state, located);
+        Err(model_detail::Outcome::Refused)
     }
 }
 
@@ -1739,28 +1891,22 @@ async fn native_section_write(
         Ok(e) => e,
         Err(outcome) => return section_outcome(outcome),
     };
-    if !crate::startup::ready(
-        &state.legacy,
-        &state.legacy_base,
-        &state.token,
-        &writes.started,
-    )
-    .await
-    {
-        return unavailable();
-    }
     let guard = writes.lock().await;
     let plan = if let SectionWrite::SafeDefaults(name) = &route {
-        let query: String = form_urlencoded::Serializer::new(String::new())
-            .append_pair("name", name)
-            .finish();
-        match child_runtime(state, section_writes::PLAN_PATH, &query, 1024 * 1024).await {
-            Ok(bytes) => match section_writes::parse_plan(&bytes) {
-                Some(plan) => Some(plan),
-                None => return unavailable(),
-            },
-            Err(true) => return internal_error(),
-            Err(false) => return unavailable(),
+        if writes.has_native_defaults() {
+            None
+        } else {
+            let query: String = form_urlencoded::Serializer::new(String::new())
+                .append_pair("name", name)
+                .finish();
+            match child_runtime(state, section_writes::PLAN_PATH, &query, 1024 * 1024).await {
+                Ok(bytes) => match section_writes::parse_plan(&bytes) {
+                    Some(plan) => Some(plan),
+                    None => return unavailable(),
+                },
+                Err(true) => return internal_error(),
+                Err(false) => return unavailable(),
+            }
         }
     } else {
         None
@@ -1793,6 +1939,9 @@ async fn native_section_write(
                         .map(|(_, v)| v.into_owned())
                         .unwrap_or_default();
                     writes.delete(&name, &base)
+                }
+                SectionWrite::SafeDefaults(name) if writes.has_native_defaults() => {
+                    writes.native_defaults(&name)
                 }
                 SectionWrite::SafeDefaults(name) => match plan {
                     Some(plan) => writes.safe_defaults(&name, plan),
@@ -1931,6 +2080,7 @@ pub fn max_tokens(value: Option<&prompts::JsonValue>) -> Option<i64> {
 /// still shows it in `/overview`'s `backends[]` under `MODEL_MANAGER_OVERVIEW_IMPL=python`, and in
 /// the native overview without a native download table (its child runtime call).
 #[cfg(feature = "native-backend-control")]
+#[cfg(test)]
 async fn set_restart_error(
     legacy: &reqwest::Client,
     base: &str,
@@ -1958,6 +2108,16 @@ async fn set_restart_error(
     eprintln!(
         "model-manager backend restart: the child did not record the restart state for a backend"
     );
+}
+#[cfg(all(feature = "native-backend-control", not(test)))]
+async fn set_restart_error(
+    legacy: &reqwest::Client,
+    base: &str,
+    token: &str,
+    name: &str,
+    error: Option<&str>,
+) {
+    let _ = (legacy, base, token, name, error);
 }
 
 #[cfg(feature = "native-backend-control")]
@@ -2020,7 +2180,7 @@ async fn native_backend_control(
         }
         set_restart_error(&state.legacy, &state.legacy_base, &state.token, &name, None).await;
         let task_state = state.clone();
-        tokio::spawn(async move {
+        crate::work::spawn(async move {
             let outcome = tokio::time::timeout(
                 Duration::from_secs(60),
                 task_state.docker.restart_backend(&name),
@@ -2115,6 +2275,8 @@ async fn native_settings_write(
     feature = "native-section-writes",
     feature = "native-settings-write"
 ))]
+// Historical child fixture oracle only; not linked into production.
+#[cfg(test)]
 async fn child_runtime(
     state: &StateData,
     path: &str,
@@ -2151,7 +2313,33 @@ async fn child_runtime(
     }
 }
 
+#[cfg(all(
+    not(test),
+    any(
+        feature = "native-bench-runs",
+        feature = "native-section-writes",
+        feature = "native-settings-write"
+    )
+))]
+async fn child_runtime(
+    state: &StateData,
+    path: &str,
+    query: &str,
+    cap: usize,
+) -> Result<Vec<u8>, bool> {
+    let _ = (state, path, query, cap);
+    Err(false)
+}
+
+#[cfg(test)]
 async fn forward(state: Arc<StateData>, req: Request) -> Response {
+    #[cfg(feature = "native-routing")]
+    if req.extensions().get::<routing::Routed>().is_some() {
+        return detail(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Native route owner is unavailable",
+        );
+    }
     let path = req.uri().path();
     if !python_owned(req.method().as_str(), path) {
         if ["GET", "POST", "PUT", "DELETE"]
@@ -2229,10 +2417,28 @@ async fn forward(state: Arc<StateData>, req: Request) -> Response {
         .into_response()
 }
 
+#[cfg(not(test))]
+async fn forward(_state: Arc<StateData>, req: Request) -> Response {
+    if python_owned(req.method().as_str(), req.uri().path()) {
+        return detail(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Native route owner is unavailable",
+        );
+    }
+    if ["GET", "POST", "PUT", "DELETE"]
+        .iter()
+        .any(|method| python_owned(method, req.uri().path()))
+    {
+        return detail(StatusCode::METHOD_NOT_ALLOWED, "Method Not Allowed");
+    }
+    detail(StatusCode::NOT_FOUND, "Not Found")
+}
+
 /// #1747: a models.ini save may have dropped the chat preset's global idle key (the raw editor
 /// saves whatever text it was given). Put it back, and report the revision of the file as it now
 /// is, so the editor's next save is not refused as a conflict with our own rewrite. Only the
 /// models.ini save routes get here, and their `revision` is always the models.ini revision.
+#[cfg(test)]
 async fn after_preset_write(reconciler: &idle_unload::Reconciler, bytes: Vec<u8>) -> Vec<u8> {
     let Ok(Some(revision)) = reconciler.reconcile().await else {
         return bytes;
@@ -2606,7 +2812,15 @@ async fn native_benchmark_overview(
     {
         Ok(job) if benchmark_overview::job_object(&job) => job,
         Ok(_) | Err(true) => return internal_error(),
-        Err(false) => return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable"),
+        Err(false) => {
+            #[cfg(test)]
+            return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable");
+            #[cfg(not(test))]
+            return detail(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Native benchmark runtime is unavailable",
+            );
+        }
     };
     match benchmark_overview::render(&local, &backends, &job) {
         Some(bytes) => (
@@ -2621,6 +2835,7 @@ async fn native_benchmark_overview(
 /// A FastAPI `dict` body read exactly as the prompt writer reads it (content type, CPython JSON
 /// encodings, the 1 MiB cap and the same 422 bodies).
 #[cfg(any(
+    feature = "native-download-plan",
     feature = "native-badges",
     feature = "native-section-writes",
     feature = "native-settings-write",
@@ -2635,6 +2850,7 @@ async fn fastapi_dict_body(req: Request) -> Result<prompts::JsonValue, Response>
 /// [`fastapi_dict_body`] with a larger read cap; a body over `over.0` bytes answers `over.1`
 /// (the route's own size refusal) before it is parsed.
 #[cfg(any(
+    feature = "native-download-plan",
     feature = "native-badges",
     feature = "native-section-writes",
     feature = "native-settings-write",
@@ -2951,68 +3167,113 @@ async fn native_downloads(
             json_bytes(StatusCode::OK, format!("{{\"cleared\":{}}}", table.clear()))
         }
         DownloadRoute::Start => {
-            let (parts, body) = req.into_parts();
-            let Ok(bytes) = to_bytes(body, REQUEST_CAP).await else {
-                return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
-            };
-            let target = parts.uri.path_and_query().map_or("/", |p| p.as_str());
-            let mut request = state
-                .legacy
-                .post(format!("{}{target}", state.legacy_base))
-                .header(downloads::PLAN_HEADER, "1")
-                .body(bytes);
-            if let Some(content_type) = parts.headers.get("content-type") {
-                request = request.header("content-type", content_type);
-            }
-            if !state.token.is_empty() {
-                request = request.header("x-model-loader-token", &state.token);
-            }
-            let Ok(response) = request.send().await else {
-                return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable");
-            };
-            let status = response.status();
-            let mut chunks = response.bytes_stream();
-            let mut answer = Vec::new();
-            while let Some(chunk) = chunks.next().await {
-                let Ok(chunk) = chunk else {
-                    return detail(StatusCode::BAD_GATEWAY, "Python-owned response unavailable");
+            #[cfg(feature = "native-download-plan")]
+            if let Some(planner) = table.planner() {
+                let section = req
+                    .uri()
+                    .path()
+                    .strip_prefix("/api/v1/sections/")
+                    .and_then(|p| p.strip_suffix("/draft-heads/download"))
+                    .map(py_unquote);
+                let body = match fastapi_dict_body(req).await {
+                    Ok(body) => body,
+                    Err(response) => return response,
                 };
-                if answer.len().saturating_add(chunk.len()) > downloads::PLAN_CAP {
-                    return detail(
-                        StatusCode::BAD_GATEWAY,
-                        "Python-owned response exceeded limit",
-                    );
+                return match planner.plan(section, body).await {
+                    Ok(plan) => download_plan_response(table, plan),
+                    Err(download_plan::Error::Failed) => internal_error(),
+                    Err(download_plan::Error::Refused) => detail(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Native download plan is unavailable",
+                    ),
+                };
+            }
+            #[cfg(test)]
+            {
+                let (parts, body) = req.into_parts();
+                let Ok(bytes) = to_bytes(body, REQUEST_CAP).await else {
+                    return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
+                };
+                let target = parts.uri.path_and_query().map_or("/", |p| p.as_str());
+                let mut request = state
+                    .legacy
+                    .post(format!("{}{target}", state.legacy_base))
+                    .header(downloads::PLAN_HEADER, "1")
+                    .body(bytes);
+                if let Some(content_type) = parts.headers.get("content-type") {
+                    request = request.header("content-type", content_type);
                 }
-                answer.extend_from_slice(&chunk);
-            }
-            if status == StatusCode::INTERNAL_SERVER_ERROR {
-                return internal_error();
-            }
-            let plan = match (status, downloads::parse_plan(&answer)) {
-                (StatusCode::OK, Some(plan)) => plan,
-                _ => return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable"),
-            };
-            let Ok(code) = StatusCode::from_u16(plan.status) else {
-                return internal_error();
-            };
-            if code == StatusCode::OK {
-                match table.queue(plan.jobs) {
-                    downloads::Queued::Done => {}
-                    downloads::Queued::Raised => return internal_error(),
-                    downloads::Queued::Deleting => {
-                        return detail(StatusCode::CONFLICT, downloads::DELETE_IN_PROGRESS)
-                    }
-                    downloads::Queued::Full => {
+                if !state.token.is_empty() {
+                    request = request.header("x-model-loader-token", &state.token);
+                }
+                let Ok(response) = request.send().await else {
+                    return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable");
+                };
+                let status = response.status();
+                let mut chunks = response.bytes_stream();
+                let mut answer = Vec::new();
+                while let Some(chunk) = chunks.next().await {
+                    let Ok(chunk) = chunk else {
                         return detail(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "too many downloads are held; clear the finished ones",
-                        )
+                            StatusCode::BAD_GATEWAY,
+                            "Python-owned response unavailable",
+                        );
+                    };
+                    if answer.len().saturating_add(chunk.len()) > downloads::PLAN_CAP {
+                        return detail(
+                            StatusCode::BAD_GATEWAY,
+                            "Python-owned response exceeded limit",
+                        );
                     }
+                    answer.extend_from_slice(&chunk);
                 }
+                if status == StatusCode::INTERNAL_SERVER_ERROR {
+                    return internal_error();
+                }
+                let plan = match (status, downloads::parse_plan(&answer)) {
+                    (StatusCode::OK, Some(plan)) => plan,
+                    _ => {
+                        return detail(StatusCode::BAD_GATEWAY, "Python-owned endpoint unavailable")
+                    }
+                };
+                download_plan_response(table, plan)
             }
-            json_bytes(code, plan.body)
+            #[cfg(not(test))]
+            {
+                let _ = (state, req);
+                detail(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Native download plan is unavailable",
+                )
+            }
         }
     }
+}
+
+#[cfg(all(
+    feature = "native-downloads",
+    any(test, feature = "native-download-plan")
+))]
+fn download_plan_response(table: &Arc<downloads::Downloads>, plan: downloads::Plan) -> Response {
+    let Ok(code) = StatusCode::from_u16(plan.status) else {
+        return internal_error();
+    };
+    if code == StatusCode::OK {
+        match table.queue(plan.jobs) {
+            downloads::Queued::Done => {}
+            downloads::Queued::Raised => return internal_error(),
+            downloads::Queued::Deleting => {
+                return detail(StatusCode::CONFLICT, downloads::DELETE_IN_PROGRESS)
+            }
+            downloads::Queued::Full => {
+                return detail(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "too many downloads are held; clear the finished ones",
+                )
+            }
+        }
+    }
+    json_bytes(code, plan.body)
 }
 
 /// Explicit Python-owned endpoint/method table. Native-owned paths never enter this table.
@@ -3088,3 +3349,61 @@ async fn native_section_autoconfig(
         }
     }
 }
+
+// Frozen private-input contracts are retained only in the library test build.
+#[cfg(test)]
+extern crate self as noevia_model_manager;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/badges.rs"]
+mod historical_badges;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/bench_runs.rs"]
+mod historical_bench_runs;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/benchmark_overview.rs"]
+mod historical_benchmark_overview;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/download_targets.rs"]
+mod historical_download_targets;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/downloads.rs"]
+mod historical_downloads;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/draft_heads.rs"]
+mod historical_draft_heads;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/embedding.rs"]
+mod historical_embedding;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/idle_unload.rs"]
+mod historical_idle_unload;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/model_delete.rs"]
+mod historical_model_delete;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/model_detail.rs"]
+mod historical_model_detail;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/model_list.rs"]
+mod historical_model_list;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/model_updates.rs"]
+mod historical_model_updates;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/policy.rs"]
+mod historical_policy;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/search.rs"]
+mod historical_search;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/section_autoconfig.rs"]
+mod historical_section_autoconfig;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/section_writes.rs"]
+mod historical_section_writes;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/settings.rs"]
+mod historical_settings;
+#[cfg(test)]
+#[path = "../tests/historical_oracles/settings_write.rs"]
+mod historical_settings_write;

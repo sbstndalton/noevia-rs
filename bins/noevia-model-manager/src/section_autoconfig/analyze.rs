@@ -6,11 +6,36 @@
 //! Values are kept as the JSON the Python dicts would hold (`model_files::json::Value`), so each
 //! request to a rule is built exactly as `analyze()` builds it.
 use crate::draft_heads::{find_mtp, rule_listing, stat};
-use crate::model_updates::Stop;
 use crate::sections::{access::Root, ini};
 use model_autoconfig::{files::Answer, prep::Prep, Error as RuleError, Work};
 use model_files::json::{Limits, Value};
 use std::path::Path;
+
+/// Keep the reference exception class for callers (search) that catch Python exceptions.
+#[derive(Debug)]
+pub(crate) enum AnalysisError {
+    Failed,
+    Refused,
+    // Minimal safe-default profiles preserve the class for native-search callers.
+    Python(#[cfg_attr(not(feature = "native-search"), allow(dead_code))] &'static str),
+}
+use AnalysisError as Stop;
+impl From<crate::model_updates::Stop> for AnalysisError {
+    fn from(stop: crate::model_updates::Stop) -> Self {
+        match stop {
+            crate::model_updates::Stop::Failed => Self::Failed,
+            crate::model_updates::Stop::Refused => Self::Refused,
+        }
+    }
+}
+impl From<AnalysisError> for crate::model_updates::Stop {
+    fn from(error: AnalysisError) -> Self {
+        match error {
+            AnalysisError::Refused => Self::Refused,
+            AnalysisError::Failed | AnalysisError::Python(_) => Self::Failed,
+        }
+    }
+}
 
 /// `_PRESET_KEYS`.
 const PRESET_KEYS: [&str; 3] = ["fast", "balanced", "long-ctx"];
@@ -81,7 +106,7 @@ fn obj(pairs: Vec<(&str, Value)>) -> Value {
 /// (a cap, a shape, a value) is the native refusal.
 fn rule(e: RuleError) -> Stop {
     match e {
-        RuleError::Python(_) => Stop::Failed,
+        RuleError::Python(class) => Stop::Python(class),
         _ => Stop::Refused,
     }
 }
@@ -550,9 +575,14 @@ fn items_obj(current: &ini::Items) -> Value {
     Value::Obj(out)
 }
 
+/// Existing route contract: reference exceptions still become its internal-error outcome.
+pub(crate) fn analyze(inputs: &Inputs<'_>) -> Result<Value, crate::model_updates::Stop> {
+    analyze_typed(inputs).map_err(Into::into)
+}
+
 /// `autoconfig.analyze(...)` for the route: the recommendation as `_plain` writes it.
 #[allow(clippy::too_many_lines)]
-pub(crate) fn analyze(inputs: &Inputs<'_>) -> Result<Value, Stop> {
+pub(crate) fn analyze_typed(inputs: &Inputs<'_>) -> Result<Value, Stop> {
     let n_sessions = inputs.n_sessions.clamp(1, 8);
     let summary = inputs.summary;
     let model = summary.get("model").cloned().unwrap_or(Value::Null);

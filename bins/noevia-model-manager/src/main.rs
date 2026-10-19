@@ -1,14 +1,29 @@
 #![forbid(unsafe_code)]
-mod child_lifecycle;
+#[cfg(any(feature = "native-routing", all(test, feature = "native-model-list")))]
 mod model_list_cmd;
+#[cfg(any(
+    feature = "native-routing",
+    all(test, feature = "native-section-autoconfig")
+))]
 mod section_autoconfig_cmd;
-use noevia_model_manager::{
-    docker::UnixDocker, legacy_client, router, validate_token, Redactor, StateData,
+use noevia_model_manager::healthcheck;
+use std::io::Write;
+#[cfg(feature = "native-routing")]
+use {
+    noevia_model_manager::{
+        docker::UnixDocker, legacy_client, validate_token, Redactor, StateData,
+    },
+    std::sync::Arc,
 };
-use std::{io::Write, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if healthcheck::is_healthcheck_command(std::env::args().skip(1)) {
+        healthcheck::check()
+            .await
+            .map_err(|_| "model manager health check failed")?;
+        return Ok(());
+    }
     if std::env::args().any(|a| a == "--features") {
         if cfg!(feature = "native-logs") {
             let stdout = std::io::stdout();
@@ -19,6 +34,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if cfg!(feature = "native-sections") {
                 output.write_all(b"native-sections\n")?;
+            }
+            if cfg!(feature = "native-db-init") {
+                output.write_all(b"native-db-init\n")?;
             }
             if cfg!(feature = "native-prompts") {
                 output.write_all(b"native-prompts\n")?;
@@ -62,6 +80,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-benchmark-runner") {
                 output.write_all(b"native-benchmark-runner\n")?;
             }
+            if cfg!(feature = "native-routing") {
+                output.write_all(b"native-routing\n")?;
+            }
+            if cfg!(feature = "native-download-plan") {
+                output.write_all(b"native-download-plan\n")?;
+            }
             if cfg!(feature = "native-downloads") {
                 output.write_all(b"native-downloads\n")?;
             }
@@ -70,6 +94,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if cfg!(feature = "native-draft-heads") {
                 output.write_all(b"native-draft-heads\n")?;
+            }
+            if cfg!(feature = "native-bench-observe") {
+                output.write_all(b"native-bench-observe\n")?;
             }
             if cfg!(feature = "native-backends") {
                 output.write_all(b"native-backends\n")?;
@@ -80,8 +107,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if cfg!(feature = "native-model-list") {
                 output.write_all(b"native-model-list\n")?;
             }
+            if cfg!(feature = "native-safe-defaults") {
+                output.write_all(b"native-safe-defaults\n")?;
+            }
             if cfg!(feature = "native-section-autoconfig") {
                 output.write_all(b"native-section-autoconfig\n")?;
+            }
+            if cfg!(feature = "native-telemetry") {
+                output.write_all(b"native-telemetry\n")?;
             }
             if cfg!(feature = "native-diagnose") {
                 output.write_all(b"native-diagnose\n")?;
@@ -91,474 +124,85 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Err("native-logs feature is not enabled".into());
     }
-    // noevia#1071/#2011: the native parent is permanent (there is no Python-only mode to exec),
-    // and the retired MODEL_MANAGER_IMPL and MODEL_FILES_IMPL keys are not read at all.
-    // The sub-selectors below still name the parent mode; it is always native now.
-    let mode = "rust";
-    let host_mode = environment("MODEL_MANAGER_HOST_IMPL", "python")?;
-    let sections_mode = environment("MODEL_MANAGER_SECTIONS_IMPL", "python")?;
-    let prompts_mode = environment("MODEL_MANAGER_PROMPTS_IMPL", "python")?;
-    let diagnose_mode = environment("MODEL_MANAGER_DIAGNOSE_IMPL", "python")?;
-    let settings_mode = environment("MODEL_MANAGER_SETTINGS_IMPL", "python")?;
-    if !matches!(settings_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_SETTINGS_IMPL must be python or rust".into());
+    // Retired implementation selectors are deliberately ignored, including hostile values.
+    // The executable has one production owner set. CLI probes above never initialize stores.
+    require_native_capability()?;
+    #[cfg(feature = "native-routing")]
+    return service().await;
+    #[cfg(not(feature = "native-routing"))]
+    unreachable!("missing native-routing returned above");
+}
+
+fn require_native_capability() -> Result<(), &'static str> {
+    if !cfg!(feature = "native-routing") {
+        return Err("mandatory native-routing capability is not compiled");
     }
-    if settings_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-settings")) {
-        return Err(
-            "native-settings requires rust model manager and compiled native-settings feature"
-                .into(),
+    Ok(())
+}
+
+#[cfg(test)]
+mod native_capability_tests {
+    #[test]
+    fn mandatory_capability_is_required_before_startup() {
+        assert_eq!(
+            super::require_native_capability().is_err(),
+            !cfg!(feature = "native-routing")
         );
     }
-    #[cfg(feature = "native-settings")]
-    let settings_root = if settings_mode == "rust" {
-        Some(data_dir()?)
-    } else {
-        None
+}
+
+#[cfg(feature = "native-routing")]
+async fn service() -> Result<(), Box<dyn std::error::Error>> {
+    let values: Vec<_> = std::env::vars_os().collect();
+    let routing_native = true;
+    let db_init = true;
+    let host_mode = "rust";
+    let sections_mode = "rust";
+    let prompts_mode = "rust";
+    let diagnose_mode = "rust";
+    let control_mode = "rust";
+    let token_test_mode = "rust";
+    let download_plan_mode = "rust";
+    let runner_mode = "rust".to_owned();
+    if environment("TZ", "")? != "UTC" {
+        return Err("mandatory native service requires exact TZ=UTC".into());
+    }
+    let path = environment(
+        "SEARCH_TRUSTED_PATH",
+        noevia_model_manager::search::live::TRUSTED_PATH,
+    )?;
+    let routing_trusted = Some(noevia_model_manager::routing::trusted_preflight(
+        std::path::Path::new(&path),
+    )?);
+    let settings_root = Some(data_dir()?);
+    let updates_roots = Some(model_updates_roots(values.clone())?);
+    let detail_roots = Some(detail_fallback("UTC", values.clone())?);
+    let targets_roots = Some(download_targets_roots(values.clone())?);
+    let badges_root = Some(data_dir()?);
+    let settings_write_root = Some(data_dir()?);
+    let writes_roots = Some(section_writes_roots("UTC", values.clone())?);
+    let safe_defaults_settings = Some(section_autoconfig_cmd::settings(&values)?);
+    let check_roots = Some(model_updates_roots(values.clone())?);
+    let overview_roots = Some((data_dir()?, overview_ini(values.clone())?));
+    let downloads_roots = Some(downloads_roots(values.clone())?);
+    let delete_roots = Some(delete_roots(values.clone())?);
+    let heads_roots = Some(model_updates_roots(values.clone())?);
+    let backends_settings = Some(backends_fallback("rust", "UTC", values.clone())?);
+    let search_roots = Some(model_updates_roots(values.clone())?);
+    let bench_root = Some(data_dir()?);
+    let prompt_root = Some(prompt_data_dir()?);
+    let model_list = model_list_cmd::native(&values)?;
+    let section_autoconfig = section_autoconfig_cmd::Selection {
+        settings: Some(section_autoconfig_cmd::settings(&values)?),
     };
-    let updates_mode = environment("MODEL_MANAGER_MODEL_UPDATES_IMPL", "python")?;
-    if !matches!(updates_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_MODEL_UPDATES_IMPL must be python or rust".into());
-    }
-    if updates_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-model-updates")) {
-        return Err(
-            "native-model-updates requires rust model manager and compiled native-model-updates feature"
-                .into(),
-        );
-    }
-    #[cfg(feature = "native-model-updates")]
-    let updates_roots = if updates_mode == "rust" {
-        Some(model_updates_roots(std::env::vars_os().collect())?)
-    } else {
-        None
-    };
-    #[cfg_attr(not(feature = "native-model-detail"), allow(unused_mut))]
-    let mut detail_mode = environment("MODEL_MANAGER_MODEL_DETAIL_IMPL", "python")?;
-    if !matches!(detail_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_MODEL_DETAIL_IMPL must be python or rust".into());
-    }
-    if detail_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-model-detail")) {
-        return Err(
-            "native-model-detail requires rust model manager and compiled native-model-detail feature"
-                .into(),
-        );
-    }
-    // noevia#1889: never refuse to start over this read. The native route formats UTC and gives
-    // the child TZ=UTC; a zone the operator chose (or roots it cannot use) keeps Python serving it.
-    #[cfg(feature = "native-model-detail")]
-    let detail_roots = if detail_mode == "rust" {
-        match detail_fallback(&environment("TZ", "")?, std::env::vars_os().collect()) {
-            Ok(roots) => Some(roots),
-            Err(reason) => {
-                eprintln!(
-                    "native-model-detail: {reason}; GET /api/v1/models/detail stays with python"
-                );
-                detail_mode = "python".to_owned();
-                None
-            }
-        }
-    } else {
-        None
-    };
-    #[cfg_attr(not(feature = "native-download-targets"), allow(unused_mut))]
-    let mut targets_mode = environment("MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL", "python")?;
-    if !matches!(targets_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL must be python or rust".into());
-    }
-    if targets_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-download-targets")) {
-        return Err(
-            "native-download-targets requires rust model manager and compiled native-download-targets feature"
-                .into(),
-        );
-    }
-    // Like #1889: roots the native read cannot name exactly as Python does keep Python serving it.
-    #[cfg(feature = "native-download-targets")]
-    let targets_roots = if targets_mode == "rust" {
-        match download_targets_roots(std::env::vars_os().collect()) {
-            Ok(roots) => Some(roots),
-            Err(reason) => {
-                eprintln!(
-                    "native-download-targets: {reason}; GET /api/v1/download-targets stays with python"
-                );
-                targets_mode = "python".to_owned();
-                None
-            }
-        }
-    } else {
-        None
-    };
-    let badges_mode = environment("MODEL_MANAGER_BADGES_IMPL", "python")?;
-    if !matches!(badges_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_BADGES_IMPL must be python or rust".into());
-    }
-    if badges_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-badges")) {
-        return Err(
-            "native-badges requires rust model manager and compiled native-badges feature".into(),
-        );
-    }
-    #[cfg(feature = "native-badges")]
-    let badges_root = if badges_mode == "rust" {
-        Some(data_dir()?)
-    } else {
-        None
-    };
-    let control_mode = environment("MODEL_MANAGER_BACKEND_CONTROL_IMPL", "python")?;
-    if !matches!(control_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_BACKEND_CONTROL_IMPL must be python or rust".into());
-    }
-    if control_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-backend-control")) {
-        return Err(
-            "native-backend-control requires rust model manager and compiled native-backend-control feature"
-                .into(),
-        );
-    }
-    // LLAMA_DEFAULT_PORT as Python's settings read it (0 means none).
-    #[cfg(feature = "native-backend-control")]
-    let default_port: Option<u16> = if control_mode == "rust" {
-        match environment("LLAMA_DEFAULT_PORT", "8080")?
-            .trim()
-            .parse::<u16>()
-        {
-            Ok(0) => None,
-            Ok(p) => Some(p),
-            Err(_) => return Err("LLAMA_DEFAULT_PORT must be a port number".into()),
-        }
-    } else {
-        None
-    };
-    let token_test_mode = environment("MODEL_MANAGER_TOKEN_TEST_IMPL", "python")?;
-    if !matches!(token_test_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_TOKEN_TEST_IMPL must be python or rust".into());
-    }
-    if token_test_mode == "rust"
-        && (!cfg!(feature = "native-token-test")
-            || environment("MODEL_MANAGER_SETTINGS_WRITE_IMPL", "python")? != "rust")
+    let default_port = match environment("LLAMA_DEFAULT_PORT", "8080")?
+        .trim()
+        .parse::<u16>()
     {
-        return Err("native-token-test requires native settings writer and compiled native-token-test feature".into());
-    }
-    let settings_write_mode = environment("MODEL_MANAGER_SETTINGS_WRITE_IMPL", "python")?;
-    if !matches!(settings_write_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_SETTINGS_WRITE_IMPL must be python or rust".into());
-    }
-    if settings_write_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-settings-write"))
-    {
-        return Err(
-            "native-settings-write requires rust model manager and compiled native-settings-write feature"
-                .into(),
-        );
-    }
-    #[cfg(feature = "native-settings-write")]
-    let settings_write_root = if settings_write_mode == "rust" {
-        Some(data_dir()?)
-    } else {
-        None
+        Ok(0) => None,
+        Ok(port) => Some(port),
+        Err(_) => return Err("LLAMA_DEFAULT_PORT must be a port number".into()),
     };
-    #[cfg_attr(not(feature = "native-section-writes"), allow(unused_mut))]
-    let mut writes_mode = environment("MODEL_MANAGER_SECTION_WRITES_IMPL", "python")?;
-    if !matches!(writes_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_SECTION_WRITES_IMPL must be python or rust".into());
-    }
-    if writes_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-section-writes")) {
-        return Err(
-            "native-section-writes requires rust model manager and compiled native-section-writes feature"
-                .into(),
-        );
-    }
-    // Like #1889: settings the native writer cannot read exactly as Python does keep Python
-    // writing models.ini (all five routes together), with one log line.
-    #[cfg(feature = "native-section-writes")]
-    let writes_roots = if writes_mode == "rust" {
-        match section_writes_roots(&environment("TZ", "")?, std::env::vars_os().collect()) {
-            Ok(roots) => Some(roots),
-            Err(reason) => {
-                eprintln!("native-section-writes: {reason}; models.ini writes stay with python");
-                writes_mode = "python".to_owned();
-                None
-            }
-        }
-    } else {
-        None
-    };
-    let check_mode = environment("MODEL_MANAGER_CHECK_UPDATES_IMPL", "python")?;
-    if !matches!(check_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_CHECK_UPDATES_IMPL must be python or rust".into());
-    }
-    if check_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-check-updates")) {
-        return Err(
-            "native-check-updates requires rust model manager and compiled native-check-updates feature"
-                .into(),
-        );
-    }
-    #[cfg(feature = "native-check-updates")]
-    let check_roots = if check_mode == "rust" {
-        Some(model_updates_roots(std::env::vars_os().collect())?)
-    } else {
-        None
-    };
-    #[cfg_attr(not(feature = "native-benchmark-overview"), allow(unused_mut))]
-    let mut overview_mode = environment("MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL", "python")?;
-    if !matches!(overview_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL must be python or rust".into());
-    }
-    if overview_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-benchmark-overview")) {
-        return Err(
-            "native-benchmark-overview requires rust model manager and compiled native-benchmark-overview feature"
-                .into(),
-        );
-    }
-    #[cfg(feature = "native-benchmark-overview")]
-    let overview_roots = if overview_mode == "rust" {
-        match overview_ini(std::env::vars_os().collect()) {
-            Ok(ini) => Some((data_dir()?, ini)),
-            Err(reason) => {
-                eprintln!("native-benchmark-overview: {reason}; GET /benchmark stays with python");
-                overview_mode = "python".to_owned();
-                None
-            }
-        }
-    } else {
-        None
-    };
-    // noevia#1318: the benchmark runner owns the one job slot (prompt runs, sweeps, the
-    // startup cleanup of leftover sweep containers), so all four routes move together, and
-    // only with the native overview, which then reads the job from it.
-    let runner_mode = environment("MODEL_MANAGER_BENCHMARK_RUNNER_IMPL", "python")?;
-    if !matches!(runner_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_BENCHMARK_RUNNER_IMPL must be python or rust".into());
-    }
-    if runner_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-benchmark-runner")) {
-        return Err(
-            "native-benchmark-runner requires rust model manager and compiled native-benchmark-runner feature"
-                .into(),
-        );
-    }
-    #[cfg_attr(not(feature = "native-benchmark-runner"), allow(unused_mut))]
-    let mut runner_mode = runner_mode;
-    if runner_mode == "rust" && overview_mode != "rust" {
-        eprintln!(
-            "native-benchmark-runner: needs MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL=rust; the benchmark runner stays with python"
-        );
-        runner_mode = "python".to_owned();
-    }
-    // noevia#1318: the download job table. The five routes share one in-memory table, so they
-    // move together; a start is still planned by the child.
-    let downloads_mode = environment("MODEL_MANAGER_DOWNLOADS_IMPL", "python")?;
-    if !matches!(downloads_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_DOWNLOADS_IMPL must be python or rust".into());
-    }
-    if downloads_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-downloads")) {
-        return Err(
-            "native-downloads requires rust model manager and compiled native-downloads feature"
-                .into(),
-        );
-    }
-    #[cfg_attr(not(feature = "native-downloads"), allow(unused_mut))]
-    let mut downloads_mode = downloads_mode;
-    #[cfg(feature = "native-downloads")]
-    let downloads_roots = if downloads_mode == "rust" {
-        match downloads_roots(std::env::vars_os().collect()) {
-            Ok(roots) => Some(roots),
-            Err(reason) => {
-                eprintln!("native-downloads: {reason}; downloads stay with python");
-                downloads_mode = "python".to_owned();
-                None
-            }
-        }
-    } else {
-        None
-    };
-    // noevia#1318: model deletion (the whole POST /api/v1/models/delete).
-    let delete_mode = environment("MODEL_MANAGER_MODEL_DELETE_IMPL", "python")?;
-    if !matches!(delete_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_MODEL_DELETE_IMPL must be python or rust".into());
-    }
-    if delete_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-model-delete")) {
-        return Err(
-            "native-model-delete requires rust model manager and compiled native-model-delete feature"
-                .into(),
-        );
-    }
-    #[cfg_attr(not(feature = "native-model-delete"), allow(unused_mut))]
-    let mut delete_mode = delete_mode;
-    // noevia#1966: the delete must see every queued and running download, so it is native only
-    // while this process also owns the download table (else both stay with Python, whose delete
-    // checks its own jobs).
-    #[cfg(feature = "native-model-delete")]
-    if delete_mode == "rust" && downloads_mode != "rust" {
-        eprintln!(
-            "native-model-delete: needs MODEL_MANAGER_DOWNLOADS_IMPL=rust (the delete checks the download table); model deletion stays with python"
-        );
-        delete_mode = "python".to_owned();
-    }
-    #[cfg(feature = "native-model-delete")]
-    let delete_roots = if delete_mode == "rust" {
-        match delete_roots(std::env::vars_os().collect()) {
-            Ok(roots) => Some(roots),
-            Err(reason) => {
-                eprintln!("native-model-delete: {reason}; model deletion stays with python");
-                delete_mode = "python".to_owned();
-                None
-            }
-        }
-    } else {
-        None
-    };
-    // noevia#1318 slice 12: GET /api/v1/sections/{name}/draft-heads.
-    let heads_mode = environment("MODEL_MANAGER_DRAFT_HEADS_IMPL", "python")?;
-    if !matches!(heads_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_DRAFT_HEADS_IMPL must be python or rust".into());
-    }
-    if heads_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-draft-heads")) {
-        return Err(
-            "native-draft-heads requires rust model manager and compiled native-draft-heads feature"
-                .into(),
-        );
-    }
-    #[cfg_attr(not(feature = "native-draft-heads"), allow(unused_mut))]
-    let mut heads_mode = heads_mode;
-    #[cfg(feature = "native-draft-heads")]
-    let heads_roots = if heads_mode == "rust" {
-        match model_updates_roots(std::env::vars_os().collect()) {
-            Ok(roots) => Some(roots),
-            Err(reason) => {
-                eprintln!("native-draft-heads: {reason}; GET draft-heads stays with python");
-                heads_mode = "python".to_owned();
-                None
-            }
-        }
-    } else {
-        None
-    };
-    // noevia#1318 slice 13: the backend sampler (Docker discovery, container stats, sysfs, GPU_VRAM)
-    // and GET /api/v1/backends. Like the other switches, startup is refused for a value other than
-    // python or rust, and for `rust` without the compiled native-backends feature. Only once those hold does anything this side cannot own exactly
-    // (`backends_fallback`) keep the sampler and the route with Python, with a notice, instead of
-    // refusing.
-    let backends_mode = environment("MODEL_MANAGER_BACKENDS_IMPL", "python")?;
-    if !matches!(backends_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_BACKENDS_IMPL must be python or rust".into());
-    }
-    if backends_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-backends")) {
-        return Err(
-            "native-backends requires rust model manager and compiled native-backends feature"
-                .into(),
-        );
-    }
-    #[cfg_attr(not(feature = "native-backends"), allow(unused_mut))]
-    let mut backends_mode = backends_mode;
-    #[cfg(feature = "native-backends")]
-    let backends_settings = if backends_mode == "rust" {
-        match backends_fallback(
-            &control_mode,
-            &environment("TZ", "")?,
-            std::env::vars_os().collect(),
-        ) {
-            Ok(settings) => Some(settings),
-            Err(reason) => {
-                eprintln!(
-                    "native-backends: {reason}; the backend sampler and GET /api/v1/backends stay with python"
-                );
-                backends_mode = "python".to_owned();
-                None
-            }
-        }
-    } else {
-        None
-    };
-    // noevia#1318 slice 14: GET /api/v1/search and GET /api/v1/search/repo.
-    let search_mode = environment("MODEL_MANAGER_SEARCH_IMPL", "python")?;
-    if !matches!(search_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_SEARCH_IMPL must be python or rust".into());
-    }
-    if search_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-search")) {
-        return Err(
-            "native-search requires rust model manager and compiled native-search feature".into(),
-        );
-    }
-    #[cfg_attr(not(feature = "native-search"), allow(unused_mut))]
-    let mut search_mode = search_mode;
-    #[cfg(feature = "native-search")]
-    let search_roots = if search_mode == "rust" {
-        match model_updates_roots(std::env::vars_os().collect()) {
-            Ok(roots) => Some(roots),
-            Err(reason) => {
-                eprintln!("native-search: {reason}; GET search stays with python");
-                search_mode = "python".to_owned();
-                None
-            }
-        }
-    } else {
-        None
-    };
-    let bench_mode = environment("MODEL_MANAGER_BENCH_RUNS_IMPL", "python")?;
-    if !matches!(bench_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_BENCH_RUNS_IMPL must be python or rust".into());
-    }
-    if bench_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-bench-runs")) {
-        return Err(
-            "native-bench-runs requires rust model manager and compiled native-bench-runs feature"
-                .into(),
-        );
-    }
-    #[cfg(feature = "native-bench-runs")]
-    let bench_root = if bench_mode == "rust" {
-        Some(data_dir()?)
-    } else {
-        None
-    };
-    // noevia#1318: GET /api/v1/models and GET /api/v1/overview.
-    let model_list = model_list_cmd::select(&std::env::vars_os().collect::<Vec<_>>())?;
-    // noevia#1318: GET /api/v1/sections/{name}/autoconfig.
-    let section_autoconfig =
-        section_autoconfig_cmd::select(&std::env::vars_os().collect::<Vec<_>>())?;
-    if !matches!(diagnose_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_DIAGNOSE_IMPL must be python or rust".into());
-    }
-    if diagnose_mode == "rust" {
-        if mode != "rust" || !cfg!(feature = "native-diagnose") {
-            return Err(
-                "native-diagnose requires rust model manager and compiled native-diagnose feature"
-                    .into(),
-            );
-        }
-        if environment("TZ", "")? != "UTC" {
-            return Err("native-diagnose requires exact TZ=UTC".into());
-        }
-    }
-    if !matches!(prompts_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_PROMPTS_IMPL must be python or rust".into());
-    }
-    if prompts_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-prompts")) {
-        return Err(
-            "native-prompts requires rust model manager and compiled native-prompts feature".into(),
-        );
-    }
-    #[cfg(feature = "native-prompts")]
-    let prompt_root = if prompts_mode == "rust" {
-        Some(prompt_data_dir()?)
-    } else {
-        None
-    };
-    if !matches!(sections_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_SECTIONS_IMPL must be python or rust".into());
-    }
-    if sections_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-sections")) {
-        return Err(
-            "native-sections requires rust model manager and compiled native-sections feature"
-                .into(),
-        );
-    }
-    if !matches!(host_mode.as_str(), "python" | "rust") {
-        return Err("MODEL_MANAGER_HOST_IMPL must be python or rust".into());
-    }
-    if host_mode == "rust" && (mode != "rust" || !cfg!(feature = "native-host")) {
-        return Err(
-            "native-host requires rust model manager and compiled native-host feature".into(),
-        );
-    }
-    if !cfg!(feature = "native-logs") {
-        return Err("native-logs feature is not enabled".into());
-    }
-    // All configuration/feature/address guards run before spawning the legacy process.
     let token = validate_token(&environment("MODEL_LOADER_TOKEN", "")?)?;
     let configured_raw = environment("LLAMA_CONTAINERS", "")?;
     if configured_raw.len() > 65536 {
@@ -578,6 +222,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         configured.push(name.to_owned());
     }
+    #[cfg(feature = "native-routing")]
+    if routing_native
+        && ![
+            settings_root.is_some(),
+            updates_roots.is_some(),
+            detail_roots.is_some(),
+            targets_roots.is_some(),
+            badges_root.is_some(),
+            settings_write_root.is_some(),
+            writes_roots.is_some(),
+            safe_defaults_settings.is_some(),
+            check_roots.is_some(),
+            overview_roots.is_some(),
+            downloads_roots.is_some(),
+            delete_roots.is_some(),
+            heads_roots.is_some(),
+            backends_settings.is_some(),
+            search_roots.is_some(),
+            bench_root.is_some(),
+            model_list.models.is_some(),
+            model_list.overview.is_some(),
+            section_autoconfig.settings.is_some(),
+            prompt_root.is_some(),
+        ]
+        .iter()
+        .all(|ready| *ready)
+    {
+        return Err(
+            "native routing requires qualified roots without compatibility fallbacks".into(),
+        );
+    }
     let docker = Arc::new(UnixDocker::from_env()?);
     #[cfg(feature = "native-benchmark-runner")]
     let bench_runner = match (runner_mode.as_str(), overview_roots.as_ref()) {
@@ -595,16 +270,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     token: token.clone(),
                 },
             )?;
-            // bench.reap_orphans at startup: leftover sweep containers, by exact label only.
-            match tokio::time::timeout(std::time::Duration::from_secs(60), runner.reap_orphans())
-                .await
-            {
-                Ok((reaped, stuck)) if reaped + stuck > 0 => {
-                    eprintln!("benchmark orphan check: {reaped} removed, {stuck} still stopping");
-                }
-                Ok(_) => {}
-                Err(_) => eprintln!("benchmark orphan check timed out; startup continues"),
-            }
             Some(runner)
         }
         _ => None,
@@ -665,33 +330,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .as_str(),
             "1" | "true" | "on" | "yes"
         ));
-        // A bad state file or a read-only /config leaves the service in an error state (deletes
-        // refused, status reports it); it must not crash-loop the whole model manager.
-        if let Err(error) = service.seed(
-            &environment("EMBEDDING_MODEL", "")?,
-            &environment("EMBED_MODEL_FILE", "")?,
-        ) {
-            eprintln!("embedding service: {error}");
-        }
         let service = Arc::new(service);
-        service.start_warm();
-        // #1717: re-warm after an embed restart noevia did not make.
-        drop(service.watch());
         Some(service)
     };
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;
-    // Refuse an existing loopback listener before spawn: ownership is never borrowed from
-    // an unknown process. uvicorn receives only the fixed private loopback address.
-    let legacy_probe = reusable_probe(std::net::SocketAddrV4::new(
-        std::net::Ipv4Addr::LOCALHOST,
-        8091,
-    ))?;
-    drop(legacy_probe);
     #[cfg(feature = "native-prompts")]
     let prompts = if prompts_mode == "rust" {
         let data = prompt_root.as_deref().ok_or("native prompt root missing")?;
         Some(Arc::new(
-            noevia_model_manager::prompts::Prompts::open(std::path::Path::new(&data)).await?,
+            noevia_model_manager::prompts::Prompts::open_with_schema(
+                std::path::Path::new(&data),
+                db_init,
+            )
+            .await?,
         ))
     } else {
         None
@@ -795,122 +445,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::Path::new(root),
         ))
     });
-    let mut child_command = legacy_command(
-        tokio::process::Command::new("uvicorn"),
-        &prompts_mode,
-        sections.is_some(),
-        host.is_some(),
-        &diagnose_mode,
-        #[cfg(feature = "native-prompts")]
-        prompt_root.as_deref(),
-    );
-    settings_child(
-        &mut child_command,
-        &settings_mode,
-        #[cfg(feature = "native-settings")]
-        settings_root.as_deref(),
-    );
-    model_updates_child(
-        &mut child_command,
-        &updates_mode,
-        #[cfg(feature = "native-model-updates")]
-        updates_roots.as_ref(),
-    );
-    model_detail_child(
-        &mut child_command,
-        &detail_mode,
-        #[cfg(feature = "native-model-detail")]
-        detail_roots.as_ref(),
-    );
-    download_targets_child(
-        &mut child_command,
-        &targets_mode,
-        #[cfg(feature = "native-download-targets")]
-        targets_roots.as_ref(),
-    );
-    model_updates_child_as(
-        &mut child_command,
-        "NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED",
-        &check_mode,
-        #[cfg(feature = "native-check-updates")]
-        check_roots.as_ref(),
-    );
-    benchmark_overview_child(
-        &mut child_command,
-        &overview_mode,
-        #[cfg(feature = "native-benchmark-overview")]
-        overview_roots.as_ref(),
-    );
-    benchmark_runner_child(&mut child_command, &runner_mode);
-    downloads_child(
-        &mut child_command,
-        &downloads_mode,
-        #[cfg(feature = "native-downloads")]
-        downloads_roots.as_ref(),
-    );
-    model_delete_child(
-        &mut child_command,
-        &delete_mode,
-        #[cfg(feature = "native-model-delete")]
-        delete_roots.as_ref(),
-    );
-    draft_heads_child(
-        &mut child_command,
-        &heads_mode,
-        #[cfg(feature = "native-draft-heads")]
-        heads_roots.as_ref(),
-    );
-    backends_child(&mut child_command, &backends_mode);
-    search_child(
-        &mut child_command,
-        &search_mode,
-        #[cfg(feature = "native-search")]
-        search_roots.as_ref(),
-    );
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_BACKEND_CONTROL_CONFIRMED",
-        if control_mode == "rust" { "1" } else { "0" },
-    );
-    settings_write_child(
-        &mut child_command,
-        &settings_write_mode,
-        #[cfg(feature = "native-settings-write")]
-        settings_write_root.as_deref(),
-    );
-    section_writes_child(
-        &mut child_command,
-        &writes_mode,
-        #[cfg(feature = "native-section-writes")]
-        writes_roots.as_ref(),
-    );
-    bench_runs_child(
-        &mut child_command,
-        &bench_mode,
-        #[cfg(feature = "native-bench-runs")]
-        bench_root.as_deref(),
-    );
-    badges_child(
-        &mut child_command,
-        &badges_mode,
-        #[cfg(feature = "native-badges")]
-        badges_root.as_deref(),
-    );
-    model_list_cmd::child(&mut child_command, &model_list);
-    section_autoconfig_cmd::child(&mut child_command, &section_autoconfig);
-    // #1668: the native front refuses deletes of the embedding service's models from its router
-    // state, so the legacy holder scan must not also pin env names that point at that service
-    // forever. It still pins names on any other server (#1638), so it gets the service's address.
-    let embed_url = environment("EMBED_URL", "http://embed:8080")?;
-    for (key, value) in noevia_model_manager::embed_guard_env(
-        embedding
+    #[cfg(feature = "native-safe-defaults")]
+    if let Some(settings) = safe_defaults_settings {
+        let writes = section_writes
             .as_ref()
-            .map(|s| (s.container.as_str(), embed_url.as_str())),
-    ) {
-        match value {
-            Some(value) => child_command.env(key, value),
-            None => child_command.env_remove(key),
-        };
+            .ok_or("native section writes unavailable")?;
+        if writes.ini != std::path::Path::new(&settings.ini) {
+            return Err("safe-default settings differ from the native writer".into());
+        }
+        writes.set_safe_models(std::path::Path::new(&settings.models));
     }
+    let embed_url = environment("EMBED_URL", "http://embed:8080")?;
     // #1747: idle chat models unload themselves (llama.cpp `sleep-idle-seconds` in the chat
     // preset's `[*]` section). A bad value stops startup; a preset that cannot be rewritten does not.
     // noevia#1863: an admin's choice, kept in DATA_DIR, wins over the env seed.
@@ -956,6 +501,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?),
         None => None,
     };
+    #[cfg(feature = "native-download-plan")]
+    if download_plan_mode == "rust" {
+        let (Some(table), Some(roots)) = (downloads.as_ref(), downloads_roots.as_ref()) else {
+            return Err("native download planning needs usable native download roots".into());
+        };
+        let resolved = model_updates_roots(std::env::vars_os().collect())?;
+        let targets = download_targets_roots(std::env::vars_os().collect())?;
+        table.set_planner(noevia_model_manager::download_plan::Planner::new(
+            &roots.models,
+            std::path::Path::new(&resolved.ini),
+            std::path::Path::new(&roots.data),
+            &targets.declared,
+        )?)?;
+    }
     #[cfg(feature = "native-model-delete")]
     let model_delete = delete_roots
         .as_ref()
@@ -992,10 +551,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     #[cfg(feature = "native-search")]
     let search = match search_roots.as_ref() {
-        Some(roots) => Some(Arc::new(noevia_model_manager::search::Search::new(
+        Some(roots) => Some(Arc::new(noevia_model_manager::search::Search::native(
             std::path::Path::new(&roots.data),
-            noevia_model_manager::LEGACY_BASE,
-            &token,
         )?)),
         None => None,
     };
@@ -1031,7 +588,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "SEARCH_TRUSTED_PATH",
             noevia_model_manager::search::live::TRUSTED_PATH,
         )?;
-        match noevia_model_manager::search::live::load_trusted(std::path::Path::new(&path)) {
+        #[cfg(feature = "native-routing")]
+        let trusted = routing_trusted.map(Ok).unwrap_or_else(|| {
+            noevia_model_manager::search::live::load_trusted(std::path::Path::new(&path))
+        });
+        #[cfg(not(feature = "native-routing"))]
+        let trusted = noevia_model_manager::search::live::load_trusted(std::path::Path::new(&path));
+        match trusted {
             Ok(trusted) => search.set_live(noevia_model_manager::search::live::Source {
                 stats: stats.clone(),
                 models: roots.models.clone().into(),
@@ -1050,22 +613,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
         }
     }
-    // noevia#1318 step 3d: one telemetry writer, decided before the child starts.
-    #[cfg(feature = "native-backends")]
-    let telemetry_ready = backend_stats.is_some() && section_autoconfig.settings.is_some();
-    #[cfg(not(feature = "native-backends"))]
-    let telemetry_ready = false;
-    let telemetry_native = noevia_model_manager::telemetry_cmd::select(
-        &std::env::vars_os().collect::<Vec<_>>(),
-        telemetry_ready,
-    )?;
-    noevia_model_manager::telemetry_cmd::child(&mut child_command, telemetry_native);
-    let mut child = child_command.spawn()?;
-    #[cfg(feature = "native-backends")]
-    let _backend_sampler = backend_stats.as_ref().map(|stats| stats.start());
-    let _host_sampler = host
-        .as_ref()
-        .map(|history| noevia_model_manager::host::HostSampler::start(history.clone()));
+    let telemetry_native = true;
+    let observe_native = true;
+    #[cfg(feature = "native-bench-observe")]
+    if observe_native {
+        let (Some(runner), Some(stats)) = (bench_runner.as_ref(), backend_stats.as_ref()) else {
+            return Err("native benchmark observation needs native runner and sampler".into());
+        };
+        runner.set_native_observer(noevia_model_manager::bench_observe::observer(stats.clone()))?;
+    }
+    #[cfg(not(feature = "native-bench-observe"))]
+    let _ = observe_native;
     let state = Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis,
@@ -1139,21 +697,62 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             native
         },
     });
-    // Retain native stores and their lifetime writer locks until the child is reaped.
-    let serve = axum::serve(listener, router(state.clone()));
-    let outcome: Result<(), Box<dyn std::error::Error>> = tokio::select! {
-        result=serve => result.map_err(Into::into),
-        result=child.wait() => match result {Ok(_)=>Err("Python-owned endpoint process exited".into()),Err(e)=>Err(e.into())},
-        _=tokio::signal::ctrl_c()=>Ok(()),
-        _=terminate()=>Ok(()),
-    };
-    #[cfg(feature = "native-diagnose")]
-    if let Some(diagnosis) = &state.diagnosis {
-        diagnosis.shutdown().await;
+    let ready = noevia_model_manager::service::Ready::new(state.clone())?;
+    #[cfg(feature = "native-benchmark-runner")]
+    if let Some(runner) = state.bench_runner.as_ref() {
+        // bench.reap_orphans at startup: leftover sweep containers, by exact label only.
+        match tokio::time::timeout(std::time::Duration::from_secs(60), runner.reap_orphans()).await
+        {
+            Ok((reaped, stuck)) if reaped + stuck > 0 => {
+                eprintln!("benchmark orphan check: {reaped} removed, {stuck} still stopping");
+            }
+            Ok(_) => {}
+            Err(_) => eprintln!("benchmark orphan check timed out; startup continues"),
+        }
     }
-    child_lifecycle::reap(&mut child, state).await?;
-    outcome
+    let mut embedding_watch = None;
+    if let Some(service) = state.embedding.as_ref() {
+        // A bad state file or a read-only /config leaves the service in an error state (deletes
+        // refused, status reports it); it must not crash-loop the whole model manager.
+        if let Err(error) = service.seed(
+            &environment("EMBEDDING_MODEL", "")?,
+            &environment("EMBED_MODEL_FILE", "")?,
+        ) {
+            eprintln!("embedding service: {error}");
+        }
+        service.start_warm();
+        // #1717: re-warm after an embed restart noevia did not make.
+        embedding_watch = Some(service.watch());
+    }
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8090").await?;
+    let backend_sampler = state.backend_stats.as_ref().map(|stats| stats.start());
+    let host_sampler = state
+        .host
+        .as_ref()
+        .map(|history| noevia_model_manager::host::HostSampler::start(history.clone()));
+    // NativeReady is created only after real schema/seed/INI initialization and owner validation.
+    // Keep this state and both samplers alive until the OS terminates every same-process worker.
+    ready
+        .run(
+            listener,
+            async {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {},
+                    _ = terminate() => {},
+                }
+            },
+            move || {
+                if let Some(watch) = embedding_watch {
+                    watch.abort();
+                }
+                drop(backend_sampler);
+                drop(host_sampler);
+            },
+        )
+        .await
 }
+
+#[cfg(feature = "native-routing")]
 async fn terminate() {
     match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
         Ok(mut signal) => {
@@ -1165,6 +764,7 @@ async fn terminate() {
     }
 }
 
+#[cfg(feature = "native-routing")]
 fn environment(key: &str, default: &str) -> Result<String, &'static str> {
     match std::env::var(key) {
         Ok(value) => Ok(value),
@@ -1173,26 +773,16 @@ fn environment(key: &str, default: &str) -> Result<String, &'static str> {
     }
 }
 
-#[cfg(feature = "native-prompts")]
+#[cfg(feature = "native-routing")]
 fn prompt_data_dir() -> Result<String, &'static str> {
     data_dir()
 }
-#[cfg(any(
-    feature = "native-prompts",
-    feature = "native-settings",
-    feature = "native-badges",
-    feature = "native-bench-runs",
-    feature = "native-settings-write",
-    feature = "native-benchmark-overview"
-))]
+#[cfg(feature = "native-routing")]
 fn data_dir() -> Result<String, &'static str> {
     prompt_data_dir_from(std::env::vars_os())
 }
-#[cfg(any(
-    feature = "native-prompts",
-    feature = "native-settings",
-    feature = "native-model-updates"
-))]
+#[cfg(any(feature = "native-prompts", feature = "native-model-updates"))]
+#[cfg(any(test, feature = "native-routing"))]
 fn prompt_data_dir_from(
     values: impl IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<String, &'static str> {
@@ -1226,6 +816,7 @@ fn prompt_data_dir_from(
 /// child reads them (its settings fold names, so case-folded aliases are refused).
 #[cfg(feature = "native-model-updates")]
 #[derive(Debug, PartialEq, Eq)]
+#[cfg(any(test, feature = "native-routing"))]
 struct UpdatesRoots {
     models: String,
     ini: String,
@@ -1233,6 +824,7 @@ struct UpdatesRoots {
 }
 
 #[cfg(feature = "native-model-updates")]
+#[cfg(any(test, feature = "native-routing"))]
 fn model_updates_roots(
     values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<UpdatesRoots, &'static str> {
@@ -1269,6 +861,9 @@ fn model_updates_roots(
 
 /// noevia#1318: the child refuses `GET /api/v1/models/updates` only when the native reader owns
 /// it, and is handed the same three roots the native reader opens.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-model-updates")]
 fn model_updates_child(
     child_command: &mut tokio::process::Command,
     updates_mode: &str,
@@ -1289,6 +884,9 @@ fn model_updates_child(
 
 /// noevia#1318: the child refuses `POST /api/v1/models/check-updates` only when the native writer
 /// owns it, and is handed the same three roots (the status map reads the same models folder).
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-check-updates")]
 fn model_updates_child_as(
     child_command: &mut tokio::process::Command,
     confirmation: &str,
@@ -1343,6 +941,7 @@ mod check_updates_command_tests {
 /// noevia#1318: the roots `GET /api/v1/models/detail` reads. Python joins `MODELS_DIR` with each
 /// file for `path`, so the configured folder must already be in pathlib's normal form.
 #[cfg(feature = "native-model-detail")]
+#[cfg(any(test, feature = "native-routing"))]
 fn model_detail_roots(
     values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<UpdatesRoots, &'static str> {
@@ -1366,6 +965,7 @@ fn model_detail_roots(
 /// or `UTC` is accepted (the child is given UTC either way); any other zone keeps Python's
 /// local-time answers unchanged.
 #[cfg(feature = "native-model-detail")]
+#[cfg(any(test, feature = "native-routing"))]
 fn detail_fallback(
     tz: &str,
     values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
@@ -1378,6 +978,9 @@ fn detail_fallback(
 
 /// noevia#1318: the child refuses `GET /api/v1/models/detail` and serves the private runtime call
 /// only when the native reader owns the route; it then runs in UTC and reads the same roots.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-model-detail")]
 fn model_detail_child(
     child_command: &mut tokio::process::Command,
     detail_mode: &str,
@@ -1400,12 +1003,14 @@ fn model_detail_child(
 /// settings read them (they fold names, so case-folded aliases are refused).
 #[cfg(feature = "native-download-targets")]
 #[derive(Debug, PartialEq, Eq)]
+#[cfg(any(test, feature = "native-routing"))]
 struct TargetsRoots {
     models: String,
     declared: String,
 }
 
 #[cfg(feature = "native-download-targets")]
+#[cfg(any(test, feature = "native-routing"))]
 fn download_targets_roots(
     values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<TargetsRoots, &'static str> {
@@ -1448,6 +1053,9 @@ fn download_targets_roots(
 
 /// noevia#1318: the child refuses `GET /api/v1/download-targets` only when the native reader owns
 /// it, and validates `POST /api/v1/downloads` targets against the same two settings.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-download-targets")]
 fn download_targets_child(
     child_command: &mut tokio::process::Command,
     targets_mode: &str,
@@ -1537,6 +1145,9 @@ mod download_targets_command_tests {
 /// private runtime call only when the native reader owns the route, on the same `DATA_DIR`.
 /// noevia#1318: the child refuses `PUT /api/v1/settings` and serves the private token test only
 /// when the native writer owns it, on the same `DATA_DIR`.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-settings-write")]
 fn settings_write_child(
     child_command: &mut tokio::process::Command,
     mode: &str,
@@ -1581,6 +1192,7 @@ mod settings_write_command_tests {
 /// settings read them (they fold names, so case-folded aliases keep Python writing).
 #[cfg(feature = "native-section-writes")]
 #[derive(Debug, PartialEq, Eq)]
+#[cfg(any(test, feature = "native-routing"))]
 struct WritesRoots {
     ini: String,
     cache: (i64, i64),
@@ -1589,6 +1201,7 @@ struct WritesRoots {
 }
 
 #[cfg(feature = "native-section-writes")]
+#[cfg(any(test, feature = "native-routing"))]
 fn section_writes_roots(
     tz: &str,
     values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
@@ -1664,6 +1277,7 @@ fn section_writes_roots(
 /// noevia#1318: the native overview reads the same models.ini as the child, so its path must
 /// have one spelling (pydantic reads the variable case-insensitively) and be absolute and normal.
 #[cfg(feature = "native-benchmark-overview")]
+#[cfg(any(test, feature = "native-routing"))]
 fn overview_ini(
     values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<String, &'static str> {
@@ -1701,6 +1315,9 @@ fn overview_ini(
 
 /// noevia#1318: the child refuses `GET /api/v1/benchmark` and serves the private job read only
 /// when the native overview owns it, and then reads the same store and models.ini.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-benchmark-overview")]
 fn benchmark_overview_child(
     child_command: &mut tokio::process::Command,
     overview_mode: &str,
@@ -1724,6 +1341,7 @@ fn benchmark_overview_child(
 /// form (Python's `dest_path` is `models_dir / filename`), the store, and the job slots.
 #[cfg(feature = "native-downloads")]
 #[derive(Debug, PartialEq, Eq)]
+#[cfg(any(test, feature = "native-routing"))]
 struct DownloadsRoots {
     models: String,
     data: String,
@@ -1731,6 +1349,7 @@ struct DownloadsRoots {
 }
 
 #[cfg(feature = "native-downloads")]
+#[cfg(any(test, feature = "native-routing"))]
 fn downloads_roots(
     values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<DownloadsRoots, &'static str> {
@@ -1776,6 +1395,7 @@ fn downloads_roots(
 /// read them (they fold names, so case-folded aliases are refused), and this container's name.
 #[cfg(feature = "native-model-delete")]
 #[derive(Debug, PartialEq, Eq)]
+#[cfg(any(test, feature = "native-routing"))]
 struct DeleteRoots {
     models: String,
     ini: String,
@@ -1785,6 +1405,7 @@ struct DeleteRoots {
 }
 
 #[cfg(feature = "native-model-delete")]
+#[cfg(any(test, feature = "native-routing"))]
 fn delete_roots(
     values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<DeleteRoots, &'static str> {
@@ -1839,6 +1460,9 @@ fn delete_roots(
 
 /// noevia#1318: the child refuses `POST /api/v1/models/delete` only when the native side owns
 /// it, and is handed the same settings the native side reads.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-model-delete")]
 fn model_delete_child(
     child_command: &mut tokio::process::Command,
     delete_mode: &str,
@@ -1864,6 +1488,7 @@ fn model_delete_child(
 /// GPU_VRAM and LLAMA_DEFAULT_PORT by their exact names (the child's settings fold names, so a
 /// case-folded alias is refused).
 #[cfg(feature = "native-backends")]
+#[cfg(any(test, feature = "native-routing"))]
 fn backends_fallback(
     control_mode: &str,
     tz: &str,
@@ -1895,10 +1520,10 @@ fn backends_fallback(
     noevia_model_manager::backend_stats::gpu_vram_map(&gpu_vram)
 }
 
-/// noevia#1318 step 1: HOST_RAM_RESERVE_GB for the fit chips' usable RAM, a strict subset of what
-/// the child's settings read. `None` (the chips are refused) for a case-variant key, which the
-/// child would also read, or a value that is not a plain decimal.
+/// HOST_RAM_RESERVE_GB for the fit chips' usable RAM: the finite Python-compatible
+/// numeric grammar in backend_stats::fit, with case-variant environment keys refused.
 #[cfg(feature = "native-backends")]
+#[cfg(any(test, feature = "native-routing"))]
 fn ram_reserve(values: Vec<(std::ffi::OsString, std::ffi::OsString)>) -> Option<f64> {
     let mut raw = None;
     for (key, value) in &values {
@@ -1915,6 +1540,9 @@ fn ram_reserve(values: Vec<(std::ffi::OsString, std::ffi::OsString)>) -> Option<
 
 /// noevia#1318 slice 13: the child stops sampling the backends and refuses GET /api/v1/backends
 /// only when the native sampler owns them; it then runs in UTC like the native answer.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-backends")]
 fn backends_child(child_command: &mut tokio::process::Command, backends_mode: &str) {
     child_command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_BACKENDS_CONFIRMED",
@@ -1934,8 +1562,22 @@ mod backends_command_tests {
         assert_eq!(reserve(&[]), Some(32.0));
         assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", " 8.5 ")]), Some(8.5));
         assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "-4")]), Some(-4.0));
-        assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "1e3")]), None);
+        // Actual source-bound pydantic results are frozen in fit-python.v1.json;
+        // backend_stats::fit::tests::every_accepted_reserve_is_pydantics_reading
+        // compares every accepted native spelling against that independent oracle.
+        let oracle: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/fit-python.v1.json")).unwrap();
+        assert_eq!(
+            oracle
+                .get("reserve_forms")
+                .and_then(|forms| forms.get("1e3"))
+                .and_then(serde_json::Value::as_str),
+            Some("1000.0")
+        );
+        assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "1e3")]), Some(1000.0));
+        // Nonfinite values are deliberately refused by the bounded native fit reader.
         assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "inf")]), None);
+        assert_eq!(reserve(&[("HOST_RAM_RESERVE_GB", "not-a-float")]), None);
         assert_eq!(reserve(&[("host_ram_reserve_gb", "8")]), None);
         assert_eq!(reserve(&[("OTHER", "8")]), Some(32.0));
     }
@@ -1982,6 +1624,9 @@ mod backends_command_tests {
 
 /// noevia#1318 slice 12: the child refuses the draft-head read only when the native read owns it,
 /// and is handed the same three roots.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-draft-heads")]
 fn draft_heads_child(
     child_command: &mut tokio::process::Command,
     heads_mode: &str,
@@ -2003,6 +1648,9 @@ fn draft_heads_child(
 /// noevia#1318 slice 14: the child refuses the two search reads only when the native side owns
 /// them, and is handed the same three roots (it keeps `DATA_DIR`'s store and the models folder
 /// the live state is read from).
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-search")]
 fn search_child(
     child_command: &mut tokio::process::Command,
     search_mode: &str,
@@ -2163,6 +1811,9 @@ mod model_delete_command_tests {
 
 /// noevia#1318: the child refuses the download routes and plans starts only when the native
 /// table owns them, and is handed the same models folder and store.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-downloads")]
 fn downloads_child(
     child_command: &mut tokio::process::Command,
     downloads_mode: &str,
@@ -2242,6 +1893,9 @@ mod downloads_command_tests {
     }
 }
 
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-benchmark-runner")]
 fn benchmark_runner_child(child_command: &mut tokio::process::Command, runner_mode: &str) {
     child_command.env(
         "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED",
@@ -2334,6 +1988,9 @@ mod benchmark_overview_command_tests {
 /// noevia#1318: the child refuses the five models.ini writers and serves the private
 /// safe-defaults plan only when the native writer owns them; it then runs in UTC and reads the
 /// same models.ini.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-section-writes")]
 fn section_writes_child(
     child_command: &mut tokio::process::Command,
     writes_mode: &str,
@@ -2464,6 +2121,9 @@ mod section_writes_command_tests {
     }
 }
 
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-bench-runs")]
 fn bench_runs_child(
     child_command: &mut tokio::process::Command,
     bench_mode: &str,
@@ -2504,6 +2164,9 @@ mod bench_runs_command_tests {
     }
 }
 
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-badges")]
 fn badges_child(
     child_command: &mut tokio::process::Command,
     badges_mode: &str,
@@ -2541,6 +2204,8 @@ mod badges_command_tests {
     }
 }
 
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
 fn legacy_command(
     mut child_command: tokio::process::Command,
     prompts_mode: &str,
@@ -2581,6 +2246,9 @@ fn legacy_command(
 
 /// noevia#1318: the child refuses `GET /api/v1/settings` only when the native reader owns it,
 /// and reads/writes the same `DATA_DIR/model_loader.db` the native reader opens.
+#[cfg(test)]
+#[cfg(any(test, feature = "native-routing"))]
+#[cfg(feature = "native-settings")]
 fn settings_child(
     child_command: &mut tokio::process::Command,
     settings_mode: &str,
@@ -2594,15 +2262,6 @@ fn settings_child(
     if let Some(root) = root {
         child_command.env("DATA_DIR", root);
     }
-}
-
-fn reusable_probe(address: std::net::SocketAddrV4) -> std::io::Result<std::net::TcpListener> {
-    use rustix::net::{ipproto, socket, AddressFamily, SocketType};
-    let fd = socket(AddressFamily::INET, SocketType::STREAM, Some(ipproto::TCP))?;
-    rustix::net::sockopt::set_socket_reuseaddr(&fd, true)?;
-    rustix::net::bind(&fd, &address)?;
-    rustix::net::listen(&fd, 1)?;
-    Ok(std::net::TcpListener::from(fd))
 }
 
 #[cfg(all(test, feature = "native-prompts"))]

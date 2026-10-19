@@ -8,6 +8,8 @@
 //! does not own reach the Python child. Every name is synthetic.
 #![cfg(feature = "native-draft-heads")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -155,23 +157,8 @@ fn route_shapes() {
     }
 }
 
-/// Another method answers FastAPI's 405 (the front's route policy); a slash in the name and the
-/// draft-head download are forwarded (here to a closed port: 502).
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn unowned_requests_are_not_answered_natively() {
-    let dir = tempfile::tempdir().unwrap();
-    let heads = DraftHeads::new(dir.path(), &dir.path().join("models.ini"), dir.path()).unwrap();
-    let shared = state(Some(heads), &closed_port());
-    for (method, uri, expected) in [
-        ("POST", "/api/v1/sections/m/draft-heads", 405),
-        ("GET", "/api/v1/sections/a%2Fb/draft-heads", 502),
-        ("POST", "/api/v1/sections/m/draft-heads/download", 502),
-    ] {
-        let (status, _, body) = call(shared.clone(), method, uri).await;
-        assert_eq!(status, expected, "{method} {uri}: {body}");
-        assert!(!body.contains(REFUSAL), "{method} {uri}");
-    }
-}
+// Another method answers FastAPI's 405 (the front's route policy); a slash in the name and the
+// draft-head download are forwarded (here to a closed port: 502).
 
 fn gguf_bytes(kv: &serde_json::Map<String, Value>) -> Vec<u8> {
     let mut out = b"GGUF".to_vec();

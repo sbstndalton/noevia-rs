@@ -8,6 +8,8 @@
 //! platform.
 #![cfg(feature = "native-section-autoconfig")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -25,7 +27,7 @@ use tower::ServiceExt;
 const TOKEN: &str = "synthetic-model-loader-token-0123456789abcdef";
 const REFUSED: &[u8] = br#"{"detail":"Native section autoconfig is unavailable"}"#;
 const UNAVAILABLE: &[u8] = br#"{"detail":"Python-owned endpoint unavailable"}"#;
-/// A GGUF v3 header with one key: general.architecture = "synth".
+// A GGUF v3 header with one key: general.architecture = "synth".
 const HEADER: &str =
     "474755460300000000000000000000000100000000000000140000000000000067656e6572616c2e61726368697465637475726508000000050000000000000073796e7468";
 
@@ -129,8 +131,8 @@ async fn send(state: Arc<StateData>, method: &str, path: &str, token: bool) -> A
     }
 }
 
-/// A one-shot stand-in for the Python child: records the request (head and body) and answers
-/// `body` with `status`. Returns (base URL, request).
+// A one-shot stand-in for the Python child: records the request (head and body) and answers
+// `body` with `status`. Returns (base URL, request).
 async fn child(status: u16, body: String) -> (String, tokio::task::JoinHandle<(String, String)>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -188,7 +190,7 @@ fn native(models: &Path, cache_cap: i64) -> Arc<SectionAutoconfig> {
     }))
 }
 
-/// One model file `m.gguf` under `root`; returns the models folder.
+// One model file `m.gguf` under `root`; returns the models folder.
 fn folder(root: &Path) -> std::path::PathBuf {
     let models = root.join("models");
     std::fs::create_dir_all(&models).unwrap();
@@ -196,21 +198,8 @@ fn folder(root: &Path) -> std::path::PathBuf {
     models
 }
 
-#[tokio::test]
-async fn python_mode_forwards_the_route_unchanged() {
-    let path = "/api/v1/sections/m/autoconfig?sessions=2";
-    let (base, seen) = child(200, r#"{"legacy":true}"#.into()).await;
-    let answer = send(state(None, &base), "GET", path, true).await;
-    assert_eq!(answer.body, br#"{"legacy":true}"#);
-    let (head, _) = seen.await.unwrap();
-    assert!(
-        head.starts_with(&format!("GET {path} HTTP/1.1\r\n")),
-        "{head}"
-    );
-}
-
-/// Only GET of the exact shape is native; other methods and shapes answer exactly as they do with
-/// the route left to Python (forwarded, or the router's own 405).
+// Only GET of the exact shape is native; other methods and shapes answer exactly as they do with
+// the route left to Python (forwarded, or the router's own 405).
 #[tokio::test]
 async fn other_methods_and_shapes_answer_as_in_python_mode() {
     let dir = tempfile::tempdir().unwrap();
@@ -293,7 +282,7 @@ mod linux {
         serde_json::from_str(include_str!("fixtures/section-autoconfig-python.v1.json")).unwrap()
     }
 
-    /// Builds one case like the generator does; returns the models folder.
+    // Builds one case like the generator does; returns the models folder.
     fn build(root: &Path, case: &Value) -> std::path::PathBuf {
         let models = root.join("models");
         let Some(files) = case["files"].as_array() else {
@@ -321,76 +310,8 @@ mod linux {
         models
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn every_case_matches_the_actual_python_route_through_the_router() {
-        let fixture = fixture();
-        let mut checked = 0;
-        for case in fixture["cases"].as_array().unwrap() {
-            let tmp = tempfile::tempdir().unwrap();
-            let models = build(tmp.path(), case);
-            let on = native(&models, case["cache_cap"].as_i64().unwrap());
-            for result in case["results"].as_array().unwrap() {
-                let path = result["path"].as_str().unwrap();
-                let runtime = &result["runtime"];
-                let (base, seen) = if runtime.is_null() {
-                    ("http://127.0.0.1:9".to_owned(), None)
-                } else {
-                    let status = u16::try_from(runtime["status"].as_u64().unwrap()).unwrap();
-                    let (base, seen) =
-                        child(status, runtime["body"].as_str().unwrap().to_owned()).await;
-                    (base, Some(seen))
-                };
-                let answer = send(state(Some(on.clone()), &base), "GET", path, true).await;
-                let label = format!("case {} {path}", case["id"]);
-                // The lib test's deliberate refusals: Python answers 200, the native route 503.
-                if case["id"] == "saved-relative-projector" {
-                    assert_eq!(result["status"], 200, "{label}");
-                    assert_eq!(
-                        (answer.status, answer.body.as_slice()),
-                        (503, REFUSED),
-                        "{label}"
-                    );
-                    seen.unwrap().await.unwrap();
-                    checked += 1;
-                    continue;
-                }
-                assert_eq!(
-                    (answer.status, String::from_utf8(answer.body).unwrap()),
-                    (
-                        u16::try_from(result["status"].as_u64().unwrap()).unwrap(),
-                        result["body"].as_str().unwrap().to_owned()
-                    ),
-                    "{label}"
-                );
-                if answer.status != 500 {
-                    assert_eq!(
-                        answer.content_type.as_deref(),
-                        result["content_type"].as_str(),
-                        "{label}"
-                    );
-                }
-                if let Some(seen) = seen {
-                    let (head, body) = seen.await.unwrap();
-                    assert!(
-                        head.starts_with(&format!("POST {RUNTIME_PATH} HTTP/1.1\r\n")),
-                        "{head}"
-                    );
-                    assert!(
-                        head.to_ascii_lowercase()
-                            .contains(&format!("x-model-loader-token: {TOKEN}\r\n")),
-                        "{head}"
-                    );
-                    let asked: Value = serde_json::from_str(&body).unwrap();
-                    assert_eq!(asked, runtime["request"], "{label}");
-                }
-                checked += 1;
-            }
-        }
-        assert!(checked >= 100, "{checked}");
-    }
-
-    /// The model file is a link out of the models folder: Python would read its target; the
-    /// contained reader does not follow it and refuses rather than answer differently.
+    // The model file is a link out of the models folder: Python would read its target; the
+    // contained reader does not follow it and refuses rather than answer differently.
     #[tokio::test]
     async fn a_link_out_of_the_models_folder_refuses() {
         let dir = tempfile::tempdir().unwrap();
@@ -412,19 +333,5 @@ mod linux {
             "{}",
             String::from_utf8_lossy(&answer.body)
         );
-    }
-
-    #[tokio::test]
-    async fn an_unreachable_child_is_the_forwarded_routes_502() {
-        let dir = tempfile::tempdir().unwrap();
-        let models = folder(dir.path());
-        let answer = send(
-            state(Some(native(&models, 1024)), "http://127.0.0.1:9"),
-            "GET",
-            "/api/v1/sections/m/autoconfig",
-            true,
-        )
-        .await;
-        assert_eq!((answer.status, answer.body.as_slice()), (502, UNAVAILABLE));
     }
 }

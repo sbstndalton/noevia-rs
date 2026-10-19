@@ -1,0 +1,19 @@
+//! Retired selectors cannot bypass mandatory native ownership or startup preflight.
+#[path = "support/native_startup.rs"]
+mod native_startup;
+const KEYS: &[&str] = &[
+    "MODEL_MANAGER_SAFE_DEFAULTS_IMPL",
+    "MODEL_MANAGER_SECTION_WRITES_IMPL",
+];
+#[test]
+fn retired_selectors_cannot_bypass_timezone_or_capability_preflight() {
+    native_startup::refuse(KEYS, None, None);
+}
+#[test]
+fn python_confirmation_cannot_bypass_empty_trusted_sets() {
+    native_startup::refuse(KEYS, Some("UTC"), Some(r#"{"quantisers":[],"labs":[]}"#));
+}
+#[test]
+fn malformed_trust_never_reaches_schema_or_preset_migration() {
+    native_startup::refuse(KEYS, Some("UTC"), Some("{"));
+}

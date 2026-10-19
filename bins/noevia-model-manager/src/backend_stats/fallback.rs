@@ -129,7 +129,7 @@ mod tests {
             ("section_autoconfig::inventory::tests::a_hung_docker_socket_keeps_the_child_inventory_and_repeated_reads_return_promptly",
              "native-section-autoconfig: the backend inventory was taken from the python child (Docker did not answer in time); fallback count 1"),
             ("search::estimates::tests::an_unreadable_summary_skips_docker_and_a_timeout_leaves_estimates_with_the_child",
-             "native-search: the repository estimates were asked of the python child (Docker did not answer in time); fallback count 1"),
+             "native-search: the repository estimates were asked of the python child (a bounded native runtime failure); fallback count 1"),
         ] {
             let mut child = Command::new(std::env::current_exe().unwrap())
                 .args(["--exact", test, "--nocapture"])

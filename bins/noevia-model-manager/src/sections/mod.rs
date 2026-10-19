@@ -2,6 +2,8 @@
 pub(crate) mod access;
 mod defaults;
 pub mod ini;
+#[cfg(feature = "native-safe-defaults")]
+pub(crate) mod safe_defaults;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
@@ -154,7 +156,7 @@ impl Sections {
             .map_err(|_| Error::Refused)?;
         let reader = self.reader.clone();
         // The blocking operation retains admission even when this future is dropped/timed out.
-        let task = tokio::task::spawn_blocking(move || {
+        let task = crate::work::spawn_blocking(move || {
             let _permit = permit;
             reader.response(name.as_deref(), defaults)
         });

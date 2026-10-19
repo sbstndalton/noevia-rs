@@ -197,7 +197,7 @@ impl Place {
 /// host may not land on a loopback, private, link-local or unspecified address (only literal
 /// addresses and `localhost` are recognised; a public name that resolves to a private address
 /// is not caught here).
-fn redirect_refused(from: &reqwest::Url, to: &reqwest::Url) -> Option<String> {
+pub(crate) fn redirect_refused(from: &reqwest::Url, to: &reqwest::Url) -> Option<String> {
     if from.scheme() == "https" && to.scheme() != "https" {
         return Some(format!("refused a redirect from https to {}", to.scheme()));
     }
@@ -525,7 +525,7 @@ impl Downloads {
         let started = started.filter(|t| *t != 0.0).unwrap_or_else(|| self.now());
         let database = self.config.database.clone();
         let (repo, filename, dest) = (job.repo_id.clone(), job.filename.clone(), job.dest.clone());
-        let _ = tokio::task::spawn_blocking(move || {
+        let _ = crate::work::spawn_blocking(move || {
             super::store::record(
                 &database,
                 &repo,

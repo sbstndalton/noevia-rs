@@ -10,7 +10,7 @@
 //! `tools/gen-fit-oracle.py`) is replayed against the same Docker world, backend cache, restart
 //! errors, meminfo, clock and llama-server answers. The native bodies must be the child's, byte
 //! for byte: the routes splice them exactly as they spliced the child's. Every name is synthetic.
-use super::super::tests::{llama, World};
+use super::super::tests::{llama, stop_llamas, World};
 use crate::backend_stats::{fit::reserve_gb, gpu_vram_map, BackendStats, Config};
 use serde_json::Value as V;
 use std::sync::{Arc, Mutex};
@@ -104,9 +104,7 @@ async fn the_live_fields_are_the_childs() {
                 answer["op"]
             );
         }
-        for s in servers {
-            s.abort();
-        }
+        stop_llamas(servers).await;
     }
 }
 

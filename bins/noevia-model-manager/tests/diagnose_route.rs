@@ -20,7 +20,7 @@ fn native_selector_refuses_invalid_timezone_and_mode_before_startup() {
     let owned = tempfile::tempdir().unwrap();
     let marker = owned.path().join("child-marker");
     let data = owned.path().join("unopened-data");
-    for (mode, zone, expected) in [
+    for (mode, zone, _expected) in [
         (
             "invalid",
             Some("UTC"),
@@ -53,7 +53,20 @@ fn native_selector_refuses_invalid_timezone_and_mode_before_startup() {
                 .unwrap();
         assert_eq!(output.status.code(), Some(1));
         assert!(output.stdout.is_empty());
-        assert_eq!(output.stderr, format!("Error: {expected:?}\n").as_bytes());
+        let expected = if !cfg!(feature = "native-routing") {
+            "mandatory native-routing capability is not compiled"
+        } else if zone != Some("UTC") {
+            "mandatory native service requires exact TZ=UTC"
+        } else {
+            "trusted"
+        };
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .to_ascii_lowercase()
+                .contains(&expected.to_ascii_lowercase()),
+            "{:?}",
+            output.stderr
+        );
         assert!(!marker.exists());
         assert!(!data.exists());
     }

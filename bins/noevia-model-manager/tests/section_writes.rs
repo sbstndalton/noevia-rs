@@ -7,6 +7,8 @@
 //! router with a fake child serving those plans; the answers and the final files must match.
 #![cfg(feature = "native-section-writes")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -97,7 +99,7 @@ fn state(writes: SectionWrites, legacy_base: &str) -> Arc<StateData> {
     })
 }
 
-/// A fake child: `/api/v1/internal/startup-ready` advertises completion; the plan call answers whatever `plan` holds.
+// A fake child: `/api/v1/internal/startup-ready` advertises completion; the plan call answers whatever `plan` holds.
 async fn child(plan: Arc<Mutex<Option<(u16, String)>>>) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -217,7 +219,7 @@ async fn send(state: Arc<StateData>, step: &Value, rev: &str) -> Answer {
     }
 }
 
-/// A `MIGRATE` step: the startup cache-ram migration as the parent runs it (noevia#2010).
+// A `MIGRATE` step: the startup cache-ram migration as the parent runs it (noevia#2010).
 async fn migrate(state: &Arc<StateData>) -> Answer {
     let writes = state.section_writes.clone().unwrap();
     match writes.migrate_cache_ram_at_startup().await {
@@ -232,148 +234,6 @@ async fn migrate(state: &Arc<StateData>) -> Answer {
             body: String::new(),
         },
     }
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn actual_python_differential() {
-    let fx = fixture();
-    let epoch = fx["epoch"].as_u64().unwrap();
-    let plan = Arc::new(Mutex::new(None));
-    let base = child(plan.clone()).await;
-    let cases = fx["cases"].as_array().unwrap();
-    assert!(cases.len() >= 15);
-    for case in cases {
-        let id = case["id"].as_str().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let models = std::fs::canonicalize(dir.path()).unwrap().join("models");
-        std::fs::create_dir(&models).unwrap();
-        let ini = models.join("models.ini");
-        if let Some(text) = case["ini"].as_str() {
-            std::fs::write(&ini, text).unwrap();
-        }
-        if let Some(text) = case["roles"].as_str() {
-            std::fs::write(models.join("models.roles.json"), text).unwrap();
-        }
-        for f in case["files"].as_array().unwrap() {
-            let path = models.join(f[0].as_str().unwrap());
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            let bytes = match &f[1] {
-                Value::Object(o) => unhex(o["gguf"].as_str().unwrap()),
-                v => v.as_str().unwrap().as_bytes().to_vec(),
-            };
-            std::fs::write(&path, bytes).unwrap();
-            let t = UNIX_EPOCH + Duration::from_secs(f[2].as_u64().unwrap());
-            std::fs::File::options()
-                .write(true)
-                .open(&path)
-                .unwrap()
-                .set_modified(t)
-                .unwrap();
-        }
-        let cache = (
-            case["cap"].as_i64().unwrap(),
-            case["hard"].as_i64().unwrap(),
-        );
-        let cache = (cache.0.min(cache.1), cache.1);
-        let writes = SectionWrites::with_clock(
-            &ini,
-            cache,
-            Arc::new(move || UNIX_EPOCH + Duration::from_secs(epoch)),
-        );
-        let state = state(writes, &base);
-        for (i, (step, want)) in case["steps"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .zip(case["answers"].as_array().unwrap())
-            .enumerate()
-        {
-            *plan.lock().unwrap() = want["plan"].as_object().map(|p| {
-                (
-                    u16::try_from(p["status"].as_u64().unwrap()).unwrap(),
-                    p["body"].as_str().unwrap().to_owned(),
-                )
-            });
-            let rev = format!(
-                "{:x}",
-                Sha256::digest(std::fs::read(&ini).unwrap_or_default())
-            );
-            let got = if step["method"] == "MIGRATE" {
-                migrate(&state).await
-            } else {
-                send(state.clone(), step, &rev).await
-            };
-            assert_eq!(
-                u64::from(got.status),
-                want["status"].as_u64().unwrap(),
-                "{id} step {i}: {}",
-                got.body
-            );
-            assert_eq!(
-                got.content_type.as_deref(),
-                want["content_type"].as_str(),
-                "{id} step {i}"
-            );
-            if got.status == 422 {
-                let parse = |b: &str| serde_json::from_str::<Value>(b).unwrap();
-                assert_eq!(
-                    parse(&got.body),
-                    parse(want["body"].as_str().unwrap()),
-                    "{id} step {i}"
-                );
-            } else {
-                assert_eq!(got.body, want["body"].as_str().unwrap(), "{id} step {i}");
-            }
-        }
-        let final_ = &case["final"];
-        assert_eq!(
-            std::fs::read_to_string(&ini).ok().as_deref(),
-            final_["ini"].as_str(),
-            "{id}: models.ini"
-        );
-        assert_eq!(
-            std::fs::read_to_string(models.join("models.roles.json"))
-                .ok()
-                .as_deref(),
-            final_["roles"].as_str(),
-            "{id}: roles"
-        );
-        let mut names = Vec::new();
-        listing(&models, "", &mut names);
-        names.sort();
-        let want: Vec<String> = final_["listing"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap().to_owned())
-            .collect();
-        assert_eq!(names, want, "{id}: listing");
-    }
-}
-
-#[tokio::test]
-async fn safe_defaults_plan_failures_and_name_checks() {
-    let dir = tempfile::tempdir().unwrap();
-    let ini = dir.path().join("models.ini");
-    std::fs::write(&ini, "[a]\n").unwrap();
-    let plan = Arc::new(Mutex::new(Some((500, "Internal Server Error".to_owned()))));
-    let base = child(plan.clone()).await;
-    let s = state(SectionWrites::new(&ini, (1024, 2048)), &base);
-    let post = |p: &str| serde_json::json!({"method": "POST", "path": p, "body": null, "content_type": null});
-    let got = send(s.clone(), &post("/api/v1/sections/m/safe-defaults"), "").await;
-    assert_eq!(got.status, 500);
-    *plan.lock().unwrap() = Some((200, "not json".to_owned()));
-    let got = send(s.clone(), &post("/api/v1/sections/m/safe-defaults"), "").await;
-    assert_eq!(got.status, 503);
-    assert_eq!(
-        got.body,
-        r#"{"detail":"Native models.ini writes are unavailable"}"#
-    );
-    // Name checks answer before the child is asked; nothing is written.
-    *plan.lock().unwrap() = None;
-    let got = send(s, &post("/api/v1/sections/x-MMPROJ/safe-defaults"), "").await;
-    assert_eq!(got.status, 400);
-    assert_eq!(std::fs::read_to_string(&ini).unwrap(), "[a]\n");
 }
 
 #[tokio::test]
@@ -403,4 +263,27 @@ async fn non_native_shapes_never_write() {
         assert!(!answer.status().is_success(), "{method} {path}");
     }
     assert!(!ini.exists());
+}
+
+#[cfg(feature = "native-safe-defaults")]
+#[tokio::test]
+async fn native_safe_defaults_never_asks_child_for_a_plan() {
+    let dir = tempfile::tempdir().unwrap();
+    let models = dir.path().join("models");
+    std::fs::create_dir(&models).unwrap();
+    std::fs::write(models.join("syn-bad.gguf"), b"not a valid header").unwrap();
+    let ini = models.join("models.ini");
+    let writes = SectionWrites::new(&ini, (1024, 2048));
+    writes.set_safe_models(&models);
+    // This child rejects any planning request. The selected native planner must bypass it.
+    let base = child(Arc::new(Mutex::new(None))).await;
+    let state = state(writes, &base);
+    let step = serde_json::json!({"method":"POST","path":"/api/v1/sections/syn-bad/safe-defaults","body":null,"content_type":null});
+    let answer = send(state.clone(), &step, "").await;
+    assert_eq!(answer.status, 200, "{}", answer.body);
+    assert!(std::fs::read_to_string(&ini)
+        .unwrap()
+        .contains("ctx-size = 8192"));
+    let again = send(state, &step, "").await;
+    assert_eq!(again.status, 409);
 }

@@ -1,7 +1,9 @@
 //! noevia-server binary: reads the environment (see config.rs), listens on UI_HOST:UI_PORT.
 
 use noevia_server::{config::Config, serve, App};
+use std::ffi::{OsStr, OsString};
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -45,12 +47,50 @@ async fn terminated() {
     }
 }
 
+fn legacy_claim_cli(args: impl Iterator<Item = OsString>) -> ExitCode {
+    let mut args = args;
+    let usage = || {
+        eprintln!("usage: noevia-server --claim-legacy-root <absolute-data-dir> <user-uuid>");
+        ExitCode::from(2)
+    };
+    let Some(root) = args.next().map(PathBuf::from) else {
+        return usage();
+    };
+    let Some(user_id) = args.next().and_then(|value| value.into_string().ok()) else {
+        return usage();
+    };
+    if args.next().is_some() || !root.is_absolute() {
+        return usage();
+    }
+    let result = match server_projects::legacy_claim::claim_root(&root, &user_id) {
+        Ok(true) => "CLAIMED",
+        Ok(false) => "SKIPPED",
+        Err(server_projects::legacy_claim::ClaimError::InvalidUser) => return usage(),
+        Err(_) => {
+            eprintln!("noevia-server: legacy claim refused");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut stdout = io::stdout().lock();
+    match writeln!(stdout, "{result}").and_then(|()| stdout.flush()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(_) => ExitCode::FAILURE,
+    }
+}
 fn main() -> ExitCode {
+    let mut args = std::env::args_os();
+    let _program = args.next();
+    let command = args.next();
     // The owned outbound storage child (#1368): it sets its own limits before READY and must not
     // start the server's runtime first.
     #[cfg(feature = "rust-storage-browse")]
-    if std::env::args().nth(1).as_deref() == Some(server_storage_reads::transport::CHILD_ARG) {
+    if command.as_deref() == Some(OsStr::new(server_storage_reads::transport::CHILD_ARG)) {
         return server_storage_reads::transport::child_main();
+    }
+    // The filesystem-only claim helper runs before the async runtime and all server config/auth
+    // startup. Its caller owns/revalidates the database transaction; this process never opens DB.
+    if command.as_deref() == Some(OsStr::new("--claim-legacy-root")) {
+        return legacy_claim_cli(args);
     }
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()

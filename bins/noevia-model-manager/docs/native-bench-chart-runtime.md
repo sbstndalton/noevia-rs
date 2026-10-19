@@ -9,3 +9,8 @@ The backend descriptor list is one bounded snapshot for the chart request. Disco
 `tools/gen-bench-chart-oracle.py` runs the actual services chart runtime and `_predicted_vram_gb` on synthetic files. It records source digests, headers and answers. Cases cover single-file versus folder sizing, invalid/missing files, empty backends, configured and fallback contexts, first-row ties and rounding. CI regenerates the fixture from its pinned services source and requires identical bytes. Router qualification proves that an unavailable child does not prevent this native path from returning a benchmark response.
 
 The benchmark observer, safe-default/token/download planning helpers, cache/error mirrors and startup database initialization still depend on the child. This change does not claim child retirement.
+
+Optional chart inventory shares the sampler's ten-second negative cooldown after a timed-out
+Docker read with optional section-autoconfig and search inventory. During that cooldown chart
+capacity remains zero and predictions null; authoritative native autoconfig keeps its refusal.
+No successful inventory values are cached.

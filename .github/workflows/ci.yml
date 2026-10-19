@@ -784,6 +784,8 @@ jobs:
         run: |
           cargo test --locked -p noevia-model-manager --features native-logs --test lifecycle
           cargo test --locked -p noevia-model-manager --no-default-features --test lifecycle
+      - name: Prime actual mandatory-native worker drain and deadline proof
+        run: cargo test --locked -p noevia-model-manager --all-features --lib service::tests
       - name: Native prompt behavior mutations must fail assertions
         run: cargo run --locked -q -p noevia-model-manager --bin check-prompts-mutations
       - name: Actual public front, Node proxy and native prompt binary differential
@@ -791,7 +793,7 @@ jobs:
           PYTHON: python3
           NOEVIA_PROMPTS_DEPENDENCIES: ${{ runner.temp }}/prompts-node-dependencies
         run: |
-          cargo build --locked -p noevia-model-manager --features native-prompts
+          cargo build --locked -p noevia-model-manager --bin noevia-model-manager --features native-routing
           cargo build --locked -p noevia-server --bin noevia-server
           cargo build --locked -p replay --bin corpus-launcher --bin prompts-contracts
           cargo clippy --locked -p replay --bin corpus-launcher --bin prompts-contracts -- -D warnings
@@ -1556,6 +1558,51 @@ jobs:
           cargo test --locked -p noevia-model-manager --features native-telemetry --lib docker::
           cargo test --locked -p noevia-model-manager --features native-telemetry --test section_autoconfig --test section_autoconfig_lifecycle --test backends --test lifecycle --bin noevia-model-manager
 
+  native-bench-observe:
+    name: Native benchmark observations, actual Python differential and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: e5f0c045a17a0331f4d660d4d0147fca11dc67dc
+          path: observe-services
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 2360cb51f6475122ba0aa3d32272849a63028d66
+          path: observe-prompts-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded oracle framework resolution
+        run: |
+          python3 -m pip install -r observe-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+      - name: Regenerate actual Python benchmark observations
+        run: |
+          python3 -I tools/gen-bench-observe-oracle.py observe-services/model-manager/app > "$RUNNER_TEMP/bench-observe.json"
+          cmp bins/noevia-model-manager/tests/fixtures/bench-observe-python.v1.json "$RUNNER_TEMP/bench-observe.json" || {
+            diff bins/noevia-model-manager/tests/fixtures/bench-observe-python.v1.json "$RUNNER_TEMP/bench-observe.json" | head -40
+            exit 1
+          }
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-bench-observe -- -D warnings
+      - name: Native observations, benchmark regression and omission
+        env:
+          NOEVIA_PROMPTS_APP: ${{ github.workspace }}/observe-prompts-services/model-manager/app
+          PYTHON: python3
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-bench-observe --lib
+          cargo test --locked -p noevia-model-manager --features native-bench-observe --test bench_observe --test bench_runner --test bench_sweep
+          cargo test --locked -p noevia-model-manager --no-default-features --test bench_observe
+
   native-download-targets:
     name: Native download targets read, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
@@ -1662,6 +1709,11 @@ jobs:
           repository: sbstndalton/noevia-services
           ref: 641c9c342256de69251097d4839d05ee41044fe0
           path: bench-runs-services
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 60764e67f390ea9dad5c91c3f41aad865d757823
+          path: bench-paths-services
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
@@ -1680,6 +1732,10 @@ jobs:
             diff bins/noevia-model-manager/tests/fixtures/bench-runs-python.v1.json "$RUNNER_TEMP/bench-runs.json" | head -40
             exit 1
           }
+      - name: Regenerate actual ASGI benchmark path and integer oracle
+        run: |
+          python3 -I tools/gen-bench-run-paths-oracle.py bench-paths-services/model-manager/app > "$RUNNER_TEMP/bench-paths.json"
+          cmp bins/noevia-model-manager/tests/fixtures/bench-run-paths-python.v1.json "$RUNNER_TEMP/bench-paths.json"
       - run: cargo fmt --check -p noevia-model-manager
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-bench-runs -- -D warnings
       - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-host,native-sections,native-prompts,native-diagnose,native-settings,native-model-updates,native-model-detail,native-download-targets,native-badges,native-bench-runs -- -D warnings
@@ -1879,7 +1935,7 @@ jobs:
           test "$result" -eq 0
           grep -Fx 'test diagnose_docker::transport_error_tests::connected_unix_unread_request_reset_is_ordinary_after_actual_driver_join ... ok' "$evidence/control.stdout"
           grep -E '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+$' "$evidence/control.stdout"
-      - name: Whole actual public front and explicit default-off controls
+      - name: Whole actual public front and mandatory native ownership
         env:
           NOEVIA_DIAGNOSE_CORE_SOURCE: ${{ github.workspace }}/diagnose-core
           NOEVIA_DIAGNOSE_SERVICES_SOURCE: ${{ github.workspace }}/diagnose-services
@@ -1889,7 +1945,7 @@ jobs:
           cp target/debug/noevia-model-manager /tmp/s1-diagnose-featureless-manager
           cargo build --locked -p replay --bin diagnose-contracts --bin corpus-launcher
           target/debug/diagnose-contracts --featureless
-          cargo build --locked -p noevia-model-manager --bin noevia-model-manager --features native-diagnose
+          cargo build --locked -p noevia-model-manager --bin noevia-model-manager --features native-routing
           cargo build --locked -p noevia-server --bin noevia-server
           cargo clippy --locked -p replay --bin diagnose-contracts -- -D warnings
           cargo test --locked -p replay --bin diagnose-contracts
@@ -2095,4 +2151,196 @@ jobs:
         run: |
           cargo build --locked -p noevia-model-manager --no-default-features --features native-logs --target-dir target/token-omission
           if MODEL_MANAGER_TOKEN_TEST_IMPL=rust MODEL_MANAGER_SETTINGS_WRITE_IMPL=rust target/token-omission/debug/noevia-model-manager > token-omission.log 2>&1; then exit 1; fi
-          grep -q 'native-token-test requires native settings writer and compiled native-token-test feature' token-omission.log
+          grep -Fxq 'Error: "mandatory native-routing capability is not compiled"' token-omission.log
+
+  native-db-init:
+    name: Native database bootstrap, actual Python schema and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHON: python3
+      NOEVIA_PROMPTS_APP: ${{ github.workspace }}/db-init-prompts-services/model-manager/app
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: eefbcbaeebd3f806c62dd5aea48036da8b20bfbf
+          path: db-init-services
+      # Existing prompt-store reader probes are bound to their own older actual Python source.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 2360cb51f6475122ba0aa3d32272849a63028d66
+          path: db-init-prompts-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Regenerate actual Python fresh, legacy and repeated schemas
+        run: |
+          python3 -I tools/gen-db-init-oracle.py --db-file db-init-services/model-manager/app/db.py --services-ref eefbcbaeebd3f806c62dd5aea48036da8b20bfbf --output-root "$RUNNER_TEMP/db-init-oracle"
+          cmp bins/noevia-model-manager/src/prompts/db_schema.sql "$RUNNER_TEMP/db-init-oracle/bins/noevia-model-manager/src/prompts/db_schema.sql"
+          cmp bins/noevia-model-manager/src/prompts/db_schema.json "$RUNNER_TEMP/db-init-oracle/bins/noevia-model-manager/src/prompts/db_schema.json"
+          cmp bins/noevia-model-manager/tests/fixtures/db-init-python.v1.json "$RUNNER_TEMP/db-init-oracle/bins/noevia-model-manager/tests/fixtures/db-init-python.v1.json"
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-db-init -- -D warnings
+      - name: Bootstrap parity, rollback, prompt behavior and selector contracts
+        run: python3 tools/run-db-init-tests.py
+      - name: Omitted feature and default Python owner
+        run: python3 tools/run-db-init-tests.py --features native-prompts --omitted
+
+  native-safe-defaults:
+    name: Native safe-default plans, actual Python oracle and omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 60764e67f390ea9dad5c91c3f41aad865d757823
+          path: safe-defaults-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Regenerate actual Python plans, responses and files
+        run: |
+          python3 -m pip install -r safe-defaults-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+          cargo build --locked -p model-files-cli
+          MODEL_FILES_BIN="$PWD/target/debug/model-files" python3 -I tools/gen-safe-defaults-oracle.py safe-defaults-services/model-manager/app > "$RUNNER_TEMP/safe-defaults.json"
+          cmp bins/noevia-model-manager/tests/fixtures/safe-defaults-python.v1.json "$RUNNER_TEMP/safe-defaults.json"
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-safe-defaults -- -D warnings
+      - run: cargo test --locked -p noevia-model-manager --features native-safe-defaults --lib sections::safe_defaults
+      - run: cargo test --locked -p noevia-model-manager --features native-safe-defaults --test section_writes --test safe_defaults_lifecycle
+      - run: cargo test --locked -p noevia-model-manager --no-default-features --test safe_defaults_lifecycle
+
+  native-runtime-integration:
+    name: Combined native runtime helpers and real capability omission (#1318)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHON: python3
+      NOEVIA_PROMPTS_APP: ${{ github.workspace }}/integration-prompts-services/model-manager/app
+      STARTUP_TEST_APP: ${{ github.workspace }}/integration-startup-services/model-manager
+      NOEVIA_DIAGNOSE_SDK_ORACLE: ${{ github.workspace }}/integration-diagnose-sdk.json
+      NOEVIA_DIAGNOSE_SERVICES_SOURCE: ${{ github.workspace }}/integration-diagnose-services
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 2360cb51f6475122ba0aa3d32272849a63028d66
+          path: integration-prompts-services
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 60764e67f390ea9dad5c91c3f41aad865d757823
+          path: integration-startup-services
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: d890ab476d1f1a8b6de799d6428e45b6af42a473
+          path: integration-diagnose-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Install recorded actual-companion and SDK dependencies
+        run: |
+          echo "PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+          echo "STARTUP_TEST_PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
+          python3 -m pip install -r integration-startup-services/model-manager/requirements.txt
+          python3 -m pip install docker==7.1.0 requests==2.34.2 fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3 uvicorn==0.34.0
+      - name: Generate source-bound SDK wire input for the full package suite
+        env:
+          NOEVIA_DIAGNOSE_DOCKER_SDK: ${{ env.pythonLocation }}/lib/python3.12/site-packages/docker
+        run: cargo run --locked -q -p noevia-model-manager --bin generate-diagnose-transport-oracle > "$NOEVIA_DIAGNOSE_SDK_ORACLE"
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --all-features -- -D warnings
+      - name: Native model-manager HTTP health check
+        run: cargo test --locked -p noevia-model-manager --all-features --lib healthcheck::tests
+      - name: Combined helpers, startup barriers, shared cooldown and store lifetimes
+        run: python3 tools/run-native-runtime-tests.py
+      - name: Real CLI with deliberately omitted native helpers
+        run: python3 tools/run-native-runtime-tests.py --capability-omission
+
+  native-download-plan:
+    name: Native download planning, actual Python oracle and omission (#1318)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-services
+          ref: e5f0c045a17a0331f4d660d4d0147fca11dc67dc
+          path: download-plan-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Actual Python planner oracle
+        run: |
+          python3 -m pip install -r download-plan-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+          python3 -I tools/gen-download-plan-oracle.py download-plan-services/model-manager/app > "$RUNNER_TEMP/download-plan.json"
+          cmp bins/noevia-model-manager/tests/fixtures/download-plan-python.v1.json "$RUNNER_TEMP/download-plan.json"
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-download-plan -- -D warnings
+      - name: Native planning, download compatibility and omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-download-plan --lib download_plan
+          cargo test --locked -p noevia-model-manager --features native-download-plan --test downloads --test draft_heads --test download_plan_capability
+          cargo test --locked -p noevia-model-manager --no-default-features --test download_plan_capability
+
+  native-routing:
+    name: Native public ASGI routing, actual framework oracle and omission (#1318)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-services
+          ref: 60764e67f390ea9dad5c91c3f41aad865d757823
+          path: routing-services
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - name: Actual pinned ASGI oracle, with endpoint execution stubbed only
+        run: |
+          python3 -m pip install -r routing-services/model-manager/requirements.txt
+          python3 -m pip install fastapi==0.115.6 httpx==0.28.1 pydantic==2.14.0 pydantic-core==2.50.0 starlette==0.41.3
+          python3 -I tools/gen-routing-oracle.py routing-services/model-manager/app > "$RUNNER_TEMP/routing.json"
+          cmp bins/noevia-model-manager/tests/fixtures/routing-python.v1.json "$RUNNER_TEMP/routing.json"
+      - run: cargo fmt --check -p noevia-model-manager
+      - run: cargo clippy --locked -p noevia-model-manager --all-targets --features native-routing -- -D warnings
+      - name: Actual repository runtime, metadata failures and Docker fault oracle (#214)
+        run: |
+          python3 -I tools/gen-repo-runtime-oracle.py routing-services/model-manager/app > "$RUNNER_TEMP/repo-runtime.json"
+          cmp bins/noevia-model-manager/tests/fixtures/repo-runtime-python.v1.json "$RUNNER_TEMP/repo-runtime.json"
+      - name: Framework routing, startup controls, compatibility and omission
+        run: |
+          cargo test --locked -p noevia-model-manager --features native-routing --lib search::estimates::tests
+          cargo test --locked -p noevia-model-manager --features native-routing --lib backend_stats::fit::tests
+          cargo test --locked -p noevia-model-manager --features native-routing --lib routing
+          cargo test --locked -p noevia-model-manager --features native-routing --test routing_capability --test backends --test lifecycle --test validation_order --test bench_runs
+          cargo test --locked -p noevia-model-manager --no-default-features --test routing_capability

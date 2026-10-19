@@ -219,15 +219,22 @@ fn list(items: &[String]) -> String {
     format!("[{}]", rendered.join(","))
 }
 
+#[cfg(feature = "native-routing")]
+impl Trusted {
+    pub(crate) fn routing_ready(&self) -> bool {
+        self.quantisers.iter().any(|s| !s.is_empty()) && self.labs.iter().any(|s| !s.is_empty())
+    }
+}
 impl Search {
+    #[cfg(feature = "native-routing")]
+    pub(crate) fn routing_ready(&self) -> bool {
+        self.live
+            .get()
+            .is_some_and(|s| s.trusted.routing_ready() && s.estimates_cache_cap_mib.is_some())
+    }
     /// Makes the search runtime native (once; later calls are ignored).
     pub fn set_live(&self, source: Source) {
         let _ = self.live.set(source);
-    }
-
-    /// Wait for the exact private advertisement after the child's schema startup.
-    async fn child_started(&self) -> bool {
-        crate::startup::ready(&self.legacy, &self.legacy_base, &self.token, &self.started).await
     }
 
     #[cfg(test)]
@@ -237,9 +244,6 @@ impl Search {
 
     /// `main._search_runtime`'s body, byte for byte.
     pub(super) async fn native_runtime(&self, source: &Source) -> Result<Vec<u8>, Stop> {
-        if !self.child_started().await {
-            return Err(Stop::Unavailable);
-        }
         let descriptors = source.stats.descriptors().await.map_err(|f| match f {
             Fail::Raised => Stop::Failed,
             Fail::Refused => Stop::Refused,

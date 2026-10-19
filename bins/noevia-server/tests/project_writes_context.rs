@@ -155,6 +155,31 @@ fn projects_json(f: &Front) -> Option<String> {
     std::fs::read_to_string(f.user_dir().join("projects.json")).ok()
 }
 
+fn insert_member_session(f: &Front) -> (String, String) {
+    let user = "22222222-2222-4222-8222-222222222222";
+    let token = "synthetic-member-session-token";
+    let csrf = "synthetic-member-csrf-token";
+    let c = Connection::open(server_store::db_path(&f.data)).unwrap();
+    c.execute(
+        "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,'member','member','Synthetic member','member','x',?1,1,1)",
+        [user],
+    )
+    .unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    c.execute(
+        "INSERT INTO sessions(id_hash,user_id,csrf_hash,created_at,last_seen_at,expires_at,user_agent,ip) VALUES(?1,?2,?3,?4,?4,?5,'synthetic','127.0.0.1')",
+        (server_auth::js::digest(token), user, server_auth::js::digest(csrf), now, now + 86_400_000),
+    )
+    .unwrap();
+    (
+        user.to_string(),
+        format!("cowork_session={token}; cowork_csrf={csrf}"),
+    )
+}
+
 #[tokio::test]
 async fn the_front_answers_and_writes_the_context_project_under_the_switch() {
     let f = front(true).await;
@@ -397,24 +422,27 @@ async fn an_existing_directory_is_never_removed_by_the_second_gate() {
     assert!(f.user_dir().is_dir());
 }
 
-/// Node's `claimLegacy` moves a pre-multi-user data dir's root files into the administrator's
-/// directory only while that directory does not exist. The port does not claim, so while the claim
-/// is open the first request makes no directory and is told to retry; a Node-routed request makes it.
+/// The first signed-in administrator claims the root before the context route proceeds.
 #[tokio::test]
-async fn a_pending_legacy_claim_is_left_to_node() {
+async fn the_first_admin_claims_legacy_root_before_serving_context() {
     let f = front_new_account(true).await;
     std::fs::write(f.data.join("projects.json"), r#"{"projects":[]}"#).unwrap();
-    for m in ["GET", "POST"] {
-        let (status, _, body) = call(f.addr, m, "/api/chats/c1/context", &headers(&f), "").await;
-        assert_eq!(status, 503, "{m}: {body}");
-        assert!(body.contains("still being set up"), "{body}");
-        assert!(!f.data.join("users").exists(), "{m}: no directory made");
-    }
-    // Node has run its claim (the directory exists now): served as any later request.
-    std::fs::create_dir_all(f.user_dir()).unwrap();
-    let (status, _, _) = call(f.addr, "POST", "/api/chats/c1/context", &headers(&f), "").await;
-    assert_eq!(status, 200);
-    // The legacy files stay for recovery and name another owner: nothing is left to claim.
+    let (status, _, body) = call(f.addr, "GET", "/api/chats/c1/context", &headers(&f), "").await;
+    assert_eq!((status, body.as_str()), (200, r#"{"project":null}"#));
+    let migration: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(f.user_dir().join("migration.json")).unwrap())
+            .unwrap();
+    assert_eq!(migration["source"], "legacy-root");
+    let owner: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(f.data.join("legacy-owner.json")).unwrap()).unwrap();
+    assert_eq!(owner["userId"], f.user);
+    assert!(
+        f.data.join("projects.json").is_file(),
+        "source retained for recovery"
+    );
+    let (status, _, body) = call(f.addr, "POST", "/api/chats/c1/context", &headers(&f), "").await;
+    assert_eq!(status, 200, "{body}");
+
     let g = front_new_account(true).await;
     std::fs::write(g.data.join("projects.json"), r#"{"projects":[]}"#).unwrap();
     std::fs::write(
@@ -423,6 +451,67 @@ async fn a_pending_legacy_claim_is_left_to_node() {
     )
     .unwrap();
     let (status, _, body) = call(g.addr, "POST", "/api/chats/c1/context", &headers(&g), "").await;
-    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        status, 200,
+        "mismatched ownership allows an empty account directory: {body}"
+    );
     assert!(g.user_dir().is_dir());
+    assert!(!g.user_dir().join("migration.json").exists());
+    assert!(g.data.join("projects.json").is_file());
+    let owner: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(g.data.join("legacy-owner.json")).unwrap()).unwrap();
+    assert_eq!(owner["userId"], "99999999-2222-4333-8444-555555555555");
+}
+
+/// A member cannot take the first-user legacy claim; only an administrator may do so.
+#[tokio::test]
+async fn a_non_admin_cannot_claim_a_pending_legacy_root() {
+    let f = front_new_account(true).await;
+    std::fs::write(f.data.join("projects.json"), r#"{"projects":[]}"#).unwrap();
+    let (_, jar) = insert_member_session(&f);
+    let headers = [("cookie", jar.as_str()), ("origin", ORIGIN)];
+    let (status, _, body) = call(f.addr, "GET", "/api/chats/c1/context", &headers, "").await;
+    assert_eq!(status, 503, "non-admin cannot run claim: {body}");
+    assert!(!f.data.join("users").exists());
+    assert!(!f.data.join("legacy-owner.json").exists());
+    assert!(f.data.join("projects.json").is_file());
+}
+
+/// Node's deleteUser owns the auth writer first, so a concurrent native claim waits and then
+/// revalidates the deleted session before touching legacy files or creating a user directory.
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn a_concurrent_account_delete_wins_before_the_legacy_claim() {
+    let f = front_new_account(true).await;
+    std::fs::write(f.data.join("projects.json"), r#"{"projects":[]}"#).unwrap();
+    let (data, user) = (f.data.clone(), f.user.clone());
+    let worker = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let hook_worker = std::sync::Arc::clone(&worker);
+    noevia_server::project_routes::hooks::on_before_ensure(&f.user, move || {
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let data = data.clone();
+        let user = user.clone();
+        let deleter = std::thread::spawn(move || {
+            let c = Connection::open(server_store::db_path(&data)).unwrap();
+            c.execute_batch("BEGIN IMMEDIATE").unwrap();
+            locked_tx.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            c.execute("DELETE FROM sessions WHERE user_id = ?1", [&user])
+                .unwrap();
+            c.execute("DELETE FROM users WHERE id = ?1", [&user])
+                .unwrap();
+            c.execute_batch("COMMIT").unwrap();
+            let _ = std::fs::remove_dir_all(data.join("users").join(&user));
+        });
+        locked_rx.recv().unwrap();
+        *hook_worker.lock().unwrap() = Some(deleter);
+    });
+    let (status, _, _) = call(f.addr, "GET", "/api/chats/c1/context", &headers(&f), "").await;
+    if let Some(deleter) = worker.lock().unwrap().take() {
+        deleter.join().unwrap();
+    }
+    assert_eq!(status, 503);
+    assert!(!f.data.join("users").exists());
+    assert!(!f.data.join("legacy-owner.json").exists());
+    assert!(f.data.join("projects.json").is_file());
 }

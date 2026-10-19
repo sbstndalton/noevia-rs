@@ -1,0 +1,2161 @@
+{
+ "docker_shapes": {
+  "answers": [
+   {
+    "body": "Internal Server Error",
+    "fault": "invalid-json",
+    "status": 500
+   },
+   {
+    "body": "Internal Server Error",
+    "fault": "wrong-list-type",
+    "status": 500
+   },
+   {
+    "body": "Internal Server Error",
+    "fault": "missing-list-id",
+    "status": 500
+   },
+   {
+    "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+    "fault": "missing-name",
+    "status": 200
+   },
+   {
+    "body": "Internal Server Error",
+    "fault": "invalid-tags",
+    "status": 500
+   },
+   {
+    "body": "Internal Server Error",
+    "fault": "list-timeout",
+    "status": 500
+   },
+   {
+    "body": "Internal Server Error",
+    "fault": "nonstring-name",
+    "status": 500
+   },
+   {
+    "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+    "fault": "api500-numeric-message",
+    "status": 200
+   },
+   {
+    "body": "Internal Server Error",
+    "fault": "api404-numeric-message",
+    "status": 500
+   },
+   {
+    "body": "Internal Server Error",
+    "fault": "api500-missing-message",
+    "status": 500
+   },
+   {
+    "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+    "fault": "api500-invalid-json",
+    "status": 200
+   },
+   {
+    "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+    "fault": "api500-long-message",
+    "status": 200
+   }
+  ],
+  "ask": {
+   "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+   "groups": [
+    [
+     "4294967296",
+     true
+    ]
+   ],
+   "mmproj": null,
+   "status": 200,
+   "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+  },
+  "case": {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":4}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":2}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":38}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ],
+      [
+       "1073741824",
+       false
+      ],
+      [
+       "536870912",
+       false
+      ],
+      [
+       "9663676416",
+       true
+      ]
+     ],
+     "mmproj": "536870912",
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":4}]}]}",
+     "groups": [
+      [
+       "4294967296",
+       false
+      ],
+      [
+       "1073741824",
+       false
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": null
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {
+    "LLAMA_CONTAINERS": "llama-cuda"
+   },
+   "host_ram": "64.0",
+   "id": "fits",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  }
+ },
+ "repo": [
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":4}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":2}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":38}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ],
+      [
+       "1073741824",
+       false
+      ],
+      [
+       "536870912",
+       false
+      ],
+      [
+       "9663676416",
+       true
+      ]
+     ],
+     "mmproj": "536870912",
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":4}]}]}",
+     "groups": [
+      [
+       "4294967296",
+       false
+      ],
+      [
+       "1073741824",
+       false
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": null
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "fits",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":32.0,\"verdict\":\"fits\",\"ratio_pct\":62},{\"name\":\"llama-igpu\",\"vram_gb\":15.55,\"verdict\":\"oom\",\"ratio_pct\":129}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":48,\"total_layers\":48,\"speed_pct\":100,\"offload\":false},{\"key\":\"balanced\",\"label\":\"Balanced\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":47,\"total_layers\":48,\"speed_pct\":98,\"offload\":true},{\"key\":\"long-ctx\",\"label\":\"Long ctx\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":47,\"total_layers\":48,\"speed_pct\":98,\"offload\":true}],\"reason\":\"\",\"nativeCtx\":262144},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":32.0,\"verdict\":\"oom\",\"ratio_pct\":188},{\"name\":\"llama-igpu\",\"vram_gb\":15.55,\"verdict\":\"oom\",\"ratio_pct\":386}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":16384,\"ctx_h\":\"16K\",\"gpu_layers\":18,\"total_layers\":48,\"speed_pct\":38,\"offload\":true},{\"key\":\"balanced\",\"label\":\"Balanced\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":16,\"total_layers\":48,\"speed_pct\":33,\"offload\":true},{\"key\":\"long-ctx\",\"label\":\"Long ctx\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":13,\"total_layers\":48,\"speed_pct\":27,\"offload\":true}],\"reason\":\"\",\"nativeCtx\":262144},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":32.0,\"verdict\":\"fits\",\"ratio_pct\":3},{\"name\":\"llama-igpu\",\"vram_gb\":15.55,\"verdict\":\"fits\",\"ratio_pct\":6}]}]}",
+     "groups": [
+      [
+       "21474836480",
+       true
+      ],
+      [
+       "64424509440",
+       true
+      ],
+      [
+       "1073741824",
+       false
+      ]
+     ],
+     "mmproj": "1073741824",
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 10, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 262144, \"embedding_length\": 2048, \"block_count\": 48, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 4, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": 128, \"nextn_predict_layers\": null, \"expert_used_count\": 8, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"this machine\",\"vram_gb\":32.0,\"host_ram_gb\":120.0,\"verdict\":\"impossible\",\"ratio_pct\":132,\"needs_gb\":200,\"ceiling_gb\":152}],\"estimates\":[],\"reason\":\"This model needs about 200 GB, more than this machine's 32 GB VRAM plus 128 GB RAM (160 GB total). CPU offload moves layers into system memory, so there is no offload setting that makes it fit. A smaller quantisation of the same model is the option.\",\"nativeCtx\":262144}]}",
+     "groups": [
+      [
+       "214748364800",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 10, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 262144, \"embedding_length\": 2048, \"block_count\": 48, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 4, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": 128, \"nextn_predict_layers\": null, \"expert_used_count\": 8, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[16, 16.0]",
+     "gpu_count": 2,
+     "name": "llama-cuda",
+     "vram": "32.0"
+    },
+    {
+     "cards": "[]",
+     "gpu_count": 1,
+     "name": "llama-igpu",
+     "vram": "15.55"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 32, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 2, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 16, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}, {\"index\": 1, \"name\": \"Synthetic GPU 1\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 16.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-igpu\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"vulkan\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 15.55, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+      "Image": "sha256:bdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     },
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e",
+      "Image": "sha256:bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebe",
+      "Name": "/llama-igpu",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     },
+     {
+      "Id": "sha256:bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebe",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-vulkan"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {
+    "HOST_RAM_RESERVE_GB": "8"
+   },
+   "host_ram": "128.0",
+   "id": "two-cards-moe",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "32.0"
+     ],
+     [
+      "llama-igpu",
+      "15.55"
+     ]
+    ],
+    "ram": "120.0"
+   },
+   "meminfo": "MemTotal:       134217728 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cpu\",\"vram_gb\":32.0,\"verdict\":\"fits\",\"ratio_pct\":12,\"is_cpu\":true}],\"estimates\":[],\"reason\":\"No GPU backend reports its VRAM, so there is nothing to size a context against. CPU-only backends are not sized here.\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [],
+   "cache": "{\"llama-cpu\": {\"ok\": true, \"error\": null, \"gpu\": null, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f3f",
+      "Image": "sha256:bfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf",
+      "Name": "/llama-cpu",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbf",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "cpu-only",
+   "inventory": {
+    "cpu": [
+     "llama-cpu"
+    ],
+    "gpu": [],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-gone\",\"vram_gb\":12.0,\"verdict\":\"fits\",\"ratio_pct\":33}],\"estimates\":[],\"reason\":\"This model's metadata declares an implausible block_count (5000; real models have well under 4096). The file is corrupt or hostile, so no context size is recommended.\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 5000, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-gone\",\"vram_gb\":12.0,\"verdict\":\"fits\",\"ratio_pct\":33}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":24576,\"ctx_h\":\"24K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false},{\"key\":\"long-ctx\",\"label\":\"Long ctx\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":20,\"total_layers\":32,\"speed_pct\":12,\"offload\":true}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 7, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 0, \"attention_head_count_kv\": null, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-gone\",\"vram_gb\":12.0,\"verdict\":\"oom\",\"ratio_pct\":3333}],\"estimates\":[],\"reason\":\"This model needs about 400 GB, more than this machine's 12 GB VRAM plus 16 GB RAM (28 GB total). CPU offload moves layers into system memory, so there is no offload setting that makes it fit. A smaller quantisation of the same model is the option.\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "429496729600",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-gone\",\"vram_gb\":12.0,\"verdict\":\"fits\",\"ratio_pct\":25}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "3221225472",
+       true
+      ]
+     ],
+     "mmproj": "3221225472",
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[]",
+     "gpu_count": 1,
+     "name": "llama-gone",
+     "vram": "12.0"
+    }
+   ],
+   "cache": "{}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": null,
+   "env": {
+    "GPU_VRAM": "llama-gone:12",
+    "LLAMA_CONTAINERS": "llama-gone"
+   },
+   "host_ram": "16.0",
+   "id": "refusals",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-gone",
+      "12.0"
+     ]
+    ],
+    "ram": "0.0"
+   },
+   "meminfo": "MemTotal:       16777216 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":11.0,\"verdict\":\"fits\",\"ratio_pct\":64}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":40,\"total_layers\":40,\"speed_pct\":100,\"offload\":false},{\"key\":\"balanced\",\"label\":\"Balanced\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":22,\"total_layers\":40,\"speed_pct\":10,\"offload\":true},{\"key\":\"long-ctx\",\"label\":\"Long ctx\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":4,\"total_layers\":40,\"speed_pct\":6,\"offload\":true}],\"reason\":\"\",\"nativeCtx\":131072}]}",
+     "groups": [
+      [
+       "7516192768",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 131072, \"embedding_length\": 5120, \"block_count\": 40, \"feed_forward_length\": null, \"attention_head_count\": 40, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":11.0,\"verdict\":\"fits\",\"ratio_pct\":64}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":4096,\"ctx_h\":\"4K\",\"gpu_layers\":36,\"total_layers\":40,\"speed_pct\":34,\"offload\":true},{\"key\":\"balanced\",\"label\":\"Balanced\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":23,\"total_layers\":40,\"speed_pct\":11,\"offload\":true},{\"key\":\"long-ctx\",\"label\":\"Long ctx\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":4,\"total_layers\":40,\"speed_pct\":6,\"offload\":true}],\"reason\":\"\",\"nativeCtx\":131072},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":11.0,\"verdict\":\"fits\",\"ratio_pct\":18}]}]}",
+     "groups": [
+      [
+       "7516192768",
+       true
+      ],
+      [
+       "2147483648",
+       false
+      ]
+     ],
+     "mmproj": "2147483648",
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 131072, \"embedding_length\": 5120, \"block_count\": 40, \"feed_forward_length\": null, \"attention_head_count\": 40, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":11.0,\"verdict\":\"fits\",\"ratio_pct\":64}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":8192,\"ctx_h\":\"8K\",\"gpu_layers\":40,\"total_layers\":40,\"speed_pct\":100,\"offload\":false},{\"key\":\"balanced\",\"label\":\"Balanced\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":25,\"total_layers\":40,\"speed_pct\":12,\"offload\":true},{\"key\":\"long-ctx\",\"label\":\"Long ctx\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":2,\"total_layers\":40,\"speed_pct\":5,\"offload\":true}],\"reason\":\"\",\"nativeCtx\":131072},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":11.0,\"verdict\":\"fits\",\"ratio_pct\":27}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":11.0,\"verdict\":\"fits\",\"ratio_pct\":9}]}]}",
+     "groups": [
+      [
+       "7516192768",
+       true
+      ],
+      [
+       "3221225472",
+       false
+      ],
+      [
+       "1073741824",
+       false
+      ]
+     ],
+     "mmproj": "1073741824",
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 131072, \"embedding_length\": 5120, \"block_count\": 40, \"feed_forward_length\": null, \"attention_head_count\": 40, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[11.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "11.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 11.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 11.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "projector-budget",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "11.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[],\"reason\":\"Autoconfig failed on this file's metadata (ValueError).\",\"nativeCtx\":\"32K\"}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": \"32K\", \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[],\"reason\":\"Autoconfig failed on this file's metadata (ValueError).\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": \"many\", \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[],\"reason\":\"Autoconfig failed on this file's metadata (ValueError).\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": \"wide\", \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [
+    0,
+    1,
+    2
+   ],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "python-raises",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{# synthetic #}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}{{ m.content }}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 9, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": 1, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false},{\"key\":\"balanced\",\"label\":\"Balanced\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":31,\"total_layers\":32,\"speed_pct\":63,\"offload\":true},{\"key\":\"long-ctx\",\"label\":\"Long ctx\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":14,\"total_layers\":32,\"speed_pct\":9,\"offload\":true}],\"reason\":\"\",\"nativeCtx\":0}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":0}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":0}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":8}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":25}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"oom\",\"ratio_pct\":100}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":65}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":65}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"tight\",\"ratio_pct\":65}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"tight\",\"ratio_pct\":90}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"tight\",\"ratio_pct\":90}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"oom\",\"ratio_pct\":90}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"oom\",\"ratio_pct\":100}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"oom\",\"ratio_pct\":100}]},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"oom\",\"ratio_pct\":100}]}]}",
+     "groups": [
+      [
+       "0",
+       false
+      ],
+      [
+       "1",
+       false
+      ],
+      [
+       "2147483648",
+       false
+      ],
+      [
+       "6442450944",
+       false
+      ],
+      [
+       "25769803776",
+       false
+      ],
+      [
+       "16750372453",
+       false
+      ],
+      [
+       "16750372454",
+       false
+      ],
+      [
+       "16750372455",
+       false
+      ],
+      [
+       "23192823397",
+       false
+      ],
+      [
+       "23192823398",
+       false
+      ],
+      [
+       "23192823399",
+       false
+      ],
+      [
+       "25769803775",
+       false
+      ],
+      [
+       "25769803776",
+       false
+      ],
+      [
+       "25769803777",
+       false
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": null
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "real-shapes",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":16.0,\"verdict\":\"fits\",\"ratio_pct\":25},{\"name\":\"llama-cpu\",\"vram_gb\":32.0,\"verdict\":\"fits\",\"ratio_pct\":12,\"is_cpu\":true}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768},{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":16.0,\"verdict\":\"oom\",\"ratio_pct\":125},{\"name\":\"llama-cpu\",\"vram_gb\":32.0,\"verdict\":\"fits\",\"ratio_pct\":62,\"is_cpu\":true}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":8192,\"ctx_h\":\"8K\",\"gpu_layers\":23,\"total_layers\":32,\"speed_pct\":16,\"offload\":true},{\"key\":\"balanced\",\"label\":\"Balanced\",\"ctx\":16384,\"ctx_h\":\"16K\",\"gpu_layers\":22,\"total_layers\":32,\"speed_pct\":14,\"offload\":true},{\"key\":\"long-ctx\",\"label\":\"Long ctx\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":20,\"total_layers\":32,\"speed_pct\":12,\"offload\":true}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ],
+      [
+       "21474836480",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[16.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "16.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 16.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 16.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}, \"llama-cpu\": {\"ok\": true, \"error\": null, \"gpu\": null, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "4040404040404040404040404040404040404040404040404040404040404040",
+      "Image": "sha256:c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     },
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "4141414141414141414141414141414141414141414141414141414141414141",
+      "Image": "sha256:c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+      "Name": "/llama-cpu",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     },
+     {
+      "Id": "sha256:c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "gpu-and-cpu",
+   "inventory": {
+    "cpu": [
+     "llama-cpu"
+    ],
+    "gpu": [
+     [
+      "llama-cuda",
+      "16.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":48.0,\"verdict\":\"fits\",\"ratio_pct\":2}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":4096,\"ctx_h\":\"4K\",\"gpu_layers\":16,\"total_layers\":16,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":4096}]}",
+     "groups": [
+      [
+       "1073741824",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 4096, \"embedding_length\": 1024, \"block_count\": 16, \"feed_forward_length\": null, \"attention_head_count\": 8, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":48.0,\"verdict\":\"fits\",\"ratio_pct\":2}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":4000,\"ctx_h\":\"4,000\",\"gpu_layers\":16,\"total_layers\":16,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":4000}]}",
+     "groups": [
+      [
+       "1073741824",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 4000, \"embedding_length\": 1024, \"block_count\": 16, \"feed_forward_length\": null, \"attention_head_count\": 8, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[48.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "48.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 48.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 48.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "collapse",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "48.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "Internal Server Error",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 500,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": Infinity, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "Internal Server Error",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 500,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": NaN, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "extended-nonfinite",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"this machine\",\"vram_gb\":24.0,\"host_ram_gb\":32.0,\"verdict\":\"impossible\",\"ratio_pct\":14979657,\"needs_gb\":8388608,\"ceiling_gb\":56}],\"estimates\":[],\"reason\":\"This model needs about 8388608 GB, more than this machine's 24 GB VRAM plus 64 GB RAM (88 GB total). CPU offload moves layers into system memory, so there is no offload setting that makes it fit. A smaller quantisation of the same model is the option.\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "9007199254740993",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"this machine\",\"vram_gb\":24.0,\"host_ram_gb\":32.0,\"verdict\":\"impossible\",\"ratio_pct\":282957723265229757014444343296,\"needs_gb\":158456325028528675187087900672,\"ceiling_gb\":56}],\"estimates\":[],\"reason\":\"This model needs about 158456325028528675187087900672 GB, more than this machine's 24 GB VRAM plus 64 GB RAM (88 GB total). CPU offload moves layers into system memory, so there is no offload setting that makes it fit. A smaller quantisation of the same model is the option.\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "170141183460469231731687303715884105727",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "extended-large-group",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[],\"reason\":\"Autoconfig found no context size that fits.\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": "9007199254740992",
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[],\"reason\":\"Autoconfig found no context size that fits.\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": "9007199254740993",
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":0}]}]}",
+     "groups": [
+      [
+       "1",
+       false
+      ]
+     ],
+     "mmproj": "1267650600228229401496703205376",
+     "status": 200,
+     "summary": null
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "extended-projector",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {
+    "HOST_RAM_RESERVE_GB": "1e1"
+   },
+   "host_ram": "64.0",
+   "id": "extended-reserve",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "54.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[],\"reason\":\"Autoconfig failed on this file's metadata (TypeError).\",\"nativeCtx\":[1]}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": [1], \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[],\"reason\":\"Autoconfig failed on this file's metadata (TypeError).\",\"nativeCtx\":{\"qa\":1}}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": {\"qa\": 1}, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    },
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":1,\"ctx_h\":\"1\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":true}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": true, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "extended-context-json",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[],\"estimates\":[],\"reason\":\"No GPU backend reports its VRAM, so there is nothing to size a context against. CPU-only backends are not sized here.\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "qa_fault": "extended-docker-api-error",
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "extended-docker-api-error",
+   "inventory": {
+    "cpu": [],
+    "gpu": [],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[],\"estimates\":[],\"reason\":\"No GPU backend reports its VRAM, so there is nothing to size a context against. CPU-only backends are not sized here.\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "qa_fault": "extended-docker-timeout",
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {},
+   "host_ram": "64.0",
+   "id": "extended-docker-timeout",
+   "inventory": {
+    "cpu": [],
+    "gpu": [],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[],\"estimates\":[],\"reason\":\"No GPU backend reports its VRAM, so there is nothing to size a context against. CPU-only backends are not sized here.\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": null,
+   "env": {},
+   "host_ram": "64.0",
+   "id": "extended-missing-docker",
+   "inventory": {
+    "cpu": [],
+    "gpu": [],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": null,
+   "env": {
+    "LLAMA_CONTAINERS": "llama-cuda"
+   },
+   "host_ram": "64.0",
+   "id": "extended-missing-docker-configured-cached",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "qa_fault": "extended-docker-api-error",
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {
+    "LLAMA_CONTAINERS": "llama-cuda"
+   },
+   "host_ram": "64.0",
+   "id": "extended-docker-api-error-configured-cached",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  },
+  {
+   "asks": [
+    {
+     "body": "{\"groups\":[{\"fit\":[{\"name\":\"llama-cuda\",\"vram_gb\":24.0,\"verdict\":\"fits\",\"ratio_pct\":17}],\"estimates\":[{\"key\":\"fast\",\"label\":\"Fast\",\"ctx\":32768,\"ctx_h\":\"32K\",\"gpu_layers\":32,\"total_layers\":32,\"speed_pct\":100,\"offload\":false}],\"reason\":\"\",\"nativeCtx\":32768}]}",
+     "groups": [
+      [
+       "4294967296",
+       true
+      ]
+     ],
+     "mmproj": null,
+     "status": 200,
+     "summary": "{\"arch\": \"synth\", \"general\": {\"name\": null, \"description\": null, \"author\": null, \"license\": null, \"url\": null, \"quant\": \"Q4_K_M\", \"quant_version\": null, \"params\": null, \"params_raw\": null, \"gguf_version\": 3, \"tensor_count\": 0, \"kv_count\": 8, \"header_error\": null}, \"model\": {\"arch\": \"synth\", \"context_length\": 32768, \"embedding_length\": 4096, \"block_count\": 32, \"feed_forward_length\": null, \"attention_head_count\": 32, \"attention_head_count_kv\": 8, \"rope_freq_base\": null, \"rope_scaling_type\": null, \"rope_scaling_factor\": null, \"rope_scaling_original_context\": null, \"vocab_size\": null, \"expert_count\": null, \"nextn_predict_layers\": null, \"expert_used_count\": null, \"key_length\": null, \"value_length\": null, \"full_attention_interval\": null, \"sliding_window\": null, \"key_length_swa\": null, \"value_length_swa\": null, \"shared_kv_layers\": null, \"sliding_window_pattern\": null, \"ssm_state_size\": null, \"ssm_inner_size\": null, \"ssm_conv_kernel\": null, \"ssm_group_count\": null}, \"tokenizer\": {\"model\": null, \"pre\": null, \"bos_token_id\": null, \"eos_token_id\": null, \"unknown_token_id\": null, \"padding_token_id\": null, \"add_bos_token\": null, \"add_eos_token\": null}, \"chat_template\": \"{% for m in messages %}{{ m.content }}{% endfor %}\", \"chat_template_features\": {\"accepts_enable_thinking\": false, \"accepts_reasoning_effort\": false, \"accepts_preserve_thinking\": false, \"uses_think_tags\": false, \"uses_channel_thought\": false}}"
+    }
+   ],
+   "backends": [
+    {
+     "cards": "[24.0]",
+     "gpu_count": 1,
+     "name": "llama-cuda",
+     "vram": "24.0"
+    }
+   ],
+   "cache": "{\"llama-cuda\": {\"ok\": true, \"error\": null, \"gpu\": {\"vendor\": \"nvidia\", \"name\": \"Synthetic GPU\", \"util_pct\": 5.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 41.0, \"power_w\": 12.0, \"gpu_count\": 1, \"cards\": [{\"index\": 0, \"name\": \"Synthetic GPU 0\", \"util_pct\": 3.0, \"vram_used_gb\": 1.0, \"vram_total_gb\": 24.0, \"temp_c\": 40.0, \"power_w\": 10.0, \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"device\": \"0x150e\"}], \"memory_kind\": \"unified\", \"shared_used_gb\": 0.0, \"shared_total_gb\": 0.0, \"clock_mhz\": 0.0, \"source\": \"sysfs\", \"measured\": true}, \"container\": null}}",
+   "cache_cap": 1024,
+   "child": [],
+   "docker": {
+    "containers": [
+     {
+      "Config": {
+       "Cmd": [
+        "--host",
+        "0.0.0.0"
+       ],
+       "Entrypoint": null,
+       "Env": []
+      },
+      "HostConfig": {
+       "Devices": []
+      },
+      "Id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+      "Image": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "Name": "/llama-cuda",
+      "NetworkSettings": {
+       "Ports": {}
+      },
+      "State": {
+       "StartedAt": "2026-10-17T10:00:00.123456789Z",
+       "Status": "running"
+      }
+     }
+    ],
+    "image_errors": {},
+    "images": [
+     {
+      "Id": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "RepoTags": [
+       "ghcr.io/ggml-org/llama.cpp:server-cuda"
+      ]
+     }
+    ],
+    "inspect_errors": {},
+    "list_status": 200,
+    "missing_images": [],
+    "qa_fault": "extended-docker-timeout",
+    "stats": {},
+    "stats_status": {},
+    "version": true
+   },
+   "env": {
+    "LLAMA_CONTAINERS": "llama-cuda"
+   },
+   "host_ram": "64.0",
+   "id": "extended-docker-timeout-configured-cached",
+   "inventory": {
+    "cpu": [],
+    "gpu": [
+     [
+      "llama-cuda",
+      "24.0"
+     ]
+    ],
+    "ram": "32.0"
+   },
+   "meminfo": "MemTotal:       67108864 kB\nMemFree:         1024 kB\n"
+  }
+ ],
+ "reserve_forms": {
+  "": "error",
+  " 16 ": "16.0",
+  "+1E-2": "0.01",
+  "+8.25\n": "8.25",
+  "-4": "-4.0",
+  ".5": "0.5",
+  "0": "0.0",
+  "0.05": "0.05",
+  "007": "7.0",
+  "0x10": "error",
+  "1,5": "error",
+  "1.": "1.0",
+  "1_0": "10.0",
+  "1__0": "error",
+  "1e1": "10.0",
+  "1e3": "1000.0",
+  "1e309": "inf",
+  "32": "32.0",
+  "8": "8.0",
+  "8 kB": "error",
+  "8.": "8.0",
+  "8.5": "8.5",
+  "inf": "inf",
+  "nan": "nan",
+  "\u00a08\u00a0": "8.0",
+  "\u0661\u0662": "error"
+ },
+ "sources": {
+  "api.py": "034885124b805d513dd43fbbdade52c1cc13ca225233c576d1b1d42e2ad64680",
+  "autoconfig.py": "15cc464f19cb43a68752572f6fa91046fe34c37296decef348a84dcbe75dc1c6",
+  "autoconfig_core.py": "d9da1c88fe6ef8db5a0f3784ca5e024436c110d338deed9ea04bffb7870e15ac",
+  "config.py": "4708a112769dbc3b9da6c49eeb7057e02d06868ca4af0e0bf4567971a267581a",
+  "db.py": "6733da40e0ade14cf64ffed68814aa5dba5cb2d48e9bbeea91d2691c1186929a",
+  "discover.py": "f92603267381ea40976fb9642034d18ee24048769f1dc2ab7e68aeac9d97b725",
+  "gguf_meta.py": "8ac984794fb9087fcd774cfe1a4e83eac847c1675224c8c09029fb9dcbd43b0a",
+  "helpers.py": "fcf2ccb14e5e068f97bb7a4b7985ab7f4f4855b940eb6d9e3838f239ad97918d",
+  "hw.py": "894765f1b34452fa827033ae817adde652a3d259892466ebd7349eae5c58acbc",
+  "ini.py": "b3cb05fd382b5f408ad16430db8841d40c82a3714115233f2e35b2f7f3b61740",
+  "main.py": "8a336283aaa001a8eca2f3476e2d85e0ae17bc8b72f0bf8fb13b64993339212a",
+  "services.py": "8da3d667ce32729fba21c93b52968ef42a4ee77fab24f9412837f781a9bf83e8"
+ }
+}

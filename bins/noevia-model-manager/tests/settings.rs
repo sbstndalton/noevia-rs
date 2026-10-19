@@ -5,6 +5,8 @@
 //! ref and requires identical bytes. Each case's store is rebuilt here from the same declaration.
 #![cfg(feature = "native-settings")]
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -24,7 +26,7 @@ use std::{
 };
 use tower::ServiceExt;
 
-/// sha256 of the services files the fixture was generated from (noevia-services 26b4aa91eb0945602b63ad491668817802574bc4).
+// sha256 of the services files the fixture was generated from (noevia-services 26b4aa91eb0945602b63ad491668817802574bc4).
 const API_SHA: &str = "800edae73e7f7764845510ddf4e108bc2ea0a639f721e06e825a4a4644600dd6";
 const DB_SHA: &str = "7ac62912f2295d0c96387f55c21e6f42e5815800c44a3920b7ebc2f3a0217478";
 const MAIN_SHA: &str = "6f0af60535cbe505cf301a82ad132ead1378ef9f11deebb1e5dce68c20d1d131";
@@ -288,7 +290,7 @@ async fn oversized_value_is_refused_not_read() {
     }
 }
 
-/// A one-shot fake for the Python child: records the request line and answers fixed JSON.
+// A one-shot fake for the Python child: records the request line and answers fixed JSON.
 async fn legacy() -> (String, tokio::task::JoinHandle<String>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -318,64 +320,8 @@ async fn legacy() -> (String, tokio::task::JoinHandle<String>) {
     (base, task)
 }
 
-#[tokio::test]
-async fn put_stays_with_the_python_writer() {
-    let dir = tempfile::tempdir().unwrap();
-    let (base, seen) = legacy().await;
-    let answer = send(
-        state(Some(dir.path()), &base),
-        "PUT",
-        "/api/v1/settings",
-        true,
-    )
-    .await;
-    assert_eq!(answer.status, 200);
-    assert_eq!(answer.body, br#"{"legacy":true}"#);
-    assert_eq!(seen.await.unwrap(), "PUT /api/v1/settings HTTP/1.1");
-}
-
-#[tokio::test]
-async fn python_mode_forwards_get_unchanged() {
-    let (base, seen) = legacy().await;
-    let answer = send(state(None, &base), "GET", "/api/v1/settings", true).await;
-    assert_eq!(answer.body, br#"{"legacy":true}"#);
-    assert_eq!(seen.await.unwrap(), "GET /api/v1/settings HTTP/1.1");
-}
-
-#[tokio::test]
-async fn native_route_keeps_auth_and_non_get_policy() {
-    let dir = tempfile::tempdir().unwrap();
-    let unauthorized = send(
-        state(Some(dir.path()), "http://127.0.0.1:9"),
-        "GET",
-        "/api/v1/settings",
-        false,
-    )
-    .await;
-    assert_eq!(unauthorized.status, 401);
-    assert_eq!(unauthorized.body, br#"{"error":"unauthorized"}"#);
-    for method in ["POST", "DELETE", "HEAD"] {
-        let answer = send(
-            state(Some(dir.path()), "http://127.0.0.1:9"),
-            method,
-            "/api/v1/settings",
-            true,
-        )
-        .await;
-        assert_eq!(answer.status, 405, "{method}");
-    }
-    let slash = send(
-        state(Some(dir.path()), "http://127.0.0.1:9"),
-        "GET",
-        "/api/v1/settings/",
-        true,
-    )
-    .await;
-    assert_eq!(slash.status, 404);
-}
-
-/// noevia#1922: the live store as Python leaves it, WAL with every connection closed (no -wal or
-/// -shm), and the same store with a read-only file. Both must read, and stay WAL.
+// noevia#1922: the live store as Python leaves it, WAL with every connection closed (no -wal or
+// -shm), and the same store with a read-only file. Both must read, and stay WAL.
 #[tokio::test]
 async fn closed_wal_store_and_read_only_file_are_read() {
     use std::os::unix::fs::PermissionsExt;

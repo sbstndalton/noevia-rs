@@ -129,7 +129,7 @@ impl Context {
         }
         drivers.try_reserve(1).map_err(|_| Error::Refused)?;
         drivers.push(Arc::new(DriverSlot {
-            handle: tokio::sync::Mutex::new(Some(tokio::spawn(driver))),
+            handle: tokio::sync::Mutex::new(Some(crate::work::spawn(driver))),
         }));
         Ok(())
     }
@@ -710,7 +710,7 @@ impl Diagnosis {
         let task_context = context.clone();
         let owner = self.clone();
         let (sender, receiver) = tokio::sync::oneshot::channel();
-        let handle = tokio::spawn(async move {
+        let handle = crate::work::spawn(async move {
             // The task owns StateData while borrowing the existing HTTP semaphore lease.
             // Its result channel never owns cleanup or admission.
             let permit = match state.permits.try_acquire() {
@@ -724,7 +724,7 @@ impl Diagnosis {
             // task. Its actual join is observed by the outer admission owner.
             let job_state = state.clone();
             let job_context = task_context.clone();
-            let mut inner = tokio::spawn(async move {
+            let mut inner = crate::work::spawn(async move {
                 owner
                     .analyse(&job_state.configured, &name, &job_context)
                     .await
@@ -974,7 +974,7 @@ mod transport_error_tests {
         let deadline = tokio::time::Instant::from_std(context.deadline);
         let (queued_send, queued_receive) = tokio::sync::oneshot::channel();
         let (close_send, close_receive) = tokio::sync::oneshot::channel();
-        let mut daemon = tokio::spawn(async move {
+        let mut daemon = crate::work::spawn(async move {
             let operation = async {
                 let (peer, _) = listener.accept().await.map_err(|_| "peer accept")?;
                 peer.readable().await.map_err(|_| "peer readable")?;

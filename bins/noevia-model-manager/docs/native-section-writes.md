@@ -37,6 +37,8 @@ It follows Python exactly:
 - A missing file does nothing. A file that cannot be read, has repeated sections or does not parse is skipped with one log line, as is a failed write; startup continues.
 
 ## Safe defaults
+
+The optional [native planner](native-safe-defaults.md) removes this private planning call when explicitly selected. Otherwise the following compatibility path remains.
 These need the GGUF hints, the draft-head search beside the weights and the built-in MTP layer count. The child computes all three read-only through the private `GET /api/v1/internal/safe-defaults-plan?name=` (`api._safe_defaults_plan`, split out of `_register_safe_defaults` without changing it). This side asks for the plan while holding the write lock, then writes the section. A refusal comes back as `{status, detail}` and is answered as is. A child that cannot answer gives 503 `Native models.ini writes are unavailable`.
 
 ## Fixed on the way

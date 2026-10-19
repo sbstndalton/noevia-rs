@@ -429,8 +429,12 @@ async fn recorded_worlds_through_the_router_and_the_unix_transport() {
                 *probes.lock().unwrap() = step["probes"].clone();
                 pushed.lock().unwrap().clear();
                 stats.tick().await;
-                let pushed: Value = serde_json::from_str(&pushed.lock().unwrap()[0]).unwrap();
-                assert_eq!(pushed["backends"], step["cache"], "{ctx}");
+                assert!(
+                    pushed.lock().unwrap().is_empty(),
+                    "{ctx}: unexpected private mirror"
+                );
+                let sampled: Value = serde_json::from_str(&stats.push_body().unwrap()).unwrap();
+                assert_eq!(sampled["backends"], step["cache"], "{ctx}");
             } else {
                 let mut servers = Vec::new();
                 for c in step["docker"]["containers"]
@@ -522,9 +526,9 @@ async fn route_shapes_and_ownership() {
         assert_ne!(status, 200, "{method} {path}: {body}");
         assert!(!body.contains(REFUSAL), "{method} {path}");
     }
-    // Not owned: the GET is forwarded.
+    // Missing native owner refuses locally.
     let python = state(None, &closed_port());
-    assert_eq!(call(python, "GET", "/api/v1/backends", true).await.0, 502);
+    assert_eq!(call(python, "GET", "/api/v1/backends", true).await.0, 503);
     // The private child calls are never reachable from outside.
     for path in [
         "/api/v1/internal/backend-stats",

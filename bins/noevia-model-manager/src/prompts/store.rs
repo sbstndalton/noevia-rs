@@ -1,3 +1,5 @@
+#[cfg(feature = "native-db-init")]
+mod schema;
 use super::{
     literals::SEED, Error, Operation, BODY_CAP, NAME_CAP, RESPONSE_CAP, ROW_CAP, SEED_KEY,
 };
@@ -36,6 +38,7 @@ struct Job {
     hook: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 pub struct Prompts {
+    schema_initialized: bool,
     send: Option<mpsc::Sender<Job>>,
     permits: Arc<Semaphore>,
     worker: Option<std::thread::JoinHandle<()>>,
@@ -49,7 +52,20 @@ impl Drop for Prompts {
     }
 }
 impl Prompts {
+    /// Full schema plus prompt seeding completed on the lifetime writer worker.
+    pub fn schema_initialized(&self) -> bool {
+        self.schema_initialized
+    }
+
     pub async fn open(root: &Path) -> Result<Self> {
+        Self::open_with_schema(root, false).await
+    }
+    /// Bootstrap on this worker's secure connection, before the existing seed and child startup.
+    /// The writer lock remains held by this same Store for its entire lifetime.
+    pub async fn open_with_schema(root: &Path, full_schema: bool) -> Result<Self> {
+        if full_schema && !cfg!(feature = "native-db-init") {
+            return Err(Error::Store);
+        }
         if root
             .as_os_str()
             .len()
@@ -58,9 +74,17 @@ impl Prompts {
         {
             return Err(Error::Store);
         }
-        Self::open_with_clock(root, timestamp).await
+        Self::open_configured(root, timestamp, full_schema).await
     }
+    #[cfg(test)]
     pub(super) async fn open_with_clock(root: &Path, clock: fn() -> Result<f64>) -> Result<Self> {
+        Self::open_configured(root, clock, false).await
+    }
+    async fn open_configured(
+        root: &Path,
+        clock: fn() -> Result<f64>,
+        full_schema: bool,
+    ) -> Result<Self> {
         let start = Instant::now() + DEADLINE;
         let cancel = Cancel(Arc::new(AtomicBool::new(false)));
         let startup_cancel = cancel.0.clone();
@@ -82,6 +106,15 @@ impl Prompts {
                     let _ = ready.send(Err(e));
                     return;
                 }
+                #[cfg(feature = "native-db-init")]
+                if full_schema {
+                    if let Err(e) = schema::initialize(&store) {
+                        let _ = ready.send(Err(e));
+                        return;
+                    }
+                }
+                #[cfg(not(feature = "native-db-init"))]
+                let _ = full_schema;
                 if let Err(e) = store.seed() {
                     let _ = ready.send(Err(e));
                     return;
@@ -113,6 +146,7 @@ impl Prompts {
             };
         }
         Ok(Self {
+            schema_initialized: full_schema,
             send: Some(send),
             permits: Arc::new(Semaphore::new(4)),
             worker: Some(worker),
@@ -214,6 +248,9 @@ fn safe_file(path: &Path, optional: bool) -> Result<Option<std::fs::Metadata>> {
     Ok(Some(metadata))
 }
 fn autoincrement_keyword(sql: &str) -> bool {
+    sql_keyword(sql, b"AUTOINCREMENT")
+}
+fn sql_keyword(sql: &str, wanted: &[u8]) -> bool {
     if sql.len() > 8192 {
         return false;
     }
@@ -258,7 +295,7 @@ fn autoincrement_keyword(sql: &str) -> bool {
             }
             if bytes
                 .get(start..at)
-                .is_some_and(|token| token.eq_ignore_ascii_case(b"AUTOINCREMENT"))
+                .is_some_and(|token| token.eq_ignore_ascii_case(wanted))
             {
                 return true;
             }

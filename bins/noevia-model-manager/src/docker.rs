@@ -258,7 +258,7 @@ where
     T: Send + 'static,
 {
     let (answer, answered) = tokio::sync::oneshot::channel();
-    admit(tokio::spawn(async move {
+    admit(crate::work::spawn(async move {
         let _ = answer.send(work.await);
     }));
     answered.await
@@ -280,7 +280,7 @@ where
     #[cfg(test)]
     let after = BLOCKING_AFTER_HOOK.try_with(Clone::clone).ok();
     let (answer, answered) = tokio::sync::oneshot::channel();
-    admit(tokio::task::spawn_blocking(move || {
+    admit(crate::work::spawn_blocking(move || {
         #[cfg(test)]
         if let Some(hook) = hook {
             hook();
@@ -304,7 +304,7 @@ pub(crate) fn spawn_blocking_admitted_detached(
 ) {
     #[cfg(test)]
     let after = BLOCKING_AFTER_HOOK.try_with(Clone::clone).ok();
-    admit(runtime.spawn_blocking(move || {
+    admit(crate::work::spawn_blocking_on(runtime, move || {
         work();
         #[cfg(test)]
         if let Some(after) = after {
@@ -329,7 +329,7 @@ impl Registration {
         let (held, released) = tokio::sync::oneshot::channel::<()>();
         if ORPHANS.try_with(|_| ()).is_ok() {
             // Ends when `held` is dropped: the receiver then answers an error.
-            admit(tokio::spawn(async move {
+            admit(crate::work::spawn(async move {
                 let _ = released.await;
             }));
         }
@@ -384,7 +384,7 @@ where
     C: std::future::Future<Output = T> + Send + 'static,
     T: Send + 'static,
 {
-    tokio::spawn(connection)
+    crate::work::spawn(connection)
 }
 
 /// Test builds count each driver from spawn until its future is dropped; see `live`.
@@ -395,7 +395,7 @@ where
     T: Send + 'static,
 {
     let live = live::enter();
-    tokio::spawn(async move {
+    crate::work::spawn(async move {
         let _live = live;
         connection.await
     })
@@ -513,7 +513,12 @@ pub fn allowed_backend_read(path: &str) -> bool {
     match parts.as_slice() {
         ["", "containers" | "images", id, "json"] => query.is_empty() && id_ok(id),
         ["", "containers", id, "stats"] => query == "stream=false" && id_ok(id),
-        ["", "containers", id, "logs"] => query == TELEMETRY_LOGS_QUERY && id_ok(id),
+        ["", "containers", id, "logs"] => {
+            (query == TELEMETRY_LOGS_QUERY
+                || query == "stderr=1&stdout=1&timestamps=1&follow=0&tail=400"
+                || query == "stderr=1&stdout=1&timestamps=1&follow=0&tail=800")
+                && id_ok(id)
+        }
         _ => false,
     }
 }
@@ -533,7 +538,9 @@ impl crate::backend_stats::DockerApi for UnixDocker {
                 .body(Empty::<Bytes>::new())
                 .map_err(|_| "Docker request refused")?;
             // Only the telemetry log read is larger than the other reads' cap.
-            let cap = if path.contains("/logs?") {
+            let cap = if path.ends_with("tail=400") || path.ends_with("tail=800") {
+                8 * 1024 * 1024
+            } else if path.contains("/logs?") {
                 TELEMETRY_LOG_CAP
             } else {
                 LOG_CAP

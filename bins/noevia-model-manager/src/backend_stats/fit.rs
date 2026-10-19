@@ -92,21 +92,31 @@ pub fn usable_ram_gb(total: f64, reserve: f64) -> f64 {
     model_autoconfig::pyfloat::round_nd(model_autoconfig::pyfloat::max(0.0, total - reserve), 1)
 }
 
-/// HOST_RAM_RESERVE_GB: a strict subset of what pydantic reads as a float, a plain decimal
-/// (surrounding ASCII whitespace, sign, digits, one optional fraction). Every other form, even one
-/// pydantic would accept, is `None`, and the chips then refuse rather than guess.
+/// Finite pydantic float spelling for HOST_RAM_RESERVE_GB. Keep invalid/nonfinite
+/// configuration distinct from a default or zero. ASCII digits, Unicode surrounding
+/// whitespace, exponent/fraction forms and single digit-separated underscores are accepted.
 pub fn reserve_gb(raw: Option<&str>) -> Option<f64> {
     let Some(raw) = raw else {
         return Some(DEFAULT_RESERVE_GB);
     };
-    let t = raw.trim_matches(|c: char| c.is_ascii_whitespace());
-    let body = t.strip_prefix(['+', '-']).unwrap_or(t);
-    let (int, frac) = body.split_once('.').unwrap_or((body, ""));
-    let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
-    if int.is_empty() || !digits(int) || !digits(frac) || (body.contains('.') && frac.is_empty()) {
+    if raw.len() > 4096 {
         return None;
     }
-    t.parse::<f64>().ok().filter(|v| v.is_finite())
+    let text = raw.trim();
+    let bytes = text.as_bytes();
+    for (index, byte) in bytes.iter().enumerate() {
+        if *byte == b'_'
+            && !(index > 0
+                && bytes.get(index - 1).is_some_and(u8::is_ascii_digit)
+                && bytes.get(index + 1).is_some_and(u8::is_ascii_digit))
+        {
+            return None;
+        }
+    }
+    text.replace('_', "")
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
 }
 
 /// `round(x)` as the text of Python's int (exact, however large); `Raised` where Python's
@@ -355,6 +365,14 @@ impl BackendStats {
     /// The fit inventory of one answer; `None` when the usable RAM cannot be judged exactly.
     pub async fn inventory(&self) -> Option<Inventory> {
         self.inventory_from(&discover(self.docker.as_ref()).await)
+    }
+
+    /// Authoritative repository reads keep the reference's failed-discovery semantics.
+    /// This never consults the optional caller's negative cache.
+    #[cfg(all(feature = "native-search", feature = "native-section-autoconfig"))]
+    pub(crate) async fn repository_inventory(&self) -> Result<Inventory, Fail> {
+        let discovered = super::repository::discover(self.docker.as_ref()).await?;
+        self.inventory_from(&discovered).ok_or(Fail::Refused)
     }
 
     /// The fit inventory over a discovery the caller already made.

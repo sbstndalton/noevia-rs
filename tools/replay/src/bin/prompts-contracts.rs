@@ -83,6 +83,43 @@ fn require(ok: bool, message: &str) -> Result<()> {
         Err(message.into())
     }
 }
+fn binary_sha256(path: &Path) -> Result<String> {
+    let mut file = fs::File::open(path)?;
+    require(
+        file.metadata()?.is_file(),
+        "binary artifact must be regular",
+    )?;
+    let mut total = 0usize;
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 65536];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        total = total.checked_add(n).ok_or("binary hash overflow")?;
+        require(total <= 512 * 1024 * 1024, "binary artifact cap")?;
+        hash.update(buffer.get(..n).ok_or("binary hash count")?);
+    }
+    Ok(format!("{:x}", hash.finalize()))
+}
+fn no_manager_children(manager: &Owned) -> Result<()> {
+    let mut count = 0usize;
+    for entry in fs::read_dir(format!("/proc/{}/task", manager.leader.0.id()))? {
+        count += 1;
+        require(count <= 128, "native manager thread inventory cap")?;
+        let entry = entry?;
+        let mut text = String::new();
+        fs::File::open(entry.path().join("children"))?
+            .take(4097)
+            .read_to_string(&mut text)?;
+        require(
+            text.len() <= 4096 && text.trim().is_empty(),
+            "native manager spawned a child",
+        )?;
+    }
+    Ok(())
+}
 fn artifact(path: &Path, value: &Value) -> Result<()> {
     struct Bounded(Vec<u8>);
     impl Write for Bounded {
@@ -539,8 +576,13 @@ fn run_mode(
     fs::set_permissions(root, fs::Permissions::from_mode(0o700))?;
     for dir in ["bin", "models", "mm-data", "ui-data"] {
         fs::create_dir(root.join(dir))?;
+        fs::set_permissions(root.join(dir), fs::Permissions::from_mode(0o700))?;
     }
     fs::write(root.join("models/models.ini"), "version = 1\n")?;
+    fs::write(
+        root.join("search-trusted.json"),
+        br#"{"quantisers":["qa"],"labs":["qa"]}"#,
+    )?;
     fs::write(root.join("bin/uvicorn"), SHIM)?;
     fs::set_permissions(root.join("bin/uvicorn"), fs::Permissions::from_mode(0o700))?;
     let guards = [
@@ -565,8 +607,10 @@ fn run_mode(
             }
             command
                 .current_dir(app.parent().ok_or("app parent")?)
-                .env("MODEL_MANAGER_IMPL", "rust")
-                .env("MODEL_MANAGER_PROMPTS_IMPL", "rust");
+                .env("TZ", "UTC")
+                .env("SEARCH_TRUSTED_PATH", root.join("search-trusted.json"))
+                .env("MODEL_MANAGER_IMPL", "python")
+                .env("MODEL_MANAGER_PROMPTS_IMPL", "python");
             command
         };
     } else {
@@ -585,6 +629,14 @@ fn run_mode(
         &mut [&mut manager],
         Readiness::Manager,
     )?;
+    let private_trap = if mode == "rust" {
+        no_manager_children(&manager)?;
+        let trap = TcpListener::bind("127.0.0.1:8091")?;
+        trap.set_nonblocking(true)?;
+        Some(trap)
+    } else {
+        None
+    };
     let core_listener = TcpListener::bind("127.0.0.1:0")?;
     let front_listener = TcpListener::bind("127.0.0.1:0")?;
     let core_port = core_listener.local_addr()?.port();
@@ -785,11 +837,19 @@ fn run_mode(
         )?;
         rows.push(record(&response, method, path, body.as_bytes())?);
     }
-    require(
-        fs::read_to_string(root.join("child-confirmation"))?
-            == if mode == "rust" { "1" } else { "absent" },
-        "actual child confirmation",
-    )?;
+    if mode == "rust" {
+        no_manager_children(&manager)?;
+        require(
+            !root.join("child-confirmation").exists(),
+            "native manager invoked Python shim",
+        )?;
+        require(private_trap.as_ref().is_some_and(|trap| matches!(trap.accept(),Err(error) if error.kind()==std::io::ErrorKind::WouldBlock)),"native manager attempted private RPC")?;
+    } else {
+        require(
+            fs::read_to_string(root.join("child-confirmation"))? == "absent",
+            "actual Python baseline confirmation",
+        )?;
+    }
     Ok(rows)
 }
 fn main() -> Result<()> {
@@ -843,7 +903,7 @@ fn main() -> Result<()> {
     let parameter = std::env::var_os("NOEVIA_PROMPTS_DEPENDENCIES").map(PathBuf::from);
     let (dependencies, dependency_provenance) =
         dependencies::verify(&core, runtime_root, parameter.as_deref(), &expected)?;
-    let provenance = json!({"core":core_revision,"core_sources":core_sources,"runtime":RUNTIME,"runtime_sources":runtime_sources,"dependencies":dependency_provenance,"dependency_seam_sha256":format!("{:x}",Sha256::digest(include_bytes!("support/prompts_dependencies.rs"))),"generator_sha256":format!("{:x}",Sha256::digest(include_bytes!("prompts-contracts.rs"))),"launcher_sha256":format!("{:x}",Sha256::digest(include_bytes!("corpus-launcher.rs"))),"launcher_seam_sha256":format!("{:x}",Sha256::digest(include_bytes!("../synthetic-host-launch.cjs"))),"process_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../../qualification/process.rs")))});
+    let mut provenance = json!({"core":core_revision,"core_sources":core_sources,"runtime":RUNTIME,"runtime_sources":runtime_sources,"dependencies":dependency_provenance,"dependency_seam_sha256":format!("{:x}",Sha256::digest(include_bytes!("support/prompts_dependencies.rs"))),"generator_sha256":format!("{:x}",Sha256::digest(include_bytes!("prompts-contracts.rs"))),"launcher_sha256":format!("{:x}",Sha256::digest(include_bytes!("corpus-launcher.rs"))),"launcher_seam_sha256":format!("{:x}",Sha256::digest(include_bytes!("../synthetic-host-launch.cjs"))),"process_sha256":format!("{:x}",Sha256::digest(include_bytes!("../../../qualification/process.rs")))});
     let mode = args.next();
     require(args.next().is_none(), "unexpected arguments")?;
     let python_only = mode.as_deref() == Some(std::ffi::OsStr::new("--python-only"));
@@ -859,6 +919,17 @@ fn main() -> Result<()> {
     )?;
     let exe = std::env::current_exe()?;
     let bins = exe.parent().ok_or("binary parent")?;
+    let binary_provenance = provenance.as_object_mut().ok_or("provenance object")?;
+    binary_provenance.insert(
+        "front_binary_sha256".into(),
+        json!(binary_sha256(&bins.join("noevia-server"))?),
+    );
+    if !python_only && !negative_only && !wrong_token_only {
+        binary_provenance.insert(
+            "manager_binary_sha256".into(),
+            json!(binary_sha256(&bins.join("noevia-model-manager"))?),
+        );
+    }
     let mut controls = Vec::new();
     if negative_only || !python_only {
         for control in [

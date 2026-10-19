@@ -7,7 +7,7 @@
 //! The actual Python differential: every case of `tests/fixtures/backends-python.v1.json`
 //! (recorded from the services app by `tools/gen-backends-oracle.py`) is replayed step by step:
 //! a sampler tick against the recorded Docker world, sysfs files and GPU reads must leave exactly
-//! the cache Python's sampler left (as the push to the child carries it); a GET against the
+//! the cache Python's sampler left; a GET against the
 //! recorded world and llama-servers must give Python's status and body byte for byte. Every name
 //! is synthetic; the Docker daemon, the child and the llama-servers are fakes on loopback.
 use super::*;
@@ -124,6 +124,7 @@ impl DockerApi for World {
 /// The fake child: GPU reads answered from the step's recorded `hw.exec_probe` results, pushes
 /// recorded.
 struct Child {
+    requests: Arc<std::sync::atomic::AtomicUsize>,
     probes: Arc<Mutex<V>>,
     pushed: Arc<Mutex<Vec<String>>>,
     base: String,
@@ -134,9 +135,12 @@ async fn child() -> Child {
     let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
     let probes = Arc::new(Mutex::new(V::Null));
     let pushed = Arc::new(Mutex::new(Vec::new()));
+    let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = requests.clone();
     let (p, q) = (probes.clone(), pushed.clone());
     tokio::spawn(async move {
         while let Ok((mut sock, _)) = listener.accept().await {
+            seen.fetch_add(1, Ordering::SeqCst);
             let (p, q) = (p.clone(), q.clone());
             tokio::spawn(async move {
                 let mut data = Vec::new();
@@ -195,6 +199,7 @@ async fn child() -> Child {
         }
     });
     Child {
+        requests,
         probes,
         pushed,
         base,
@@ -206,6 +211,14 @@ pub(super) async fn llama(port: u32, status: u64, body: String) -> tokio::task::
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port as u16))
         .await
         .unwrap_or_else(|e| panic!("port {port}: {e}"));
+    serve_llama(listener, status, body)
+}
+
+fn serve_llama(
+    listener: tokio::net::TcpListener,
+    status: u64,
+    body: String,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Ok((mut sock, _)) = listener.accept().await {
             let body = body.clone();
@@ -226,6 +239,39 @@ pub(super) async fn llama(port: u32, status: u64, body: String) -> tokio::task::
             });
         }
     })
+}
+
+/// abort requests cancellation; awaiting it releases the listener before a fixture rebinds.
+pub(super) async fn stop_llamas(servers: Vec<tokio::task::JoinHandle<()>>) {
+    for server in &servers {
+        server.abort();
+    }
+    for server in servers {
+        if let Err(error) = tokio::time::timeout(std::time::Duration::from_secs(2), server)
+            .await
+            .expect("fake backend listener did not stop")
+        {
+            assert!(
+                error.is_cancelled(),
+                "fake backend listener failed: {error}"
+            );
+        }
+    }
+}
+
+/// Keep the listener owned from allocation through cancellation: no free-port discovery race.
+/// On a current-thread runtime, abort without awaiting its completion cannot pass this rebind.
+#[tokio::test]
+async fn fixture_listener_is_released_before_the_same_port_is_reused() {
+    let mut listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .unwrap();
+    let address = listener.local_addr().unwrap();
+    for _ in 0..32 {
+        let server = serve_llama(listener, 200, "{}".into());
+        stop_llamas(vec![server]).await;
+        listener = tokio::net::TcpListener::bind(address).await.unwrap();
+    }
 }
 
 fn write_sysfs(root: &Path, files: &V) {
@@ -258,8 +304,12 @@ fn fixture_provenance() {
     assert!(f["cases"].as_array().unwrap().len() >= 9);
 }
 
+// Both complete replays use the frozen backend ports; unrelated sampler tests stay parallel.
+static ORACLE_PORTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn actual_python_differential() {
+async fn native_cache_and_public_responses_match_actual_python_without_mirrors() {
+    let _ports = ORACLE_PORTS.lock().await;
     let f = fixture();
     let mut ticks = 0;
     let mut gets = 0;
@@ -307,9 +357,11 @@ async fn actual_python_differential() {
                 *fake_child.probes.lock().unwrap() = step["probes"].clone();
                 fake_child.pushed.lock().unwrap().clear();
                 stats.tick().await;
-                let pushed = fake_child.pushed.lock().unwrap().clone();
-                assert_eq!(pushed.len(), 1, "{ctx}");
-                let pushed: V = serde_json::from_str(&pushed[0]).unwrap();
+                assert!(
+                    fake_child.pushed.lock().unwrap().is_empty(),
+                    "{ctx}: a private cache mirror was written"
+                );
+                let pushed: V = serde_json::from_str(&stats.push_body().unwrap()).unwrap();
                 assert_eq!(pushed["backends"], step["cache"], "{ctx}");
                 ticks += 1;
             } else {
@@ -335,9 +387,7 @@ async fn actual_python_differential() {
                     }
                 }
                 let outcome = stats.get().await;
-                for s in servers {
-                    s.abort();
-                }
+                stop_llamas(servers).await;
                 match outcome {
                     Outcome::Json(body) => {
                         assert_eq!(step["status"], 200, "{ctx}");
@@ -348,6 +398,11 @@ async fn actual_python_differential() {
                 }
                 gets += 1;
             }
+            assert_eq!(
+                fake_child.requests.load(Ordering::SeqCst),
+                0,
+                "{ctx}: native sampler used private HTTP"
+            );
         }
     }
     assert!(ticks >= 140 && gets >= 12, "{ticks} {gets}");
@@ -527,4 +582,158 @@ fn gpu_vram_map_follows_settings() {
         vec![("a".to_owned(), 12.0), ("d".to_owned(), 16.0)]
     );
     assert!(gpu_vram_map("a:\u{0661}").is_err());
+}
+
+// Frozen child-era transport oracle. This adapter exists only in this cfg(test) module;
+// production BackendStats has no mirror field, path, switch or sending branch.
+mod historical_backend_stats {
+    use super::*;
+    struct BackendStats {
+        native: super::super::BackendStats,
+        mirror: reqwest::Client,
+        base: String,
+        token: String,
+    }
+    impl std::ops::Deref for BackendStats {
+        type Target = super::super::BackendStats;
+        fn deref(&self) -> &Self::Target {
+            &self.native
+        }
+    }
+    impl BackendStats {
+        fn with_clock(
+            config: Config,
+            docker: Arc<dyn DockerApi>,
+            clock: Clock,
+        ) -> Result<Self, reqwest::Error> {
+            let base = config.legacy_base.clone();
+            let token = config.token.clone();
+            Ok(Self {
+                native: super::super::BackendStats::with_clock(config, docker, clock)?,
+                mirror: reqwest::Client::builder()
+                    .no_proxy()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .timeout(Duration::from_secs(3))
+                    .build()?,
+                base,
+                token,
+            })
+        }
+        async fn tick(&self) {
+            self.native.tick().await;
+            let body = self
+                .native
+                .push_body()
+                .expect("the recorded cache is serializable");
+            let _ = self
+                .mirror
+                .put(format!("{}{PUSH_PATH}", self.base))
+                .header("x-model-loader-token", &self.token)
+                .header("content-type", "application/json")
+                .body(body)
+                .send()
+                .await;
+        }
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn actual_python_differential() {
+        let _ports = super::ORACLE_PORTS.lock().await;
+        frozen_original_differential().await;
+    }
+
+    // Original child-era assertions are kept byte-for-byte behind the synchronized wrapper.
+    async fn frozen_original_differential() {
+        let f = fixture();
+        let mut ticks = 0;
+        let mut gets = 0;
+        for case in f["cases"].as_array().unwrap() {
+            let id = case["id"].as_str().unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let drm = dir.path().join("drm");
+            let world = Arc::new(World(Mutex::new(None)));
+            let fake_child = child().await;
+            let now = Arc::new(AtomicU64::new(0));
+            let n = now.clone();
+            let env = &case["env"];
+            let default_port = match env["LLAMA_DEFAULT_PORT"].as_str() {
+                Some(p) => Some(p.parse::<u16>().unwrap()).filter(|p| *p != 0),
+                None => Some(8080),
+            };
+            let stats = BackendStats::with_clock(
+                Config {
+                    configured: configured(env),
+                    gpu_vram: gpu_vram_map(env["GPU_VRAM"].as_str().unwrap_or("")).unwrap(),
+                    default_port,
+                    drm_root: drm.clone(),
+                    legacy_base: fake_child.base.clone(),
+                    token: "synthetic-token".into(),
+                    meminfo: "/nonexistent/meminfo".into(),
+                    ram_reserve_gb: Some(32.0),
+                },
+                world.clone(),
+                Arc::new(move || f64::from_bits(n.load(Ordering::SeqCst))),
+            )
+            .unwrap();
+            let seeded: Vec<(String, String)> = case["restart_errors"]
+                .as_object()
+                .unwrap()
+                .iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+                .collect();
+            stats.seed_restart_errors(&seeded);
+            for (i, step) in case["steps"].as_array().unwrap().iter().enumerate() {
+                let ctx = format!("{id} step {i}");
+                now.store(step["at"].as_f64().unwrap().to_bits(), Ordering::SeqCst);
+                *world.0.lock().unwrap() =
+                    (!step["docker"].is_null()).then(|| step["docker"].clone());
+                if step["op"] == "tick" {
+                    write_sysfs(&drm, &step["sysfs"]);
+                    *fake_child.probes.lock().unwrap() = step["probes"].clone();
+                    fake_child.pushed.lock().unwrap().clear();
+                    stats.tick().await;
+                    let pushed = fake_child.pushed.lock().unwrap().clone();
+                    assert_eq!(pushed.len(), 1, "{ctx}");
+                    let pushed: V = serde_json::from_str(&pushed[0]).unwrap();
+                    assert_eq!(pushed["backends"], step["cache"], "{ctx}");
+                    ticks += 1;
+                } else {
+                    let mut servers = Vec::new();
+                    if let Some(containers) = step["docker"]["containers"].as_array() {
+                        for c in containers {
+                            let name = c["Name"].as_str().unwrap()[1..].to_owned();
+                            let Some(a) = step["llama"].get(&name).filter(|a| !a.is_null()) else {
+                                continue;
+                            };
+                            let attrs = model_files::json::parse(&c.to_string()).unwrap();
+                            let port = crate::backends::internal_port(
+                                &spec_of(&attrs).unwrap(),
+                                default_port,
+                            )
+                            .unwrap();
+                            servers.push(
+                                llama(
+                                    port,
+                                    a[0].as_u64().unwrap(),
+                                    a[1].as_str().unwrap().to_owned(),
+                                )
+                                .await,
+                            );
+                        }
+                    }
+                    let outcome = stats.get().await;
+                    stop_llamas(servers).await;
+                    match outcome {
+                        Outcome::Json(body) => {
+                            assert_eq!(step["status"], 200, "{ctx}");
+                            assert_eq!(body, step["body"].as_str().unwrap(), "{ctx}");
+                        }
+                        Outcome::Failed => assert_eq!(step["status"], 500, "{ctx}"),
+                        Outcome::Refused => panic!("{ctx}: refused"),
+                    }
+                    gets += 1;
+                }
+            }
+        }
+        assert!(ticks >= 140 && gets >= 12, "{ticks} {gets}");
+    }
 }

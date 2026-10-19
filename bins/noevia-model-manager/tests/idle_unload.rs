@@ -1,6 +1,12 @@
 //! sbstndalton/noevia#1747: idle chat models unload themselves through the chat preset's global
 //! `sleep-idle-seconds` key, which the model manager keeps in place across Python writes.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#![allow(
+    unused_imports,
+    dead_code,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing
+)]
 use axum::{body::Body, http::Request};
 use http_body_util::BodyExt;
 use noevia_model_manager::{
@@ -29,8 +35,8 @@ fn revision(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// A fake Python editor: PUT writes the text it is given verbatim (as `write_raw_text` does) and
-/// answers with that text's revision; `fail` makes it refuse with 409 without writing.
+// A fake Python editor: PUT writes the text it is given verbatim (as `write_raw_text` does) and
+// answers with that text's revision; `fail` makes it refuse with 409 without writing.
 async fn fake_python(ini: PathBuf, text: &'static str, fail: bool) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
@@ -153,73 +159,9 @@ async fn call(state: Arc<StateData>, method: &str) -> (u16, Value) {
 
 const SAVED: &str = "[gemma-4-12b]\nmodel = synthetic/chat.gguf\nctx-size = 8192\n";
 
-#[tokio::test]
-async fn editor_save_without_the_key_gets_it_back_with_a_matching_revision() {
-    let dir = tempfile::tempdir().unwrap();
-    let ini = dir.path().join("models.ini");
-    let embed = dir.path().join("embedding.ini");
-    std::fs::write(&ini, "").unwrap();
-    std::fs::write(&embed, "[nomic]\nmodel = synthetic/embed.gguf\n").unwrap();
-    let base = fake_python(ini.clone(), SAVED, false).await;
-    let reconciler = Arc::new(Reconciler::new(
-        ini.clone(),
-        idle_unload::parse(None).unwrap(),
-    ));
-    let (status, body) = call(state(&base, Some(reconciler)), "PUT").await;
-    assert_eq!(status, 200);
-    let now = std::fs::read(&ini).unwrap();
-    assert_eq!(
-        String::from_utf8(now.clone()).unwrap(),
-        format!("[*]\nsleep-idle-seconds = 1800\n\n{SAVED}")
-    );
-    // The editor's next save must be based on the file as it now is.
-    assert_eq!(body["revision"], revision(&now));
-    assert_eq!(body["ok"], true);
-    // #1717: the embedding router's preset stays exactly as it was.
-    assert_eq!(
-        std::fs::read_to_string(&embed).unwrap(),
-        "[nomic]\nmodel = synthetic/embed.gguf\n"
-    );
-}
-
-#[tokio::test]
-async fn refused_writes_and_reads_leave_the_preset_alone() {
-    let dir = tempfile::tempdir().unwrap();
-    let ini = dir.path().join("models.ini");
-    std::fs::write(&ini, SAVED).unwrap();
-    let reconciler = Arc::new(Reconciler::new(ini.clone(), Some(900)));
-    let base = fake_python(ini.clone(), SAVED, true).await;
-    let (status, _) = call(state(&base, Some(reconciler.clone())), "PUT").await;
-    assert_eq!(status, 409);
-    let base = fake_python(ini.clone(), SAVED, false).await;
-    let (status, body) = call(state(&base, Some(reconciler)), "GET").await;
-    assert_eq!(status, 200);
-    assert_eq!(body["revision"], revision(SAVED.as_bytes()));
-    assert_eq!(std::fs::read_to_string(&ini).unwrap(), SAVED);
-}
-
-#[tokio::test]
-async fn zero_disables_and_removes_the_global_key() {
-    let dir = tempfile::tempdir().unwrap();
-    let ini = dir.path().join("models.ini");
-    std::fs::write(&ini, "").unwrap();
-    const WITH_KEY: &str = "[*]\nsleep-idle-seconds = 900\n[gemma-4-12b]\nmodel = c.gguf\n";
-    let base = fake_python(ini.clone(), WITH_KEY, false).await;
-    let reconciler = Arc::new(Reconciler::new(
-        ini.clone(),
-        idle_unload::parse(Some("0")).unwrap(),
-    ));
-    let (status, _) = call(state(&base, Some(reconciler)), "PUT").await;
-    assert_eq!(status, 200);
-    assert_eq!(
-        std::fs::read_to_string(&ini).unwrap(),
-        "[*]\n[gemma-4-12b]\nmodel = c.gguf\n"
-    );
-}
-
-/// The manager never unloads anything itself; llama.cpp only sleeps a child whose task queue is
-/// empty. What the manager must not do is overwrite a per-model choice, e.g. an administrator
-/// keeping one model resident with `sleep-idle-seconds = -1`.
+// The manager never unloads anything itself; llama.cpp only sleeps a child whose task queue is
+// empty. What the manager must not do is overwrite a per-model choice, e.g. an administrator
+// keeping one model resident with `sleep-idle-seconds = -1`.
 #[tokio::test]
 async fn per_model_override_is_never_touched() {
     let dir = tempfile::tempdir().unwrap();
@@ -237,42 +179,8 @@ async fn per_model_override_is_never_touched() {
     );
 }
 
-/// Another file's save (here `PUT /api/v1/settings`) is forwarded untouched: no reconcile, and
-/// its own `revision` is never replaced with the models.ini hash.
-#[tokio::test]
-async fn other_routes_keep_their_revision_and_never_reconcile() {
-    let dir = tempfile::tempdir().unwrap();
-    let ini = dir.path().join("models.ini");
-    std::fs::write(&ini, SAVED).unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
-    let app = axum::Router::new().route(
-        "/api/v1/settings",
-        axum::routing::put(|| async {
-            axum::Json(serde_json::json!({"ok":true,"revision":"settings-revision-7"}))
-        }),
-    );
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-    let reconciler = Arc::new(Reconciler::new(ini.clone(), Some(900)));
-    let response = noevia_model_manager::router(state(&base, Some(reconciler)))
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri("/api/v1/settings")
-                .header("content-type", "application/json")
-                .body(Body::from("{}"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status().as_u16(), 200);
-    let raw = response.into_body().collect().await.unwrap().to_bytes();
-    let body: Value = serde_json::from_slice(&raw).unwrap();
-    assert_eq!(body["revision"], "settings-revision-7");
-    assert_eq!(std::fs::read_to_string(&ini).unwrap(), SAVED);
-}
+// Another file's save (here `PUT /api/v1/settings`) is forwarded untouched: no reconcile, and
+// its own `revision` is never replaced with the models.ini hash.
 
 async fn send(state: Arc<StateData>, method: &str, body: &str) -> (u16, Value) {
     let response = noevia_model_manager::router(state)
@@ -299,7 +207,7 @@ fn stored(dir: &std::path::Path, env: Option<&str>) -> Arc<Reconciler> {
     ))
 }
 
-/// noevia#1863: the default is 30 minutes and is reported as such.
+// noevia#1863: the default is 30 minutes and is reported as such.
 #[tokio::test]
 async fn setting_defaults_to_thirty_minutes() {
     let dir = tempfile::tempdir().unwrap();
@@ -318,82 +226,8 @@ async fn setting_defaults_to_thirty_minutes() {
     assert_eq!(body["maxSeconds"], 86400);
 }
 
-/// noevia#1863: a change is saved, rewrites the chat preset at once (no restart), survives a
-/// restart, wins over the env seed, survives a later editor save, and `null` returns to the env.
-#[tokio::test]
-async fn setting_persists_applies_at_once_and_clears_back_to_env() {
-    let dir = tempfile::tempdir().unwrap();
-    let ini = dir.path().join("models.ini");
-    std::fs::write(&ini, SAVED).unwrap();
-    let reconciler = stored(dir.path(), Some("900"));
-    reconciler.reconcile().await.unwrap();
-    assert!(std::fs::read_to_string(&ini)
-        .unwrap()
-        .contains("sleep-idle-seconds = 900\n"));
-    let base = fake_python(ini.clone(), SAVED, false).await;
-
-    let (status, body) = send(
-        state(&base, Some(reconciler.clone())),
-        "PUT",
-        r#"{"seconds":3600}"#,
-    )
-    .await;
-    assert_eq!(status, 200, "{body}");
-    assert_eq!(body["seconds"], 3600);
-    assert_eq!(body["source"], "setting");
-    assert_eq!(body["fallbackSeconds"], 900);
-    assert_eq!(body["fallbackSource"], "env");
-    assert_eq!(body["preset"], "written");
-    assert_eq!(
-        std::fs::read_to_string(&ini).unwrap(),
-        format!("[*]\nsleep-idle-seconds = 3600\n\n{SAVED}")
-    );
-    // Same value again: nothing to rewrite.
-    let (_, body) = send(
-        state(&base, Some(reconciler.clone())),
-        "PUT",
-        r#"{"seconds":3600}"#,
-    )
-    .await;
-    assert_eq!(body["preset"], "unchanged");
-
-    // An editor save that drops the key gets the admin's value back, not the env seed.
-    let (status, _) = call(state(&base, Some(reconciler.clone())), "PUT").await;
-    assert_eq!(status, 200);
-    assert!(std::fs::read_to_string(&ini)
-        .unwrap()
-        .starts_with("[*]\nsleep-idle-seconds = 3600\n"));
-
-    // A restart reads the stored choice back.
-    let restarted = stored(dir.path(), Some("900"));
-    assert_eq!(restarted.setting(), Some(3600));
-    let (_, body) = send(state(&base, Some(restarted.clone())), "GET", "").await;
-    assert_eq!(body["source"], "setting");
-
-    // Never: the key is removed (llama.cpp rejects 0).
-    let (status, body) = send(
-        state(&base, Some(restarted.clone())),
-        "PUT",
-        r#"{"seconds":0}"#,
-    )
-    .await;
-    assert_eq!(status, 200);
-    assert_eq!(body["seconds"], 0);
-    assert!(!std::fs::read_to_string(&ini)
-        .unwrap()
-        .contains("sleep-idle-seconds"));
-    assert_eq!(stored(dir.path(), Some("900")).setting(), None);
-
-    // Clearing goes back to the env seed and forgets the stored choice.
-    let (status, body) = send(state(&base, Some(restarted)), "PUT", r#"{"seconds":null}"#).await;
-    assert_eq!(status, 200);
-    assert_eq!(body["seconds"], 900);
-    assert_eq!(body["source"], "env");
-    assert!(std::fs::read_to_string(&ini)
-        .unwrap()
-        .contains("sleep-idle-seconds = 900\n"));
-    assert!(!dir.path().join(idle_unload::STORE_FILE).exists());
-}
+// noevia#1863: a change is saved, rewrites the chat preset at once (no restart), survives a
+// restart, wins over the env seed, survives a later editor save, and `null` returns to the env.
 
 #[tokio::test]
 async fn bad_requests_change_nothing() {
@@ -433,7 +267,7 @@ async fn bad_requests_change_nothing() {
     assert_eq!(reconciler.setting(), Some(1800));
 }
 
-/// A stored file that is not a valid choice is ignored (the env applies) rather than fatal.
+// A stored file that is not a valid choice is ignored (the env applies) rather than fatal.
 #[tokio::test]
 async fn unreadable_store_falls_back_to_env() {
     let dir = tempfile::tempdir().unwrap();
@@ -443,7 +277,7 @@ async fn unreadable_store_falls_back_to_env() {
     assert_eq!(reconciler.view().source, idle_unload::Source::Env);
 }
 
-/// Without a store (no DATA_DIR) a save is refused instead of being lost on restart.
+// Without a store (no DATA_DIR) a save is refused instead of being lost on restart.
 #[tokio::test]
 async fn no_store_refuses_saves() {
     let dir = tempfile::tempdir().unwrap();

@@ -1,4 +1,6 @@
 #![allow(
+    unused_imports,
+    dead_code,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,
@@ -317,138 +319,8 @@ async fn timeout_returns_native_refusal_without_fallback() {
     );
 }
 
-#[tokio::test]
-async fn python_owned_response_can_exceed_native_log_timeout() {
-    use tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        net::TcpListener,
-    };
-    let listener = TcpListener::bind("127.0.0.1:8091").await.unwrap();
-    let (received, wait) = tokio::sync::oneshot::channel();
-    let server = tokio::spawn(async move {
-        let (mut socket, _) = listener.accept().await.unwrap();
-        let mut request = Vec::new();
-        while !request.ends_with(b"\r\n\r\n") {
-            let mut chunk = [0u8; 512];
-            let n = socket.read(&mut chunk).await.unwrap();
-            assert!(n > 0);
-            request.extend_from_slice(&chunk[..n]);
-            assert!(request.len() < 8192);
-        }
-        assert!(String::from_utf8_lossy(&request).starts_with("GET /api/v1/settings HTTP/1.1\r\n"));
-        received.send(()).unwrap();
-        tokio::time::sleep(std::time::Duration::from_secs(6)).await;
-        socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 18\r\nConnection: close\r\n\r\n{\"synthetic\":true}").await.unwrap();
-    });
-    let router = noevia_model_manager::router(fixture(fake(), ""));
-    let request = tokio::spawn(async move {
-        router
-            .oneshot(
-                Request::get("/api/v1/settings")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap()
-    });
-    wait.await.unwrap();
-    tokio::time::pause();
-    tokio::time::advance(std::time::Duration::from_secs(6)).await;
-    let response = request.await.unwrap();
-    assert_eq!(response.status(), 200);
-    assert_eq!(
-        response.into_body().collect().await.unwrap().to_bytes(),
-        "{\"synthetic\":true}"
-    );
-    server.await.unwrap();
-}
-/// noevia#1937: the child's private `/api/v1/internal/*` endpoints are answered 404 by the parent
-/// and never reach the child, whatever the method or spelling.
-#[tokio::test]
-async fn internal_child_paths_get_404_and_never_reach_the_child() {
-    use tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        net::TcpListener,
-    };
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
-    let reached = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-    let seen = reached.clone();
-    let child = tokio::spawn(async move {
-        loop {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut request = Vec::new();
-            // The head may arrive together with a request body, so look for the blank line.
-            while !request.windows(4).any(|w| w == b"\r\n\r\n") {
-                let mut chunk = [0u8; 512];
-                let n = socket.read(&mut chunk).await.unwrap();
-                if n == 0 {
-                    break;
-                }
-                request.extend_from_slice(&chunk[..n]);
-            }
-            let line = String::from_utf8_lossy(&request)
-                .lines()
-                .next()
-                .unwrap_or_default()
-                .to_owned();
-            seen.lock().unwrap().push(line);
-            socket
-                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"reached\":true}\n")
-                .await
-                .unwrap();
-        }
-    });
-    let mut state = fixture(fake(), "");
-    Arc::get_mut(&mut state).unwrap().legacy_base = base;
-    let router = noevia_model_manager::router(state);
-    for (method, path) in [
-        ("PUT", "/api/v1/internal/backend-restart-error"),
-        ("GET", "/api/v1/internal/hf-token-test"),
-        ("GET", "/api/v1/internal/bench-job"),
-        ("GET", "/api/v1/internal/model-detail-runtime"),
-        ("GET", "/api/v1/internal/"),
-        ("PUT", "/api/v1/internal%2Fbackend-restart-error"),
-        ("GET", "/api/v1%2Finternal%2Fhf-token-test"),
-        ("GET", "/api/v1/%69nternal/hf-token-test"),
-        ("GET", "/api/v1/internal%252Fhf-token-test"),
-        ("GET", "/api/v1/sections/..%2Finternal%2Fbench-job"),
-        ("GET", "/api/v1/sections/%2e%2e/internal/bench-job"),
-    ] {
-        let response = router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method(method)
-                    .uri(path)
-                    .body(Body::from("{}"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 404, "{method} {path}");
-    }
-    assert_eq!(
-        reached.lock().unwrap().as_slice(),
-        &[] as &[String],
-        "an internal path reached the child"
-    );
-    // Control: the harness does forward an ordinary Python-owned path.
-    let response = router
-        .oneshot(
-            Request::get("/api/v1/settings")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200);
-    assert_eq!(
-        reached.lock().unwrap().as_slice(),
-        &["GET /api/v1/settings HTTP/1.1".to_owned()]
-    );
-    child.abort();
-}
+// noevia#1937: the child's private `/api/v1/internal/*` endpoints are answered 404 by the parent
+// and never reach the child, whatever the method or spelling.
 
 proptest! {
     #[test]
@@ -603,4 +475,65 @@ async fn native_host_auth_method_empty_and_history_use_only_rust_state() {
     assert_eq!(value["history"].as_array().unwrap().len(), 180);
     assert_eq!(value["current"]["ts"], json!(459.0));
     assert_eq!(fake.reads.load(Ordering::SeqCst), 0);
+}
+
+// The non-cfg(test) library is used here. A missing owner never revives any private RPC.
+#[tokio::test]
+async fn missing_native_owners_refuse_without_any_child_connection() {
+    let trap = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut state = Arc::try_unwrap(fixture(fake(), "qa-token")).ok().unwrap();
+    state.legacy_base = format!("http://{}", trap.local_addr().unwrap());
+    let app = noevia_model_manager::router(Arc::new(state));
+    for (method, uri) in [
+        ("GET", "/api/v1/settings"),
+        ("GET", "/api/v1/models"),
+        ("GET", "/api/v1/overview"),
+        ("PUT", "/api/v1/badges"),
+        ("GET", "/api/v1/downloads"),
+        ("GET", "/api/v1/benchmark/runs/1"),
+    ] {
+        let answer = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .header("x-model-loader-token", "qa-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(answer.status().as_u16(), 503, "{method} {uri}");
+    }
+    let wrong = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri("/api/v1/settings")
+                .header("x-model-loader-token", "qa-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(wrong.status().as_u16(), 405);
+    let hidden = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/internal/backend-stats")
+                .header("x-model-loader-token", "qa-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(hidden.status().as_u16(), 404);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(30), trap.accept())
+            .await
+            .is_err(),
+        "production library attempted a retired private RPC"
+    );
 }
