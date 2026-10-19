@@ -456,10 +456,10 @@ impl DockerRead for NoDocker {
 }
 
 fn state(service: Arc<EmbeddingService>) -> Arc<StateData> {
-    state_at(service, noevia_model_manager::LEGACY_BASE)
+    state_at(service, "http://127.0.0.1:8091")
 }
 
-fn state_at(service: Arc<EmbeddingService>, legacy_base: &str) -> Arc<StateData> {
+fn state_at(service: Arc<EmbeddingService>, _legacy_trap_base: &str) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -481,8 +481,6 @@ fn state_at(service: Arc<EmbeddingService>, legacy_base: &str) -> Arc<StateData>
         docker: Arc::new(NoDocker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(2),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: legacy_base.to_owned(),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,

@@ -69,8 +69,6 @@ fn fixture(fake: Arc<Fake>, token: &str) -> Arc<StateData> {
         docker: fake,
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(2),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,
@@ -480,9 +478,13 @@ async fn native_host_auth_method_empty_and_history_use_only_rust_state() {
 // The non-cfg(test) library is used here. A missing owner never revives any private RPC.
 #[tokio::test]
 async fn missing_native_owners_refuse_without_any_child_connection() {
-    let trap = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let mut state = Arc::try_unwrap(fixture(fake(), "qa-token")).ok().unwrap();
-    state.legacy_base = format!("http://{}", trap.local_addr().unwrap());
+    let trap = tokio::net::TcpListener::bind("127.0.0.1:8091")
+        .await
+        .unwrap();
+    let state = Arc::try_unwrap(fixture(fake(), "qa-token")).ok().unwrap();
+    // Production has no configurable private endpoint. Trap the former process port
+    // directly so a reintroduced hardcoded child call still fails this contract.
+    let _trap_endpoint = format!("http://{}", trap.local_addr().unwrap());
     let app = noevia_model_manager::router(Arc::new(state));
     for (method, uri) in [
         ("GET", "/api/v1/settings"),

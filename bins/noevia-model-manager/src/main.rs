@@ -10,9 +10,7 @@ use noevia_model_manager::healthcheck;
 use std::io::Write;
 #[cfg(feature = "native-routing")]
 use {
-    noevia_model_manager::{
-        docker::UnixDocker, legacy_client, validate_token, Redactor, StateData,
-    },
+    noevia_model_manager::{docker::UnixDocker, validate_token, Redactor, StateData},
     std::sync::Arc,
 };
 
@@ -171,9 +169,8 @@ async fn service() -> Result<(), Box<dyn std::error::Error>> {
         "SEARCH_TRUSTED_PATH",
         noevia_model_manager::search::live::TRUSTED_PATH,
     )?;
-    let routing_trusted = Some(noevia_model_manager::routing::trusted_preflight(
-        std::path::Path::new(&path),
-    )?);
+    let routing_trusted =
+        noevia_model_manager::routing::trusted_preflight(std::path::Path::new(&path))?;
     let settings_root = Some(data_dir()?);
     let updates_roots = Some(model_updates_roots(values.clone())?);
     let detail_roots = Some(detail_fallback("UTC", values.clone())?);
@@ -280,7 +277,6 @@ async fn service() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
     let redactor = Redactor::new()?;
-    let legacy = legacy_client()?;
     let sections = if sections_mode == "rust" {
         let models = environment("MODELS_DIR", "/models")?;
         let ini = environment("MODELS_INI_PATH", "/models/models.ini")?;
@@ -579,34 +575,17 @@ async fn service() -> Result<(), Box<dyn std::error::Error>> {
         backend_stats.as_ref(),
         search_roots.as_ref(),
     ) {
-        let path = environment(
-            "SEARCH_TRUSTED_PATH",
-            noevia_model_manager::search::live::TRUSTED_PATH,
-        )?;
-        #[cfg(feature = "native-routing")]
-        let trusted = routing_trusted.map(Ok).unwrap_or_else(|| {
-            noevia_model_manager::search::live::load_trusted(std::path::Path::new(&path))
+        search.set_live(noevia_model_manager::search::live::Source {
+            stats: stats.clone(),
+            models: roots.models.clone().into(),
+            ini: roots.ini.clone().into(),
+            trusted: routing_trusted,
+            // noevia#1318 step 3a: the repository estimates read the native autoconfig's cap.
+            #[cfg(feature = "native-section-autoconfig")]
+            estimates_cache_cap_mib: section_autoconfig.settings.as_ref().map(|s| s.cache_cap),
+            #[cfg(not(feature = "native-section-autoconfig"))]
+            estimates_cache_cap_mib: None,
         });
-        #[cfg(not(feature = "native-routing"))]
-        let trusted = noevia_model_manager::search::live::load_trusted(std::path::Path::new(&path));
-        match trusted {
-            Ok(trusted) => search.set_live(noevia_model_manager::search::live::Source {
-                stats: stats.clone(),
-                models: roots.models.clone().into(),
-                ini: roots.ini.clone().into(),
-                trusted,
-                // noevia#1318 step 3a: the repository estimates read the native autoconfig's cap.
-                #[cfg(feature = "native-section-autoconfig")]
-                estimates_cache_cap_mib: section_autoconfig.settings.as_ref().map(|s| s.cache_cap),
-                #[cfg(not(feature = "native-section-autoconfig"))]
-                estimates_cache_cap_mib: None,
-            }),
-            Err(reason) => eprintln!(
-                "native-search: WARNING {reason} ({path}); the search runtime (budget, downloaded \
-                 files, trusted publishers) stays with the python child until it is fixed and \
-                 model-loader restarted"
-            ),
-        }
     }
     let telemetry_native = true;
     let observe_native = true;
@@ -668,8 +647,6 @@ async fn service() -> Result<(), Box<dyn std::error::Error>> {
         docker,
         redactor,
         permits: tokio::sync::Semaphore::new(4),
-        legacy,
-        legacy_base: noevia_model_manager::LEGACY_BASE.to_owned(),
         idle_unload: Some(idle_unload),
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: {

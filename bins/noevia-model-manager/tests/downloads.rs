@@ -488,7 +488,7 @@ async fn child(plans: Arc<Mutex<Vec<(String, String, String)>>>) -> u16 {
     port
 }
 
-fn state(table: Arc<Downloads>, child_port: u16) -> Arc<StateData> {
+fn state(table: Arc<Downloads>, _legacy_trap_port: u16) -> Arc<StateData> {
     Arc::new(StateData {
         #[cfg(feature = "native-diagnose")]
         diagnosis: None,
@@ -535,8 +535,6 @@ fn state(table: Arc<Downloads>, child_port: u16) -> Arc<StateData> {
         docker: Arc::new(NoDocker),
         redactor: Redactor::new().unwrap(),
         permits: tokio::sync::Semaphore::new(16),
-        legacy: noevia_model_manager::legacy_client().unwrap(),
-        legacy_base: format!("http://127.0.0.1:{child_port}"),
         idle_unload: None,
         #[cfg(feature = "native-section-autoconfig")]
         section_autoconfig: None,
