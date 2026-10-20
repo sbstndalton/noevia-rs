@@ -551,7 +551,6 @@ async fn the_route_no_longer_asks_the_child() {
         stats.clone(),
         Arc::new(|| 1.0e9),
     )));
-    stand.lock().unwrap().guard = true;
     stand.lock().unwrap().reply = Some((500, "child asked".into()));
     let got = shown(run(&native, &path, &base, &client).await);
     assert_eq!(got.0, 200, "{}", got.1);
@@ -579,11 +578,12 @@ async fn the_route_no_longer_asks_the_child() {
     assert_eq!(got, want);
 }
 
-/// A guarded-but-unadvertised child cannot safely be used as an ingest fallback.
-/// Refuse without writing or calling its private runtime.
+/// noevia#256: the shipping process has no child, so native telemetry asks none for a telemetry
+/// guard. This is the code the shipping build runs (no test-only branch): a listener where a
+/// child would be is never connected to, and the route answers from this side, which ingests.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_guarded_child_without_the_advertisement_refuses_without_fallback() {
-    use crate::section_autoconfig::tests::{first_case, run, shown, stand_in};
+async fn native_telemetry_asks_no_child_for_a_guard() {
+    use crate::section_autoconfig::tests::{first_case, run, shown};
     let fx = fixture();
     let fit = crate::backend_stats::fit::tests::fixture();
     let fit_case = fit["cases"]
@@ -598,16 +598,16 @@ async fn a_guarded_child_without_the_advertisement_refuses_without_fallback() {
         fit_case,
         data.path(),
     ));
-    let (base, stand) = stand_in().await;
+    // Connections queue in the backlog even unaccepted, so `accept` afterwards sees any probe.
+    let trap = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    trap.set_nonblocking(true).unwrap();
+    let base = format!("http://{}", trap.local_addr().unwrap());
     let client = reqwest::Client::new();
     let section = crate::section_autoconfig::tests::fixture();
     let path = section["cases"][0]["results"][0]["path"]
         .as_str()
         .unwrap()
         .to_owned();
-    let runtime = section["cases"][0]["results"][0]["runtime"].clone();
-    stand.lock().unwrap().reply =
-        Some((200, runtime["body"].as_str().unwrap_or_default().to_owned()));
 
     let models = tempfile::tempdir().unwrap();
     let (native, _) = first_case(models.path());
@@ -617,18 +617,17 @@ async fn a_guarded_child_without_the_advertisement_refuses_without_fallback() {
         stats.clone(),
         Arc::new(|| 1.0e9),
     )));
-    // A services#98 child has already disabled ingest under confirmation=1 but
-    // answers 404 here. Its private runtime can still return old/empty measurements;
-    // never call it as a substitute for an ownership handshake.
     let got = shown(run(&native, &path, &base, &client).await);
-    assert_eq!(got.0, 503);
-    assert!(stand.lock().unwrap().seen.is_empty());
-    assert_eq!(dump(&db)["kv"], V::Array(Vec::new()));
-    stand.lock().unwrap().guard = true;
-    let again = shown(run(&native, &path, &base, &client).await);
-    assert_eq!(again, got);
-    assert!(stand.lock().unwrap().seen.is_empty());
-    assert_eq!(dump(&db)["kv"], V::Array(Vec::new()));
+    assert_eq!(got.0, 200, "{}", got.1);
+    assert!(trap.accept().is_err(), "a child was asked");
+    assert!(
+        dump(&db)["kv"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r[0] == "telemetry_last_ingest"),
+        "this side did not ingest"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -659,54 +658,4 @@ async fn each_tail_is_stored_before_reading_the_next_backend() {
         .unwrap()
         .iter()
         .any(|r| r[2] == "syn-second"));
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn guard_requires_the_exact_bounded_advertisement() {
-    use axum::{routing::get, Router};
-    for (body, expected) in [
-        (GUARD_BODY.to_vec(), Some(true)),
-        (b"{}".to_vec(), Some(false)),
-        (vec![b'x'; GUARD_BODY.len() + 1], None),
-    ] {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let server = tokio::spawn(async move {
-            axum::serve(
-                listener,
-                Router::new().route(
-                    GUARD_PATH,
-                    get(move || {
-                        let body = body.clone();
-                        async move { body }
-                    }),
-                ),
-            )
-            .await
-            .unwrap();
-        });
-        let dir = tempfile::tempdir().unwrap();
-        let stats = Arc::new(crate::backend_stats::fit::tests::stats_for(
-            &crate::backend_stats::fit::tests::fixture()["cases"][0],
-            dir.path(),
-        ));
-        let telemetry = Telemetry::new(dir.path(), stats);
-        let client = reqwest::Client::new();
-        let child = crate::section_autoconfig::Child {
-            client: &client,
-            base: &base,
-            token: "",
-        };
-        assert_eq!(telemetry.owner(&child).await, expected);
-        assert!(!dir.path().join("model_loader.db").exists());
-        server.abort();
-    }
-}
-
-#[test]
-fn unverified_owner_message_names_no_retired_selector() {
-    let line = super::unverified_owner_message(reqwest::StatusCode::NOT_FOUND);
-    assert!(!line.contains("MODEL_MANAGER_"), "{line}");
-    assert!(line.contains("telemetry guard"), "{line}");
-    assert!(line.contains("answered 404 Not Found"), "{line}");
 }

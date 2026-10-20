@@ -185,15 +185,9 @@ impl SectionAutoconfig {
         let Some(stats) = self.stats.get() else {
             return Some(Err(Outcome::Refused));
         };
-        // Mandatory bootstrap initialized the schema; no second process can own telemetry.
-        #[cfg(test)]
-        match telemetry.owner(_child).await {
-            None => return Some(Err(Outcome::Unavailable)),
-            // The confirmation has already disabled a guarded child's writer. Without
-            // its advertisement no process can safely claim ownership (#2041).
-            Some(false) => return Some(Err(Outcome::Refused)),
-            Some(true) => {}
-        }
+        // Mandatory bootstrap initialized the schema. No child telemetry guard is asked: the
+        // shipping process starts no child (noevia#2055), so it is the only telemetry writer,
+        // and its lifetime writer lease on `DATA_DIR` keeps a second manager off the store.
         let measured = match telemetry.measure(name, model_rel).await {
             Ok(m) => m,
             Err(_) => return Some(Err(Outcome::Refused)),
