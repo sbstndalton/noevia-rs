@@ -225,8 +225,38 @@ async fn state(root: &std::path::Path) -> std::sync::Arc<crate::StateData> {
         backends: None,
     })
 }
-fn root() -> tempfile::TempDir {
-    tempfile::tempdir_in(std::env::current_dir().unwrap()).unwrap()
+/// Production refuses a store whose ancestors are writable by group or others (a sticky
+/// directory is allowed only as a root-owned temporary parent), so a checkout below
+/// group-writable directories (a `umask 002` home, say) cannot host the test stores.
+fn ancestry_is_private(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    path.ancestors().all(|ancestor| {
+        std::fs::symlink_metadata(ancestor).is_ok_and(|m| {
+            m.is_dir() && (m.mode() & 0o022 == 0 || (m.mode() & 0o1000 != 0 && m.uid() == 0))
+        })
+    })
+}
+/// A fresh private test store directory. `S1_PROMPTS_TEST_ROOT` names the parent explicitly; otherwise
+/// the working directory (a symlink-free path on every platform, unlike macOS's usual temporary
+/// root), or the system temporary directory when the working directory's ancestry is not private.
+pub(super) fn root() -> tempfile::TempDir {
+    let base = std::env::var_os("S1_PROMPTS_TEST_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            let here = std::env::current_dir().unwrap();
+            if ancestry_is_private(&here) {
+                here
+            } else {
+                std::env::temp_dir()
+            }
+        });
+    // Production refuses a store directory that group or others can write, so it is made private
+    // whatever the umask (a `umask 002` shell would otherwise create it group-writable).
+    use std::os::unix::fs::PermissionsExt;
+    tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir_in(base)
+        .unwrap()
 }
 #[test]
 fn prompt_namespace_preserves_unrelated_malformed_ownership() {

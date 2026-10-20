@@ -403,21 +403,34 @@ where
 
 #[cfg(test)]
 mod live {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
-    pub static COUNT: AtomicUsize = AtomicUsize::new(0);
+    std::thread_local! {
+        /// Each test runs on its own thread (its own current-thread runtime), so the live
+        /// drivers it starts are counted apart from those of tests running in parallel.
+        static COUNT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    }
 
     /// Counted from spawn until the driver's future is dropped, whether it finished or was aborted.
-    pub struct Guard;
+    pub struct Guard(Arc<AtomicUsize>);
 
     pub fn enter() -> Guard {
-        COUNT.fetch_add(1, Ordering::SeqCst);
-        Guard
+        let count = COUNT.with(Arc::clone);
+        count.fetch_add(1, Ordering::SeqCst);
+        Guard(count)
+    }
+
+    /// Drivers started from the calling test's thread that are not yet dropped.
+    pub fn count() -> usize {
+        COUNT.with(|count| count.load(Ordering::SeqCst))
     }
 
     impl Drop for Guard {
         fn drop(&mut self) {
-            COUNT.fetch_sub(1, Ordering::SeqCst);
+            self.0.fetch_sub(1, Ordering::SeqCst);
         }
     }
 }
@@ -875,12 +888,8 @@ pub fn decode_frames(raw: &[u8], tty: bool) -> Result<Vec<u8>, &'static str> {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
-    use std::sync::atomic::Ordering;
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-    /// The driver counter is process-wide, so these controls run one at a time.
-    static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     /// A synthetic Unix Docker peer: reads one request head, writes `response`, then keeps the
     /// socket open until the client closes it, so a refused read never sees an end of stream.
@@ -909,7 +918,6 @@ mod tests {
 
     #[tokio::test]
     async fn answered_read_observes_its_driver_join() {
-        let _serial = SERIAL.lock().await;
         let (_root, socket, peer) =
             serve(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}".to_vec());
         let docker = UnixDocker { socket };
@@ -917,25 +925,23 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, b"{}");
         // Admission may be released once read returns, so its driver must already be joined.
-        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+        assert_eq!(live::count(), 0);
         peer.await.unwrap();
     }
 
     #[tokio::test]
     async fn refused_framing_observes_its_driver_join() {
-        let _serial = SERIAL.lock().await;
         let (_root, socket, peer) = serve(
             b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{}".to_vec(),
         );
         let docker = UnixDocker { socket };
         assert!(docker.read("/containers/synthetic/json").await.is_err());
-        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+        assert_eq!(live::count(), 0);
         peer.await.unwrap();
     }
 
     #[tokio::test]
     async fn early_refusal_with_pending_body_observes_its_driver_join() {
-        let _serial = SERIAL.lock().await;
         // The declared length is over the cap, so read refuses from the headers while the body
         // is still pending on the open socket: the driver is live when the refusal is returned.
         let (_root, socket, peer) = serve(
@@ -946,7 +952,7 @@ mod tests {
             docker.read("/containers/synthetic/json").await,
             Err("Docker response exceeded limit")
         ));
-        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+        assert_eq!(live::count(), 0);
         peer.await.unwrap();
     }
 
@@ -956,7 +962,6 @@ mod tests {
     #[tokio::test]
     async fn the_telemetry_log_read_has_its_own_cap() {
         use crate::backend_stats::DockerApi;
-        let _serial = SERIAL.lock().await;
         let logs = format!("/containers/{}/logs?{TELEMETRY_LOGS_QUERY}", "a".repeat(64));
         let body = vec![b'x'; LOG_CAP + 1];
         let mut answer =
@@ -981,7 +986,7 @@ mod tests {
             .into_bytes(),
         );
         assert_eq!(UnixDocker { socket }.get(&logs).await.err(), Some(EXCEEDED));
-        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+        assert_eq!(live::count(), 0);
         peer.await.unwrap();
     }
 
@@ -1076,7 +1081,6 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_timed_out_request_returns_its_permit_only_after_the_driver_join() {
         use tower::ServiceExt;
-        let _serial = SERIAL.lock().await;
         let (_root, socket, _stop) = silent();
         let state = admitted_state(socket);
         let response = crate::router(state.clone())
@@ -1086,18 +1090,17 @@ mod tests {
         assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
         // The permit is back, and the driver the timed-out read left behind is already joined.
         assert_eq!(state.permits.available_permits(), 4);
-        assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+        assert_eq!(live::count(), 0);
     }
 
     #[tokio::test]
     async fn a_dropped_request_holds_its_permit_until_the_driver_join_is_observed() {
         use tower::ServiceExt;
-        let _serial = SERIAL.lock().await;
         let (_root, socket, _stop) = silent();
         let state = admitted_state(socket);
         let mut request = Box::pin(crate::router(state.clone()).oneshot(logs_request()));
         let started = std::time::Instant::now();
-        while live::COUNT.load(Ordering::SeqCst) == 0 {
+        while live::count() == 0 {
             tokio::select! {
                 biased;
                 _ = &mut request => panic!("the silent peer answered"),
@@ -1111,7 +1114,7 @@ mod tests {
         assert_eq!(state.permits.available_permits(), 3);
         // The client goes away: the request future is dropped mid-read.
         drop(request);
-        let live_now = live::COUNT.load(Ordering::SeqCst);
+        let live_now = live::count();
         assert!(
             state.permits.available_permits() == 3 || live_now == 0,
             "the permit came back while a driver ({live_now}) was still unjoined"
@@ -1121,7 +1124,7 @@ mod tests {
         loop {
             let permits = state.permits.available_permits();
             if permits == 4 {
-                assert_eq!(live::COUNT.load(Ordering::SeqCst), 0);
+                assert_eq!(live::count(), 0);
                 break;
             }
             assert!(

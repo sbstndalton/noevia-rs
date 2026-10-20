@@ -11,6 +11,12 @@ fn native_cutoffs_match_bound_actual_sdk_utc_wire_and_refuse_narrowed_dates() {
     use std::io::Read;
     let path = std::env::var_os("NOEVIA_DIAGNOSE_SDK_ORACLE")
         .unwrap_or_else(|| "/tmp/s1-diagnose-sdk-wire-final-gate.json".into());
+    // The oracle comes from the actual Docker SDK (the diagnose CI job generates it). On GitHub
+    // Actions its absence fails the test; anywhere else the test says it skipped and why.
+    if !std::path::Path::new(&path).exists() && std::env::var_os("GITHUB_ACTIONS").is_none() {
+        eprintln!("skipped: SDK wire oracle {path:?} is missing; set NOEVIA_DIAGNOSE_SDK_ORACLE");
+        return;
+    }
     let file = std::fs::File::open(path).unwrap();
     assert!(file.metadata().unwrap().len() <= 1_048_576);
     let mut bytes = Vec::new();
