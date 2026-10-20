@@ -909,6 +909,8 @@ pub fn decode_frames(raw: &[u8], tty: bool) -> Result<Vec<u8>, &'static str> {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     #[test]
     fn the_live_counter_refuses_a_multi_thread_runtime() {
@@ -926,8 +928,6 @@ mod tests {
     async fn the_live_counter_accepts_the_current_thread_runtime() {
         assert_eq!(super::live::count(), 0);
     }
-    use std::time::Duration;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     /// A synthetic Unix Docker peer: reads one request head, writes `response`, then keeps the
     /// socket open until the client closes it, so a refused read never sees an end of stream.

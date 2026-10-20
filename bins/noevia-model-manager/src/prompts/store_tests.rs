@@ -517,6 +517,28 @@ fn row_response_dynamic_type_and_vm_work_limits_refuse() {
     assert_eq!(run(&mut s, Operation::List), Err(Error::Limit));
 }
 #[test]
+fn an_open_past_its_budget_or_cancelled_fails_as_a_store_error() {
+    // Test opens get the larger `OPEN_DEADLINE`, but the budget is still enforced. Each refused open
+    // uses its own directory: a just-dropped store's lock descriptor can be briefly held by a forked
+    // child (noevia#1939), so the refused roots are not reopened here without the bounded retry.
+    let expired_root = root();
+    let expired = Store::open_budget(
+        expired_root.path(),
+        Instant::now() - Duration::from_millis(1),
+        Arc::new(AtomicBool::new(false)),
+    );
+    assert!(matches!(expired, Err(Error::Store)));
+    let cancelled_root = root();
+    let cancelled = Store::open_budget(
+        cancelled_root.path(),
+        Instant::now() + OPEN_DEADLINE,
+        Arc::new(AtomicBool::new(true)),
+    );
+    assert!(matches!(cancelled, Err(Error::Store)));
+    assert!(open_retrying(expired_root.path()).is_ok());
+}
+
+#[test]
 fn bounded_busy_wait_does_not_retry_or_write_later() {
     let root = root();
     let mut s = open(root.path());

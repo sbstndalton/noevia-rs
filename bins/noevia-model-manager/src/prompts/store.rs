@@ -19,6 +19,15 @@ use std::{
 use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
 type Result<T> = std::result::Result<T, Error>;
 const DEADLINE: Duration = Duration::from_secs(5);
+/// Budget for opening a store, schema bootstrap included. Production uses `DEADLINE`. Tests run on
+/// hosts that can be heavily loaded (#262: `PRAGMA journal_mode=WAL` was interrupted at the 5 s
+/// budget), so they get a larger one. The budget is still enforced: an expired open still fails.
+#[cfg(not(test))]
+const OPEN_DEADLINE: Duration = DEADLINE;
+#[cfg(test)]
+const OPEN_DEADLINE: Duration = Duration::from_secs(120);
+#[cfg(test)]
+const _: () = assert!(OPEN_DEADLINE.as_secs() >= DEADLINE.as_secs());
 struct Cancel(Arc<AtomicBool>);
 impl Drop for Cancel {
     fn drop(&mut self) {
@@ -85,7 +94,7 @@ impl Prompts {
         clock: fn() -> Result<f64>,
         full_schema: bool,
     ) -> Result<Self> {
-        let start = Instant::now() + DEADLINE;
+        let start = Instant::now() + OPEN_DEADLINE;
         let cancel = Cancel(Arc::new(AtomicBool::new(false)));
         let startup_cancel = cancel.0.clone();
         let root = root.to_owned();
@@ -310,7 +319,7 @@ impl Store {
     fn open(root: &Path) -> Result<Self> {
         Self::open_budget(
             root,
-            Instant::now() + DEADLINE,
+            Instant::now() + OPEN_DEADLINE,
             Arc::new(AtomicBool::new(false)),
         )
     }
