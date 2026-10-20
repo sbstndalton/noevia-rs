@@ -1425,7 +1425,7 @@ mod tests {
             (0, r#"{"mib":8192}"#.into())
         );
         assert_eq!(
-            run(5, r#"{"model":"Nomic-EMBED","options":{}}"#),
+            run(5, r#"{"model":"Synthetic-EMBED","options":{}}"#),
             (0, r#"{"free":true}"#.into())
         );
         assert_eq!(

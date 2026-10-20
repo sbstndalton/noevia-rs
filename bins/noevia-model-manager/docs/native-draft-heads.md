@@ -1,6 +1,6 @@
 # Native draft-head read (noevia#1318 slice 12)
 
-`native-draft-heads` serves `GET /api/v1/sections/{name}/draft-heads`, and it is the only path; the former `MODEL_MANAGER_DRAFT_HEADS_IMPL` selector is retired and ignored. The confirmed child (`NOEVIA_NATIVE_MODEL_MANAGER_DRAFT_HEADS_CONFIRMED=1`) refuses that GET with 503, so the read is answered by one process. The child gets the same `MODELS_DIR`, `MODELS_INI_PATH` and `DATA_DIR`. A case-folded spelling of any of them keeps Python serving the route, with one log line.
+`native-draft-heads` serves `GET /api/v1/sections/{name}/draft-heads`, and it is the only path; the former `MODEL_MANAGER_DRAFT_HEADS_IMPL` selector is retired and ignored. The confirmed child (`NOEVIA_NATIVE_MODEL_MANAGER_DRAFT_HEADS_CONFIRMED=1`) refuses that GET with 503, so the read is answered by one process. The child gets the same `MODELS_DIR`, `MODELS_INI_PATH` and `DATA_DIR`. A case-folded spelling of any of them makes startup fail (the service does not start; nothing falls back to Python).
 
 Only GET with a name segment that does not decode to `/` is native. Other methods get the front's 405, as FastAPI answers. A name with `%2F` is forwarded and gets Python's 404. The draft-head download (`POST .../draft-heads/download`) follows the native download table (`native-downloads`). The route keeps a forwarded route's time budget, because it waits on the Hub.
 

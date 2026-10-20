@@ -167,12 +167,7 @@ impl Telemetry {
             return None;
         };
         if self.owner.set(native).is_ok() && !native {
-            eprintln!(
-                "noevia-model-manager: MODEL_MANAGER_TELEMETRY_IMPL=rust, but the Python child does \
-                 not advertise the telemetry guard ({GUARD_PATH} answered {status}); native telemetry is \
-                 unavailable because ownership cannot be verified. Deploy a services image \
-                 with the guard, then restart"
-            );
+            eprintln!("{}", unverified_owner_message(status));
         }
         self.owner.get().copied()
     }
@@ -478,6 +473,17 @@ fn render(stats: &bt::Stats, history: &[bt::ConfigRun]) -> Measured {
 
 fn empty() -> Measured {
     render(&bt::Stats::default(), &[])
+}
+
+/// The line printed when the child does not advertise its telemetry guard. Only the test-only
+/// ownership probe prints it.
+#[cfg(test)]
+fn unverified_owner_message(status: reqwest::StatusCode) -> String {
+    format!(
+        "noevia-model-manager: the Python child does not advertise the telemetry guard \
+         ({GUARD_PATH} answered {status}); native telemetry is unavailable because ownership \
+         cannot be verified. Deploy a services image with the guard, then restart"
+    )
 }
 
 #[cfg(test)]

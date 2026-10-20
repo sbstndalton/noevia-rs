@@ -1,6 +1,6 @@
 # Native badge writes (noevia#1318)
 
-`native-badges` with `MODEL_MANAGER_BADGES_IMPL=rust` (and `MODEL_MANAGER_IMPL=rust`) serves `PUT /api/v1/badges` and `DELETE /api/v1/badges` from the Rust front. Default `python`; nothing changes until the owner switches it on. `GET /api/v1/benchmark/runs/{id}` and the models list, which also read badges, stay with Python and read the same `DATA_DIR/model_loader.db`.
+`native-badges` serves `PUT /api/v1/badges` and `DELETE /api/v1/badges` from the Rust front, and it is the only path; the former `MODEL_MANAGER_BADGES_IMPL` selector is retired and ignored. `GET /api/v1/benchmark/runs/{id}` and the models list, which also read badges, stay with Python and read the same `DATA_DIR/model_loader.db`.
 
 ## Behaviour
 
@@ -19,7 +19,7 @@ Python answered 500 for a non-numeric `rating` or `runId`, truncated `2.9` to 2,
 ## Ownership
 
 - Child confirmation `NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED=1` only in native mode, when the Python child refuses both methods with 503. In python mode an inherited value is removed. The child gets the same canonical `DATA_DIR`.
-- `rust` without `MODEL_MANAGER_IMPL=rust` or the compiled feature refuses startup before the child starts.
+- The route is compiled into mandatory `native-routing`, so no environment setting turns it off.
 
 ## Differential evidence
 

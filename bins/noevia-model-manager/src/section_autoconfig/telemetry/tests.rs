@@ -702,3 +702,11 @@ async fn guard_requires_the_exact_bounded_advertisement() {
         server.abort();
     }
 }
+
+#[test]
+fn unverified_owner_message_names_no_retired_selector() {
+    let line = super::unverified_owner_message(reqwest::StatusCode::NOT_FOUND);
+    assert!(!line.contains("MODEL_MANAGER_"), "{line}");
+    assert!(line.contains("telemetry guard"), "{line}");
+    assert!(line.contains("answered 404 Not Found"), "{line}");
+}
