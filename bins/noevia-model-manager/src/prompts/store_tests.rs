@@ -8,12 +8,24 @@ use super::*;
 #[allow(dead_code)]
 #[path = "../bin/support/prompts_process.rs"]
 mod prompts_process;
-fn root() -> tempfile::TempDir {
-    // Production rejects symlink ancestors. macOS's usual /var temporary root is a symlink.
-    let path = std::env::var_os("S1_PROMPTS_TEST_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap());
-    tempfile::tempdir_in(path).unwrap()
+// Production rejects symlink ancestors. macOS's usual /var temporary root is a symlink.
+use crate::prompts::tests::root;
+/// An external program or source tree a qualification test cannot run without (`var` names where
+/// it is). On GitHub Actions a missing one fails the test with `why`, so a CI job can never pass
+/// without having run it. Anywhere else, including a local shell that merely sets `CI`, the test
+/// says what it skipped and why, and returns.
+fn external(var: &str, what: &str, why: &str) -> Option<std::ffi::OsString> {
+    let found = std::env::var_os(var);
+    if found.is_none() {
+        assert!(std::env::var_os("GITHUB_ACTIONS").is_none(), "{why}");
+        eprintln!("skipped: {what} needs {var}, which is not set");
+    }
+    found
+}
+/// A store directory the test creates itself: private whatever the umask, as production requires.
+fn private_dir(path: &Path) {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new().mode(0o700).create(path).unwrap();
 }
 /// `Store::open` takes a non-blocking flock on `model_loader.db.prompts.lock`. The lock belongs to
 /// the open file description, so while another test thread in this binary is between `fork` and
@@ -410,11 +422,11 @@ fn sqlite_companion_lifecycle_keeps_root_database_and_lock_identity_strict() {
     }
     let outer = root();
     let path = outer.path().join("stable-root");
-    std::fs::create_dir(&path).unwrap();
+    private_dir(&path);
     let mut s = open(&path);
     let held = outer.path().join("held-root");
     std::fs::rename(&path, &held).unwrap();
-    std::fs::create_dir(&path).unwrap();
+    private_dir(&path);
     assert_eq!(run(&mut s, Operation::List), Err(Error::Store));
     std::fs::remove_dir(&path).unwrap();
     std::fs::rename(&held, &path).unwrap();
@@ -650,11 +662,11 @@ async fn actual_python_indirect_readers_observe_native_commits_on_same_file() {
             }
         }
     }
-    let Some(source) = std::env::var_os("NOEVIA_PROMPTS_APP") else {
-        assert!(
-            std::env::var_os("CI").is_none(),
-            "CI must run actual indirect reader qualification"
-        );
+    let Some(source) = external(
+        "NOEVIA_PROMPTS_APP",
+        "the actual indirect reader qualification",
+        "CI must run actual indirect reader qualification",
+    ) else {
         return;
     };
     let source = std::path::PathBuf::from(source);
@@ -756,11 +768,11 @@ print(json.dumps({'list':db.list_prompts(),'selected':[dict(r) for r in db.promp
 #[cfg_attr(target_os = "linux", test)]
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn sqlite_locks_survive_raw_startup_verification() {
-    let Some(python) = std::env::var_os("PYTHON") else {
-        assert!(
-            std::env::var_os("CI").is_none(),
-            "CI requires Python lock probe"
-        );
+    let Some(python) = external(
+        "PYTHON",
+        "the Python lock probe",
+        "CI requires Python lock probe",
+    ) else {
         return;
     };
     let root = root();
@@ -795,11 +807,11 @@ with open(sys.argv[1],'r+b') as f:
 async fn actual_python_concurrent_reader_snapshot_and_native_delete_visibility() {
     use sha2::{Digest, Sha256};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let Some(source) = std::env::var_os("NOEVIA_PROMPTS_APP") else {
-        assert!(
-            std::env::var_os("CI").is_none(),
-            "CI requires actual concurrent reader"
-        );
+    let Some(source) = external(
+        "NOEVIA_PROMPTS_APP",
+        "the actual concurrent reader",
+        "CI requires actual concurrent reader",
+    ) else {
         return;
     };
     let source = PathBuf::from(source);
