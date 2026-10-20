@@ -110,8 +110,8 @@ fn fixture_with(tune: impl FnOnce(EmbeddingService) -> EmbeddingService) -> Fixt
     let dir = tempfile::tempdir().unwrap();
     let models = dir.path().join("models");
     for file in [
-        "nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf",
-        "embeddinggemma-2/embeddinggemma-2-Q8_0.gguf",
+        "embed-main-v1/embed-main-v1.Q8_0.gguf",
+        "embed-alt-2/embed-alt-2-Q8_0.gguf",
     ] {
         let path = models.join(file);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -140,10 +140,10 @@ fn fixture_with(tune: impl FnOnce(EmbeddingService) -> EmbeddingService) -> Fixt
     }
 }
 
-const NOMIC: &str = "nomic-embed-text-v1";
-const NOMIC_FILE: &str = "nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf";
-const GEMMA: &str = "embeddinggemma-2";
-const GEMMA_FILE: &str = "embeddinggemma-2/embeddinggemma-2-Q8_0.gguf";
+const EMBED_MAIN: &str = "embed-main-v1";
+const EMBED_MAIN_FILE: &str = "embed-main-v1/embed-main-v1.Q8_0.gguf";
+const EMBED_ALT: &str = "embed-alt-2";
+const EMBED_ALT_FILE: &str = "embed-alt-2/embed-alt-2-Q8_0.gguf";
 
 fn entry(model: &str, file: &str) -> Entry {
     Entry {
@@ -171,13 +171,13 @@ async fn settle(f: &Fixture) {
 #[test]
 fn env_seeds_once_and_saved_state_wins_afterwards() {
     let f = fixture();
-    let seeded = f.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    assert_eq!(seeded.models, vec![entry(NOMIC, NOMIC_FILE)]);
-    assert!(preset(&f).contains("[nomic-embed-text-v1]\nmodel = /models/nomic-embed-text-v1/"));
+    let seeded = f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
+    assert_eq!(seeded.models, vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]);
+    assert!(preset(&f).contains("[embed-main-v1]\nmodel = /models/embed-main-v1/"));
     // A later boot with a different env keeps the saved state.
-    let again = f.service.seed(GEMMA, GEMMA_FILE).unwrap();
-    assert_eq!(again.models, vec![entry(NOMIC, NOMIC_FILE)]);
-    assert!(!preset(&f).contains(GEMMA));
+    let again = f.service.seed(EMBED_ALT, EMBED_ALT_FILE).unwrap();
+    assert_eq!(again.models, vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]);
+    assert!(!preset(&f).contains(EMBED_ALT));
 }
 
 #[test]
@@ -191,31 +191,34 @@ fn unset_seed_means_off_and_preset_has_no_model() {
 #[test]
 fn preset_is_rerendered_from_saved_state_on_boot() {
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     std::fs::write(f.dir.path().join("config/embedding.ini"), "hand edit").unwrap();
-    f.service.seed(GEMMA, GEMMA_FILE).unwrap();
-    assert!(preset(&f).contains("[nomic-embed-text-v1]"));
+    f.service.seed(EMBED_ALT, EMBED_ALT_FILE).unwrap();
+    assert!(preset(&f).contains("[embed-main-v1]"));
 }
 
 #[tokio::test]
 async fn switch_serves_both_while_reindexing_then_frees_the_old_model() {
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    f.router.set(&[(NOMIC, true)]);
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
+    f.router.set(&[(EMBED_MAIN, true)]);
     // Start: the active model keeps serving search while the next one is built.
     let saved = f
         .service
-        .apply(serve(&[(NOMIC, NOMIC_FILE), (GEMMA, GEMMA_FILE)]))
+        .apply(serve(&[
+            (EMBED_MAIN, EMBED_MAIN_FILE),
+            (EMBED_ALT, EMBED_ALT_FILE),
+        ]))
         .await
         .unwrap();
     assert!(saved.previous.is_empty());
     assert_eq!(*f.control.actions.lock().unwrap(), vec![Action::Restart]);
     let text = preset(&f);
     assert!(
-        text.contains("[nomic-embed-text-v1]")
-            && text.contains("[embeddinggemma-2]\nmodel = /models/embeddinggemma-2/")
+        text.contains("[embed-main-v1]")
+            && text.contains("[embed-alt-2]\nmodel = /models/embed-alt-2/")
     );
-    f.router.set(&[(NOMIC, false), (GEMMA, false)]);
+    f.router.set(&[(EMBED_MAIN, false), (EMBED_ALT, false)]);
     settle(&f).await;
     for _ in 0..100 {
         if f.router.models.lock().unwrap().iter().all(|m| m.loaded) {
@@ -223,24 +226,29 @@ async fn switch_serves_both_while_reindexing_then_frees_the_old_model() {
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    assert!(f.router.loads.lock().unwrap().contains(&GEMMA.to_owned()));
-    assert!(f.service.protects(NOMIC_FILE).await);
-    assert!(f.service.protects(GEMMA).await);
+    assert!(f
+        .router
+        .loads
+        .lock()
+        .unwrap()
+        .contains(&EMBED_ALT.to_owned()));
+    assert!(f.service.protects(EMBED_MAIN_FILE).await);
+    assert!(f.service.protects(EMBED_ALT).await);
     // Finish: only the new model stays. The old one is protected until the router drops it.
     let saved = f
         .service
-        .apply(serve(&[(GEMMA, GEMMA_FILE)]))
+        .apply(serve(&[(EMBED_ALT, EMBED_ALT_FILE)]))
         .await
         .unwrap();
-    assert_eq!(saved.previous, vec![entry(NOMIC, NOMIC_FILE)]);
-    assert!(!preset(&f).contains(NOMIC));
-    assert!(f.service.protects(NOMIC_FILE).await);
-    f.router.set(&[(GEMMA, true)]);
+    assert_eq!(saved.previous, vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]);
+    assert!(!preset(&f).contains(EMBED_MAIN));
+    assert!(f.service.protects(EMBED_MAIN_FILE).await);
+    f.router.set(&[(EMBED_ALT, true)]);
     settle(&f).await;
     assert!(f.service.saved().unwrap().unwrap().previous.is_empty());
-    assert!(!f.service.protects(NOMIC_FILE).await);
-    assert!(!f.service.protects("nomic-embed-text-v1").await);
-    assert!(f.service.protects(GEMMA_FILE).await);
+    assert!(!f.service.protects(EMBED_MAIN_FILE).await);
+    assert!(!f.service.protects("embed-main-v1").await);
+    assert!(f.service.protects(EMBED_ALT_FILE).await);
     assert_eq!(
         *f.control.actions.lock().unwrap(),
         vec![Action::Restart, Action::Restart]
@@ -250,34 +258,34 @@ async fn switch_serves_both_while_reindexing_then_frees_the_old_model() {
 #[tokio::test]
 async fn old_model_stays_protected_while_the_router_still_reports_it_loaded() {
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    f.router.set(&[(NOMIC, true)]);
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
+    f.router.set(&[(EMBED_MAIN, true)]);
     f.service
-        .apply(serve(&[(GEMMA, GEMMA_FILE)]))
+        .apply(serve(&[(EMBED_ALT, EMBED_ALT_FILE)]))
         .await
         .unwrap();
-    // The router has not restarted yet: nomic is still the loaded model.
+    // The router has not restarted yet: the main embedding model is still the loaded model.
     tokio::time::sleep(Duration::from_millis(60)).await;
     assert_eq!(
         f.service.saved().unwrap().unwrap().previous,
-        vec![entry(NOMIC, NOMIC_FILE)]
+        vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]
     );
-    assert!(f.service.protects(NOMIC_FILE).await);
+    assert!(f.service.protects(EMBED_MAIN_FILE).await);
 }
 
 #[tokio::test]
 async fn turning_off_stops_the_service_and_frees_the_last_model() {
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    f.router.set(&[(NOMIC, true)]);
-    assert!(f.service.protects(NOMIC).await);
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
+    f.router.set(&[(EMBED_MAIN, true)]);
+    assert!(f.service.protects(EMBED_MAIN).await);
     let saved = f.service.apply(Desired::default()).await.unwrap();
     assert!(saved.models.is_empty() && saved.previous.is_empty());
     assert_eq!(*f.control.actions.lock().unwrap(), vec![Action::Stop]);
     assert!(!preset(&f).contains('['));
     // The stopped container answers nothing.
     *f.router.reachable.lock().unwrap() = false;
-    assert!(!f.service.protects(NOMIC_FILE).await);
+    assert!(!f.service.protects(EMBED_MAIN_FILE).await);
     let status = f.service.status().await;
     assert_eq!(status["enabled"], false);
     assert_eq!(status["running"]["reachable"], false);
@@ -287,10 +295,10 @@ async fn turning_off_stops_the_service_and_frees_the_last_model() {
 async fn delete_protection_follows_running_state_not_only_saved_state() {
     let f = fixture();
     f.service.seed("", "").unwrap();
-    // Saved says off, but the router still reports nomic loaded: never delete it (#336).
-    f.router.set(&[(NOMIC, true)]);
-    assert!(f.service.protects(NOMIC).await);
-    assert!(!f.service.protects(GEMMA_FILE).await);
+    // Saved says off, but the router still reports the main embedding model loaded: never delete it (#336).
+    f.router.set(&[(EMBED_MAIN, true)]);
+    assert!(f.service.protects(EMBED_MAIN).await);
+    assert!(!f.service.protects(EMBED_ALT_FILE).await);
 }
 
 #[tokio::test]
@@ -307,18 +315,18 @@ async fn unreadable_saved_state_fails_closed() {
 #[tokio::test]
 async fn invalid_requests_are_refused_without_touching_docker() {
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     for bad in [
-        serve(&[(GEMMA, "../etc/passwd.gguf")]),
-        serve(&[(GEMMA, "/abs/model.gguf")]),
-        serve(&[(GEMMA, "missing/model.gguf")]),
-        serve(&[(GEMMA, "embeddinggemma-2/notes.txt")]),
-        serve(&[("bad]\n[x", GEMMA_FILE)]),
-        serve(&[(GEMMA, GEMMA_FILE), (GEMMA, GEMMA_FILE)]),
+        serve(&[(EMBED_ALT, "../etc/passwd.gguf")]),
+        serve(&[(EMBED_ALT, "/abs/model.gguf")]),
+        serve(&[(EMBED_ALT, "missing/model.gguf")]),
+        serve(&[(EMBED_ALT, "embed-alt-2/notes.txt")]),
+        serve(&[("bad]\n[x", EMBED_ALT_FILE)]),
+        serve(&[(EMBED_ALT, EMBED_ALT_FILE), (EMBED_ALT, EMBED_ALT_FILE)]),
         serve(&[
-            (NOMIC, NOMIC_FILE),
-            (GEMMA, GEMMA_FILE),
-            ("third", GEMMA_FILE),
+            (EMBED_MAIN, EMBED_MAIN_FILE),
+            (EMBED_ALT, EMBED_ALT_FILE),
+            ("third", EMBED_ALT_FILE),
         ]),
     ] {
         assert!(matches!(
@@ -329,7 +337,7 @@ async fn invalid_requests_are_refused_without_touching_docker() {
     assert!(f.control.actions.lock().unwrap().is_empty());
     assert_eq!(
         f.service.saved().unwrap().unwrap().models,
-        vec![entry(NOMIC, NOMIC_FILE)]
+        vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]
     );
 }
 
@@ -341,7 +349,7 @@ fn symlink_escape_from_models_dir_is_refused() {
     std::os::unix::fs::symlink(&outside, f.dir.path().join("models/escape.gguf")).unwrap();
     let rt = tokio::runtime::Runtime::new().unwrap();
     assert!(matches!(
-        rt.block_on(f.service.apply(serve(&[(GEMMA, "escape.gguf")]))),
+        rt.block_on(f.service.apply(serve(&[(EMBED_ALT, "escape.gguf")]))),
         Err(Refusal::Invalid(_))
     ));
 }
@@ -535,13 +543,13 @@ async fn call(state: Arc<StateData>, method: &str, path: &str, body: &str) -> (u
 #[tokio::test]
 async fn delete_route_refuses_the_service_model_before_python_sees_it() {
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    f.router.set(&[(NOMIC, true)]);
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
+    f.router.set(&[(EMBED_MAIN, true)]);
     let (status, body) = call(
         state(f.service.clone()),
         "POST",
         "/api/v1/models/delete",
-        r#"{"models":["nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf"]}"#,
+        r#"{"models":["embed-main-v1/embed-main-v1.Q8_0.gguf"]}"#,
     )
     .await;
     assert_eq!(status, 409);
@@ -551,13 +559,13 @@ async fn delete_route_refuses_the_service_model_before_python_sees_it() {
 #[tokio::test]
 async fn service_route_reports_and_applies_choices() {
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    f.router.set(&[(NOMIC, true)]);
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
+    f.router.set(&[(EMBED_MAIN, true)]);
     let s = state(f.service.clone());
     let (status, body) = call(s.clone(), "GET", "/api/v1/embedding-service", "").await;
     assert_eq!(status, 200);
-    assert_eq!(body["models"][0]["model"], NOMIC);
-    assert_eq!(body["running"]["loaded"][0], NOMIC);
+    assert_eq!(body["models"][0]["model"], EMBED_MAIN);
+    assert_eq!(body["running"]["loaded"][0], EMBED_MAIN);
     let (status, _) = call(
         s.clone(),
         "PUT",
@@ -574,9 +582,9 @@ async fn service_route_reports_and_applies_choices() {
 #[tokio::test]
 async fn boot_warms_the_saved_models_so_the_router_reports_them_loaded() {
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     // After a container restart the router lists the preset but has not loaded it yet.
-    f.router.set(&[(NOMIC, false)]);
+    f.router.set(&[(EMBED_MAIN, false)]);
     f.service.start_warm();
     for _ in 0..100 {
         tokio::time::sleep(Duration::from_millis(5)).await;
@@ -584,7 +592,7 @@ async fn boot_warms_the_saved_models_so_the_router_reports_them_loaded() {
             break;
         }
     }
-    assert_eq!(*f.router.loads.lock().unwrap(), vec![NOMIC.to_owned()]);
+    assert_eq!(*f.router.loads.lock().unwrap(), vec![EMBED_MAIN.to_owned()]);
     assert!(
         f.control.actions.lock().unwrap().is_empty(),
         "boot never restarts or stops anything"
@@ -660,7 +668,7 @@ fn a_bad_state_file_or_read_only_config_leaves_an_error_state_that_refuses_delet
         "{not json",
     )
     .unwrap();
-    assert!(f.service.seed(NOMIC, NOMIC_FILE).is_err());
+    assert!(f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).is_err());
     assert!(rt.block_on(f.service.protects("anything.gguf")));
     assert!(rt.block_on(f.service.status())["error"].is_string());
     // Preset directory not writable (stands in for a read-only /config): nothing saved, so only
@@ -669,7 +677,7 @@ fn a_bad_state_file_or_read_only_config_leaves_an_error_state_that_refuses_delet
     std::fs::remove_dir_all(f.dir.path().join("config")).unwrap();
     assert!(f.service.seed("", "").is_err());
     assert!(f.service.saved().unwrap().is_none());
-    assert!(rt.block_on(f.service.protects(NOMIC_FILE)));
+    assert!(rt.block_on(f.service.protects(EMBED_MAIN_FILE)));
     assert!(rt.block_on(f.service.status())["error"].is_string());
 }
 
@@ -678,8 +686,8 @@ fn an_empty_first_boot_seed_is_not_saved_as_off_for_good() {
     let f = fixture();
     assert!(f.service.seed("", "").unwrap().models.is_empty());
     assert!(f.service.saved().unwrap().is_none());
-    let seeded = f.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    assert_eq!(seeded.models, vec![entry(NOMIC, NOMIC_FILE)]);
+    let seeded = f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
+    assert_eq!(seeded.models, vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]);
 }
 
 // Docker that never answers.
@@ -709,22 +717,22 @@ async fn a_docker_timeout_rolls_back_and_keeps_both_models_protected() {
         )
         .with_act_timeout(Duration::from_millis(50)),
     );
-    service.seed(NOMIC, NOMIC_FILE).unwrap();
-    let result = service.apply(serve(&[(GEMMA, GEMMA_FILE)])).await;
+    service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
+    let result = service.apply(serve(&[(EMBED_ALT, EMBED_ALT_FILE)])).await;
     assert!(matches!(result, Err(Refusal::Unavailable(_))));
     let saved = service.saved().unwrap().unwrap();
-    assert_eq!(saved.models, vec![entry(NOMIC, NOMIC_FILE)]);
-    assert_eq!(saved.previous, vec![entry(GEMMA, GEMMA_FILE)]);
+    assert_eq!(saved.models, vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]);
+    assert_eq!(saved.previous, vec![entry(EMBED_ALT, EMBED_ALT_FILE)]);
     let ini = std::fs::read_to_string(dir.path().join("config/embedding.ini")).unwrap();
-    assert!(ini.contains(NOMIC) && !ini.contains(GEMMA));
+    assert!(ini.contains(EMBED_MAIN) && !ini.contains(EMBED_ALT));
     // Docker may still restart onto either preset: both stay protected.
-    assert!(service.protects(NOMIC_FILE).await);
-    assert!(service.protects(GEMMA_FILE).await);
+    assert!(service.protects(EMBED_MAIN_FILE).await);
+    assert!(service.protects(EMBED_ALT_FILE).await);
     // Turning off from the same state also rolls back instead of claiming it is off.
     assert!(service.apply(Desired::default()).await.is_err());
     assert_eq!(
         service.saved().unwrap().unwrap().models,
-        vec![entry(NOMIC, NOMIC_FILE)]
+        vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]
     );
 }
 
@@ -737,8 +745,8 @@ async fn previous_keeps_each_model_once_even_when_not_adjacent() {
     std::fs::write(
         f.dir.path().join("data/embedding-service.json"),
         serde_json::json!({
-            "models": [entry(GEMMA, GEMMA_FILE)],
-            "previous": [entry(NOMIC, NOMIC_FILE), entry(GEMMA, GEMMA_FILE), entry(NOMIC, NOMIC_FILE)],
+            "models": [entry(EMBED_ALT, EMBED_ALT_FILE)],
+            "previous": [entry(EMBED_MAIN, EMBED_MAIN_FILE), entry(EMBED_ALT, EMBED_ALT_FILE), entry(EMBED_MAIN, EMBED_MAIN_FILE)],
         })
         .to_string(),
     )
@@ -749,7 +757,10 @@ async fn previous_keeps_each_model_once_even_when_not_adjacent() {
         .unwrap();
     assert_eq!(
         f.service.saved().unwrap().unwrap().previous,
-        vec![entry(NOMIC, NOMIC_FILE), entry(GEMMA, GEMMA_FILE)]
+        vec![
+            entry(EMBED_MAIN, EMBED_MAIN_FILE),
+            entry(EMBED_ALT, EMBED_ALT_FILE)
+        ]
     );
 }
 
@@ -773,11 +784,14 @@ async fn a_change_that_cannot_get_the_lock_in_time_gives_up_and_never_applies_la
     // #1677: the caller's request budget is ACT_TIMEOUT + LOCK_WAIT; past it the caller was told
     // the change failed, so it must not happen afterwards.
     let f = fixture_with(|s| s.with_lock_wait(Duration::from_millis(50)));
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     let held = f.service.hold().await;
     let applied = f
         .service
-        .apply(serve(&[(NOMIC, NOMIC_FILE), (GEMMA, GEMMA_FILE)]))
+        .apply(serve(&[
+            (EMBED_MAIN, EMBED_MAIN_FILE),
+            (EMBED_ALT, EMBED_ALT_FILE),
+        ]))
         .await;
     assert!(
         matches!(applied, Err(Refusal::Unavailable(_))),
@@ -787,9 +801,9 @@ async fn a_change_that_cannot_get_the_lock_in_time_gives_up_and_never_applies_la
     tokio::time::sleep(Duration::from_millis(150)).await;
     assert_eq!(
         f.service.saved().unwrap().unwrap().models,
-        vec![entry(NOMIC, NOMIC_FILE)]
+        vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]
     );
-    assert!(!preset(&f).contains(GEMMA));
+    assert!(!preset(&f).contains(EMBED_ALT));
     assert!(f.control.actions.lock().unwrap().is_empty());
 }
 
@@ -798,26 +812,30 @@ async fn a_roll_back_never_loads_the_attempted_set() {
     // #1678 / #1685: a failed change rolls back; the model only the attempted set had is never
     // loaded and stays protected in `previous`.
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     *f.router.stuck.lock().unwrap() = true;
-    f.router.set(&[(NOMIC, false)]);
+    f.router.set(&[(EMBED_MAIN, false)]);
     f.service
-        .apply(serve(&[(NOMIC, NOMIC_FILE)]))
+        .apply(serve(&[(EMBED_MAIN, EMBED_MAIN_FILE)]))
         .await
         .unwrap();
     *f.control.fail.lock().unwrap() = true;
     assert!(f
         .service
-        .apply(serve(&[(GEMMA, GEMMA_FILE)]))
+        .apply(serve(&[(EMBED_ALT, EMBED_ALT_FILE)]))
         .await
         .is_err());
     let saved = f.service.saved().unwrap().unwrap();
-    assert_eq!(saved.models, vec![entry(NOMIC, NOMIC_FILE)], "rolled back");
-    f.router.set(&[(NOMIC, true), (GEMMA, true)]);
+    assert_eq!(
+        saved.models,
+        vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)],
+        "rolled back"
+    );
+    f.router.set(&[(EMBED_MAIN, true), (EMBED_ALT, true)]);
     tokio::time::sleep(Duration::from_millis(100)).await;
     let loads = f.router.loads.lock().unwrap().clone();
     assert!(
-        !loads.iter().any(|m| m == GEMMA),
+        !loads.iter().any(|m| m == EMBED_ALT),
         "the attempted model is never loaded: {loads:?}"
     );
     assert!(
@@ -826,7 +844,7 @@ async fn a_roll_back_never_loads_the_attempted_set() {
             .unwrap()
             .unwrap()
             .previous
-            .contains(&entry(GEMMA, GEMMA_FILE)),
+            .contains(&entry(EMBED_ALT, EMBED_ALT_FILE)),
         "the attempted model stays protected while the router may still hold it"
     );
 }
@@ -836,18 +854,18 @@ async fn a_stop_then_failed_start_never_lets_the_old_warm_up_load() {
     // #1696: [A] warming (stuck router), stop succeeds, [A] again fails in Docker and rolls back
     // to off. A late Docker restart lists A unloaded: nothing may load it.
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     *f.router.stuck.lock().unwrap() = true;
     f.router.set(&[]);
     f.service
-        .apply(serve(&[(NOMIC, NOMIC_FILE)]))
+        .apply(serve(&[(EMBED_MAIN, EMBED_MAIN_FILE)]))
         .await
         .unwrap();
     f.service.apply(Desired::default()).await.unwrap();
     *f.control.fail.lock().unwrap() = true;
     assert!(f
         .service
-        .apply(serve(&[(NOMIC, NOMIC_FILE)]))
+        .apply(serve(&[(EMBED_MAIN, EMBED_MAIN_FILE)]))
         .await
         .is_err());
     assert!(
@@ -855,7 +873,7 @@ async fn a_stop_then_failed_start_never_lets_the_old_warm_up_load() {
         "rolled back to off"
     );
     f.router.loads.lock().unwrap().clear();
-    f.router.set(&[(NOMIC, false)]);
+    f.router.set(&[(EMBED_MAIN, false)]);
     tokio::time::sleep(Duration::from_millis(100)).await;
     let loads = f.router.loads.lock().unwrap().clone();
     assert!(
@@ -902,11 +920,14 @@ async fn a_roll_back_warms_the_restored_set_again() {
         .with_warm(Duration::from_millis(5), 200)
         .with_act_timeout(Duration::from_millis(50)),
     );
-    service.seed(NOMIC, NOMIC_FILE).unwrap();
+    service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     *base.router.stuck.lock().unwrap() = true;
-    base.router.set(&[(NOMIC, true), (GEMMA, false)]);
+    base.router.set(&[(EMBED_MAIN, true), (EMBED_ALT, false)]);
     service
-        .apply(serve(&[(NOMIC, NOMIC_FILE), (GEMMA, GEMMA_FILE)]))
+        .apply(serve(&[
+            (EMBED_MAIN, EMBED_MAIN_FILE),
+            (EMBED_ALT, EMBED_ALT_FILE),
+        ]))
         .await
         .unwrap();
     for _ in 0..100 {
@@ -916,43 +937,51 @@ async fn a_roll_back_warms_the_restored_set_again() {
         }
     }
     assert!(
-        base.router.loads.lock().unwrap().iter().any(|m| m == GEMMA),
+        base.router
+            .loads
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|m| m == EMBED_ALT),
         "the [A,B] warm-up is loading B"
     );
     *control.hang.lock().unwrap() = true;
     assert!(matches!(
-        service.apply(serve(&[(GEMMA, GEMMA_FILE)])).await,
+        service.apply(serve(&[(EMBED_ALT, EMBED_ALT_FILE)])).await,
         Err(Refusal::Unavailable(_))
     ));
     assert_eq!(
         service.saved().unwrap().unwrap().models,
-        vec![entry(NOMIC, NOMIC_FILE), entry(GEMMA, GEMMA_FILE)],
+        vec![
+            entry(EMBED_MAIN, EMBED_MAIN_FILE),
+            entry(EMBED_ALT, EMBED_ALT_FILE)
+        ],
         "rolled back to [A,B]"
     );
     base.router.loads.lock().unwrap().clear();
     tokio::time::sleep(Duration::from_millis(100)).await;
     let loads = base.router.loads.lock().unwrap().clone();
     assert!(
-        loads.iter().any(|m| m == GEMMA),
+        loads.iter().any(|m| m == EMBED_ALT),
         "the restored set still receives load calls after the roll-back: {loads:?}"
     );
 }
 
-// #1717: a watched service with a short probe interval, seeded with nomic and settled (no
+// #1717: a watched service with a short probe interval, seeded with the main embedding model and settled (no
 // boot warm-up running).
 fn watched(attempts: u32) -> Fixture {
     let f = fixture_with(|s| {
         s.with_warm(Duration::from_millis(5), attempts)
             .with_watch(Duration::from_millis(20))
     });
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     f
 }
 
 #[tokio::test]
 async fn an_embed_restart_behind_our_back_is_warmed_within_the_probe_interval() {
     let f = watched(50);
-    f.router.set(&[(NOMIC, true)]);
+    f.router.set(&[(EMBED_MAIN, true)]);
     let watcher = f.service.watch();
     tokio::time::sleep(Duration::from_millis(80)).await;
     assert!(
@@ -960,7 +989,7 @@ async fn an_embed_restart_behind_our_back_is_warmed_within_the_probe_interval() 
         "nothing to do while loaded"
     );
     // The container restarts on its own: the router lists the preset, loads nothing.
-    f.router.set(&[(NOMIC, false)]);
+    f.router.set(&[(EMBED_MAIN, false)]);
     for _ in 0..40 {
         tokio::time::sleep(Duration::from_millis(5)).await;
         if f.router.models.lock().unwrap()[0].loaded {
@@ -968,7 +997,7 @@ async fn an_embed_restart_behind_our_back_is_warmed_within_the_probe_interval() 
         }
     }
     watcher.abort();
-    assert_eq!(*f.router.loads.lock().unwrap(), vec![NOMIC.to_owned()]);
+    assert_eq!(*f.router.loads.lock().unwrap(), vec![EMBED_MAIN.to_owned()]);
     assert!(f.router.models.lock().unwrap()[0].loaded);
     assert!(
         f.control.actions.lock().unwrap().is_empty(),
@@ -979,7 +1008,7 @@ async fn an_embed_restart_behind_our_back_is_warmed_within_the_probe_interval() 
 #[tokio::test]
 async fn the_watcher_never_warms_while_a_change_holds_the_lock() {
     let f = watched(50);
-    f.router.set(&[(NOMIC, false)]);
+    f.router.set(&[(EMBED_MAIN, false)]);
     let guard = f.service.hold().await;
     let watcher = f.service.watch();
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -990,7 +1019,7 @@ async fn the_watcher_never_warms_while_a_change_holds_the_lock() {
     drop(guard);
     tokio::time::sleep(Duration::from_millis(150)).await;
     watcher.abort();
-    assert_eq!(*f.router.loads.lock().unwrap(), vec![NOMIC.to_owned()]);
+    assert_eq!(*f.router.loads.lock().unwrap(), vec![EMBED_MAIN.to_owned()]);
 }
 
 #[tokio::test]
@@ -998,7 +1027,7 @@ async fn the_watcher_never_warms_when_embedding_is_off() {
     let f = watched(50);
     f.service.apply(serve(&[])).await.unwrap();
     // Even if something is listed, an off service loads nothing.
-    f.router.set(&[(NOMIC, false), (GEMMA, false)]);
+    f.router.set(&[(EMBED_MAIN, false), (EMBED_ALT, false)]);
     let watcher = f.service.watch();
     tokio::time::sleep(Duration::from_millis(200)).await;
     watcher.abort();
@@ -1008,13 +1037,13 @@ async fn the_watcher_never_warms_when_embedding_is_off() {
 #[tokio::test]
 async fn the_watcher_only_loads_the_saved_models() {
     let f = watched(50);
-    f.router.set(&[(NOMIC, false), (GEMMA, false)]);
+    f.router.set(&[(EMBED_MAIN, false), (EMBED_ALT, false)]);
     let watcher = f.service.watch();
     tokio::time::sleep(Duration::from_millis(200)).await;
     watcher.abort();
     let loads = f.router.loads.lock().unwrap().clone();
     assert!(!loads.is_empty());
-    assert!(loads.iter().all(|m| m == NOMIC), "{loads:?}");
+    assert!(loads.iter().all(|m| m == EMBED_MAIN), "{loads:?}");
 }
 
 #[tokio::test]
@@ -1023,7 +1052,7 @@ async fn a_failing_re_warm_backs_off() {
     // one about every 30 ms, i.e. ~40 loads in 600 ms.
     let f = watched(2);
     *f.router.stuck.lock().unwrap() = true;
-    f.router.set(&[(NOMIC, false)]);
+    f.router.set(&[(EMBED_MAIN, false)]);
     let watcher = f.service.watch();
     tokio::time::sleep(Duration::from_millis(600)).await;
     let failing = f.router.loads.lock().unwrap().len();
@@ -1044,19 +1073,15 @@ async fn a_failing_re_warm_backs_off() {
 // ── #1726: image presets (multimodal RAG) ───────────────────────────────────────────────────────
 fn with_projector(f: &Fixture, names: &[&str]) {
     for name in names {
-        std::fs::write(
-            f.dir.path().join("models/embeddinggemma-2").join(name),
-            b"GGUF",
-        )
-        .unwrap();
+        std::fs::write(f.dir.path().join("models/embed-alt-2").join(name), b"GGUF").unwrap();
     }
 }
 
 #[test]
 fn image_presets_are_off_unless_multimodal_rag_is_on() {
     let f = fixture();
-    with_projector(&f, &["mmproj-embeddinggemma-2-F16.gguf"]);
-    f.service.seed(GEMMA, GEMMA_FILE).unwrap();
+    with_projector(&f, &["mmproj-embed-alt-2-F16.gguf"]);
+    f.service.seed(EMBED_ALT, EMBED_ALT_FILE).unwrap();
     assert!(!preset(&f).contains(".vision"), "{}", preset(&f));
     assert!(!preset(&f).contains("mmproj"));
 }
@@ -1064,63 +1089,63 @@ fn image_presets_are_off_unless_multimodal_rag_is_on() {
 #[tokio::test]
 async fn a_projector_beside_the_model_gets_its_own_preset_that_never_loads_at_start() {
     let f = fixture_with(|s| s.with_vision(true));
-    with_projector(&f, &["mmproj-embeddinggemma-2-F16.gguf"]);
-    f.service.seed(GEMMA, GEMMA_FILE).unwrap();
+    with_projector(&f, &["mmproj-embed-alt-2-F16.gguf"]);
+    f.service.seed(EMBED_ALT, EMBED_ALT_FILE).unwrap();
     let text = preset(&f);
     assert!(
-        text.contains("\n[embeddinggemma-2]\nmodel = /models/embeddinggemma-2/embeddinggemma-2-Q8_0.gguf\n\n[embeddinggemma-2.vision]\nmodel = /models/embeddinggemma-2/embeddinggemma-2-Q8_0.gguf\nmmproj = /models/embeddinggemma-2/mmproj-embeddinggemma-2-F16.gguf\nload-on-startup = false\n"),
+        text.contains("\n[embed-alt-2]\nmodel = /models/embed-alt-2/embed-alt-2-Q8_0.gguf\n\n[embed-alt-2.vision]\nmodel = /models/embed-alt-2/embed-alt-2-Q8_0.gguf\nmmproj = /models/embed-alt-2/mmproj-embed-alt-2-F16.gguf\nload-on-startup = false\n"),
         "{text}"
     );
     // The text preset itself carries no projector: text embedding never loads it.
     assert_eq!(text.matches("mmproj = ").count(), 1);
     // Status names the alias for web (rag.cjs mediaModelFor).
     f.router
-        .set(&[(GEMMA, false), ("embeddinggemma-2.vision", false)]);
+        .set(&[(EMBED_ALT, false), ("embed-alt-2.vision", false)]);
     let status = f.service.status().await;
-    assert_eq!(status["vision"][0]["model"], GEMMA);
-    assert_eq!(status["vision"][0]["alias"], "embeddinggemma-2.vision");
+    assert_eq!(status["vision"][0]["model"], EMBED_ALT);
+    assert_eq!(status["vision"][0]["alias"], "embed-alt-2.vision");
     assert_eq!(
         status["vision"][0]["mmproj"],
-        "embeddinggemma-2/mmproj-embeddinggemma-2-F16.gguf"
+        "embed-alt-2/mmproj-embed-alt-2-F16.gguf"
     );
     // A warm-up loads the text model only.
-    f.service.warm(&[GEMMA.to_string()]).await;
+    f.service.warm(&[EMBED_ALT.to_string()]).await;
     assert_eq!(
         f.router.loads.lock().unwrap().clone(),
-        vec![GEMMA.to_string()]
+        vec![EMBED_ALT.to_string()]
     );
 }
 
 #[test]
 fn a_model_without_exactly_one_projector_gets_no_image_preset() {
     let f = fixture_with(|s| s.with_vision(true));
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     assert!(!preset(&f).contains(".vision"));
     let g = fixture_with(|s| s.with_vision(true));
     with_projector(&g, &["mmproj-a.gguf", "mmproj-b.gguf"]);
-    g.service.seed(GEMMA, GEMMA_FILE).unwrap();
+    g.service.seed(EMBED_ALT, EMBED_ALT_FILE).unwrap();
     assert!(!preset(&g).contains(".vision"), "ambiguous: two projectors");
 }
 
 #[tokio::test]
 async fn the_projector_of_a_served_model_cannot_be_deleted() {
     let f = fixture_with(|s| s.with_vision(true));
-    with_projector(&f, &["mmproj-embeddinggemma-2-F16.gguf"]);
-    f.service.seed(GEMMA, GEMMA_FILE).unwrap();
-    f.router.set(&[(GEMMA, true)]);
+    with_projector(&f, &["mmproj-embed-alt-2-F16.gguf"]);
+    f.service.seed(EMBED_ALT, EMBED_ALT_FILE).unwrap();
+    f.router.set(&[(EMBED_ALT, true)]);
     assert!(
         f.service
-            .protects("embeddinggemma-2/mmproj-embeddinggemma-2-F16.gguf")
+            .protects("embed-alt-2/mmproj-embed-alt-2-F16.gguf")
             .await
     );
-    assert!(f.service.protects("mmproj-embeddinggemma-2-F16").await);
+    assert!(f.service.protects("mmproj-embed-alt-2-F16").await);
     let off = fixture();
-    with_projector(&off, &["mmproj-embeddinggemma-2-F16.gguf"]);
-    off.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    off.router.set(&[(NOMIC, true)]);
+    with_projector(&off, &["mmproj-embed-alt-2-F16.gguf"]);
+    off.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
+    off.router.set(&[(EMBED_MAIN, true)]);
     assert!(
         !off.service
-            .protects("embeddinggemma-2/mmproj-embeddinggemma-2-F16.gguf")
+            .protects("embed-alt-2/mmproj-embed-alt-2-F16.gguf")
             .await
     );
 }
@@ -1128,17 +1153,17 @@ async fn the_projector_of_a_served_model_cannot_be_deleted() {
 #[tokio::test]
 async fn a_loaded_image_preset_does_not_hold_back_releasing_the_old_model() {
     let f = fixture_with(|s| s.with_vision(true));
-    with_projector(&f, &["mmproj-embeddinggemma-2-F16.gguf"]);
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
-    f.router.set(&[(NOMIC, true)]);
+    with_projector(&f, &["mmproj-embed-alt-2-F16.gguf"]);
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
+    f.router.set(&[(EMBED_MAIN, true)]);
     f.service
-        .apply(serve(&[(GEMMA, GEMMA_FILE)]))
+        .apply(serve(&[(EMBED_ALT, EMBED_ALT_FILE)]))
         .await
         .unwrap();
     assert_eq!(f.service.saved().unwrap().unwrap().previous.len(), 1);
     // The router restarted onto the new preset: the new model and its image preset are loaded.
     f.router
-        .set(&[(GEMMA, true), ("embeddinggemma-2.vision", true)]);
+        .set(&[(EMBED_ALT, true), ("embed-alt-2.vision", true)]);
     settle(&f).await;
     assert!(f.service.saved().unwrap().unwrap().previous.is_empty());
 }

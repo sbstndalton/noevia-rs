@@ -155,7 +155,7 @@ async fn call(state: Arc<StateData>, method: &str) -> (u16, Value) {
     (status, serde_json::from_slice(&raw).unwrap())
 }
 
-const SAVED: &str = "[gemma-4-12b]\nmodel = synthetic/chat.gguf\nctx-size = 8192\n";
+const SAVED: &str = "[synthetic-chat]\nmodel = synthetic/chat.gguf\nctx-size = 8192\n";
 
 // The manager never unloads anything itself; llama.cpp only sleeps a child whose task queue is
 // empty. What the manager must not do is overwrite a per-model choice, e.g. an administrator
