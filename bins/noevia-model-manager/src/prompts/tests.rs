@@ -236,6 +236,17 @@ fn ancestry_is_private(path: &std::path::Path) -> bool {
         })
     })
 }
+/// The system temporary directory as the fallback store parent. Production refuses a store below a
+/// group- or other-writable ancestor (sticky root-owned temporary parents aside), so the fallback is
+/// checked the same way and a writable temporary root fails here with a clear message.
+fn private_temp_root(temp: &std::path::Path) -> std::path::PathBuf {
+    assert!(
+        ancestry_is_private(temp),
+        "the system temporary directory {} is not private (a group- or other-writable ancestor, a symlink or a missing directory in its path); set S1_PROMPTS_TEST_ROOT to a private directory",
+        temp.display()
+    );
+    temp.to_path_buf()
+}
 /// A fresh private test store directory. `S1_PROMPTS_TEST_ROOT` names the parent explicitly; otherwise
 /// the working directory (a symlink-free path on every platform, unlike macOS's usual temporary
 /// root), or the system temporary directory when the working directory's ancestry is not private.
@@ -247,7 +258,7 @@ pub(super) fn root() -> tempfile::TempDir {
             if ancestry_is_private(&here) {
                 here
             } else {
-                std::env::temp_dir()
+                private_temp_root(&std::env::temp_dir())
             }
         });
     // Production refuses a store directory that group or others can write, so it is made private
@@ -566,4 +577,33 @@ async fn a_dropped_request_keeps_its_permit_until_the_worker_ends_its_job() {
             .all(|p| p["name"] != "synthetic-dropped"),
         "a cancelled job wrote its prompt"
     );
+}
+
+#[test]
+#[should_panic(expected = "is not private")]
+fn a_writable_system_temporary_directory_is_refused_with_a_clear_message() {
+    use std::os::unix::fs::PermissionsExt;
+    // tempfile creates its directory with the umask, which may leave it group-writable.
+    let parent = tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .unwrap();
+    let open = parent.path().join("open");
+    std::fs::create_dir(&open).unwrap();
+    std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o777)).unwrap();
+    private_temp_root(&open);
+}
+
+#[test]
+fn a_private_system_temporary_directory_is_used_as_it_is() {
+    use std::os::unix::fs::PermissionsExt;
+    // tempfile creates its directory with the umask, which may leave it group-writable.
+    let parent = tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .unwrap();
+    let private = parent.path().join("private");
+    std::fs::create_dir(&private).unwrap();
+    std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(private_temp_root(&private), private);
 }

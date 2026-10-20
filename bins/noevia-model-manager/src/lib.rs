@@ -3298,8 +3298,9 @@ pub fn python_owned(method: &str, path: &str) -> bool {
     )
 }
 
-/// noevia#1318: the section autoconfig: the file part natively, then the live inputs from the
-/// child, then the analysis. It waits on the child, so it keeps a forwarded route's budget.
+/// noevia#1318: the section autoconfig: the file part natively, then the live inputs (native telemetry
+/// and backend sampler; the child call that carried them before noevia#2055 is test-only), then the
+/// analysis. The shipping binary waits on no child: its bounds are the read slots and the 60 s deadline.
 #[cfg(feature = "native-section-autoconfig")]
 async fn native_section_autoconfig(
     _state: &StateData,
