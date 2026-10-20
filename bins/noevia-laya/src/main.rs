@@ -20,13 +20,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !cfg!(feature = "native-laya") {
                 return Err("native-laya feature required".into());
             }
-            let config = laya_service::Config::production();
+            let config = sensitivity_service::Config::production();
             // Install shutdown handlers before the90-second engine startup.
             // Cancelling Pool::start drops its owned process-group guards.
             let mut terminate =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
             let pool = tokio::select! {
-                result=laya_service::Pool::start(config)=>result?,
+                result=sensitivity_service::Pool::start(config)=>result?,
                 _=terminate.recv()=>return Ok(()),
                 _=tokio::signal::ctrl_c()=>return Ok(()),
             };
@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return Err(error.into());
                 }
             };
-            laya_service::serve_with_shutdown(listener, pool, async move {
+            sensitivity_service::serve_with_shutdown(listener, pool, async move {
                 tokio::select! { _=terminate.recv()=>(), _=tokio::signal::ctrl_c()=>() }
             })
             .await?;

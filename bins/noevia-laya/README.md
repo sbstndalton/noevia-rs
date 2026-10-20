@@ -33,8 +33,8 @@ Qualification uses actual services worker commit (services#35 head, #1074)
 `920d57d82d8f4c817760255cff602e15ccc64448`, independently matching codeload SHA256
 `540e14cf3e495e74387cb6f39b12395615b31e8737bf304e757a0d3ab8976ffd`.
 Set `NOEVIA_LAYA_REFERENCE` to that checkout's `laya` directory. Run
-`cargo run --locked -p laya-service --example gen-fixtures -- "$NOEVIA_LAYA_REFERENCE" /tmp/laya-http.json`
-and compare the committed fixture, then `cargo test --locked -p laya-service`.
+`cargo run --locked -p sensitivity-service --example gen-fixtures -- "$NOEVIA_LAYA_REFERENCE" /tmp/laya-http.json`
+and compare the committed fixture, then `cargo test --locked -p sensitivity-service`.
 The oracle hashes actual server.py and runs its HTTP/Pool/Runtime/worker code with
 fixed synthetic torch/laya collaborators. Cases, HTTP clients, fixture preparation
 and serialization are Rust. Mandatory CI uses production Python3.12 and includes
