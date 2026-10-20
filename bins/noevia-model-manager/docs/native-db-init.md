@@ -1,9 +1,7 @@
 # Native database bootstrap (#1318 step 4)
 
-Compile native-db-init (which includes native-prompts) and select
-MODEL_MANAGER_DB_INIT_IMPL=rust, with MODEL_MANAGER_PROMPTS_IMPL=rust.
-The parent is permanently native; its retired MODEL_MANAGER_IMPL key is ignored. The selector defaults to python; an unknown
-value, omitted feature or missing native prompt owner refuses startup.
+`native-routing` compiles native-db-init (which includes native-prompts), and bootstrap has no selector. The former `MODEL_MANAGER_DB_INIT_IMPL` and `MODEL_MANAGER_PROMPTS_IMPL` selectors are retired and ignored.
+The parent is permanently native; its retired MODEL_MANAGER_IMPL key is ignored. A missing compiled feature or missing native prompt owner refuses startup.
 
 The parent uses the existing secure prompt Store, its connection and lifetime writer lock.
 DATA_DIR passes the prompt writer's canonical-path, trusted-ancestor, file ownership and
@@ -28,9 +26,9 @@ Prompt seed, benchmark orphan cleanup and models.ini migration retain their exis
 tools/gen-db-init-oracle.py executes the actual service db.py with synthetic settings and
 fresh, legacy and repeated databases. Fixtures record the service revision, source digest and
 generator digest, complete metadata and data values. CI regenerates those inputs before tests.
-Rollback: select MODEL_MANAGER_DB_INIT_IMPL=python and restart; Python sees the same schema
-and preserves its rows. Keep the native prompts selector consistent with existing ownership.
+Rollback is to the previous image and configuration; there is no selector to flip. Python sees the same schema
+and preserves its rows. Prompts are native in the same parent, so there is no prompts selector to keep in step.
 
 The service image's compiled-feature list must add noevia-model-manager/native-db-init and
 check its advertisement when repinning to a merged Rust revision containing this change.
-The service-first guard alone does not add that build capability or enable the selector.
+The service-first guard alone does not add that build capability.

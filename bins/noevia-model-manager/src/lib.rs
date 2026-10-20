@@ -150,7 +150,7 @@ pub struct StateData {
     pub diagnosis: Option<Arc<diagnose_docker::Diagnosis>>,
     #[cfg(feature = "native-prompts")]
     pub prompts: Option<Arc<prompts::Prompts>>,
-    /// noevia#1318: native backend restart and test prompt; restart errors stay in the child.
+    /// noevia#1318: native backend restart and test prompt; errors are kept by the native sampler.
     #[cfg(feature = "native-backend-control")]
     pub backends: Option<Arc<backends::Backends>>,
     /// noevia#1318: native `POST /api/v1/models/check-updates` (asks the Hub, writes update_check).
@@ -2062,10 +2062,11 @@ pub fn max_tokens(value: Option<&prompts::JsonValue>) -> Option<i64> {
     Some(n.clamp(1, 4096))
 }
 
-/// noevia#1318: the child keeps its own copy of `last_restart_error`; set (`Some`) or clear
-/// (`None`) it. Always, even while the native sampler mirrors it: the child's backend snapshot
-/// still carries it in `backends[]`, which its overview runtime call reads when no native sampler
-/// answers (the `MODEL_MANAGER_OVERVIEW_IMPL` selector is retired, noevia#1071).
+/// noevia#1318: sets (`Some`) or clears (`None`) the child's private copy of `last_restart_error`.
+/// Test builds only (`cfg(test)`): production restarts update the native sampler's store alone, so
+/// the child's copy is not kept current. The child's backend snapshot still carries the error in
+/// `backends[]`, which its overview runtime call reads when no native sampler answers (the
+/// `MODEL_MANAGER_OVERVIEW_IMPL` selector is retired, noevia#1071).
 #[cfg(feature = "native-backend-control")]
 #[cfg(test)]
 async fn set_restart_error(

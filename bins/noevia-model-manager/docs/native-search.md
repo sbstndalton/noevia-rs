@@ -1,6 +1,6 @@
 # Native search reads (noevia#1318 slice 14)
 
-`native-search` with `MODEL_MANAGER_SEARCH_IMPL=rust` serves `GET /api/v1/search` and `GET /api/v1/search/repo`. The default is `python`. One selector owns both routes: they share the Hub client, the token, the listing cache and the ranking rules. The confirmed child (`NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED=1`) refuses both GETs with 503, so each read is answered by one process. The child gets the same `MODELS_DIR`, `MODELS_INI_PATH` and `DATA_DIR`. A case-folded spelling of any of them keeps Python serving the routes, with one log line.
+`native-search` serves `GET /api/v1/search` and `GET /api/v1/search/repo`, and it is the only path; the former `MODEL_MANAGER_SEARCH_IMPL` selector is retired and ignored. One owner serves both routes: they share the Hub client, the token, the listing cache and the ranking rules. The confirmed child (`NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED=1`) refuses both GETs with 503, so each read is answered by one process. The child gets the same `MODELS_DIR`, `MODELS_INI_PATH` and `DATA_DIR`. A case-folded spelling of any of them keeps Python serving the routes, with one log line.
 
 Only GET on the exact paths is native. The path is judged as Starlette routes it (percent-decoded once), so `/api/v1/%73earch` is native and `/api/v1/search/` is not. Other methods get the front's 405 and the slash variants its 404, as without the native search. The routes keep a forwarded route's time budget (600 s), because they wait on the Hub.
 
@@ -19,7 +19,7 @@ Only GET on the exact paths is native. The path is judged as Starlette routes it
 | **GPU budget, downloaded files, trusted sets** | `helpers._backend_list`, `helpers._downloaded_and_still_present`, `discover.TRUSTED_*` | **asked of the child** |
 | **Fit chips, context estimates, native context** | `services.vram_fit_chips`, `helpers._preset_estimates_with_reason` | **asked of the child** |
 
-The live state stays with Python until the backend sampler, the downloads and the autoconfig move (the remaining slices of noevia#1318). It is asked through two private calls, both 404 unless confirmed, both behind the token, neither ever forwarded for a client:
+The live state stays with Python until the downloads and the autoconfig move (the remaining slices of noevia#1318); the backend sampler already is native. It is asked through two private calls, both 404 unless confirmed, both behind the token, neither ever forwarded for a client:
 
 - `GET /api/v1/internal/search-runtime`: `{"budget": repr(float), "downloaded": {repo: [file]}, "quantisers": [...], "labs": [...]}`. Asked once per search, after the Hub answered. The budget travels as Python's `repr`, so a non-finite figure survives.
 - `POST /api/v1/internal/search-repo-runtime`: for the file groups of one repository, `{"groups": [{"bytes", "estimate"}], "mmprojBytes", "summary"}` gives, per group, `fit` (`services.vram_fit_chips`) and, for a header summary and a non-projector GGUF group, `estimates`, `reason` and `nativeCtx`. Asked once, after the header was read, and not at all for a repository without groups. The summary is the one the `gguf` crate makes of the header (differential-tested against `gguf_meta.py`), with a non-finite float already `null`, as `gguf_meta._finite` has it. At most 4096 groups.
@@ -61,13 +61,13 @@ Every page is read into a buffer that never passes 16 MiB and parsed under the `
 It also records Python's answers for the grammars: 17,000 query values for pydantic's int, float and bool, `str.strip`, `int(str)`, 3,500 dates through `datetime.fromisoformat`, and `round`, `.1f`, `human_bytes` and int true division. The lib test replays every case on every platform, the integration test replays them through the router, and `bounds.rs` holds what has no Python counterpart (refusals, bounds, caches, admission, the child's failures). CI regenerates the fixture and compares it byte for byte.
 
 ## What remains
-- The two private calls keep this slice dependent on the Python child for live state. They go when the backend sampler (`MODEL_MANAGER_BACKENDS_IMPL`, already native but dark), the download history and the autoconfig (`analyze`) are native; the budget, the downloaded map, the chips and the estimates would then be computed here from the same figures.
+- The two private calls keep this slice dependent on the Python child for live state. They go when the download history and the autoconfig (`analyze`) are native (the backend sampler already is); the budget, the downloaded map, the chips and the estimates would then be computed here from the same figures.
 - The trusted publisher sets are defined in `discover.py`. Once this process samples the backends they come from the deployment file instead (step 1c, below), read once at startup: a change to the file needs a model-loader restart.
-- Outside this repository: the services Dockerfile pin, and the compose passthrough `MODEL_MANAGER_SEARCH_IMPL: ${MODEL_MANAGER_SEARCH_IMPL:-python}` in the model-loader environment (noevia). Nothing is flipped by this change.
+- Outside this repository: the services Dockerfile pin, and the compose passthrough `MODEL_MANAGER_SEARCH_IMPL: ${MODEL_MANAGER_SEARCH_IMPL:-python}` in the model-loader environment (noevia). That passthrough names a retired selector this executable ignores; this change does not touch that repository.
 
 ## Native search runtime (noevia#1318 step 1c)
 
-While this process samples the backends (`MODEL_MANAGER_BACKENDS_IMPL=rust`), the body of
+While this process samples the backends (it always does), the body of
 `GET /api/v1/internal/search-runtime` is produced natively (`search/live.rs`) and that call is
 no longer made:
 
@@ -103,8 +103,7 @@ answers the 500.
 
 ## Step 3a: repository estimates (noevia#1318)
 
-While the search runtime is native (`MODEL_MANAGER_SEARCH_IMPL=rust` with
-`MODEL_MANAGER_BACKENDS_IMPL=rust`, so this process samples the backends, and a readable trusted
+While the search runtime is native (it always is; this process samples the backends, and a readable trusted
 sets file) and the section autoconfig is native too (always, noevia#1071; its settings fix the
 cache-ram cap the analysis reads), the repository read computes its fit chips and context estimates itself, and
 `POST /api/v1/internal/search-repo-runtime` is not called.
@@ -137,8 +136,8 @@ without another Docker read. Only the retry deadline is retained, never an inven
 Once it expires the next request tries the native read again.
 
 Python rediscovers the containers for every chip list and estimate; this side reads one
-inventory per answer, like the other fit readers. With the python section autoconfig selector,
-the child answers as before.
+inventory per answer, like the other fit readers. The section autoconfig is native (noevia#1071),
+so its settings need no selector.
 
 **Differential.** `tools/gen-fit-oracle.py` records `main._search_runtime` with synthetic
 trusted sets (the real ones never enter this repository). `search::live::tests` reproduces

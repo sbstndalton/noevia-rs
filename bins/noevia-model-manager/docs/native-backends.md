@@ -1,15 +1,14 @@
 # Native backend sampler and `GET /api/v1/backends` (noevia#1318 slice 13)
 
-`native-backends` with `MODEL_MANAGER_BACKENDS_IMPL=rust` moves the backend sampler and `GET /api/v1/backends` to the native parent. The default is `python`. The confirmed child (`NOEVIA_NATIVE_MODEL_MANAGER_BACKENDS_CONFIRMED=1`) then:
+`native-backends` moves the backend sampler and `GET /api/v1/backends` to the native parent, and it is the only path; the former `MODEL_MANAGER_BACKENDS_IMPL` selector is retired and ignored. The confirmed child (`NOEVIA_NATIVE_MODEL_MANAGER_BACKENDS_CONFIRMED=1`) then:
 
 - refuses `GET /api/v1/backends` with 503;
-- no longer samples the backends. Its sampler thread only reads the host when `MODEL_MANAGER_HOST_IMPL` is still `python`, and is not started when both are native;
+- no longer samples the backends, and its sampler thread does not read the host, which the native parent owns;
 - takes the native samples into its backend cache through the private `PUT /api/v1/internal/backend-stats`. Its other readers keep working unchanged: the fit chips, autoconfig, the benchmark observer, and `vram_gb_for`/`gpu_count_for`/`card_vram_gb_for`;
 - runs the GPU reads that need `docker exec` when the parent asks, through the private `GET /api/v1/internal/gpu-exec-probe?name=&probe=nvidia|amd|amd-nvidia`.
 
-The native sampler stays with Python, with one log line and no refusal to start, when:
+Startup refuses, before any child starts, when:
 
-- `MODEL_MANAGER_BACKEND_CONTROL_IMPL` is not `rust`. The `last_restart_error` the answer shows is kept by the native restart.
 - `TZ` is set to a zone other than UTC. `started_at` is local time; the child is given `TZ=UTC` too.
 - A case-folded spelling of `GPU_VRAM`, `LLAMA_CONTAINERS` or `LLAMA_DEFAULT_PORT` is set. The child's settings fold names.
 - `GPU_VRAM` holds a value this side cannot read exactly (non-ASCII digits).
@@ -122,12 +121,7 @@ Python samples it when the tool is absent from the image:
 differential still compares against Python's own answers. The fake children fail a case if they
 are asked for a GPU read. Docker access stays read-only: nothing here runs `exec`.
 
-**Restart errors.** The native mirror serves the native `GET /api/v1/backends` and the native
-model reads' live fields. The child's copy is still set and cleared on every native restart,
-because the child's own backend snapshot is still read: the native overview without a native download table (its
-child runtime call), and every route under the python backends selector. The copy can go when
-those paths are retired. `tests/backend_control.rs` checks that the child is told even while the
-sampler is native.
+**Restart errors.** The native sampler's restart-error store is the one this side sets and clears. It serves the native `GET /api/v1/backends` and the native model reads' live fields. Production restarts send nothing to the child, so the child's own copy is not updated. The child still reads that copy in its own backend snapshot (the overview's child runtime call, and its `/backends` compatibility route), which is why it can go once those paths are retired. `tests/backend_control.rs` checks the child's restart-error call in test builds.
 
 **Cache push kept.** The push of the sampler cache to the child (`PUT /api/v1/internal/backend-stats`)
 stays, because child code still reads `hw.stats_for` through it:
@@ -135,7 +129,7 @@ stays, because child code still reads `hw.stats_for` through it:
 - the repository read's fit chips and context estimates (`search-repo-runtime`, `autoconfig.analyze`);
 - the section autoconfig's backend inventory (`helpers._backend_list`);
 - the benchmark runs' `capacity_gb` (`bench-run-runtime`);
-- the child's own `/backends`, model and search routes under the python selectors.
+- the child's own `/backends`, model and search routes, kept as Python compatibility copies.
 
 It can be retired once those reads are native.
 
