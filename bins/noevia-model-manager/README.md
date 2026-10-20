@@ -58,13 +58,11 @@ the linked services integration must qualify before closing it.
 
 Unicode hardening (#1325): regex word classes explicitly use Python letter/number/underscore semantics and whitespace includes U+001C–U+001F. Counter exemptions require single-word ASCII letter/digit/underscore keys. AWS access-key prefixes are scrubbed even before word-character suffixes. The bounded payload is scrubbed before Python-compatible line splitting, then each line again; this intentionally redacts more than Python when control whitespace separates keys and values across lines. Adversarial fixtures retain actual Python output for comparison and assert the stricter native no-secret output and empty secret-query result.
 
-Host telemetry is separately default off: compile `native-host` (which includes
-`native-logs`) and select
-`MODEL_MANAGER_HOST_IMPL=rust`. A missing host feature refuses
-that selector before binding or spawning. Without the selector `/api/v1/host`
-remains Python-owned. Only the selected native owner passes
-`NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED=1` to its supervised child, which
-refuses the host endpoint and skips host sampling while retaining backend stats.
+Host telemetry is native and has no selector: `native-routing` compiles `native-host`
+(which includes `native-logs`). The former `MODEL_MANAGER_HOST_IMPL` selector is retired and
+ignored. The native owner passes `NOEVIA_NATIVE_MODEL_MANAGER_HOST_CONFIRMED=1` to its
+supervised child, which refuses the host endpoint and skips host sampling while retaining
+backend stats.
 
 The native sampler reads only fixed Linux `/proc/stat` (first line) and
 `/proc/meminfo`, with 64 KiB input caps, at most 64 CPU fields and bounded
@@ -79,14 +77,13 @@ checking the result. Run that tool only in an isolated checkout.
 
 ## Section configuration reads (#1334)
 
-Compile `native-sections` and select
-`MODEL_MANAGER_SECTIONS_IMPL=rust` to own exactly GET `/api/v1/sections` and
-GET `/api/v1/sections/{name}`. The default is Python; omitted capability
-refuses selection before child startup. The selected child receives
+`native-routing` compiles `native-sections`, which owns exactly GET `/api/v1/sections` and
+GET `/api/v1/sections/{name}`. There is no selector; the former `MODEL_MANAGER_SECTIONS_IMPL`
+selector is retired and ignored. The child receives
 `NOEVIA_NATIVE_MODEL_MANAGER_SECTIONS_CONFIRMED=1` and refuses only those two GET
 shapes after authentication. INI writes, backup creation, actions, startup migration,
-backend stats, jobs and DB ownership remain Python. With the selector off the native
-parent hands the child `0` over any inherited confirmation.
+backend stats, jobs and DB ownership remain Python. The parent overwrites any inherited
+confirmation value.
 
 Reads use a single bounded INI byte snapshot for both raw text and its SHA256
 revision. This intentionally strengthens consistency during replacement; there is

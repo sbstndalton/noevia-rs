@@ -1,7 +1,7 @@
 //! noevia#1318 step 3d: the section autoconfig's telemetry natively (`telemetry.ingest`,
 //! `stats_for` and `config_history` as `api.section_autoconfig` calls them).
 //!
-//! Under `MODEL_MANAGER_TELEMETRY_IMPL=rust` this process is the only writer of the telemetry
+//! This process is the only writer of the telemetry
 //! tables (`req_timing`, `server_config`) and of the telemetry keys in `kv`
 //! (`telemetry_last_ingest`, `telemetry_log_watermark:<backend>`,
 //! `telemetry_continuous_since:<backend>`). The child is told so
@@ -10,8 +10,7 @@
 //! `telemetry.ingest` and `record_*` writers refuse outright. This side writes only once the
 //! child has advertised that guard (`GET /api/v1/internal/telemetry-guard`); a child image
 //! without it refuses native telemetry with one loud log line, because a guarded but
-//! unadvertised child may already have stopped its writer (#2041). With `python` the child stays the only writer and this side never opens those
-//! tables for writing.
+//! unadvertised child may already have stopped its writer (#2041).
 //!
 //! The ingest follows Python step by step: the 20-second interval on `telemetry_last_ingest`;
 //! for each effective backend the log tail (`tail=20000`, timestamps, docker-py's frame

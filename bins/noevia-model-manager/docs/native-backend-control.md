@@ -1,12 +1,12 @@
 # Native backend restart and test (noevia#1318)
 
-`native-backend-control` with `MODEL_MANAGER_BACKEND_CONTROL_IMPL=rust` (and `MODEL_MANAGER_IMPL=rust`) serves `POST /api/v1/backends/{name}/restart` and `POST /api/v1/backends/{name}/test` for plain ASCII names (no `%`). Default `python`.
+`native-backend-control` serves `POST /api/v1/backends/{name}/restart` and `POST /api/v1/backends/{name}/test` for plain ASCII names (no `%`). It is the only path; the former `MODEL_MANAGER_BACKEND_CONTROL_IMPL` selector is retired and ignored.
 
 ## Restart (`services.restart_llama_backend`)
 - **Lookup:** `name` must be an effective backend (LLAMA_CONTAINERS plus discovered llama.cpp containers), else 404 `unknown backend`.
 - **Refusals:** `docker unreachable` and `container not found` answer `{ok: false, message}`.
 - **Queued restart:** the backend's last restart error is cleared, `POST /containers/{name}/restart?t=15` runs in the background, and the answer is `{ok: true, message: "restart queued"}`.
-- **Failures:** a failure is recorded as `last_restart_error`, which `GET /api/v1/backends` shows. That route is still Python, so the error store stays in the child, and this side sets or clears it through the child's private `PUT /api/v1/internal/backend-restart-error`.
+- **Failures:** a failure is recorded as `last_restart_error` in the native sampler's restart-error store, which the native `GET /api/v1/backends` shows. The restart clears that entry before it is queued. Production restarts do not call the child's private `PUT /api/v1/internal/backend-restart-error`, so the child's own copy is not updated; that call exists only in test builds.
 - **Docker policy:** `docker::allowed_backend_restart` allows only `restart?t=15`, by name, never an all-hex id, and the caller has already checked the name is an effective backend.
 
 ## Test (`services.test_prompt`)

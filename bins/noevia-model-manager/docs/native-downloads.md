@@ -1,6 +1,6 @@
 # Native downloads (noevia#1318)
 
-`native-downloads` with `MODEL_MANAGER_DOWNLOADS_IMPL=rust` (and `MODEL_MANAGER_IMPL=rust`) owns the download job table and its reads. The default is `python`. The confirmed child (`NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED=1`) refuses all five routes below with 503, so only one process ever holds jobs. It gets the same `MODELS_DIR`, `DATA_DIR` and `MAX_CONCURRENT_DOWNLOADS` (1..=64, canonical spelling required) as the parent.
+`native-downloads` owns the download job table and its reads, and it is the only path; the former `MODEL_MANAGER_DOWNLOADS_IMPL` selector is retired and ignored. The confirmed child (`NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED=1`) refuses all five routes below with 503, so only one process ever holds jobs. It gets the same `MODELS_DIR`, `DATA_DIR` and `MAX_CONCURRENT_DOWNLOADS` (1..=64, canonical spelling required) as the parent.
 
 ## Routes
 - `GET /api/v1/downloads`: the job list, rendered as `api._job` renders it (speed, ETA, human sizes, chunk progress), byte for byte.
