@@ -1,6 +1,6 @@
 # Native benchmark runner (#1318, slices 9a and 9b)
 
-`native-benchmark-runner` with `MODEL_MANAGER_BENCHMARK_RUNNER_IMPL=rust` takes over the one benchmark job slot. It serves `POST /api/v1/benchmark/start`, `POST /api/v1/benchmark/sweep`, `GET /api/v1/benchmark/progress` and `POST /api/v1/benchmark/cancel`, and runs the startup cleanup of leftover sweep containers. The switch is off by default.
+`native-benchmark-runner` takes over the one benchmark job slot, and it is the only path; the former `MODEL_MANAGER_BENCHMARK_RUNNER_IMPL` selector is retired and ignored. It serves `POST /api/v1/benchmark/start`, `POST /api/v1/benchmark/sweep`, `GET /api/v1/benchmark/progress` and `POST /api/v1/benchmark/cancel`, and runs the startup cleanup of leftover sweep containers.
 
 It also needs `MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL=rust`, because the overview then reads `job` from the runner. Without that, the runner stays with Python and one line is logged.
 

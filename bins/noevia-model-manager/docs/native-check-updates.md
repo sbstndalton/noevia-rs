@@ -1,6 +1,6 @@
 # Native model update check (noevia#1318)
 
-`native-check-updates` with `MODEL_MANAGER_CHECK_UPDATES_IMPL=rust` (and `MODEL_MANAGER_IMPL=rust`) serves `POST /api/v1/models/check-updates`. Default `python`. The confirmed child (`NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED=1`) refuses that POST with 503. It gets the same `MODELS_DIR`, `MODELS_INI_PATH` and `DATA_DIR`, with canonical spelling required, as for the native update status.
+`native-check-updates` serves `POST /api/v1/models/check-updates`, and it is the only path; the former `MODEL_MANAGER_CHECK_UPDATES_IMPL` selector is retired and ignored. The confirmed child (`NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED=1`) refuses that POST with 503. It gets the same `MODELS_DIR`, `MODELS_INI_PATH` and `DATA_DIR`, with canonical spelling required, as for the native update status.
 
 ## What it does (`api.check_updates`, `hf.check_updates_for`, `hf.repo_file_mtimes`)
 - **Records:** `db.download_records()` reads the latest `done` record per `(filename, repo_id)`, grouped by repo in first-appearance order (Python dict-key equality).

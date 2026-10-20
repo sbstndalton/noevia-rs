@@ -205,7 +205,7 @@ def migrate():
     return {"method": "MIGRATE", "path": None, "body": None, "content_type": None}
 
 
-# The system routing role literal (`ini.LAYA_ROLE`). The deprecated name/path rule matches it as a
+# The system routing role literal (the Python `ini` module's role constant). The deprecated name/path rule matches it as a
 # name prefix too, so the synthetic section names below are built from it.
 ROLE = "laya"
 UP, CAP = ROLE.upper(), ROLE.capitalize()

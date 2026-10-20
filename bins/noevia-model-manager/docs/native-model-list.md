@@ -42,7 +42,7 @@ Native, ported exactly and differential-tested:
   followed by `round(x, 1)`), the non-companion model count, the section count and `revision`.
 
 **noevia#1318 step 1b: native live fields.** While this process samples the backends
-(`MODEL_MANAGER_BACKENDS_IMPL=rust`), both bodies are produced natively (`backend_stats/live.rs`):
+(`native-backends`, the only path), both bodies are produced natively (`backend_stats/live.rs`):
 `/models` gets `BackendStats::models_runtime` (the backend snapshot for `loaded`, one fit
 inventory judged for every listed size), and `/overview` gets `BackendStats::overview_runtime`
 (the snapshot without `stats` and `history`) when this process also owns the download table.

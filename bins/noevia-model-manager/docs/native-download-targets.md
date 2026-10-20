@@ -1,6 +1,6 @@
 # Native download targets read (noevia#1318)
 
-`native-download-targets` with `MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL=rust` (and `MODEL_MANAGER_IMPL=rust`) serves `GET /api/v1/download-targets` from the Rust front. Default `python`; nothing changes until the owner switches it on.
+`native-download-targets` serves `GET /api/v1/download-targets` from the Rust front, and it is the only path; the former `MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL` selector is retired and ignored.
 
 ## What it answers
 
@@ -14,7 +14,7 @@ Nothing is written. Other methods keep the existing 405, and `POST /api/v1/downl
 
 - Child confirmation `NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED=1` only in native mode; the Python child then refuses the GET with 503. In python mode an inherited value is removed.
 - `rust` without `MODEL_MANAGER_IMPL=rust` or without the compiled feature refuses startup before the child starts.
-- Like #1889, settings the native read cannot name exactly as Python does keep Python serving the GET, with one log line: a case-folded alias of either name, a `MODELS_DIR` that is not absolute and in pathlib's normal form, non-UTF-8 values, or more than 1,024 declared names.
+- Settings the native read cannot name exactly as Python does make startup fail (the service does not start; nothing falls back to Python): a case-folded alias of either name, a `MODELS_DIR` that is not absolute and in pathlib's normal form, non-UTF-8 values, or more than 1,024 declared names.
 
 ## Differential evidence
 
