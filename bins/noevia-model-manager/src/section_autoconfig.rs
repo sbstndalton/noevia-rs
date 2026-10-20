@@ -12,13 +12,15 @@
 //! through the `model-autoconfig` crate, the projector and draft head beside the model read
 //! here), and the JSON, byte for byte.
 //!
-//! Asked of the Python child, never re-implemented: the live inputs, through the private
+//! Test-only (library tests): the live inputs were asked of the Python child, never
+//! re-implemented, through the private
 //! `POST /api/v1/internal/section-autoconfig-runtime` (only under
 //! `NOEVIA_NATIVE_MODEL_MANAGER_SECTION_AUTOCONFIG_CONFIRMED=1`, which also makes the child refuse
 //! the public route): the telemetry ingest from the backend logs and the section's measurements
 //! (`measured`, `history`, placed verbatim, and the prompt rate the analysis reads), and the
 //! backend inventory (`helpers._backend_list`: the GPU sampler, Docker image tags and commands).
-//! The child is asked only once the file part found a model, as Python ingests only then.
+//! The child was asked only once the file part found a model, as Python ingests only then.
+//! Release builds ask no child: the release `ask` returns `Refused` (the native 503).
 //!
 //! Deliberate refusals (the native 503) where Python cannot be followed exactly are listed in
 //! `docs/native-section-autoconfig.md`.
@@ -49,9 +51,9 @@ use std::{
 
 /// Body of the native refusal (503).
 pub const REFUSAL: &str = "Native section autoconfig is unavailable";
-/// The child's private call.
+/// Test-only: the child's private call (library-test `ask` only).
 pub const RUNTIME_PATH: &str = "/api/v1/internal/section-autoconfig-runtime";
-/// Largest child answer read.
+/// Test-only: largest child answer read.
 pub const RUNTIME_CAP: usize = 16 * 1024 * 1024;
 /// Largest answer written (a recommendation is tens of kilobytes).
 pub const RESPONSE_CAP: usize = 8 * 1024 * 1024;
@@ -59,7 +61,8 @@ pub const RESPONSE_CAP: usize = 8 * 1024 * 1024;
 pub const CONCURRENT_READS: usize = 2;
 /// One blocking part, waiting for its slot included.
 const DEADLINE: Duration = Duration::from_secs(60);
-/// The child's ingest reads up to 20,000 log lines per backend.
+/// Test-only: the library-test child timeout. The child's ingest reads up to 20,000 log lines per
+/// backend.
 #[cfg(test)]
 const CHILD_TIMEOUT: Duration = Duration::from_secs(120);
 

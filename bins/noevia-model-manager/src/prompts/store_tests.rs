@@ -517,6 +517,25 @@ fn row_response_dynamic_type_and_vm_work_limits_refuse() {
     assert_eq!(run(&mut s, Operation::List), Err(Error::Limit));
 }
 #[test]
+fn an_open_past_its_budget_or_cancelled_fails_as_a_store_error() {
+    // Test opens get the larger `OPEN_DEADLINE`, but the budget is still enforced.
+    let root = root();
+    let expired = Store::open_budget(
+        root.path(),
+        Instant::now() - Duration::from_millis(1),
+        Arc::new(AtomicBool::new(false)),
+    );
+    assert!(matches!(expired, Err(Error::Store)));
+    let cancelled = Store::open_budget(
+        root.path(),
+        Instant::now() + OPEN_DEADLINE,
+        Arc::new(AtomicBool::new(true)),
+    );
+    assert!(matches!(cancelled, Err(Error::Store)));
+    assert!(Store::open(root.path()).is_ok());
+}
+
+#[test]
 fn bounded_busy_wait_does_not_retry_or_write_later() {
     let root = root();
     let mut s = open(root.path());

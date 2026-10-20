@@ -238,14 +238,22 @@ fn ancestry_is_private(path: &std::path::Path) -> bool {
 }
 /// The system temporary directory as the fallback store parent. Production refuses a store below a
 /// group- or other-writable ancestor (sticky root-owned temporary parents aside), so the fallback is
-/// checked the same way and a writable temporary root fails here with a clear message.
+/// checked the same way and a writable temporary root fails here with a clear message. It is
+/// canonicalized first: the macOS temporary root is a symlink (`/var` to `/private/var`), and the
+/// store is created at the resolved path, which production accepts.
 fn private_temp_root(temp: &std::path::Path) -> std::path::PathBuf {
+    let temp = std::fs::canonicalize(temp).unwrap_or_else(|e| {
+        panic!(
+            "the system temporary directory {} cannot be resolved ({e}); set S1_PROMPTS_TEST_ROOT to a private directory",
+            temp.display()
+        )
+    });
     assert!(
-        ancestry_is_private(temp),
-        "the system temporary directory {} is not private (a group- or other-writable ancestor, a symlink or a missing directory in its path); set S1_PROMPTS_TEST_ROOT to a private directory",
+        ancestry_is_private(&temp),
+        "the system temporary directory {} is not private (a group- or other-writable ancestor or a missing directory in its path); set S1_PROMPTS_TEST_ROOT to a private directory",
         temp.display()
     );
-    temp.to_path_buf()
+    temp
 }
 /// A fresh private test store directory. `S1_PROMPTS_TEST_ROOT` names the parent explicitly; otherwise
 /// the working directory (a symlink-free path on every platform, unlike macOS's usual temporary
@@ -595,7 +603,7 @@ fn a_writable_system_temporary_directory_is_refused_with_a_clear_message() {
 }
 
 #[test]
-fn a_private_system_temporary_directory_is_used_as_it_is() {
+fn a_private_system_temporary_directory_is_used_in_canonical_form() {
     use std::os::unix::fs::PermissionsExt;
     // tempfile creates its directory with the umask, which may leave it group-writable.
     let parent = tempfile::Builder::new()
@@ -605,5 +613,27 @@ fn a_private_system_temporary_directory_is_used_as_it_is() {
     let private = parent.path().join("private");
     std::fs::create_dir(&private).unwrap();
     std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o700)).unwrap();
-    assert_eq!(private_temp_root(&private), private);
+    assert_eq!(
+        private_temp_root(&private),
+        std::fs::canonicalize(&private).unwrap()
+    );
+}
+
+#[test]
+fn a_symlinked_system_temporary_directory_is_checked_at_its_target() {
+    use std::os::unix::fs::PermissionsExt;
+    // The macOS /var temporary root is such a link: the target is judged and the resolved path used.
+    let parent = tempfile::Builder::new()
+        .permissions(std::fs::Permissions::from_mode(0o700))
+        .tempdir()
+        .unwrap();
+    let target = parent.path().join("target");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let link = parent.path().join("link");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    assert_eq!(
+        private_temp_root(&link),
+        std::fs::canonicalize(&target).unwrap()
+    );
 }
