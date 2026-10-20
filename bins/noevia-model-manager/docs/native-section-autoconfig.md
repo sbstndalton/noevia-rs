@@ -11,12 +11,12 @@ document does not authorize activation.
 ## Ownership
 
 - Rust answers only `GET /api/v1/sections/{name}/autoconfig`, after the token check, with the
-  name segment percent-decoded as the child's server decodes it. Other methods, the slash
+  name segment percent-decoded as the Python server it replaced decoded it (historical). Other methods, the slash
   variants, a name that decodes to a slash and every other section route keep their existing
   handling.
-- The process sets no `NOEVIA_NATIVE_MODEL_MANAGER_SECTION_AUTOCONFIG_CONFIRMED` for any child:
-  the route is never selected per route. The native front never forwards `/api/v1/internal/*`,
-  so the private call below is reachable only from the parent.
+- The shipping process starts no child and sets no `NOEVIA_NATIVE_MODEL_MANAGER_SECTION_AUTOCONFIG_CONFIRMED`
+  (that variable and the private call below survive only in library tests, as history). The native
+  front never forwards `/api/v1/internal/*`.
 - Refused settings (startup fails, never a fallback to Python): a case-folded alias of
   `MODELS_DIR`, `MODELS_INI_PATH`, `LLAMACPP_CACHE_RAM_HARD_MAX_MIB` or
   `LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB` (the Python settings fold names); a `MODELS_DIR` that
@@ -48,29 +48,31 @@ Native, ported exactly and differential-tested:
   (SHA-256 of the raw bytes), and the JSON, byte for byte (Python's float text, non-finite values
   as `null`, `ensure_ascii=False`).
 
-Delegated to the Python child, never re-implemented, through the private
-`POST /api/v1/internal/section-autoconfig-runtime` with `{"section": name, "model": model_rel}`:
+Historically delegated to the Python child, never re-implemented, through the private
+`POST /api/v1/internal/section-autoconfig-runtime` with `{"section": name, "model": model_rel}`.
+Since noevia#2055 the shipping binary makes no such call; the library tests keep that transport with
+a loopback stand-in. Both jobs are native now (steps 3b and 3d below):
 
 - the telemetry: `telemetry.ingest` over the backend logs, then the section's `stats_for` and
   `config_history` (a failure there is empty measurements, as in the route);
 - the backend inventory: `helpers._backend_list()` (the GPU sampler, Docker image tags and
   commands), whose failure is the route's plain 500.
 
-**Step 3b (noevia#1318).** While this process samples the backends
-(`MODEL_MANAGER_BACKENDS_IMPL=rust`), the route uses its own `_backend_list()` instead of the
-list in the child's answer.
+**Step 3b (noevia#1318, historical).** While this process sampled the backends
+(`MODEL_MANAGER_BACKENDS_IMPL=rust`), the route used its own `_backend_list()` instead of the
+list in the child's answer (the child answer is a test stand-in since noevia#2055).
 
 - **The list:** the native descriptors (`fit::descriptors`), each with `baseline` as
   `parse_baseline(cmd) if cmd else {}`. The parse goes through the `model-autoconfig` crate over
   `inventory::KNOWN_KEYS` (`sorted(ini.ALL_KNOWN_KEYS)`).
-- **Failures:** the child still lists the backends itself, so a failure there stays Python's 500.
-  A container command this side does not render, or a baseline the rule refuses, keeps the
-  child's list for that answer. Docker inventory work has a 10-second deadline; after a timeout,
-  optional inventory reads on that sampler keep the child's answer for 10 seconds before retrying.
-  This cooldown holds only a monotonic retry deadline, never a previous inventory. Failures are
+- **Failures (historical, while the child listed the backends):** a failure there stayed Python's
+  500. A container command this side did not render, or a baseline the rule refused, kept the
+  child's list for that answer. Docker inventory work had a 10-second deadline; after a timeout,
+  optional inventory reads on that sampler kept the child's answer for 10 seconds before retrying.
+  This cooldown held only a monotonic retry deadline, never a previous inventory. Failures were
   logged at the first, tenth, hundredth and subsequent powers-of-ten occurrence per reason.
-  The authoritative native-telemetry path below still refuses on inventory failure and does not
-  use this child-fallback cooldown.
+  The native-telemetry path below refuses on inventory failure and does not use this child-fallback
+  cooldown.
 - **Differential:** `tools/gen-fit-oracle.py` records Python's whole list (baseline included) and
   the known keys, and `section_autoconfig::inventory::tests` compares both.
 
@@ -124,21 +126,21 @@ and builds the backend list.
   the rendered measurements after each; `section_autoconfig::telemetry::tests` replays every pass
   on the same schema and compares them.
 
-The child answers `{"measured": ..., "history": ..., "promptTps": "<repr>", "backends": "<json>"}`:
+Before noevia#2055 the child answered `{"measured": ..., "history": ..., "promptTps": "<repr>", "backends": "<json>"}`
+(the library tests still build that answer from a loopback stand-in):
 `measured` and `history` rendered as the route renders them and placed verbatim, the prompt rate
-as Python's float `repr`, and the backend list as JSON text that keeps non-finite floats. The
-parent asks only once the file part found a model, as Python ingests only then. A child 500 is
-FastAPI's plain 500; a refusing, missing or oversized (over 16 MiB) answer is the forwarded
-route's `502 {"detail":"Python-owned endpoint unavailable"}`; an answer of the wrong shape
-refuses (below).
+as Python's float `repr`, and the backend list as JSON text that keeps non-finite floats. The former parent asked only once the file part found a model, as Python ingested only then. In test
+builds a child 500 was FastAPI's plain 500; a refusing, missing or oversized (over 16 MiB) answer was
+the forwarded route's `502 {"detail":"Python-owned endpoint unavailable"}`; an answer of the wrong
+shape refused (below). A shipping build asks no child (see the bounds below).
 
-`MODEL_AUTOCONFIG` (the child's choice between its Python analysis, the default, and the
-crate's binary) is not read here: the native route always answers the crate's plan. That is
-justified because the crate matches Python's default analysis: the oracle records the child under
-its default, and every native answer equals it byte for byte. The one behaviour that differs is
-the child's `MODEL_AUTOCONFIG=rust` mode, where Python computes its own plan, has the crate confirm
-it, and fails closed with an error when the two disagree; the native route has no second plan to
-compare with and answers the crate's.
+Historically the child's `MODEL_AUTOCONFIG` (its choice between the Python analysis, the default, and
+the crate's binary) was never read here: the native route always answered the crate's plan. That was
+justified because the crate matched Python's default analysis: the oracle recorded the child under its
+default, and every native answer equalled it byte for byte. The one behaviour that differed was the
+child's `MODEL_AUTOCONFIG=rust` mode, where Python computed its own plan and had the crate confirm it,
+and failed closed with an error when the two disagreed; the native route had no second plan to compare
+with and answered the crate's. The shipping binary starts no child, so no child mode is read.
 
 ## Bounds and deliberate differences
 
@@ -157,13 +159,16 @@ for:
   step refuses;
 - a roles file over 1 MiB, or a models.ini the section parser refuses;
 - any input where the crate refuses but Python could still answer (the crate's own refusals);
-- a child answer of the wrong shape;
+- (test builds only) a child answer of the wrong shape;
 - an answer over 8 MiB;
 - a blocking part (including waiting for one of the two read slots) running past 60 s.
+- a build without `native-telemetry`, or without the native backend sampler: no child is asked, and the
+  release path refuses at once with the same 503.
 
 The blocking parts (the file part, then the analysis) each take one of two read slots and run
 under the request's admission permit; a request dropped mid-read keeps both until the read
-returns. The child call has a 120 s timeout (its ingest reads up to 20,000 log lines per backend).
+returns. The former child call had a 120 s timeout (its ingest read up to 20,000 log lines per backend); the
+library stand-in keeps that timeout, and the shipping binary makes no child call.
 
 Wire texts the route answers with (the system routing role answer, the backend refusals) are kept
 byte for byte, including the product names they mention.

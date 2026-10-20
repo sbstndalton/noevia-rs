@@ -411,13 +411,33 @@ mod live {
     std::thread_local! {
         /// Each test runs on its own thread (its own current-thread runtime), so the live
         /// drivers it starts are counted apart from those of tests running in parallel.
+        ///
+        /// That holds only on a current-thread runtime. `enter` counts on the thread that spawns
+        /// the driver and `count` reads the calling thread's counter, so on a multi-thread runtime
+        /// a "count is 0" assertion can hold because it reads a different thread. Both entry points
+        /// call `assert_current_thread`, so such a test fails instead of passing vacuously.
         static COUNT: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    }
+
+    /// Panics unless the runtime the caller is in, if any, is current-thread. Outside a runtime
+    /// nothing can migrate between workers, so the check does not apply.
+    fn assert_current_thread() {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            assert!(
+                matches!(
+                    handle.runtime_flavor(),
+                    tokio::runtime::RuntimeFlavor::CurrentThread
+                ),
+                "docker::live counts per thread: run this test on a current-thread runtime (#[tokio::test])"
+            );
+        }
     }
 
     /// Counted from spawn until the driver's future is dropped, whether it finished or was aborted.
     pub struct Guard(Arc<AtomicUsize>);
 
     pub fn enter() -> Guard {
+        assert_current_thread();
         let count = COUNT.with(Arc::clone);
         count.fetch_add(1, Ordering::SeqCst);
         Guard(count)
@@ -425,6 +445,7 @@ mod live {
 
     /// Drivers started from the calling test's thread that are not yet dropped.
     pub fn count() -> usize {
+        assert_current_thread();
         COUNT.with(|count| count.load(Ordering::SeqCst))
     }
 
@@ -888,6 +909,23 @@ pub fn decode_frames(raw: &[u8], tty: bool) -> Result<Vec<u8>, &'static str> {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_live_counter_refuses_a_multi_thread_runtime() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            assert!(std::panic::catch_unwind(super::live::count).is_err());
+        });
+    }
+
+    #[tokio::test]
+    async fn the_live_counter_accepts_the_current_thread_runtime() {
+        assert_eq!(super::live::count(), 0);
+    }
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
