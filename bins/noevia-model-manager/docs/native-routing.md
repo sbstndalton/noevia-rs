@@ -1,8 +1,10 @@
 # Native public framework routing (#1318, #2053)
 
-`native-routing` compiles the complete public API ownership set. The new selector
-`MODEL_MANAGER_ROUTING_IMPL` defaults to python; rust requires every selector in
-routing_cmd::REQUIRED to be rust. Startup first performs bounded read-only trusted-file validation
+`native-routing` compiles the complete public API ownership set and is mandatory (noevia#1071).
+`MODEL_MANAGER_ROUTING_IMPL` and the per-route `MODEL_MANAGER_*_IMPL` selectors it once required
+are retired: the executable ignores them, hostile values included (`tests/lifecycle.rs` sets every
+retired key to `python`, `rust`, an invalid value and empty, and expects the same startup).
+Startup first performs bounded read-only trusted-file validation
 and config/root qualification. Missing/malformed trusted data, empty publisher sets, or a config
 that would leave a public owner on Python refuses. The constructed native stores, sampler/runtime
 sources, telemetry, observer and planners are checked again before orphan reap, embedding
@@ -43,10 +45,9 @@ encoded backend actions and zero unapproved Docker calls with an unavailable chi
 qualification verifies bad prerequisites never contact a synthetic Docker socket, initialize a
 store or seed an embedding preset. Missing compiled capability refuses before startup too.
 
-Release integration must compile native-routing and pass MODEL_MANAGER_ROUTING_IMPL through
-both compose copies and the retained server override. Qualify all required selectors/roots and
-trusted publisher data before selecting rust. Roll back by selecting python and restarting while
-the compatibility child remains installed.
+Release integration must compile native-routing; no selector is passed. Qualify all roots and
+trusted publisher data before deploying. Rollback restores the previous image and configuration
+(see native-service.md); this binary has no python routing mode.
 
 The reviewed benchmark run path/integer parser from rs#209 is normal-merged without reimplementation.
 This branch starts at aggregate 01df44f and also normal-merges aggregate PR #210 at d3a8aa7 and reviewed

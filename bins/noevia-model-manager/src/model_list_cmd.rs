@@ -1,12 +1,11 @@
-//! noevia#1318: the startup selectors of `GET /api/v1/models` (`MODEL_MANAGER_MODELS_IMPL`) and
-//! `GET /api/v1/overview` (`MODEL_MANAGER_OVERVIEW_IMPL`), both `python` by default.
+//! noevia#1318: the settings of `GET /api/v1/models` and `GET /api/v1/overview`, both owned natively
+//! (noevia#1071: the `MODEL_MANAGER_MODELS_IMPL` and `MODEL_MANAGER_OVERVIEW_IMPL` selectors are
+//! retired and ignored).
 //!
-//! Like every switch, startup is refused for a value other than `python` or `rust`, and for
-//! `rust` without the compiled `native-model-list` feature. Past that, settings this side cannot
-//! read exactly as the Python child does keep that route with Python, with one log line, instead
-//! of refusing: a case-folded alias of a setting the child reads (its settings fold names), a
-//! `MODELS_DIR` that is not absolute and in pathlib's normal form, and for the list a `TZ` other
-//! than unset or `UTC` (`modified` is formatted in the child's zone; the child is given UTC).
+//! Startup is refused for settings this side cannot read exactly as the Python reference did: a
+//! case-folded alias of a setting it reads (its settings fold names), a `MODELS_DIR` that is not
+//! absolute and in pathlib's normal form, an empty `MODELS_INI_PATH` or `DATA_DIR`, and a value
+//! over its limit.
 use std::ffi::OsString;
 
 /// The settings one native route reads, named as the child reads them.
@@ -21,7 +20,7 @@ pub(crate) struct Roots {
 }
 
 /// Which of the two routes are native (`Some`), with what they read.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Selection {
     pub(crate) models: Option<Roots>,
     pub(crate) overview: Option<Roots>,
@@ -36,18 +35,6 @@ fn value(values: &Vars, key: &str, default: &str) -> Result<String, &'static str
             .map(str::to_owned)
             .ok_or("environment setting must be UTF-8"),
         None => Ok(default.to_owned()),
-    }
-}
-
-#[cfg(test)]
-fn mode(values: &Vars, key: &'static str) -> Result<bool, String> {
-    match value(values, key, "python")?.as_str() {
-        "python" => Ok(false),
-        "rust" if cfg!(feature = "native-model-list") => Ok(true),
-        "rust" => Err(format!(
-            "{key}=rust requires rust model manager and compiled native-model-list feature"
-        )),
-        _ => Err(format!("{key} must be python or rust")),
     }
 }
 
@@ -96,7 +83,6 @@ fn roots(values: &Vars) -> Result<Roots, &'static str> {
 }
 
 /// Mandatory production configuration; implementation selectors have no meaning here.
-#[cfg(feature = "native-routing")]
 pub(crate) fn native(values: &Vars) -> Result<Selection, String> {
     let roots = roots(values)?;
     Ok(Selection {
@@ -105,70 +91,7 @@ pub(crate) fn native(values: &Vars) -> Result<Selection, String> {
     })
 }
 
-/// The two selectors. `Err` refuses startup; a fallback is logged and keeps Python serving.
-#[cfg(test)]
-pub(crate) fn select(values: &Vars) -> Result<Selection, String> {
-    let models = mode(values, "MODEL_MANAGER_MODELS_IMPL")?;
-    let overview = mode(values, "MODEL_MANAGER_OVERVIEW_IMPL")?;
-    let mut selection = Selection::default();
-    if models {
-        let tz = value(values, "TZ", "")?;
-        let chosen = if tz.is_empty() || tz == "UTC" {
-            roots(values)
-        } else {
-            Err("TZ is set to a zone other than UTC")
-        };
-        match chosen {
-            Ok(roots) => selection.models = Some(roots),
-            Err(reason) => {
-                eprintln!("native-model-list: {reason}; GET /api/v1/models stays with python");
-            }
-        }
-    }
-    if overview {
-        match roots(values) {
-            Ok(roots) => selection.overview = Some(roots),
-            Err(reason) => {
-                eprintln!("native-model-list: {reason}; GET /api/v1/overview stays with python");
-            }
-        }
-    }
-    Ok(selection)
-}
-
-/// The child refuses a route only when the native parent owns it (`1`; `0` otherwise, also over
-/// an inherited value), serves the matching private call, and reads the same settings.
-#[cfg(test)]
-pub(crate) fn child(command: &mut tokio::process::Command, selection: &Selection) {
-    command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_MODELS_CONFIRMED",
-        if selection.models.is_some() { "1" } else { "0" },
-    );
-    command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_OVERVIEW_CONFIRMED",
-        if selection.overview.is_some() {
-            "1"
-        } else {
-            "0"
-        },
-    );
-    if let Some(roots) = &selection.models {
-        command
-            .env("TZ", "UTC")
-            .env("MODELS_DIR", &roots.models)
-            .env("MODELS_INI_PATH", &roots.ini)
-            .env("DATA_DIR", &roots.data);
-    }
-    if let Some(roots) = &selection.overview {
-        command
-            .env("MODELS_DIR", &roots.models)
-            .env("MODELS_INI_PATH", &roots.ini)
-            .env("MODELS_HOST_PATH", &roots.host);
-    }
-}
-
 /// The native routes' state, when either is native.
-#[cfg(all(feature = "native-model-list", feature = "native-routing"))]
 pub(crate) fn state(
     selection: &Selection,
 ) -> Option<std::sync::Arc<noevia_model_manager::model_list::ModelList>> {
@@ -185,8 +108,7 @@ pub(crate) fn state(
     )))
 }
 
-// Gated like the other slices' bin tests: the diagnosis mutation check pins the bin's test count.
-#[cfg(all(test, feature = "native-model-list"))]
+#[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
     use super::*;
@@ -198,36 +120,25 @@ mod tests {
             .collect()
     }
 
-    fn native() -> bool {
-        cfg!(feature = "native-model-list")
-    }
-
     #[test]
-    fn python_is_the_default_and_bad_values_refuse_startup() {
-        assert_eq!(select(&vars(&[])).unwrap(), Selection::default());
-        for key in ["MODEL_MANAGER_MODELS_IMPL", "MODEL_MANAGER_OVERVIEW_IMPL"] {
-            for bad in ["", "Rust", "native", " rust"] {
-                let error = select(&vars(&[(key, bad)])).unwrap_err();
-                assert_eq!(error, format!("{key} must be python or rust"));
-            }
-            let rust = select(&vars(&[(key, "rust")]));
-            assert_eq!(rust.is_ok(), native(), "{key}");
-            if !native() {
-                assert!(rust
-                    .unwrap_err()
-                    .contains("compiled native-model-list feature"));
-            }
-        }
-    }
-
-    #[test]
-    fn each_route_is_selected_on_its_own() {
-        if !native() {
-            return;
-        }
-        let both = select(&vars(&[
-            ("MODEL_MANAGER_MODELS_IMPL", "rust"),
-            ("MODEL_MANAGER_OVERVIEW_IMPL", "rust"),
+    fn both_routes_read_the_same_defaults_or_explicit_roots() {
+        let default = native(&vars(&[])).unwrap();
+        let roots = Roots {
+            models: "/models".into(),
+            ini: "/models/models.ini".into(),
+            data: "/data".into(),
+            host: String::new(),
+        };
+        assert_eq!(default.models.as_ref(), Some(&roots));
+        assert_eq!(default.overview.as_ref(), Some(&roots));
+        // Retired implementation selectors change nothing.
+        let ignored = native(&vars(&[
+            ("MODEL_MANAGER_MODELS_IMPL", "python"),
+            ("MODEL_MANAGER_OVERVIEW_IMPL", "invalid"),
+        ]))
+        .unwrap();
+        assert_eq!(ignored, default);
+        let explicit = native(&vars(&[
             ("MODELS_DIR", "/srv/models"),
             ("MODELS_INI_PATH", "/srv/models/presets.ini"),
             ("DATA_DIR", "/srv/data"),
@@ -240,98 +151,30 @@ mod tests {
             data: "/srv/data".into(),
             host: "/mnt/synthetic".into(),
         };
-        assert_eq!(both.models.as_ref(), Some(&roots));
-        assert_eq!(both.overview.as_ref(), Some(&roots));
-        let list = select(&vars(&[("MODEL_MANAGER_MODELS_IMPL", "rust")])).unwrap();
-        assert!(list.models.is_some() && list.overview.is_none());
-        assert_eq!(list.models.unwrap().models, "/models");
-        let overview = select(&vars(&[("MODEL_MANAGER_OVERVIEW_IMPL", "rust")])).unwrap();
-        assert!(overview.models.is_none());
-        assert_eq!(overview.overview.unwrap().host, "");
+        assert_eq!(explicit.models.as_ref(), Some(&roots));
+        assert_eq!(explicit.overview.as_ref(), Some(&roots));
     }
 
     #[test]
-    fn settings_it_cannot_read_exactly_keep_python() {
-        if !native() {
-            return;
-        }
-        let both = |extra: &[(&str, &str)]| {
-            let mut all = vec![
-                ("MODEL_MANAGER_MODELS_IMPL", "rust"),
-                ("MODEL_MANAGER_OVERVIEW_IMPL", "rust"),
-            ];
-            all.extend_from_slice(extra);
-            select(&vars(&all)).unwrap()
-        };
+    fn settings_it_cannot_read_exactly_refuse_startup() {
         for fold in [
             ("models_dir", "/x"),
             ("Models_Ini_Path", "/x.ini"),
             ("models_host_path", "/x"),
+            ("data_dir", "/x"),
         ] {
-            let selection = both(&[fold]);
-            assert!(selection.models.is_none(), "{fold:?}");
-            assert!(selection.overview.is_none(), "{fold:?}");
+            assert!(native(&vars(&[fold])).is_err(), "{fold:?}");
         }
-        // DATA_DIR is read by the list only, but its alias is refused for both.
-        assert_eq!(both(&[("data_dir", "/x")]), Selection::default());
         for models in ["relative", "/a/", "/a//b", "/a/./b", "/a/../b", ""] {
-            assert_eq!(
-                both(&[("MODELS_DIR", models)]),
-                Selection::default(),
+            assert!(
+                native(&vars(&[("MODELS_DIR", models)])).is_err(),
                 "{models}"
             );
         }
-        assert!(both(&[("MODELS_DIR", "/")]).models.is_some());
-        let zone = both(&[("TZ", "Europe/Berlin")]);
-        assert!(zone.models.is_none());
-        assert!(zone.overview.is_some());
-        assert!(both(&[("TZ", "UTC")]).models.is_some());
-        assert!(both(&[("TZ", "")]).models.is_some());
+        assert!(native(&vars(&[("MODELS_DIR", "/")])).is_ok());
+        assert!(native(&vars(&[("MODELS_INI_PATH", "")])).is_err());
+        assert!(native(&vars(&[("DATA_DIR", "")])).is_err());
         let long = "/".to_owned() + &"x".repeat(4096);
-        assert_eq!(both(&[("MODELS_DIR", &long)]), Selection::default());
-    }
-
-    #[test]
-    fn confirmations_override_inherited_values() {
-        let roots = Roots {
-            models: "/srv/models".into(),
-            ini: "/srv/models.ini".into(),
-            data: "/srv/data".into(),
-            host: String::new(),
-        };
-        for (models, overview) in [(false, false), (true, false), (false, true), (true, true)] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command
-                .env("NOEVIA_NATIVE_MODEL_MANAGER_MODELS_CONFIRMED", "hostile")
-                .env("NOEVIA_NATIVE_MODEL_MANAGER_OVERVIEW_CONFIRMED", "hostile");
-            let selection = Selection {
-                models: models.then(|| roots.clone()),
-                overview: overview.then(|| roots.clone()),
-            };
-            child(&mut command, &selection);
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| {
-                envs.get(std::ffi::OsStr::new(k))
-                    .copied()
-                    .flatten()
-                    .map(|v| v.to_str().unwrap().to_owned())
-            };
-            let flag = |on: bool| Some(if on { "1" } else { "0" }.to_owned());
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_MODELS_CONFIRMED"),
-                flag(models)
-            );
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_OVERVIEW_CONFIRMED"),
-                flag(overview)
-            );
-            assert_eq!(get("TZ"), models.then(|| "UTC".to_owned()));
-            assert_eq!(get("DATA_DIR"), models.then(|| "/srv/data".to_owned()));
-            assert_eq!(get("MODELS_HOST_PATH"), overview.then(String::new));
-            assert_eq!(
-                get("MODELS_DIR"),
-                (models || overview).then(|| "/srv/models".to_owned())
-            );
-        }
+        assert!(native(&vars(&[("MODELS_DIR", &long)])).is_err());
     }
 }

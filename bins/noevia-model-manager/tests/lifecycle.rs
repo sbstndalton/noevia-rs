@@ -6,6 +6,8 @@ use std::{os::unix::fs::PermissionsExt, process::Command};
 #[allow(dead_code)]
 #[path = "../src/bin/support/prompts_process.rs"]
 mod prompts_process;
+#[path = "support/retired_selectors.rs"]
+mod retired_selectors;
 #[test]
 fn prompt_process_pump_caps_stalls_inherited_pipes_and_early_exit() {
     let python = std::env::var_os("PYTHON").unwrap_or_else(|| "python3".into());
@@ -201,7 +203,7 @@ fn retired_implementation_keys_never_change_required_startup_profile() {
     let (dir, marker) = owned_uvicorn();
     for value in ["python", "rust", "invalid", ""] {
         let mut cmd = command(dir.path(), &marker);
-        for key in noevia_model_manager::routing_cmd::REQUIRED {
+        for key in retired_selectors::RETIRED_SELECTORS {
             cmd.env(key, value);
         }
         cmd.env("MODEL_MANAGER_ROUTING_IMPL", value)

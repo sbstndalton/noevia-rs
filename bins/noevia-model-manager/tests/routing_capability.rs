@@ -1,4 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::panic)]
+#[path = "support/retired_selectors.rs"]
+mod retired_selectors;
 #[cfg(not(feature = "native-routing"))]
 #[test]
 fn missing_mandatory_capability_refuses_before_startup() {
@@ -44,7 +46,7 @@ fn bad_prerequisites_never_reap_orphans_seed_embedding_or_initialize_a_store() {
         command
             .env_clear()
             .env("MODEL_MANAGER_ROUTING_IMPL", "rust");
-        for key in noevia_model_manager::routing_cmd::REQUIRED {
+        for key in retired_selectors::RETIRED_SELECTORS {
             command.env(key, "rust");
         }
         command
