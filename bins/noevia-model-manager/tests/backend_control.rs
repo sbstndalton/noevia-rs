@@ -35,6 +35,8 @@ type Job<'a, T> = Pin<Box<dyn Future<Output = Result<T, &'static str>> + Send + 
 struct FakeDocker {
     spec: Option<BackendSpec>,
     restart_error: Option<String>,
+    /// Notified when a restart call has produced its result (for tests that wait on it).
+    restart_done: Option<Arc<tokio::sync::Notify>>,
 }
 impl DockerRead for FakeDocker {
     fn containers(&self) -> Job<'_, Vec<Container>> {
@@ -54,12 +56,17 @@ impl DockerRead for FakeDocker {
     }
     fn restart_backend<'a>(&'a self, _: &'a str) -> Job<'a, ()> {
         let error = self.restart_error.clone();
+        let done = self.restart_done.clone();
         Box::pin(async move {
-            match error {
+            let result = match error {
                 // The fixture's Python fake raises APIError("<this> (HTTP 500)").
                 Some(_) => Err("Docker refused the restart (HTTP 500)"),
                 None => Ok(()),
+            };
+            if let Some(done) = done {
+                done.notify_one();
             }
+            result
         })
     }
 }
@@ -303,6 +310,7 @@ async fn actual_python_differential() {
             let docker = FakeDocker {
                 spec: spec(&case["spec"], port),
                 restart_error: st["restart_error"].as_str().map(str::to_owned),
+                restart_done: None,
             };
             let s = state(
                 docker,
@@ -399,7 +407,7 @@ fn max_tokens_follows_int_and_refuses_what_python_500s() {
 }
 
 /// noevia#1318 step 2: a failed restart is kept in the native sampler's store, and nothing is sent
-/// to a child: there is no second copy that could go stale.
+/// to a child: this process keeps no second copy that could go stale.
 #[cfg(feature = "native-backends")]
 #[tokio::test]
 async fn native_sampler_owns_restart_errors_without_child_mirrors() {
@@ -449,6 +457,7 @@ async fn native_sampler_owns_restart_errors_without_child_mirrors() {
     let docker = FakeDocker {
         spec: spec(&case["spec"], port),
         restart_error: step["restart_error"].as_str().map(str::to_owned),
+        restart_done: None,
     };
     let mut s = Arc::into_inner(state(
         docker,
@@ -593,10 +602,11 @@ async fn backends_and_overview_report_the_samplers_restart_error() {
         entrypoint: vec![],
         env: vec![],
     };
-    let with_restart = |restart_error: Option<&str>| {
+    let with_restart = |restart_error: Option<&str>, done: Option<Arc<tokio::sync::Notify>>| {
         let docker = FakeDocker {
             spec: Some(spec.clone()),
             restart_error: restart_error.map(str::to_owned),
+            restart_done: done,
         };
         let mut s = Arc::into_inner(state(
             docker,
@@ -609,12 +619,12 @@ async fn backends_and_overview_report_the_samplers_restart_error() {
     };
     let older = "APIError: an older failure";
     stats.seed_restart_errors(&[(NAME.to_owned(), older.to_owned())]);
-    let (backends, overview) = reported_restart_errors(&with_restart(None), &stats).await;
+    let (backends, overview) = reported_restart_errors(&with_restart(None, None), &stats).await;
     assert_eq!(backends, older, "the seeded store is what is reported");
     assert_eq!(overview, older);
 
     // A failed restart: the older entry is cleared, then the failure is stored and reported.
-    let failing = with_restart(Some("synthetic refusal"));
+    let failing = with_restart(Some("synthetic refusal"), None);
     post_restart(failing.clone()).await;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     let stored = loop {
@@ -634,14 +644,21 @@ async fn backends_and_overview_report_the_samplers_restart_error() {
     assert_eq!(backends, stored);
     assert_eq!(overview, stored);
 
-    // A successful restart clears the entry before it is queued and sets nothing afterwards.
-    let working = with_restart(None);
+    // A successful restart clears the entry before it is queued and sets nothing afterwards. The
+    // Docker fake signals once its restart call has produced its result; the background task then
+    // returns without storing anything (on this single-threaded runtime it finishes in the same
+    // poll, before this test resumes). A bounded wait fails with a message instead of hanging.
+    let done = Arc::new(tokio::sync::Notify::new());
+    let working = with_restart(None, Some(done.clone()));
     post_restart(working.clone()).await;
-    for _ in 0..100 {
-        tokio::task::yield_now().await;
-    }
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert_eq!(stats.restart_error(NAME), None);
+    tokio::time::timeout(std::time::Duration::from_secs(5), done.notified())
+        .await
+        .expect("the successful restart never reached the Docker call");
+    assert_eq!(
+        stats.restart_error(NAME),
+        None,
+        "a successful restart left an error in the store"
+    );
     let (backends, overview) = reported_restart_errors(&working, &stats).await;
     assert_eq!(backends, Value::Null);
     assert_eq!(overview, Value::Null);

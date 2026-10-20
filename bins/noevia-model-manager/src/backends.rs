@@ -8,7 +8,8 @@
 //!   a failure is kept as that backend's `last_restart_error`, which `GET /api/v1/backends` shows.
 //!   The native sampler's restart-error store is the only copy: it is cleared before the restart
 //!   is queued, set when the restart fails, and read by `GET /api/v1/backends` and the overview's
-//!   backend list. Nothing is sent to a child.
+//!   backend list. Nothing is sent to a child. (Without the sampler, `python_owned` routes those
+//!   two reads to `forward`: a proxy to the historical child in test builds, a 503 in release.)
 //! - test: the backend's llama-server port is resolved from `docker inspect` (published port, else
 //!   `--port`/`LLAMA_ARG_PORT`, else LLAMA_DEFAULT_PORT), its `/v1/models` probed for a loaded
 //!   model, and one non-streaming chat completion sent.
