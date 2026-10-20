@@ -111,8 +111,8 @@ fn fixture_with(tune: impl FnOnce(EmbeddingService) -> EmbeddingService) -> Fixt
     let dir = tempfile::tempdir().unwrap();
     let models = dir.path().join("models");
     for file in [
-        "nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf",
-        "embeddinggemma-2/embeddinggemma-2-Q8_0.gguf",
+        "embed-main-v1/embed-main-v1.Q8_0.gguf",
+        "embed-alt-2/embed-alt-2-Q8_0.gguf",
     ] {
         let path = models.join(file);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -141,10 +141,10 @@ fn fixture_with(tune: impl FnOnce(EmbeddingService) -> EmbeddingService) -> Fixt
     }
 }
 
-const NOMIC: &str = "nomic-embed-text-v1";
-const NOMIC_FILE: &str = "nomic-embed-text-v1/nomic-embed-text-v1.Q8_0.gguf";
-const GEMMA: &str = "embeddinggemma-2";
-const GEMMA_FILE: &str = "embeddinggemma-2/embeddinggemma-2-Q8_0.gguf";
+const EMBED_MAIN: &str = "embed-main-v1";
+const EMBED_MAIN_FILE: &str = "embed-main-v1/embed-main-v1.Q8_0.gguf";
+const EMBED_ALT: &str = "embed-alt-2";
+const EMBED_ALT_FILE: &str = "embed-alt-2/embed-alt-2-Q8_0.gguf";
 
 fn entry(model: &str, file: &str) -> Entry {
     Entry {
@@ -321,29 +321,32 @@ async fn slow_python_delete(
 #[tokio::test]
 async fn switch_to_a_model_being_deleted_never_saves_it_as_served() {
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     let (base, arrived, server) =
-        slow_python_delete(f.dir.path().join("models").join(GEMMA_FILE)).await;
+        slow_python_delete(f.dir.path().join("models").join(EMBED_ALT_FILE)).await;
     let s = state_at(f.service.clone(), &base);
     let delete = tokio::spawn(call(
         s,
         "POST",
         "/api/v1/models/delete",
-        r#"{"models":["embeddinggemma-2/embeddinggemma-2-Q8_0.gguf"]}"#,
+        r#"{"models":["embed-alt-2/embed-alt-2-Q8_0.gguf"]}"#,
     ));
     // The delete passed the check and Python is removing the file: now switch to that model.
     arrived.await.unwrap();
     let applied = f
         .service
-        .apply(serve(&[(NOMIC, NOMIC_FILE), (GEMMA, GEMMA_FILE)]))
+        .apply(serve(&[
+            (EMBED_MAIN, EMBED_MAIN_FILE),
+            (EMBED_ALT, EMBED_ALT_FILE),
+        ]))
         .await;
     let (status, _) = delete.await.unwrap();
     server.abort();
     assert_eq!(status, 200);
     assert_eq!(applied, Err(Refusal::Invalid("model file not found")));
     let saved = f.service.saved().unwrap().unwrap();
-    assert_eq!(saved.models, vec![entry(NOMIC, NOMIC_FILE)]);
-    assert!(!preset(&f).contains(GEMMA));
+    assert_eq!(saved.models, vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]);
+    assert!(!preset(&f).contains(EMBED_ALT));
     assert!(f.control.actions.lock().unwrap().is_empty());
 }
 
@@ -370,25 +373,21 @@ impl ServiceControl for HangLater {
     }
 }
 
-// #1717: a watched service with a short probe interval, seeded with nomic and settled (no
+// #1717: a watched service with a short probe interval, seeded with the main embedding model and settled (no
 // boot warm-up running).
 fn watched(attempts: u32) -> Fixture {
     let f = fixture_with(|s| {
         s.with_warm(Duration::from_millis(5), attempts)
             .with_watch(Duration::from_millis(20))
     });
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     f
 }
 
 // ── #1726: image presets (multimodal RAG) ───────────────────────────────────────────────────────
 fn with_projector(f: &Fixture, names: &[&str]) {
     for name in names {
-        std::fs::write(
-            f.dir.path().join("models/embeddinggemma-2").join(name),
-            b"GGUF",
-        )
-        .unwrap();
+        std::fs::write(f.dir.path().join("models/embed-alt-2").join(name), b"GGUF").unwrap();
     }
 }
 
@@ -399,7 +398,7 @@ fn with_projector(f: &Fixture, names: &[&str]) {
 async fn a_guarded_python_delete_holds_the_download_table_while_forwarded() {
     use noevia_model_manager::downloads::{Config, Downloads};
     let f = fixture();
-    f.service.seed(NOMIC, NOMIC_FILE).unwrap();
+    f.service.seed(EMBED_MAIN, EMBED_MAIN_FILE).unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let (arrived, arrived_rx) = tokio::sync::oneshot::channel::<()>();
@@ -437,7 +436,7 @@ async fn a_guarded_python_delete_holds_the_download_table_while_forwarded() {
         Arc::new(s),
         "POST",
         "/api/v1/models/delete",
-        r#"{"models":["embeddinggemma-2/embeddinggemma-2-Q8_0.gguf"]}"#,
+        r#"{"models":["embed-alt-2/embed-alt-2-Q8_0.gguf"]}"#,
     ));
     tokio::time::timeout(Duration::from_secs(20), arrived_rx)
         .await

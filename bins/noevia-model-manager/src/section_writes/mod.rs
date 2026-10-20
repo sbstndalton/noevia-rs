@@ -895,7 +895,7 @@ impl SectionWrites {
     }
 }
 
-/// The system routing role: its value in `models.roles.json` (`ini.LAYA_ROLE`), which the
+/// The system routing role: its value in `models.roles.json` (the Python `ini` module's role constant), which the
 /// deprecated name/path rule also matches as a name prefix.
 const SYSTEM_ROUTING_ROLE: &str = "laya";
 
@@ -916,7 +916,7 @@ fn system_routing_name(part: &str) -> bool {
     )
 }
 
-/// `ini._is_laya_section(cp, name)`: the system routing role from `models.roles.json` when the
+/// The Python `ini` module's system-routing-section check: the system routing role from `models.roles.json` when the
 /// section has a role, else the deprecated name/path rule (logged, as Python logs it).
 fn system_routing_section(cp: &Parser, name: &str, roles: &[(String, String)]) -> bool {
     if name == "*" || !cp.has_section(name) {

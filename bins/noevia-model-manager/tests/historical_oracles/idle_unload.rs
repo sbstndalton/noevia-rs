@@ -158,7 +158,7 @@ async fn call(state: Arc<StateData>, method: &str) -> (u16, Value) {
     (status, serde_json::from_slice(&raw).unwrap())
 }
 
-const SAVED: &str = "[gemma-4-12b]\nmodel = synthetic/chat.gguf\nctx-size = 8192\n";
+const SAVED: &str = "[synthetic-chat]\nmodel = synthetic/chat.gguf\nctx-size = 8192\n";
 
 #[tokio::test]
 async fn editor_save_without_the_key_gets_it_back_with_a_matching_revision() {
@@ -166,7 +166,7 @@ async fn editor_save_without_the_key_gets_it_back_with_a_matching_revision() {
     let ini = dir.path().join("models.ini");
     let embed = dir.path().join("embedding.ini");
     std::fs::write(&ini, "").unwrap();
-    std::fs::write(&embed, "[nomic]\nmodel = synthetic/embed.gguf\n").unwrap();
+    std::fs::write(&embed, "[embed-main]\nmodel = synthetic/embed.gguf\n").unwrap();
     let base = fake_python(ini.clone(), SAVED, false).await;
     let reconciler = Arc::new(Reconciler::new(
         ini.clone(),
@@ -185,7 +185,7 @@ async fn editor_save_without_the_key_gets_it_back_with_a_matching_revision() {
     // #1717: the embedding router's preset stays exactly as it was.
     assert_eq!(
         std::fs::read_to_string(&embed).unwrap(),
-        "[nomic]\nmodel = synthetic/embed.gguf\n"
+        "[embed-main]\nmodel = synthetic/embed.gguf\n"
     );
 }
 
@@ -210,7 +210,7 @@ async fn zero_disables_and_removes_the_global_key() {
     let dir = tempfile::tempdir().unwrap();
     let ini = dir.path().join("models.ini");
     std::fs::write(&ini, "").unwrap();
-    const WITH_KEY: &str = "[*]\nsleep-idle-seconds = 900\n[gemma-4-12b]\nmodel = c.gguf\n";
+    const WITH_KEY: &str = "[*]\nsleep-idle-seconds = 900\n[synthetic-chat]\nmodel = c.gguf\n";
     let base = fake_python(ini.clone(), WITH_KEY, false).await;
     let reconciler = Arc::new(Reconciler::new(
         ini.clone(),
@@ -220,7 +220,7 @@ async fn zero_disables_and_removes_the_global_key() {
     assert_eq!(status, 200);
     assert_eq!(
         std::fs::read_to_string(&ini).unwrap(),
-        "[*]\n[gemma-4-12b]\nmodel = c.gguf\n"
+        "[*]\n[synthetic-chat]\nmodel = c.gguf\n"
     );
 }
 
