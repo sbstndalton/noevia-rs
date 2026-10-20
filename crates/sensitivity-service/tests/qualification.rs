@@ -2,7 +2,7 @@
 #[path = "support/oracle.rs"]
 mod oracle;
 use base64::{engine::general_purpose::STANDARD, Engine};
-use laya_service::{Config, Failure, Pool};
+use sensitivity_service::{Config, Failure, Pool};
 use serde_json::{json, Value};
 use std::time::Duration;
 fn config(directory: &std::path::Path, size: usize) -> Config {
@@ -132,7 +132,7 @@ async fn real_http_health_busy_timeout_recovery_and_disconnect() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let (stop, done) = tokio::sync::oneshot::channel();
-    let serving = tokio::spawn(laya_service::serve_with_shutdown(
+    let serving = tokio::spawn(sensitivity_service::serve_with_shutdown(
         listener,
         pool.clone(),
         async {
@@ -222,7 +222,7 @@ async fn actual_python_goldens_and_live_oracle_through_native_http() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let (stop, done) = tokio::sync::oneshot::channel();
-    let job = tokio::spawn(laya_service::serve_with_shutdown(
+    let job = tokio::spawn(sensitivity_service::serve_with_shutdown(
         listener,
         pool.clone(),
         async {
@@ -264,7 +264,7 @@ async fn actual_python_goldens_and_live_oracle_through_native_http() {
         assert_eq!(result, expected, "native HTTP parity mismatch: {row}");
     }
     assert!(
-        !laya_service::validate(b"{\"state\":\"x\",\"question\":\"?\",\"options\":[]}"),
+        !sensitivity_service::validate(b"{\"state\":\"x\",\"question\":\"?\",\"options\":[]}"),
         "negative control accepted invalid request"
     );
     stop.send(()).unwrap();
@@ -468,7 +468,7 @@ async fn startup_refusal_and_shutdown_cleanup() {
 proptest::proptest! {
     #[test]
     fn unicode_character_caps_are_python_scalars(state in ".{0,100}", question in ".{1,100}") {
-        let value=json!({"state":state,"question":question,"options":[{"id":"a","label":"A"},{"id":"b","label":"B"}]});let bytes=serde_json::to_vec(&value).unwrap();proptest::prop_assert!(laya_service::validate(&bytes));
+        let value=json!({"state":state,"question":question,"options":[{"id":"a","label":"A"},{"id":"b","label":"B"}]});let bytes=serde_json::to_vec(&value).unwrap();proptest::prop_assert!(sensitivity_service::validate(&bytes));
     }
 }
 #[cfg(target_os = "linux")]

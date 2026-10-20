@@ -80,10 +80,10 @@ jobs:
           tar -xzf /tmp/laya-services.tgz -C .ci-laya --strip-components=1
       - name: Actual Python HTTP oracle is reproducible
         run: |
-          cargo run --locked -p laya-service --example gen-fixtures -- "$NOEVIA_LAYA_REFERENCE" /tmp/laya-http.json
-          cmp /tmp/laya-http.json crates/laya-service/tests/fixtures/python-http.v1.json
+          cargo run --locked -p sensitivity-service --example gen-fixtures -- "$NOEVIA_LAYA_REFERENCE" /tmp/laya-http.json
+          cmp /tmp/laya-http.json crates/sensitivity-service/tests/fixtures/python-http.v1.json
       - name: Native HTTP, frames, pool lifecycle and actual synthetic engine
-        run: cargo test --locked -p laya-service
+        run: cargo test --locked -p sensitivity-service
       - name: Real feature omission refusal before listener or child
         run: cargo test --locked -p noevia-laya --test capability
       - name: Compiled native capability and no fallback on engine failure

@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 use std::process::Command;
 #[cfg(feature = "native-laya")]
-#[path = "../../../crates/laya-service/tests/support/oracle.rs"]
+#[path = "../../../crates/sensitivity-service/tests/support/oracle.rs"]
 mod oracle;
 #[cfg(feature = "native-laya")]
 #[test]
