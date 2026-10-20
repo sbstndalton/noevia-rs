@@ -608,17 +608,250 @@ fn write_request(
     out.raw(",").raw("\"ref\":").private_uint(result).raw("}");
 }
 
+// Snapshot helpers are used only by the delta producer. They own metadata,
+// never VM state or host values, and reuse existing vector capacity on updates.
+impl Period {
+    fn delta_eq(&self, other: &Self) -> bool {
+        self.seq == other.seq
+            && self.return_pc == other.return_pc
+            && self.len == other.len
+            && self.p == other.p
+            && self.i == other.i
+            && self.need == other.need
+            && self.chunks.len() == other.chunks.len()
+            && self
+                .chunks
+                .iter()
+                .zip(&other.chunks)
+                .all(|(a, b)| a.base == b.base && a.nibbles == b.nibbles)
+    }
+    fn delta_snapshot(&self) -> Self {
+        Self {
+            seq: self.seq,
+            return_pc: self.return_pc,
+            len: self.len,
+            p: self.p,
+            i: self.i,
+            need: self.need,
+            chunks: self.chunks.clone(),
+        }
+    }
+    fn delta_copy_from(&mut self, source: &Self) {
+        self.seq = source.seq;
+        self.return_pc = source.return_pc;
+        self.len = source.len;
+        self.p = source.p;
+        self.i = source.i;
+        self.need = source.need;
+        for (destination, source) in self.chunks.iter_mut().zip(&source.chunks) {
+            destination.base = source.base;
+            if destination.nibbles != source.nibbles {
+                destination.nibbles.clone_from(&source.nibbles);
+            }
+        }
+        let old_len = self.chunks.len();
+        self.chunks
+            .extend(source.chunks.iter().skip(old_len).cloned());
+        self.chunks.truncate(source.chunks.len());
+    }
+}
+impl Sum {
+    fn delta_eq(&self, other: &Self) -> bool {
+        self.cache.delta_eq(&other.cache)
+            && self.raw == other.raw
+            && self
+                .numbers
+                .iter()
+                .zip(&other.numbers)
+                .all(|(a, b)| a.to_bits() == b.to_bits())
+            && self.total.to_bits() == other.total.to_bits()
+    }
+    fn delta_snapshot(&self) -> Self {
+        Self {
+            cache: self.cache.delta_snapshot(),
+            raw: self.raw.clone(),
+            numbers: self.numbers,
+            total: self.total,
+        }
+    }
+    fn delta_copy_from(&mut self, source: &Self) {
+        if !self.cache.delta_eq(&source.cache) {
+            self.cache.delta_copy_from(&source.cache);
+        }
+        if self.raw != source.raw {
+            self.raw.clone_from(&source.raw);
+        }
+        self.numbers = source.numbers;
+        self.total = source.total;
+    }
+}
+fn same_period(a: &Option<Period>, b: &Option<Period>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a.delta_eq(b),
+        _ => false,
+    }
+}
+fn same_sum(a: &Option<Sum>, b: &Option<Sum>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => a.delta_eq(b),
+        _ => false,
+    }
+}
+impl State {
+    fn delta_mask(&self, previous: &Self) -> u8 {
+        u8::from(self.pc != previous.pc)
+            | (u8::from(self.env != previous.env) << 1)
+            | (u8::from(self.stack != previous.stack) << 2)
+            | (u8::from(self.catches != previous.catches) << 3)
+            | (u8::from(self.mode != previous.mode) << 4)
+            | (u8::from(self.target != previous.target) << 5)
+            | (u8::from(!same_period(&self.period, &previous.period)) << 6)
+            | (u8::from(!same_sum(&self.sum, &previous.sum)) << 7)
+    }
+    fn delta_snapshot(&self) -> Self {
+        Self {
+            pc: self.pc,
+            env: self.env,
+            stack: self.stack.clone(),
+            catches: self.catches.clone(),
+            mode: self.mode,
+            target: self.target,
+            period: self.period.as_ref().map(Period::delta_snapshot),
+            sum: self.sum.as_ref().map(Sum::delta_snapshot),
+        }
+    }
+    fn delta_copy_fields(&mut self, source: &Self, mask: u8) {
+        if mask & 1 != 0 {
+            self.pc = source.pc;
+        }
+        if mask & 2 != 0 {
+            self.env = source.env;
+        }
+        if mask & 4 != 0 {
+            self.stack.clone_from(&source.stack);
+        }
+        if mask & 8 != 0 {
+            self.catches.clone_from(&source.catches);
+        }
+        if mask & 16 != 0 {
+            self.mode = source.mode;
+        }
+        if mask & 32 != 0 {
+            self.target = source.target;
+        }
+        if mask & 64 != 0 {
+            match &source.period {
+                None => self.period = None,
+                Some(source) => match &mut self.period {
+                    Some(destination) => destination.delta_copy_from(source),
+                    None => self.period = Some(source.delta_snapshot()),
+                },
+            }
+        }
+        if mask & 128 != 0 {
+            match &source.sum {
+                None => self.sum = None,
+                Some(source) => match &mut self.sum {
+                    Some(destination) => destination.delta_copy_from(source),
+                    None => self.sum = Some(source.delta_snapshot()),
+                },
+            }
+        }
+    }
+    fn write_delta(&self, out: &mut Out, mask: u8) {
+        out.raw("[").private_uint(u64::from(mask));
+        if mask & 1 != 0 {
+            out.raw(",").private_uint(self.pc as u64);
+        }
+        if mask & 2 != 0 {
+            out.raw(",").private_uint(self.env);
+        }
+        if mask & 4 != 0 {
+            out.raw(",");
+            write_refs(out, &self.stack);
+        }
+        if mask & 8 != 0 {
+            out.raw(",[");
+            for (index, (pc, depth, env)) in self.catches.iter().enumerate() {
+                if index != 0 {
+                    out.raw(",");
+                }
+                out.raw("[")
+                    .private_uint(*pc as u64)
+                    .raw(",")
+                    .private_uint(*depth as u64)
+                    .raw(",")
+                    .private_uint(*env)
+                    .raw("]");
+            }
+            out.raw("]");
+        }
+        if mask & 16 != 0 {
+            out.raw(",").private_uint(u64::from(self.mode));
+        }
+        if mask & 32 != 0 {
+            out.raw(",").private_uint(self.target as u64);
+        }
+        if mask & 64 != 0 {
+            out.raw(",");
+            if let Some(period) = &self.period {
+                period.write(out);
+            } else {
+                out.raw("null");
+            }
+        }
+        if mask & 128 != 0 {
+            out.raw(",");
+            if let Some(sum) = &self.sum {
+                sum.write(out);
+            } else {
+                out.raw("null");
+            }
+        }
+        out.raw("]");
+    }
+}
+#[derive(Clone, Copy)]
+enum Wire {
+    Object,
+    V1,
+    Delta,
+}
+impl Wire {
+    #[cfg(test)]
+    fn legacy(compact: bool) -> Self {
+        if compact {
+            Self::V1
+        } else {
+            Self::Object
+        }
+    }
+    fn compact(self) -> bool {
+        !matches!(self, Self::Object)
+    }
+}
+
 struct RequestBatch {
     out: Out,
     count: usize,
     compact: bool,
+    delta: bool,
+    previous: Option<State>,
 }
 impl RequestBatch {
+    #[cfg(test)]
     fn new(compact: bool) -> Self {
+        Self::new_wire(Wire::legacy(compact))
+    }
+    fn new_wire(wire: Wire) -> Self {
         Self {
             out: Out(Vec::new()),
             count: 0,
-            compact,
+            compact: wire.compact(),
+            delta: matches!(wire, Wire::Delta),
+            previous: None,
         }
     }
     fn len(&self) -> usize {
@@ -628,7 +861,9 @@ impl RequestBatch {
         self.count == 0
     }
     fn prefix(&mut self) {
-        if self.compact {
+        if self.delta {
+            self.out.raw(r#"{"wire":"state-v2d","batch":["#);
+        } else if self.compact {
             self.out.raw(r#"{"wire":"state-v1","batch":["#);
         } else {
             self.out.raw(r#"{"batch":["#);
@@ -640,7 +875,24 @@ impl RequestBatch {
         } else {
             self.out.raw(",");
         }
-        write_request(&mut self.out, state, operation, args, result, self.compact);
+        if self.delta {
+            let mask = self
+                .previous
+                .as_ref()
+                .map_or(255, |previous| state.delta_mask(previous));
+            self.out.raw("[");
+            state.write_delta(&mut self.out, mask);
+            self.out.raw(",").raw(operation).raw(",");
+            write_refs(&mut self.out, args);
+            self.out.raw(",").private_uint(result).raw("]");
+            if let Some(previous) = &mut self.previous {
+                previous.delta_copy_fields(state, mask);
+            } else {
+                self.previous = Some(state.delta_snapshot());
+            }
+        } else {
+            write_request(&mut self.out, state, operation, args, result, self.compact);
+        }
         self.count += 1;
     }
     fn finish(mut self) -> String {
@@ -810,7 +1062,7 @@ impl CanonicalReader<'_> {
             self.take(b",")?;
         }
     }
-    fn resume(mut self) -> Option<(State, ResumeFrame<'static>)> {
+    fn resume(mut self) -> Option<(State, ResumeFrame<'static>, Wire)> {
         self.take(b"{\"state\":[")?;
         let pc = self.index()?;
         self.take(b",")?;
@@ -838,7 +1090,12 @@ impl CanonicalReader<'_> {
         } else {
             return None;
         };
-        self.take(b"},\"wire\":\"state-v1\"}")?;
+        let wire = if self.take(b"},\"wire\":\"state-v1\"}").is_some() {
+            Wire::V1
+        } else {
+            self.take(b"},\"wire\":\"state-v2d\"}")?;
+            Wire::Delta
+        };
         if self.at != self.bytes.len() {
             return None;
         }
@@ -854,19 +1111,23 @@ impl CanonicalReader<'_> {
         }
         .checked()
         .ok()?;
-        Some((state, frame))
+        Some((state, frame, wire))
     }
 }
 
 pub(super) fn try_canonical_resume(body: &[u8]) -> Option<R<String>> {
     // EOF and all eligibility checks precede the sole execution entrypoint.
-    let (state, frame) = CanonicalReader { bytes: body, at: 0 }.resume()?;
-    Some(execute(state, Some(frame), true))
+    let (state, frame, wire) = CanonicalReader { bytes: body, at: 0 }.resume()?;
+    Some(execute_wire(state, Some(frame), wire))
 }
 
 pub(super) fn call(op: u8, args: &Value) -> R<String> {
-    let compact = matches!(args.get("wire").and_then(Value::as_str),
-        Some(tag) if tag.iter().copied().eq("state-v1".encode_utf16()));
+    let wire = match args.get("wire").and_then(Value::as_str) {
+        Some(tag) if tag.iter().copied().eq("state-v1".encode_utf16()) => Wire::V1,
+        Some(tag) if tag.iter().copied().eq("state-v2d".encode_utf16()) => Wire::Delta,
+        _ => Wire::Object,
+    };
+    let compact = wire.compact();
     if op == 11 {
         let function = index(args.get("function"))?;
         let pc = *ENTRIES.get(function).ok_or(Refusal::Input)?;
@@ -880,17 +1141,21 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
             period: None,
             sum: None,
         };
-        execute(state, None, compact)
+        execute_wire(state, None, wire)
     } else {
         let state = State::read_wire(args.get("state").ok_or(Refusal::Input)?, compact)?;
         let frame = args.get("frame").ok_or(Refusal::Input)?;
-        execute(state, Some(ResumeFrame::Generic(frame)), compact)
+        execute_wire(state, Some(ResumeFrame::Generic(frame)), wire)
     }
 }
 
-fn execute(mut state: State, frame: Option<ResumeFrame<'_>>, compact: bool) -> R<String> {
-    let mut requests = RequestBatch::new(compact);
-    let end = |key: &str, reference: u64| end(key, reference, compact);
+#[cfg(test)]
+fn execute(state: State, frame: Option<ResumeFrame<'_>>, compact: bool) -> R<String> {
+    execute_wire(state, frame, Wire::legacy(compact))
+}
+fn execute_wire(mut state: State, frame: Option<ResumeFrame<'_>>, wire: Wire) -> R<String> {
+    let mut requests = RequestBatch::new_wire(wire);
+    let end = |key: &str, reference: u64| end(key, reference, wire.compact());
     if let Some(frame) = frame {
         if let Some(thrown) = frame.thrown()? {
             if let Some((pc, depth, env)) = state.catches.pop() {
@@ -2308,5 +2573,563 @@ mod tests {
                 .unwrap();
             canonical_compare(&mutated);
         }
+    }
+
+    // Independent evidence decoder: expand only the new delta metadata, then
+    // compare whole rows with the frozen full-state writer, never a VM mirror.
+    fn state_delta_replay(text: &str) -> (Value, Vec<u8>) {
+        let value = transport_parse(text);
+        let Some(Value::Arr(rows)) = value.get("batch") else {
+            return (value, Vec::new());
+        };
+        assert_eq!(
+            value.get("wire").unwrap().as_str().unwrap(),
+            "state-v2d".encode_utf16().collect::<Vec<_>>()
+        );
+        let mut previous = vec![Value::Null; 8];
+        let mut expanded = Vec::new();
+        let mut masks = Vec::new();
+        for (row_index, row) in rows.iter().enumerate() {
+            let Value::Arr(row) = row else {
+                panic!("delta row")
+            };
+            assert_eq!(row.len(), 4);
+            let Value::Arr(delta) = row.first().unwrap() else {
+                panic!("state delta")
+            };
+            let mask = u8::try_from(integer(delta.first()).unwrap()).unwrap();
+            if row_index == 0 {
+                assert_eq!(mask, 255);
+            }
+            assert_eq!(delta.len(), 1 + mask.count_ones() as usize);
+            let mut changed = delta.iter().skip(1);
+            for (bit, destination) in previous.iter_mut().enumerate() {
+                if mask & (1 << bit) != 0 {
+                    *destination = changed.next().unwrap().clone();
+                }
+            }
+            assert!(changed.next().is_none());
+            expanded.push(Value::Obj(vec![
+                (
+                    "state".encode_utf16().collect(),
+                    Value::Arr(previous.clone()),
+                ),
+                (
+                    "request".encode_utf16().collect(),
+                    row.get(1).unwrap().clone(),
+                ),
+                ("args".encode_utf16().collect(), row.get(2).unwrap().clone()),
+                ("ref".encode_utf16().collect(), row.get(3).unwrap().clone()),
+            ]));
+            masks.push(mask);
+        }
+        (
+            Value::Obj(vec![
+                (
+                    "wire".encode_utf16().collect(),
+                    Value::Str("state-v1".encode_utf16().collect()),
+                ),
+                ("batch".encode_utf16().collect(), Value::Arr(expanded)),
+            ]),
+            masks,
+        )
+    }
+    fn state_delta_period() -> Period {
+        Period {
+            seq: 0,
+            return_pc: 1,
+            len: 8192,
+            p: 1,
+            i: 0,
+            need: 0,
+            chunks: vec![Chunk {
+                base: 0,
+                nibbles: vec![0, 1, 10, 15],
+            }],
+        }
+    }
+    fn state_delta_fixture() -> State {
+        State {
+            pc: 1,
+            env: 9_007_199_254_740_991,
+            stack: vec![0, VIRTUAL_BASE + 1, 9_007_199_254_740_991],
+            catches: vec![(0, 0, 0), (PROGRAM.len() - 1, 256, 9_007_199_254_740_991)],
+            mode: 7,
+            target: PROGRAM.len() - 1,
+            period: Some(state_delta_period()),
+            sum: Some(Sum {
+                cache: state_delta_period(),
+                raw: vec![0; 8],
+                numbers: [
+                    0.0,
+                    -0.0,
+                    f64::from_bits(0x7ff8_0000_0000_0001),
+                    f64::INFINITY,
+                    f64::NEG_INFINITY,
+                    f64::from_bits(1),
+                ],
+                total: f64::from_bits(0x7ff8_0000_0000_0002),
+            }),
+        }
+    }
+    fn state_delta_record(batch: &mut RequestBatch, state: &State, expected: &mut Vec<String>) {
+        let operation = r#"{"op":"literal","data":"quote\" slash\\ nul\u0000 lone\ud800"}"#;
+        let args = [0, VIRTUAL_BASE + 32, 9_007_199_254_740_991];
+        expected.push(request(state, operation, &args, VIRTUAL_BASE + 1, true));
+        batch.append(state, operation, &args, VIRTUAL_BASE + 1);
+    }
+    fn state_delta_check(text: &str, expected: &[String]) -> Vec<u8> {
+        let (expanded, masks) = state_delta_replay(text);
+        assert_eq!(expanded, transport_parse(&batch(expected, true)));
+        masks
+    }
+
+    #[test]
+    fn state_delta_each_mask_matches_frozen_complete_rows() {
+        let mut batch = RequestBatch::new_wire(Wire::Delta);
+        let mut state = state_delta_fixture();
+        let mut expected = Vec::new();
+        state_delta_record(&mut batch, &state, &mut expected);
+        state_delta_record(&mut batch, &state, &mut expected);
+        for field in 0..8 {
+            match field {
+                0 => state.pc += 1,
+                1 => state.env -= 1,
+                2 => state.stack.push(17),
+                3 => {
+                    state.catches.pop();
+                }
+                4 => state.mode = 6,
+                5 => state.target -= 1,
+                6 => state.period = None,
+                _ => state.sum = None,
+            }
+            state_delta_record(&mut batch, &state, &mut expected);
+        }
+        state = state_delta_fixture();
+        state_delta_record(&mut batch, &state, &mut expected);
+        assert_eq!(
+            state_delta_check(&batch.finish(), &expected),
+            vec![255, 0, 1, 2, 4, 8, 16, 32, 64, 128, 255]
+        );
+    }
+
+    #[test]
+    fn state_delta_batch_counts_reset_and_legacy_snapshot_absence() {
+        for count in [0, 1, 32] {
+            let mut current = RequestBatch::new_wire(Wire::Delta);
+            assert!(current.previous.is_none());
+            assert_eq!(current.out.0.capacity(), 0);
+            let state = state_delta_fixture();
+            let mut expected = Vec::new();
+            for _ in 0..count {
+                state_delta_record(&mut current, &state, &mut expected);
+            }
+            let masks = state_delta_check(&current.finish(), &expected);
+            assert_eq!(masks.len(), count);
+            if count > 0 {
+                assert_eq!(masks.first(), Some(&255));
+            }
+        }
+        for compact in [false, true] {
+            let mut current = RequestBatch::new(compact);
+            let state = state_delta_fixture();
+            let expected = request(
+                &state,
+                r#"{"op":"test","data":"nullish"}"#,
+                &[0],
+                0,
+                compact,
+            );
+            current.append(&state, r#"{"op":"test","data":"nullish"}"#, &[0], 0);
+            assert!(current.previous.is_none());
+            assert_eq!(current.finish(), batch(&[expected], compact));
+        }
+        let empty = RequestBatch::new_wire(Wire::Delta);
+        assert!(empty.previous.is_none());
+        assert_eq!(empty.finish(), r#"{"wire":"state-v2d","batch":[]}"#);
+    }
+
+    #[test]
+    fn state_delta_snapshot_owns_metadata_and_reuses_capacity() {
+        let mut state = state_delta_fixture();
+        state.stack = vec![9; STACK_REGISTERS];
+        state.catches = vec![(1, 1, 9); CATCH_REGISTERS];
+        for period in [
+            state.period.as_mut().unwrap(),
+            &mut state.sum.as_mut().unwrap().cache,
+        ] {
+            period.chunks = vec![
+                Chunk {
+                    base: 0,
+                    nibbles: vec![0; BOOLEAN_CHUNK / 4],
+                },
+                Chunk {
+                    base: BOOLEAN_CHUNK,
+                    nibbles: vec![15; BOOLEAN_CHUNK / 4],
+                },
+            ];
+        }
+        let mut actual = RequestBatch::new_wire(Wire::Delta);
+        let mut expected = Vec::new();
+        state_delta_record(&mut actual, &state, &mut expected);
+        let previous = actual.previous.as_ref().unwrap();
+        let stack_ptr = previous.stack.as_ptr();
+        let catches_ptr = previous.catches.as_ptr();
+        let period_ptr = previous
+            .period
+            .as_ref()
+            .unwrap()
+            .chunks
+            .first()
+            .unwrap()
+            .nibbles
+            .as_ptr();
+        let sum_ptr = previous
+            .sum
+            .as_ref()
+            .unwrap()
+            .cache
+            .chunks
+            .first()
+            .unwrap()
+            .nibbles
+            .as_ptr();
+        let raw_ptr = previous.sum.as_ref().unwrap().raw.as_ptr();
+        *state.stack.first_mut().unwrap() = 17;
+        *state.catches.first_mut().unwrap() = (0, 0, 0);
+        *state
+            .period
+            .as_mut()
+            .unwrap()
+            .chunks
+            .first_mut()
+            .unwrap()
+            .nibbles
+            .first_mut()
+            .unwrap() = 3;
+        *state
+            .sum
+            .as_mut()
+            .unwrap()
+            .cache
+            .chunks
+            .first_mut()
+            .unwrap()
+            .nibbles
+            .first_mut()
+            .unwrap() = 4;
+        *state.sum.as_mut().unwrap().raw.first_mut().unwrap() = 19;
+        state_delta_record(&mut actual, &state, &mut expected);
+        let previous = actual.previous.as_ref().unwrap();
+        assert_eq!(previous.stack.as_ptr(), stack_ptr);
+        assert_eq!(previous.catches.as_ptr(), catches_ptr);
+        assert_eq!(
+            previous
+                .period
+                .as_ref()
+                .unwrap()
+                .chunks
+                .first()
+                .unwrap()
+                .nibbles
+                .as_ptr(),
+            period_ptr
+        );
+        assert_eq!(
+            previous
+                .sum
+                .as_ref()
+                .unwrap()
+                .cache
+                .chunks
+                .first()
+                .unwrap()
+                .nibbles
+                .as_ptr(),
+            sum_ptr
+        );
+        assert_eq!(previous.sum.as_ref().unwrap().raw.as_ptr(), raw_ptr);
+        // Changing only Sum.total must not replace its unchanged large cache.
+        state.sum.as_mut().unwrap().total = -0.0;
+        state_delta_record(&mut actual, &state, &mut expected);
+        assert_eq!(
+            actual
+                .previous
+                .as_ref()
+                .unwrap()
+                .sum
+                .as_ref()
+                .unwrap()
+                .cache
+                .chunks
+                .first()
+                .unwrap()
+                .nibbles
+                .as_ptr(),
+            sum_ptr
+        );
+        // Shrink each vector, then mutate the live VM state after the final append.
+        state.stack.truncate(1);
+        state.catches.truncate(1);
+        state.period.as_mut().unwrap().chunks.truncate(1);
+        state.sum.as_mut().unwrap().cache.chunks.truncate(1);
+        state.sum.as_mut().unwrap().raw.clear();
+        state_delta_record(&mut actual, &state, &mut expected);
+        state.stack.clear();
+        state.catches.clear();
+        state.period = None;
+        state.sum = None;
+        assert_eq!(
+            state_delta_check(&actual.finish(), &expected),
+            vec![255, 204, 128, 204]
+        );
+    }
+
+    #[test]
+    fn state_delta_period_cache_changes_preserve_every_field() {
+        for cache in [false, true] {
+            for field in 0..11 {
+                let mut state = state_delta_fixture();
+                let mut actual = RequestBatch::new_wire(Wire::Delta);
+                let mut expected = Vec::new();
+                state_delta_record(&mut actual, &state, &mut expected);
+                let period = if cache {
+                    &mut state.sum.as_mut().unwrap().cache
+                } else {
+                    state.period.as_mut().unwrap()
+                };
+                match field {
+                    0 => period.seq = VIRTUAL_BASE + 32,
+                    1 => period.return_pc += 1,
+                    2 => period.len -= 1,
+                    3 => period.p += 1,
+                    4 => period.i += 1,
+                    5 => period.need = BOOLEAN_CHUNK,
+                    6 => period.chunks.first_mut().unwrap().base = BOOLEAN_CHUNK,
+                    7 => {
+                        *period
+                            .chunks
+                            .first_mut()
+                            .unwrap()
+                            .nibbles
+                            .first_mut()
+                            .unwrap() = 15
+                    }
+                    8 => period.chunks.push(Chunk {
+                        base: BOOLEAN_CHUNK,
+                        nibbles: vec![1],
+                    }),
+                    9 => period.chunks.clear(),
+                    _ => period.chunks.first_mut().unwrap().nibbles.push(2),
+                }
+                state_delta_record(&mut actual, &state, &mut expected);
+                assert_eq!(
+                    state_delta_check(&actual.finish(), &expected),
+                    vec![255, if cache { 128 } else { 64 }]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn state_delta_sum_bit_patterns_are_exact() {
+        for bits in [
+            0_u64,
+            0x8000_0000_0000_0000,
+            0x7ff8_0000_0000_0001,
+            0x7ff8_0000_0000_0002,
+            0x7ff0_0000_0000_0000,
+            0xfff0_0000_0000_0000,
+            1,
+        ] {
+            for field in 0..7 {
+                let mut state = state_delta_fixture();
+                let mut actual = RequestBatch::new_wire(Wire::Delta);
+                let mut expected = Vec::new();
+                state_delta_record(&mut actual, &state, &mut expected);
+                let sum = state.sum.as_mut().unwrap();
+                let slot = if field == 6 {
+                    &mut sum.total
+                } else {
+                    sum.numbers.get_mut(field).unwrap()
+                };
+                let changed = slot.to_bits() != bits;
+                *slot = f64::from_bits(bits);
+                state_delta_record(&mut actual, &state, &mut expected);
+                // Identical NaN payloads must emit mask0, not compare unequal.
+                state_delta_record(&mut actual, &state, &mut expected);
+                assert_eq!(
+                    state_delta_check(&actual.finish(), &expected),
+                    vec![255, if changed { 128 } else { 0 }, 0]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn state_delta_numeric_input_markers_and_legacy_terminal_bytes() {
+        for env in [0, 1, VIRTUAL_BASE + 32, 9_007_199_254_740_991] {
+            let old = call(
+                11,
+                &transport_parse(&format!(
+                    r#"{{"function":0,"env":{env},"wire":"state-v1"}}"#
+                )),
+            )
+            .unwrap();
+            let delta = call(
+                11,
+                &transport_parse(&format!(
+                    r#"{{"function":0,"env":{env},"wire":"state-v2d"}}"#
+                )),
+            )
+            .unwrap();
+            assert_eq!(state_delta_replay(&delta).0, transport_parse(&old));
+        }
+        for frame in [
+            r#"{"value":0}"#,
+            r#"{"value":-0}"#,
+            r#"{"thrown":0}"#,
+            r#"{"thrown":-0}"#,
+        ] {
+            let state = canonical_test_state();
+            let old = canonical_test_body(&state, frame);
+            let body = old.replace("state-v1", "state-v2d");
+            assert_eq!(
+                call(12, &transport_parse(&body)).unwrap(),
+                call(12, &transport_parse(&old)).unwrap()
+            );
+            canonical_compare(body.as_bytes());
+            if !frame.contains("-0") {
+                assert!(try_canonical_resume(body.as_bytes()).is_some());
+            }
+            let escaped = body.replace("state-v2d", r"state-v\u0032d");
+            assert!(try_canonical_resume(escaped.as_bytes()).is_none());
+            assert_eq!(
+                canonical_status(call(12, &transport_parse(&escaped))),
+                canonical_status(call(12, &transport_parse(&body)))
+            );
+        }
+        let invalid = r#"{"function":0,"env":"h1","wire":"state-v2d"}"#;
+        assert!(matches!(
+            call(11, &transport_parse(invalid)),
+            Err(Refusal::Input)
+        ));
+        assert_eq!(end("done", 0, true), r#"{"wire":"state-v1","done":0}"#);
+    }
+
+    #[test]
+    fn state_delta_special_modes_match_legacy_operations() {
+        for mode in 3..=7 {
+            let setup = || {
+                let mut state = state_delta_fixture();
+                state.pc = canonical_test_state().pc;
+                state.mode = mode;
+                state.stack = vec![1];
+                state.catches.clear();
+                state.period.as_mut().unwrap().chunks.clear();
+                let cache = &mut state.sum.as_mut().unwrap().cache;
+                cache.len = 4;
+                cache.chunks.clear();
+                state
+            };
+            let frame = match mode {
+                3 | 6 => Some(transport_parse(r#"{"facts":{"safe":true,"len":4}}"#)),
+                5 => Some(transport_parse(
+                    r#"{"numbers":[{"kind":"null"},{"kind":"number","bits":"4010000000000000"},{"kind":"number","bits":"3ff0000000000000"},{"kind":"number","bits":"3ff0000000000000"},{"kind":"number","bits":"3ff0000000000000"},{"kind":"number","bits":"3ff0000000000000"},{"kind":"number","bits":"3ff0000000000000"},{"kind":"number","bits":"3ff0000000000000"}]}"#,
+                )),
+                _ => None,
+            };
+            let old = execute(setup(), frame.as_ref().map(ResumeFrame::Generic), true).unwrap();
+            let delta = execute_wire(
+                setup(),
+                frame.as_ref().map(ResumeFrame::Generic),
+                Wire::Delta,
+            )
+            .unwrap();
+            assert_eq!(
+                state_delta_replay(&delta).0,
+                transport_parse(&old),
+                "mode{mode}"
+            );
+            assert_eq!(
+                state_delta_replay(&delta).1,
+                vec![255],
+                "single special request{mode}"
+            );
+        }
+    }
+
+    #[test]
+    fn state_delta_order_and_shrink_regrow_match_frozen_rows() {
+        let mut state = state_delta_fixture();
+        for period in [
+            state.period.as_mut().unwrap(),
+            &mut state.sum.as_mut().unwrap().cache,
+        ] {
+            period.chunks.push(Chunk {
+                base: BOOLEAN_CHUNK,
+                nibbles: vec![4, 5, 6, 7],
+            });
+        }
+        let mut actual = RequestBatch::new_wire(Wire::Delta);
+        let mut expected = Vec::new();
+        state_delta_record(&mut actual, &state, &mut expected);
+        state.stack.swap(0, 2);
+        state.catches.swap(0, 1);
+        state_delta_record(&mut actual, &state, &mut expected);
+        state.stack.truncate(1);
+        state.catches.truncate(1);
+        state_delta_record(&mut actual, &state, &mut expected);
+        state.stack.extend_from_slice(&[1, VIRTUAL_BASE + 32]);
+        state.catches.push((1, 1, 17));
+        state_delta_record(&mut actual, &state, &mut expected);
+        for period in [
+            state.period.as_mut().unwrap(),
+            &mut state.sum.as_mut().unwrap().cache,
+        ] {
+            period.chunks.reverse();
+        }
+        state_delta_record(&mut actual, &state, &mut expected);
+        for period in [
+            state.period.as_mut().unwrap(),
+            &mut state.sum.as_mut().unwrap().cache,
+        ] {
+            period.chunks.first_mut().unwrap().nibbles.truncate(1);
+        }
+        state_delta_record(&mut actual, &state, &mut expected);
+        for period in [
+            state.period.as_mut().unwrap(),
+            &mut state.sum.as_mut().unwrap().cache,
+        ] {
+            period
+                .chunks
+                .first_mut()
+                .unwrap()
+                .nibbles
+                .extend_from_slice(&[8, 9, 10]);
+        }
+        state_delta_record(&mut actual, &state, &mut expected);
+        for period in [
+            state.period.as_mut().unwrap(),
+            &mut state.sum.as_mut().unwrap().cache,
+        ] {
+            period.chunks.pop();
+        }
+        state_delta_record(&mut actual, &state, &mut expected);
+        for period in [
+            state.period.as_mut().unwrap(),
+            &mut state.sum.as_mut().unwrap().cache,
+        ] {
+            period.chunks.push(Chunk {
+                base: 0,
+                nibbles: vec![1, 2, 3, 4],
+            });
+        }
+        state_delta_record(&mut actual, &state, &mut expected);
+        assert_eq!(
+            state_delta_check(&actual.finish(), &expected),
+            vec![255, 12, 12, 12, 192, 192, 192, 192, 192]
+        );
     }
 }
