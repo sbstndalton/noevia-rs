@@ -83,18 +83,14 @@ and builds the backend list.
   the `telemetry_*` keys of `kv`; the child's autoconfig route is not forwarded to and its runtime
   call is never made. (The test-only helper that told a child
   `NOEVIA_NATIVE_MODEL_MANAGER_TELEMETRY_CONFIRMED=0|1` was removed with the selector.)
-- **The child's guard.** Under the confirmation the child's `telemetry.ingest`,
-  `db.record_timings` and `db.record_server_configs` write nothing (services#98), and it answers
-  the private `GET /api/v1/internal/telemetry-guard` with `{"telemetry_guard":1}` (services#100).
-  This process ingests only after that answer. A child image without the guard answers 404
-  there; this process refuses native telemetry with 503, writes none of the tables, and logs
-  that once. It cannot safely fall back: services#98 already disables its writer under the
-  confirmation even though it lacks the advertisement (#2041). (The child refuses
-  `GET /api/v1/health`, which this process owns, so the advertisement is a private route
-  rather than a health field.) The answer is kept for the life of the process: the child is
-  never respawned (its exit ends this process), so its image cannot change under it. Native
-  telemetry needs the native section autoconfig and the native backend sampler, which
-  `native-routing` always provides; a build without the feature is refused rather than downgraded.
+- **No child guard (retired).** The shipping binary starts no child (noevia#2055), so no
+  process can write the telemetry tables beside this one, and the lifetime writer lease on
+  `DATA_DIR` keeps a second manager off the store. The former probe of the child's
+  `GET /api/v1/internal/telemetry-guard` (services#100, #2041), and its 503 for a child without
+  the guard, went with the child; it had survived only in library tests, and was removed so that
+  those tests run the shipping code (noevia-rs#256). Native telemetry needs the native section
+  autoconfig and the native backend sampler, which `native-routing` always provides; a build
+  without the feature is refused rather than downgraded.
 - **Ingest semantics (`telemetry.ingest`, kept exactly).** At most once per 20 s
   (`telemetry_last_ingest`). For each effective backend name: the Docker log tail
   (`tail=20000`, stdout and stderr, timestamps; multiplexed frames demultiplexed as docker-py
@@ -117,11 +113,9 @@ and builds the backend list.
 - **Refused (503, never guessed), only where rows could be written wrong:** a stored value of a
   type Python would not have written, a log shape the parser does not support, or a backend
   list this side cannot build.
-- **Rollout order.** 1. Deploy services#98 (and #100). 2. Confirm the deployed child image has
-  the guard (`GET /api/v1/internal/telemetry-guard` from the parent's side answers 200 under the
-  confirmation). 3. Deploy this build. Out of order, this build against an old child makes
-  native telemetry refuse with 503 and no native writes. There is no selector to hand ingestion
-  back to the child; roll back by restoring the previous image and configuration.
+- **Rollout.** No child image is involved, so there is no ordering against services. There is
+  no selector to hand ingestion back to a child; roll back by restoring the previous image and
+  configuration.
 - **Differential:** `tools/gen-telemetry-ingest-oracle.py` runs the actual `telemetry.ingest`,
   `stats_for` and `config_history` over fourteen passes (first read, the interval, repeated reads,
   a restart, port reuse, a gap, an interrupted write and its recovery, a raising parse, a

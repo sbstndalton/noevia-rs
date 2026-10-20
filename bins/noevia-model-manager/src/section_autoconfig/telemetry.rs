@@ -4,13 +4,10 @@
 //! This process is the only writer of the telemetry
 //! tables (`req_timing`, `server_config`) and of the telemetry keys in `kv`
 //! (`telemetry_last_ingest`, `telemetry_log_watermark:<backend>`,
-//! `telemetry_continuous_since:<backend>`). The child is told so
-//! (`NOEVIA_NATIVE_MODEL_MANAGER_TELEMETRY_CONFIRMED=1`): its own route is already refused under
-//! the native section autoconfig, the private runtime call is no longer made, and the child's
-//! `telemetry.ingest` and `record_*` writers refuse outright. This side writes only once the
-//! child has advertised that guard (`GET /api/v1/internal/telemetry-guard`); a child image
-//! without it refuses native telemetry with one loud log line, because a guarded but
-//! unadvertised child may already have stopped its writer (#2041).
+//! `telemetry_continuous_since:<backend>`). The shipping process starts no child (noevia#2055),
+//! so there is no child writer to hand the tables over from and no child telemetry guard to ask
+//! (the former `GET /api/v1/internal/telemetry-guard` probe, #2041, went with the child); the
+//! lifetime writer lease on `DATA_DIR` keeps a second manager process off the store.
 //!
 //! The ingest follows Python step by step: the 20-second interval on `telemetry_last_ingest`;
 //! for each effective backend the log tail (`tail=20000`, timestamps, docker-py's frame
@@ -29,8 +26,8 @@
 //! type Python would treat differently, a log shape the parser refuses) is the answer the
 //! native 503, with nothing more written.
 //!
-//! The store is created by the child's startup; the guard answer comes after it (the child
-//! serves requests only once its startup is over).
+//! The store is created by the mandatory bootstrap, which completes before the process serves
+//! requests.
 mod store;
 
 use crate::backend_stats::{BackendStats, Clock, Logs};
@@ -82,20 +79,12 @@ pub struct Telemetry {
     clock: Clock,
     /// One ingest at a time (Python's `_LOCK` serialises its store calls).
     ingest: tokio::sync::Mutex<()>,
-    /// Who ingests, once the child has answered ([`Telemetry::owner`]).
-    #[cfg(test)]
-    owner: tokio::sync::OnceCell<bool>,
     /// Backends skipped by a bound, until this clock value.
     backoff: std::sync::Mutex<HashMap<String, f64>>,
     /// The (backend, reason) pairs already logged.
     logged: std::sync::Mutex<HashSet<(String, &'static str)>>,
 }
 
-/// The child's telemetry guard advertisement (services, noevia#1318 step 3d).
-#[cfg(test)]
-pub(crate) const GUARD_PATH: &str = "/api/v1/internal/telemetry-guard";
-#[cfg(test)]
-pub(crate) const GUARD_BODY: &[u8] = br#"{"telemetry_guard":1}"#;
 /// How long a backend skipped by a bound is left unread.
 pub const BACKOFF_S: f64 = 600.0;
 
@@ -120,56 +109,9 @@ impl Telemetry {
             stats,
             clock,
             ingest: tokio::sync::Mutex::new(()),
-            #[cfg(test)]
-            owner: tokio::sync::OnceCell::new(),
             backoff: std::sync::Mutex::new(HashMap::new()),
             logged: std::sync::Mutex::new(HashSet::new()),
         }
-    }
-
-    /// Who ingests, asked of the child once: `Some(true)` this process (the child advertised its
-    /// telemetry guard, so it never writes the tables, and its startup has made the store),
-    /// `Some(false)` unsupported child (this side writes nothing and the route refuses;
-    /// its writer may already be disabled, logged once), `None` not known yet (the child
-    /// is not answering; asked again next time).
-    ///
-    /// The answer is kept for the life of this process. That is safe because the child is never
-    /// respawned (its exit ends this process): its image, so its guard, cannot change under a
-    /// kept answer, and the store it made persists.
-    #[cfg(test)]
-    pub(crate) async fn owner(&self, child: &super::Child<'_>) -> Option<bool> {
-        if let Some(native) = self.owner.get() {
-            return Some(*native);
-        }
-        let mut request = child
-            .client
-            .get(format!("{}{GUARD_PATH}", child.base))
-            .timeout(std::time::Duration::from_secs(10));
-        if !child.token.is_empty() {
-            request = request.header("x-model-loader-token", child.token);
-        }
-        let mut answer = request.send().await.ok()?;
-        let status = answer.status();
-        let native = if status.is_success() {
-            // The advertisement is a fixed tiny body; never aggregate an unbounded
-            // response, even when an incompatible child returns a successful status.
-            let mut body = Vec::new();
-            while let Some(chunk) = answer.chunk().await.ok()? {
-                if body.len().saturating_add(chunk.len()) > GUARD_BODY.len() {
-                    return None;
-                }
-                body.extend_from_slice(&chunk);
-            }
-            body == GUARD_BODY
-        } else if status == reqwest::StatusCode::NOT_FOUND {
-            false
-        } else {
-            return None;
-        };
-        if self.owner.set(native).is_ok() && !native {
-            eprintln!("{}", unverified_owner_message(status));
-        }
-        self.owner.get().copied()
     }
 
     fn backing_off(&self, name: &str, now: f64) -> bool {
@@ -473,17 +415,6 @@ fn render(stats: &bt::Stats, history: &[bt::ConfigRun]) -> Measured {
 
 fn empty() -> Measured {
     render(&bt::Stats::default(), &[])
-}
-
-/// The line printed when the child does not advertise its telemetry guard. Only the test-only
-/// ownership probe prints it.
-#[cfg(test)]
-fn unverified_owner_message(status: reqwest::StatusCode) -> String {
-    format!(
-        "noevia-model-manager: the Python child does not advertise the telemetry guard \
-         ({GUARD_PATH} answered {status}); native telemetry is unavailable because ownership \
-         cannot be verified. Deploy a services image with the guard, then restart"
-    )
 }
 
 #[cfg(test)]
