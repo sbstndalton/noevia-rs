@@ -3,8 +3,8 @@
 //! `GET /api/v1/search/repo` asked the child's `POST /api/v1/internal/search-repo-runtime` for
 //! each file group's `services.vram_fit_chips(bytes)` and, for a model file with a header summary,
 //! `helpers._preset_estimates_with_reason(summary, bytes, mmproj_gb)` and the model's native
-//! context. While this process samples the backends and runs the section autoconfig itself
-//! (`MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust`, which fixes the cache-ram cap the analysis
+//! context. While this process samples the backends and runs the section autoconfig itself (both
+//! always native under `native-routing`, noevia#1071, which fixes the cache-ram cap the analysis
 //! reads), the same values are computed here:
 //!
 //! - the chips: [`fit::chips`] over one fit inventory per answer, rendered as the child's

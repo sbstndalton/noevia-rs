@@ -148,46 +148,50 @@ refuses production access. Properties, cancellation/admission controls, no-mutat
 checks and assertion-reaching policy mutations qualify the source. No real models,
 Docker services or production data are used.
 
-## Optional native prompt library
+## Native routes and retired selectors
 
-`native-prompts` and `MODEL_MANAGER_PROMPTS_IMPL=rust` move whole prompt CRUD and once-only seed ownership together, default off. See [native prompt contract and qualification boundaries](docs/native-prompts.md) for caps, actual Python oracle provenance, trusted DATA_DIR requirements and the services handoff. Public Node proxy policy remains Node-owned.
+`native-routing` is mandatory (noevia#1071) and compiles the public routes below. For each of them the native path is the only path. The `MODEL_MANAGER_*_IMPL` selectors that once chose Python or Rust per route are retired: the executable ignores them, hostile values included, so no environment setting sends a route back to Python. The Cargo features named here are compile-time parts of `native-routing`, not runtime switches. The service requires exact `TZ=UTC` before startup and refuses otherwise. Each linked document gives the route's contract and qualification boundary.
 
-## Optional native backend diagnosis
+## Native prompt library
 
-`native-settings` and `MODEL_MANAGER_SETTINGS_IMPL=rust` serve the read-only `GET /api/v1/settings` (`{hasToken, tokenHint}`), default off; `PUT` stays Python as the single writer. See [native settings read](docs/native-settings.md).
+`native-prompts` moves whole prompt CRUD and once-only seed ownership together; the former `MODEL_MANAGER_PROMPTS_IMPL` selector is retired and ignored. See [native prompt contract and qualification boundaries](docs/native-prompts.md) for caps, actual Python oracle provenance, trusted DATA_DIR requirements and the services handoff. Public Node proxy policy remains Node-owned.
 
-`native-model-updates` and `MODEL_MANAGER_MODEL_UPDATES_IMPL=rust` serve the read-only `GET /api/v1/models/updates` (the models list's update-status badges), default off; every writer of the update store stays Python. See [native model update status](docs/native-model-updates.md).
+## Native backend diagnosis
 
-`native-model-detail` and `MODEL_MANAGER_MODEL_DETAIL_IMPL=rust` serve the read-only `GET /api/v1/models/detail`, default off. The file fields are native; the live `loadedOn` and `fit` fields are asked of the Python child through a private call, never re-implemented. A `TZ` other than unset or `UTC` keeps Python serving it, with one log line. See [native model detail](docs/native-model-detail.md).
+`native-settings` serves the read-only `GET /api/v1/settings` (`{hasToken, tokenHint}`); the former `MODEL_MANAGER_SETTINGS_IMPL` selector is retired and ignored. The write is the `native-settings-write` route below. See [native settings read](docs/native-settings.md).
+
+`native-model-updates` serves the read-only `GET /api/v1/models/updates` (the models list's update-status badges); the former `MODEL_MANAGER_MODEL_UPDATES_IMPL` selector is retired and ignored. Every writer of the update store stays Python. See [native model update status](docs/native-model-updates.md).
+
+`native-model-detail` serves the read-only `GET /api/v1/models/detail`; the former `MODEL_MANAGER_MODEL_DETAIL_IMPL` selector is retired and ignored. The file fields are native; the live `loadedOn` and `fit` fields are asked of the Python child through a private call, never re-implemented. See [native model detail](docs/native-model-detail.md).
 
 `native-model-list` serves the read-only `GET /api/v1/models` and `GET /api/v1/overview` (always native; the `MODEL_MANAGER_MODELS_IMPL` and `MODEL_MANAGER_OVERVIEW_IMPL` selectors are retired and ignored, noevia#1071). The file, ini, badge and disk fields are native; the live `loadedOn`, `fit`, `backends` and `activeDownloads` fields are asked of the Python child through private calls, never re-implemented. Settings it cannot read exactly refuse startup. See [native model list and overview](docs/native-model-list.md).
 
 `native-section-autoconfig` serves the read-only `GET /api/v1/sections/{name}/autoconfig` (always native; the `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL` selector is retired and ignored, noevia#1071). The query, the routing role check, the model file, its header and the whole analysis are native; the live telemetry and the backend inventory are asked of the Python child through a private call, never re-implemented. Settings it cannot read exactly refuse startup. With `native-telemetry` (the `MODEL_MANAGER_TELEMETRY_IMPL` selector is retired and ignored) the telemetry ingest and store are native too and the child call is dropped; the child is then never a telemetry writer, and a child image without the telemetry guard causes native telemetry to refuse with 503. See [native section autoconfig](docs/native-section-autoconfig.md).
 
-`native-download-targets` and `MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL=rust` serve the read-only `GET /api/v1/download-targets`, default off. `POST /api/v1/downloads` stays Python and checks its target against the same settings. See [native download targets](docs/native-download-targets.md).
+`native-download-targets` serves the read-only `GET /api/v1/download-targets`; the former `MODEL_MANAGER_DOWNLOAD_TARGETS_IMPL` selector is retired and ignored. `POST /api/v1/downloads` stays Python and checks its target against the same settings. See [native download targets](docs/native-download-targets.md).
 
-`native-badges` and `MODEL_MANAGER_BADGES_IMPL=rust` serve `PUT` and `DELETE /api/v1/badges`, default off, with the noevia#1905 fixes (a non-integer rating or run id answers 400, and padded aliases are stripped once). See [native badge writes](docs/native-badges.md).
+`native-badges` serves `PUT` and `DELETE /api/v1/badges`, with the noevia#1905 fixes (a non-integer rating or run id answers 400, and padded aliases are stripped once); the former `MODEL_MANAGER_BADGES_IMPL` selector is retired and ignored. See [native badge writes](docs/native-badges.md).
 
-`native-bench-runs` and `MODEL_MANAGER_BENCH_RUNS_IMPL=rust` serve the read-only `GET /api/v1/benchmark/runs/{id}`, default off. The store part and the charts are native; `capacity_gb` and `vram_predicted` come from the Python child's private runtime call. See [native benchmark run read](docs/native-bench-runs.md).
+`native-bench-runs` serves the read-only `GET /api/v1/benchmark/runs/{id}`; the former `MODEL_MANAGER_BENCH_RUNS_IMPL` selector is retired and ignored. The store part and the charts are native; `capacity_gb` and `vram_predicted` come from the Python child's private runtime call. See [native benchmark run read](docs/native-bench-runs.md).
 
-`native-section-writes` and `MODEL_MANAGER_SECTION_WRITES_IMPL=rust` make the Rust front the only models.ini writer (section save, rename, delete, safe defaults, the raw editor), default off. Safe-defaults values come from the Python child's private read-only plan call. See [native models.ini writers](docs/native-section-writes.md).
+`native-section-writes` makes the Rust front the only models.ini writer (section save, rename, delete, safe defaults, the raw editor); the former `MODEL_MANAGER_SECTION_WRITES_IMPL` selector is retired and ignored. Safe-defaults values come from the Python child's private read-only plan call. See [native models.ini writers](docs/native-section-writes.md).
 
-`native-settings-write` and `MODEL_MANAGER_SETTINGS_WRITE_IMPL=rust` serve `PUT /api/v1/settings` (the Hugging Face token), default off; the token test is asked of the Python child's private call. See [native settings write](docs/native-settings-write.md).
+`native-settings-write` serves `PUT /api/v1/settings` (the Hugging Face token); the former `MODEL_MANAGER_SETTINGS_WRITE_IMPL` selector is retired and ignored. The token test is asked of the Python child's private call. See [native settings write](docs/native-settings-write.md).
 
-`native-backend-control` and `MODEL_MANAGER_BACKEND_CONTROL_IMPL=rust` serve `POST /api/v1/backends/{name}/restart` and `/test`, default off. Restart errors stay recorded in the Python child, which `GET /api/v1/backends` reads. See [native backend restart and test](docs/native-backend-control.md).
+`native-backend-control` serves `POST /api/v1/backends/{name}/restart` and `/test`; the former `MODEL_MANAGER_BACKEND_CONTROL_IMPL` selector is retired and ignored. Restart errors are kept by the native sampler, which `GET /api/v1/backends` answers. See [native backend restart and test](docs/native-backend-control.md).
 
-`native-benchmark-overview` and `MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL=rust` serve `GET /api/v1/benchmark`, default off. The runner's live `job` is asked of the Python child, and the job controls stay with Python. See [native benchmark overview](docs/native-benchmark-overview.md).
+`native-benchmark-overview` serves `GET /api/v1/benchmark`; the former `MODEL_MANAGER_BENCHMARK_OVERVIEW_IMPL` selector is retired and ignored. The job slot and its controls are native through `native-benchmark-runner` below. See [native benchmark overview](docs/native-benchmark-overview.md).
 
-`native-check-updates` and `MODEL_MANAGER_CHECK_UPDATES_IMPL=rust` serve `POST /api/v1/models/check-updates`, default off. The Hub tree listing is fetched and `update_check` is written here. See [native model update check](docs/native-check-updates.md).
+`native-check-updates` serves `POST /api/v1/models/check-updates`; the former `MODEL_MANAGER_CHECK_UPDATES_IMPL` selector is retired and ignored. The Hub tree listing is fetched and `update_check` is written here. See [native model update check](docs/native-check-updates.md).
 
-`native-benchmark-runner` and `MODEL_MANAGER_BENCHMARK_RUNNER_IMPL=rust` (default off, needs the native overview) move the whole benchmark job slot: prompt runs, llama-bench sweeps through the named sweep Docker allowlist, start/sweep/progress/cancel, and the startup cleanup of leftover sweep containers. See [native benchmark runner](docs/native-benchmark-runner.md).
+`native-benchmark-runner` moves the whole benchmark job slot (it needs the native overview); the former `MODEL_MANAGER_BENCHMARK_RUNNER_IMPL` selector is retired and ignored. It covers prompt runs, llama-bench sweeps through the named sweep Docker allowlist, start/sweep/progress/cancel, and the startup cleanup of leftover sweep containers. See [native benchmark runner](docs/native-benchmark-runner.md).
 
-`native-diagnose` and `MODEL_MANAGER_DIAGNOSE_IMPL=rust` select the whole internal backend diagnosis GET, default off. Selection requires exact `TZ=UTC` before startup. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.
+`native-diagnose` serves the whole internal backend diagnosis GET; the former `MODEL_MANAGER_DIAGNOSE_IMPL` selector is retired and ignored. See [native diagnosis contract](docs/native-diagnose.md) for current-run acquisition, bounded Docker framing, retained driver joins, and the separate services handoff.
 
-`native-downloads` and `MODEL_MANAGER_DOWNLOADS_IMPL=rust` own the download job table: list, start (planned by the Python child), cancel, clear and the overview's active count, default off. See [native downloads](docs/native-downloads.md).
+`native-downloads` owns the download job table: list, start (planned by the Python child), cancel, clear and the overview's active count; the former `MODEL_MANAGER_DOWNLOADS_IMPL` selector is retired and ignored. See [native downloads](docs/native-downloads.md).
 
-`native-model-delete` and `MODEL_MANAGER_MODEL_DELETE_IMPL=rust` serve `POST /api/v1/models/delete` (the container check and every deletion), default off. See [native model delete](docs/native-model-delete.md).
+`native-model-delete` serves `POST /api/v1/models/delete` (the container check and every deletion); the former `MODEL_MANAGER_MODEL_DELETE_IMPL` selector is retired and ignored. See [native model delete](docs/native-model-delete.md).
 
-Benchmark chart capacity/prediction can run locally with the native autoconfig service and sampler; see [native chart runtime](docs/native-bench-chart-runtime.md).
+Benchmark chart capacity and prediction come from the native autoconfig service and sampler; see [native chart runtime](docs/native-bench-chart-runtime.md).
 
-native-db-init and MODEL_MANAGER_DB_INIT_IMPL=rust move full schema bootstrap onto the secure prompt-store connection, default off; see [schema bootstrap ownership](docs/native-db-init.md).
+`native-db-init` moves full schema bootstrap onto the secure prompt-store connection; the former `MODEL_MANAGER_DB_INIT_IMPL` selector is retired and ignored. See [schema bootstrap ownership](docs/native-db-init.md).

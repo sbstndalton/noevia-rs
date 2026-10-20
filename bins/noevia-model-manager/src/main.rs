@@ -181,7 +181,7 @@ async fn service() -> Result<(), Box<dyn std::error::Error>> {
     let downloads_roots = Some(downloads_roots(values.clone())?);
     let delete_roots = Some(delete_roots(values.clone())?);
     let heads_roots = Some(model_updates_roots(values.clone())?);
-    let backends_settings = Some(backends_fallback("rust", "UTC", values.clone())?);
+    let backends_settings = Some(backends_fallback("UTC", values.clone())?);
     let search_roots = Some(model_updates_roots(values.clone())?);
     let bench_root = Some(data_dir()?);
     let prompt_root = Some(prompt_data_dir()?);
@@ -1207,21 +1207,16 @@ fn delete_roots(
     })
 }
 
-/// noevia#1318 slice 13: what the native sampler reads, or why both stay with Python: it keeps the
-/// native restart's errors (so it needs MODEL_MANAGER_BACKEND_CONTROL_IMPL=rust), formats start
-/// times in UTC (TZ unset or UTC; the child is given UTC too), and reads LLAMA_CONTAINERS,
-/// GPU_VRAM and LLAMA_DEFAULT_PORT by their exact names (the child's settings fold names, so a
-/// case-folded alias is refused).
+/// noevia#1318 slice 13: what the native sampler reads, or why it refuses: it keeps the native
+/// restart's errors, formats start times in UTC (TZ unset or UTC; the child is given UTC too), and
+/// reads LLAMA_CONTAINERS, GPU_VRAM and LLAMA_DEFAULT_PORT by their exact names (the child's settings
+/// fold names, so a case-folded alias is refused).
 #[cfg(feature = "native-backends")]
 #[cfg(any(test, feature = "native-routing"))]
 fn backends_fallback(
-    control_mode: &str,
     tz: &str,
     values: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 ) -> Result<Vec<(String, f64)>, &'static str> {
-    if control_mode != "rust" {
-        return Err("needs MODEL_MANAGER_BACKEND_CONTROL_IMPL=rust (the restart errors it shows are kept natively)");
-    }
     if !(tz.is_empty() || tz == "UTC") {
         return Err("TZ is set to a zone other than UTC");
     }
@@ -1301,18 +1296,17 @@ mod backends_command_tests {
 
     #[test]
     fn fallback_reasons() {
-        let ok = super::backends_fallback("rust", "", env(&[("GPU_VRAM", "a:8, b:x,a:12")]));
+        let ok = super::backends_fallback("", env(&[("GPU_VRAM", "a:8, b:x,a:12")]));
         assert_eq!(ok, Ok(vec![("a".to_owned(), 12.0)]));
-        assert!(super::backends_fallback("rust", "UTC", env(&[])).is_ok());
-        assert!(super::backends_fallback("python", "", env(&[])).is_err());
-        assert!(super::backends_fallback("rust", "Europe/Berlin", env(&[])).is_err());
+        assert!(super::backends_fallback("UTC", env(&[])).is_ok());
+        assert!(super::backends_fallback("Europe/Berlin", env(&[])).is_err());
         for alias in ["gpu_vram", "Llama_Containers", "llama_default_port"] {
             assert!(
-                super::backends_fallback("rust", "", env(&[(alias, "x")])).is_err(),
+                super::backends_fallback("", env(&[(alias, "x")])).is_err(),
                 "{alias}"
             );
         }
-        assert!(super::backends_fallback("rust", "", env(&[("GPU_VRAM", "a:\u{0661}")])).is_err());
+        assert!(super::backends_fallback("", env(&[("GPU_VRAM", "a:\u{0661}")])).is_err());
     }
 }
 

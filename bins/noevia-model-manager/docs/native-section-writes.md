@@ -1,6 +1,6 @@
 # Native models.ini writers (noevia#1318)
 
-`native-section-writes` with `MODEL_MANAGER_SECTION_WRITES_IMPL=rust` makes the Rust front the only models.ini writer. Default `python`. It covers five routes:
+`native-section-writes` makes the Rust front the only models.ini writer. The former `MODEL_MANAGER_SECTION_WRITES_IMPL` selector is retired and ignored (noevia#1071); these routes are native. It covers five routes:
 
 - `PUT /api/v1/sections/{name}`
 - `PUT /api/v1/models-ini`

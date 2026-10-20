@@ -105,7 +105,8 @@ pub struct SectionAutoconfig {
     /// noevia#1318 step 3b: the native sampler, when this process samples the backends.
     #[cfg(feature = "native-backends")]
     stats: std::sync::OnceLock<Arc<crate::backend_stats::BackendStats>>,
-    /// noevia#1318 step 3d: the native telemetry, under `MODEL_MANAGER_TELEMETRY_IMPL=rust`.
+    /// noevia#1318 step 3d: the native telemetry (`native-telemetry`; the former
+    /// `MODEL_MANAGER_TELEMETRY_IMPL` selector is retired, noevia#1071).
     #[cfg(feature = "native-telemetry")]
     telemetry: std::sync::OnceLock<Arc<telemetry::Telemetry>>,
 }
