@@ -7,7 +7,6 @@ pub mod backends;
 pub mod badges;
 #[cfg(feature = "native-bench-observe")]
 pub mod bench_observe;
-pub mod bench_observe_cmd;
 #[cfg(feature = "native-benchmark-runner")]
 pub mod bench_runner;
 #[cfg(feature = "native-bench-runs")]
@@ -46,7 +45,6 @@ pub mod model_updates;
 pub mod prompts;
 #[cfg(feature = "native-routing")]
 pub mod routing;
-pub mod routing_cmd;
 #[cfg(feature = "native-search")]
 pub mod search;
 #[cfg(feature = "native-section-autoconfig")]
@@ -73,7 +71,6 @@ pub mod sqlite_read;
 ))]
 #[cfg(test)]
 mod startup;
-pub mod telemetry_cmd;
 #[cfg(feature = "native-token-test")]
 mod token_test;
 pub mod validation;

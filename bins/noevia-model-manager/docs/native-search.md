@@ -105,8 +105,8 @@ answers the 500.
 
 While the search runtime is native (`MODEL_MANAGER_SEARCH_IMPL=rust` with
 `MODEL_MANAGER_BACKENDS_IMPL=rust`, so this process samples the backends, and a readable trusted
-sets file) and the section autoconfig is native too (`MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust`,
-which fixes the cache-ram cap the analysis reads), the repository read computes its fit chips and context estimates itself, and
+sets file) and the section autoconfig is native too (always, noevia#1071; its settings fix the
+cache-ram cap the analysis reads), the repository read computes its fit chips and context estimates itself, and
 `POST /api/v1/internal/search-repo-runtime` is not called.
 
 - **Chips.** `fit::chips` over one fit inventory per answer.

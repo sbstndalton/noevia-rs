@@ -1,10 +1,7 @@
 #![forbid(unsafe_code)]
-#[cfg(any(feature = "native-routing", all(test, feature = "native-model-list")))]
+#[cfg(feature = "native-routing")]
 mod model_list_cmd;
-#[cfg(any(
-    feature = "native-routing",
-    all(test, feature = "native-section-autoconfig")
-))]
+#[cfg(feature = "native-routing")]
 mod section_autoconfig_cmd;
 use noevia_model_manager::healthcheck;
 use std::io::Write;
@@ -831,85 +828,6 @@ fn model_updates_roots(
     })
 }
 
-/// noevia#1318: the child refuses `GET /api/v1/models/updates` only when the native reader owns
-/// it, and is handed the same three roots the native reader opens.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-model-updates")]
-fn model_updates_child(
-    child_command: &mut tokio::process::Command,
-    updates_mode: &str,
-    #[cfg(feature = "native-model-updates")] roots: Option<&UpdatesRoots>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED",
-        if updates_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-model-updates")]
-    if let Some(roots) = roots {
-        child_command
-            .env("MODELS_DIR", &roots.models)
-            .env("MODELS_INI_PATH", &roots.ini)
-            .env("DATA_DIR", &roots.data);
-    }
-}
-
-/// noevia#1318: the child refuses `POST /api/v1/models/check-updates` only when the native writer
-/// owns it, and is handed the same three roots (the status map reads the same models folder).
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-check-updates")]
-fn model_updates_child_as(
-    child_command: &mut tokio::process::Command,
-    confirmation: &str,
-    mode: &str,
-    #[cfg(feature = "native-check-updates")] roots: Option<&UpdatesRoots>,
-) {
-    child_command.env(confirmation, if mode == "rust" { "1" } else { "0" });
-    #[cfg(feature = "native-check-updates")]
-    if let Some(roots) = roots {
-        child_command
-            .env("MODELS_DIR", &roots.models)
-            .env("MODELS_INI_PATH", &roots.ini)
-            .env("DATA_DIR", &roots.data);
-    }
-}
-
-#[cfg(all(test, feature = "native-check-updates"))]
-mod check_updates_command_tests {
-    #[test]
-    fn confirmation_overrides_inherited_value() {
-        let roots = super::UpdatesRoots {
-            models: "/synthetic/models".into(),
-            ini: "/synthetic/models.ini".into(),
-            data: "/synthetic/data".into(),
-        };
-        for (mode, roots, expected) in [("rust", Some(&roots), "1"), ("python", None, "0")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED",
-                "hostile",
-            );
-            super::model_updates_child_as(
-                &mut command,
-                "NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED",
-                mode,
-                roots,
-            );
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_CHECK_UPDATES_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(
-                get("MODELS_DIR"),
-                roots.map(|r| std::ffi::OsStr::new(r.models.as_str()))
-            );
-        }
-    }
-}
-
 /// noevia#1318: the roots `GET /api/v1/models/detail` reads. Python joins `MODELS_DIR` with each
 /// file for `path`, so the configured folder must already be in pathlib's normal form.
 #[cfg(feature = "native-model-detail")]
@@ -946,29 +864,6 @@ fn detail_fallback(
         return Err("TZ is set to a zone other than UTC");
     }
     model_detail_roots(values)
-}
-
-/// noevia#1318: the child refuses `GET /api/v1/models/detail` and serves the private runtime call
-/// only when the native reader owns the route; it then runs in UTC and reads the same roots.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-model-detail")]
-fn model_detail_child(
-    child_command: &mut tokio::process::Command,
-    detail_mode: &str,
-    #[cfg(feature = "native-model-detail")] roots: Option<&UpdatesRoots>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED",
-        if detail_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-model-detail")]
-    if let Some(roots) = roots {
-        child_command
-            .env("TZ", "UTC")
-            .env("MODELS_DIR", &roots.models)
-            .env("MODELS_INI_PATH", &roots.ini);
-    }
 }
 
 /// noevia#1318: what `GET /api/v1/download-targets` reads, named exactly as the Python child's
@@ -1023,28 +918,6 @@ fn download_targets_roots(
     Ok(TargetsRoots { models, declared })
 }
 
-/// noevia#1318: the child refuses `GET /api/v1/download-targets` only when the native reader owns
-/// it, and validates `POST /api/v1/downloads` targets against the same two settings.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-download-targets")]
-fn download_targets_child(
-    child_command: &mut tokio::process::Command,
-    targets_mode: &str,
-    #[cfg(feature = "native-download-targets")] roots: Option<&TargetsRoots>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED",
-        if targets_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-download-targets")]
-    if let Some(roots) = roots {
-        child_command
-            .env("MODELS_DIR", &roots.models)
-            .env("MODEL_DOWNLOAD_TARGETS", &roots.declared);
-    }
-}
-
 #[cfg(all(test, feature = "native-download-targets"))]
 #[allow(clippy::unwrap_used)]
 mod download_targets_command_tests {
@@ -1085,78 +958,6 @@ mod download_targets_command_tests {
             .collect::<Vec<_>>()
             .join(",");
         assert!(roots(&[("MODEL_DOWNLOAD_TARGETS", &many)]).is_err());
-    }
-
-    #[test]
-    fn child_confirmation_overrides_inherited_value_and_carries_roots() {
-        for (mode, expected) in [("rust", "1"), ("python", "0")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED",
-                "hostile",
-            );
-            let roots = super::TargetsRoots {
-                models: "/synthetic/models".into(),
-                declared: "extra".into(),
-            };
-            super::download_targets_child(&mut command, mode, (mode == "rust").then_some(&roots));
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOAD_TARGETS_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(get("MODEL_DOWNLOAD_TARGETS").is_some(), mode == "rust");
-        }
-    }
-}
-
-/// noevia#1318: the child refuses `PUT`/`DELETE /api/v1/badges` only when the native writer owns
-/// them, and reads (benchmark runs, the models list) the same `DATA_DIR/model_loader.db`.
-/// noevia#1318: the child refuses canonical `GET /api/v1/benchmark/runs/{id}` and serves the
-/// private runtime call only when the native reader owns the route, on the same `DATA_DIR`.
-/// noevia#1318: the child refuses `PUT /api/v1/settings` and serves the private token test only
-/// when the native writer owns it, on the same `DATA_DIR`.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-settings-write")]
-fn settings_write_child(
-    child_command: &mut tokio::process::Command,
-    mode: &str,
-    #[cfg(feature = "native-settings-write")] root: Option<&str>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED",
-        if mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-settings-write")]
-    if let Some(root) = root {
-        child_command.env("DATA_DIR", root);
-    }
-}
-
-#[cfg(all(test, feature = "native-settings-write"))]
-mod settings_write_command_tests {
-    #[test]
-    fn confirmation_overrides_inherited_value() {
-        for (mode, root, expected) in [
-            ("rust", Some("/synthetic/data"), "1"),
-            ("python", None, "0"),
-        ] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED",
-                "hostile",
-            );
-            super::settings_write_child(&mut command, mode, root);
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_WRITE_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(get("DATA_DIR"), root.map(std::ffi::OsStr::new));
-        }
     }
 }
 
@@ -1285,30 +1086,6 @@ fn overview_ini(
     Ok(ini)
 }
 
-/// noevia#1318: the child refuses `GET /api/v1/benchmark` and serves the private job read only
-/// when the native overview owns it, and then reads the same store and models.ini.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-benchmark-overview")]
-fn benchmark_overview_child(
-    child_command: &mut tokio::process::Command,
-    overview_mode: &str,
-    #[cfg(feature = "native-benchmark-overview")] roots: Option<&(String, String)>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED",
-        if overview_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-benchmark-overview")]
-    if let Some((data, ini)) = roots {
-        child_command
-            .env("DATA_DIR", data)
-            .env("MODELS_INI_PATH", ini);
-    }
-}
-
-/// noevia#1318: the child refuses the four runner routes, skips `reap_orphans` and serves the
-/// private observation route only when the native runner owns the job slot.
 /// noevia#1318: what the native download table needs: the models folder in pathlib's normal
 /// form (Python's `dest_path` is `models_dir / filename`), the store, and the job slots.
 #[cfg(feature = "native-downloads")]
@@ -1430,30 +1207,6 @@ fn delete_roots(
     })
 }
 
-/// noevia#1318: the child refuses `POST /api/v1/models/delete` only when the native side owns
-/// it, and is handed the same settings the native side reads.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-model-delete")]
-fn model_delete_child(
-    child_command: &mut tokio::process::Command,
-    delete_mode: &str,
-    #[cfg(feature = "native-model-delete")] roots: Option<&DeleteRoots>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DELETE_CONFIRMED",
-        if delete_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-model-delete")]
-    if let Some(roots) = roots {
-        child_command
-            .env("MODELS_DIR", &roots.models)
-            .env("MODELS_INI_PATH", &roots.ini)
-            .env("MODELS_HOST_PATH", &roots.host_path)
-            .env("MODEL_DOWNLOAD_TARGETS", &roots.targets);
-    }
-}
-
 /// noevia#1318 slice 13: what the native sampler reads, or why both stay with Python: it keeps the
 /// native restart's errors (so it needs MODEL_MANAGER_BACKEND_CONTROL_IMPL=rust), formats start
 /// times in UTC (TZ unset or UTC; the child is given UTC too), and reads LLAMA_CONTAINERS,
@@ -1510,21 +1263,6 @@ fn ram_reserve(values: Vec<(std::ffi::OsString, std::ffi::OsString)>) -> Option<
     noevia_model_manager::backend_stats::fit::reserve_gb(raw.as_deref())
 }
 
-/// noevia#1318 slice 13: the child stops sampling the backends and refuses GET /api/v1/backends
-/// only when the native sampler owns them; it then runs in UTC like the native answer.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-backends")]
-fn backends_child(child_command: &mut tokio::process::Command, backends_mode: &str) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_BACKENDS_CONFIRMED",
-        if backends_mode == "rust" { "1" } else { "0" },
-    );
-    if backends_mode == "rust" {
-        child_command.env("TZ", "UTC");
-    }
-}
-
 #[cfg(all(test, feature = "native-backends"))]
 mod backends_command_tests {
     #![allow(clippy::unwrap_used)]
@@ -1562,22 +1300,6 @@ mod backends_command_tests {
     }
 
     #[test]
-    fn confirmation_overrides_inherited_value() {
-        for (mode, expected, tz) in [("rust", "1", Some("UTC")), ("python", "0", None)] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env("NOEVIA_NATIVE_MODEL_MANAGER_BACKENDS_CONFIRMED", "hostile");
-            super::backends_child(&mut command, mode);
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_BACKENDS_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(get("TZ"), tz.map(std::ffi::OsStr::new));
-        }
-    }
-
-    #[test]
     fn fallback_reasons() {
         let ok = super::backends_fallback("rust", "", env(&[("GPU_VRAM", "a:8, b:x,a:12")]));
         assert_eq!(ok, Ok(vec![("a".to_owned(), 12.0)]));
@@ -1594,79 +1316,8 @@ mod backends_command_tests {
     }
 }
 
-/// noevia#1318 slice 12: the child refuses the draft-head read only when the native read owns it,
-/// and is handed the same three roots.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-draft-heads")]
-fn draft_heads_child(
-    child_command: &mut tokio::process::Command,
-    heads_mode: &str,
-    #[cfg(feature = "native-draft-heads")] roots: Option<&UpdatesRoots>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_DRAFT_HEADS_CONFIRMED",
-        if heads_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-draft-heads")]
-    if let Some(roots) = roots {
-        child_command
-            .env("MODELS_DIR", &roots.models)
-            .env("MODELS_INI_PATH", &roots.ini)
-            .env("DATA_DIR", &roots.data);
-    }
-}
-
-/// noevia#1318 slice 14: the child refuses the two search reads only when the native side owns
-/// them, and is handed the same three roots (it keeps `DATA_DIR`'s store and the models folder
-/// the live state is read from).
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-search")]
-fn search_child(
-    child_command: &mut tokio::process::Command,
-    search_mode: &str,
-    #[cfg(feature = "native-search")] roots: Option<&UpdatesRoots>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED",
-        if search_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-search")]
-    if let Some(roots) = roots {
-        child_command
-            .env("MODELS_DIR", &roots.models)
-            .env("MODELS_INI_PATH", &roots.ini)
-            .env("DATA_DIR", &roots.data);
-    }
-}
-
 #[cfg(all(test, feature = "native-search"))]
 mod search_command_tests {
-    #[test]
-    fn confirmation_overrides_inherited_value() {
-        let roots = super::UpdatesRoots {
-            models: "/synthetic/models".into(),
-            ini: "/synthetic/models.ini".into(),
-            data: "/synthetic/data".into(),
-        };
-        for (mode, roots, expected) in [("rust", Some(&roots), "1"), ("python", None, "0")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env("NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED", "hostile");
-            super::search_child(&mut command, mode, roots);
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_SEARCH_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(
-                get("DATA_DIR"),
-                roots.map(|r| std::ffi::OsStr::new(r.data.as_str()))
-            );
-        }
-    }
-
     /// A case-folded spelling of a root keeps Python serving the routes (one log line).
     #[test]
     fn folded_spellings_are_refused() {
@@ -1688,36 +1339,6 @@ mod search_command_tests {
     }
 }
 
-#[cfg(all(test, feature = "native-draft-heads"))]
-mod draft_heads_command_tests {
-    #[test]
-    fn confirmation_overrides_inherited_value() {
-        let roots = super::UpdatesRoots {
-            models: "/synthetic/models".into(),
-            ini: "/synthetic/models.ini".into(),
-            data: "/synthetic/data".into(),
-        };
-        for (mode, roots, expected) in [("rust", Some(&roots), "1"), ("python", None, "0")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_DRAFT_HEADS_CONFIRMED",
-                "hostile",
-            );
-            super::draft_heads_child(&mut command, mode, roots);
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_DRAFT_HEADS_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(
-                get("DATA_DIR"),
-                roots.map(|r| std::ffi::OsStr::new(r.data.as_str()))
-            );
-        }
-    }
-}
-
 #[cfg(all(test, feature = "native-model-delete"))]
 mod model_delete_command_tests {
     #![allow(clippy::unwrap_used)]
@@ -1726,29 +1347,6 @@ mod model_delete_command_tests {
             .iter()
             .map(|(k, v)| ((*k).into(), (*v).into()))
             .collect()
-    }
-
-    #[test]
-    fn confirmation_overrides_inherited_value() {
-        for (mode, expected) in [("rust", "1"), ("python", "0")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DELETE_CONFIRMED",
-                "hostile",
-            );
-            let roots = super::delete_roots(env(&[("MODELS_DIR", "/m")])).unwrap();
-            super::model_delete_child(&mut command, mode, (mode == "rust").then_some(&roots));
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DELETE_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(
-                get("MODELS_DIR"),
-                (mode == "rust").then_some(std::ffi::OsStr::new("/m"))
-            );
-        }
     }
 
     #[test]
@@ -1781,55 +1379,8 @@ mod model_delete_command_tests {
     }
 }
 
-/// noevia#1318: the child refuses the download routes and plans starts only when the native
-/// table owns them, and is handed the same models folder and store.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-downloads")]
-fn downloads_child(
-    child_command: &mut tokio::process::Command,
-    downloads_mode: &str,
-    #[cfg(feature = "native-downloads")] roots: Option<&DownloadsRoots>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED",
-        if downloads_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-downloads")]
-    if let Some(roots) = roots {
-        child_command
-            .env("MODELS_DIR", &roots.models)
-            .env("DATA_DIR", &roots.data)
-            .env("MAX_CONCURRENT_DOWNLOADS", roots.concurrent.to_string());
-    }
-}
-
 #[cfg(all(test, feature = "native-downloads"))]
 mod downloads_command_tests {
-    #[test]
-    fn confirmation_overrides_inherited_value() {
-        let roots = super::DownloadsRoots {
-            models: "/synthetic/models".into(),
-            data: "/synthetic/data".into(),
-            concurrent: 3,
-        };
-        for (mode, roots, expected) in [("rust", Some(&roots), "1"), ("python", None, "0")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED", "hostile");
-            super::downloads_child(&mut command, mode, roots);
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_DOWNLOADS_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(
-                get("MODELS_DIR"),
-                roots.map(|r| std::ffi::OsStr::new(r.models.as_str()))
-            );
-        }
-    }
-
     #[test]
     fn roots_need_a_normal_models_dir_and_a_plain_slot_count() {
         let env = |pairs: &[(&str, &str)]| -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
@@ -1865,76 +1416,8 @@ mod downloads_command_tests {
     }
 }
 
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-benchmark-runner")]
-fn benchmark_runner_child(child_command: &mut tokio::process::Command, runner_mode: &str) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED",
-        if runner_mode == "rust" { "1" } else { "0" },
-    );
-}
-
-#[cfg(all(test, feature = "native-benchmark-runner"))]
-mod benchmark_runner_command_tests {
-    #[test]
-    fn confirmation_overrides_inherited_value() {
-        for (mode, expected) in [("rust", "1"), ("python", "0")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED",
-                "hostile",
-            );
-            super::benchmark_runner_child(&mut command, mode);
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            assert_eq!(
-                envs.get(std::ffi::OsStr::new(
-                    "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_RUNNER_CONFIRMED"
-                ))
-                .copied()
-                .flatten(),
-                Some(std::ffi::OsStr::new(expected))
-            );
-        }
-    }
-}
-
 #[cfg(all(test, feature = "native-benchmark-overview"))]
 mod benchmark_overview_command_tests {
-    #[test]
-    fn confirmation_overrides_inherited_value() {
-        for (mode, roots, expected) in [
-            (
-                "rust",
-                Some((
-                    "/synthetic/data".to_owned(),
-                    "/synthetic/models.ini".to_owned(),
-                )),
-                "1",
-            ),
-            ("python", None, "0"),
-        ] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED",
-                "hostile",
-            );
-            super::benchmark_overview_child(&mut command, mode, roots.as_ref());
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_BENCHMARK_OVERVIEW_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(
-                get("MODELS_INI_PATH"),
-                roots
-                    .as_ref()
-                    .map(|(_, i)| std::ffi::OsStr::new(i.as_str()))
-            );
-        }
-    }
-
     #[test]
     fn ini_path_needs_one_normal_spelling() {
         let env = |pairs: &[(&str, &str)]| -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
@@ -1954,29 +1437,6 @@ mod benchmark_overview_command_tests {
         assert!(super::overview_ini(env(&[("models_ini_path", "/m/x.ini")])).is_err());
         assert!(super::overview_ini(env(&[("MODELS_INI_PATH", "/m/../x.ini")])).is_err());
         assert!(super::overview_ini(env(&[("MODELS_INI_PATH", "m.ini")])).is_err());
-    }
-}
-
-/// noevia#1318: the child refuses the five models.ini writers and serves the private
-/// safe-defaults plan only when the native writer owns them; it then runs in UTC and reads the
-/// same models.ini.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-section-writes")]
-fn section_writes_child(
-    child_command: &mut tokio::process::Command,
-    writes_mode: &str,
-    #[cfg(feature = "native-section-writes")] roots: Option<&WritesRoots>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED",
-        if writes_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-section-writes")]
-    if let Some(roots) = roots {
-        child_command
-            .env("TZ", "UTC")
-            .env("MODELS_INI_PATH", &roots.ini);
     }
 }
 
@@ -2071,109 +1531,6 @@ mod section_writes_command_tests {
         }
         assert!(roots("", &[("migrate_cache_ram_on_start", "false")]).is_err());
     }
-
-    #[test]
-    fn child_confirmation_overrides_inherited_value() {
-        for (mode, expected) in [("rust", "1"), ("python", "0")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED",
-                "hostile",
-            );
-            let r = roots("", &[]).unwrap();
-            super::section_writes_child(&mut command, mode, (mode == "rust").then_some(&r));
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_SECTION_WRITES_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(get("TZ").is_some(), mode == "rust");
-        }
-    }
-}
-
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-bench-runs")]
-fn bench_runs_child(
-    child_command: &mut tokio::process::Command,
-    bench_mode: &str,
-    #[cfg(feature = "native-bench-runs")] root: Option<&str>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED",
-        if bench_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-bench-runs")]
-    if let Some(root) = root {
-        child_command.env("DATA_DIR", root);
-    }
-}
-
-#[cfg(all(test, feature = "native-bench-runs"))]
-mod bench_runs_command_tests {
-    #[test]
-    fn bench_runs_confirmation_overrides_inherited_value() {
-        for (mode, root, expected) in [
-            ("rust", Some("/synthetic/data"), "1"),
-            ("python", None, "0"),
-        ] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED",
-                "hostile",
-            );
-            super::bench_runs_child(&mut command, mode, root);
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_BENCH_RUNS_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(get("DATA_DIR"), root.map(std::ffi::OsStr::new));
-        }
-    }
-}
-
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-badges")]
-fn badges_child(
-    child_command: &mut tokio::process::Command,
-    badges_mode: &str,
-    #[cfg(feature = "native-badges")] root: Option<&str>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED",
-        if badges_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-badges")]
-    if let Some(root) = root {
-        child_command.env("DATA_DIR", root);
-    }
-}
-
-#[cfg(all(test, feature = "native-badges"))]
-mod badges_command_tests {
-    #[test]
-    fn badges_confirmation_overrides_inherited_value() {
-        for (mode, root, expected) in [
-            ("rust", Some("/synthetic/data"), "1"),
-            ("python", None, "0"),
-        ] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env("NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED", "hostile");
-            super::badges_child(&mut command, mode, root);
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |k: &str| envs.get(std::ffi::OsStr::new(k)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_BADGES_CONFIRMED"),
-                Some(std::ffi::OsStr::new(expected))
-            );
-            assert_eq!(get("DATA_DIR"), root.map(std::ffi::OsStr::new));
-        }
-    }
 }
 
 #[cfg(test)]
@@ -2214,26 +1571,6 @@ fn legacy_command(
         child_command.env("DATA_DIR", root);
     }
     child_command
-}
-
-/// noevia#1318: the child refuses `GET /api/v1/settings` only when the native reader owns it,
-/// and reads/writes the same `DATA_DIR/model_loader.db` the native reader opens.
-#[cfg(test)]
-#[cfg(any(test, feature = "native-routing"))]
-#[cfg(feature = "native-settings")]
-fn settings_child(
-    child_command: &mut tokio::process::Command,
-    settings_mode: &str,
-    #[cfg(feature = "native-settings")] root: Option<&str>,
-) {
-    child_command.env(
-        "NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED",
-        if settings_mode == "rust" { "1" } else { "0" },
-    );
-    #[cfg(feature = "native-settings")]
-    if let Some(root) = root {
-        child_command.env("DATA_DIR", root);
-    }
 }
 
 #[cfg(all(test, feature = "native-prompts"))]
@@ -2317,42 +1654,10 @@ mod diagnosis_command_tests {
 }
 
 // Compiled with the feature only, so other features' exact test inventories stay unchanged.
-#[cfg(all(test, feature = "native-settings"))]
-mod settings_command_tests {
-    #[test]
-    fn settings_confirmation_overrides_inherited_value() {
-        for (mode, marker) in [("python", "0"), ("rust", "1")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env("NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED", "hostile");
-            super::settings_child(
-                &mut command,
-                mode,
-                (mode == "rust").then_some("/synthetic/root"),
-            );
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            assert_eq!(
-                envs.get(std::ffi::OsStr::new(
-                    "NOEVIA_NATIVE_MODEL_MANAGER_SETTINGS_CONFIRMED"
-                ))
-                .copied()
-                .flatten(),
-                Some(std::ffi::OsStr::new(marker))
-            );
-            assert_eq!(
-                envs.get(std::ffi::OsStr::new("DATA_DIR"))
-                    .copied()
-                    .flatten(),
-                (mode == "rust").then_some(std::ffi::OsStr::new("/synthetic/root"))
-            );
-        }
-    }
-}
-
-// Compiled with the feature only, so other features' exact test inventories stay unchanged.
 #[cfg(all(test, feature = "native-model-updates"))]
 #[allow(clippy::unwrap_used)]
 mod model_updates_command_tests {
-    use std::ffi::{OsStr, OsString};
+    use std::ffi::OsString;
 
     fn vars(pairs: &[(&str, &str)]) -> Vec<(OsString, OsString)> {
         pairs
@@ -2396,43 +1701,13 @@ mod model_updates_command_tests {
             );
         }
     }
-
-    #[test]
-    fn confirmation_overrides_inherited_value_and_roots_reach_child() {
-        let roots = super::UpdatesRoots {
-            models: "/synthetic/models".into(),
-            ini: "/synthetic/models/models.ini".into(),
-            data: "/synthetic/data".into(),
-        };
-        for (mode, marker) in [("python", "0"), ("rust", "1")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED",
-                "hostile",
-            );
-            super::model_updates_child(&mut command, mode, (mode == "rust").then_some(&roots));
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |key: &str| envs.get(OsStr::new(key)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_UPDATES_CONFIRMED"),
-                Some(OsStr::new(marker))
-            );
-            let expected = |value: &'static str| (mode == "rust").then_some(OsStr::new(value));
-            assert_eq!(get("MODELS_DIR"), expected("/synthetic/models"));
-            assert_eq!(
-                get("MODELS_INI_PATH"),
-                expected("/synthetic/models/models.ini")
-            );
-            assert_eq!(get("DATA_DIR"), expected("/synthetic/data"));
-        }
-    }
 }
 
 // Compiled with the feature only, so other features' exact test inventories stay unchanged.
 #[cfg(all(test, feature = "native-model-detail"))]
 #[allow(clippy::unwrap_used)]
 mod model_detail_command_tests {
-    use std::ffi::{OsStr, OsString};
+    use std::ffi::OsString;
 
     fn vars(pairs: &[(&str, &str)]) -> Vec<(OsString, OsString)> {
         pairs
@@ -2468,36 +1743,6 @@ mod model_detail_command_tests {
             );
         }
         assert!(super::model_detail_roots(vars(&[("models_dir", "/x")])).is_err());
-    }
-
-    #[test]
-    fn confirmation_zone_and_roots_reach_child_only_in_native_mode() {
-        let roots = super::UpdatesRoots {
-            models: "/synthetic/models".into(),
-            ini: "/synthetic/models/models.ini".into(),
-            data: "/synthetic/data".into(),
-        };
-        for (mode, marker) in [("python", "0"), ("rust", "1")] {
-            let mut command = tokio::process::Command::new("uvicorn");
-            command.env(
-                "NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED",
-                "hostile",
-            );
-            super::model_detail_child(&mut command, mode, (mode == "rust").then_some(&roots));
-            let envs: std::collections::BTreeMap<_, _> = command.as_std().get_envs().collect();
-            let get = |key: &str| envs.get(OsStr::new(key)).copied().flatten();
-            assert_eq!(
-                get("NOEVIA_NATIVE_MODEL_MANAGER_MODEL_DETAIL_CONFIRMED"),
-                Some(OsStr::new(marker))
-            );
-            let expected = |value: &'static str| (mode == "rust").then_some(OsStr::new(value));
-            assert_eq!(get("TZ"), expected("UTC"));
-            assert_eq!(get("MODELS_DIR"), expected("/synthetic/models"));
-            assert_eq!(
-                get("MODELS_INI_PATH"),
-                expected("/synthetic/models/models.ini")
-            );
-        }
     }
 }
 

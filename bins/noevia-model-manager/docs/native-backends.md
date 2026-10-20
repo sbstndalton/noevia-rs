@@ -124,8 +124,7 @@ are asked for a GPU read. Docker access stays read-only: nothing here runs `exec
 
 **Restart errors.** The native mirror serves the native `GET /api/v1/backends` and the native
 model reads' live fields. The child's copy is still set and cleared on every native restart,
-because the child's own backend snapshot is still read: `/overview`'s `backends[]` under
-`MODEL_MANAGER_OVERVIEW_IMPL=python`, the native overview without a native download table (its
+because the child's own backend snapshot is still read: the native overview without a native download table (its
 child runtime call), and every route under the python backends selector. The copy can go when
 those paths are retired. `tests/backend_control.rs` checks that the child is told even while the
 sampler is native.

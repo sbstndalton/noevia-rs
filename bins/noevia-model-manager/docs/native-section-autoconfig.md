@@ -2,19 +2,11 @@
 
 The optional `native-section-autoconfig` Cargo feature (it includes `native-draft-heads`, whose
 contained model-file reader and draft-head search it reuses) serves
-`GET /api/v1/sections/{name}/autoconfig` from Rust. Its selector is
-`MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL`, `python` by default. Startup refuses a value other than
-`python` or `rust`, and `rust` without the compiled feature, as for every switch. It never refuses
-startup over the settings: settings this side cannot read exactly as the child does keep the route
-with Python and log one line
-(`native-section-autoconfig: <reason>; GET /api/v1/sections/{name}/autoconfig stays with python`).
-This document does not authorize activation.
-
-Compose must pass the selector through, never as an empty value:
-
-```yaml
-MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL: ${MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL:-python}
-```
+`GET /api/v1/sections/{name}/autoconfig` from Rust. The route is always native (noevia#1071):
+the former selector `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL` is retired and ignored, so compose
+passes nothing for it. Settings this side cannot read exactly as the Python reference did no
+longer keep the route with Python; they refuse startup (see "Refused settings" below). This
+document does not authorize activation.
 
 ## Ownership
 
@@ -22,18 +14,18 @@ MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL: ${MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL:-
   name segment percent-decoded as the child's server decodes it. Other methods, the slash
   variants, a name that decodes to a slash and every other section route keep their existing
   handling.
-- The child gets `NOEVIA_NATIVE_MODEL_MANAGER_SECTION_AUTOCONFIG_CONFIRMED`, `1` only when the
-  route is native (`0` otherwise, also over an inherited value), and then the same `MODELS_DIR`
-  and `MODELS_INI_PATH`. Under `1` the services middleware refuses the route with 503, so it is
-  never served twice, and serves the private call below (404 otherwise). The native front never
-  forwards `/api/v1/internal/*`, so that call is reachable only from the parent.
-- Fallbacks (one log line, the route stays with Python, the child gets `0`): a case-folded alias
-  of `MODELS_DIR`, `MODELS_INI_PATH`, `LLAMACPP_CACHE_RAM_HARD_MAX_MIB` or
-  `LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB` (the child's settings fold names); a `MODELS_DIR` that
+- The process sets no `NOEVIA_NATIVE_MODEL_MANAGER_SECTION_AUTOCONFIG_CONFIRMED` for any child:
+  the route is never selected per route. The native front never forwards `/api/v1/internal/*`,
+  so the private call below is reachable only from the parent.
+- Refused settings (startup fails, never a fallback to Python): a case-folded alias of
+  `MODELS_DIR`, `MODELS_INI_PATH`, `LLAMACPP_CACHE_RAM_HARD_MAX_MIB` or
+  `LLAMACPP_AUTOCONFIG_CACHE_RAM_MAX_MIB` (the Python settings fold names); a `MODELS_DIR` that
   is not absolute and in pathlib's normal form (the projector and draft-head paths are mapped
   onto it as text); a `MODELS_INI_PATH` that is not an absolute file path; a cache-ram limit that
-  is not a plain integer; any of these over 4096 bytes. The prompt-cache cap is the child's
-  `settings.cache_ram_limits[0]`: `min(max(cap, 0), max(hard, 0))`.
+  is not a plain integer; any of these over 4096 bytes
+  (`section_autoconfig_cmd::settings`, unit-tested in `src/section_autoconfig_cmd.rs`). The
+  prompt-cache cap is the Python `settings.cache_ram_limits[0]`:
+  `min(max(cap, 0), max(hard, 0))`.
 
 ## What is native and what stays in Python
 
@@ -82,15 +74,15 @@ list in the child's answer.
 - **Differential:** `tools/gen-fit-oracle.py` records Python's whole list (baseline included) and
   the known keys, and `section_autoconfig::inventory::tests` compares both.
 
-**Step 3d (noevia#1318).** With the `native-telemetry` feature and
-`MODEL_MANAGER_TELEMETRY_IMPL=rust` (default `python`), the route no longer asks the child at all:
-this process ingests the backend logs, reads the telemetry tables and builds the backend list.
+**Step 3d (noevia#1318).** With the `native-telemetry` feature (part of `native-routing`; the
+former `MODEL_MANAGER_TELEMETRY_IMPL` selector is retired and ignored, noevia#1071), the route no
+longer asks the child at all: this process ingests the backend logs, reads the telemetry tables
+and builds the backend list.
 
-- **One writer per table.** The selector is decided before the child starts. Under `rust` the
-  child is started with `NOEVIA_NATIVE_MODEL_MANAGER_TELEMETRY_CONFIRMED=1`, its autoconfig route
-  is not forwarded to and its runtime call is never made, so `req_timing`, `server_config` and the
-  `telemetry_*` keys of `kv` have this process as their only writer. Under `python` the child is
-  told `0` and nothing here writes them.
+- **One writer per table.** This process is the only writer of `req_timing`, `server_config` and
+  the `telemetry_*` keys of `kv`; the child's autoconfig route is not forwarded to and its runtime
+  call is never made. (The test-only helper that told a child
+  `NOEVIA_NATIVE_MODEL_MANAGER_TELEMETRY_CONFIRMED=0|1` was removed with the selector.)
 - **The child's guard.** Under the confirmation the child's `telemetry.ingest`,
   `db.record_timings` and `db.record_server_configs` write nothing (services#98), and it answers
   the private `GET /api/v1/internal/telemetry-guard` with `{"telemetry_guard":1}` (services#100).
@@ -100,9 +92,9 @@ this process ingests the backend logs, reads the telemetry tables and builds the
   confirmation even though it lacks the advertisement (#2041). (The child refuses
   `GET /api/v1/health`, which this process owns, so the advertisement is a private route
   rather than a health field.) The answer is kept for the life of the process: the child is
-  never respawned (its exit ends this process), so its image cannot change under it. `rust` needs `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL=rust`
-  and `MODEL_MANAGER_BACKENDS_IMPL=rust`; without them, or without the compiled feature, startup
-  is refused rather than downgraded.
+  never respawned (its exit ends this process), so its image cannot change under it. Native
+  telemetry needs the native section autoconfig and the native backend sampler, which
+  `native-routing` always provides; a build without the feature is refused rather than downgraded.
 - **Ingest semantics (`telemetry.ingest`, kept exactly).** At most once per 20 s
   (`telemetry_last_ingest`). For each effective backend name: the Docker log tail
   (`tail=20000`, stdout and stderr, timestamps; multiplexed frames demultiplexed as docker-py
@@ -127,11 +119,9 @@ this process ingests the backend logs, reads the telemetry tables and builds the
   list this side cannot build.
 - **Rollout order.** 1. Deploy services#98 (and #100). 2. Confirm the deployed child image has
   the guard (`GET /api/v1/internal/telemetry-guard` from the parent's side answers 200 under the
-  confirmation). 3. Deploy this build with `MODEL_MANAGER_TELEMETRY_IMPL` still `python`. 4. Set
-  `MODEL_MANAGER_TELEMETRY_IMPL`, `MODEL_MANAGER_SECTION_AUTOCONFIG_IMPL` and
-  `MODEL_MANAGER_BACKENDS_IMPL` to `rust` together, then restart. Out of order, step 4 against
-  an old child makes native telemetry refuse with 503 and no native writes. To restore
-  child ingestion, select `python` and restart so its confirmation is reset to `0`.
+  confirmation). 3. Deploy this build. Out of order, this build against an old child makes
+  native telemetry refuse with 503 and no native writes. There is no selector to hand ingestion
+  back to the child; roll back by restoring the previous image and configuration.
 - **Differential:** `tools/gen-telemetry-ingest-oracle.py` runs the actual `telemetry.ingest`,
   `stats_for` and `config_history` over fourteen passes (first read, the interval, repeated reads,
   a restart, port reuse, a gap, an interrupted write and its recovery, a raising parse, a

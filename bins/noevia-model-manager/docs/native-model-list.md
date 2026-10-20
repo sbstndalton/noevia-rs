@@ -2,32 +2,25 @@
 
 The optional `native-model-list` Cargo feature (it includes `native-model-detail`, whose snapshot,
 shape and entry fields it reuses, and `native-bench-runs`, whose SQLite row reader it reuses)
-serves `GET /api/v1/models` and `GET /api/v1/overview` from Rust. Each has its own selector,
-`MODEL_MANAGER_MODELS_IMPL` and `MODEL_MANAGER_OVERVIEW_IMPL`, both `python` by default. Startup
-refuses a value other than `python` or `rust`, and `rust` without the compiled feature, as for
-every switch. It never refuses startup over the zone or roots: settings this side cannot read
-exactly as the child does keep that route with Python and log one line
-(`native-model-list: <reason>; GET /api/v1/models stays with python`, or the overview). This
-document does not authorize activation.
+serves `GET /api/v1/models` and `GET /api/v1/overview` from Rust. Both are always native
+(noevia#1071): the former selectors `MODEL_MANAGER_MODELS_IMPL` and
+`MODEL_MANAGER_OVERVIEW_IMPL` are retired and ignored. Settings this side cannot read exactly as
+the Python reference did no longer keep a route with Python; they refuse startup (see
+"Refused settings" below). This document does not authorize activation.
 
 ## Ownership
 
 - Rust answers only `GET /api/v1/models` and `GET /api/v1/overview` (exact paths). Other methods,
   the slash variants and every other model route keep their existing handling.
-- The child gets `NOEVIA_NATIVE_MODEL_MANAGER_MODELS_CONFIRMED` and
-  `NOEVIA_NATIVE_MODEL_MANAGER_OVERVIEW_CONFIRMED`, `1` only for a route that is native (`0`
-  otherwise, also over an inherited value). Under `1` the services middleware refuses that route
-  with 503, so it is never served twice, and serves the matching private call (404 otherwise). The
-  native front never forwards `/api/v1/internal/*`, so those calls are reachable only from the
-  parent.
-- For a native list the child is given `TZ=UTC` (the native route formats `modified` in UTC) and
-  the same `MODELS_DIR`, `MODELS_INI_PATH` and `DATA_DIR`. For a native overview it is given the
-  same `MODELS_DIR`, `MODELS_INI_PATH` and `MODELS_HOST_PATH`.
-- Fallbacks (one log line, the route stays with Python, the child gets `0`): for the list a `TZ`
-  other than unset or `UTC`; for either route a case-folded alias of `MODELS_DIR`,
-  `MODELS_INI_PATH`, `DATA_DIR` or `MODELS_HOST_PATH` (the child's settings fold names), a
-  `MODELS_DIR` that is not absolute and in pathlib's normal form (it is answered as configured),
-  an empty `MODELS_INI_PATH` or `DATA_DIR`, or one of these over 4096 bytes.
+- The process sets neither `NOEVIA_NATIVE_MODEL_MANAGER_MODELS_CONFIRMED` nor
+  `NOEVIA_NATIVE_MODEL_MANAGER_OVERVIEW_CONFIRMED` for any child: the routes are never selected per
+  route.
+- Refused settings (startup fails, never a fallback to Python): `TZ` other than exactly `UTC`
+  (the native route formats `modified` in UTC); a case-folded alias of `MODELS_DIR`,
+  `MODELS_INI_PATH`, `DATA_DIR` or `MODELS_HOST_PATH` (the Python settings fold names); a
+  `MODELS_DIR` that is not absolute and in pathlib's normal form (it is answered as configured);
+  an empty `MODELS_INI_PATH` or `DATA_DIR`; or one of these over 4096 bytes
+  (`model_list_cmd::native`, unit-tested in `src/model_list_cmd.rs`).
 
 ## Which fields are native and which are delegated
 

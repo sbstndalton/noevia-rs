@@ -1,12 +1,12 @@
 # Native benchmark observations (noevia#1318 step 3f)
 
-`MODEL_MANAGER_BENCHMARK_OBSERVE_IMPL=python` is the default. The Rust benchmark runner then
-uses the existing private child observer, with its existing best-effort default response.
-`rust` requires compiled `native-bench-observe`, a native benchmark runner and the actual native
-backend sampler. An invalid selector, omitted feature or missing subsystem refuses startup
-before the child starts. `--features` advertises `native-bench-observe`. The selector does not
-start a benchmark. A Python runner remains unchanged; native observation cannot be selected
-with it. Rollback is selector `python` plus restart, without changing the job/store schema.
+Native observation is always installed on the native benchmark runner when the
+`native-bench-observe` feature is compiled (noevia#1071); the former
+`MODEL_MANAGER_BENCHMARK_OBSERVE_IMPL` selector is retired and ignored, and there is no
+separate observer selection. It requires a native benchmark runner and the actual
+native backend sampler, which `native-routing` provides. `--features` advertises
+`native-bench-observe`. Observation does not start a benchmark. Rollback restores the previous
+image and configuration, without changing the job/store schema.
 
 Native observation reads cached sampled usage, not a true peak. It never refreshes hardware
 per request. It then makes a separate timestamped stdout+stderr tail-400 read for contention,
