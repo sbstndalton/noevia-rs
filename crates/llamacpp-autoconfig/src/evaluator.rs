@@ -40,6 +40,20 @@ const PRIVATE_DECIMAL_PAIRS: &[u8; 200] = b"000102030405060708091011121314151617
 
 impl Out {
     fn private_uint(&mut self, mut value: u64) -> &mut Self {
+        // Batch-local virtual references have the same sixteen decimal digits on
+        // every call. This is only a spelling shortcut; all other u64 values keep
+        // the general writer below, and no output reference is renumbered.
+        if let Some(alias) = value
+            .checked_sub(VIRTUAL_BASE)
+            .filter(|n| (1..=32).contains(n))
+        {
+            let pair = (alias * 2) as usize;
+            if let Some(bytes) = PRIVATE_DECIMAL_PAIRS.get(pair..pair + 2) {
+                self.0.extend_from_slice(b"80000000000000");
+                self.0.extend_from_slice(bytes);
+                return self;
+            }
+        }
         const CHUNK: u64 = 100_000_000;
         let mut digits = [0_u8; 20];
         let start = {
@@ -458,10 +472,13 @@ impl State {
                 Some(v) => Some(Period::read(v)?),
             },
         };
-        if state.pc >= PROGRAM.len() || state.mode > 7 {
+        state.checked()
+    }
+    fn checked(self) -> R<Self> {
+        if self.pc >= PROGRAM.len() || self.mode > 7 {
             return Err(Refusal::Input);
         }
-        Ok(state)
+        Ok(self)
     }
     fn write(&self, out: &mut Out) {
         out.raw("{")
@@ -669,15 +686,191 @@ fn end(key: &str, reference: u64, compact: bool) -> String {
     out.text()
 }
 
+// The generic path still reads the same Value members in the same order. The
+// canonical path supplies only already-decoded private scalars, never host values.
+enum ResumeFrame<'a> {
+    Generic(&'a Value),
+    Value(u64),
+    Truth(bool),
+    Thrown(u64),
+}
+impl ResumeFrame<'_> {
+    fn get(&self, key: &str) -> Option<&Value> {
+        match self {
+            Self::Generic(value) => value.get(key),
+            _ => None,
+        }
+    }
+    fn thrown(&self) -> R<Option<u64>> {
+        match self {
+            Self::Thrown(value) => Ok(Some(*value)),
+            Self::Generic(value) => value.get("thrown").map(|v| integer(Some(v))).transpose(),
+            _ => Ok(None),
+        }
+    }
+    fn value(&self) -> R<u64> {
+        match self {
+            Self::Value(value) => Ok(*value),
+            _ => integer(self.get("value")),
+        }
+    }
+    fn truth(&self) -> R<bool> {
+        match self {
+            Self::Truth(value) => Ok(*value),
+            _ => match self.get("truth") {
+                Some(Value::Bool(value)) => Ok(*value),
+                _ => Err(Refusal::Input),
+            },
+        }
+    }
+}
+
+// Recognizes a complete, fixed ASCII subset of the existing wire format. A
+// mismatch is never a refusal: the caller runs the unchanged general JSON parser.
+// Its fixed containers are shallower than WIRE_DEPTH + 4. No strings or unknown
+// fields are skipped, so successful recognition also proves UTF-8/JSON syntax.
+struct CanonicalReader<'a> {
+    bytes: &'a [u8],
+    at: usize,
+}
+impl CanonicalReader<'_> {
+    fn take(&mut self, token: &[u8]) -> Option<()> {
+        let end = self.at.checked_add(token.len())?;
+        if self.bytes.get(self.at..end)? != token {
+            return None;
+        }
+        self.at = end;
+        Some(())
+    }
+    fn uint(&mut self) -> Option<u64> {
+        let first = *self.bytes.get(self.at)?;
+        if !first.is_ascii_digit() {
+            return None;
+        }
+        if first == b'0' {
+            self.at = self.at.checked_add(1)?;
+            if self.bytes.get(self.at).is_some_and(u8::is_ascii_digit) {
+                return None;
+            }
+            return Some(0);
+        }
+        let mut value = 0_u64;
+        while let Some(digit) = self.bytes.get(self.at).filter(|b| b.is_ascii_digit()) {
+            value = value
+                .checked_mul(10)?
+                .checked_add(u64::from(*digit - b'0'))?;
+            if value > 9_007_199_254_740_991 {
+                return None;
+            }
+            self.at = self.at.checked_add(1)?;
+        }
+        Some(value)
+    }
+    fn index(&mut self) -> Option<usize> {
+        usize::try_from(self.uint()?).ok()
+    }
+    fn refs(&mut self) -> Option<Vec<u64>> {
+        self.take(b"[")?;
+        let mut values = Vec::new();
+        if self.take(b"]").is_some() {
+            return Some(values);
+        }
+        loop {
+            if values.len() == STACK_REGISTERS {
+                return None;
+            }
+            values.push(self.uint()?);
+            if self.take(b"]").is_some() {
+                return Some(values);
+            }
+            self.take(b",")?;
+        }
+    }
+    fn catches(&mut self) -> Option<Vec<(usize, usize, u64)>> {
+        self.take(b"[")?;
+        let mut values = Vec::new();
+        if self.take(b"]").is_some() {
+            return Some(values);
+        }
+        loop {
+            if values.len() == CATCH_REGISTERS {
+                return None;
+            }
+            self.take(b"[")?;
+            let pc = self.index()?;
+            self.take(b",")?;
+            let depth = self.index()?;
+            self.take(b",")?;
+            let env = self.uint()?;
+            self.take(b"]")?;
+            values.push((pc, depth, env));
+            if self.take(b"]").is_some() {
+                return Some(values);
+            }
+            self.take(b",")?;
+        }
+    }
+    fn resume(mut self) -> Option<(State, ResumeFrame<'static>)> {
+        self.take(b"{\"state\":[")?;
+        let pc = self.index()?;
+        self.take(b",")?;
+        let env = self.uint()?;
+        self.take(b",")?;
+        let stack = self.refs()?;
+        self.take(b",")?;
+        let catches = self.catches()?;
+        self.take(b",")?;
+        let mode = u8::try_from(self.uint()?).ok().filter(|m| *m <= 2)?;
+        self.take(b",")?;
+        let target = self.index()?;
+        self.take(b",null,null],\"frame\":{")?;
+        let frame = if self.take(b"\"thrown\":").is_some() {
+            ResumeFrame::Thrown(self.uint()?)
+        } else if self.take(b"\"value\":").is_some() && mode == 0 {
+            ResumeFrame::Value(self.uint()?)
+        } else if self.take(b"\"truth\":").is_some() && mode != 0 {
+            if self.take(b"true").is_some() {
+                ResumeFrame::Truth(true)
+            } else {
+                self.take(b"false")?;
+                ResumeFrame::Truth(false)
+            }
+        } else {
+            return None;
+        };
+        self.take(b"},\"wire\":\"state-v1\"}")?;
+        if self.at != self.bytes.len() {
+            return None;
+        }
+        let state = State {
+            pc,
+            env,
+            stack,
+            catches,
+            mode,
+            target,
+            period: None,
+            sum: None,
+        }
+        .checked()
+        .ok()?;
+        Some((state, frame))
+    }
+}
+
+pub(super) fn try_canonical_resume(body: &[u8]) -> Option<R<String>> {
+    // EOF and all eligibility checks precede the sole execution entrypoint.
+    let (state, frame) = CanonicalReader { bytes: body, at: 0 }.resume()?;
+    Some(execute(state, Some(frame), true))
+}
+
 pub(super) fn call(op: u8, args: &Value) -> R<String> {
     let compact = matches!(args.get("wire").and_then(Value::as_str),
         Some(tag) if tag.iter().copied().eq("state-v1".encode_utf16()));
-    let mut requests = RequestBatch::new(compact);
-    let end = |key: &str, reference: u64| end(key, reference, compact);
-    let mut state = if op == 11 {
+    if op == 11 {
         let function = index(args.get("function"))?;
         let pc = *ENTRIES.get(function).ok_or(Refusal::Input)?;
-        State {
+        let state = State {
             pc,
             env: integer(args.get("env"))?,
             stack: Vec::new(),
@@ -686,12 +879,20 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
             target: 0,
             period: None,
             sum: None,
-        }
+        };
+        execute(state, None, compact)
     } else {
-        let mut state = State::read_wire(args.get("state").ok_or(Refusal::Input)?, compact)?;
+        let state = State::read_wire(args.get("state").ok_or(Refusal::Input)?, compact)?;
         let frame = args.get("frame").ok_or(Refusal::Input)?;
-        if let Some(thrown) = frame.get("thrown") {
-            let thrown = integer(Some(thrown))?;
+        execute(state, Some(ResumeFrame::Generic(frame)), compact)
+    }
+}
+
+fn execute(mut state: State, frame: Option<ResumeFrame<'_>>, compact: bool) -> R<String> {
+    let mut requests = RequestBatch::new(compact);
+    let end = |key: &str, reference: u64| end(key, reference, compact);
+    if let Some(frame) = frame {
+        if let Some(thrown) = frame.thrown()? {
             if let Some((pc, depth, env)) = state.catches.pop() {
                 state.pc = pc;
                 state.env = env;
@@ -806,17 +1007,14 @@ pub(super) fn call(op: u8, args: &Value) -> R<String> {
                 nibbles,
             });
         } else if state.mode == 0 {
-            state.push(integer(frame.get("value"))?)?;
+            state.push(frame.value()?)?;
         } else {
-            let Some(Value::Bool(test)) = frame.get("truth") else {
-                return Err(Refusal::Input);
-            };
-            if *test == (state.mode == 1) {
+            let test = frame.truth()?;
+            if test == (state.mode == 1) {
                 state.pc = state.target;
             }
         }
-        state
-    };
+    }
     loop {
         if state.mode == 7 && state.sum.is_some() {
             let sum = state.sum.as_mut().ok_or(Refusal::Input)?;
@@ -1870,5 +2068,245 @@ mod tests {
         }
         let start = call(11, &parse(r#"{"function":0,"env":1}"#)).unwrap();
         assert!(start.contains(r#""request":{"op":"literal","data":"use strict"}"#));
+    }
+    fn canonical_test_body(state: &State, frame: &str) -> String {
+        let mut out = Out(Vec::new());
+        out.raw(r#"{"state":"#);
+        state.write_wire(&mut out, true);
+        out.raw(",\"frame\":")
+            .raw(frame)
+            .raw(",\"wire\":\"state-v1\"}");
+        out.text()
+    }
+    fn canonical_test_state() -> State {
+        State {
+            pc: PROGRAM
+                .iter()
+                .position(|op| matches!(op, Instruction::Return))
+                .unwrap(),
+            env: 0,
+            stack: vec![7],
+            catches: Vec::new(),
+            mode: 0,
+            target: 0,
+            period: None,
+            sum: None,
+        }
+    }
+    fn canonical_status(result: R<String>) -> (u32, String) {
+        match result {
+            Ok(text) => (0, text),
+            Err(error) => (1, error.json().to_owned()),
+        }
+    }
+    fn canonical_compare(body: &[u8]) -> bool {
+        let generic = canonical_status(super::super::call_generic(12, body));
+        let recognized = if let Some(result) = try_canonical_resume(body) {
+            assert_eq!(canonical_status(result), generic);
+            true
+        } else {
+            false
+        };
+        let mut input = vec![12];
+        input.extend_from_slice(body);
+        assert_eq!(super::super::call(&input), generic);
+        recognized
+    }
+
+    #[test]
+    fn canonical_virtual_uint_spelling_matches_existing_oracles_and_boundaries() {
+        let mut values = vec![
+            0,
+            1,
+            99,
+            100,
+            VIRTUAL_BASE - 1,
+            VIRTUAL_BASE,
+            VIRTUAL_BASE + 33,
+            9_007_199_254_740_991,
+            u64::MAX,
+        ];
+        values.extend((1..=32).map(|n| VIRTUAL_BASE + n));
+        for value in values {
+            assert_private_uint_chunk_bytes(value);
+        }
+    }
+
+    #[test]
+    fn canonical_frames_preserve_zero_truth_targets_and_throw_priority() {
+        let mut state = canonical_test_state();
+        for mode in 0..=2 {
+            state.mode = mode;
+            state.target = PROGRAM.len() + 1;
+            let frames: &[&str] = if mode == 0 {
+                &[r#"{"value":0}"#]
+            } else {
+                &[r#"{"truth":false}"#, r#"{"truth":true}"#]
+            };
+            for &frame in frames {
+                let body = canonical_test_body(&state, frame);
+                assert!(canonical_compare(body.as_bytes()));
+                let answer = canonical_status(try_canonical_resume(body.as_bytes()).unwrap());
+                let takes_branch = (mode == 1 && frame == r#"{"truth":true}"#)
+                    || (mode == 2 && frame == r#"{"truth":false}"#);
+                if !takes_branch {
+                    assert_eq!(answer.0, 0);
+                } else {
+                    // An unused out-of-program target is permitted by State::read.
+                    // Only the taken branch fails in the shared interpreter.
+                    assert_eq!(answer, (1, Refusal::Input.json().to_owned()));
+                }
+            }
+            let body = canonical_test_body(&state, r#"{"thrown":0}"#);
+            assert!(canonical_compare(body.as_bytes()));
+            assert_eq!(
+                canonical_status(try_canonical_resume(body.as_bytes()).unwrap()),
+                (0, r#"{"wire":"state-v1","throw":0}"#.to_owned())
+            );
+            state.catches = vec![(state.pc, STACK_REGISTERS + 17, 0)];
+            let body = canonical_test_body(&state, r#"{"thrown":0}"#);
+            assert!(canonical_compare(body.as_bytes()));
+            assert_eq!(
+                canonical_status(try_canonical_resume(body.as_bytes()).unwrap()),
+                (0, r#"{"wire":"state-v1","done":0}"#.to_owned())
+            );
+            state.catches.clear();
+        }
+        state.mode = 0;
+        let body = canonical_test_body(&state, r#"{"value":0,"thrown":9}"#);
+        assert!(!canonical_compare(body.as_bytes()));
+        assert_eq!(
+            canonical_status(super::super::call_generic(12, body.as_bytes())),
+            (0, r#"{"wire":"state-v1","throw":9}"#.to_owned())
+        );
+    }
+
+    #[test]
+    fn canonical_reader_falls_back_for_noncanonical_syntax_and_full_eof() {
+        let state = canonical_test_state();
+        let body = canonical_test_body(&state, r#"{"value":0}"#);
+        let mut alternatives = vec![
+            format!(" {body}"),
+            format!("{body} "),
+            format!("{body}null"),
+            body.replace("\"state\":", "\"\\u0073tate\":"),
+            body.replace("state-v1", "state-\\u00761"),
+            body.replace("\"value\":0", "\"value\":-0"),
+            body.replace("\"value\":0", "\"value\":1.0"),
+            body.replace("\"value\":0", "\"value\":1e0"),
+            body.replace("\"value\":0", "\"value\":1e309"),
+            body.replace("\"value\":0", "\"value\":9007199254740992"),
+            body.replace("\"value\":0", "\"value\":184467440737095516160"),
+            body.replace("\"value\":0", "\"value\":00"),
+            body.replace("\"value\":0", "\"value\":null,\"value\":0"),
+            body.replace("\"value\":0", "\"truth\":false"),
+            body.replace("\"wire\":\"state-v1\"", "\"wire\":\"state-v0\""),
+            body.replace(
+                "\"wire\":\"state-v1\"",
+                "\"wire\":\"bad\",\"wire\":\"state-v1\"",
+            ),
+        ];
+        let mut extra = body.trim_end_matches('}').to_owned();
+        extra.push_str(",\"unused\":");
+        extra.push_str(&"[".repeat(32));
+        extra.push('0');
+        extra.push_str(&"]".repeat(32));
+        extra.push('}');
+        alternatives.push(extra);
+        for text in alternatives {
+            assert!(!canonical_compare(text.as_bytes()), "{text}");
+        }
+        for end in 0..body.len() {
+            assert!(!canonical_compare(body.get(..end).unwrap().as_bytes()));
+        }
+        let mut invalid = body.into_bytes();
+        invalid.push(0xff);
+        assert!(!canonical_compare(&invalid));
+    }
+
+    #[test]
+    fn canonical_reader_keeps_existing_vector_and_scalar_domain_edges() {
+        let mut state = canonical_test_state();
+        for count in [0, STACK_REGISTERS, STACK_REGISTERS + 1] {
+            state.stack = vec![0; count];
+            let body = canonical_test_body(&state, r#"{"value":0}"#);
+            assert_eq!(canonical_compare(body.as_bytes()), count <= STACK_REGISTERS);
+        }
+        state.stack = vec![
+            0,
+            VIRTUAL_BASE + 1,
+            VIRTUAL_BASE + 32,
+            9_007_199_254_740_991,
+        ];
+        for count in [0, CATCH_REGISTERS, CATCH_REGISTERS + 1] {
+            state.catches = vec![(u32::MAX as usize, u32::MAX as usize, 0); count];
+            let body = canonical_test_body(&state, r#"{"thrown":0}"#);
+            assert_eq!(canonical_compare(body.as_bytes()), count <= CATCH_REGISTERS);
+        }
+        state.catches.clear();
+        state.period = Some(Period {
+            seq: 0,
+            return_pc: state.pc,
+            len: 0,
+            p: 0,
+            i: 0,
+            need: 0,
+            chunks: Vec::new(),
+        });
+        let body = canonical_test_body(&state, r#"{"value":0}"#);
+        assert!(!canonical_compare(body.as_bytes()));
+        state.period = None;
+        for mode in 3..=7 {
+            state.mode = mode;
+            let body = canonical_test_body(&state, r#"{"value":0}"#);
+            assert!(!canonical_compare(body.as_bytes()));
+        }
+    }
+
+    #[test]
+    fn canonical_reader_seeded_scalar_vectors_and_byte_mutations_match_general() {
+        let mut seed = 0x41ab_8e90_1223_9955_u64;
+        for step in 0..2048 {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let mut state = canonical_test_state();
+            state.mode = (seed % 3) as u8;
+            state.env = seed & 9_007_199_254_740_991;
+            state.target = if seed & 1 == 0 {
+                state.pc
+            } else {
+                PROGRAM.len() + 1
+            };
+            state.stack = (0..seed % 10)
+                .map(|n| {
+                    if n % 2 == 0 {
+                        VIRTUAL_BASE + 1 + n
+                    } else {
+                        seed & 9_007_199_254_740_991
+                    }
+                })
+                .collect();
+            if seed & 4 != 0 {
+                state
+                    .catches
+                    .push((state.pc, (seed % 300) as usize, state.env));
+            }
+            let frame = if seed & 8 != 0 {
+                format!(r#"{{"thrown":{}}}"#, seed & 9_007_199_254_740_991)
+            } else if state.mode == 0 {
+                format!(r#"{{"value":{}}}"#, seed & 9_007_199_254_740_991)
+            } else {
+                format!(r#"{{"truth":{}}}"#, seed & 16 != 0)
+            };
+            let body = canonical_test_body(&state, &frame);
+            assert!(canonical_compare(body.as_bytes()), "{step}");
+            let mut mutated = body.into_bytes();
+            let at = seed as usize % mutated.len();
+            *mutated.get_mut(at).unwrap() = *[b'0', b'9', b'-', b' ', b'"', b',', 0xff]
+                .get(step % 7)
+                .unwrap();
+            canonical_compare(&mutated);
+        }
     }
 }
