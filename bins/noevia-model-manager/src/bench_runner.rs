@@ -3,13 +3,15 @@
 //! `GET /api/v1/benchmark/progress`, `POST /api/v1/benchmark/start|cancel` and the overview's
 //! `job` render (`api._bench_job`).
 //!
-//! By default three per-request observations stay with the Python child, which keeps the GPU sampler and
-//! the log parser: the sampled VRAM (`_peak_vram`), whether anything else used the backend
-//! (`_other_traffic`) and a cold load's time (`_read_load_ms`). They are asked of its private
-//! `GET /api/v1/internal/bench-observe`; when the child cannot answer they take the values
+//! Three per-request observations are the sampled VRAM (`_peak_vram`), whether anything else used
+//! the backend (`_other_traffic`) and a cold load's time (`_read_load_ms`). With `native-bench-observe`
+//! (part of `native-routing`, noevia#1071) the native observer is installed at startup, before
+//! requests or the child start: the sampler cache and bounded log reads decide locally, with
+//! explicit errors and no child fallback. The former `MODEL_MANAGER_BENCHMARK_OBSERVE_IMPL`
+//! selector is retired and ignored. Without that feature they stay with the Python child, which
+//! keeps the GPU sampler and the log parser: they are asked of its private
+//! `GET /api/v1/internal/bench-observe`, and when the child cannot answer they take the values
 //! Python's own best-effort paths give (`[]`, not contended, no load time).
-//! `MODEL_MANAGER_BENCHMARK_OBSERVE_IMPL=rust` installs the native observer before startup:
-//! sampler cache and bounded log reads then decide locally, with explicit errors and no child fallback.
 //!
 //! Every place `bench.py` reads the clock, this reads the injected [`Clock`] in the same order,
 //! so the differential test can pin both clocks exactly as the Python oracle does.

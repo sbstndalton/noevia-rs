@@ -2,6 +2,7 @@
 //! set them (with hostile values) to prove they change neither startup nor ownership.
 #![allow(dead_code)]
 pub const RETIRED_SELECTORS: &[&str] = &[
+    "MODEL_MANAGER_ROUTING_IMPL",
     "MODEL_MANAGER_DB_INIT_IMPL",
     "MODEL_MANAGER_TOKEN_TEST_IMPL",
     "MODEL_MANAGER_SAFE_DEFAULTS_IMPL",
