@@ -398,9 +398,8 @@ fn max_tokens_follows_int_and_refuses_what_python_500s() {
     }
 }
 
-/// noevia#1318 step 2: a failed restart is kept in the native mirror and the child is still told
-/// (cleared, then set), because the child's backend snapshot still shows it in `/overview` under
-/// the python overview selector or without a native download table.
+/// noevia#1318 step 2: a failed restart is kept in the native sampler's store, and nothing is sent
+/// to a child: there is no second copy that could go stale.
 #[cfg(feature = "native-backends")]
 #[tokio::test]
 async fn native_sampler_owns_restart_errors_without_child_mirrors() {
@@ -486,4 +485,164 @@ async fn native_sampler_owns_restart_errors_without_child_mirrors() {
         restart.lock().unwrap().is_empty(),
         "retired restart mirror was called"
     );
+}
+
+/// The sampler's Docker for the restart-error routes: the daemon answers, and the one configured
+/// backend has no container, so its row carries only what the sampler's store says about it.
+#[cfg(feature = "native-backends")]
+struct EmptyDaemon;
+#[cfg(feature = "native-backends")]
+impl noevia_model_manager::backend_stats::DockerApi for EmptyDaemon {
+    fn get<'a>(&'a self, path: &'a str) -> Job<'a, noevia_model_manager::backend_stats::Raw> {
+        let (status, reason, body) = if path == "/version" {
+            (200, "OK", r#"{"ApiVersion":"1.47"}"#)
+        } else if path.starts_with("/containers/json") {
+            (200, "OK", "[]")
+        } else {
+            (404, "Not Found", r#"{"message":"No such container"}"#)
+        };
+        Box::pin(async move {
+            Ok(noevia_model_manager::backend_stats::Raw {
+                status,
+                reason: reason.to_owned(),
+                body: body.as_bytes().to_vec(),
+            })
+        })
+    }
+}
+
+/// What `GET /api/v1/backends` and the overview's backend list report for the backend.
+#[cfg(feature = "native-backends")]
+async fn reported_restart_errors(
+    s: &Arc<StateData>,
+    stats: &noevia_model_manager::backend_stats::BackendStats,
+) -> (Value, Value) {
+    let response = noevia_model_manager::router(s.clone())
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/backends")
+                .header("x-model-loader-token", TOKEN)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let backends: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(backends["backends"].as_array().unwrap().len(), 1);
+    assert_eq!(backends["backends"][0]["name"], NAME);
+    // The overview's backend list is this runtime body (`list.overview` asks nothing else).
+    let overview: Value =
+        serde_json::from_slice(&stats.overview_runtime(0).await.unwrap_or_default()).unwrap();
+    assert_eq!(overview["backends"].as_array().unwrap().len(), 1);
+    assert_eq!(overview["backends"][0]["name"], NAME);
+    (
+        backends["backends"][0]["last_restart_error"].clone(),
+        overview["backends"][0]["last_restart_error"].clone(),
+    )
+}
+
+#[cfg(feature = "native-backends")]
+async fn post_restart(s: Arc<StateData>) {
+    let response = noevia_model_manager::router(s)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/backends/{NAME}/restart"))
+                .header("x-model-loader-token", TOKEN)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(
+        String::from_utf8(body.to_vec()).unwrap(),
+        r#"{"ok":true,"message":"restart queued"}"#
+    );
+}
+
+/// noevia#252: `GET /api/v1/backends` and the overview's backend list read `last_restart_error`
+/// from the native sampler's store, the source of truth. They report the error of a failed
+/// restart (the store's own text, not an older one) and report none once a restart succeeds.
+#[cfg(feature = "native-backends")]
+#[tokio::test]
+async fn backends_and_overview_report_the_samplers_restart_error() {
+    use noevia_model_manager::backend_stats::{BackendStats, Config};
+    let dir = tempfile::tempdir().unwrap();
+    let stats = Arc::new(
+        BackendStats::new(
+            Config {
+                configured: vec![NAME.into()],
+                gpu_vram: vec![],
+                default_port: Some(8080),
+                drm_root: dir.path().join("drm"),
+                meminfo: dir.path().join("meminfo"),
+                ram_reserve_gb: Some(32.0),
+            },
+            Arc::new(EmptyDaemon),
+        )
+        .unwrap(),
+    );
+    let spec = BackendSpec {
+        ports: vec![],
+        cmd: vec![],
+        entrypoint: vec![],
+        env: vec![],
+    };
+    let with_restart = |restart_error: Option<&str>| {
+        let docker = FakeDocker {
+            spec: Some(spec.clone()),
+            restart_error: restart_error.map(str::to_owned),
+        };
+        let mut s = Arc::into_inner(state(
+            docker,
+            "http://127.0.0.1:9",
+            Backends::with_clock(Some(8080), Arc::new(|| 1000.0)).unwrap(),
+        ))
+        .unwrap();
+        s.backend_stats = Some(stats.clone());
+        Arc::new(s)
+    };
+    let older = "APIError: an older failure";
+    stats.seed_restart_errors(&[(NAME.to_owned(), older.to_owned())]);
+    let (backends, overview) = reported_restart_errors(&with_restart(None), &stats).await;
+    assert_eq!(backends, older, "the seeded store is what is reported");
+    assert_eq!(overview, older);
+
+    // A failed restart: the older entry is cleared, then the failure is stored and reported.
+    let failing = with_restart(Some("synthetic refusal"));
+    post_restart(failing.clone()).await;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let stored = loop {
+        match stats.restart_error(NAME) {
+            Some(e) if e != older => break e,
+            _ => {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "the failure was never stored"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        }
+    };
+    assert!(stored.starts_with("APIError: "), "{stored}");
+    let (backends, overview) = reported_restart_errors(&failing, &stats).await;
+    assert_eq!(backends, stored);
+    assert_eq!(overview, stored);
+
+    // A successful restart clears the entry before it is queued and sets nothing afterwards.
+    let working = with_restart(None);
+    post_restart(working.clone()).await;
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(stats.restart_error(NAME), None);
+    let (backends, overview) = reported_restart_errors(&working, &stats).await;
+    assert_eq!(backends, Value::Null);
+    assert_eq!(overview, Value::Null);
 }

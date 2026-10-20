@@ -17,6 +17,29 @@ fn missing_mandatory_capability_refuses_before_startup() {
     );
 }
 
+/// noevia#252: `native-routing` compiles the restart paths the README describes: the restart and
+/// test routes (`native-backend-control`) and the sampler that owns the restart-error store and
+/// answers `GET /api/v1/backends` (`native-backends`). Both are reached through other features
+/// of `native-routing`, so the shipping binary reports them without being named in the list.
+#[cfg(feature = "native-routing")]
+#[test]
+fn native_routing_compiles_the_restart_error_paths() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_noevia-model-manager"))
+        .arg("--features")
+        .env_clear()
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let compiled = String::from_utf8_lossy(&output.stdout);
+    let compiled: Vec<&str> = compiled.lines().collect();
+    for feature in ["native-backend-control", "native-backends"] {
+        assert!(
+            compiled.contains(&feature),
+            "{feature} is not compiled: {compiled:?}"
+        );
+    }
+}
+
 #[cfg(all(feature = "native-routing", unix))]
 #[test]
 fn bad_prerequisites_never_reap_orphans_seed_embedding_or_initialize_a_store() {

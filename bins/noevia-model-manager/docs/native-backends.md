@@ -121,7 +121,7 @@ Python samples it when the tool is absent from the image:
 differential still compares against Python's own answers. The fake children fail a case if they
 are asked for a GPU read. Docker access stays read-only: nothing here runs `exec`.
 
-**Restart errors.** The native sampler's restart-error store is the one this side sets and clears. It serves the native `GET /api/v1/backends` and the native model reads' live fields. Production restarts send nothing to the child, so the child's own copy is not updated. The child still reads that copy in its own backend snapshot (the overview's child runtime call, and its `/backends` compatibility route), which is why it can go once those paths are retired. `tests/backend_control.rs` checks the child's restart-error call in test builds.
+**Restart errors.** The native sampler's restart-error store is the only copy and the source of truth. The native restart clears it before it queues the restart and sets it when the restart fails. It serves the native `GET /api/v1/backends` and the live fields of the native model reads, including the overview's backend list. The shipping binary has no child, so there is no second copy that could go stale, and no child reader of it remains in release or test builds. `tests/backend_control.rs` checks that `/backends` and the overview's backend list report the store's error after a failed restart and none after a successful one.
 
 **Cache push kept.** The push of the sampler cache to the child (`PUT /api/v1/internal/backend-stats`)
 stays, because child code still reads `hw.stats_for` through it:

@@ -6,9 +6,9 @@
 //! - restart: an effective backend (LLAMA_CONTAINERS plus discovered llama.cpp containers) is
 //!   looked up, its last restart error cleared, and `restart(timeout=15)` queued in the background;
 //!   a failure is kept as that backend's `last_restart_error`, which `GET /api/v1/backends` shows.
-//!   The native sampler's restart-error store holds it. The child's copy (its private
-//!   `PUT /api/v1/internal/backend-restart-error`) is set and cleared only in test builds, so
-//!   production restarts leave the child's backend snapshot unchanged.
+//!   The native sampler's restart-error store is the only copy: it is cleared before the restart
+//!   is queued, set when the restart fails, and read by `GET /api/v1/backends` and the overview's
+//!   backend list. Nothing is sent to a child.
 //! - test: the backend's llama-server port is resolved from `docker inspect` (published port, else
 //!   `--port`/`LLAMA_ARG_PORT`, else LLAMA_DEFAULT_PORT), its `/v1/models` probed for a loaded
 //!   model, and one non-streaming chat completion sent.
@@ -19,8 +19,6 @@ use std::time::Duration;
 pub const DEFAULT_PORT: u16 = 8080;
 /// Largest llama-server answer read.
 pub const ANSWER_CAP: usize = 8 * 1024 * 1024;
-/// The child's private restart-error call.
-pub const RESTART_ERROR_PATH: &str = "/api/v1/internal/backend-restart-error";
 
 pub type Clock = std::sync::Arc<dyn Fn() -> f64 + Send + Sync>;
 

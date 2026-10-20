@@ -1095,7 +1095,7 @@ async fn native_diagnosis(
 }
 
 /// noevia#1937: the child's `/api/v1/internal/*` endpoints are for this parent only (it calls them
-/// itself through `child_runtime` and `set_restart_error`, never through `dispatch`). True for the
+/// itself through `child_runtime`, never through `dispatch`). True for the
 /// raw path and for the percent-decoded, dot-segment-resolved path, so `%2F`, `%2e%2e` and doubly
 /// encoded spellings cannot reach them either.
 fn is_internal_path(path: &str) -> bool {
@@ -2062,41 +2062,6 @@ pub fn max_tokens(value: Option<&prompts::JsonValue>) -> Option<i64> {
     Some(n.clamp(1, 4096))
 }
 
-/// noevia#1318: sets (`Some`) or clears (`None`) the child's private copy of `last_restart_error`.
-/// Test builds only (`cfg(test)`): production restarts update the native sampler's store alone, so
-/// the child's copy is not kept current. The child's backend snapshot still carries the error in
-/// `backends[]`, which its overview runtime call reads when no native sampler answers (the
-/// `MODEL_MANAGER_OVERVIEW_IMPL` selector is retired, noevia#1071).
-#[cfg(feature = "native-backend-control")]
-#[cfg(test)]
-async fn set_restart_error(
-    legacy: &reqwest::Client,
-    base: &str,
-    token: &str,
-    name: &str,
-    error: Option<&str>,
-) {
-    let body = serde_json::json!({"name": name, "error": error}).to_string();
-    let mut request = legacy
-        .put(format!("{base}{}", backends::RESTART_ERROR_PATH))
-        .header("content-type", "application/json")
-        .timeout(Duration::from_secs(10))
-        .body(body);
-    if !token.is_empty() {
-        request = request.header("x-model-loader-token", token);
-    }
-    if request
-        .send()
-        .await
-        .map(|r| r.status().is_success())
-        .unwrap_or(false)
-    {
-        return;
-    }
-    eprintln!(
-        "model-manager backend restart: the child did not record the restart state for a backend"
-    );
-}
 #[cfg(feature = "native-backend-control")]
 async fn native_backend_control(
     state: Arc<StateData>,
@@ -2155,8 +2120,6 @@ async fn native_backend_control(
         if let Some(stats) = &state.backend_stats {
             stats.set_restart_error(&name, None);
         }
-        #[cfg(test)]
-        set_restart_error(&state.legacy, &state.legacy_base, &state.token, &name, None).await;
         let task_state = state.clone();
         crate::work::spawn(async move {
             let outcome = tokio::time::timeout(
@@ -2173,15 +2136,6 @@ async fn native_backend_control(
             if let Some(stats) = &task_state.backend_stats {
                 stats.set_restart_error(&name, Some(&_error));
             }
-            #[cfg(test)]
-            set_restart_error(
-                &task_state.legacy,
-                &task_state.legacy_base,
-                &task_state.token,
-                &name,
-                Some(&_error),
-            )
-            .await;
         });
         return answer(true, "restart queued");
     }
