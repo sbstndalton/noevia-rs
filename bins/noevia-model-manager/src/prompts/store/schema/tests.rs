@@ -5,7 +5,7 @@
     clippy::panic
 )]
 use super::*;
-use crate::prompts::store::{Store, DEADLINE};
+use crate::prompts::store::{Store, OPERATION_DEADLINE};
 use rusqlite::{types::ValueRef, Connection};
 use sha2::{Digest, Sha256};
 use std::{
@@ -166,7 +166,7 @@ fn an_expired_or_cancelled_budget_initializes_nothing() {
         store
             .budget(
                 if cancelled {
-                    Instant::now() + DEADLINE
+                    Instant::now() + OPERATION_DEADLINE
                 } else {
                     Instant::now()
                 },

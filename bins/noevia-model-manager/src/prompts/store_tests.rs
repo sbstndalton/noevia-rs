@@ -52,11 +52,16 @@ fn open(root: &Path) -> Store {
     s
 }
 fn run(s: &mut Store, op: Operation) -> Result<serde_json::Value> {
-    s.budget(Instant::now() + DEADLINE, Arc::new(AtomicBool::new(false)))?;
-    Ok(
-        serde_json::from_slice(&s.run(op, Instant::now() + DEADLINE, &AtomicBool::new(false))?)
-            .unwrap(),
-    )
+    s.budget(
+        Instant::now() + OPERATION_DEADLINE,
+        Arc::new(AtomicBool::new(false)),
+    )?;
+    Ok(serde_json::from_slice(&s.run(
+        op,
+        Instant::now() + OPERATION_DEADLINE,
+        &AtomicBool::new(false),
+    )?)
+    .unwrap())
 }
 #[test]
 fn differential_seed_crud_sequence_order_and_ids() {
@@ -437,17 +442,21 @@ fn expired_or_cancelled_request_never_starts_a_write() {
     let root = root();
     let mut s = open(root.path());
     let cancel = Arc::new(AtomicBool::new(true));
-    s.budget(Instant::now() + DEADLINE, cancel.clone()).unwrap();
+    s.budget(Instant::now() + OPERATION_DEADLINE, cancel.clone())
+        .unwrap();
     assert_eq!(
         s.run(
             Operation::Add("never".into(), "written".into()),
-            Instant::now() + DEADLINE,
+            Instant::now() + OPERATION_DEADLINE,
             &cancel
         ),
         Err(Error::Store)
     );
-    s.budget(Instant::now() + DEADLINE, Arc::new(AtomicBool::new(false)))
-        .unwrap();
+    s.budget(
+        Instant::now() + OPERATION_DEADLINE,
+        Arc::new(AtomicBool::new(false)),
+    )
+    .unwrap();
     assert!(s.list().unwrap().is_empty());
 }
 
@@ -508,11 +517,17 @@ fn row_response_dynamic_type_and_vm_work_limits_refuse() {
         .unwrap();
     assert_eq!(run(&mut s, Operation::List), Err(Error::Limit));
     s.db.execute_batch("DELETE FROM prompts;").unwrap();
-    s.budget(Instant::now() + DEADLINE, Arc::new(AtomicBool::new(false)))
-        .unwrap();
+    s.budget(
+        Instant::now() + OPERATION_DEADLINE,
+        Arc::new(AtomicBool::new(false)),
+    )
+    .unwrap();
     assert!(s.db.query_row("WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<10000000) SELECT sum(i) FROM n",[],|r|r.get::<_,i64>(0)).is_err());
-    s.budget(Instant::now() + DEADLINE, Arc::new(AtomicBool::new(false)))
-        .unwrap();
+    s.budget(
+        Instant::now() + OPERATION_DEADLINE,
+        Arc::new(AtomicBool::new(false)),
+    )
+    .unwrap();
     s.db.execute_batch("WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<80) INSERT INTO prompts(name,body,created_at) SELECT 'same',replace(hex(zeroblob(120000)),'0','x'),1 FROM n").unwrap();
     assert_eq!(run(&mut s, Operation::List), Err(Error::Limit));
 }
@@ -556,7 +571,7 @@ fn response_encoding_observes_deadline_cancellation_and_exact_byte_cap() {
     let cancel = Arc::new(AtomicBool::new(false));
     let mut writer = Bytes {
         bytes: Vec::new(),
-        deadline: Instant::now() + Duration::from_secs(5),
+        deadline: Instant::now() + OPERATION_DEADLINE,
         cancel: cancel.clone(),
     };
     writer.write_all(&vec![b'x'; RESPONSE_CAP]).unwrap();

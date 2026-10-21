@@ -402,13 +402,27 @@ mod capture_tests {
             );
         std::fs::write(&wrapper, source).unwrap();
         let script="const assert=require('node:assert/strict');assert.ok(process.version.startsWith('v22.'));const expected=process.argv[2];require('node:child_process').spawn=(command,args,options)=>{assert.equal(command,process.execPath);assert.deepEqual(args,['--require','synthetic-guard','--require','synthetic-preload','synthetic-server']);assert.equal(options.cwd,'synthetic-cwd');assert.deepEqual(options.stdio,['ignore','pipe','pipe']);assert.deepEqual(options.env,{PATH:'synthetic-path',NODE_ENV:'production',NOEVIA_CORPUS_ALLOWED_PORTS:'333',NODE_PATH:expected});console.log('literal spawn retains args/options/netguard and one explicit dependency path');return {};};require(process.argv[1]);";
-        let mut command = Command::new("node");
-        command
-            .env_clear()
-            .env("PATH", std::env::var_os("PATH").unwrap())
-            .args(["-e", script])
-            .arg(&wrapper)
-            .arg(&modules);
+        // rs#268: a cold runner spent the whole 5 s budget just loading the node binary. Start the
+        // interpreter once first, under the same generous bound the other launches in this file
+        // use, so that one-time cost (page cache, dynamic linking) is paid outside the measured
+        // run. The run below keeps its 5 s bound on the script itself: a hang still fails it.
+        let node = || {
+            let mut command = Command::new("node");
+            command
+                .env_clear()
+                .env("PATH", std::env::var_os("PATH").unwrap());
+            command
+        };
+        let mut warm = node();
+        warm.args(["-e", "process.exit(0)"]);
+        let warmed = bounded(warm).unwrap();
+        assert!(
+            warmed.status.success(),
+            "{}",
+            String::from_utf8_lossy(&warmed.stderr)
+        );
+        let mut command = node();
+        command.args(["-e", script]).arg(&wrapper).arg(&modules);
         let output =
             process::bounded(command, Vec::new(), std::time::Duration::from_secs(5)).unwrap();
         assert!(

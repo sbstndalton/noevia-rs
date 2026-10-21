@@ -17,6 +17,27 @@ fn missing_mandatory_capability_refuses_before_startup() {
     );
 }
 
+/// rs#266: the feature-gated tests in this file vanish silently when `native-routing` is removed
+/// or renamed (their `cfg` is then simply false). This test carries no feature gate, so it fails
+/// loudly in that case: the manifest must still declare the feature, and it must still pull in
+/// the telemetry feature (which brings the sampler the restart-error test expects).
+#[test]
+fn native_routing_feature_is_declared() {
+    let manifest = include_str!("../Cargo.toml");
+    let features = manifest
+        .split("\n[")
+        .find(|section| section.starts_with("features]"))
+        .unwrap_or_else(|| panic!("Cargo.toml has no [features] table"));
+    let declaration = features
+        .lines()
+        .find(|line| line.starts_with("native-routing = ["))
+        .unwrap_or_else(|| panic!("the native-routing feature is no longer declared"));
+    assert!(
+        declaration.contains("native-telemetry"),
+        "native-routing no longer includes the sampler paths: {declaration}"
+    );
+}
+
 /// noevia#252: `native-routing` compiles the restart paths the README describes: the restart and
 /// test routes (`native-backend-control`) and the sampler that owns the restart-error store and
 /// answers `GET /api/v1/backends` (`native-backends`). Both are reached through other features
