@@ -2,6 +2,7 @@
 pub(crate) mod access;
 mod defaults;
 pub mod ini;
+pub mod role;
 #[cfg(feature = "native-safe-defaults")]
 pub(crate) mod safe_defaults;
 use serde_json::{json, Value};

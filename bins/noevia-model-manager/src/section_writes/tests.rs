@@ -122,7 +122,7 @@ proptest! {
 #[test]
 fn system_routing_name_rule_matches_python() {
     // `re.match(r"^<role>(?:[_.-]|$)", part, re.I)` for the system routing role.
-    let role = SYSTEM_ROUTING_ROLE;
+    let role = LEGACY_ROLE;
     let upper = role.to_uppercase();
     let short = &role[..role.len() - 1];
     for (part, want) in [
@@ -202,9 +202,7 @@ async fn startup_migration_holds_the_write_lock_across_the_write() {
 
 #[tokio::test]
 async fn startup_migration_is_idempotent_and_writes_nothing_when_nothing_changes() {
-    let (dir, ini) = migration_dir(&format!(
-        "[chat]\n\n[my-embed]\n\n[{SYSTEM_ROUTING_ROLE}_router]\n"
-    ));
+    let (dir, ini) = migration_dir(&format!("[chat]\n\n[my-embed]\n\n[{LEGACY_ROLE}_router]\n"));
     let writes = Arc::new(SectionWrites::new(&ini, (512, 2048)));
     assert_eq!(
         writes.clone().migrate_cache_ram_at_startup().await.unwrap(),
@@ -295,4 +293,111 @@ async fn a_dropped_write_keeps_its_permit_and_lock_until_the_write_ends() {
     all_permits_back(&state).await;
     assert!(!write_lock_held(&writes).await);
     server.abort();
+}
+
+/// noevia#2093 phase 1: the role values the readers accept, and one that is neither.
+const ROLE_VALUES: [&str; 3] = ["system-routing", LEGACY_ROLE, "chat"];
+
+fn roles_dir(roles: &str) -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+    let (dir, ini) = migration_dir("[old]\n");
+    let roles_path = dir.path().join("models.roles.json");
+    std::fs::write(&roles_path, roles).unwrap();
+    (dir, ini, roles_path)
+}
+
+#[test]
+fn a_rename_moves_the_role_value_the_file_has() {
+    for value in ROLE_VALUES {
+        let (_dir, ini, roles) = roles_dir(&format!(r#"{{"old": "{value}", "other": "chat"}}"#));
+        forget_role(&ini, "old", Some("new")).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&roles).unwrap(),
+            format!("{{\n  \"new\": \"{value}\",\n  \"other\": \"chat\"\n}}\n"),
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn a_rename_onto_a_section_with_a_role_replaces_it_with_the_moved_value() {
+    for value in ROLE_VALUES {
+        let (_dir, ini, roles) = roles_dir(&format!(r#"{{"old": "{value}", "new": "chat"}}"#));
+        forget_role(&ini, "old", Some("new")).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&roles).unwrap(),
+            format!("{{\n  \"new\": \"{value}\"\n}}\n"),
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn a_delete_drops_the_role_and_keeps_the_others_unchanged() {
+    for value in ROLE_VALUES {
+        let kept = ROLE_VALUES.iter().find(|v| **v != value).unwrap();
+        let (_dir, ini, roles) = roles_dir(&format!(r#"{{"old": "{value}", "kept": "{kept}"}}"#));
+        forget_role(&ini, "old", None).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&roles).unwrap(),
+            format!("{{\n  \"kept\": \"{kept}\"\n}}\n"),
+            "{value}"
+        );
+        // The last role going removes the file.
+        forget_role(&ini, "kept", None).unwrap();
+        assert!(!roles.exists(), "{value}");
+    }
+}
+
+#[test]
+fn a_section_without_a_role_leaves_the_roles_file_alone() {
+    let text = r#"{"other": "system-routing"}"#;
+    let (_dir, ini, roles) = roles_dir(text);
+    forget_role(&ini, "old", Some("new")).unwrap();
+    forget_role(&ini, "old", None).unwrap();
+    assert_eq!(std::fs::read_to_string(&roles).unwrap(), text);
+}
+
+/// The startup migration leaves a system routing section alone, however the file spells the role,
+/// and still migrates every other section (a role decides over the name rule).
+#[test]
+fn the_migration_skips_the_role_name_and_the_legacy_key_alike() {
+    let ini_text = format!(
+        "[sys-new]\nmodel = /models/s.gguf\n\n[sys-old]\nmodel = /models/s.gguf\n\n\
+         [other]\nmodel = /models/s.gguf\n\n[{LEGACY_ROLE}-x]\nmodel = /models/s.gguf\n\n\
+         [odd]\nmodel = /models/s.gguf\n"
+    );
+    let roles = format!(
+        r#"{{"sys-new": "system-routing", "sys-old": "{LEGACY_ROLE}", "other": "chat", "{LEGACY_ROLE}-x": "chat", "odd": "system-routing-x"}}"#
+    );
+    let (dir, ini) = migration_dir(&ini_text);
+    std::fs::write(dir.path().join("models.roles.json"), &roles).unwrap();
+    let writes = SectionWrites::new(&ini, (1024, 2048));
+    assert_eq!(
+        writes.migrate_cache_ram().unwrap(),
+        ["other", &format!("{LEGACY_ROLE}-x"), "odd"]
+    );
+    let after = std::fs::read_to_string(&ini).unwrap();
+    assert_eq!(after.matches("cache-ram").count(), 3, "{after}");
+    for sys in ["sys-new", "sys-old"] {
+        let section = after
+            .split("\n[")
+            .find(|s| s.trim_start_matches('[').starts_with(sys));
+        assert!(!section.unwrap().contains("cache-ram"), "{sys}\n{after}");
+    }
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("models.roles.json")).unwrap(),
+        roles
+    );
+}
+
+#[test]
+fn system_routing_section_follows_the_roles_not_the_other_spelling() {
+    let cp = read_ini(Some(b"[a]\nctx-size = 1\n\n[b]\n"), true).unwrap();
+    let roles = |a: &str| vec![("a".to_owned(), a.to_owned())];
+    assert!(system_routing_section(&cp, "a", &roles("system-routing")));
+    assert!(system_routing_section(&cp, "a", &roles(LEGACY_ROLE)));
+    assert!(!system_routing_section(&cp, "a", &roles("chat")));
+    // Another section's role does not carry over, and neither does the wildcard.
+    assert!(!system_routing_section(&cp, "b", &roles("system-routing")));
+    assert!(!system_routing_section(&cp, "*", &roles("system-routing")));
 }

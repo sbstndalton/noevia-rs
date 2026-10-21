@@ -359,3 +359,46 @@ async fn a_dropped_request_keeps_its_permit_and_read_slot_until_the_read_ends() 
     all_permits_back(&state).await;
     assert_eq!(autoconfig.reads.available_permits(), CONCURRENT_READS);
 }
+
+/// noevia#2093 phase 1: a roles file that names the role (instead of the legacy key) gets the
+/// answers the actual Python route recorded for the legacy key, for every path that needs no child.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_role_name_gets_the_recorded_answers_of_the_legacy_key() {
+    let fixture = fixture();
+    let case = fixture["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"] == "system-routing-role")
+        .unwrap();
+    let legacy_roles = case["roles"].as_str().unwrap();
+    assert!(legacy_roles.to_lowercase().contains("laya"));
+    let mut renamed = case.clone();
+    renamed["roles"] = Json::from(
+        r#"{"r1": " System-Routing ", "laya-chat": "chat", "plain": "", "r1": "SYSTEM-ROUTING"}"#,
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let models = build(tmp.path(), &renamed);
+    let autoconfig = SectionAutoconfig::with(
+        settings(&models, case["cache_cap"].as_i64().unwrap()),
+        Root::synthetic,
+    );
+    let client = reqwest::Client::new();
+    let mut checked = 0;
+    for result in case["results"].as_array().unwrap() {
+        if !result["runtime"].is_null() {
+            continue;
+        }
+        let path = result["path"].as_str().unwrap();
+        // Nothing listens on port 9: these paths never ask the child.
+        let got = shown(run(&autoconfig, path, "http://127.0.0.1:9", &client).await);
+        let want = (
+            u16::try_from(result["status"].as_u64().unwrap()).unwrap(),
+            result["body"].as_str().unwrap().to_owned(),
+        );
+        assert_eq!(got, want, "{path}");
+        checked += 1;
+    }
+    // r1 (named only by its role), laya-x, z, plain, LAYA-X, the 422.
+    assert_eq!(checked, 6);
+}
