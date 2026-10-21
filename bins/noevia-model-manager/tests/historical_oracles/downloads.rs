@@ -421,6 +421,14 @@ async fn handle(fake: Arc<Fake>, server: String, mut sock: tokio::net::TcpStream
     .await;
 }
 
+/// A loopback port that refuses connections yet stays reserved while the returned socket lives:
+/// it is bound but never listens, so no other bind in the process can take it meanwhile.
+fn refused_endpoint() -> tokio::net::TcpSocket {
+    let socket = tokio::net::TcpSocket::new_v4().unwrap();
+    socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    socket
+}
+
 async fn serve(fake: &Arc<Fake>, server: &str) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     fake.ports
@@ -872,11 +880,11 @@ async fn failures_and_the_overview_count() {
     wait(&state, idle).await;
 
     // No child: a gateway error, as for any forwarded route.
-    let gone = {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    };
-    let orphan = state_with(Downloads::new(config()).unwrap(), gone);
+    let gone = refused_endpoint();
+    let orphan = state_with(
+        Downloads::new(config()).unwrap(),
+        gone.local_addr().unwrap().port(),
+    );
     let (status, _) = send(&orphan, "POST", "/api/v1/downloads", Some("{}".into())).await;
     assert_eq!(status, 502);
 }
@@ -1191,14 +1199,13 @@ async fn actual_python_differential() {
         });
         serve(&fake, "hub").await;
         serve(&fake, "cdn").await;
-        let dead = {
-            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            l.local_addr().unwrap().port()
-        };
+        // rs#266: keep this port reserved (bound, not listening) for the whole case. Releasing
+        // it let the later child bind reuse it and turn a refusal into a stall.
+        let dead = refused_endpoint();
         let ports = Ports {
             hub: fake.host("hub"),
             cdn: fake.host("cdn"),
-            dead: format!("127.0.0.1:{dead}"),
+            dead: dead.local_addr().unwrap().to_string(),
         };
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();

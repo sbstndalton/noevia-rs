@@ -505,4 +505,121 @@ mod linux {
             "missing native download table attempted a private overview RPC"
         );
     }
+
+    /// The sampler's Docker: the daemon answers and no backend has a container, so each row
+    /// carries only what the sampler's store says about it (an unreachable daemon reports none).
+    #[cfg(all(feature = "native-backends", feature = "native-downloads"))]
+    struct EmptyDaemon;
+    #[cfg(all(feature = "native-backends", feature = "native-downloads"))]
+    impl noevia_model_manager::backend_stats::DockerApi for EmptyDaemon {
+        fn get<'a>(&'a self, path: &'a str) -> Job<'a, noevia_model_manager::backend_stats::Raw> {
+            let (status, reason, body) = if path == "/version" {
+                (200, "OK", r#"{"ApiVersion":"1.47"}"#)
+            } else if path.starts_with("/containers/json") {
+                (200, "OK", "[]")
+            } else {
+                (404, "Not Found", r#"{"message":"No such container"}"#)
+            };
+            Box::pin(async move {
+                Ok(noevia_model_manager::backend_stats::Raw {
+                    status,
+                    reason: reason.to_owned(),
+                    body: body.as_bytes().to_vec(),
+                })
+            })
+        }
+    }
+
+    /// noevia#252 / rs#266: the overview reports the sampler store's restart error through
+    /// `GET /api/v1/overview` itself (the router, `native_model_list` and `get_runtime`'s
+    /// gating), not only through a direct `overview_runtime(0)` call. The error needs the native
+    /// sampler and the native download table; without either the route refuses instead of
+    /// asking the child, so a restart error can never be answered from a stale child copy.
+    #[cfg(all(feature = "native-backends", feature = "native-downloads"))]
+    #[tokio::test]
+    async fn overview_route_reports_the_samplers_restart_error() {
+        use noevia_model_manager::backend_stats::{BackendStats, Config};
+        let dir = tempfile::tempdir().unwrap();
+        let (models, ini, data) = folder(dir.path());
+        let stats = Arc::new(
+            BackendStats::new(
+                Config {
+                    configured: vec!["llama-a".into(), "llama-b".into()],
+                    gpu_vram: vec![],
+                    default_port: Some(8080),
+                    drm_root: dir.path().join("drm"),
+                    meminfo: dir.path().join("meminfo"),
+                    ram_reserve_gb: Some(32.0),
+                },
+                Arc::new(EmptyDaemon),
+            )
+            .unwrap(),
+        );
+        let failure = "APIError: synthetic restart refusal";
+        stats.seed_restart_errors(&[("llama-a".to_owned(), failure.to_owned())]);
+        // A child that must never be asked: any connection to it fails the test.
+        let trap = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", trap.local_addr().unwrap());
+        let build = |sampler: bool, table: bool| {
+            let mut st =
+                Arc::into_inner(state(Some(list(&models, &ini, &data, "", (1, 0))), &base))
+                    .unwrap();
+            if sampler {
+                st.backend_stats = Some(stats.clone());
+            }
+            if table {
+                st.downloads = Some(
+                    noevia_model_manager::downloads::Downloads::new(
+                        noevia_model_manager::downloads::Config::production(
+                            models.to_str().unwrap().to_owned(),
+                            data.to_str().unwrap(),
+                            2,
+                        ),
+                    )
+                    .unwrap(),
+                );
+            }
+            Arc::new(st)
+        };
+
+        let answer = send(build(true, true), "GET", "/api/v1/overview", true).await;
+        assert_eq!(
+            answer.status,
+            200,
+            "{}",
+            String::from_utf8_lossy(&answer.body)
+        );
+        assert_eq!(answer.content_type.as_deref(), Some("application/json"));
+        let body: Value = serde_json::from_slice(&answer.body).unwrap();
+        assert_eq!(body["activeDownloads"], 0);
+        let backends = body["backends"].as_array().unwrap();
+        assert_eq!(backends.len(), 2);
+        assert_eq!(backends[0]["name"], "llama-a");
+        assert_eq!(backends[0]["last_restart_error"], failure);
+        assert_eq!(backends[1]["name"], "llama-b");
+        assert_eq!(backends[1]["last_restart_error"], Value::Null);
+
+        // After a successful restart the store entry is gone and the route reports none.
+        stats.seed_restart_errors(&[]);
+        let answer = send(build(true, true), "GET", "/api/v1/overview", true).await;
+        assert_eq!(answer.status, 200);
+        let body: Value = serde_json::from_slice(&answer.body).unwrap();
+        assert_eq!(body["backends"][0]["last_restart_error"], Value::Null);
+
+        // The gate: no native download table (no count) or no sampler (no live fields) refuses
+        // with the route's own 503, and neither asks the child.
+        for (sampler, table) in [(true, false), (false, true), (false, false)] {
+            let answer = send(build(sampler, table), "GET", "/api/v1/overview", true).await;
+            assert_eq!(answer.status, 503, "sampler={sampler} table={table}");
+        }
+        // The token gate still applies to the route.
+        let answer = send(build(true, true), "GET", "/api/v1/overview", false).await;
+        assert_eq!(answer.status, 401);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(30), trap.accept())
+                .await
+                .is_err(),
+            "the overview asked the child"
+        );
+    }
 }
