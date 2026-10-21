@@ -28,6 +28,16 @@ const OPEN_DEADLINE: Duration = DEADLINE;
 const OPEN_DEADLINE: Duration = Duration::from_secs(120);
 #[cfg(test)]
 const _: () = assert!(OPEN_DEADLINE.as_secs() >= DEADLINE.as_secs());
+/// Budget for one operation (`Prompts::response` and the tests that drive `Store::run`).
+/// Production uses `DEADLINE`. Tests run on hosts that can be heavily loaded (rs#267: a 5 s
+/// operation budget was interrupted with `SQLITE_INTERRUPT` around load 60), so they get a larger
+/// one, as opens do. The budget is still enforced: an expired or cancelled operation still fails.
+#[cfg(not(test))]
+const OPERATION_DEADLINE: Duration = DEADLINE;
+#[cfg(test)]
+const OPERATION_DEADLINE: Duration = Duration::from_secs(120);
+#[cfg(test)]
+const _: () = assert!(OPERATION_DEADLINE.as_secs() >= DEADLINE.as_secs());
 struct Cancel(Arc<AtomicBool>);
 impl Drop for Cancel {
     fn drop(&mut self) {
@@ -167,7 +177,7 @@ impl Prompts {
             .clone()
             .try_acquire_owned()
             .map_err(|_| Error::Busy)?;
-        let deadline = Instant::now() + DEADLINE;
+        let deadline = Instant::now() + OPERATION_DEADLINE;
         let cancel = Cancel(Arc::new(AtomicBool::new(false)));
         let (reply, receive) = oneshot::channel();
         self.send
