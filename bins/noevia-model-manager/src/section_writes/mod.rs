@@ -15,6 +15,7 @@
 //! the write lock, and the write itself is native.
 pub mod cfg;
 
+use crate::sections::role::{is_system_routing_role, LEGACY_SYSTEM_ROUTING_ROLE};
 use cfg::{Dict, ParseError, Parser};
 use model_files::json::Value as Json;
 use sha2::{Digest, Sha256};
@@ -895,14 +896,15 @@ impl SectionWrites {
     }
 }
 
-/// The system routing role: its value in `models.roles.json` (the Python `ini` module's role constant), which the
-/// deprecated name/path rule also matches as a name prefix.
-const SYSTEM_ROUTING_ROLE: &str = "laya";
+/// The legacy role key: the deprecated name/path rule matches it as a name prefix (the Python `ini`
+/// module's role constant). The roles-file check accepts the role name and this key
+/// (`sections::role`).
+const LEGACY_ROLE: &str = LEGACY_SYSTEM_ROUTING_ROLE;
 
-/// `re.match(r"^<role>(?:[_.-]|$)", part, re.I)` for [`SYSTEM_ROUTING_ROLE`]; `$` also matches
+/// `re.match(r"^<role>(?:[_.-]|$)", part, re.I)` for [`LEGACY_ROLE`]; `$` also matches
 /// before one final newline.
 fn system_routing_name(part: &str) -> bool {
-    let role = SYSTEM_ROUTING_ROLE.as_bytes();
+    let role = LEGACY_ROLE.as_bytes();
     let bytes = part.as_bytes();
     if !bytes
         .get(..role.len())
@@ -917,13 +919,13 @@ fn system_routing_name(part: &str) -> bool {
 }
 
 /// The Python `ini` module's system-routing-section check: the system routing role from `models.roles.json` when the
-/// section has a role, else the deprecated name/path rule (logged, as Python logs it).
+/// section has a role (the role name or the legacy key, until phase 3 of noevia#2093), else the deprecated name/path rule (logged, as Python logs it).
 fn system_routing_section(cp: &Parser, name: &str, roles: &[(String, String)]) -> bool {
     if name == "*" || !cp.has_section(name) {
         return false;
     }
     if let Some((_, role)) = roles.iter().find(|(k, _)| k == name) {
-        return role == SYSTEM_ROUTING_ROLE;
+        return is_system_routing_role(role);
     }
     let model = cp
         .get(name, "model")
@@ -938,7 +940,7 @@ fn system_routing_section(cp: &Parser, name: &str, roles: &[(String, String)]) -
         // side's own (no test compares it with Python's log line).
         eprintln!(
             "models.ini [{name}] is treated as a system routing section by the deprecated name/path \
-             rule; mark it in models.roles.json ('{{\"{name}\": \"{SYSTEM_ROUTING_ROLE}\"}}'), not in \
+             rule; mark it in models.roles.json ('{{\"{name}\": \"{LEGACY_ROLE}\"}}'), not in \
              models.ini, which the inference engine also reads (#1179, #1596)"
         );
     }
