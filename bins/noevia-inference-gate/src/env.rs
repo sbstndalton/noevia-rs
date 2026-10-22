@@ -78,6 +78,7 @@ pub fn from_env(get: impl Fn(&str) -> Option<String>) -> Result<GateConfig, Stri
         lease_hard_ms: seconds("GATE_LEASE_HARD_SECONDS", 1800, 86_400)? * 1000,
         unload_timeout_ms: seconds("GATE_UNLOAD_TIMEOUT_SECONDS", 45, 3600)? * 1000,
         router_down_grace_ms: seconds("GATE_ROUTER_DOWN_GRACE_SECONDS", 30, 3600)? * 1000,
+        session_hold_ms: seconds("GATE_SESSION_HOLD_SECONDS", 120, 3600)? * 1000,
     };
     admission
         .validate()
@@ -102,6 +103,13 @@ pub fn from_env(get: impl Fn(&str) -> Option<String>) -> Result<GateConfig, Stri
             900,
             3600,
         )?),
+        header_read_timeout: Duration::from_secs(seconds(
+            "GATE_HEADER_READ_TIMEOUT_SECONDS",
+            30,
+            3600,
+        )?),
+        max_connections: usize::try_from(count("GATE_MAX_CONNECTIONS", 512, 100_000)?)
+            .unwrap_or(512),
         ..GateConfig::defaults(listen, String::new())
     })
 }
@@ -129,6 +137,9 @@ mod tests {
         assert_eq!(c.admission.fair_hold_ms, 60_000);
         assert_eq!(c.max_body_bytes, 64 * 1024 * 1024);
         assert!(c.admin_token.is_none());
+        assert_eq!(c.admission.session_hold_ms, 120_000);
+        assert_eq!(c.max_connections, 512);
+        assert_eq!(c.header_read_timeout, Duration::from_secs(30));
     }
 
     #[test]
@@ -166,6 +177,14 @@ mod tests {
                 ("GATE_UPSTREAM", "http://router:8080"),
                 ("GATE_LEASE_IDLE_SECONDS", "100"),
                 ("GATE_LEASE_HARD_SECONDS", "10"),
+            ],
+            vec![
+                ("GATE_UPSTREAM", "http://router:8080"),
+                ("GATE_MAX_CONNECTIONS", "0"),
+            ],
+            vec![
+                ("GATE_UPSTREAM", "http://router:8080"),
+                ("GATE_SESSION_HOLD_SECONDS", "0"),
             ],
         ] {
             let err = from_env(env(&pairs)).unwrap_err();

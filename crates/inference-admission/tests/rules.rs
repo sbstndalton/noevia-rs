@@ -29,6 +29,7 @@ fn cfg() -> Config {
         lease_hard_ms: 5_000,
         unload_timeout_ms: 2_000,
         router_down_grace_ms: 300,
+        session_hold_ms: 3_000,
     }
 }
 
@@ -40,6 +41,7 @@ fn listing(rows: &[(&str, RowStatus)]) -> Listing {
                 id: (*id).to_owned(),
                 status: *status,
                 small: false,
+                aliases: Vec::new(),
             })
             .collect(),
     }
@@ -192,13 +194,44 @@ fn a_new_request_for_the_holder_rides_along_only_until_the_fair_hold() {
 }
 
 #[test]
-fn an_idle_holder_takes_no_new_work_while_another_model_waits() {
+fn a_client_without_a_lease_keeps_its_model_between_calls_within_the_grace() {
+    // The multi-call pattern of a client that takes no lease: call, short gap, next call.
     let mut s = with_loaded(CODE);
     let a = admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
-    queued(s.arrive(10, SMART, WaitKind::Request, None, 10_000));
+    let w = queued(s.arrive(10, SMART, WaitKind::Request, None, 10_000));
     s.finish(20, &a);
-    // Idle (only the grace holds it): a new request for it queues instead of extending it.
-    queued(s.arrive(30, CODE, WaitKind::Request, None, 10_000));
+    // Its next call within the residency grace rides along: no switch between its calls.
+    let b = admitted(s.arrive(150, CODE, WaitKind::Request, None, 10_000));
+    assert!(unloads(&s.poll(160)).is_empty());
+    s.finish(300, &b);
+    let c = admitted(s.arrive(450, CODE, WaitKind::Request, None, 10_000));
+    s.finish(500, &c);
+    // A call after the grace has run out queues behind the waiting model.
+    assert_eq!(unloads(&s.poll(700)), vec![CODE.to_owned()]);
+    queued(s.arrive(701, CODE, WaitKind::Request, None, 10_000));
+    s.observe(listing(&[(CODE, RowStatus::Unloaded)]));
+    assert_eq!(granted(&s.poll(702))[0].0, w);
+}
+
+#[test]
+fn the_grace_never_extends_the_holder_past_the_fair_hold() {
+    let mut s = with_loaded(CODE);
+    let first = admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
+    s.finish(50, &first);
+    let mut now = 100;
+    // A client calling back to back within the grace keeps the model until the fair hold.
+    while now < 1_000 {
+        let t = admitted(s.arrive(now, CODE, WaitKind::Request, None, 10_000));
+        s.finish(now + 50, &t);
+        assert!(unloads(&s.poll(now + 60)).is_empty());
+        now += 100;
+    }
+    let late = queued(s.arrive(1_001, CODE, WaitKind::Request, None, 10_000));
+    assert_eq!(s.position(late), Some(2));
+    // The switch waits only for the grace of the last call.
+    assert!(unloads(&s.poll(1_001)).is_empty());
+    assert_eq!(unloads(&s.poll(1_150)), vec![CODE.to_owned()]);
 }
 
 #[test]
@@ -259,6 +292,7 @@ fn exempt_models_never_take_or_block_the_slot() {
         id: "rerank".into(),
         status: RowStatus::Loaded,
         small: true,
+        aliases: Vec::new(),
     });
     s.observe(rows);
     assert!(s.exempt("rerank"));
@@ -471,12 +505,254 @@ fn a_lease_waiter_is_granted_a_lease_with_its_group() {
 #[test]
 fn preset_maintenance_needs_an_idle_engine_unless_forced() {
     let mut s = with_loaded(CODE);
-    assert_eq!(s.maintenance_check(false), Ok(()));
     let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 1000));
-    assert_eq!(s.maintenance_check(false), Err(Refusal::EngineBusy));
-    assert_eq!(s.maintenance_check(true), Ok(()));
-    s.finish(1, &t);
-    assert_eq!(s.maintenance_check(false), Ok(()));
+    assert_eq!(s.begin_maintenance(1, false), Err(Refusal::EngineBusy));
+    assert_eq!(s.begin_maintenance(1, true), Ok(()));
+    // Only one reload at a time.
+    assert_eq!(s.begin_maintenance(2, true), Err(Refusal::EngineBusy));
+    s.end_maintenance();
+    s.finish(3, &t);
+    assert_eq!(s.begin_maintenance(4, false), Ok(()));
+    s.end_maintenance();
+    let l = lease(s.arrive(5, CODE, WaitKind::Lease, None, 1000));
+    assert_eq!(s.begin_maintenance(6, false), Err(Refusal::EngineBusy));
+    assert!(s.release_lease(l));
+}
+
+#[test]
+fn nothing_new_is_admitted_while_a_preset_reload_runs() {
+    let mut s = with_loaded(CODE);
+    assert_eq!(s.begin_maintenance(0, false), Ok(()));
+    assert!(s.in_maintenance());
+    assert_eq!(s.status(0).switch, "maintenance");
+    // Chat work waits for the reload to end; exempt work, which never queues, is refused.
+    let w = queued(s.arrive(1, CODE, WaitKind::Request, None, 10_000));
+    assert_eq!(
+        s.arrive(2, EMBED, WaitKind::Request, None, 10_000),
+        Arrival::Refused(Refusal::EngineBusy)
+    );
+    assert_eq!(s.admin_unload(3, CODE, true), Err(Refusal::EngineBusy));
+    for now in [10, 1_000, 5_000] {
+        assert!(
+            granted(&s.poll(now)).is_empty(),
+            "granted during the reload"
+        );
+    }
+    s.end_maintenance();
+    assert_eq!(granted(&s.poll(5_001))[0].0, w);
+}
+
+#[test]
+fn an_unreported_maintenance_ends_by_itself_at_its_cap() {
+    let mut s = with_loaded(CODE);
+    assert_eq!(s.begin_maintenance(0, false), Ok(()));
+    s.poll(599_999);
+    assert!(s.in_maintenance());
+    s.poll(600_000);
+    assert!(!s.in_maintenance());
+}
+
+#[test]
+fn aliases_name_their_model_everywhere() {
+    let mut s = Scheduler::new(cfg());
+    let mut rows = listing(&[(CODE, RowStatus::Loaded), (SMART, RowStatus::Unloaded)]);
+    rows.rows[0].aliases = vec!["code-alias".into()];
+    s.observe(rows);
+    assert!(s.knows("code-alias"));
+    assert!(!s.knows("no-such-model"));
+    assert_eq!(s.canon("code-alias"), CODE);
+    // A stream under the alias is the holder's own work: admitted, counted on the id.
+    let t = admitted(s.arrive(0, "code-alias", WaitKind::Request, None, 10_000));
+    assert_eq!(t.model, CODE);
+    assert_eq!(s.in_flight(CODE), 1);
+    assert_eq!(s.in_flight("code-alias"), 1);
+    // Neither name unloads it while it streams.
+    assert_eq!(s.admin_unload(1, CODE, false), Err(Refusal::ModelInUse));
+    assert_eq!(
+        s.admin_unload(1, "code-alias", false),
+        Err(Refusal::ModelInUse)
+    );
+    // While another model waits, the alias does not queue behind its own model.
+    queued(s.arrive(2, SMART, WaitKind::Request, None, 10_000));
+    admitted(s.arrive(3, "code-alias", WaitKind::Request, None, 10_000));
+    // A lease taken by the alias holds the id; a request by the id uses it.
+    let l = lease(s.arrive(4, "code-alias", WaitKind::Lease, None, 1000));
+    assert_eq!(s.lease_model(l), Some(CODE));
+    admitted(s.arrive(5, CODE, WaitKind::Request, Some(l), 1000));
+    assert!(unloads(&s.poll(10)).is_empty());
+}
+
+#[test]
+fn an_alias_listed_as_exempt_exempts_its_model() {
+    let mut s = Scheduler::new(Config {
+        exempt: ["embed-alias".to_owned()].into_iter().collect(),
+        ..cfg()
+    });
+    let mut rows = listing(&[(CODE, RowStatus::Loaded), ("embed-id", RowStatus::Loaded)]);
+    rows.rows[1].aliases = vec!["embed-alias".into()];
+    s.observe(rows);
+    assert!(s.exempt("embed-id"));
+    admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    admitted(s.arrive(1, "embed-id", WaitKind::Request, None, 10_000));
+    assert_eq!(s.holder(), Some(CODE));
+}
+
+#[test]
+fn a_request_that_cannot_load_never_waits_for_a_switch() {
+    let mut s = Scheduler::new(cfg());
+    s.observe(listing(&[
+        (CODE, RowStatus::Loaded),
+        (SMART, RowStatus::Unloaded),
+    ]));
+    admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    // Not resident and told not to load: passed to the router, nothing queued or unloaded.
+    assert_eq!(
+        s.arrive_without_autoload(1, SMART, None, 10_000),
+        Arrival::Pass
+    );
+    assert!(s.queued_models().is_empty());
+    assert!(unloads(&s.poll(5_000)).is_empty());
+    // On the resident model it runs, and is counted.
+    let t = admitted(s.arrive_without_autoload(2, CODE, None, 10_000));
+    assert_eq!(s.in_flight(CODE), 2);
+    s.finish(3, &t);
+}
+
+#[test]
+fn a_stream_resume_counts_on_its_session_model() {
+    let mut s = with_loaded(CODE);
+    let resume = s.attach(Some(CODE)).expect("counted on the resident model");
+    queued(s.arrive(0, SMART, WaitKind::Request, None, 10_000));
+    for now in [10, 500, 2_000] {
+        assert!(unloads(&s.poll(now)).is_empty(), "no unload under a resume");
+    }
+    s.finish(2_100, &resume);
+    // Unknown session: counted on the holder. A model that is not resident: not counted.
+    let on_holder = s.attach(None).expect("the holder");
+    assert_eq!(on_holder.model, CODE);
+    assert!(s.attach(Some(SMART)).is_none());
+    s.finish(2_200, &on_holder);
+    assert_eq!(unloads(&s.poll(2_500)), vec![CODE.to_owned()]);
+    // Nothing is counted on a model being unloaded.
+    assert!(s.attach(Some(CODE)).is_none());
+}
+
+#[test]
+fn a_session_whose_client_left_holds_its_model_for_the_session_hold() {
+    let mut s = with_loaded(CODE);
+    let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
+    // Its client went away mid-answer: the router may still be generating for a resume.
+    s.finish(100, &t);
+    s.hold_session(100, CODE);
+    assert!(unloads(&s.poll(400)).is_empty(), "past the residency grace");
+    assert!(unloads(&s.poll(3_099)).is_empty());
+    assert_eq!(unloads(&s.poll(3_100)), vec![CODE.to_owned()]);
+}
+
+#[test]
+fn one_slow_listing_does_not_mark_the_router_down_and_a_lease_round_still_runs() {
+    let mut s = with_loaded(CODE);
+    let l = lease(s.arrive(0, CODE, WaitKind::Lease, None, 1000));
+    s.listing_failed(1);
+    s.listing_failed(2);
+    assert!(!s.router_down());
+    s.listing_failed(4);
+    assert!(s.router_down());
+    // A live lease's round still goes out (its own forward fails if the router really is down).
+    admitted(s.arrive(5, CODE, WaitKind::Request, Some(l), 1000));
+    assert_eq!(
+        s.arrive(6, CODE, WaitKind::Request, None, 1000),
+        Arrival::Refused(Refusal::EngineUnavailable)
+    );
+    s.observe(listing(&[(CODE, RowStatus::Loaded)]));
+    assert!(!s.router_down());
+}
+
+#[test]
+fn a_refused_unload_keeps_the_router_up_and_retries_after_a_pause() {
+    let mut s = with_loaded(CODE);
+    let w = queued(s.arrive(0, SMART, WaitKind::Request, None, 10_000));
+    assert_eq!(unloads(&s.poll(0)), vec![CODE.to_owned()]);
+    s.unload_result(1, CODE, UnloadOutcome::Refused);
+    assert!(!s.router_down());
+    assert!(!s.switching());
+    assert!(unloads(&s.poll(1_000)).is_empty(), "no retry storm");
+    assert_eq!(unloads(&s.poll(2_001)), vec![CODE.to_owned()]);
+    s.observe(listing(&[(CODE, RowStatus::Unloaded)]));
+    assert_eq!(granted(&s.poll(2_002))[0].0, w);
+}
+
+#[test]
+fn a_stuck_unload_is_asked_for_again_a_bounded_number_of_times() {
+    let mut s = with_loaded(CODE);
+    queued(s.arrive(0, SMART, WaitKind::Request, None, 100_000));
+    assert_eq!(unloads(&s.poll(0)), vec![CODE.to_owned()]);
+    // The first request may never have reached the router (its answer is never reported).
+    s.poll(2_000);
+    assert!(s.stuck());
+    let mut asks = 0;
+    let mut now = 2_000;
+    for _ in 0..20 {
+        now += 2_000;
+        asks += unloads(&s.poll(now)).len();
+    }
+    assert_eq!(asks, 2, "two more asks: three in all");
+    assert!(s.stuck());
+    // The listing still ends it whenever the model goes.
+    s.observe(listing(&[(CODE, RowStatus::Unloaded)]));
+    assert!(!s.stuck());
+}
+
+#[test]
+fn an_explicit_unload_of_an_exempt_or_absent_model_never_blocks_chat_work() {
+    let mut s = Scheduler::new(cfg());
+    s.observe(listing(&[
+        (CODE, RowStatus::Loaded),
+        (EMBED, RowStatus::Loaded),
+        (SMART, RowStatus::Unloaded),
+    ]));
+    assert_eq!(s.admin_unload(0, EMBED, false), Ok(()));
+    assert!(!s.switching());
+    admitted(s.arrive(1, CODE, WaitKind::Request, None, 1000));
+    assert_eq!(s.admin_unload(2, SMART, false), Ok(()));
+    assert!(!s.switching());
+    admitted(s.arrive(3, CODE, WaitKind::Request, None, 1000));
+}
+
+#[test]
+fn a_listing_read_before_work_or_an_unload_is_stale_for_it() {
+    let mut s = Scheduler::new(cfg());
+    s.observe(listing(&[
+        (CODE, RowStatus::Unloaded),
+        (SMART, RowStatus::Unloaded),
+    ]));
+    // A read starts; meanwhile the first request loads CODE and ends.
+    let early = s.listing_requested();
+    let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 1000));
+    s.finish(10, &t);
+    // Its answer (CODE not yet loaded) arrives after the grace: the holder stays.
+    s.observe_at(
+        early,
+        listing(&[(CODE, RowStatus::Unloaded), (SMART, RowStatus::Unloaded)]),
+    );
+    s.poll(1_000);
+    assert_eq!(s.holder(), Some(CODE));
+    // Another model waits; the unload is asked for.
+    queued(s.arrive(1_001, SMART, WaitKind::Request, None, 10_000));
+    let before_unload = s.listing_requested();
+    assert_eq!(unloads(&s.poll(1_002)), vec![CODE.to_owned()]);
+    // A read started before the unload cannot show it done.
+    s.observe_at(before_unload, listing(&[(CODE, RowStatus::Unloaded)]));
+    assert!(s.switching());
+    assert!(granted(&s.poll(1_003)).is_empty());
+    // A read started after it can; an older answer arriving later changes nothing.
+    let after = s.listing_requested();
+    s.observe_at(after, listing(&[(CODE, RowStatus::Unloaded)]));
+    assert!(!s.switching());
+    s.observe_at(early, listing(&[(CODE, RowStatus::Loaded)]));
+    assert_eq!(granted(&s.poll(1_004)).len(), 1);
+    assert_eq!(s.holder(), Some(SMART));
 }
 
 #[test]
@@ -514,6 +790,10 @@ fn refusals_carry_stable_codes_statuses_and_retry_hints() {
     assert!(!Refusal::InvalidJson.retryable());
     assert_eq!(Refusal::BodyTooLarge.http_status(), 413);
     assert_eq!(Refusal::AdminRequired.http_status(), 403);
+    assert_eq!(Refusal::ModelNotFound.code(), "model_not_found");
+    assert_eq!(Refusal::ModelNotFound.http_status(), 404);
+    assert!(!Refusal::ModelNotFound.retryable());
+    assert_eq!(Refusal::InvalidQuery.http_status(), 400);
 }
 
 #[test]
@@ -534,6 +814,11 @@ fn config_limits_are_validated() {
         ..Config::default()
     };
     assert!(no_waiters.validate().is_err());
+    let no_session_hold = Config {
+        session_hold_ms: 0,
+        ..Config::default()
+    };
+    assert!(no_session_hold.validate().is_err());
     let mut bad_exempt = Config::default();
     bad_exempt.exempt.insert("bad\nid".into());
     assert!(bad_exempt.validate().is_err());

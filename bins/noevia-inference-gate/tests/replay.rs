@@ -35,9 +35,14 @@ struct Outcome {
 }
 
 async fn replay(a_uses_lease: bool) -> (FakeRouter, GateHandle, Outcome) {
+    // The engine itself would run two chat models here (models-max 2): only the gate keeps it to
+    // one, so the engine's own record shows whether it did.
     let router = FakeRouter::start(
         &[(CODE, St::Unloaded, false), (SMART, St::Sleeping, false)],
-        FakeConfig::default(),
+        FakeConfig {
+            models_max: 2,
+            ..FakeConfig::default()
+        },
     )
     .await;
     let gate = Arc::new(start_gate(test_config(router.url())).await);
@@ -149,6 +154,7 @@ async fn the_2026_10_22_timeline_with_a_leased_turn_has_no_kill_and_no_error() {
         "the Code-route model loaded once, never reloaded"
     );
     assert_eq!(router.loads_of(SMART), 1);
+    assert_eq!(router.peak_chat_running(), 1, "one chat model at a time");
     assert_eq!(
         s["scheduler"]["counters"]["rejected"]
             .as_object()
@@ -169,6 +175,89 @@ async fn the_timeline_without_a_lease_cuts_nothing_either() {
     );
     assert!(out.a_rounds.iter().all(|s| *s == 200), "{:?}", out.a_rounds);
     assert_eq!(out.b_attempts, vec![200]);
+    assert_eq!(router.peak_chat_running(), 1, "one chat model at a time");
+    // The residency grace keeps A's model between its calls until the fair hold: at most one
+    // switch away and back, never one per request.
+    assert!(router.loads_of(CODE) <= 2, "{:?}", router.events());
+    assert_eq!(router.loads_of(SMART), 1, "{:?}", router.events());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn the_same_timeline_without_the_gate_cuts_and_reloads() {
+    // The control: the same clients straight at the router, with the other route's admission as
+    // it was before the gate (unload every other loaded chat model, wait until it is gone, then
+    // ask; retry on an error) and the turn's later rounds sent without admission.
+    let router = FakeRouter::start(
+        &[(CODE, St::Unloaded, false), (SMART, St::Sleeping, false)],
+        FakeConfig::default(),
+    )
+    .await;
+    let url = router.url();
+    let send_url = url.clone();
+    let send = move |model: &'static str, chunks: u64, chunk_ms: u64| {
+        let url = send_url.clone();
+        async move {
+            match client()
+                .post(format!("{url}/v1/chat/completions"))
+                .body(chat_body(model, chunks, chunk_ms))
+                .send()
+                .await
+            {
+                Ok(r) => {
+                    let s = r.status().as_u16();
+                    let body = r.text().await.unwrap_or_default();
+                    if s == 200 && !body.contains("[DONE]") {
+                        599
+                    } else {
+                        s
+                    }
+                }
+                Err(_) => 0,
+            }
+        }
+    };
+    let a = tokio::spawn({
+        let send = send.clone();
+        async move {
+            let mut rounds = Vec::new();
+            for round in 0..4 {
+                if round > 0 {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                rounds.push(send(CODE, 8, 40).await);
+            }
+            rounds
+        }
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let mut attempts = Vec::new();
+    for _ in 0..6 {
+        // The old admission: unload the other chat model, busy or not, and wait for it to go.
+        let _ = client()
+            .post(format!("{url}/models/unload"))
+            .body(r#"{"model":"route-code"}"#)
+            .send()
+            .await;
+        let _ = eventually(1_000, || router.status(CODE) == St::Unloaded).await;
+        let s = send(SMART, 3, 30).await;
+        attempts.push(s);
+        if s == 200 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    let a_rounds = a.await.unwrap();
+    assert!(!router.cuts().is_empty(), "the old admission cut a stream");
+    assert!(
+        a_rounds.iter().any(|s| *s != 200),
+        "a round of the turn failed: {a_rounds:?}"
+    );
+    assert!(
+        router.loads_of(CODE) >= 2,
+        "the turn's next round loaded its model again: {:?}",
+        router.events()
+    );
+    let _ = attempts;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -386,7 +386,7 @@ async fn a_client_that_leaves_while_waiting_leaves_the_queue_and_loads_nothing()
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_client_that_leaves_mid_stream_stops_counting() {
     use futures_util::StreamExt;
-    let (_router, gate) = setup(&[(CODE, St::Loaded, false)], FakeConfig::default()).await;
+    let (router, gate) = setup(&[(CODE, St::Loaded, false)], FakeConfig::default()).await;
     let resp = client()
         .post(gate.url("/v1/chat/completions"))
         .body(chat_body(CODE, 40, 50))
@@ -410,6 +410,16 @@ async fn a_client_that_leaves_mid_stream_stops_counting() {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     assert!(cleared);
+    // Stop still stops: the router saw the connection close and ended the generation.
+    assert!(
+        eventually(2_000, || router
+            .events()
+            .contains(&Event::ClientGone(CODE.into())))
+        .await,
+        "{:?}",
+        router.events()
+    );
+    assert!(router.cuts().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]

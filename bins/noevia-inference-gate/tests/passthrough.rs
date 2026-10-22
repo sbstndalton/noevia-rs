@@ -1,7 +1,7 @@
 //! What the web server, the model manager and the release preflight read through the gate today
-//! reaches the router unchanged (sbstndalton/noevia#2115): the listing, properties, metrics and
-//! slots (which must never load or wake a model), explicit loads, unloads of idle models, preset
-//! reloads, and streamed generations and embeddings without buffering.
+//! reaches the router unchanged (sbstndalton/noevia#2115): the listing, properties and metrics
+//! with autoload off (which never load or wake a model), slots of the loaded model, explicit
+//! loads, unloads of idle models, and streamed generations and embeddings without buffering.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -81,6 +81,7 @@ async fn gate_headers_are_removed_and_the_rest_forwarded() {
         .header("x-noevia-lease", &lease)
         .header("x-noevia-client", "web")
         .header("x-noevia-max-wait-ms", "1000")
+        .header("x-noevia-gate-admin", ADMIN)
         .header("x-custom-trace", "kept")
         .body(chat_body(CODE, 1, 10))
         .send()

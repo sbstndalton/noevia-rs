@@ -45,6 +45,10 @@ pub enum Refusal {
     GateBusy,
     /// The request asked for an admin force without the admin token.
     AdminRequired,
+    /// The router lists no model or alias of that name.
+    ModelNotFound,
+    /// The query string is too long or has too many keys to be checked.
+    InvalidQuery,
 }
 
 impl Refusal {
@@ -68,6 +72,8 @@ impl Refusal {
             Self::BodyTimeout => "body_timeout",
             Self::GateBusy => "gate_busy",
             Self::AdminRequired => "admin_required",
+            Self::ModelNotFound => "model_not_found",
+            Self::InvalidQuery => "invalid_query",
         }
     }
 
@@ -82,7 +88,9 @@ impl Refusal {
             | Self::InvalidJson
             | Self::InvalidModel
             | Self::InvalidLease
-            | Self::InvalidWait => 400,
+            | Self::InvalidWait
+            | Self::InvalidQuery => 400,
+            Self::ModelNotFound => 404,
             Self::BodyTooLarge => 413,
             Self::BodyTimeout => 408,
             Self::AdminRequired => 403,
@@ -124,6 +132,8 @@ impl Refusal {
             Self::BodyTimeout => "The request body did not arrive in time.",
             Self::GateBusy => "The inference gate is busy. Try again shortly.",
             Self::AdminRequired => "Unloading a model that is in use needs an admin.",
+            Self::ModelNotFound => "The local model engine has no model of that name.",
+            Self::InvalidQuery => "The request query is too long or has too many parameters.",
         }
     }
 }
@@ -159,6 +169,9 @@ pub enum Arrival {
         position: usize,
     },
     Refused(Refusal),
+    /// Cannot load or use the slot (it names a model that is not resident and asks the router
+    /// not to load it): forwarded without admission; the router answers it.
+    Pass,
 }
 
 /// What a waiter is given.
@@ -209,7 +222,9 @@ pub enum UnloadOutcome {
     Accepted,
     /// The model was not running (already gone).
     NotRunning,
-    /// No answer, or an error: nothing is known to have changed.
+    /// The router answered with an error: it is up, and nothing is known to have changed.
+    Refused,
+    /// No answer at all: nothing is known to have changed.
     Failed,
 }
 
@@ -239,9 +254,31 @@ struct Lease {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Switch {
     Idle,
-    Unloading { model: String, since: u64 },
-    Stuck { model: String, since: u64 },
+    /// `attempt` counts unload requests for this switch (re-probes of a stuck one included).
+    Unloading {
+        model: String,
+        since: u64,
+        attempt: u32,
+    },
+    Stuck {
+        model: String,
+        since: u64,
+        attempt: u32,
+    },
+    /// A preset reload is running: the router may unload any model, so nothing new is admitted.
+    Maintenance {
+        since: u64,
+    },
 }
+
+/// How often a stuck unload is asked for again before only an admin force or the listing ends it.
+const STUCK_RETRIES: u32 = 3;
+/// Consecutive failed listings (without a connection error) before the router counts as down.
+const LISTING_FAILURES_FOR_DOWN: u32 = 3;
+/// After the router refused an unload, the next switch attempt waits this long.
+const REFUSED_UNLOAD_BACKOFF_MS: u64 = 2_000;
+/// The longest a maintenance state can last if its end is never reported.
+const MAINTENANCE_CAP_MS: u64 = 10 * 60 * 1000;
 
 /// Running totals, for the gate's metrics.
 #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
@@ -297,10 +334,17 @@ pub struct Scheduler {
     listing: Option<Listing>,
     small: BTreeSet<String>,
     router_down_since: Option<u64>,
+    listing_failures: u32,
+    switch_backoff_until: u64,
     grace_until: BTreeMap<String, u64>,
-    /// Listings observed so far, and how many had been observed when a model last had work: a
-    /// listing older than the work is stale for that model.
-    observes: u64,
+    /// Listing reads started so far. A listing is known by the number its read was started
+    /// with, so a listing whose read started before a model's last work (or before an unload
+    /// was asked for) is stale for it, however late its answer arrives.
+    epoch: u64,
+    /// The read number of the listing applied last; an older answer is ignored.
+    listing_ticket: u64,
+    /// The read number current when the running unload was asked for.
+    switch_epoch: u64,
     touched_at: BTreeMap<String, u64>,
     actions: Vec<Action>,
     counters: Counters,
@@ -321,8 +365,12 @@ impl Scheduler {
             listing: None,
             small: BTreeSet::new(),
             router_down_since: None,
+            listing_failures: 0,
+            switch_backoff_until: 0,
             grace_until: BTreeMap::new(),
-            observes: 0,
+            epoch: 0,
+            listing_ticket: 0,
+            switch_epoch: 0,
             touched_at: BTreeMap::new(),
             actions: Vec::new(),
             counters: Counters::default(),
@@ -333,9 +381,36 @@ impl Scheduler {
         &self.cfg
     }
 
-    /// Whether `model` never takes the chat slot.
+    /// The id the router resolves `name` to (an alias names its model); `name` itself when the
+    /// last listing does not know it.
+    pub fn canon(&self, name: &str) -> String {
+        self.listing
+            .as_ref()
+            .and_then(|l| l.canonical(name))
+            .unwrap_or(name)
+            .to_owned()
+    }
+
+    /// Whether the last listing knows `name` as a model id or alias (`true` before any listing).
+    pub fn knows(&self, name: &str) -> bool {
+        self.listing
+            .as_ref()
+            .is_none_or(|l| l.canonical(name).is_some())
+    }
+
+    /// Whether `model` (an id or alias) never takes the chat slot.
     pub fn exempt(&self, model: &str) -> bool {
-        self.cfg.exempt.contains(model) || self.small.contains(model)
+        if self.cfg.exempt.contains(model) {
+            return true;
+        }
+        let id = self.canon(model);
+        if self.cfg.exempt.contains(&id) || self.small.contains(&id) {
+            return true;
+        }
+        self.listing
+            .as_ref()
+            .and_then(|l| l.row(&id))
+            .is_some_and(|row| row.aliases.iter().any(|a| self.cfg.exempt.contains(a)))
     }
 
     /// The chat model holding the slot, if any.
@@ -343,14 +418,16 @@ impl Scheduler {
         self.holder.as_deref()
     }
 
-    /// Requests in flight on `model`.
+    /// Requests in flight on `model` (an id or alias).
     pub fn in_flight(&self, model: &str) -> u32 {
-        self.in_flight.get(model).copied().unwrap_or(0)
+        let id = self.canon(model);
+        self.in_flight.get(&id).copied().unwrap_or(0)
     }
 
-    /// Live leases on `model`.
+    /// Live leases on `model` (an id or alias).
     pub fn live_leases(&self, model: &str) -> usize {
-        self.leases.values().filter(|l| l.model == model).count()
+        let id = self.canon(model);
+        self.leases.values().filter(|l| l.model == id).count()
     }
 
     /// The model a lease holds.
@@ -376,9 +453,14 @@ impl Scheduler {
     /// The model being unloaded or stuck, if any.
     pub fn switch_model(&self) -> Option<&str> {
         match &self.switch {
-            Switch::Idle => None,
+            Switch::Idle | Switch::Maintenance { .. } => None,
             Switch::Unloading { model, .. } | Switch::Stuck { model, .. } => Some(model),
         }
+    }
+
+    /// Whether a preset reload is running.
+    pub fn in_maintenance(&self) -> bool {
+        matches!(self.switch, Switch::Maintenance { .. })
     }
 
     /// Waiters in the queue.
@@ -399,8 +481,10 @@ impl Scheduler {
             .map(|i| i + 1)
     }
 
+    /// `model` is an id (callers canonicalise first).
     fn active(&self, model: &str) -> bool {
-        self.in_flight(model) > 0 || self.live_leases(model) > 0
+        self.in_flight.get(model).is_some_and(|n| *n > 0)
+            || self.leases.values().any(|l| l.model == model)
     }
 
     fn in_grace(&self, model: &str, now: u64) -> bool {
@@ -443,9 +527,10 @@ impl Scheduler {
         self.leases.len() + queued_leases < self.cfg.max_leases
     }
 
-    /// A request (or lease request) that may load or run on `model` arrives.
+    /// A request (or lease request) that may load or run on `model` (an id or alias) arrives.
     ///
-    /// - A request carrying a live lease for `model` always runs (its turn continues).
+    /// - A request carrying a live lease for `model` always runs (its turn continues), even while
+    ///   the router is thought to be down (its own forward then fails if it really is).
     /// - An exempt model runs at once and never takes the slot.
     /// - With the slot free and no queue, or on the holder while no other model waits (or while
     ///   the holder is busy and the fair hold has not passed), it runs at once.
@@ -460,9 +545,8 @@ impl Scheduler {
         max_wait_ms: u64,
     ) -> Arrival {
         self.counters.arrivals += 1;
-        if self.router_down() {
-            return self.refuse(Refusal::EngineUnavailable);
-        }
+        let id = self.canon(model);
+        let model = id.as_str();
         if let Some(key) = lease {
             let Some(held) = self.leases.get_mut(&key) else {
                 return self.refuse(Refusal::LeaseUnknown);
@@ -473,6 +557,14 @@ impl Scheduler {
             held.active += 1;
             held.last = now;
             return self.admit_request(model, Some(key));
+        }
+        if self.router_down() {
+            return self.refuse(Refusal::EngineUnavailable);
+        }
+        // A preset reload may restart any model: chat work queues behind it (below); exempt work,
+        // which never queues, is refused until it ends.
+        if self.in_maintenance() && self.exempt(model) {
+            return self.refuse(Refusal::EngineBusy);
         }
         if self.exempt(model) {
             return match kind {
@@ -529,6 +621,33 @@ impl Scheduler {
         }
     }
 
+    /// A request that names `model` but asks the router not to load it (`autoload=false`). It
+    /// runs on the model only when that is resident here (the holder, or an exempt model), and is
+    /// then admitted and counted like any request; otherwise it cannot load or use the slot and is
+    /// passed to the router, which answers that the model is not loaded. It never queues for a
+    /// switch.
+    pub fn arrive_without_autoload(
+        &mut self,
+        now: u64,
+        model: &str,
+        lease: Option<LeaseKey>,
+        max_wait_ms: u64,
+    ) -> Arrival {
+        let id = self.canon(model);
+        let resident_here = self.holder.as_deref() == Some(id.as_str())
+            || (self.exempt(&id)
+                && self
+                    .listing
+                    .as_ref()
+                    .and_then(|l| l.status_of(&id))
+                    .is_some_and(|s| s.resident()));
+        if lease.is_none() && !resident_here {
+            self.counters.arrivals += 1;
+            return Arrival::Pass;
+        }
+        self.arrive(now, &id, WaitKind::Request, lease, max_wait_ms)
+    }
+
     fn may_admit_now(&self, now: u64, model: &str) -> bool {
         if self.switching() {
             return false;
@@ -537,14 +656,17 @@ impl Scheduler {
             None => self.queue.is_empty(),
             Some(holder) if holder == model => {
                 let others_wait = self.queue.iter().any(|g| g.model != holder);
-                !others_wait || (self.active(holder) && !self.draining(now))
+                // Work in flight, a live lease or the residency grace keeps the holder's next
+                // calls riding along until the fair hold has passed.
+                !others_wait
+                    || ((self.active(holder) || self.in_grace(holder, now)) && !self.draining(now))
             }
             Some(_) => false,
         }
     }
 
     fn touch(&mut self, model: &str) {
-        self.touched_at.insert(model.to_owned(), self.observes);
+        self.touched_at.insert(model.to_owned(), self.epoch);
     }
 
     fn admit_request(&mut self, model: &str, lease: Option<LeaseKey>) -> Arrival {
@@ -607,13 +729,60 @@ impl Scheduler {
             }
             None => {
                 if !self.exempt(&ticket.model) {
-                    self.grace_until.insert(
-                        ticket.model.clone(),
+                    self.extend_grace(
+                        &ticket.model,
                         now.saturating_add(self.cfg.residency_grace_ms),
                     );
                 }
             }
         }
+    }
+
+    fn extend_grace(&mut self, model: &str, until: u64) {
+        let entry = self.grace_until.entry(model.to_owned()).or_insert(0);
+        *entry = (*entry).max(until);
+    }
+
+    /// A session generation (one carrying a conversation id) on `model` lost its client before
+    /// its answer ended: the router may go on generating it for a later resume, so the model is
+    /// held for the session hold (never switched away meanwhile; the fair hold still stops new
+    /// work riding along).
+    pub fn hold_session(&mut self, now: u64, model: &str) {
+        let id = self.canon(model);
+        if self.exempt(&id) {
+            return;
+        }
+        self.extend_grace(&id, now.saturating_add(self.cfg.session_hold_ms));
+    }
+
+    /// A stream resume (`GET /v1/stream`) of a session on `model` (the holder when the session's
+    /// model is not known). It runs on that model without loading anything, so it is counted in
+    /// flight when the model is resident here and no unload of it is under way; `None`: not
+    /// counted (the router answers it, typically that the stream is gone).
+    pub fn attach(&mut self, model: Option<&str>) -> Option<Ticket> {
+        let id = match model {
+            Some(model) => self.canon(model),
+            None => self.holder.clone()?,
+        };
+        if self.switch_model() == Some(id.as_str()) {
+            return None;
+        }
+        let resident = self.holder.as_deref() == Some(id.as_str())
+            || (self.exempt(&id)
+                && self
+                    .listing
+                    .as_ref()
+                    .and_then(|l| l.status_of(&id))
+                    .is_some_and(|s| s.resident()));
+        if !resident {
+            return None;
+        }
+        self.touch(&id);
+        *self.in_flight.entry(id.clone()).or_insert(0) += 1;
+        Some(Ticket {
+            model: id,
+            lease: None,
+        })
     }
 
     /// The client ends its lease. Its requests still in flight keep counting until they end.
@@ -637,10 +806,28 @@ impl Scheduler {
         self.queue.retain(|g| !g.waiters.is_empty());
     }
 
-    /// The router answered `GET /models`.
+    /// A read of the router's listing starts; its answer goes to [`Scheduler::observe_at`] with
+    /// the returned number.
+    pub fn listing_requested(&mut self) -> u64 {
+        self.epoch = self.epoch.saturating_add(1);
+        self.epoch
+    }
+
+    /// A listing read just now (both steps at once).
     pub fn observe(&mut self, listing: Listing) {
+        let ticket = self.listing_requested();
+        self.observe_at(ticket, listing);
+    }
+
+    /// The router answered the listing read numbered `ticket`.
+    pub fn observe_at(&mut self, ticket: u64, listing: Listing) {
         self.router_down_since = None;
-        self.observes += 1;
+        self.listing_failures = 0;
+        if ticket <= self.listing_ticket {
+            // A read that started before the listing already applied: older news.
+            return;
+        }
+        self.listing_ticket = ticket;
         self.small = listing
             .rows
             .iter()
@@ -648,7 +835,9 @@ impl Scheduler {
             .map(|r| r.id.clone())
             .collect();
         if let Some(model) = self.switch_model().map(str::to_owned) {
-            let gone = !listing.status_of(&model).is_some_and(|s| s.resident());
+            // Only a read started after the unload was asked for can show the model gone.
+            let gone = ticket > self.switch_epoch
+                && !listing.status_of(&model).is_some_and(|s| s.resident());
             if gone {
                 self.switch = Switch::Idle;
                 if self.holder.as_deref() == Some(model.as_str()) && !self.active(&model) {
@@ -668,9 +857,18 @@ impl Scheduler {
         self.listing = Some(listing);
     }
 
-    /// The router did not answer (a listing or a forwarded request failed to connect).
+    /// The router could not be reached at all (a connection was refused or failed).
     pub fn router_unreachable(&mut self, now: u64) {
         self.router_down_since.get_or_insert(now);
+    }
+
+    /// A listing failed without a connection error (a slow or malformed answer). Only several in
+    /// a row count as the router being down, so one slow listing never fails a turn.
+    pub fn listing_failed(&mut self, now: u64) {
+        self.listing_failures = self.listing_failures.saturating_add(1);
+        if self.listing_failures >= LISTING_FAILURES_FOR_DOWN {
+            self.router_unreachable(now);
+        }
     }
 
     /// The router answered an unload this scheduler asked for.
@@ -686,6 +884,11 @@ impl Scheduler {
                     self.holder = None;
                 }
             }
+            UnloadOutcome::Refused => {
+                // The router is up but did not unload: try the switch again a little later.
+                self.switch = Switch::Idle;
+                self.switch_backoff_until = now.saturating_add(REFUSED_UNLOAD_BACKOFF_MS);
+            }
             UnloadOutcome::Failed => {
                 self.switch = Switch::Idle;
                 self.router_unreachable(now);
@@ -693,17 +896,21 @@ impl Scheduler {
         }
     }
 
-    /// An explicit unload (`POST /models/unload`, `DELETE /models`). Refused while the model is in
-    /// use unless `force` (the caller checked the admin token). On `Ok`, the caller forwards the
-    /// unload and reports the answer through [`Scheduler::unload_result`]; new work for any chat
-    /// model waits until the listing shows the model gone.
+    /// An explicit unload (`POST /models/unload`, `DELETE /models`) of `model` (an id or alias).
+    /// Refused while the model is in use unless `force` (the caller checked the admin token). On
+    /// `Ok`, the caller forwards the unload and reports the answer through
+    /// [`Scheduler::unload_result`] (it must, whatever happens to its client). When the model holds
+    /// the chat slot, new chat work waits until the listing shows it gone; an exempt or
+    /// non-resident model never blocks chat admission.
     pub fn admin_unload(&mut self, now: u64, model: &str, force: bool) -> Result<(), Refusal> {
+        let id = self.canon(model);
+        let model = id.as_str();
         if self.router_down() {
             self.reject_count(Refusal::EngineUnavailable);
             return Err(Refusal::EngineUnavailable);
         }
         let same = self.switch_model() == Some(model);
-        if self.switching() && !(same && force) {
+        if self.in_maintenance() || (self.switching() && !(same && force)) {
             self.counters.unloads_refused += 1;
             self.reject_count(Refusal::EngineBusy);
             return Err(Refusal::EngineBusy);
@@ -730,30 +937,48 @@ impl Scheduler {
                 });
             }
         }
-        if !same {
+        let holds_slot = self.holder.as_deref() == Some(model)
+            || (!self.exempt(model)
+                && self
+                    .listing
+                    .as_ref()
+                    .and_then(|l| l.status_of(model))
+                    .is_some_and(|s| s.resident()));
+        if !same && holds_slot {
+            self.switch_epoch = self.epoch;
             self.switch = Switch::Unloading {
                 model: model.to_owned(),
                 since: now,
+                attempt: 1,
             };
         }
         Ok(())
     }
 
-    /// A router preset reload. Allowed only while nothing is in flight, no lease is live and no
-    /// switch runs, unless forced by an admin.
-    pub fn maintenance_check(&mut self, force: bool) -> Result<(), Refusal> {
+    /// A router preset reload starts. The router unloads every model whose preset changed, busy or
+    /// not, so it is allowed only while nothing is in flight, no lease is live and no switch runs
+    /// (an admin may force it past work in flight). On `Ok` the scheduler is in maintenance: no
+    /// new work is admitted (it queues) until [`Scheduler::end_maintenance`], which the caller must
+    /// report however the reload ends.
+    pub fn begin_maintenance(&mut self, now: u64, force: bool) -> Result<(), Refusal> {
         if self.router_down() {
             self.reject_count(Refusal::EngineUnavailable);
             return Err(Refusal::EngineUnavailable);
         }
-        if force {
-            return Ok(());
-        }
-        if self.switching() || !self.in_flight.is_empty() || !self.leases.is_empty() {
+        let busy = !self.in_flight.is_empty() || !self.leases.is_empty();
+        if self.switching() || (busy && !force) {
             self.reject_count(Refusal::EngineBusy);
             return Err(Refusal::EngineBusy);
         }
+        self.switch = Switch::Maintenance { since: now };
         Ok(())
+    }
+
+    /// The preset reload ended (answered, failed or timed out).
+    pub fn end_maintenance(&mut self) {
+        if self.in_maintenance() {
+            self.switch = Switch::Idle;
+        }
     }
 
     /// Advances time: ends leases, refuses expired waiters, notices a stuck unload, and when the
@@ -775,13 +1000,41 @@ impl Scheduler {
         for key in expired {
             self.reject(now, key, Refusal::QueueTimeout);
         }
-        if let Switch::Unloading { model, since } = &self.switch {
-            if now.saturating_sub(*since) >= self.cfg.unload_timeout_ms {
+        match &self.switch {
+            Switch::Unloading {
+                model,
+                since,
+                attempt,
+            } if now.saturating_sub(*since) >= self.cfg.unload_timeout_ms => {
                 self.switch = Switch::Stuck {
                     model: model.clone(),
-                    since: *since,
+                    since: now,
+                    attempt: *attempt,
                 };
             }
+            // A stuck unload is asked for again (bounded) while its model is idle: the first
+            // request may never have reached the router.
+            Switch::Stuck {
+                model,
+                since,
+                attempt,
+            } if *attempt < STUCK_RETRIES
+                && now.saturating_sub(*since) >= self.cfg.unload_timeout_ms
+                && !self.active(model) =>
+            {
+                let model = model.clone();
+                self.switch_epoch = self.epoch;
+                self.switch = Switch::Unloading {
+                    model: model.clone(),
+                    since: now,
+                    attempt: attempt.saturating_add(1),
+                };
+                self.actions.push(Action::Unload { model });
+            }
+            Switch::Maintenance { since } if now.saturating_sub(*since) >= MAINTENANCE_CAP_MS => {
+                self.switch = Switch::Idle;
+            }
+            _ => {}
         }
         if self.stuck() {
             self.reject_all(now, Refusal::SwitchStuck);
@@ -827,7 +1080,7 @@ impl Scheduler {
         }
         // Only a listing read after the model's last work can show that it went away.
         let touched = self.touched_at.get(&holder).copied().unwrap_or(0);
-        if self.observes <= touched {
+        if self.listing_ticket <= touched {
             return;
         }
         let resident = self
@@ -848,13 +1101,18 @@ impl Scheduler {
             None => self.grant_front(now),
             Some(holder) if holder == front => self.grant_front(now),
             Some(holder) => {
-                if self.active(&holder) || self.in_grace(&holder, now) {
+                if self.active(&holder)
+                    || self.in_grace(&holder, now)
+                    || now < self.switch_backoff_until
+                {
                     return;
                 }
                 self.counters.switches += 1;
+                self.switch_epoch = self.epoch;
                 self.switch = Switch::Unloading {
                     model: holder.clone(),
                     since: now,
+                    attempt: 1,
                 };
                 self.actions.push(Action::Unload { model: holder });
             }
@@ -936,6 +1194,7 @@ impl Scheduler {
                 Switch::Idle => "idle",
                 Switch::Unloading { .. } => "unloading",
                 Switch::Stuck { .. } => "stuck",
+                Switch::Maintenance { .. } => "maintenance",
             },
             switch_model: self.switch_model().map(str::to_owned),
             in_flight: self.in_flight.clone(),

@@ -18,6 +18,14 @@
 //!   content), `GET /gate/v1/metrics` (text exposition format);
 //! - `POST /gate/v1/leases` `{model, holder?, max_wait_ms?}` and `DELETE /gate/v1/leases/{lease}`.
 //!
+//! Names are resolved as the router resolves them (an alias is its model). A request that asks the
+//! router not to load a model that is not resident cannot use the slot and is passed on. A
+//! session generation (`x-conversation-id`) whose client leaves may go on in the router for a
+//! later resume, so its model is held for `GATE_SESSION_HOLD_SECONDS`, and a resume
+//! (`GET /v1/stream`) counts as work on the session's model. A preset reload holds every new
+//! admission until the router has answered it. Unloads and reloads run to their end on their own
+//! task, whatever happens to the client that asked.
+//!
 //! Request headers the gate reads and removes: `X-Noevia-Lease`, `X-Noevia-Max-Wait-Ms` (a shorter
 //! wait than the configured maximum), `X-Noevia-Client` (a short label for logs) and
 //! `X-Noevia-Gate-Admin` (the admin token: needed to unload a model that is in use, which is
@@ -72,6 +80,12 @@ pub struct GateConfig {
     pub tick: Duration,
     /// How often a lease request's event stream reports its position.
     pub lease_event_interval: Duration,
+    /// Longest a client may take to send a request's headers.
+    pub header_read_timeout: Duration,
+    /// Most client connections served at once; more are closed at once.
+    pub max_connections: usize,
+    /// Longest the router may take to answer a preset reload (no new work is admitted meanwhile).
+    pub reload_timeout: Duration,
 }
 
 impl std::fmt::Debug for GateConfig {
@@ -103,6 +117,9 @@ impl GateConfig {
             listing_busy_interval: Duration::from_millis(500),
             tick: Duration::from_millis(100),
             lease_event_interval: Duration::from_secs(3),
+            header_read_timeout: Duration::from_secs(30),
+            max_connections: 512,
+            reload_timeout: Duration::from_secs(120),
         }
     }
 }
@@ -139,6 +156,45 @@ struct Inner {
     hash_by_lease: HashMap<LeaseKey, [u8; 32]>,
     gate_refusals: BTreeMap<&'static str, u64>,
     router_was_up: Option<bool>,
+    /// Conversation id to the model its session runs on, as admitted (bounded, oldest first out).
+    sessions: Sessions,
+    /// Buffered-body KiB held by requests waiting in the queue.
+    queued_kib: usize,
+}
+
+/// Most conversation ids remembered.
+const MAX_SESSIONS: usize = 4096;
+
+/// The conversation-id-to-model map: bounded, the oldest entry is forgotten first.
+#[derive(Default)]
+pub(crate) struct Sessions {
+    map: HashMap<String, String>,
+    order: std::collections::VecDeque<String>,
+}
+
+impl Sessions {
+    pub(crate) fn remember(&mut self, conv_id: &str, model: &str) {
+        if self
+            .map
+            .insert(conv_id.to_owned(), model.to_owned())
+            .is_none()
+        {
+            self.order.push_back(conv_id.to_owned());
+            while self.order.len() > MAX_SESSIONS {
+                if let Some(old) = self.order.pop_front() {
+                    self.map.remove(&old);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn model(&self, conv_id: &str) -> Option<&str> {
+        self.map.get(conv_id).map(String::as_str)
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.map.len()
+    }
 }
 
 pub(crate) struct Gate {
@@ -148,6 +204,7 @@ pub(crate) struct Gate {
     client: Client<HttpConnector, Body>,
     buffer: Arc<Semaphore>,
     buffer_unit: usize,
+    buffer_permits: usize,
     kick: Notify,
 }
 
@@ -159,9 +216,13 @@ impl Gate {
         let client = Client::builder(hyper_util::rt::TokioExecutor::new())
             .pool_idle_timeout(Duration::from_secs(30))
             .build(connector);
-        // Buffered bytes are counted in KiB permits (a semaphore holds at most u32::MAX).
+        // Buffered bytes are counted in KiB permits (a semaphore holds at most u32::MAX), rounded
+        // up as each body's need is, so a body of the full buffer size always fits.
         let buffer_unit = 1024;
-        let permits = (cfg.max_buffered_bytes / buffer_unit).clamp(1, Semaphore::MAX_PERMITS);
+        let permits = cfg
+            .max_buffered_bytes
+            .div_ceil(buffer_unit)
+            .clamp(1, Semaphore::MAX_PERMITS);
         Arc::new(Self {
             inner: Mutex::new(Inner {
                 sched: Scheduler::new(cfg.admission.clone()),
@@ -170,12 +231,15 @@ impl Gate {
                 hash_by_lease: HashMap::new(),
                 gate_refusals: BTreeMap::new(),
                 router_was_up: None,
+                sessions: Sessions::default(),
+                queued_kib: 0,
             }),
             cfg,
             start: Instant::now(),
             client,
             buffer: Arc::new(Semaphore::new(permits)),
             buffer_unit,
+            buffer_permits: permits,
             kick: Notify::new(),
         })
     }
@@ -308,14 +372,29 @@ impl Gate {
         }
     }
 
-    /// Reads the router's listing once and feeds it to the scheduler.
+    /// The router's listing poller runs at once.
+    pub(crate) fn kick(&self) {
+        self.kick.notify_one();
+    }
+
+    /// Reads the router's listing once and feeds it to the scheduler. A refused or failed
+    /// connection marks the router unreachable at once; a slow or malformed answer counts as one
+    /// failed listing (several in a row mark it unreachable).
     async fn refresh_listing(self: &Arc<Self>) {
+        enum Read {
+            Listing(inference_admission::Listing),
+            Unreachable,
+            Failed,
+        }
+        // Numbered before the read starts, so an answer that arrives late is judged by when it
+        // was asked for.
+        let ticket = self.lock().sched.listing_requested();
         let uri = format!("{}/models", self.cfg.upstream);
         let request = axum::http::Request::builder()
             .method(Method::GET)
             .uri(uri)
             .body(Body::empty());
-        let listing = match request {
+        let read = match request {
             Ok(request) => {
                 match tokio::time::timeout(Duration::from_secs(5), self.client.request(request))
                     .await
@@ -327,20 +406,35 @@ impl Gate {
                         match tokio::time::timeout(Duration::from_secs(5), limited.collect()).await
                         {
                             Ok(Ok(collected)) => {
-                                inference_admission::parse_listing(&collected.to_bytes())
+                                match inference_admission::parse_listing(&collected.to_bytes()) {
+                                    Some(listing) => Read::Listing(listing),
+                                    None => Read::Failed,
+                                }
                             }
-                            _ => None,
+                            _ => Read::Failed,
                         }
                     }
-                    _ => None,
+                    Ok(Err(err)) if err.is_connect() => Read::Unreachable,
+                    _ => Read::Failed,
                 }
             }
-            Err(_) => None,
+            Err(_) => Read::Failed,
         };
-        self.with(|inner, now| match listing {
-            Some(listing) => inner.sched.observe(listing),
-            None => inner.sched.router_unreachable(now),
+        self.with(|inner, now| match read {
+            Read::Listing(listing) => inner.sched.observe_at(ticket, listing),
+            Read::Unreachable => inner.sched.router_unreachable(now),
+            Read::Failed => inner.sched.listing_failed(now),
         });
+    }
+
+    /// `model` names a model or alias the router lists; reads the listing again once when the
+    /// last one does not know it (a model added since).
+    pub(crate) async fn known(self: &Arc<Self>, model: &str) -> bool {
+        if self.lock().sched.knows(model) {
+            return true;
+        }
+        self.refresh_listing().await;
+        self.lock().sched.knows(model)
     }
 
     fn admin(&self, headers: &HeaderMap) -> bool {
@@ -358,12 +452,14 @@ impl Gate {
     }
 }
 
-fn unload_outcome(status: u16) -> UnloadOutcome {
+/// The scheduler's reading of the router's answer to an unload. Any answer means the router is
+/// up; only a missing answer (`UnloadOutcome::Failed`, decided by the caller) suggests otherwise.
+pub(crate) fn unload_outcome(status: u16) -> UnloadOutcome {
     match status {
         200..=299 => UnloadOutcome::Accepted,
         // The router answers 400 "model is not running" (or not found) when nothing is there.
         400 | 404 => UnloadOutcome::NotRunning,
-        _ => UnloadOutcome::Failed,
+        _ => UnloadOutcome::Refused,
     }
 }
 
@@ -384,25 +480,58 @@ pub(crate) fn log(event: &str, fields: &[(&str, serde_json::Value)]) {
 }
 
 /// A request in flight: counted until it is dropped (its response body ended or its client left).
+/// A session request (one with a conversation id) whose client left before its answer ended may
+/// go on generating in the router for a later resume, so its model is then held for the session
+/// hold.
 pub(crate) struct InflightGuard {
     gate: Arc<Gate>,
     ticket: Option<Ticket>,
+    session: bool,
+    completed: bool,
 }
 
 impl InflightGuard {
-    fn new(gate: Arc<Gate>, ticket: Ticket) -> Self {
+    pub(crate) fn new(gate: Arc<Gate>, ticket: Ticket) -> Self {
         Self {
             gate,
             ticket: Some(ticket),
+            session: false,
+            completed: false,
         }
+    }
+
+    /// The model the request runs on.
+    pub(crate) fn model(&self) -> Option<&str> {
+        self.ticket.as_ref().map(|t| t.model.as_str())
+    }
+
+    /// Marks the request as part of a resumable session.
+    pub(crate) fn set_session(&mut self) {
+        self.session = true;
+    }
+
+    /// The response body reached its end.
+    pub(crate) fn complete(&mut self) {
+        self.completed = true;
     }
 }
 
 impl Drop for InflightGuard {
     fn drop(&mut self) {
         if let Some(ticket) = self.ticket.take() {
-            self.gate
-                .with(|inner, now| inner.sched.finish(now, &ticket));
+            let detached = self.session && !self.completed;
+            self.gate.with(|inner, now| {
+                inner.sched.finish(now, &ticket);
+                if detached {
+                    inner.sched.hold_session(now, &ticket.model);
+                }
+            });
+            if detached {
+                log(
+                    "gate.session_hold",
+                    &[("model", ticket.model.as_str().into())],
+                );
+            }
         }
     }
 }
@@ -500,12 +629,52 @@ pub async fn run(
         ],
     );
     let app = Router::new().fallback(handle).with_state(Arc::clone(&gate));
-    let served = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await;
+    // Served connection by connection so that a client must send its headers in time and the
+    // number of open connections is bounded (one past the limit is closed at once).
+    let connections = Arc::new(Semaphore::new(
+        gate.cfg.max_connections.clamp(1, Semaphore::MAX_PERMITS),
+    ));
+    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+    tokio::pin!(shutdown);
+    loop {
+        tokio::select! {
+            accepted = listener.accept() => {
+                let stream = match accepted {
+                    Ok((stream, _)) => stream,
+                    Err(_) => {
+                        // Out of descriptors or a transient accept error: back off briefly.
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        continue;
+                    }
+                };
+                let Ok(permit) = Arc::clone(&connections).try_acquire_owned() else {
+                    *gate.lock().gate_refusals.entry("connection_limit").or_insert(0) += 1;
+                    drop(stream);
+                    continue;
+                };
+                let _ = stream.set_nodelay(true);
+                let service = hyper_util::service::TowerToHyperService::new(app.clone());
+                let mut builder = hyper::server::conn::http1::Builder::new();
+                builder
+                    .timer(hyper_util::rt::TokioTimer::new())
+                    .header_read_timeout(gate.cfg.header_read_timeout);
+                let connection =
+                    builder.serve_connection(hyper_util::rt::TokioIo::new(stream), service);
+                let watched = graceful.watch(connection);
+                tokio::spawn(async move {
+                    let _ = watched.await;
+                    drop(permit);
+                });
+            }
+            () = &mut shutdown => break,
+        }
+    }
+    drop(listener);
+    // Open event streams would hold a graceful shutdown forever: bounded.
+    let _ = tokio::time::timeout(Duration::from_secs(10), graceful.shutdown()).await;
     ticker.abort();
     poller.abort();
-    served
+    Ok(())
 }
 
 async fn handle(State(gate): State<Arc<Gate>>, request: Request) -> Response {
@@ -516,17 +685,58 @@ async fn handle(State(gate): State<Arc<Gate>>, request: Request) -> Response {
     forward::proxy(gate, request).await
 }
 
+/// Buffered-body KiB held by queued requests, given back when the wait ends however it ends.
+struct QueuedBytes {
+    gate: Arc<Gate>,
+    kib: usize,
+}
+
+impl Drop for QueuedBytes {
+    fn drop(&mut self) {
+        let mut inner = self.gate.lock();
+        inner.queued_kib = inner.queued_kib.saturating_sub(self.kib);
+    }
+}
+
 /// Admits a request that may load or run on `model` (waiting if it must), or refuses it.
+/// `Ok(None)`: it cannot load or use the slot and is forwarded without being counted.
+/// `body_kib` is its buffered body: waiting requests may hold at most half of the gate's body
+/// buffer, so they can never starve the requests already admitted.
 pub(crate) async fn admit_request(
     gate: &Arc<Gate>,
     model: &str,
+    autoload: bool,
     lease: Option<LeaseKey>,
     max_wait_ms: u64,
-) -> Result<InflightGuard, Refusal> {
-    let (arrival, rx) = gate.with(|inner, now| {
-        let arrival = inner
-            .sched
-            .arrive(now, model, WaitKind::Request, lease, max_wait_ms);
+    body_kib: usize,
+) -> Result<Option<InflightGuard>, Refusal> {
+    if !gate.known(model).await {
+        return Err(Refusal::ModelNotFound);
+    }
+    let queued_cap = gate.buffer_permits / 2;
+    let (arrival, rx, queued_bytes) = gate.with(|inner, now| {
+        let mut arrival = if autoload {
+            inner
+                .sched
+                .arrive(now, model, WaitKind::Request, lease, max_wait_ms)
+        } else {
+            inner
+                .sched
+                .arrive_without_autoload(now, model, lease, max_wait_ms)
+        };
+        let mut queued_bytes = None;
+        if let Arrival::Queued { waiter, .. } = &arrival {
+            if inner.queued_kib.saturating_add(body_kib) > queued_cap {
+                inner.sched.cancel(*waiter);
+                arrival = Arrival::Refused(Refusal::GateBusy);
+            } else {
+                inner.queued_kib += body_kib;
+                queued_bytes = Some(QueuedBytes {
+                    gate: Arc::clone(gate),
+                    kib: body_kib,
+                });
+            }
+        }
         let rx = match &arrival {
             Arrival::Queued { waiter, .. } => {
                 let (tx, rx) = oneshot::channel();
@@ -535,15 +745,17 @@ pub(crate) async fn admit_request(
             }
             _ => None,
         };
-        (arrival, rx)
+        (arrival, rx, queued_bytes)
     });
     match arrival {
+        Arrival::Pass => Ok(None),
         Arrival::Admitted(inference_admission::Admission::Request(ticket)) => {
-            Ok(InflightGuard::new(Arc::clone(gate), ticket))
+            Ok(Some(InflightGuard::new(Arc::clone(gate), ticket)))
         }
         Arrival::Admitted(inference_admission::Admission::Lease(_)) => Err(Refusal::InvalidLease),
         Arrival::Refused(refusal) => Err(refusal),
         Arrival::Queued { waiter, position } => {
+            let _queued_bytes = queued_bytes;
             log(
                 "gate.queue",
                 &[("model", model.into()), ("position", position.into())],
@@ -559,7 +771,7 @@ pub(crate) async fn admit_request(
                 + Duration::from_secs(1);
             match guard.wait(limit).await {
                 Some(Outcome::Granted(Grant::Request(ticket), _)) => {
-                    Ok(InflightGuard::new(Arc::clone(gate), ticket))
+                    Ok(Some(InflightGuard::new(Arc::clone(gate), ticket)))
                 }
                 Some(Outcome::Granted(Grant::Lease(lease), _)) => {
                     gate.with(|inner, _| {
@@ -680,7 +892,8 @@ mod tests {
         assert_eq!(unload_outcome(200), UnloadOutcome::Accepted);
         assert_eq!(unload_outcome(400), UnloadOutcome::NotRunning);
         assert_eq!(unload_outcome(404), UnloadOutcome::NotRunning);
-        assert_eq!(unload_outcome(500), UnloadOutcome::Failed);
+        assert_eq!(unload_outcome(500), UnloadOutcome::Refused);
+        assert_eq!(unload_outcome(503), UnloadOutcome::Refused);
     }
 
     #[test]

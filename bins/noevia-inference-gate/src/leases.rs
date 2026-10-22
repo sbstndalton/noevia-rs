@@ -37,6 +37,8 @@ pub(crate) async fn gate_endpoint(gate: Arc<Gate>, request: Request) -> Response
                     "scheduler": status,
                     "gate_refusals": inner.gate_refusals,
                     "buffer_free_kib": gate.buffer.available_permits(),
+                    "queued_kib": inner.queued_kib,
+                    "sessions": inner.sessions.len(),
                 }),
             )
         }
@@ -102,6 +104,9 @@ async fn acquire(gate: Arc<Gate>, request: Request) -> Response {
     else {
         return respond::refusal(Refusal::InvalidModel);
     };
+    if !gate.known(&model).await {
+        return respond::refusal(Refusal::ModelNotFound);
+    }
     let holder = value
         .get("holder")
         .and_then(|h| h.as_str())
@@ -136,7 +141,9 @@ async fn acquire(gate: Arc<Gate>, request: Request) -> Response {
     });
     match arrival {
         Arrival::Refused(refusal) => respond::refusal(refusal),
-        Arrival::Admitted(Admission::Request(_)) => respond::refusal(Refusal::InvalidLease),
+        Arrival::Admitted(Admission::Request(_)) | Arrival::Pass => {
+            respond::refusal(Refusal::InvalidLease)
+        }
         Arrival::Admitted(Admission::Lease(lease)) => {
             let token = issue_token(&gate, lease);
             log(
@@ -147,7 +154,7 @@ async fn acquire(gate: Arc<Gate>, request: Request) -> Response {
                     ("waited_ms", 0.into()),
                 ],
             );
-            sse(vec![granted_event(&gate, &model, &token, 0)])
+            granted_now(&gate, lease, granted_event(&gate, &model, &token, 0))
         }
         Arrival::Queued { waiter, position } => {
             log(
@@ -289,8 +296,36 @@ fn event(name: &str, data: &serde_json::Value) -> Bytes {
     Bytes::from(format!("event: {name}\ndata: {data}\n\n"))
 }
 
-fn sse(events: Vec<Bytes>) -> Response {
-    let stream = futures_util::stream::iter(events.into_iter().map(Ok::<Bytes, std::io::Error>));
+/// Gives a lease back unless its grant was handed to the client's connection.
+struct Undelivered {
+    gate: Arc<Gate>,
+    lease: Option<LeaseKey>,
+}
+
+impl Drop for Undelivered {
+    fn drop(&mut self) {
+        if let Some(lease) = self.lease.take() {
+            self.gate.with(|inner, _| {
+                inner.sched.release_lease(lease);
+                forget_lease(inner, lease);
+            });
+            log("gate.lease_end", &[("end", "undelivered".into())]);
+        }
+    }
+}
+
+/// The event stream of a lease granted at once. If the client's connection is gone before the
+/// grant is written to it, the lease is given back at once instead of idling out.
+fn granted_now(gate: &Arc<Gate>, lease: LeaseKey, granted: Bytes) -> Response {
+    let pending = Undelivered {
+        gate: Arc::clone(gate),
+        lease: Some(lease),
+    };
+    let stream = futures_util::stream::unfold(Some((pending, granted)), |state| async move {
+        let (mut pending, granted) = state?;
+        pending.lease = None;
+        Some((Ok::<Bytes, std::io::Error>(granted), None))
+    });
     with_sse_headers(Response::new(Body::from_stream(stream)))
 }
 

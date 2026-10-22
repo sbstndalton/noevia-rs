@@ -1,11 +1,16 @@
 //! Test support: a synthetic engine router and helpers to run the gate in front of it.
 //!
-//! The fake router behaves like the engine router the gate fronts, at test speed: a listing,
-//! explicit loads and unloads, autoload on requests that name a model (unless `autoload=false` on
-//! reads), `models-max` with idle-LRU eviction, sleeping models that wake on a request, unloads
-//! that take a while (longer when the model is busy, when they cut its streams), a stuck mode
-//! where an unload never finishes, and a down mode where every connection is dropped. It records
-//! every event so tests can assert that no stream was ever cut by an unload.
+//! The fake router behaves like the engine router the gate fronts, at test speed: a listing with
+//! aliases (a request may name a model by an alias), explicit loads and unloads, autoload on
+//! requests that name a model (unless `autoload=false`), `models-max` with idle-LRU eviction,
+//! sleeping models that wake on a request (also on `/slots` with `autoload=false`, as the router's
+//! child does), unloads that take a while (longer when the model is busy, when they cut its
+//! streams), a stuck mode where an unload never finishes, slow or failing unload answers, preset
+//! reloads (on `/models` and `/v1/models`) that restart every running model after a while, session
+//! generations (`x-conversation-id`) that go on after their client leaves and can be resumed
+//! (`GET /v1/stream`), and a down mode where every connection is dropped. It records every event
+//! (including a client that went away mid-stream, and the most chat models it ever ran at once) so
+//! tests can assert that no stream was ever cut by an unload.
 #![allow(
     dead_code,
     clippy::unwrap_used,
@@ -62,6 +67,12 @@ pub enum Event {
     },
     Reload,
     Delete(String),
+    /// A client went away mid-stream: the router saw its connection close.
+    ClientGone(String),
+    /// A session generation whose client left goes on for a later resume.
+    Detached(String),
+    /// A stream resume reached the model.
+    Resume(String),
 }
 
 #[derive(Clone, Debug)]
@@ -71,6 +82,7 @@ pub struct Model {
     pub streams: u32,
     pub instance: u64,
     pub last_used: Instant,
+    pub aliases: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -81,6 +93,12 @@ pub struct FakeConfig {
     pub chunks: u64,
     pub chunk_ms: u64,
     pub models_max: usize,
+    /// How long the router takes to answer an unload (the stop itself runs after).
+    pub unload_answer_ms: u64,
+    /// Answer every unload with a server error (nothing is unloaded).
+    pub unload_error: bool,
+    /// How long a preset reload takes before it restarts every running model and answers.
+    pub reload_ms: u64,
 }
 
 impl Default for FakeConfig {
@@ -92,6 +110,9 @@ impl Default for FakeConfig {
             chunks: 4,
             chunk_ms: 30,
             models_max: 1,
+            unload_answer_ms: 0,
+            unload_error: false,
+            reload_ms: 0,
         }
     }
 }
@@ -102,6 +123,10 @@ pub struct State {
     pub stuck: bool,
     pub cfg: FakeConfig,
     pub seen_headers: Vec<(String, hyper::HeaderMap)>,
+    /// Conversation id to (model, instance, chunks still to send) of a session generation.
+    pub sessions: BTreeMap<String, (String, u64, u64)>,
+    /// The most chat models (not small) it ever ran at once.
+    pub peak_chat_running: usize,
 }
 
 pub struct FakeRouter {
@@ -134,6 +159,7 @@ impl FakeRouter {
                             streams: 0,
                             instance: 1,
                             last_used: now,
+                            aliases: Vec::new(),
                         },
                     )
                 })
@@ -142,7 +168,14 @@ impl FakeRouter {
             stuck: false,
             cfg,
             seen_headers: Vec::new(),
+            sessions: BTreeMap::new(),
+            peak_chat_running: 0,
         }));
+        {
+            let mut s = state.lock().unwrap();
+            let running = chat_running(&s);
+            s.peak_chat_running = running;
+        }
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let changed = Arc::new(Notify::new());
@@ -223,6 +256,25 @@ impl FakeRouter {
         self.changed.notify_waiters();
     }
 
+    /// The most chat models the engine ever ran at once.
+    pub fn peak_chat_running(&self) -> usize {
+        self.state.lock().unwrap().peak_chat_running
+    }
+
+    pub fn set_aliases(&self, model: &str, aliases: &[&str]) {
+        self.state
+            .lock()
+            .unwrap()
+            .models
+            .get_mut(model)
+            .unwrap()
+            .aliases = aliases.iter().map(|a| (*a).to_owned()).collect();
+    }
+
+    pub fn configure(&self, f: impl FnOnce(&mut FakeConfig)) {
+        f(&mut self.state.lock().unwrap().cfg);
+    }
+
     pub fn set_status(&self, model: &str, status: St) {
         self.state
             .lock()
@@ -263,6 +315,26 @@ fn running(status: St) -> bool {
     !matches!(status, St::Unloaded)
 }
 
+fn chat_running(state: &State) -> usize {
+    state
+        .models
+        .values()
+        .filter(|m| !m.small && running(m.status))
+        .count()
+}
+
+/// The id a name refers to (an id, or an alias), as the router resolves it.
+fn resolve(state: &State, name: &str) -> Option<String> {
+    if state.models.contains_key(name) {
+        return Some(name.to_owned());
+    }
+    state
+        .models
+        .iter()
+        .find(|(_, m)| m.aliases.iter().any(|a| a == name))
+        .map(|(id, _)| id.clone())
+}
+
 fn listing(state: &State) -> serde_json::Value {
     let data: Vec<serde_json::Value> = state
         .models
@@ -279,7 +351,7 @@ fn listing(state: &State) -> serde_json::Value {
             } else {
                 vec!["--ctx-size", "4096"]
             };
-            serde_json::json!({ "id": id, "status": { "value": value, "args": args } })
+            serde_json::json!({ "id": id, "aliases": m.aliases, "status": { "value": value, "args": args } })
         })
         .collect();
     serde_json::json!({ "data": data })
@@ -358,6 +430,8 @@ async fn ensure_loaded(
                     if running_count < cfg.models_max {
                         s.models.get_mut(model).unwrap().status = St::Loading;
                         s.events.push(Event::Autoload(model.to_owned()));
+                        let chat = chat_running(&s);
+                        s.peak_chat_running = s.peak_chat_running.max(chat);
                         let state = Arc::clone(state);
                         let changed = Arc::clone(changed);
                         let model = model.to_owned();
@@ -431,15 +505,50 @@ async fn route(
         .lock()
         .unwrap()
         .seen_headers
-        .push((path.clone(), headers));
+        .push((path.clone(), headers.clone()));
+    let reload = query.get("reload").is_some_and(|v| !v.is_empty());
     match (method.as_str(), path.as_str()) {
-        ("GET", "/models") => {
-            if query.contains_key("reload") {
-                state.lock().unwrap().events.push(Event::Reload);
-                return json(200, serde_json::json!({ "success": true }));
+        ("GET", "/models" | "/v1/models") if reload => {
+            // The router's reload: after a while it restarts every running model (as if every
+            // preset had changed), cutting whatever runs on them, then answers.
+            let reload_ms = {
+                let mut s = state.lock().unwrap();
+                s.events.push(Event::Reload);
+                s.cfg.reload_ms
+            };
+            if reload_ms > 0 {
+                tokio::time::sleep(Duration::from_millis(reload_ms)).await;
+                let running: Vec<String> = state
+                    .lock()
+                    .unwrap()
+                    .models
+                    .iter()
+                    .filter(|(_, m)| running(m.status))
+                    .map(|(id, _)| id.clone())
+                    .collect();
+                for model in running {
+                    stop(&state, &changed, &model);
+                }
             }
+            json(200, serde_json::json!({ "success": true }))
+        }
+        ("GET", "/models") => {
             let s = state.lock().unwrap();
             json(200, listing(&s))
+        }
+        ("GET", "/v1/stream") => {
+            let conv = query.get("conv_id").cloned().unwrap_or_default();
+            let session = state.lock().unwrap().sessions.get(&conv).cloned();
+            let Some((model, instance, _)) = session else {
+                return error(404, "Stream not found or expired");
+            };
+            state
+                .lock()
+                .unwrap()
+                .events
+                .push(Event::Resume(model.clone()));
+            // The rest of the answer, while the generation goes on.
+            resume_stream(state, model, instance)
         }
         ("GET", "/v1/models") => {
             let s = state.lock().unwrap();
@@ -452,8 +561,11 @@ async fn route(
         }
         ("GET", "/health") => json(200, serde_json::json!({ "status": "ok" })),
         ("GET", "/props" | "/metrics" | "/slots") => {
-            let Some(model) = query.get("model").cloned() else {
+            let Some(name) = query.get("model").cloned() else {
                 return error(400, "model is required");
+            };
+            let Some(model) = resolve(&state.lock().unwrap(), &name) else {
+                return error(400, "model is not found");
             };
             let autoload = matches!(
                 query.get("autoload").map(String::as_str),
@@ -464,9 +576,14 @@ async fn route(
                     return error(400, &e);
                 }
             } else {
-                let s = state.lock().unwrap();
-                match s.models.get(&model) {
-                    Some(m) if running(m.status) => {}
+                let mut s = state.lock().unwrap();
+                match s.models.get(&model).map(|m| m.status) {
+                    // The child wakes for its slots, even when asked not to load.
+                    Some(St::Sleeping) if path == "/slots" => {
+                        s.models.get_mut(&model).unwrap().status = St::Loaded;
+                        s.events.push(Event::Wake(model.clone()));
+                    }
+                    Some(status) if running(status) => {}
                     _ => return error(400, "model is not running"),
                 }
             }
@@ -483,7 +600,8 @@ async fn route(
             }
         }
         ("POST", "/models/load") => {
-            let model = model_of(&body);
+            let name = model_of(&body);
+            let model = resolve(&state.lock().unwrap(), &name).unwrap_or(name);
             let mut s = state.lock().unwrap();
             match s.models.get(&model).map(|m| m.status) {
                 None => error(404, "model is not found"),
@@ -501,7 +619,18 @@ async fn route(
             }
         }
         ("POST", "/models/unload") => {
-            let model = model_of(&body);
+            let (answer_ms, unload_error) = {
+                let s = state.lock().unwrap();
+                (s.cfg.unload_answer_ms, s.cfg.unload_error)
+            };
+            if answer_ms > 0 {
+                tokio::time::sleep(Duration::from_millis(answer_ms)).await;
+            }
+            if unload_error {
+                return error(500, "synthetic unload failure");
+            }
+            let name = model_of(&body);
+            let model = resolve(&state.lock().unwrap(), &name).unwrap_or(name);
             let status = state.lock().unwrap().models.get(&model).map(|m| m.status);
             match status {
                 Some(s) if running(s) => {
@@ -523,15 +652,33 @@ async fn route(
         }
         ("POST", "/v1/chat/completions" | "/v1/embeddings" | "/v1/completions") => {
             let value: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
-            let model = value
+            let name = value
                 .get("model")
                 .and_then(|m| m.as_str())
                 .unwrap_or_default()
                 .to_owned();
+            let Some(model) = resolve(&state.lock().unwrap(), &name) else {
+                return error(400, "model is not found");
+            };
+            let autoload = matches!(
+                query.get("autoload").map(String::as_str),
+                None | Some("true" | "1")
+            );
+            if !autoload {
+                let s = state.lock().unwrap();
+                if !s.models.get(&model).is_some_and(|m| running(m.status)) {
+                    return error(400, "model is not loaded");
+                }
+            }
             let instance = match ensure_loaded(&state, &changed, &model).await {
                 Ok(instance) => instance,
                 Err(e) => return error(400, &e),
             };
+            let conv_id = headers
+                .get("x-conversation-id")
+                .and_then(|v| v.to_str().ok())
+                .filter(|v| !v.is_empty())
+                .map(str::to_owned);
             let (chunks, chunk_ms) = {
                 let mut s = state.lock().unwrap();
                 s.events.push(Event::Request {
@@ -570,14 +717,27 @@ async fn route(
                 .get_mut(&model)
                 .unwrap()
                 .streams += 1;
+            if let Some(conv) = &conv_id {
+                state
+                    .lock()
+                    .unwrap()
+                    .sessions
+                    .insert(conv.clone(), (model.clone(), instance, chunks));
+            }
             let (tx, rx) = mpsc::channel::<Result<Frame<Bytes>, std::io::Error>>(2);
             let state2 = Arc::clone(&state);
             tokio::spawn(async move {
                 let mut cut = false;
+                let mut detached = false;
                 for i in 0..chunks {
                     tokio::time::sleep(Duration::from_millis(chunk_ms)).await;
                     let alive = {
-                        let s = state2.lock().unwrap();
+                        let mut s = state2.lock().unwrap();
+                        if let Some(conv) = &conv_id {
+                            if let Some(session) = s.sessions.get_mut(conv) {
+                                session.2 = chunks - i - 1;
+                            }
+                        }
                         let m = &s.models[&model];
                         m.instance == instance && m.status != St::Unloaded
                     };
@@ -585,11 +745,23 @@ async fn route(
                         cut = true;
                         break;
                     }
+                    if detached {
+                        continue;
+                    }
                     let chunk = format!(
                         "data: {{\"choices\":[{{\"delta\":{{\"content\":\"t{i} \"}}}}]}}\n\n"
                     );
                     if tx.send(Ok(Frame::data(Bytes::from(chunk)))).await.is_err() {
-                        break;
+                        let mut s = state2.lock().unwrap();
+                        if conv_id.is_some() {
+                            // A session generation goes on for a later resume.
+                            s.events.push(Event::Detached(model.clone()));
+                            detached = true;
+                        } else {
+                            // The router sees the connection close and stops the generation.
+                            s.events.push(Event::ClientGone(model.clone()));
+                            break;
+                        }
                     }
                 }
                 {
@@ -625,6 +797,59 @@ async fn route(
         ("POST", "/echo") => full(200, body, "application/octet-stream"),
         _ => error(404, "not found"),
     }
+}
+
+/// The remaining chunks of a session generation, streamed while it goes on.
+fn resume_stream(state: Arc<Mutex<State>>, model: String, instance: u64) -> Response<BoxBody> {
+    let (tx, rx) = mpsc::channel::<Result<Frame<Bytes>, std::io::Error>>(2);
+    let chunk_ms = state.lock().unwrap().cfg.chunk_ms;
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(chunk_ms)).await;
+            let (alive, left) = {
+                let s = state.lock().unwrap();
+                let m = &s.models[&model];
+                let left = s
+                    .sessions
+                    .values()
+                    .find(|(sm, si, _)| *sm == model && *si == instance)
+                    .map_or(0, |(_, _, left)| *left);
+                (m.instance == instance && m.status != St::Unloaded, left)
+            };
+            if !alive {
+                state
+                    .lock()
+                    .unwrap()
+                    .events
+                    .push(Event::StreamCut(model.clone()));
+                let _ = tx
+                    .send(Err(std::io::Error::other("instance stopped")))
+                    .await;
+                return;
+            }
+            if left == 0 {
+                let _ = tx
+                    .send(Ok(Frame::data(Bytes::from_static(b"data: [DONE]\n\n"))))
+                    .await;
+                return;
+            }
+            if tx
+                .send(Ok(Frame::data(Bytes::from_static(b"data: {}\n\n"))))
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+    });
+    let stream = futures_util::stream::unfold(rx, |mut rx| async move {
+        rx.recv().await.map(|item| (item, rx))
+    });
+    let mut response = Response::new(StreamBody::new(stream).boxed());
+    response
+        .headers_mut()
+        .insert("content-type", "text/event-stream".parse().unwrap());
+    response
 }
 
 fn model_of(body: &[u8]) -> String {
@@ -689,6 +914,7 @@ pub fn test_config(upstream: String) -> noevia_inference_gate::GateConfig {
         lease_hard_ms: 10_000,
         unload_timeout_ms: 700,
         router_down_grace_ms: 300,
+        session_hold_ms: 1_500,
     };
     cfg.body_timeout = Duration::from_millis(400);
     cfg.header_timeout = Duration::from_secs(20);
@@ -696,6 +922,8 @@ pub fn test_config(upstream: String) -> noevia_inference_gate::GateConfig {
     cfg.listing_busy_interval = Duration::from_millis(30);
     cfg.tick = Duration::from_millis(20);
     cfg.lease_event_interval = Duration::from_millis(100);
+    cfg.header_read_timeout = Duration::from_millis(500);
+    cfg.reload_timeout = Duration::from_secs(10);
     cfg
 }
 

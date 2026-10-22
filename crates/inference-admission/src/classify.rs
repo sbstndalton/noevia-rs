@@ -2,10 +2,15 @@
 //!
 //! The router loads a model on any request that names it, unless the request asks for
 //! `autoload=false` (the router's `is_autoload`: an absent parameter means the router's default,
-//! which is on; otherwise only `true` or `1` load). A POST that names a model is a generation (or
-//! an embedding) on that model, so it always needs admission, whatever its `autoload` says: the
-//! gate must count it as in flight. Reads that cannot load (the listing, `autoload=false`
-//! properties and metrics, stream resumes) pass through untouched.
+//! which is on; otherwise only `true` or `1` load). A request that names a model runs on it, so it
+//! needs admission and is counted in flight; with `autoload=false` it cannot load the model, so it
+//! never waits for a switch (the scheduler passes it on when the model is not resident). Two reads
+//! neither load nor wake a sleeping model with `autoload=false` and pass through untouched:
+//! properties and metrics (the router's child answers them without waking; `/slots` and the
+//! adapter list do wake it, so they are counted). The listing passes through; a listing that asks
+//! for a preset reload (`reload` with a value, on `/models` or `/v1/models`) is a reload. A stream
+//! resume (`GET /v1/stream`) runs on the model that owns its session and is counted there.
+//! `POST /models` starts a download and loads nothing.
 //!
 //! The router decodes percent-escapes in paths and has no use for dot segments, so a path with
 //! `%`, `\`, `//` or a dot segment is refused before it is forwarded: what the gate classifies must
@@ -22,8 +27,15 @@ pub enum Class {
     /// Cannot load a model or end a generation: forwarded as is.
     Passthrough,
     /// May load `model`, or runs on it: admitted first and counted in flight while it runs.
-    /// `explicit_load` is a `POST /models/load`.
-    Model { model: String, explicit_load: bool },
+    /// `explicit_load` is a `POST /models/load`; `autoload` is false when the request asks the
+    /// router not to load the model.
+    Model {
+        model: String,
+        explicit_load: bool,
+        autoload: bool,
+    },
+    /// A stream resume (`GET /v1/stream?conv_id=`): runs on the session's model.
+    Resume { conv_id: Option<String> },
     /// Ends `model`'s process: `POST /models/unload`, or `DELETE /models?model=` (`delete`).
     /// `force` asks to end it even while it is in use (admin only).
     Unload {
@@ -31,7 +43,7 @@ pub enum Class {
         force: bool,
         delete: bool,
     },
-    /// The router re-reads its presets (`GET /models?reload=...`).
+    /// The router re-reads its presets (`GET /models?reload=...` or `/v1/models?reload=...`).
     Reload,
     /// Refused before anything is forwarded.
     Invalid(Refusal),
@@ -57,7 +69,11 @@ pub fn classify(method: &str, path: &str, query: Option<&str>, body: Option<&[u8
     if !valid_path(path) {
         return Class::Invalid(Refusal::InvalidPath);
     }
-    let params = query.map(first_params).unwrap_or_default();
+    let params = match query.map(first_params) {
+        None => Vec::new(),
+        Some(Some(params)) => params,
+        Some(None) => return Class::Invalid(Refusal::InvalidQuery),
+    };
     let param = |key: &str| {
         params
             .iter()
@@ -66,12 +82,24 @@ pub fn classify(method: &str, path: &str, query: Option<&str>, body: Option<&[u8
     };
     match method {
         "GET" | "HEAD" => {
-            if path == "/models" && param("reload").is_some() {
+            if matches!(path, "/models" | "/v1/models")
+                && param("reload").is_some_and(|v| !v.is_empty())
+            {
                 return Class::Reload;
             }
+            if path == "/v1/stream" {
+                return Class::Resume {
+                    conv_id: param("conv_id")
+                        .filter(|c| !c.is_empty() && c.len() <= MAX_CONV_ID_BYTES)
+                        .map(str::to_owned),
+                };
+            }
+            let autoload = autoload_loads(param("autoload"));
             match param("model") {
-                Some(model) if autoload_loads(param("autoload")) => model_class(model, false),
-                _ => Class::Passthrough,
+                // Answered by the child without waking it, and cannot load with autoload off.
+                Some(_) if !autoload && matches!(path, "/props" | "/metrics") => Class::Passthrough,
+                Some(model) => model_class(model, false, autoload),
+                None => Class::Passthrough,
             }
         }
         "DELETE" => {
@@ -87,12 +115,20 @@ pub fn classify(method: &str, path: &str, query: Option<&str>, body: Option<&[u8
                 _ => Class::Invalid(Refusal::InvalidModel),
             }
         }
-        "POST" | "PUT" | "PATCH" => classify_body(path, body.unwrap_or_default()),
+        "POST" | "PUT" | "PATCH" => classify_body(
+            path,
+            body.unwrap_or_default(),
+            autoload_loads(param("autoload")),
+        ),
         _ => Class::Passthrough,
     }
 }
 
-fn classify_body(path: &str, body: &[u8]) -> Class {
+fn classify_body(path: &str, body: &[u8], autoload: bool) -> Class {
+    // A download of a new model: loads nothing.
+    if path == "/models" {
+        return Class::Passthrough;
+    }
     let management = matches!(path, "/models/load" | "/models/unload");
     if body.iter().all(u8::is_ascii_whitespace) {
         return if management {
@@ -140,16 +176,17 @@ fn classify_body(path: &str, body: &[u8]) -> Class {
                 delete: false,
             }
         }
-        "/models/load" => model_class(&model, true),
-        _ => model_class(&model, false),
+        "/models/load" => model_class(&model, true, true),
+        _ => model_class(&model, false, autoload),
     }
 }
 
-fn model_class(model: &str, explicit_load: bool) -> Class {
+fn model_class(model: &str, explicit_load: bool, autoload: bool) -> Class {
     if valid_model_id(model) {
         Class::Model {
             model: model.to_owned(),
             explicit_load,
+            autoload,
         }
     } else {
         Class::Invalid(Refusal::InvalidModel)
@@ -161,18 +198,30 @@ fn autoload_loads(value: Option<&str>) -> bool {
     matches!(value, None | Some("true" | "1"))
 }
 
-/// The first value of every query key, decoded as the router decodes it.
-fn first_params(query: &str) -> Vec<(String, String)> {
+/// Longest query string the gate checks (bytes); a longer one is refused.
+pub const MAX_QUERY_BYTES: usize = 8192;
+/// Most distinct query keys the gate checks; a query with more is refused, never half-read.
+pub const MAX_QUERY_KEYS: usize = 64;
+/// Longest conversation id the gate tracks (bytes).
+pub const MAX_CONV_ID_BYTES: usize = 256;
+
+/// The first value of every query key, decoded as the router decodes it. `None` when the query is
+/// longer or has more distinct keys than the gate checks: the router reads every key, so a key
+/// past a cap must not go unseen.
+fn first_params(query: &str) -> Option<Vec<(String, String)>> {
+    if query.len() > MAX_QUERY_BYTES {
+        return None;
+    }
     let mut out: Vec<(String, String)> = Vec::new();
     for (key, value) in form_urlencoded::parse(query.as_bytes()) {
-        if out.len() >= 64 {
-            break;
-        }
         if !out.iter().any(|(k, _)| k.as_str() == key.as_ref()) {
+            if out.len() >= MAX_QUERY_KEYS {
+                return None;
+            }
             out.push((key.into_owned(), value.into_owned()));
         }
     }
-    out
+    Some(out)
 }
 
 /// A path the router routes exactly as written: absolute, printable ASCII, no escapes, no

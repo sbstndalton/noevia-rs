@@ -29,6 +29,9 @@ pub struct Config {
     pub unload_timeout_ms: u64,
     /// Waiters are refused once the router has been unreachable this long.
     pub router_down_grace_ms: u64,
+    /// A session generation (a request with a conversation id) whose client left before its
+    /// answer ended may go on in the router for a later resume: its model is held this long.
+    pub session_hold_ms: u64,
 }
 
 /// Why a configuration was refused.
@@ -63,6 +66,7 @@ impl Default for Config {
             lease_hard_ms: 1_800_000,
             unload_timeout_ms: 45_000,
             router_down_grace_ms: 30_000,
+            session_hold_ms: 120_000,
         }
     }
 }
@@ -77,6 +81,7 @@ impl Config {
             ("lease hard limit", self.lease_hard_ms),
             ("unload timeout", self.unload_timeout_ms),
             ("router down grace", self.router_down_grace_ms),
+            ("session hold", self.session_hold_ms),
         ];
         for (name, value) in durations {
             if value == 0 || value > MAX_DURATION_MS {

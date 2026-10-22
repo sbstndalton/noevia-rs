@@ -7,6 +7,16 @@ fn model(m: &str, explicit_load: bool) -> Class {
     Class::Model {
         model: m.into(),
         explicit_load,
+        autoload: true,
+    }
+}
+
+/// A request on `m` that asks the router not to load it.
+fn without_autoload(m: &str) -> Class {
+    Class::Model {
+        model: m.into(),
+        explicit_load: false,
+        autoload: false,
     }
 }
 
@@ -18,10 +28,11 @@ fn reads_that_cannot_load_pass_through() {
         ("/health", None),
         ("/props", Some("model=route-code&autoload=false")),
         ("/metrics", Some("model=route-code&autoload=false")),
-        ("/slots", Some("model=route-code&autoload=0")),
         ("/props", Some("model=route-code&autoload=no")),
-        ("/v1/stream", Some("conv_id=abc&from=3")),
         ("/props", None),
+        ("/models/sse", None),
+        // An empty reload value is no reload for the router.
+        ("/models", Some("reload=")),
     ] {
         assert_eq!(
             classify("GET", path, query, None),
@@ -36,6 +47,85 @@ fn reads_that_cannot_load_pass_through() {
     assert_eq!(
         classify("OPTIONS", "/v1/chat/completions", None, None),
         Class::Passthrough
+    );
+    // A download of a new model loads nothing.
+    assert_eq!(
+        classify("POST", "/models", None, Some(br#"{"model":"org/repo:Q4"}"#)),
+        Class::Passthrough
+    );
+}
+
+#[test]
+fn reads_that_wake_a_sleeping_model_are_counted_but_cannot_load() {
+    // The router's child wakes for these even with autoload off (only properties and metrics
+    // are answered asleep), so they run on the model and are counted.
+    assert_eq!(
+        classify("GET", "/slots", Some("model=route-code&autoload=0"), None),
+        without_autoload("route-code")
+    );
+    assert_eq!(
+        classify(
+            "GET",
+            "/lora-adapters",
+            Some("model=route-code&autoload=false"),
+            None
+        ),
+        without_autoload("route-code")
+    );
+}
+
+#[test]
+fn stream_resumes_run_on_their_session() {
+    assert_eq!(
+        classify("GET", "/v1/stream", Some("conv_id=abc&from=3"), None),
+        Class::Resume {
+            conv_id: Some("abc".into())
+        }
+    );
+    assert_eq!(
+        classify("GET", "/v1/stream", None, None),
+        Class::Resume { conv_id: None }
+    );
+    let long = format!("conv_id={}", "c".repeat(300));
+    assert_eq!(
+        classify("GET", "/v1/stream", Some(&long), None),
+        Class::Resume { conv_id: None }
+    );
+}
+
+#[test]
+fn queries_too_large_to_check_are_refused() {
+    // The router reads every key: a model behind 64 other keys must not go unseen.
+    let mut keys: Vec<String> = (0..64).map(|i| format!("k{i}=1")).collect();
+    keys.push("model=route-code".into());
+    assert_eq!(
+        classify("GET", "/props", Some(&keys.join("&")), None),
+        Class::Invalid(Refusal::InvalidQuery)
+    );
+    keys.remove(0);
+    assert_eq!(
+        classify("GET", "/props", Some(&keys.join("&")), None),
+        model("route-code", false)
+    );
+    // Repeating one key does not count against the key limit, only the length does.
+    let repeated = vec!["a=1"; 1000].join("&");
+    assert_eq!(
+        classify("GET", "/health", Some(&repeated), None),
+        Class::Passthrough
+    );
+    let long = format!("model=route-code&pad={}", "x".repeat(9000));
+    assert_eq!(
+        classify("GET", "/props", Some(&long), None),
+        Class::Invalid(Refusal::InvalidQuery)
+    );
+    assert_eq!(
+        classify(
+            "POST",
+            "/v1/chat/completions",
+            Some(&long),
+            Some(br#"{"model":"route-code"}"#)
+        ),
+        Class::Invalid(Refusal::InvalidQuery)
     );
 }
 
@@ -74,7 +164,7 @@ fn generations_and_embeddings_always_need_admission() {
         classify("POST", "/v1/chat/completions", None, Some(body)),
         model("route-code", false)
     );
-    // Even when they ask the router not to load: the gate must count them in flight.
+    // Even when they ask the router not to load, they run on the model and are counted.
     assert_eq!(
         classify(
             "POST",
@@ -82,7 +172,7 @@ fn generations_and_embeddings_always_need_admission() {
             Some("autoload=false"),
             Some(body)
         ),
-        model("route-code", false)
+        without_autoload("route-code")
     );
     assert_eq!(
         classify(
@@ -174,6 +264,15 @@ fn unloads_deletes_and_reloads_are_recognised() {
     );
     assert_eq!(
         classify("GET", "/models", Some("reload=0"), None),
+        Class::Reload
+    );
+    // The router serves its listing (and so the reload) on /v1/models as well.
+    assert_eq!(
+        classify("GET", "/v1/models", Some("reload=1"), None),
+        Class::Reload
+    );
+    assert_eq!(
+        classify("HEAD", "/v1/models", Some("reload=yes"), None),
         Class::Reload
     );
 }
