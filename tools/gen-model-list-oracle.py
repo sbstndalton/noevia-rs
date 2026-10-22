@@ -360,9 +360,11 @@ def store(data: Path, case: dict) -> list[str]:
             c.execute("INSERT INTO model_badge(alias, category, rating, note, run_id, created_at) "
                       "VALUES(?, ?, ?, ?, ?, ?)", [float("inf") if v == INF else v for v in row])
     with sqlite3.connect(data / "model_loader.db") as c:
-        # iterdump writes a stored infinity as `Inf`, which SQLite does not read back; 9e999 is
-        # how SQLite itself spells it.
-        return [re.sub(r"(?<=[,(])(-?)Inf(?=[,)])", r"\g<1>9e999", s) if s.startswith('INSERT INTO "model_badge"')
+        # iterdump spells a stored infinity by the SQLite build: `Inf` (which SQLite does not read
+        # back) or, from SQLite 3.43, `9.0e+999`. Both are the same stored value; the oracle keeps
+        # one spelling, 9e999, so it does not depend on the SQLite bundled with the interpreter
+        # (sbstndalton/noevia#2123).
+        return [re.sub(r"(?<=[,(])(-?)(?:Inf|9\.0e\+999)(?=[,)])", r"\g<1>9e999", s) if s.startswith('INSERT INTO "model_badge"')
                 else s for s in c.iterdump()]
 
 
