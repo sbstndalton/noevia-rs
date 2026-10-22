@@ -1,9 +1,13 @@
 # Native Docling service (#1322)
 
-`NOEVIA_DOCLING_IMPL=python|rust` defaults to `python`. Python mode execs the
-existing `server.py`; Rust mode requires `--features native-docling` and refuses
-before listening or spawning a worker when the capability is absent. Native
-errors never fall back to Python HTTP. `DOCLING_PORT` remains 8031 by default.
+The native server is the only HTTP owner (sbstndalton/noevia#1071). `NOEVIA_DOCLING_IMPL`
+is retired: unset, empty or `rust` are silent, and any other leftover value (an older
+environment file's `python` included) prints one line, `NOEVIA_DOCLING_IMPL is retired; the
+native server is always used`, and starts the native server anyway. Nothing here starts the
+retired Python HTTP server (`server.py`). The binary requires `--features native-docling` and
+refuses before listening or spawning a worker when the capability is absent, whatever the
+selector says. Native errors never fall back to Python HTTP. `DOCLING_PORT` remains 8031 by
+default.
 
 Rust owns HTTP validation, admission, generated temporary input, deadlines and
 the warm child. The fixed command is `python isolated_worker.py --stdout-replies
@@ -58,7 +62,8 @@ engines are synthetic. No model was imported, downloaded or loaded by these test
 
 ## Required qualification
 
-Set `NOEVIA_DOCLING_REFERENCE` to `docling/` from actual merged services
+The retired Python HTTP server survives only as this test oracle: the pinned services archive
+below, never a runtime path. Set `NOEVIA_DOCLING_REFERENCE` to `docling/` from actual merged services
 `bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7` (sbstndalton/noevia#1867 page ranges), archive SHA-256
 `d35a0351a98514411a0e87f112d041e53096b1cda6d3e3b409a4765f9601d9bb`.
 Tests fail when the reference is missing; no silent skip. Source hashes are checked
@@ -70,6 +75,15 @@ Python HTTP requests and records 56 JSON cases, including all supported formats 
 `X-Document-Pages` cases (#1867: PDFs only, at most 200 pages, ASCII digits, ranged bodies up to
 `DOCLING_RANGED_MAX_BYTES`, default 96 MiB, streamed to the temp file in 1 MiB chunks; `/health`
 advertises `ranges` and `rangedMaxBytes`).
+
+Beside the recorded goldens, `tests/hostile_differential.rs` runs the retired Python server and
+the native one side by side over a seeded, generated corpus (1,500 well-framed hostile requests:
+Content-Length spellings Python's `int()` does and does not read, Latin-1 and boundary-length
+names, duplicate and re-cased headers, page ranges, `X-Document-Figures`, paths, methods,
+versions, failing and crashing engines; plus 150 malformed framings). Well-framed requests must get
+the same status, content type and decoded body. Malformed framing (a bad request line, a header
+line without a colon, an obs-fold continuation line) is refused by the native server with its own
+400, where Python sometimes went on: a documented difference.
 
 ```
 cargo run --locked -p docling-service --example gen-fixtures -- "$NOEVIA_DOCLING_REFERENCE" /tmp/docling-http.json

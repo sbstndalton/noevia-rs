@@ -377,17 +377,37 @@ struct Headers {
     /// #1867: the first `X-Document-Pages`.
     pages: Option<String>,
 }
-async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
+/// Why a request was refused before its headers were read: `head` when it was a HEAD request,
+/// whose answer never carries a body.
+struct Refused {
+    head: bool,
+}
+async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, Refused> {
     // Read only the header, never speculative body bytes before admission. Bounded
     // one-byte reads also keep EOF monitoring independent of a buffering HTTP layer.
     let mut bytes = Vec::new();
-    bytes.try_reserve_exact(16 * 1024).map_err(|_| ())?;
+    bytes
+        .try_reserve_exact(16 * 1024)
+        .map_err(|_| Refused { head: false })?;
     while !bytes.ends_with(b"\r\n\r\n") {
         if bytes.len() == 16 * 1024 {
-            return Err(());
+            return Err(Refused {
+                head: bytes.starts_with(b"HEAD "),
+            });
         }
-        bytes.push(socket.read_u8().await.map_err(|_| ())?);
+        match socket.read_u8().await {
+            Ok(byte) => bytes.push(byte),
+            Err(_) => {
+                return Err(Refused {
+                    head: bytes.starts_with(b"HEAD "),
+                })
+            }
+        }
     }
+    let head = bytes.starts_with(b"HEAD ");
+    parse_headers(bytes).map_err(|()| Refused { head })
+}
+fn parse_headers(bytes: Vec<u8>) -> Result<Headers, ()> {
     let mut text = String::new();
     text.try_reserve_exact(bytes.len().checked_mul(2).ok_or(())?)
         .map_err(|_| ())?;
@@ -414,8 +434,15 @@ async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
         figures: false,
         pages: None,
     };
+    let mut figures = None;
     for (count, line) in lines.filter(|line| !line.is_empty()).enumerate() {
         if count >= 99 {
+            return Err(());
+        }
+        // sbstndalton/noevia#1071: an obs-fold continuation line (leading space or tab) is
+        // refused (RFC 9112 5.2), not read as a header of its own. The retired Python server
+        // appended it to the previous header's value instead.
+        if line.starts_with([' ', '\t']) {
             return Err(());
         }
         let (key, value) = line.split_once(':').ok_or(())?;
@@ -428,13 +455,16 @@ async fn headers(socket: &mut tokio::net::TcpStream) -> Result<Headers, ()> {
         if key.eq_ignore_ascii_case("x-document-pages") && result.pages.is_none() {
             result.pages = Some(value.to_owned());
         }
-        if key.eq_ignore_ascii_case("x-document-figures") {
-            result.figures = value.trim() == "1";
+        // #1071: like every other header here, the first X-Document-Figures counts, and only an
+        // exact `1` after the leading spaces and tabs (what the Python server read) asks for figures.
+        if key.eq_ignore_ascii_case("x-document-figures") && figures.is_none() {
+            figures = Some(value.trim_start_matches([' ', '\t']) == "1");
         }
         if key.eq_ignore_ascii_case("transfer-encoding") {
             return Err(());
         }
     }
+    result.figures = figures.unwrap_or(false);
     Ok(result)
 }
 /// (first, last) from an X-Document-Pages value "first-last": Ok(None) when absent or empty, Err when
@@ -602,8 +632,13 @@ async fn connection(
     ranged_cap: usize,
 ) -> std::io::Result<()> {
     let parsed = tokio::time::timeout(header_timeout, headers(&mut socket)).await;
-    let Ok(Ok(headers)) = parsed else {
-        return reply(&mut socket, 400, json!({"error":INVALID})).await;
+    let headers = match parsed {
+        Ok(Ok(headers)) => headers,
+        Ok(Err(Refused { head })) => {
+            let bytes = serde_json::to_vec(&json!({"error":INVALID}))?;
+            return reply_bytes(&mut socket, 400, "application/json", &bytes, head).await;
+        }
+        Err(_) => return reply(&mut socket, 400, json!({"error":INVALID})).await,
     };
     if headers.method == "GET" {
         return reply(
@@ -719,6 +754,84 @@ async fn connection(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn parsed(block: &str) -> Result<Headers, ()> {
+        parse_headers(block.as_bytes().to_vec())
+    }
+    #[test]
+    fn first_exact_figures_header_counts() {
+        let request = |fields: &str| {
+            parsed(&format!("POST /extract HTTP/1.0\r\n{fields}\r\n"))
+                .map(|h| h.figures)
+                .unwrap_or_else(|()| unreachable!("well-framed"))
+        };
+        assert!(!request(""));
+        assert!(request("X-Document-Figures: 1\r\n"));
+        assert!(request("x-document-figures:\t 1\r\n"));
+        assert!(!request("X-Document-Figures: 1 \r\n"));
+        assert!(!request("X-Document-Figures: 01\r\n"));
+        assert!(!request("X-Document-Figures: true\r\n"));
+        assert!(request(
+            "X-Document-Figures: 1\r\nX-Document-Figures: 0\r\n"
+        ));
+        assert!(!request(
+            "X-Document-Figures: 0\r\nX-Document-Figures: 1\r\n"
+        ));
+        assert!(!request("X-Document-Figures:\r\nX-Document-Figures: 1\r\n"));
+    }
+    #[test]
+    fn folded_header_lines_are_refused() {
+        assert!(parsed("POST /extract HTTP/1.0\r\nX-Document-Name: a\r\n b.pdf\r\n\r\n").is_err());
+        assert!(
+            parsed("POST /extract HTTP/1.0\r\nX-A: a\r\n\tX-Document-Name: b.pdf\r\n\r\n").is_err()
+        );
+        assert!(parsed("POST /extract HTTP/1.0\r\nX-Document-Name: a b.pdf\r\n\r\n").is_ok());
+    }
+    #[tokio::test]
+    async fn a_refused_head_request_gets_no_body() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        let port = listener
+            .local_addr()
+            .unwrap_or_else(|e| unreachable!("{e}"))
+            .port();
+        let server = tokio::spawn(serve(listener, Config::production(std::env::temp_dir())));
+        for (request, head) in [
+            (&b"HEAD /extract HTTP/1.0\r\nX-Bad\r\n\r\n"[..], true),
+            (&b"HEAD /extract HTTP/1.0\r\nX-A: a\r\n b\r\n\r\n"[..], true),
+            (&b"POST /extract HTTP/1.0\r\nX-Bad\r\n\r\n"[..], false),
+        ] {
+            let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", port))
+                .await
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            socket
+                .write_all(request)
+                .await
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            let mut bytes = Vec::new();
+            tokio::time::timeout(Duration::from_secs(5), socket.read_to_end(&mut bytes))
+                .await
+                .unwrap_or_else(|e| unreachable!("{e}"))
+                .unwrap_or_else(|e| unreachable!("{e}"));
+            let text = String::from_utf8_lossy(&bytes);
+            assert!(text.starts_with("HTTP/1.0 400 "), "{text}");
+            assert!(text.contains("Content-Type: application/json\r\n"));
+            assert!(text.contains("Content-Length: 42\r\n"));
+            let body = text
+                .split_once("\r\n\r\n")
+                .map(|(_, b)| b)
+                .unwrap_or_default();
+            assert_eq!(
+                body,
+                if head {
+                    ""
+                } else {
+                    r#"{"error":"Invalid document size or name."}"#
+                }
+            );
+        }
+        server.abort();
+    }
     #[tokio::test]
     async fn fragmented_truncated_and_oversized_frames() {
         let payload = br#"{"ready":true}"#;
