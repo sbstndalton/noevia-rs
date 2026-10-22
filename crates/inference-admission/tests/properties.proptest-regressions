@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc c5d1c57715a283895f873026eaff6c8f09e05f1207bc1ecc1a7608e6888ae86e # shrinks to ops = [Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 1 }, Arrive { model: 3, lease_request: false, use_lease: false, max_wait: 1 }, Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 1 }, Arrive { model: 1, lease_request: false, use_lease: false, max_wait: 1125 }, Advance(700), Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 619 }, Release(0), Advance(425)]
+cc af58696a49c28fc8f1219a9e6444f82aba01af20c9ce3c6be3a5551a1acd75eb # shrinks to ops = [Arrive { model: 2, lease_request: false, use_lease: false, max_wait: 1 }, Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 1 }, Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 1 }, Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 1 }, Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 1 }, Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 1026 }, Advance(700), Arrive { model: 2, lease_request: false, use_lease: false, max_wait: 934 }, Advance(326), Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 1 }, Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 1 }]
+cc 36a79dbd6ee283c3d6f45b8295bb938b4778a24120b5839b2367b4e46eadb884 # shrinks to ops = [Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 1 }, Arrive { model: 1, lease_request: false, use_lease: false, max_wait: 1036 }, Release(0), Advance(700), Arrive { model: 0, lease_request: false, use_lease: false, max_wait: 675 }, Release(0)]
