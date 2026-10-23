@@ -101,6 +101,11 @@ const PROJECT_ROUTES: &[&str] = &[
     CHAT_CONTEXT_WINDOW,
 ];
 
+/// Settings → Data → Delete old chats, its preview (GET only; routes.toml): a read of the chat
+/// lists, answered by crates/server-projects `retention` (sbstndalton/noevia#1071). `PUT`, which
+/// deletes chats, is Node's.
+const ACCOUNT_RETENTION: &str = "/api/account/retention";
+
 /// A chat's last context meter (GET only; routes.toml): a read, always answered here
 /// (sbstndalton/noevia#1071); Node refuses it.
 const CHAT_CONTEXT_WINDOW: &str = "/api/chats/{chatId}/context-window";
@@ -184,6 +189,8 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/sampling-settings" if auth => return Some(Native::SamplingSettings),
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
+        // Under /api/account/ but not the account crate's: it reads the chat lists.
+        ACCOUNT_RETENTION if auth => return Some(Native::Projects),
         _ => {}
     }
     match (route.path, route.switch) {
@@ -328,6 +335,8 @@ mod tests {
                     );
                     account += 1;
                 }
+                // The retention preview reads the chat lists, so the project handler answers it.
+                Some(Native::Projects) if r.path == ACCOUNT_RETENTION => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),
@@ -505,7 +514,7 @@ mod tests {
             ("DELETE", "/api/admin/users/u1"),
             ("GET", "/api/admin/web-address"),
             ("POST", "/api/profile/sharing"),
-            ("GET", "/api/account/retention"),
+            ("PUT", "/api/account/retention"),
             ("HEAD", "/api/auth/session"),
             ("GET", "/api/auth/login/password"),
             ("GET", "/api/profile/features"),
@@ -633,6 +642,22 @@ mod tests {
             ("DELETE", "/api/freechats/c1"),
         ] {
             assert_eq!(dispatch_under(m, p, off), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn the_retention_preview_is_rusts_for_get_only() {
+        let off = Switches::default();
+        assert_eq!(
+            dispatch_under("GET", "/api/account/retention", off),
+            Some(Native::Projects)
+        );
+        for m in ["PUT", "POST", "DELETE"] {
+            assert_eq!(
+                dispatch_under(m, "/api/account/retention", off),
+                None,
+                "{m}"
+            );
         }
     }
 

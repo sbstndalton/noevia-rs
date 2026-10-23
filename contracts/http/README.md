@@ -156,6 +156,21 @@ index and storage sweep) and brain note; `POST /api/chats/{chatId}/move` revokes
 /api/chats/{chatId}/history` hides a saved partial while Node's own chat turn streams that chat
 (chat-partial.cjs keeps that set in memory), so each needs a Node-to-front channel first.
 
+## sbstndalton/noevia#1071: the retention preview
+
+`GET /api/account/retention` (core routes/account.cjs, Settings -> Data -> Delete old chats) is
+Rust's with no switch (crates/server-projects `retention`, routed to the project handler although
+the path is under `/api/account/`): `chat-retention.json`'s `days` and, for each period, how many
+chats chat-retention.cjs `expired()` would delete, over `free-chats.json` and `projects.json` read
+fresh from disk without the Diary-internal projects. It is a pure function of those files and the
+clock: Node's view of them is only a cache of the same files (Rust is their only writer), so no
+Node process state is needed. Accepted difference: a Node save still queued for the store is
+counted once it is written. `tests/retention_property.rs` runs generated cases through core's own
+`expired()` (`tools/retention-expired-oracle.cjs`, CI sets `NOEVIA_CORE_CHECKOUT`). `PUT` stays
+Node's: it deletes chats through Node's delete cascade, and recounts what is due itself, refusing
+(409, with the preview) more than `confirmDeletes`, so a preview here never becomes a delete. Core
+refuses the GET (rust-auth.cjs `OWNED_ROUTES`) once its handler is deleted.
+
 ## sbstndalton/noevia#1071: Settings -> Sharing, and the small routes that stay Node's
 
 `GET` and `PUT /api/profile/sharing` (core routes/auth.cjs over dav-settings.cjs) are Rust's with
@@ -177,10 +192,6 @@ These stay Node's because they read Node in-process state:
 - `GET /api/features`: the flags of restart-only features are the values Node read at its boot
   (features.cjs `state[].boot`), and several flags are gated by availability callbacks over Node's
   decision settings.
-- `GET` and `PUT /api/account/retention`: the preview counts Node's in-memory chat lists
-  (`FREE_CHATS`, `PROJECTS`), and the save deletes due chats through Node's chat delete (its
-  transcript, context meter, brain note and attachments project), so the preview and the delete it
-  confirms must come from the same process.
 
 ## sbstndalton/noevia#1071: the front read routes are permanent
 

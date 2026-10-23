@@ -26,6 +26,8 @@
 //!   permanently native under #1071 (required cargo feature `rust-project-writes`).
 //! - [`context_window`]: a chat's last context meter (core routes/chat-lists.cjs `GET
 //!   /api/chats/{chatId}/context-window`), a read with no switch (sbstndalton/noevia#1071).
+//! - [`retention`]: Settings → Data → Delete old chats, its read (core routes/account.cjs `GET
+//!   /api/account/retention`), a read with no switch (sbstndalton/noevia#1071); `PUT` stays Node's.
 //! - [`partial`]: a chat's saved partial reply as another process reads it, running or cut off by
 //!   a restart (the `running: { start }` marker core chat-partial.cjs writes; sbstndalton/noevia#1071,
 //!   no route yet).
@@ -45,6 +47,7 @@ pub mod js;
 pub mod legacy_claim;
 pub mod lock;
 pub mod partial;
+pub mod retention;
 pub mod skills;
 pub mod store;
 pub mod store_api;

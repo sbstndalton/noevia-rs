@@ -1,7 +1,8 @@
 //! routes/account.cjs for the per-user JSON records Rust owns (M3, permanent): custom
 //! instructions (account-instructions.cjs), memory (account-memory.cjs) and interface
-//! preferences (account-preferences.cjs), in `UI_DATA_DIR/users/<id>/`. Retention stays Node's (it
-//! deletes chats). Reads and validation are the JS modules' own, including how they coerce odd
+//! preferences (account-preferences.cjs), in `UI_DATA_DIR/users/<id>/`. Retention is not here: its
+//! GET is crates/server-projects `retention` (it reads the chat lists), its PUT Node's (it deletes
+//! chats). Reads and validation are the JS modules' own, including how they coerce odd
 //! JSON (`Object.hasOwn` takes any value as a property name).
 
 use crate::util;

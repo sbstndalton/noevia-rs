@@ -49,7 +49,7 @@ pub const FREE_CHATS_SAVE_FAILED: &str = "could not save the free chats; nothing
 
 /// The free list core's workspace holds for a stored value (workspace.cjs since #1420:
 /// `Array.isArray(list) ? list : []`), which GET serves and POST merges into.
-fn as_list(stored: Option<JValue>) -> Vec<JValue> {
+pub(crate) fn as_list(stored: Option<JValue>) -> Vec<JValue> {
     match stored {
         Some(JValue::Arr(items)) => items,
         _ => Vec::new(),
