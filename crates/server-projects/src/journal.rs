@@ -200,6 +200,9 @@ pub(crate) fn record(
     record_entry(dir, chat, revision, op, origin, limits, None)
 }
 
+/// Explicit release capability: stable identity, validated raw metadata id and live/recovery delivery.
+pub const CHAT_MOVE_JOURNAL_MARKER: &str = "noevia-chat-move-journal/1";
+
 #[derive(Clone, Copy)]
 pub(crate) enum MoveDelivery {
     Live,
