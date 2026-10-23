@@ -307,3 +307,75 @@ async fn many_short_connections_leave_listener_responsive() {
     }
     h.close().await;
 }
+
+#[tokio::test]
+async fn large_final_output_survives_slow_reader_after_leader_exit() {
+    const BYTES: usize = 8 * 1024 * 1024;
+    let h = Harness::with_options(
+        "/usr/bin/head -c 8388608 /dev/zero",
+        1,
+        Duration::from_secs(10),
+        Duration::from_millis(600),
+        false,
+    )
+    .await;
+    let mut socket = h.connect().await;
+    socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let mut total = 0_usize;
+    let mut chunk = [0_u8; 16 * 1024];
+    loop {
+        let count = tokio::time::timeout_at(deadline, socket.read(&mut chunk))
+            .await
+            .unwrap()
+            .unwrap();
+        if count == 0 {
+            break;
+        }
+        assert!(chunk.iter().take(count).all(|byte| *byte == 0));
+        total += count;
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    assert_eq!(total, BYTES, "final ACP bytes were truncated");
+    h.close().await;
+}
+
+#[tokio::test]
+async fn stalled_final_output_resets_instead_of_clean_eof() {
+    // The leader exits immediately; an uncooperative descendant keeps the
+    // pipe busy. A client that never reads must get a reset on the bounded
+    // post-exit write stall, not a successful EOF on a partial ACP stream.
+    let h = Harness::with_options(
+        "(trap '' TERM; head -c 67108864 /dev/zero) & exit 0",
+        1,
+        Duration::from_secs(10),
+        Duration::from_millis(600),
+        false,
+    )
+    .await;
+    let mut socket = h.connect().await;
+    socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(4);
+    let mut chunk = [0_u8; 16 * 1024];
+    loop {
+        match tokio::time::timeout_at(deadline, socket.read(&mut chunk))
+            .await
+            .expect("stalled connection did not close")
+        {
+            Ok(count) => assert_ne!(count, 0, "partial ACP output ended with clean EOF"),
+            Err(error) => {
+                assert!(
+                    matches!(
+                        error.kind(),
+                        std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
+                    ),
+                    "unexpected read error: {error}"
+                );
+                break;
+            }
+        }
+    }
+    h.close().await;
+}

@@ -17,6 +17,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::process::Command;
 use tokio::sync::{watch, Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
+use tokio::time::Instant;
 
 const MAX_START_BYTES: usize = 64 * 1024;
 const START_TIMEOUT: Duration = Duration::from_secs(15);
@@ -48,14 +49,8 @@ impl Config {
             Ok(value) => value.parse::<u16>().map_err(|_| "PORT must be 0..65535")?,
             Err(_) => 8030,
         };
-        let positive = |key: &str, fallback: u64| {
-            std::env::var(key)
-                .ok()
-                .and_then(|v| v.parse::<u64>().ok())
-                .filter(|n| *n > 0)
-                .unwrap_or(fallback)
-        };
-        let connections = positive("CODE_SANDBOX_MAX_CONNECTIONS", MAX_CONNECTIONS as u64);
+        let connections =
+            positive_integer_env("CODE_SANDBOX_MAX_CONNECTIONS", MAX_CONNECTIONS as u64)?;
         let max_connections = checked_connections(connections)?;
         Ok((
             Self {
@@ -68,7 +63,10 @@ impl Config {
                     .collect(),
                 root: root.into(),
                 max_connections,
-                max_wall: Duration::from_millis(positive("CODE_SANDBOX_MAX_WALL_MS", MAX_WALL_MS)),
+                max_wall: Duration::from_millis(positive_integer_env(
+                    "CODE_SANDBOX_MAX_WALL_MS",
+                    MAX_WALL_MS,
+                )?),
                 grace: Duration::from_secs(5),
                 fallback_home: std::env::var("HOME").ok().filter(|v| !v.is_empty()),
                 rust_bridge: std::env::var("SANDBOX_BRIDGE_IMPL").ok().as_deref() == Some("rust"),
@@ -76,6 +74,27 @@ impl Config {
             port,
         ))
     }
+}
+
+fn positive_integer_env(key: &str, fallback: u64) -> Result<u64, String> {
+    match std::env::var(key) {
+        Err(std::env::VarError::NotPresent) => Ok(fallback),
+        Err(_) => Err(format!("{key} must be a positive decimal integer")),
+        Ok(raw) => positive_integer(key, &raw),
+    }
+}
+
+fn positive_integer(key: &str, raw: &str) -> Result<u64, String> {
+    if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!("{key} must be a positive decimal integer"));
+    }
+    let value = raw
+        .parse::<u64>()
+        .map_err(|_| format!("{key} is too large"))?;
+    if value == 0 {
+        return Err(format!("{key} must be greater than zero"));
+    }
+    Ok(value)
 }
 
 fn checked_connections(value: u64) -> Result<usize, String> {
@@ -201,9 +220,36 @@ impl Drop for GroupGuard {
     }
 }
 
+#[derive(Clone, Copy)]
+enum OutputPhase {
+    Reading,
+    Writing,
+}
+
+enum OutputDrain {
+    Finished,
+    Idle,
+    Stalled,
+    Aborted,
+}
+
+#[derive(Clone, Copy)]
+struct OutputProgress {
+    phase: OutputPhase,
+    at: Instant,
+}
+
+// A child may exit while a descendant keeps stdout open. Let already queued
+// bytes drain. A quiet pipe gets a short idle window; an active but blocked
+// socket write gets a separate bounded stall window. Each successful write
+// refreshes progress, so a large final ACP frame is not cut at a fixed time.
+const OUTPUT_READ_IDLE: Duration = Duration::from_millis(100);
+const OUTPUT_WRITE_STALL: Duration = Duration::from_secs(2);
+
 enum Stop {
     Child,
     Client,
+    Input,
     Wall,
     Shutdown,
     LostIdentity,
@@ -327,10 +373,18 @@ async fn connection(
         Ok::<(), std::io::Error>(())
     });
     let (output_failure_tx, output_failure_rx) = tokio::sync::oneshot::channel();
+    let (output_progress_tx, mut output_progress_rx) = watch::channel(OutputProgress {
+        phase: OutputPhase::Reading,
+        at: Instant::now(),
+    });
     let output_writer = Arc::clone(&writer);
     let mut output = tokio::spawn(async move {
         let mut chunk = [0_u8; 8192];
         loop {
+            let _ = output_progress_tx.send(OutputProgress {
+                phase: OutputPhase::Reading,
+                at: Instant::now(),
+            });
             let count = match stdout.read(&mut chunk).await {
                 Ok(count) => count,
                 Err(error) => {
@@ -344,6 +398,10 @@ async fn connection(
             let bytes = chunk
                 .get(..count)
                 .ok_or_else(|| std::io::Error::other("read count exceeded buffer"))?;
+            let _ = output_progress_tx.send(OutputProgress {
+                phase: OutputPhase::Writing,
+                at: Instant::now(),
+            });
             if let Err(error) = output_writer.lock().await.write_all(bytes).await {
                 let _ = output_failure_tx.send(());
                 return Err(error);
@@ -368,7 +426,7 @@ async fn connection(
     let reason = tokio::select! {
         state = observe_leader(guard.pid) => state,
         state = output_failed => state,
-        _ = &mut input => Stop::Client,
+        _ = &mut input => Stop::Input,
         _ = tokio::time::sleep(config.max_wall) => Stop::Wall,
         _ = shutdown.changed() => Stop::Shutdown,
     };
@@ -385,14 +443,62 @@ async fn connection(
         guard.disarm();
         false
     };
-    input.abort();
-    if matches!(reason, Stop::Child) {
-        // Preserve buffered final output, but never wait for a descendant
-        // holding stdout open through the five-second group grace.
-        let _ = tokio::time::timeout(Duration::from_millis(100), &mut output).await;
+    if !matches!(reason, Stop::Input) {
+        input.abort();
+        let _ = input.await;
     }
-    output.abort();
+    let mut group_killed = false;
+    let grace_deadline = Instant::now() + config.grace;
+    let output_drain = if matches!(reason, Stop::Child) {
+        let drain_started = Instant::now();
+        loop {
+            let progress = *output_progress_rx.borrow_and_update();
+            let wait = match progress.phase {
+                OutputPhase::Reading => OUTPUT_READ_IDLE,
+                OutputPhase::Writing => OUTPUT_WRITE_STALL,
+            };
+            let progress_deadline = progress.at.max(drain_started) + wait;
+            tokio::select! {
+                biased;
+                _ = &mut output => break OutputDrain::Finished,
+                changed = output_progress_rx.changed() => {
+                    if changed.is_err() {
+                        break OutputDrain::Finished;
+                    }
+                }
+                _ = tokio::time::sleep_until(grace_deadline), if !group_killed && term_sent => {
+                    let _ = guard.signal(Signal::SIGKILL);
+                    guard.disarm();
+                    group_killed = true;
+                }
+                _ = tokio::time::sleep_until(progress_deadline) => {
+                    break match progress.phase {
+                        OutputPhase::Reading => OutputDrain::Idle,
+                        OutputPhase::Writing => OutputDrain::Stalled,
+                    };
+                }
+            }
+        }
+    } else {
+        OutputDrain::Aborted
+    };
+    if !matches!(output_drain, OutputDrain::Finished) {
+        output.abort();
+        let _ = output.await;
+    }
     stderr_task.abort();
+    if matches!(output_drain, OutputDrain::Stalled) {
+        // A partial ACP frame must surface as a TCP error, not clean EOF.
+        // Tokio zero linger sends RST and never blocks this async worker.
+        eprintln!(
+            "code-sandbox: output forwarding stalled after child exit; response may be incomplete"
+        );
+        if let Ok(sink) = tokio::time::timeout(Duration::from_millis(200), writer.lock()).await {
+            if sink.as_ref().set_zero_linger().is_err() {
+                eprintln!("code-sandbox: failed to abort incomplete output connection");
+            }
+        }
+    }
     if matches!(reason, Stop::Wall) {
         let message = json!({"jsonrpc":"2.0","id":null,"error":{"code":-32000,
             "message":"The agent ran past the sandbox time limit and was stopped."}})
@@ -407,17 +513,20 @@ async fn connection(
             .await;
         }
     }
-    if let Ok(mut sink) = tokio::time::timeout(Duration::from_millis(200), writer.lock()).await {
-        let _ = tokio::time::timeout(Duration::from_millis(200), sink.shutdown()).await;
+    if !matches!(output_drain, OutputDrain::Stalled) {
+        if let Ok(mut sink) = tokio::time::timeout(Duration::from_millis(200), writer.lock()).await
+        {
+            let _ = tokio::time::timeout(Duration::from_millis(200), sink.shutdown()).await;
+        }
     }
     drop(writer);
     // Node releases its connection slot on socket close, before SIGKILL's
     // grace timer. The cleanup task still owns the waitable leader.
     drop(permit);
-    if term_sent {
-        tokio::time::sleep(config.grace).await;
+    if term_sent && !group_killed {
+        tokio::time::sleep_until(grace_deadline).await;
     }
-    if identity_ok {
+    if identity_ok && !group_killed {
         let _ = guard.signal(Signal::SIGKILL);
         guard.disarm();
     }
@@ -507,5 +616,13 @@ mod tests {
         assert!(checked_connections(u64::MAX).is_err());
         assert!(checked_connections((Semaphore::MAX_PERMITS as u64) + 1).is_err());
         assert_eq!(checked_connections(4).unwrap(), 4);
+    }
+
+    #[test]
+    fn configured_limits_reject_noninteger_values_instead_of_expanding() {
+        assert_eq!(positive_integer("limit", "7").unwrap(), 7);
+        for value in ["1.5", "1e3", "0.5", "NaN", "", "0", "-1"] {
+            assert!(positive_integer("limit", value).is_err(), "{value}");
+        }
     }
 }
