@@ -1124,9 +1124,10 @@ pub fn prepare_file(
     name: &str,
     hash: &str,
     bytes: u64,
+    target: &str,
 ) -> Result<(), Error> {
     check_start(ctx, start)?;
-    if !valid_file(name) || !valid_hash(hash) || bytes > 25 * 1024 * 1024 {
+    if !valid_file(name) || !valid_hash(hash) || !valid_hash(target) || bytes > 25 * 1024 * 1024 {
         return Err(Error::BadRequest);
     }
     with_lock(ctx, user, |p| {
@@ -1141,7 +1142,7 @@ pub fn prepare_file(
         {
             return Err(Error::Stale);
         }
-        let data = json!({"tool":"research.report.write","name":name,"hash":hash,"bytes":bytes});
+        let data = json!({"tool":"research.report.write","name":name,"hash":hash,"bytes":bytes,"target":target});
         if let Some(pending) = pending_file(&rows) {
             return if pending == data {
                 Ok(())
@@ -1285,6 +1286,7 @@ mod tests {
     const REQ3: &str = "33333333-3333-4333-8333-333333333333";
     const HASH1: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const HASH2: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const TARGET1: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
     fn fixture() -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let user = dir.path().join("users").join(USER);
@@ -1474,8 +1476,29 @@ mod tests {
             "Research a.md",
             HASH1,
             5,
+            TARGET1,
         )
         .unwrap();
+        assert!(
+            matches!(
+                prepare_file(
+                    c,
+                    USER,
+                    START,
+                    "100",
+                    OWNER1,
+                    "a",
+                    &id,
+                    &run,
+                    "Research a.md",
+                    HASH1,
+                    5,
+                    HASH2
+                ),
+                Err(Error::Stale)
+            ),
+            "an exact-key retry cannot redirect a prepared file to another target"
+        );
         let result = json!({"markdown":"# Q","sources":[],"sections":1});
         finish(
             c,
@@ -1503,7 +1526,8 @@ mod tests {
                 &run,
                 "Research a.sources.json",
                 HASH2,
-                5
+                5,
+                TARGET1
             ),
             Err(Error::Stale)
         ));
@@ -1595,6 +1619,7 @@ mod tests {
             "Research a.md",
             HASH1,
             5,
+            TARGET1,
         )
         .unwrap();
         artifact(
@@ -1623,6 +1648,7 @@ mod tests {
             "Research a.sources.json",
             HASH2,
             5,
+            TARGET1,
         )
         .unwrap();
         // Rust becomes unavailable before file outcome or terminal response can be recorded.
@@ -1662,7 +1688,8 @@ mod tests {
                 "",
                 "Other.sources.json",
                 HASH2,
-                5
+                5,
+                TARGET1
             ),
             Err(Error::Stale)
         ));
@@ -1700,6 +1727,7 @@ mod tests {
             "Research a.md",
             HASH1,
             5,
+            TARGET1,
         )
         .unwrap();
         artifact(
@@ -1775,6 +1803,7 @@ mod tests {
             "Research b.md",
             HASH1,
             5,
+            TARGET1,
         )
         .unwrap();
         artifact(

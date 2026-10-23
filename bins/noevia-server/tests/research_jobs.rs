@@ -140,7 +140,7 @@ async fn authenticated_admission_scope_events_cancel_and_partial_late_artifact()
         .1["status"],
         "cancelled"
     );
-    let prep = json!({"user":USER,"start":START,"born":"100","owner":OWNER,"projectId":"a","id":id,"run":run,"name":"Research a.md","hash":HASH,"bytes":5});
+    let prep = json!({"user":USER,"start":START,"born":"100","owner":OWNER,"projectId":"a","id":id,"run":run,"name":"Research a.md","hash":HASH,"bytes":5,"target":HASH});
     assert_eq!(
         call(&app, "prepare", Some(TOKEN), prep.clone()).await.0,
         StatusCode::OK

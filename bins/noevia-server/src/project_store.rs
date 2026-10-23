@@ -941,12 +941,31 @@ async fn handle_research_jobs(
                 required("name"),
                 required("hash"),
                 body.get("bytes").and_then(Value::as_u64),
+                required("target"),
             ) {
-                (Some(project), Some(id), Some(run), Some(name), Some(hash), Some(bytes)) => {
+                (
+                    Some(project),
+                    Some(id),
+                    Some(run),
+                    Some(name),
+                    Some(hash),
+                    Some(bytes),
+                    target,
+                ) => {
                     let answer = if matches!(op, ResearchOp::Prepare) {
                         jobs::prepare_file(
-                            ctx, &user, &start, &born, &owner, &project, &id, &run, &name, &hash,
+                            ctx,
+                            &user,
+                            &start,
+                            &born,
+                            &owner,
+                            &project,
+                            &id,
+                            &run,
+                            &name,
+                            &hash,
                             bytes,
+                            target.as_deref().unwrap_or(""),
                         )
                     } else {
                         jobs::artifact(
