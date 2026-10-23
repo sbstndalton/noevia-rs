@@ -1,10 +1,12 @@
 # HTTP contracts (full-Rust migration M0)
 
 - `routes.toml`: every `/api/` path the web client (noevia-web `src/`, tests excluded, at the
-  commit in `web.ref`) names, with the server that owns it. All `owner = "node"` until a Rust
-  slice takes a route over. CI job `routes-check` fails when the client names a path missing here
-  (`tools/contracts/routes_check.py`); paths are matched by shape, so `{id}` and `{chatId}` are the
-  same parameter. Methods are not listed yet.
+  commit in `web.ref`) names, with the server that owns it: `owner = "rust"` for the routes a
+  Rust slice has taken over, `owner = "node"` for the rest. A rust route lists the `methods` it
+  answers (all methods when absent); every other method goes to Node. `switch` names the deployment
+  switch a route still depends on (only `NOEVIA_RUST_PROJECT_WRITES` now). CI job `routes-check`
+  fails when the client names a path missing here (`tools/contracts/routes_check.py`); paths are
+  matched by shape, so `{id}` and `{chatId}` are the same parameter.
 - `corpus/`: a synthetic recorded corpus. `exchanges/NNNNNN-METHOD-path.json` are request/response
   pairs written by noevia-core's opt-in recorder (`NOEVIA_CONTRACT_RECORD`,
   `server/contract-record.cjs`) while `tools/contract-corpus/generate.cjs` drove a server on a
@@ -140,6 +142,19 @@ switch (#1071): core's own tests prove Node refuses these routes unconditionally
 `core.sha256` records the twice-fetched, byte-identical codeload archive SHA-256 for
 `core.ref` (metadata; existing replay CI consumes the single SHA in `core.ref`).
 The core#61 landing provides the required native OCR front acceptance gate (#1271).
+
+## sbstndalton/noevia#1071: a chat's context meter
+
+`GET /api/chats/{chatId}/context-window` (core routes/chat-lists.cjs) is Rust's with no switch
+(crates/server-projects `context_window`): a read of the user's `context-<sha256>.json` behind the
+chat tombstones, answer for answer, except that a state file holding `null` answers
+`{ meter: null }` where Node answered 500. Core refuses it (rust-projects.cjs `OWNED_ROUTES`) once
+its handler is deleted. The rest of the chat-list routes stay Node's for now: `DELETE
+/api/freechats/{id}` removes the chat's attachments project (a whole project delete with its RAG
+index and storage sweep) and brain note; `POST /api/chats/{chatId}/move` revokes the chat's
+"Allow for this chat" grant, which lives in Node's memory (approvals.cjs); and `GET
+/api/chats/{chatId}/history` hides a saved partial while Node's own chat turn streams that chat
+(chat-partial.cjs keeps that set in memory), so each needs a Node-to-front channel first.
 
 ## sbstndalton/noevia#1071: the front read routes are permanent
 
