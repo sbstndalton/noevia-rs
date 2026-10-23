@@ -27,11 +27,13 @@ mod device;
 mod files;
 mod open;
 mod passkeys;
+mod sharing;
 mod users;
 
 use js_json::JValue;
 use server_auth::{Authenticator, Creds};
 use server_store::{RustAuth, StoreError, Writer};
+pub use sharing::{configuration as dav_configuration, DavConfig, DavEnv};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -149,6 +151,8 @@ pub struct Settings {
     pub data_dir: PathBuf,
     /// dav-settings.cjs `configuration(env).available`: `Number(COWORK_DAV_PORT || 0)` is set.
     pub dav_available: bool,
+    /// The COWORK_DAV_* environment Settings -> Sharing reads (dav-settings.cjs `configuration`).
+    pub dav: DavEnv,
 }
 
 impl Settings {
@@ -160,6 +164,7 @@ impl Settings {
             trust_proxy: get("TRUST_PROXY").as_deref() == Some("true"),
             data_dir,
             dav_available: port != 0.0 && !port.is_nan(),
+            dav: DavEnv::from_lookup(&get),
         }
     }
 }
@@ -268,6 +273,9 @@ impl Account {
             return Ok(o);
         }
         if let Some(o) = files::account_files(self, req, &authn, now)? {
+            return Ok(o);
+        }
+        if let Some(o) = sharing::sharing(self, req, &authn, now)? {
             return Ok(o);
         }
         if let Some(o) = account::account(self, req, &authn, now)? {

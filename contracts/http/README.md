@@ -156,6 +156,32 @@ index and storage sweep) and brain note; `POST /api/chats/{chatId}/move` revokes
 /api/chats/{chatId}/history` hides a saved partial while Node's own chat turn streams that chat
 (chat-partial.cjs keeps that set in memory), so each needs a Node-to-front channel first.
 
+## sbstndalton/noevia#1071: Settings -> Sharing, and the small routes that stay Node's
+
+`GET` and `PUT /api/profile/sharing` (core routes/auth.cjs over dav-settings.cjs) are Rust's with
+no switch (crates/server-account `sharing`): every input is persisted or configured
+(`dav_settings`, `user_features.diary_enabled`, `storage_connections.kind`, COWORK_DAV_*). Rust is
+the table's only writer: server-store `OWNED_TABLES` grants `dav_settings` insert/update, core
+rust-auth.cjs refuses Node's writes to it and the routes (503 RUST_AUTH_OWNED); core still creates
+the table at boot and its DAV listener only reads the opt-in. Answer for answer with Node, except:
+the public address a `public` endpoint without COWORK_DAV_ORIGIN reports is read per request (Node
+fixed it at boot, sbstndalton/noevia#2143), a failed save is a 500 (Node answered 400 with the
+database's message), the row and its audit event share one transaction (sbstndalton/noevia#2142),
+and an oversized body keeps its 413.
+
+These stay Node's because they read Node in-process state:
+
+- `GET /api/health`: `ragAvailable` is whether Node's own process loaded its native index
+  modules (rag.cjs `loadDeps`), `retrieval` comes from Node's in-memory probe cache, in-flight
+  probe and model-maintenance gate, and `inferenceUp` probes Node's provider registry.
+- `GET /api/features`: the flags of restart-only features are the values Node read at its boot
+  (features.cjs `state[].boot`), and several flags are gated by availability callbacks over Node's
+  decision settings.
+- `GET` and `PUT /api/account/retention`: the preview counts Node's in-memory chat lists
+  (`FREE_CHATS`, `PROJECTS`), and the save deletes due chats through Node's chat delete (its
+  transcript, context meter, brain note and attachments project), so the preview and the delete it
+  confirms must come from the same process.
+
 ## sbstndalton/noevia#1071: the front read routes are permanent
 
 The usage, sampling and reasoning settings, routing mode and routing default, engine statistics,

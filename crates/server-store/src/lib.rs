@@ -95,6 +95,9 @@ pub const OWNED_TABLES: &[(&str, Access)] = &[
     ("app_passwords", Access::Full),
     ("audit_events", Access::Append),
     ("diary_connectors", Access::DeleteOnly),
+    // core dav-settings.cjs (Settings -> Sharing, #1071): created by core at boot; the DAV
+    // listener only reads it.
+    ("dav_settings", Access::InsertUpdate),
 ];
 
 /// `settings` keys Rust writes (only through [`WriteTx::set_setting`],

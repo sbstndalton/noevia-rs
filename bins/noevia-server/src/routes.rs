@@ -490,6 +490,8 @@ mod tests {
             ("PUT", "/api/profile/appearance"),
             ("PUT", "/api/profile/features"),
             ("POST", "/api/profile/onboarding"),
+            ("GET", "/api/profile/sharing"),
+            ("PUT", "/api/profile/sharing"),
             ("GET", "/api/account/memory"),
             ("PUT", "/api/account/preferences"),
             ("GET", "/api/admin/users"),
@@ -502,7 +504,7 @@ mod tests {
         for (m, p) in [
             ("DELETE", "/api/admin/users/u1"),
             ("GET", "/api/admin/web-address"),
-            ("GET", "/api/profile/sharing"),
+            ("POST", "/api/profile/sharing"),
             ("GET", "/api/account/retention"),
             ("HEAD", "/api/auth/session"),
             ("GET", "/api/auth/login/password"),
