@@ -226,7 +226,25 @@ pub(crate) fn write_atomic(file: &Path, text: &str) -> Result<(), StoreError> {
             StoreError::Io(e)
         });
     }
+    sync_parent(file);
     Ok(())
+}
+
+/// Best effort: the rename is made durable by fsyncing the folder that holds `file`. Some
+/// filesystems refuse a directory fsync (EINVAL, ENOTSUP, EBADF on some network mounts); the
+/// write has already landed, so a failure is logged and never fails the save.
+fn sync_parent(file: &Path) {
+    let Some(parent) = file.parent() else { return };
+    let result = std::fs::File::open(parent).and_then(|d| d.sync_all());
+    if let Err(e) = result {
+        #[allow(clippy::print_stderr)]
+        {
+            eprintln!(
+                "[transcript] could not fsync {} after a save (the save itself landed): {e}",
+                parent.display()
+            );
+        }
+    }
 }
 
 /// What a save of `history` stores: the newest [`HISTORY_CAP`] entries, sanitised.
@@ -405,6 +423,17 @@ mod tests {
 
     fn saved_text(dir: &Path, id: &str) -> String {
         std::fs::read_to_string(history_file(dir, id)).unwrap()
+    }
+
+    #[test]
+    fn write_atomic_lands_and_syncs_its_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("history-c1.json");
+        write_atomic(&file, "{\"history\":[]}").unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "{\"history\":[]}");
+        // A folder that cannot be opened for the fsync never fails a save that landed.
+        sync_parent(Path::new("/nonexistent-qa-dir/history-c1.json"));
+        sync_parent(Path::new("history-c1.json"));
     }
 
     #[test]
