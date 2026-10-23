@@ -584,6 +584,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-workspace-export"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "serde",
+ "serde_json",
+ "sha2",
+ "workspace-restore-verify",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
