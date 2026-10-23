@@ -1,0 +1,17 @@
+[package]
+name = "diary-corpus-parse"
+version = "0.1.0"
+description = "Pure tolerant Diary corpus parser and retrieval chunk projection"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sha2 = "=0.10.9"
+
+[dev-dependencies]
+serde_json = "1"
