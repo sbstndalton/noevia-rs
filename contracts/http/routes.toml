@@ -134,7 +134,14 @@ methods = ["POST"]
 
 [[route]]
 path = "/api/admin/web-address"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
+
+[[route]]
+path = "/api/instance"
+owner = "rust"
+methods = ["GET"]
+client = false
 
 [[route]]
 path = "/api/auth/device/approve"
@@ -750,7 +757,8 @@ client = false
 
 [[route]]
 path = "/.well-known/webauthn"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 client = false
 
 # /device answers a JSON 404 while the nativeClientAuth feature is off (routes/device-auth.cjs).
