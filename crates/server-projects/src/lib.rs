@@ -26,11 +26,14 @@
 //!   permanently native under #1071 (required cargo feature `rust-project-writes`).
 //! - [`context_window`]: a chat's last context meter (core routes/chat-lists.cjs `GET
 //!   /api/chats/{chatId}/context-window`), a read with no switch (sbstndalton/noevia#1071).
+//! - [`history`]: a chat's transcript and its interrupted partial reply (core routes/chat-lists.cjs
+//!   `GET /api/chats/{chatId}/history`), a read with no switch (sbstndalton/noevia#1071 slice 2);
+//!   `POST` stays Node's.
 //! - [`retention`]: Settings → Data → Delete old chats, its read (core routes/account.cjs `GET
 //!   /api/account/retention`), a read with no switch (sbstndalton/noevia#1071); `PUT` stays Node's.
 //! - [`partial`]: a chat's saved partial reply as another process reads it, running or cut off by
-//!   a restart (the `running: { start }` marker core chat-partial.cjs writes; sbstndalton/noevia#1071,
-//!   no route yet).
+//!   a restart (the `running: { start }` marker core chat-partial.cjs writes; sbstndalton/noevia#1071),
+//!   read by [`history`].
 //! - [`js`]: the JavaScript built-ins those handlers rely on.
 //!
 //! The caller (bins/noevia-server) has already run Node's request gate (session, origin, CSRF);
@@ -43,6 +46,7 @@ pub mod context;
 pub mod context_window;
 pub mod frame;
 pub mod free_chats;
+pub mod history;
 pub mod js;
 pub mod legacy_claim;
 pub mod lock;
