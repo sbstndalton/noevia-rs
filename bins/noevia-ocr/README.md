@@ -7,10 +7,15 @@ Rust HTTP/1.1. The listener defaults to `0.0.0.0:8030` (`NOEVIA_OCR_LISTEN` over
 
 This binary owns `/health`, `/extract`, `/extract-docx` and `/reduce-pdf` directly. It uses
 `docx-text` as a Rust library and only the external poppler, tesseract (eng+deu), and ghostscript
-engines. No Python, Node, wasm, pdfium or pdf.js participates in native requests. Deployment
-selection is owned by noevia-services/integration and remains Python by default.
+engines. No Python, Node, wasm, pdfium or pdf.js participates in native requests. It is the only
+owner (sbstndalton/noevia#1071): the retired `NOEVIA_OCR_IMPL` and `DOCX_TEXT_IMPL` selectors are
+ignored; unset, empty or `rust` are silent, any other leftover value (an older `.env` `python`
+included) prints one line per selector at startup without echoing the value, and the native server
+starts. A build without `native-ocr` still refuses whatever they say. `tests/retired_selector.rs`
+plants a `server.py` and a `python` shim to prove the retired owner never runs.
 
-The reference is noevia-services `bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7`.
+The reference is noevia-services `bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7`, the merged Python
+server pinned as the test oracle; it no longer exists on noevia-services main.
 A single processing slot, 25 MiB `/extract-docx` / 60 MiB reduction input, `/extract` up to
 `OCR_EXTRACT_MAX_BYTES` (default 96 MiB, sbstndalton/noevia#1867) streamed to the temp file and
 rendered only for the asked pages, 50 unique integer pages between 1 and 100000, `X-OCR-DPI`

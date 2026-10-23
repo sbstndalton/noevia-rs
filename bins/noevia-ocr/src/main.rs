@@ -1,4 +1,8 @@
 #![forbid(unsafe_code)]
+//! The OCR sidecar: the native server owns every route, always. sbstndalton/noevia#1071 retired
+//! NOEVIA_OCR_IMPL (which could start the Python HTTP server) and DOCX_TEXT_IMPL (which chose the
+//! Python or native DOCX reader inside it): a leftover value in an older environment file only
+//! earns one warning per selector at startup, and nothing here starts a Python server.
 use axum::{
     body::to_bytes,
     extract::{Request, State},
@@ -520,6 +524,33 @@ async fn serve(listener: tokio::net::TcpListener, limits: ServeLimits) -> std::i
         });
     }
 }
+/// The retired selectors and the one line a leftover value of each earns.
+const RETIRED: [(&str, &str); 2] = [
+    (
+        "NOEVIA_OCR_IMPL",
+        "NOEVIA_OCR_IMPL is retired; the native server is always used",
+    ),
+    (
+        "DOCX_TEXT_IMPL",
+        "DOCX_TEXT_IMPL is retired; the native DOCX reader is always used",
+    ),
+];
+/// Whether a leftover selector value needs its warning: unset, empty and `rust` (the old native
+/// value, any case and surrounding whitespace) are silent; anything else, `python` included, is
+/// ignored with a warning. The value itself is never echoed.
+fn retired_value_warns(value: Option<std::ffi::OsString>) -> bool {
+    let Some(value) = value else { return false };
+    let value = value.to_string_lossy();
+    let value = value.trim();
+    !(value.is_empty() || value.eq_ignore_ascii_case("rust"))
+}
+fn retired_warnings(read: impl Fn(&str) -> Option<std::ffi::OsString>) -> Vec<&'static str> {
+    RETIRED
+        .iter()
+        .filter(|(key, _)| retired_value_warns(read(key)))
+        .map(|(_, warning)| *warning)
+        .collect()
+}
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::args().any(|a| a == "--healthcheck") {
@@ -546,6 +577,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Err("native-ocr feature is not enabled".into());
     }
+    for warning in retired_warnings(|key| std::env::var_os(key)) {
+        eprintln!("{warning}");
+    }
     if !cfg!(feature = "native-ocr") {
         return Err("native-ocr feature is not enabled".into());
     }
@@ -566,6 +600,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn only_a_retired_value_other_than_rust_warns() {
+        for silent in [
+            None,
+            Some(""),
+            Some("  "),
+            Some("rust"),
+            Some("RUST"),
+            Some(" Rust\t"),
+        ] {
+            assert!(!retired_value_warns(silent.map(Into::into)), "{silent:?}");
+        }
+        for loud in ["python", "PYTHON", " python ", "invalid", "node", "rust2"] {
+            assert!(retired_value_warns(Some(loud.into())), "{loud:?}");
+        }
+    }
+    #[test]
+    fn each_retired_selector_warns_on_its_own_and_never_echoes_the_value() {
+        let only = |name: &'static str| {
+            move |key: &str| (key == name).then(|| std::ffi::OsString::from("python-secret-ish"))
+        };
+        assert_eq!(
+            retired_warnings(only("NOEVIA_OCR_IMPL")),
+            ["NOEVIA_OCR_IMPL is retired; the native server is always used"]
+        );
+        assert_eq!(
+            retired_warnings(only("DOCX_TEXT_IMPL")),
+            ["DOCX_TEXT_IMPL is retired; the native DOCX reader is always used"]
+        );
+        assert!(retired_warnings(|_| None).is_empty());
+        assert!(retired_warnings(|_| Some("rust".into())).is_empty());
+        let both = retired_warnings(|_| Some("python".into()));
+        assert_eq!(both.len(), 2);
+        assert!(both.iter().all(|w| !w.contains("python")));
+    }
     #[test]
     fn python_and_rust_health_versions() {
         assert!(healthy_status(b"HTTP/1.0 200 OK\r\n"));
