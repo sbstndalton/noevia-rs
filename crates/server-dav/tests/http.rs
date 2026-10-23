@@ -7,7 +7,7 @@ use server_dav::{
     Backend, BackendFuture, Capabilities, Config, DavService, DenyAll, Entry, Fault, File,
     Identity, Scope, WriteCondition,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::io;
 use std::net::SocketAddr;
@@ -24,6 +24,7 @@ const B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 #[derive(Default)]
 struct State {
     items: HashMap<String, String>,
+    dirs: HashSet<String>,
     allowed: bool,
     slow: bool,
     slow_write: bool,
@@ -192,8 +193,15 @@ impl Backend for Synthetic {
             if identity.user_id != "alice" || path == "link" {
                 return Err(Fault::Forbidden);
             }
-            if !self.0.lock().map_err(|_| Fault::Unavailable)?.allowed {
+            let mut state = self.0.lock().map_err(|_| Fault::Unavailable)?;
+            if !state.allowed {
                 return Err(Fault::Forbidden);
+            }
+            if path == "missing/child" {
+                return Err(Fault::MissingParent);
+            }
+            if path == "existing" || !state.dirs.insert(path.to_owned()) {
+                return Err(Fault::AlreadyExists);
             }
             Ok(())
         })
@@ -573,6 +581,24 @@ async fn conditional_put_mkdir_and_symlink_boundary() -> TestResult {
         request(
             addr,
             "PUT",
+            "/dav/alice/entry.md/",
+            &[("If-Match", &format!("\"{A}\""))],
+            b"must-not-write"
+        )
+        .await?
+        .status,
+        415
+    );
+    assert_eq!(
+        request(addr, "GET", "/dav/alice/entry.md", &[], b"")
+            .await?
+            .body,
+        b"Synthetic alice"
+    );
+    assert_eq!(
+        request(
+            addr,
+            "PUT",
             "/dav/alice/entry.md",
             &[("If-Match", &format!("\"{B}\""))],
             b"new"
@@ -689,6 +715,24 @@ async fn conditional_put_mkdir_and_symlink_boundary() -> TestResult {
             .await?
             .status,
         201
+    );
+    assert_eq!(
+        request(addr, "MKCOL", "/dav/alice/notes/", &[], b"")
+            .await?
+            .status,
+        405
+    );
+    assert_eq!(
+        request(addr, "MKCOL", "/dav/alice/existing/", &[], b"")
+            .await?
+            .status,
+        405
+    );
+    assert_eq!(
+        request(addr, "MKCOL", "/dav/alice/missing/child/", &[], b"")
+            .await?
+            .status,
+        409
     );
     assert_eq!(
         request(addr, "MKCOL", "/dav/alice/notes/", &[], b"x")

@@ -126,6 +126,7 @@ pub enum Fault {
     NotFound,
     Forbidden,
     Conflict,
+    AlreadyExists,
     MissingParent,
     Busy,
     Unavailable,
@@ -511,6 +512,7 @@ fn fault_reply(fault: Fault, write: bool) -> Response<Body> {
         Fault::Forbidden => (StatusCode::FORBIDDEN, "Sharing was disabled"),
         Fault::Conflict if write => (StatusCode::PRECONDITION_FAILED, "Conflict"),
         Fault::Conflict | Fault::MissingParent => (StatusCode::CONFLICT, "Conflict"),
+        Fault::AlreadyExists => (StatusCode::METHOD_NOT_ALLOWED, "Collection already exists"),
         Fault::Busy => (StatusCode::SERVICE_UNAVAILABLE, "Sharing is busy"),
         Fault::Ambiguous => (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -616,6 +618,15 @@ impl<B: Backend> DavService<B> {
                     .await
             }
             "PUT" => {
+                // A trailing slash names a collection on the wire, even when
+                // parse_path normalizes it for directory methods.
+                if req.uri().path().ends_with('/') {
+                    return reply(
+                        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                        "Only Markdown files can be written",
+                        false,
+                    );
+                }
                 self.put(identity, username, path, &headers, req.into_body())
                     .await
             }
@@ -1023,7 +1034,7 @@ impl<B: Backend> DavService<B> {
         }
         match tokio::time::timeout(self.config.deadline, self.backend.mkdir(identity, path)).await {
             Ok(Ok(())) => reply(StatusCode::CREATED, "", false),
-            Ok(Err(f)) => fault_reply(f, true),
+            Ok(Err(f)) => fault_reply(f, false),
             Err(_) => fault_reply(Fault::Ambiguous, true),
         }
     }
