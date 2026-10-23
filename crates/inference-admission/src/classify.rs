@@ -9,7 +9,8 @@
 //! properties and metrics (the router's child answers them without waking; `/slots` and the
 //! adapter list do wake it, so they are counted). The listing passes through; a listing that asks
 //! for a preset reload (`reload` with a value, on `/models` or `/v1/models`) is a reload. A stream
-//! resume (`GET /v1/stream`) runs on the model that owns its session and is counted there.
+//! resume (`GET /v1/stream`) runs on the model that owns its session and is counted there; an
+//! explicit stop (`DELETE /v1/stream`) ends the session's generation.
 //! `POST /models` starts a download and loads nothing.
 //!
 //! The router decodes percent-escapes in paths and has no use for dot segments, so a path with
@@ -36,6 +37,9 @@ pub enum Class {
     },
     /// A stream resume (`GET /v1/stream?conv_id=`): runs on the session's model.
     Resume { conv_id: Option<String> },
+    /// An explicit stop of a session generation (`DELETE /v1/stream?conv_id=`): forwarded as is;
+    /// once the router accepts it the session no longer holds its model.
+    Stop { conv_id: String },
     /// Ends `model`'s process: `POST /models/unload`, or `DELETE /models?model=` (`delete`).
     /// `force` asks to end it even while it is in use (admin only).
     Unload {
@@ -103,6 +107,16 @@ pub fn classify(method: &str, path: &str, query: Option<&str>, body: Option<&[u8
             }
         }
         "DELETE" => {
+            if path == "/v1/stream" {
+                return match param("conv_id")
+                    .filter(|c| !c.is_empty() && c.len() <= MAX_CONV_ID_BYTES)
+                {
+                    Some(conv_id) => Class::Stop {
+                        conv_id: conv_id.to_owned(),
+                    },
+                    None => Class::Passthrough,
+                };
+            }
             if path != "/models" {
                 return Class::Passthrough;
             }

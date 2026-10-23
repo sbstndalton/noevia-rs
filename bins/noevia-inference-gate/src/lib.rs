@@ -22,7 +22,10 @@
 //! router not to load a model that is not resident cannot use the slot and is passed on. A
 //! session generation (`x-conversation-id`) whose client leaves may go on in the router for a
 //! later resume, so its model is held for `GATE_SESSION_HOLD_SECONDS`, and a resume
-//! (`GET /v1/stream`) counts as work on the session's model. A preset reload holds every new
+//! (`GET /v1/stream`) counts as work on the session's model. The hold ends early when the session
+//! is stopped (`DELETE /v1/stream`) or its generation ends (a resume reaches its end, or the
+//! router's session lookup reports it done or gone), and is renewed while the router reports the
+//! generation still running. A preset reload holds every new
 //! admission until the router has answered it. Unloads and reloads run to their end on their own
 //! task, whatever happens to the client that asked.
 //!
@@ -86,6 +89,8 @@ pub struct GateConfig {
     pub max_connections: usize,
     /// Longest the router may take to answer a preset reload (no new work is admitted meanwhile).
     pub reload_timeout: Duration,
+    /// How often the router is asked whether held detached session generations still run.
+    pub session_check_interval: Duration,
 }
 
 impl std::fmt::Debug for GateConfig {
@@ -120,6 +125,7 @@ impl GateConfig {
             header_read_timeout: Duration::from_secs(30),
             max_connections: 512,
             reload_timeout: Duration::from_secs(120),
+            session_check_interval: Duration::from_secs(5),
         }
     }
 }
@@ -377,6 +383,83 @@ impl Gate {
         self.kick.notify_one();
     }
 
+    /// Asks the router which held detached session generations still run: a running one keeps
+    /// its hold renewed, a finished or unknown one releases it. Without a usable answer nothing
+    /// changes (each hold then ends on its own).
+    async fn check_sessions(self: &Arc<Self>) {
+        let held = {
+            let now = self.now();
+            self.lock().sched.held_sessions(now)
+        };
+        if held.is_empty() {
+            return;
+        }
+        let body = serde_json::json!({ "conversation_ids": held }).to_string();
+        let request = axum::http::Request::builder()
+            .method(Method::POST)
+            .uri(format!("{}/v1/streams/lookup", self.cfg.upstream))
+            .header("content-type", "application/json")
+            .body(Body::from(body));
+        let Ok(request) = request else {
+            return;
+        };
+        let Ok(Ok(response)) =
+            tokio::time::timeout(Duration::from_secs(5), self.client.request(request)).await
+        else {
+            return;
+        };
+        if !response.status().is_success() {
+            return;
+        }
+        use http_body_util::BodyExt;
+        let limited = http_body_util::Limited::new(response.into_body(), 1024 * 1024);
+        let Ok(Ok(collected)) =
+            tokio::time::timeout(Duration::from_secs(5), limited.collect()).await
+        else {
+            return;
+        };
+        let Some(running) = running_sessions(&collected.to_bytes(), &held) else {
+            return;
+        };
+        let mut released = Vec::new();
+        self.with(|inner, now| {
+            for (conv_id, still_running) in held.iter().zip(running) {
+                if still_running {
+                    inner.sched.extend_session(now, conv_id);
+                } else if inner.sched.release_session(conv_id) {
+                    if let Some(model) = inner.sessions.model(conv_id) {
+                        released.push(model.to_owned());
+                    }
+                }
+            }
+        });
+        for model in released {
+            log(
+                "gate.session_release",
+                &[("model", model.into()), ("why", "ended".into())],
+            );
+        }
+        self.kick.notify_one();
+    }
+
+    /// The session `conv_id` was stopped or its generation ended: its hold ends now.
+    pub(crate) fn end_session(self: &Arc<Self>, conv_id: &str, why: &'static str) {
+        let model = self.with(|inner, _| {
+            if inner.sched.release_session(conv_id) {
+                inner.sessions.model(conv_id).map(str::to_owned)
+            } else {
+                None
+            }
+        });
+        if let Some(model) = model {
+            log(
+                "gate.session_release",
+                &[("model", model.into()), ("why", why.into())],
+            );
+            self.kick.notify_one();
+        }
+    }
+
     /// Reads the router's listing once and feeds it to the scheduler. A refused or failed
     /// connection marks the router unreachable at once; a slow or malformed answer counts as one
     /// failed listing (several in a row mark it unreachable).
@@ -452,6 +535,39 @@ impl Gate {
     }
 }
 
+/// Reads the router's session lookup answer (an array of `{conversation_id, is_done}`): for each
+/// of `asked`, whether a generation for it still runs (the router keys per-model variants as
+/// `<id>::<model>`). `None`: not a usable answer.
+pub(crate) fn running_sessions(answer: &[u8], asked: &[String]) -> Option<Vec<bool>> {
+    let rows = serde_json::from_slice::<serde_json::Value>(answer).ok()?;
+    let rows: Vec<(&str, bool)> = rows
+        .as_array()?
+        .iter()
+        .filter_map(|row| {
+            let id = row.get("conversation_id")?.as_str()?;
+            let done = row
+                .get("is_done")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            Some((id, done))
+        })
+        .collect();
+    Some(
+        asked
+            .iter()
+            .map(|id| {
+                rows.iter().any(|(row_id, done)| {
+                    !done
+                        && (*row_id == id.as_str()
+                            || row_id
+                                .strip_prefix(id.as_str())
+                                .is_some_and(|rest| rest.starts_with("::")))
+                })
+            })
+            .collect(),
+    )
+}
+
 /// The scheduler's reading of the router's answer to an unload. Any answer means the router is
 /// up; only a missing answer (`UnloadOutcome::Failed`, decided by the caller) suggests otherwise.
 pub(crate) fn unload_outcome(status: u16) -> UnloadOutcome {
@@ -486,7 +602,10 @@ pub(crate) fn log(event: &str, fields: &[(&str, serde_json::Value)]) {
 pub(crate) struct InflightGuard {
     gate: Arc<Gate>,
     ticket: Option<Ticket>,
-    session: bool,
+    /// The conversation id of a session generation.
+    session: Option<String>,
+    /// The conversation id of a resume: its end means the generation ended.
+    resume_of: Option<String>,
     completed: bool,
 }
 
@@ -495,7 +614,8 @@ impl InflightGuard {
         Self {
             gate,
             ticket: Some(ticket),
-            session: false,
+            session: None,
+            resume_of: None,
             completed: false,
         }
     }
@@ -505,9 +625,14 @@ impl InflightGuard {
         self.ticket.as_ref().map(|t| t.model.as_str())
     }
 
-    /// Marks the request as part of a resumable session.
-    pub(crate) fn set_session(&mut self) {
-        self.session = true;
+    /// Marks the request as a generation of the resumable session `conv_id`.
+    pub(crate) fn set_session(&mut self, conv_id: String) {
+        self.session = Some(conv_id);
+    }
+
+    /// Marks the request as a resume of session `conv_id`.
+    pub(crate) fn set_resume_of(&mut self, conv_id: String) {
+        self.resume_of = Some(conv_id);
     }
 
     /// The response body reached its end.
@@ -519,14 +644,27 @@ impl InflightGuard {
 impl Drop for InflightGuard {
     fn drop(&mut self) {
         if let Some(ticket) = self.ticket.take() {
-            let detached = self.session && !self.completed;
+            let detached = if self.completed {
+                None
+            } else {
+                self.session.take()
+            };
             self.gate.with(|inner, now| {
                 inner.sched.finish(now, &ticket);
-                if detached {
-                    inner.sched.hold_session(now, &ticket.model);
+                if let Some(conv_id) = &detached {
+                    inner.sched.hold_session(now, conv_id, &ticket.model);
                 }
             });
-            if detached {
+            // The generation reached its end (directly or through a resume): no hold is needed.
+            if self.completed {
+                for conv_id in [self.session.take(), self.resume_of.take()]
+                    .into_iter()
+                    .flatten()
+                {
+                    self.gate.end_session(&conv_id, "ended");
+                }
+            }
+            if detached.is_some() {
                 log(
                     "gate.session_hold",
                     &[("model", ticket.model.as_str().into())],
@@ -593,6 +731,17 @@ pub async fn run(
             loop {
                 interval.tick().await;
                 gate.with(|_, _| ());
+            }
+        })
+    };
+    let session_checker = {
+        let gate = Arc::clone(&gate);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(gate.cfg.session_check_interval);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                interval.tick().await;
+                gate.check_sessions().await;
             }
         })
     };
@@ -674,6 +823,7 @@ pub async fn run(
     let _ = tokio::time::timeout(Duration::from_secs(10), graceful.shutdown()).await;
     ticker.abort();
     poller.abort();
+    session_checker.abort();
     Ok(())
 }
 
@@ -894,6 +1044,29 @@ mod tests {
         assert_eq!(unload_outcome(404), UnloadOutcome::NotRunning);
         assert_eq!(unload_outcome(500), UnloadOutcome::Refused);
         assert_eq!(unload_outcome(503), UnloadOutcome::Refused);
+    }
+
+    #[test]
+    fn session_lookups_report_running_generations() {
+        let asked = vec![
+            "c1".to_owned(),
+            "c2".to_owned(),
+            "c3".to_owned(),
+            "c4".to_owned(),
+        ];
+        let answer = br#"[
+            {"conversation_id":"c1","is_done":false},
+            {"conversation_id":"c2","is_done":true},
+            {"conversation_id":"c3::route-code","is_done":false},
+            {"conversation_id":"c40","is_done":false}
+        ]"#;
+        assert_eq!(
+            running_sessions(answer, &asked),
+            Some(vec![true, false, true, false])
+        );
+        assert_eq!(running_sessions(b"[]", &asked), Some(vec![false; 4]));
+        assert_eq!(running_sessions(b"{}", &asked), None);
+        assert_eq!(running_sessions(b"not json", &asked), None);
     }
 
     #[test]

@@ -88,7 +88,7 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
                         if let Some(model) = guard.model().map(str::to_owned) {
                             gate.lock().sessions.remember(&conv_id, &model);
                         }
-                        guard.set_session();
+                        guard.set_session(conv_id);
                     }
                     send(&gate, &parts, outgoing, Some(guard), permit).await
                 }
@@ -106,8 +106,27 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
                     .map(str::to_owned);
                 inner.sched.attach(model.as_deref())
             });
-            let guard = ticket.map(|ticket| InflightGuard::new(Arc::clone(&gate), ticket));
+            let guard = ticket.map(|ticket| {
+                let mut guard = InflightGuard::new(Arc::clone(&gate), ticket);
+                if let Some(conv_id) = conv_id {
+                    guard.set_resume_of(conv_id);
+                }
+                guard
+            });
             send(&gate, &parts, outgoing, guard, permit).await
+        }
+        Class::Stop { conv_id } => {
+            // The router cancels the session's generation: once it accepted the stop, the
+            // session no longer holds its model.
+            match forward(&gate, &parts, outgoing, permit, gate.cfg.header_timeout).await {
+                Ok(upstream) => {
+                    if upstream.status().is_success() {
+                        gate.end_session(&conv_id, "stopped");
+                    }
+                    respond_with(upstream, None)
+                }
+                Err(refusal) => refuse(&gate, refusal),
+            }
         }
         Class::Unload { model, force, .. } => {
             let admin = gate.admin(&parts.headers);

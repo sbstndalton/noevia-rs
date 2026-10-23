@@ -320,6 +320,9 @@ impl Harness {
                         }
                     }
                     Arrival::Queued { waiter, .. } => {
+                        if lease.is_none() && self.violation.is_none() {
+                            self.violation = Some(format!("{name} queued although it cannot load"));
+                        }
                         self.waiters
                             .insert(waiter, (self.now + 4_000, canonical(name).to_owned()));
                     }
@@ -344,7 +347,8 @@ impl Harness {
                 if !self.tickets.is_empty() {
                     let t = self.tickets.remove(i % self.tickets.len());
                     self.s.finish(self.now, &t);
-                    self.s.hold_session(self.now, &t.model);
+                    self.s
+                        .hold_session(self.now, &format!("conv-{i}"), &t.model);
                 }
             }
             Op::Cancel(i) => {
