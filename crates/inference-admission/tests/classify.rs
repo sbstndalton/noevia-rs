@@ -41,10 +41,6 @@ fn reads_that_cannot_load_pass_through() {
         );
     }
     assert_eq!(
-        classify("DELETE", "/v1/stream", Some("conv_id=abc"), None),
-        Class::Passthrough
-    );
-    assert_eq!(
         classify("OPTIONS", "/v1/chat/completions", None, None),
         Class::Passthrough
     );
@@ -379,4 +375,29 @@ fn hostile_paths_are_refused() {
         Class::Invalid(Refusal::InvalidPath)
     );
     assert_eq!(classify("GET", "/", None, None), Class::Passthrough);
+}
+
+#[test]
+fn an_explicit_stream_stop_is_a_stop_of_its_session() {
+    // Loads nothing and is not counted: forwarded as is, it only ends the session hold.
+    assert_eq!(
+        classify("DELETE", "/v1/stream", Some("conv_id=abc"), None),
+        Class::Stop {
+            conv_id: "abc".into()
+        }
+    );
+    assert_eq!(
+        classify("DELETE", "/v1/stream", Some("conv_id=conv-synthetic"), None),
+        Class::Stop {
+            conv_id: "conv-synthetic".into()
+        }
+    );
+    assert_eq!(
+        classify("DELETE", "/v1/stream", None, None),
+        Class::Passthrough
+    );
+    assert_eq!(
+        classify("DELETE", "/v1/stream", Some("conv_id="), None),
+        Class::Passthrough
+    );
 }

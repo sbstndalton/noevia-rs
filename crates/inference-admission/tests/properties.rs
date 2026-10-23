@@ -81,6 +81,12 @@ enum Op {
     Attach(Option<usize>),
     Finish(usize),
     FinishDetached(usize),
+    /// A session is stopped or the router reports its generation done.
+    ReleaseHold(usize),
+    /// The router reports a held generation still running.
+    ExtendHold(usize),
+    /// A late answer about an older generation of a held session.
+    StaleRelease(usize),
     Cancel(usize),
     Release(usize),
     Advance(u64),
@@ -108,6 +114,9 @@ fn op(allow_force: bool) -> impl Strategy<Value = Op> {
         1 => prop::option::of(0..6usize).prop_map(Op::Attach),
         4 => (0..64usize).prop_map(Op::Finish),
         1 => (0..64usize).prop_map(Op::FinishDetached),
+        1 => (0..64usize).prop_map(Op::ReleaseHold),
+        1 => (0..64usize).prop_map(Op::ExtendHold),
+        1 => (0..64usize).prop_map(Op::StaleRelease),
         1 => (0..64usize).prop_map(Op::Cancel),
         2 => (0..64usize).prop_map(Op::Release),
         5 => (0..1_200u64).prop_map(Op::Advance),
@@ -192,6 +201,8 @@ struct Harness {
     forced: bool,
     last_unload: Option<String>,
     violation: Option<String>,
+    /// The session holds as the rules say they must be: conversation id to (model, until, cap).
+    holds: BTreeMap<String, (String, u64, u64)>,
 }
 
 impl Harness {
@@ -207,6 +218,7 @@ impl Harness {
             forced: false,
             last_unload: None,
             violation: None,
+            holds: BTreeMap::new(),
         };
         let listing = h.engine.listing();
         h.s.observe(listing);
@@ -320,6 +332,9 @@ impl Harness {
                         }
                     }
                     Arrival::Queued { waiter, .. } => {
+                        if lease.is_none() && self.violation.is_none() {
+                            self.violation = Some(format!("{name} queued although it cannot load"));
+                        }
                         self.waiters
                             .insert(waiter, (self.now + 4_000, canonical(name).to_owned()));
                     }
@@ -344,7 +359,56 @@ impl Harness {
                 if !self.tickets.is_empty() {
                     let t = self.tickets.remove(i % self.tickets.len());
                     self.s.finish(self.now, &t);
-                    self.s.hold_session(self.now, &t.model);
+                    let conv = format!("conv-{i}");
+                    self.s.hold_session(self.now, &conv, &t.model);
+                    if !self.s.exempt(&t.model) {
+                        let cfg = self.s.config();
+                        let (hold, hard) = (cfg.session_hold_ms, cfg.lease_hard_ms);
+                        self.holds.insert(
+                            conv,
+                            (t.model.clone(), self.now + hold, self.now + hold.max(hard)),
+                        );
+                    }
+                }
+            }
+            Op::ReleaseHold(i) => {
+                let keys: Vec<String> = self.holds.keys().cloned().collect();
+                if !keys.is_empty() {
+                    let conv = &keys[i % keys.len()];
+                    self.s.release_session(conv);
+                    self.holds.remove(conv);
+                }
+            }
+            Op::ExtendHold(i) => {
+                let held = self.s.held_sessions(self.now);
+                if !held.is_empty() {
+                    let (conv, generation) = &held[i % held.len()];
+                    let renewed = self.s.extend_session(self.now, conv, *generation);
+                    let hold_ms = self.s.config().session_hold_ms;
+                    match self.holds.get_mut(conv) {
+                        Some((_, until, cap)) if self.now < *until => {
+                            *until = (*until).max((self.now + hold_ms).min(*cap));
+                            if !renewed && self.violation.is_none() {
+                                self.violation = Some(format!("live hold {conv} not renewed"));
+                            }
+                        }
+                        _ => {
+                            if self.violation.is_none() {
+                                self.violation = Some(format!("{conv} held but not expected"));
+                            }
+                        }
+                    }
+                }
+            }
+            Op::StaleRelease(i) => {
+                let held = self.s.held_sessions(self.now);
+                if !held.is_empty() {
+                    let (conv, generation) = &held[i % held.len()];
+                    if self.s.release_session_generation(conv, generation + 1)
+                        && self.violation.is_none()
+                    {
+                        self.violation = Some(format!("a stale answer ended the hold of {conv}"));
+                    }
                 }
             }
             Op::Cancel(i) => {
@@ -459,6 +523,18 @@ impl Harness {
         for action in &actions {
             match action {
                 Action::Unload { model } => {
+                    if !stuck_before && !self.forced {
+                        let held = self
+                            .holds
+                            .iter()
+                            .find(|(_, (m, until, _))| m == model && self.now < *until);
+                        prop_assert!(
+                            held.is_none(),
+                            "switch unloads {} while {:?} holds it",
+                            model,
+                            held
+                        );
+                    }
                     let requests = self.tickets.iter().filter(|t| t.model == *model).count();
                     let leases = self.leases.iter().filter(|(_, m)| m == model).count();
                     prop_assert_eq!(requests, 0, "unload of {} with a request in flight", model);

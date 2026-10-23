@@ -150,6 +150,10 @@ pub enum WaitKind {
 pub struct Ticket {
     pub model: String,
     pub lease: Option<LeaseKey>,
+    /// A request that asked the router not to load anything (`autoload=false`): when it ends it
+    /// leaves no residency grace, so a client polling such reads never keeps its model from a
+    /// switch.
+    pub read_only: bool,
 }
 
 /// What an admission gives.
@@ -251,6 +255,21 @@ struct Lease {
     created: u64,
 }
 
+/// A detached session generation holding its model (see [`Scheduler::hold_session`]).
+#[derive(Clone, Debug)]
+struct SessionHold {
+    model: String,
+    until: u64,
+    /// The hold is never extended past this.
+    cap: u64,
+    /// Numbers holds, so an answer about an older generation never ends a newer hold.
+    generation: u64,
+}
+
+/// Most session holds tracked one by one; past this a hold falls back to a plain residency hold
+/// of its model (which cannot be released early).
+const MAX_SESSION_HOLDS: usize = 4096;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Switch {
     Idle,
@@ -317,6 +336,8 @@ pub struct Status {
     pub leases: usize,
     pub queue: Vec<QueuedGroup>,
     pub router_up: bool,
+    /// Detached session generations holding their model.
+    pub session_holds: usize,
     pub counters: Counters,
 }
 
@@ -337,6 +358,8 @@ pub struct Scheduler {
     listing_failures: u32,
     switch_backoff_until: u64,
     grace_until: BTreeMap<String, u64>,
+    /// Conversation id to the hold of its detached generation.
+    session_holds: BTreeMap<String, SessionHold>,
     /// Listing reads started so far. A listing is known by the number its read was started
     /// with, so a listing whose read started before a model's last work (or before an unload
     /// was asked for) is stale for it, however late its answer arrives.
@@ -368,6 +391,7 @@ impl Scheduler {
             listing_failures: 0,
             switch_backoff_until: 0,
             grace_until: BTreeMap::new(),
+            session_holds: BTreeMap::new(),
             epoch: 0,
             listing_ticket: 0,
             switch_epoch: 0,
@@ -491,6 +515,10 @@ impl Scheduler {
         self.grace_until
             .get(model)
             .is_some_and(|&until| now < until)
+            || self
+                .session_holds
+                .values()
+                .any(|h| h.model == model && now < h.until)
     }
 
     /// A group for another model has waited past the fair hold: the holder takes no new work.
@@ -622,10 +650,19 @@ impl Scheduler {
     }
 
     /// A request that names `model` but asks the router not to load it (`autoload=false`). It
-    /// runs on the model only when that is resident here (the holder, or an exempt model), and is
-    /// then admitted and counted like any request; otherwise it cannot load or use the slot and is
-    /// passed to the router, which answers that the model is not loaded. It never queues for a
-    /// switch.
+    /// never queues and never causes a switch:
+    /// - with a live lease it is handled like any request of that lease;
+    /// - when the model is resident here (the holder, or an exempt model the router lists as
+    ///   resident) it is admitted and counted at once, even while other models wait (it runs on
+    ///   the loaded model and loads nothing), and leaves no residency grace when it ends.
+    ///   This bypasses the fair hold on purpose: such a request can never cause a switch, so
+    ///   queueing it would only make it wait for, and then trigger, a needless unload. The cost
+    ///   is that overlapping `autoload=false` generations on the holder keep it busy longer;
+    ///   clients use `autoload=false` for cheap reads. It is
+    ///   refused while the router is unreachable, a preset reload runs or its model is being
+    ///   unloaded;
+    /// - otherwise it cannot load or use the slot and is passed to the router, which answers that
+    ///   the model is not loaded.
     pub fn arrive_without_autoload(
         &mut self,
         now: u64,
@@ -634,6 +671,9 @@ impl Scheduler {
         max_wait_ms: u64,
     ) -> Arrival {
         let id = self.canon(model);
+        if lease.is_some() {
+            return self.arrive(now, &id, WaitKind::Request, lease, max_wait_ms);
+        }
         let resident_here = self.holder.as_deref() == Some(id.as_str())
             || (self.exempt(&id)
                 && self
@@ -641,11 +681,23 @@ impl Scheduler {
                     .as_ref()
                     .and_then(|l| l.status_of(&id))
                     .is_some_and(|s| s.resident()));
-        if lease.is_none() && !resident_here {
-            self.counters.arrivals += 1;
+        self.counters.arrivals += 1;
+        if !resident_here {
             return Arrival::Pass;
         }
-        self.arrive(now, &id, WaitKind::Request, lease, max_wait_ms)
+        if self.router_down() {
+            return self.refuse(Refusal::EngineUnavailable);
+        }
+        if self.in_maintenance() || self.switch_model() == Some(id.as_str()) {
+            return self.refuse(Refusal::EngineBusy);
+        }
+        match self.admit_request(&id, None) {
+            Arrival::Admitted(Admission::Request(mut ticket)) => {
+                ticket.read_only = true;
+                Arrival::Admitted(Admission::Request(ticket))
+            }
+            other => other,
+        }
     }
 
     fn may_admit_now(&self, now: u64, model: &str) -> bool {
@@ -676,6 +728,7 @@ impl Scheduler {
         Arrival::Admitted(Admission::Request(Ticket {
             model: model.to_owned(),
             lease,
+            read_only: false,
         }))
     }
 
@@ -728,7 +781,7 @@ impl Scheduler {
                 }
             }
             None => {
-                if !self.exempt(&ticket.model) {
+                if !ticket.read_only && !self.exempt(&ticket.model) {
                     self.extend_grace(
                         &ticket.model,
                         now.saturating_add(self.cfg.residency_grace_ms),
@@ -743,16 +796,91 @@ impl Scheduler {
         *entry = (*entry).max(until);
     }
 
-    /// A session generation (one carrying a conversation id) on `model` lost its client before
-    /// its answer ended: the router may go on generating it for a later resume, so the model is
-    /// held for the session hold (never switched away meanwhile; the fair hold still stops new
-    /// work riding along).
-    pub fn hold_session(&mut self, now: u64, model: &str) {
+    /// A session generation (conversation `conv_id`) on `model` lost its client before its
+    /// answer ended: the router may go on generating it for a later resume, so the model is held
+    /// for the session hold (never switched away meanwhile; the fair hold still stops new work
+    /// riding along). The hold is tracked per conversation and numbered: a new generation of the
+    /// same conversation replaces it with a fresh hold (new number, hold and cap from now), as
+    /// the router replaces the session. [`Scheduler::release_session`] ends it early (an
+    /// explicit stop, or the generation ended), [`Scheduler::release_session_generation`] ends it
+    /// only if it is still the hold of that number (a lookup answer about it), and
+    /// [`Scheduler::extend_session`] renews it while the router still runs the generation, up to
+    /// the lease hard limit after it began.
+    pub fn hold_session(&mut self, now: u64, conv_id: &str, model: &str) {
         let id = self.canon(model);
         if self.exempt(&id) {
             return;
         }
-        self.extend_grace(&id, now.saturating_add(self.cfg.session_hold_ms));
+        let until = now.saturating_add(self.cfg.session_hold_ms);
+        if !self.session_holds.contains_key(conv_id)
+            && self.session_holds.len() >= MAX_SESSION_HOLDS
+        {
+            self.extend_grace(&id, until);
+            return;
+        }
+        let cap = now.saturating_add(self.cfg.session_hold_ms.max(self.cfg.lease_hard_ms));
+        let generation = self.next();
+        self.session_holds.insert(
+            conv_id.to_owned(),
+            SessionHold {
+                model: id,
+                until,
+                cap,
+                generation,
+            },
+        );
+    }
+
+    /// The router still runs the detached generation of `conv_id` whose hold has number
+    /// `generation`: the hold is renewed for another session hold (never past its cap).
+    /// `false`: no live hold of that number.
+    pub fn extend_session(&mut self, now: u64, conv_id: &str, generation: u64) -> bool {
+        let hold_ms = self.cfg.session_hold_ms;
+        match self.session_holds.get_mut(conv_id) {
+            Some(hold) if now < hold.until && hold.generation == generation => {
+                hold.until = hold.until.max(now.saturating_add(hold_ms)).min(hold.cap);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The session `conv_id` was stopped or its generation ended: its hold ends now. `false`: no
+    /// such hold.
+    pub fn release_session(&mut self, conv_id: &str) -> bool {
+        self.session_holds.remove(conv_id).is_some()
+    }
+
+    /// The router reports the generation whose hold has number `generation` done: that hold
+    /// ends now. A hold made since (a newer generation) is kept. `false`: no hold of that number.
+    pub fn release_session_generation(&mut self, conv_id: &str, generation: u64) -> bool {
+        if self
+            .session_holds
+            .get(conv_id)
+            .is_some_and(|h| h.generation == generation)
+        {
+            self.session_holds.remove(conv_id);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The live session holds: conversation id and hold number.
+    pub fn held_sessions(&self, now: u64) -> Vec<(String, u64)> {
+        self.session_holds
+            .iter()
+            .filter(|(_, h)| now < h.until)
+            .map(|(c, h)| (c.clone(), h.generation))
+            .collect()
+    }
+
+    /// The model a live session hold keeps, if any.
+    pub fn session_hold_model(&self, now: u64, conv_id: &str) -> Option<&str> {
+        self.session_holds
+            .get(conv_id)
+            .filter(|h| now < h.until)
+            .map(|h| h.model.as_str())
     }
 
     /// A stream resume (`GET /v1/stream`) of a session on `model` (the holder when the session's
@@ -782,6 +910,7 @@ impl Scheduler {
         Some(Ticket {
             model: id,
             lease: None,
+            read_only: false,
         })
     }
 
@@ -985,6 +1114,7 @@ impl Scheduler {
     /// holder is idle and another model waits, asks for its unload or grants the next group.
     /// Returns the actions for the caller.
     pub fn poll(&mut self, now: u64) -> Vec<Action> {
+        self.session_holds.retain(|_, h| now < h.until);
         self.expire_leases(now);
         if let Some(since) = self.router_down_since {
             if now.saturating_sub(since) >= self.cfg.router_down_grace_ms {
@@ -1136,6 +1266,7 @@ impl Scheduler {
                     Grant::Request(Ticket {
                         model: waiter.model.clone(),
                         lease: None,
+                        read_only: false,
                     })
                 }
                 WaitKind::Lease => {
@@ -1209,6 +1340,7 @@ impl Scheduler {
                 })
                 .collect(),
             router_up: !self.router_down(),
+            session_holds: self.session_holds.len(),
             counters: self.counters.clone(),
         }
     }

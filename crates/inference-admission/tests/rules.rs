@@ -644,7 +644,7 @@ fn a_session_whose_client_left_holds_its_model_for_the_session_hold() {
     queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
     // Its client went away mid-answer: the router may still be generating for a resume.
     s.finish(100, &t);
-    s.hold_session(100, CODE);
+    s.hold_session(100, "conv-synthetic", CODE);
     assert!(unloads(&s.poll(400)).is_empty(), "past the residency grace");
     assert!(unloads(&s.poll(3_099)).is_empty());
     assert_eq!(unloads(&s.poll(3_100)), vec![CODE.to_owned()]);
@@ -774,6 +774,7 @@ fn a_finish_without_admission_is_counted_and_ignored() {
         &Ticket {
             model: CODE.into(),
             lease: None,
+            read_only: false,
         },
     );
     assert_eq!(s.status(0).counters.finish_without_admission, 1);
@@ -822,4 +823,129 @@ fn config_limits_are_validated() {
     let mut bad_exempt = Config::default();
     bad_exempt.exempt.insert("bad\nid".into());
     assert!(bad_exempt.validate().is_err());
+}
+
+#[test]
+fn a_non_loading_request_on_the_holder_is_admitted_while_another_model_waits_and_leaves_no_grace() {
+    let mut s = with_loaded(CODE);
+    let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
+    // Past the fair hold: loading work for the holder would queue behind the other model.
+    queued(s.arrive(1_500, CODE, WaitKind::Request, None, 10_000));
+    let read = admitted(s.arrive_without_autoload(1_500, CODE, None, 10_000));
+    assert!(read.read_only);
+    assert_eq!(s.in_flight(CODE), 2);
+    assert_eq!(s.queued_models(), vec![SMART.to_owned(), CODE.to_owned()]);
+    s.finish(1_600, &read);
+    s.finish(1_600, &t);
+    // Only the generation's residency grace (200 ms) delays the switch, not the read.
+    assert!(unloads(&s.poll(1_799)).is_empty());
+    assert_eq!(unloads(&s.poll(1_800)), vec![CODE.to_owned()]);
+}
+
+#[test]
+fn a_non_loading_request_never_queues_or_switches() {
+    let mut s = with_loaded(CODE);
+    // Not resident: passed on, nothing changes.
+    assert_eq!(
+        s.arrive_without_autoload(0, SMART, None, 10_000),
+        Arrival::Pass
+    );
+    assert!(s.poll(10).is_empty());
+    assert_eq!(s.holder(), Some(CODE));
+    // While the holder is being unloaded: refused as busy, never queued.
+    queued(s.arrive(20, SMART, WaitKind::Request, None, 10_000));
+    assert_eq!(unloads(&s.poll(500)), vec![CODE.to_owned()]);
+    assert_eq!(
+        s.arrive_without_autoload(600, CODE, None, 10_000),
+        Arrival::Refused(Refusal::EngineBusy)
+    );
+    assert_eq!(s.waiting(), 1);
+}
+
+#[test]
+fn a_session_hold_ends_when_released_and_is_renewed_while_its_generation_runs() {
+    let mut s = with_loaded(CODE);
+    let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
+    s.finish(100, &t);
+    s.hold_session(100, "conv-a", CODE);
+    let held = s.held_sessions(100);
+    assert_eq!(held.len(), 1);
+    let (conv, generation) = held[0].clone();
+    assert_eq!(conv, "conv-a");
+    assert_eq!(s.session_hold_model(100, "conv-a"), Some(CODE));
+    assert_eq!(s.status(100).session_holds, 1);
+    // Renewed while the router still runs it: held past the first session hold (3 s).
+    assert!(s.extend_session(3_000, "conv-a", generation));
+    assert!(unloads(&s.poll(3_100)).is_empty());
+    assert!(unloads(&s.poll(4_499)).is_empty());
+    // Released (stopped or ended): the waiting model is served at once.
+    assert!(s.release_session("conv-a"));
+    assert!(!s.release_session("conv-a"));
+    assert_eq!(unloads(&s.poll(4_500)), vec![CODE.to_owned()]);
+    assert!(s.held_sessions(4_500).is_empty());
+}
+
+#[test]
+fn a_renewed_session_hold_never_outlasts_the_lease_hard_limit() {
+    let mut s = with_loaded(CODE);
+    let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
+    s.finish(0, &t);
+    s.hold_session(0, "conv-b", CODE);
+    let generation = s.held_sessions(0)[0].1;
+    for now in (1_000..5_000).step_by(1_000) {
+        assert!(s.extend_session(now, "conv-b", generation));
+        assert!(unloads(&s.poll(now)).is_empty());
+    }
+    // The cap is the lease hard limit (5 s) after the hold began.
+    assert!(unloads(&s.poll(4_999)).is_empty());
+    assert_eq!(unloads(&s.poll(5_000)), vec![CODE.to_owned()]);
+    assert!(!s.extend_session(5_001, "conv-b", generation));
+}
+
+#[test]
+fn a_new_generation_of_a_conversation_gets_a_fresh_hold_and_cap() {
+    let mut s = with_loaded(CODE);
+    let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
+    s.finish(0, &t);
+    s.hold_session(0, "conv-c", CODE);
+    let first = s.held_sessions(0)[0].1;
+    assert!(s.extend_session(2_500, "conv-c", first));
+    // A new generation of the same conversation detaches just before the old cap (5 s).
+    s.hold_session(4_900, "conv-c", CODE);
+    let second = s.held_sessions(4_900)[0].1;
+    assert_ne!(first, second);
+    // Held a full session hold from now, past the old cap.
+    assert!(unloads(&s.poll(5_000)).is_empty());
+    assert!(unloads(&s.poll(7_899)).is_empty());
+    // And renewable up to its own cap (9.9 s).
+    assert!(s.extend_session(7_800, "conv-c", second));
+    assert!(unloads(&s.poll(9_899)).is_empty());
+    assert_eq!(unloads(&s.poll(9_900)), vec![CODE.to_owned()]);
+}
+
+#[test]
+fn a_stale_lookup_answer_never_ends_or_renews_a_newer_hold() {
+    let mut s = with_loaded(CODE);
+    let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
+    s.finish(0, &t);
+    s.hold_session(0, "conv-d", CODE);
+    // A lookup is asked about this hold...
+    let (_, asked) = s.held_sessions(0)[0].clone();
+    // ...meanwhile the session is stopped and a new generation detaches.
+    assert!(s.release_session("conv-d"));
+    s.hold_session(500, "conv-d", CODE);
+    // The late answer (about the old generation) changes nothing.
+    assert!(!s.release_session_generation("conv-d", asked));
+    assert!(!s.extend_session(600, "conv-d", asked));
+    assert_eq!(s.session_hold_model(600, "conv-d"), Some(CODE));
+    assert!(unloads(&s.poll(3_499)).is_empty());
+    // An answer about the current hold applies.
+    let current = s.held_sessions(3_499)[0].1;
+    assert!(s.release_session_generation("conv-d", current));
+    assert_eq!(unloads(&s.poll(3_500)), vec![CODE.to_owned()]);
 }

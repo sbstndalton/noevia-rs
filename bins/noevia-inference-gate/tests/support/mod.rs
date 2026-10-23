@@ -8,7 +8,8 @@
 //! streams), a stuck mode where an unload never finishes, slow or failing unload answers, preset
 //! reloads (on `/models` and `/v1/models`) that restart every running model after a while, session
 //! generations (`x-conversation-id`) that go on after their client leaves and can be resumed
-//! (`GET /v1/stream`), and a down mode where every connection is dropped. It records every event
+//! (`GET /v1/stream`), stopped (`DELETE /v1/stream`) and looked up (`POST /v1/streams/lookup`),
+//! and a down mode where every connection is dropped. It records every event
 //! (including a client that went away mid-stream, and the most chat models it ever ran at once) so
 //! tests can assert that no stream was ever cut by an unload.
 #![allow(
@@ -73,6 +74,8 @@ pub enum Event {
     Detached(String),
     /// A stream resume reached the model.
     Resume(String),
+    /// An explicit stop ended a session generation before its end.
+    Stopped(String),
 }
 
 #[derive(Clone, Debug)]
@@ -99,6 +102,29 @@ pub struct FakeConfig {
     pub unload_error: bool,
     /// How long a preset reload takes before it restarts every running model and answers.
     pub reload_ms: u64,
+    /// `DELETE /v1/stream` answers at once, before the generation has seen the stop (as a
+    /// router in front of several children does).
+    pub stop_answers_at_once: bool,
+    /// `DELETE /v1/stream` answers with this status and stops nothing.
+    pub stop_status: Option<u16>,
+    /// How the session lookup answers.
+    pub lookup: Lookup,
+    /// A stream resume answers with this status and a complete JSON error body.
+    pub resume_status: Option<u16>,
+}
+
+/// How the fake's session lookup answers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Lookup {
+    /// Every known session, running or done.
+    #[default]
+    Full,
+    /// Leaves out sessions still running (their owner could not be asked); lists done ones.
+    OmitRunning,
+    /// Answers `[]` while any asked session still runs; lists done ones otherwise.
+    EmptyWhileRunning,
+    /// Answers with a server error.
+    Error,
 }
 
 impl Default for FakeConfig {
@@ -113,6 +139,10 @@ impl Default for FakeConfig {
             unload_answer_ms: 0,
             unload_error: false,
             reload_ms: 0,
+            stop_answers_at_once: false,
+            stop_status: None,
+            lookup: Lookup::Full,
+            resume_status: None,
         }
     }
 }
@@ -125,6 +155,10 @@ pub struct State {
     pub seen_headers: Vec<(String, hyper::HeaderMap)>,
     /// Conversation id to (model, instance, chunks still to send) of a session generation.
     pub sessions: BTreeMap<String, (String, u64, u64)>,
+    /// Conversation ids whose session generation reached its end.
+    pub done_sessions: std::collections::BTreeSet<String>,
+    /// Session lookups answered.
+    pub lookups: u32,
     /// The most chat models (not small) it ever ran at once.
     pub peak_chat_running: usize,
 }
@@ -169,6 +203,8 @@ impl FakeRouter {
             cfg,
             seen_headers: Vec::new(),
             sessions: BTreeMap::new(),
+            done_sessions: Default::default(),
+            lookups: 0,
             peak_chat_running: 0,
         }));
         {
@@ -542,6 +578,23 @@ async fn route(
             let Some((model, instance, _)) = session else {
                 return error(404, "Stream not found or expired");
             };
+            if let Some(status) = state.lock().unwrap().cfg.resume_status {
+                // A complete JSON error body, sent without a length (chunked), so the gate sees
+                // the body reach its end.
+                let body = serde_json::json!({
+                    "error": { "code": status, "message": "synthetic resume failure" }
+                })
+                .to_string();
+                let frames = futures_util::stream::iter([Ok::<_, std::io::Error>(Frame::data(
+                    Bytes::from(body),
+                ))]);
+                let mut response = Response::new(StreamBody::new(frames).boxed());
+                *response.status_mut() = hyper::StatusCode::from_u16(status).unwrap();
+                response
+                    .headers_mut()
+                    .insert("content-type", "application/json".parse().unwrap());
+                return response;
+            }
             state
                 .lock()
                 .unwrap()
@@ -549,6 +602,64 @@ async fn route(
                 .push(Event::Resume(model.clone()));
             // The rest of the answer, while the generation goes on.
             resume_stream(state, model, instance)
+        }
+        ("DELETE", "/v1/stream") => {
+            // The explicit stop: cancels the generation and forgets the session (idempotent).
+            let conv = query.get("conv_id").cloned().unwrap_or_default();
+            if conv.is_empty() {
+                return error(400, "Missing conversation id in path");
+            }
+            let (chunk_ms, at_once) = {
+                let mut s = state.lock().unwrap();
+                if let Some(status) = s.cfg.stop_status {
+                    return error(status, "synthetic stop failure");
+                }
+                s.sessions.remove(&conv);
+                (s.cfg.chunk_ms, s.cfg.stop_answers_at_once)
+            };
+            if !at_once {
+                // Answers once the generation has seen the stop (it checks once per chunk).
+                tokio::time::sleep(Duration::from_millis(chunk_ms * 3)).await;
+            }
+            full(204, Bytes::new(), "application/json")
+        }
+        ("POST", "/v1/streams/lookup") => {
+            let value: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+            let mut s = state.lock().unwrap();
+            s.lookups += 1;
+            let mode = s.cfg.lookup;
+            if mode == Lookup::Error {
+                return error(500, "synthetic lookup failure");
+            }
+            let asked_running = value
+                .get("conversation_ids")
+                .and_then(|v| v.as_array())
+                .is_some_and(|ids| {
+                    ids.iter()
+                        .filter_map(|id| id.as_str())
+                        .any(|id| s.sessions.contains_key(id) && !s.done_sessions.contains(id))
+                });
+            if mode == Lookup::EmptyWhileRunning && asked_running {
+                return json(200, serde_json::json!([]));
+            }
+            let rows: Vec<_> = value
+                .get("conversation_ids")
+                .and_then(|v| v.as_array())
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(|id| id.as_str())
+                        .filter(|id| s.sessions.contains_key(*id))
+                        .filter(|id| mode == Lookup::Full || s.done_sessions.contains(*id))
+                        .map(|id| {
+                            serde_json::json!({
+                                "conversation_id": id,
+                                "is_done": s.done_sessions.contains(id),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            json(200, serde_json::Value::Array(rows))
         }
         ("GET", "/v1/models") => {
             let s = state.lock().unwrap();
@@ -729,14 +840,20 @@ async fn route(
             tokio::spawn(async move {
                 let mut cut = false;
                 let mut detached = false;
+                let mut stopped = false;
                 for i in 0..chunks {
                     tokio::time::sleep(Duration::from_millis(chunk_ms)).await;
                     let alive = {
                         let mut s = state2.lock().unwrap();
                         if let Some(conv) = &conv_id {
-                            if let Some(session) = s.sessions.get_mut(conv) {
-                                session.2 = chunks - i - 1;
+                            match s.sessions.get_mut(conv) {
+                                Some(session) => session.2 = chunks - i - 1,
+                                None => stopped = true,
                             }
+                        }
+                        if stopped {
+                            s.events.push(Event::Stopped(model.clone()));
+                            break;
                         }
                         let m = &s.models[&model];
                         m.instance == instance && m.status != St::Unloaded
@@ -768,6 +885,10 @@ async fn route(
                     let mut s = state2.lock().unwrap();
                     if cut {
                         s.events.push(Event::StreamCut(model.clone()));
+                    } else if !stopped {
+                        if let Some(conv) = &conv_id {
+                            s.done_sessions.insert(conv.clone());
+                        }
                     }
                     let m = s.models.get_mut(&model).unwrap();
                     if m.instance == instance {
@@ -924,6 +1045,7 @@ pub fn test_config(upstream: String) -> noevia_inference_gate::GateConfig {
     cfg.lease_event_interval = Duration::from_millis(100);
     cfg.header_read_timeout = Duration::from_millis(500);
     cfg.reload_timeout = Duration::from_secs(10);
+    cfg.session_check_interval = Duration::from_millis(50);
     cfg
 }
 
