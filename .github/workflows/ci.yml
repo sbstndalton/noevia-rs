@@ -460,6 +460,11 @@ jobs:
           target/debug/noevia-server --features | grep -qx rust-free-chats
       - name: Node and Rust share the projects.json and free-chats.json locks and lose no write (and the blind-save controls do); generated chat-list saves answer as core's route; generated retention cases expire as core's rule
         run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock --test chats_property --test free_chats_property --test retention_property
+      - name: Node and Rust save a transcript through the store and lose nothing (and the blind-save control does); the transcript sanitiser answers as core's (sbstndalton/noevia#1071)
+        run: |
+          set -euo pipefail
+          NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p noevia-server --test history_store
+          cargo test --locked -p server-projects --test history_sanitize_differential
       - name: Replay against Node directly (reference data dir)
         run: |
           set -euo pipefail

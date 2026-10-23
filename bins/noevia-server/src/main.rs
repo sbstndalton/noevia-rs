@@ -200,6 +200,7 @@ async fn server_main() -> ExitCode {
             data_dir,
             token: cfg.token.into(),
             switch,
+            start_id: app.config.start_id.clone().unwrap_or_default().into(),
         };
         let mut rx = stop_rx.clone();
         tokio::spawn(noevia_server::project_store::serve(

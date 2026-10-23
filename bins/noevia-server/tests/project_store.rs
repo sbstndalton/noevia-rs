@@ -26,6 +26,7 @@ async fn start() -> (tempfile::TempDir, SocketAddr) {
         data_dir: root.path().to_path_buf(),
         token: TOKEN.into(),
         switch: server_store::RustProjects::owned(),
+        start_id: "".into(),
     };
     tokio::spawn(serve(listener, store, std::future::pending()));
     (root, addr)

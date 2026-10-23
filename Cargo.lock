@@ -1685,6 +1685,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "js-json",
  "secret-envelope",
  "serde",
  "serde_json",
