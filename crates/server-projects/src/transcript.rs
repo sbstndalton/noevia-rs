@@ -248,6 +248,59 @@ fn sync_parent(file: &Path) {
     }
 }
 
+/// How old one of this module's own temp files must be before a write sweeps it.
+const STALE_TEMP: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Whether `name` is exactly a temp name [`write_atomic`] makes for `base`
+/// (`<base>.<pid>.<seq>.<16 hex>.tmp`).
+fn is_own_temp(name: &str, base: &str) -> bool {
+    let Some(rest) = name.strip_prefix(base).and_then(|r| r.strip_prefix('.')) else {
+        return false;
+    };
+    let Some(rest) = rest.strip_suffix(".tmp") else {
+        return false;
+    };
+    let parts: Vec<&str> = rest.split('.').collect();
+    let digits = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit());
+    matches!(parts.as_slice(), [pid, seq, rand]
+        if digits(pid) && digits(seq) && rand.len() == 16 && rand.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+}
+
+/// Removes temp files a crashed write of `file` left behind: only names [`write_atomic`] makes
+/// for this very file, only regular files (a symlink is never followed or removed), only ones
+/// older than [`STALE_TEMP`]. Called under the user's transcript lock, which every transcript
+/// write holds, so none of them belongs to a running write. The journal's rotation temp files
+/// are named after the journal, never after a transcript, so they never match. Best effort: a
+/// failure never fails the save.
+fn sweep_stale_temps(file: &Path) {
+    let (Some(dir), Some(base)) = (file.parent(), file.file_name().and_then(|n| n.to_str())) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !is_own_temp(name, base) {
+            continue;
+        }
+        // DirEntry::metadata does not follow symlinks.
+        let Ok(meta) = entry.metadata() else { continue };
+        if !meta.file_type().is_file() {
+            continue;
+        }
+        let old = meta
+            .modified()
+            .ok()
+            .and_then(|m| m.elapsed().ok())
+            .is_some_and(|age| age > STALE_TEMP);
+        if old {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 /// What a save of `history` stores: the newest [`HISTORY_CAP`] entries, sanitised.
 pub fn bounded(history: &[JValue]) -> Result<Vec<JValue>, Thrown> {
     let from = history.len().saturating_sub(HISTORY_CAP);
@@ -344,6 +397,7 @@ pub fn write_as(
             proposed,
         });
     }
+    sweep_stale_temps(&file);
     write_atomic(&file, &text)?;
     if let Some(start_id) = supersede {
         supersede_partial(&dir, &safe, start_id);
@@ -398,6 +452,7 @@ pub fn append_if_last_as(
     all.push(entry.clone());
     let next = bounded(&all)?;
     let revision = revision_of(&JValue::Arr(next.clone())).ok_or(StoreError::Corrupt)?;
+    sweep_stale_temps(&file);
     write_atomic(&file, &store_text(&next)?)?;
     note(&dir, &safe, Some(&revision), journal::Op::Append, origin);
     Ok(Appended::Saved { revision })
@@ -481,6 +536,155 @@ mod tests {
         // A folder that cannot be opened for the fsync never fails a save that landed.
         sync_parent(Path::new("/nonexistent-qa-dir/history-c1.json"));
         sync_parent(Path::new("history-c1.json"));
+    }
+
+    fn aged(p: &Path) {
+        let old_ts = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 60 * 60);
+        std::fs::File::options()
+            .write(true)
+            .open(p)
+            .unwrap()
+            .set_modified(old_ts)
+            .unwrap();
+    }
+
+    #[test]
+    fn only_this_modules_own_temp_names_match() {
+        let base = "history-c1.json";
+        assert!(is_own_temp(
+            "history-c1.json.123.0.00ff00ff00ff00ff.tmp",
+            base
+        ));
+        for other in [
+            "history-c1.json",
+            "history-c1.json.tmp",
+            "history-c1.json.123.tmp",
+            "history-c1.json.123.0.00FF00FF00FF00FF.tmp",
+            "history-c1.json.123.0.00ff.tmp",
+            "history-c1.json.x.0.00ff00ff00ff00ff.tmp",
+            "history-c10.json.123.0.00ff00ff00ff00ff.tmp",
+            "history-c1.json.123.0.00ff00ff00ff00ff.tmp.keep",
+            "notes.json.123.0.00ff00ff00ff00ff.tmp",
+            "chat-changes.jsonl.123.0.00ff00ff00ff00ff.tmp",
+        ] {
+            assert!(!is_own_temp(other, base), "{other}");
+        }
+    }
+
+    #[test]
+    fn every_transcript_write_path_sweeps_only_its_own_stale_temps() {
+        for path in 0..3 {
+            let (root, dir) = setup();
+            let data = root.path().to_path_buf();
+            let entry = |t: &str| list(&format!(r#"[{{"role":"user","content":"{t}"}}]"#));
+            write(&data, USER, "c1", &entry("qa"), &Base::Any, None).unwrap();
+            let make = |name: &str, old: bool| {
+                let p = dir.join(name);
+                std::fs::write(&p, "x").unwrap();
+                if old {
+                    aged(&p);
+                }
+                p
+            };
+            let stale = make("history-c1.json.9.1.0123456789abcdef.tmp", true);
+            let fresh = make("history-c1.json.9.2.0123456789abcdef.tmp", false);
+            let other_chat = make("history-c2.json.9.3.0123456789abcdef.tmp", true);
+            let unrelated = make("history-c1.json.old.tmp", true);
+            let journal_tmp = make("chat-changes.jsonl.9.4.0123456789abcdef.tmp", true);
+            match path {
+                0 => {
+                    write(&data, USER, "c1", &entry("b"), &Base::Any, None).unwrap();
+                }
+                1 => {
+                    write_as(
+                        &data,
+                        USER,
+                        "c1",
+                        &entry("b"),
+                        &Base::Any,
+                        None,
+                        Origin::History,
+                    )
+                    .unwrap();
+                }
+                _ => {
+                    let a = append_if_last_as(
+                        &data,
+                        USER,
+                        "c1",
+                        "qa",
+                        &wtf16::parse(r#"{"role":"assistant","content":"hi"}"#).unwrap(),
+                        Origin::Other,
+                    )
+                    .unwrap();
+                    assert!(matches!(a, Appended::Saved { .. }));
+                }
+            }
+            assert!(
+                !stale.exists(),
+                "path {path}: a stale temp of this transcript is swept"
+            );
+            assert!(fresh.exists(), "path {path}: a recent one is left");
+            assert!(
+                other_chat.exists(),
+                "path {path}: another transcript's temp is left"
+            );
+            assert!(
+                unrelated.exists(),
+                "path {path}: a name this module never makes is left"
+            );
+            assert!(
+                journal_tmp.exists(),
+                "path {path}: the journal's temp is left"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_old_symlink_named_like_a_temp_is_never_followed_or_removed() {
+        let (root, dir) = setup();
+        let data = root.path().to_path_buf();
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("victim.txt");
+        std::fs::write(&target, "precious").unwrap();
+        let link = dir.join("history-c1.json.9.1.0123456789abcdef.tmp");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        // Age the link itself (touch -h does not follow it) and the target too, so only the
+        // file-type check stands between the sweep and the link.
+        aged(&target);
+        let aged_link = std::process::Command::new("touch")
+            .args(["-h", "-d", "2 hours ago"])
+            .arg(&link)
+            .status()
+            .unwrap();
+        assert!(aged_link.success());
+        let target_modified = std::fs::metadata(&target).unwrap().modified().unwrap();
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        write(
+            &data,
+            USER,
+            "c1",
+            &list(r#"[{"role":"user","content":"qa"}]"#),
+            &Base::Any,
+            None,
+        )
+        .unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "the link itself is left"
+        );
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "precious");
+        assert_eq!(
+            std::fs::metadata(&target).unwrap().modified().unwrap(),
+            target_modified
+        );
     }
 
     #[test]
