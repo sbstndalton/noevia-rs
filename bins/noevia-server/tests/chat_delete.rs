@@ -351,10 +351,19 @@ async fn the_store_op_needs_the_secret_and_binds_the_user() {
     assert!(gone(&mine, "qa-free") && kept(&theirs, "qa-free"));
     let (_, body) = store_call(addr, Some(TOKEN), &ask).await;
     assert_eq!(body, r#"{"deleted":false,"leftovers":0,"swept":true}"#);
-    // Each journals one remove with its origin.
+    // Recovery retries repeat the idempotent removal notice, even with no files left.
     let changes = std::fs::read_to_string(mine.join("chat-changes.jsonl")).unwrap();
-    assert_eq!(changes.lines().count(), 1, "{changes}");
-    assert!(changes.contains(r#""op":"remove""#) && changes.contains(r#""origin":"remove""#));
+    let entries: Vec<serde_json::Value> = changes
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(entries.len(), 2, "{changes}");
+    for (i, entry) in entries.iter().enumerate() {
+        assert_eq!(entry["seq"], i + 1);
+        assert_eq!(entry["chatId"], "qa-free");
+        assert_eq!(entry["op"], "remove");
+        assert_eq!(entry["origin"], "remove");
+    }
     assert!(!theirs.join("chat-changes.jsonl").exists());
     // A project's chat; a deleted project's chat (unlisted) only while no list holds it.
     let (status, body) = store_call(

@@ -8,8 +8,8 @@
 //!    chat-lists.cjs `addTombstone` records them; at most [`TOMBSTONE_CAP`], the newest kept);
 //! 2. the list without the chat (`free-chats.json`, or the project's `chats` in `projects.json`),
 //!    written under that file's own lock as every other list save is ([`store::update_free`],
-//!    [`store::update`]). A list save that fails takes back the tombstone ids this delete added
-//!    (only those: an id tombstoned before stays tombstoned) and removes nothing;
+//!    [`store::update`]). A list save that fails restores the prior ordered tombstone list
+//!    (including old ids displaced by the cap) and removes nothing;
 //! 3. only then the chat's own files: its transcript (`history-<safe id>.json`), context meter
 //!    (`context-<sha256(JSON.stringify(id))>.json`), brain note (`chat-brains/<sha256(id)>.json`)
 //!    and saved partial reply (`chat-partials/<sha256(id)>.json`; Node never removed it,
@@ -31,8 +31,9 @@
 //! returns, the proof Node's orphan reaper uses), so its own leftover files are removed
 //! ([`Outcome::swept`]). Nothing else is ever removed: no background sweeper, no other file.
 //!
-//! Each delete that removed anything journals one entry ([`crate::journal`], op `remove`, the
-//! caller's origin), so Node's change-journal reader updates the chat's vault note.
+//! Each successful delete or recovery retry journals one entry ([`crate::journal`], op `remove`, the
+//! caller's origin), so Node's change-journal reader updates the chat's vault note. Recovery notices
+//! are at least once: a crash can remove the transcript before the journal append succeeds.
 //!
 //! The user's directory is never created ([`StoreError::Gone`]). Every path is inside it.
 
@@ -155,41 +156,28 @@ fn tombstone_list(dir: &Path) -> Result<Vec<String>, StoreError> {
 }
 
 fn write_tombstones(dir: &Path, ids: &[String]) -> Result<(), StoreError> {
-    let from = ids.len().saturating_sub(TOMBSTONE_CAP);
-    let list = JValue::Arr(
-        ids.get(from..)
-            .unwrap_or(&[])
-            .iter()
-            .cloned()
-            .map(JValue::Str)
-            .collect(),
-    );
+    let list = JValue::Arr(ids.iter().cloned().map(JValue::Str).collect());
     let text = wtf16::stringify(&list).ok_or(StoreError::Corrupt)?;
     transcript::write_atomic(&dir.join(TOMBSTONES_FILE), &text)
 }
 
-/// chat-lists.cjs `addTombstone(dir, id)`; returns the ids that were not tombstoned before (the
-/// only ones a failed save takes back).
+/// Add both tombstone forms, preserving the entire previous order for rollback.
 fn add_tombstone(dir: &Path, raw: &str) -> Result<Vec<String>, StoreError> {
     let added = ids_of(raw);
-    let mut ids = tombstone_list(dir)?;
-    let fresh: Vec<String> = added.iter().filter(|a| !ids.contains(a)).cloned().collect();
+    let previous = tombstone_list(dir)?;
+    let mut ids = previous.clone();
     ids.retain(|x| !added.contains(x));
     ids.extend(added);
-    write_tombstones(dir, &ids)?;
-    Ok(fresh)
+    let from = ids.len().saturating_sub(TOMBSTONE_CAP);
+    write_tombstones(dir, ids.get(from..).ok_or(StoreError::Corrupt)?)?;
+    Ok(previous)
 }
 
-/// Takes back the ids [`add_tombstone`] added (best effort, logged).
-fn take_back(dir: &Path, fresh: &[String]) {
-    if fresh.is_empty() {
-        return;
-    }
-    let result = tombstone_list(dir).and_then(|mut ids| {
-        ids.retain(|x| !fresh.contains(x));
-        write_tombstones(dir, &ids)
-    });
-    if let Err(e) = result {
+/// Restore the complete prior order, including ids displaced by the cap.
+/// The caller still holds the transcript lock, so no intervening delete is lost.
+fn take_back(dir: &Path, previous: Option<&[String]>) {
+    let Some(previous) = previous else { return };
+    if let Err(e) = write_tombstones(dir, previous) {
         eprintln!(
             "noevia-server: could not take back a chat tombstone after a failed delete: {e:?}"
         );
@@ -225,7 +213,7 @@ fn listed_anywhere(dir: &Path, raw: &str) -> Result<bool, StoreError> {
 enum InList {
     /// Not in that list: nothing written.
     Absent,
-    /// Taken out (the tombstone ids this call added are in the caller's `added`).
+    /// Taken out (the prior tombstone list is saved in the caller).
     Removed,
     /// Node throws on this data: nothing written.
     Unsupported,
@@ -239,7 +227,7 @@ enum InList {
 fn remove_from_free(
     dir: &Path,
     raw: &str,
-    added: &mut Vec<String>,
+    previous: &mut Option<Vec<String>>,
     switch: server_store::RustProjects,
     fault: &dyn Fn(Step) -> Result<(), StoreError>,
 ) -> Result<InList, StoreError> {
@@ -252,7 +240,7 @@ fn remove_from_free(
             return (InList::Absent, None);
         }
         match add_tombstone(dir, raw) {
-            Ok(f) => *added = f,
+            Ok(prior) => *previous = Some(prior),
             Err(e) => return (InList::Failed(e), None),
         }
         if let Err(e) = fault(Step::Tombstoned) {
@@ -269,7 +257,7 @@ fn remove_from_project(
     dir: &Path,
     project_id: &str,
     raw: &str,
-    added: &mut Vec<String>,
+    previous: &mut Option<Vec<String>>,
     switch: server_store::RustProjects,
     fault: &dyn Fn(Step) -> Result<(), StoreError>,
 ) -> Result<InList, StoreError> {
@@ -321,7 +309,7 @@ fn remove_from_project(
             }
         }
         match add_tombstone(dir, raw) {
-            Ok(f) => *added = f,
+            Ok(prior) => *previous = Some(prior),
             Err(e) => return (InList::Failed(e), false),
         }
         if let Err(e) = fault(Step::Tombstoned) {
@@ -341,10 +329,36 @@ fn remove_from_project(
 
 /// Removes `file` if it is there; whether it was, or the error (logged by the caller).
 fn remove_file(file: &Path) -> Result<bool, std::io::Error> {
-    match std::fs::remove_file(file) {
+    use rustix::fs::{open, openat, unlinkat, AtFlags, Mode, OFlags};
+    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let parent = file
+        .parent()
+        .ok_or_else(|| std::io::Error::other("missing parent"))?;
+    let name = file
+        .file_name()
+        .ok_or_else(|| std::io::Error::other("missing name"))?;
+    // Hold a nofollow-opened directory fd through unlinkat. Renaming/swapping the directory
+    // pathname cannot redirect the unlink into a sibling account. Leaf symlinks are unlinked.
+    let result = (|| -> Result<(), rustix::io::Errno> {
+        if let Some(account) = parent.parent().filter(|_| {
+            matches!(
+                parent.file_name().and_then(|n| n.to_str()),
+                Some(BRAIN_DIR | partial::DIR)
+            )
+        }) {
+            let account_fd = open(account, flags, Mode::empty())?;
+            let parent_name = parent.file_name().ok_or(rustix::io::Errno::INVAL)?;
+            let parent_fd = openat(&account_fd, parent_name, flags, Mode::empty())?;
+            unlinkat(&parent_fd, name, AtFlags::empty())
+        } else {
+            let parent_fd = open(parent, flags, Mode::empty())?;
+            unlinkat(&parent_fd, name, AtFlags::empty())
+        }
+    })();
+    match result {
         Ok(()) => Ok(true),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(e),
+        Err(rustix::io::Errno::NOENT) => Ok(false),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -419,10 +433,10 @@ pub fn delete_with(
     let dir = store::user_dir(data_dir, user)?;
     transcript::existing_dir(&dir)?;
     let _held = transcript::lock_user(&dir)?;
-    let mut added = Vec::new();
+    let mut previous = None;
     let in_list = match kind {
-        Kind::Free => remove_from_free(&dir, chat, &mut added, switch, fault),
-        Kind::Project(p) => remove_from_project(&dir, p, chat, &mut added, switch, fault),
+        Kind::Free => remove_from_free(&dir, chat, &mut previous, switch, fault),
+        Kind::Project(p) => remove_from_project(&dir, p, chat, &mut previous, switch, fault),
         Kind::Unlisted => {
             if listed_anywhere(&dir, chat)? {
                 return Err(DeleteError::Listed);
@@ -438,9 +452,9 @@ pub fn delete_with(
         Ok(InList::Unsupported) => return Err(DeleteError::Unsupported),
         Ok(InList::Crashed(e) | InList::Failed(e)) => return Err(e.into()),
         Err(e) => {
-            // The list save failed (after the tombstone, or before it: then nothing was added):
-            // the chat is still listed, so the ids this call tombstoned are taken back.
-            take_back(&dir, &added);
+            // The list save failed: restore all prior ids and their order, including those
+            // displaced by the cap. No other delete can intervene under this lock.
+            take_back(&dir, previous.as_deref());
             return Err(e.into());
         }
     };
@@ -448,10 +462,10 @@ pub fn delete_with(
     if !deleted {
         // Already deleted (tombstoned) and in no list: a delete a crash cut short; finish it.
         if tombstoned(&dir, chat)? && !listed_anywhere(&dir, chat)? {
-            let (had, leftovers) = remove_files(&dir, chat, fault)?;
-            if had {
-                note(&dir, chat, origin);
-            }
+            let (_, leftovers) = remove_files(&dir, chat, fault)?;
+            // A crash or failed append can leave no transcript and no journal entry.
+            // Always nudge the idempotent reader on recovery, even when no files remain.
+            note(&dir, chat, origin);
             return Ok(Outcome {
                 deleted: false,
                 swept: true,
@@ -809,6 +823,11 @@ mod tests {
                 assert!(f.exists(), "{step:?} {}", f.display());
             }
             assert_eq!(tombstones(&dir), ["qa-c1"]);
+            assert_eq!(
+                journal_ops(root.path()).last().unwrap(),
+                &("qa-c1".into(), "remove".into(), "remove".into()),
+                "{step:?}"
+            );
         }
     }
 
@@ -849,6 +868,123 @@ mod tests {
         del(root.path(), "qa-c2", Kind::Project("qa-p")).unwrap_err();
         assert!(tombstones(&dir).is_empty());
         assert!(history_file(&dir, "qa-c2").exists());
+    }
+
+    #[test]
+    fn a_retry_after_journal_append_failure_notifies_even_without_a_transcript() {
+        let (root, dir) = setup();
+        seed_free(root.path(), &dir);
+        let before = journal::read(root.path(), USER, 0).unwrap();
+        // Failure is in the journal append itself, after all files have been removed.
+        let journal_file = dir.join(journal::FILE);
+        std::fs::remove_file(&journal_file).unwrap();
+        std::fs::create_dir(&journal_file).unwrap();
+        assert!(del(root.path(), "qa-c1", Kind::Free).unwrap().deleted);
+        assert!(!history_file(&dir, "qa-c1").exists());
+        std::fs::remove_dir(&journal_file).unwrap();
+        // Restore the older journal so an already-running reader retains a valid cursor.
+        // The next successful append must have a newer sequence, not just rely on a rescan.
+        let text = before
+            .entries
+            .iter()
+            .map(|e| format!("{}\n", serde_json::to_string(e).unwrap()))
+            .collect::<String>();
+        std::fs::write(&journal_file, text).unwrap();
+        assert!(del(root.path(), "qa-c1", Kind::Free).unwrap().swept);
+        let all = journal::read(root.path(), USER, 0).unwrap();
+        let after = all.entries.last().unwrap();
+        assert_eq!(after["chatId"], "qa-c1");
+        assert_eq!(after["op"], "remove");
+        assert!(
+            after["seq"].as_u64().unwrap()
+                > before.entries.last().unwrap()["seq"].as_u64().unwrap()
+        );
+    }
+
+    #[test]
+    fn failed_list_save_restores_the_complete_capped_tombstone_order_and_both_ids() {
+        for preexisting in [false, true] {
+            for project in [false, true] {
+                let (root, dir) = setup();
+                let raw = "qa raw!id";
+                let mut previous: Vec<String> =
+                    (0..TOMBSTONE_CAP).map(|i| format!("qa-old-{i}")).collect();
+                if preexisting {
+                    previous[123] = raw.into();
+                    previous[321] = "qarawid".into();
+                }
+                write_tombstones(&dir, &previous).unwrap();
+                let (file, kind) = if project {
+                    std::fs::write(
+                        dir.join(store::PROJECTS_FILE),
+                        "{\"projects\":[{\"id\":\"qa-p\",\"chats\":[{\"id\":\"qa raw!id\"}]}]}",
+                    )
+                    .unwrap();
+                    (store::PROJECTS_FILE, Kind::Project("qa-p"))
+                } else {
+                    std::fs::write(dir.join(FREE_CHATS_FILE), "[{\"id\":\"qa raw!id\"}]").unwrap();
+                    (FREE_CHATS_FILE, Kind::Free)
+                };
+                let blocker = dir.join(format!("{file}.{}.tmp", std::process::id()));
+                std::fs::create_dir_all(blocker.join("qa")).unwrap();
+                assert!(del(root.path(), raw, kind).is_err());
+                assert_eq!(
+                    tombstones(&dir),
+                    previous,
+                    "project={project} prior-pair={preexisting}"
+                );
+                assert!(listed_anywhere(&dir, raw).unwrap());
+                assert!(journal_ops(root.path()).is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn symlinked_derived_data_parent_directories_do_not_unlink_another_account() {
+        use std::os::unix::fs::symlink;
+        for folder in [BRAIN_DIR, partial::DIR] {
+            let (root, dir) = setup();
+            seed_free(root.path(), &dir);
+            let other = store::user_dir(root.path(), OTHER).unwrap();
+            let outside = other.join(folder);
+            std::fs::create_dir_all(&outside).unwrap();
+            for id in ["qa-c1", "qa-c2"] {
+                let name = format!("{}.json", sha_hex(id));
+                std::fs::write(outside.join(name), "sibling sentinel").unwrap();
+            }
+            std::fs::remove_dir_all(dir.join(folder)).unwrap();
+            symlink(&outside, dir.join(folder)).unwrap();
+            let result = del(root.path(), "qa-c1", Kind::Free).unwrap();
+            assert!(result.deleted);
+            assert_eq!(result.leftovers, 1);
+            for id in ["qa-c1", "qa-c2"] {
+                assert_eq!(
+                    std::fs::read_to_string(outside.join(format!("{}.json", sha_hex(id)))).unwrap(),
+                    "sibling sentinel"
+                );
+            }
+            assert!(std::fs::symlink_metadata(dir.join(folder))
+                .unwrap()
+                .file_type()
+                .is_symlink());
+        }
+    }
+
+    #[test]
+    fn derived_data_leaf_symlinks_are_unlinked_without_following_their_targets() {
+        use std::os::unix::fs::symlink;
+        let (root, dir) = setup();
+        seed_free(root.path(), &dir);
+        let sentinel = root.path().join("outside-sentinel");
+        std::fs::write(&sentinel, "keep").unwrap();
+        for path in [brain_file(&dir, "qa-c1"), partial::file_for(&dir, "qa-c1")] {
+            std::fs::remove_file(&path).unwrap();
+            symlink(&sentinel, &path).unwrap();
+        }
+        assert_eq!(del(root.path(), "qa-c1", Kind::Free).unwrap().leftovers, 0);
+        assert_eq!(std::fs::read_to_string(sentinel).unwrap(), "keep");
+        assert!(std::fs::symlink_metadata(brain_file(&dir, "qa-c1")).is_err());
+        assert!(std::fs::symlink_metadata(partial::file_for(&dir, "qa-c1")).is_err());
     }
 
     #[test]
@@ -897,7 +1033,7 @@ mod tests {
     }
 
     #[test]
-    fn a_repeated_delete_is_a_404_that_changes_nothing_more() {
+    fn a_repeated_delete_is_a_404_and_repeats_the_idempotent_removal_notice() {
         let (root, dir) = setup();
         seed_free(root.path(), &dir);
         assert!(del(root.path(), "qa-c1", Kind::Free).unwrap().deleted);
@@ -911,8 +1047,9 @@ mod tests {
                 leftovers: 0
             }
         );
-        // Nothing left to remove: no second journal entry.
-        assert_eq!(journal_ops(root.path()).len(), journalled);
+        // Recovery notifications are at least once, even when no files remain.
+        assert_eq!(journal_ops(root.path()).len(), journalled + 1);
+        assert_eq!(journal_ops(root.path()).last().unwrap().1, "remove");
         assert_eq!(tombstones(&dir), ["qa-c1"]);
         // A chat neither listed nor tombstoned is a plain 404: no tombstone, no sweep.
         seed_files(root.path(), &dir, "qa-never");
