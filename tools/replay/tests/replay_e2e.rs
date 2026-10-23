@@ -147,6 +147,7 @@ fn rand_suffix() -> u32 {
 
 fn opts(port: u16) -> Options {
     Options {
+        native_move_state: false,
         base: http::Base::parse(&format!("http://127.0.0.1:{port}")).unwrap(),
         timeout: Duration::from_secs(5),
         ignore_headers: Vec::new(),
@@ -234,4 +235,26 @@ fn ignored_body_paths_match_on_segment_boundaries() {
     assert!(!replay::body_ignored("body/hoursTotal", &ig));
     assert!(!replay::body_ignored("body/peakHour/count", &ig));
     assert!(!replay::body_ignored("status", &ig));
+}
+
+#[test]
+fn shared_native_front_cannot_forget_the_required_persisted_state_mode() {
+    let result = std::process::Command::new(env!("CARGO_BIN_EXE_replay"))
+        .args([
+            "run",
+            "--corpus",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../contracts/http/corpus"),
+            "--base",
+            "http://127.0.0.1:18021",
+            "--server-cmd",
+            "exec sh tools/front/replay-front.sh unused unused",
+        ])
+        .output()
+        .unwrap();
+    assert!(!result.status.success());
+    assert!(
+        String::from_utf8_lossy(&result.stderr).contains("requires --native-move-state"),
+        "{:?}",
+        result
+    );
 }
