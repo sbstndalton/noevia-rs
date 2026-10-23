@@ -1,0 +1,16 @@
+# Isolated workspace operator
+
+This binary previews and restores a portable `noevia-workspace-v1` ZIP into a **new private directory**. It does not import into the Diary, update a database, activate a corpus, call a model, or change the running application. Both commands use the same complete `verify_archive` decision and retained raw file bytes as `decode-v1`; no second ZIP parser is involved.
+
+```
+workspace-restore-verify preview < archive.zip
+workspace-restore-verify restore-new --destination /absolute/new-directory --fingerprint REVIEWED_SHA256 < archive.zip
+```
+
+`preview` emits one JSON object with `fingerprint`, `fileCount`, `bytes`, sorted `files`, sorted `directories`, `mode: "new-directory-only"`, and `settings`. The fingerprint is lowercase SHA-256 of the exact input ZIP bytes. The settings field preserves the verified JSON value, including null, arrays and scalar values; an absent field is `{}`. Review the preview and supply its exact fingerprint to `restore-new`. Successful restore emits `fileCount`, `bytes`, and `settings`. Output JSON is bounded at 32 MiB; the verifier independently caps the archive at 272 MiB, manifest at 8 MiB, files and directories at 5000 each, each file at 64 MiB and total source at 256 MiB.
+
+The operator validates the entire archive and fingerprint before creating anything. Destination must be an absolute path with an existing directory parent, no `.` or `..` components, and an absent final component. Existing files, directories and dangling symlinks are refused. Every parent component is opened relative to a directory handle with `O_NOFOLLOW`; creation under the new root uses `mkdirat` or `openat` with `O_EXCL` and `O_NOFOLLOW`. Directories must be 0700 and files are set to 0600. Source bytes are copied without text conversion. Files, created directories and the destination parent are fsynced before success. Root, parent and created-entry identities are checked again before the success response. These checks detect namespace substitution; concurrent hostile mutation after the final check remains outside this operator's single-writer contract.
+
+Refused ZIPs retain the existing `reject: <code>` stdout and exit 1. Operator refusals write a terse code to stderr and no success JSON: `fingerprint_mismatch`, `destination_invalid`, `destination_exists`, or `restore_io` (exit 1). Once destination creation succeeds, any later write, sync or namespace failure returns `restore_partial` (exit 4). **The operator never automatically removes that directory.** Its name or children may have been replaced while restoration ran, so a check followed by unlink cannot safely prove ownership. A partial destination needs explicit isolated-folder inspection; its existence is not a successful restore. If success JSON cannot be written after all fsyncs, stderr reports `restore_committed_output_failed` and exit 3; inspect the new folder before deciding whether to retry. Reusing the same destination is always refused.
+
+The legacy `verify`, `decode-v1` and `self-test` contracts remain unchanged. The services adapter, managed import transaction, image pin and production selector are separate work.
