@@ -19,12 +19,19 @@
 //! - The revision is the one the history GET answers ([`crate::history::revision_of`]): sha256 hex
 //!   of `JSON.stringify(history)`, `history` read as `.history || []`.
 //!
+//! - Every successful mutation appends one entry to the user's change journal
+//!   ([`crate::journal`], `chat-changes.jsonl`) in the same hold of the lock, so Node learns of
+//!   transcripts it did not write (sbstndalton/noevia#2153). The transcript is already saved when
+//!   the entry is written: a failed append is logged, never the request's failure.
+//!
 //! The chat id is reduced to `[A-Za-z0-9_-]` as Node's `safeChatId` does; one that reduces to
 //! nothing is refused ([`TranscriptError::InvalidChat`]).
 
 use crate::chats::TOMBSTONES_FILE;
 use crate::history::{history_file, revision_of, safe_chat_id};
 use crate::history_sanitize::{sanitize_history, Thrown};
+use crate::journal;
+pub use crate::journal::Origin;
 use crate::lock;
 use crate::partial::{self, State};
 use crate::store::{self, StoreError};
@@ -120,7 +127,7 @@ impl Appended {
     }
 }
 
-fn existing_dir(dir: &Path) -> Result<(), StoreError> {
+pub(crate) fn existing_dir(dir: &Path) -> Result<(), StoreError> {
     match std::fs::symlink_metadata(dir) {
         Ok(m) if m.is_dir() => Ok(()),
         Ok(_) => Err(StoreError::Corrupt),
@@ -189,7 +196,7 @@ static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// `file`'s contents replaced by `text`: a temp file unique to this write (pid, a process-wide
 /// sequence and random bits), fsynced, renamed over it. The temp file is removed on failure.
-fn write_atomic(file: &Path, text: &str) -> Result<(), StoreError> {
+pub(crate) fn write_atomic(file: &Path, text: &str) -> Result<(), StoreError> {
     use rand_core::RngCore;
     let mut name = file.as_os_str().to_owned();
     name.push(format!(
@@ -220,7 +227,25 @@ fn write_atomic(file: &Path, text: &str) -> Result<(), StoreError> {
             StoreError::Io(e)
         });
     }
+    sync_parent(file);
     Ok(())
+}
+
+/// Best effort: the rename is made durable by fsyncing the folder that holds `file`. Some
+/// filesystems refuse a directory fsync (EINVAL, ENOTSUP, EBADF on some network mounts); the
+/// write has already landed, so a failure is logged and never fails the save.
+fn sync_parent(file: &Path) {
+    let Some(parent) = file.parent() else { return };
+    let result = std::fs::File::open(parent).and_then(|d| d.sync_all());
+    if let Err(e) = result {
+        #[allow(clippy::print_stderr)]
+        {
+            eprintln!(
+                "[transcript] could not fsync {} after a save (the save itself landed): {e}",
+                parent.display()
+            );
+        }
+    }
 }
 
 /// What a save of `history` stores: the newest [`HISTORY_CAP`] entries, sanitised.
@@ -232,6 +257,17 @@ pub fn bounded(history: &[JValue]) -> Result<Vec<JValue>, Thrown> {
 fn store_text(next: &[JValue]) -> Result<String, StoreError> {
     wtf16::stringify_pretty(&JValue::obj([("history", JValue::Arr(next.to_vec()))]))
         .ok_or(StoreError::Corrupt)
+}
+
+/// The journal entry for a mutation just made (the lock still held). Best effort: the transcript
+/// is saved whatever happens here.
+fn note(dir: &Path, safe: &str, revision: Option<&str>, op: journal::Op, origin: Origin) {
+    if let Err(e) = journal::record(dir, safe, revision, op, origin, journal::LIMITS) {
+        eprintln!(
+            "noevia-server: chat change journal append failed ({}): {e:?}",
+            op.as_str()
+        );
+    }
 }
 
 /// The transcript now (no lock: every write is a rename).
@@ -255,7 +291,8 @@ fn supersede_partial(dir: &Path, safe: &str, start_id: &str) {
 
 /// Saves `history` (bounded, see [`bounded`]) if the transcript is at `base` and the chat is not
 /// deleted. `supersede`: the start id when this is the client's own save, whose saved partial
-/// reply it then supersedes ([`supersede_partial`]).
+/// reply it then supersedes ([`supersede_partial`]). Journalled with origin `other`; see
+/// [`write_as`].
 pub fn write(
     data_dir: &Path,
     user: &str,
@@ -263,6 +300,28 @@ pub fn write(
     history: &[JValue],
     base: &Base,
     supersede: Option<&str>,
+) -> Result<Saved, TranscriptError> {
+    write_as(
+        data_dir,
+        user,
+        chat,
+        history,
+        base,
+        supersede,
+        Origin::Other,
+    )
+}
+
+/// [`write`], journalled with `origin` (the user's own save is [`Origin::History`], the only
+/// write Node builds a chat's brain for).
+pub fn write_as(
+    data_dir: &Path,
+    user: &str,
+    chat: &str,
+    history: &[JValue],
+    base: &Base,
+    supersede: Option<&str>,
+    origin: Origin,
 ) -> Result<Saved, TranscriptError> {
     let (dir, safe) = locate(data_dir, user, chat)?;
     let next = bounded(history)?;
@@ -289,6 +348,7 @@ pub fn write(
     if let Some(start_id) = supersede {
         supersede_partial(&dir, &safe, start_id);
     }
+    note(&dir, &safe, Some(&proposed), journal::Op::Write, origin);
     Ok(Saved::Saved { revision: proposed })
 }
 
@@ -302,6 +362,18 @@ pub fn append_if_last(
     chat: &str,
     message: &str,
     entry: &JValue,
+) -> Result<Appended, TranscriptError> {
+    append_if_last_as(data_dir, user, chat, message, entry, Origin::Other)
+}
+
+/// [`append_if_last`], journalled with `origin`.
+pub fn append_if_last_as(
+    data_dir: &Path,
+    user: &str,
+    chat: &str,
+    message: &str,
+    entry: &JValue,
+    origin: Origin,
 ) -> Result<Appended, TranscriptError> {
     let (dir, safe) = locate(data_dir, user, chat)?;
     let file = history_file(&dir, &safe);
@@ -327,6 +399,7 @@ pub fn append_if_last(
     let next = bounded(&all)?;
     let revision = revision_of(&JValue::Arr(next.clone())).ok_or(StoreError::Corrupt)?;
     write_atomic(&file, &store_text(&next)?)?;
+    note(&dir, &safe, Some(&revision), journal::Op::Append, origin);
     Ok(Appended::Saved { revision })
 }
 
@@ -338,6 +411,17 @@ pub fn remove_if(
     chat: &str,
     history: &[JValue],
 ) -> Result<bool, TranscriptError> {
+    remove_if_as(data_dir, user, chat, history, Origin::Other)
+}
+
+/// [`remove_if`], journalled with `origin`.
+pub fn remove_if_as(
+    data_dir: &Path,
+    user: &str,
+    chat: &str,
+    history: &[JValue],
+    origin: Origin,
+) -> Result<bool, TranscriptError> {
     let (dir, safe) = locate(data_dir, user, chat)?;
     let ours = revision_of(&JValue::Arr(bounded(history)?)).ok_or(StoreError::Corrupt)?;
     let file = history_file(&dir, &safe);
@@ -347,14 +431,17 @@ pub fn remove_if(
         return Ok(false);
     }
     match std::fs::remove_file(&file) {
-        Ok(()) => Ok(true),
+        Ok(()) => {
+            note(&dir, &safe, None, journal::Op::Remove, origin);
+            Ok(true)
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(e) => Err(StoreError::Io(e).into()),
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::panic)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -383,6 +470,17 @@ mod tests {
 
     fn saved_text(dir: &Path, id: &str) -> String {
         std::fs::read_to_string(history_file(dir, id)).unwrap()
+    }
+
+    #[test]
+    fn write_atomic_lands_and_syncs_its_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("history-c1.json");
+        write_atomic(&file, "{\"history\":[]}").unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "{\"history\":[]}");
+        // A folder that cannot be opened for the fsync never fails a save that landed.
+        sync_parent(Path::new("/nonexistent-qa-dir/history-c1.json"));
+        sync_parent(Path::new("history-c1.json"));
     }
 
     #[test]
@@ -721,5 +819,222 @@ mod tests {
                 .sum()
         });
         assert_eq!(wins, 1);
+    }
+
+    fn journal(root: &Path, user: &str) -> Vec<(u64, String, String, String)> {
+        journal::read(root, user, 0)
+            .unwrap()
+            .entries
+            .iter()
+            .map(|e| {
+                (
+                    e.get("seq").and_then(serde_json::Value::as_u64).unwrap(),
+                    e.get("chatId")
+                        .and_then(|v| v.as_str())
+                        .unwrap()
+                        .to_string(),
+                    e.get("op").and_then(|v| v.as_str()).unwrap().to_string(),
+                    e.get("revision")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("-")
+                        .to_string(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn each_mutation_journals_once_and_a_refused_one_not_at_all() {
+        // sbstndalton/noevia#2153: Node tails this to run the chat mirror and brain.
+        let (root, dir) = setup();
+        let r1 = match write(
+            root.path(),
+            USER,
+            "qa-c1",
+            &list("[{\"role\":\"user\",\"content\":\"q\"}]"),
+            &Base::Any,
+            None,
+        )
+        .unwrap()
+        {
+            Saved::Saved { revision } => revision,
+            other => panic!("{other:?}"),
+        };
+        // A conflict, an absent-only write over a file and a not-last append write nothing.
+        write(
+            root.path(),
+            USER,
+            "qa-c1",
+            &list("[9]"),
+            &Base::Revision("stale".into()),
+            None,
+        )
+        .unwrap();
+        write(
+            root.path(),
+            USER,
+            "qa-c1",
+            &list("[9]"),
+            &Base::Absent,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            append_if_last(
+                root.path(),
+                USER,
+                "qa-c1",
+                "other",
+                &JValue::obj([("role", JValue::Str("assistant".into()))])
+            )
+            .unwrap(),
+            Appended::NotLast
+        );
+        let r2 = match append_if_last(
+            root.path(),
+            USER,
+            "qa-c1",
+            "q",
+            &JValue::obj([
+                ("role", JValue::Str("assistant".into())),
+                ("content", JValue::Str("a".into())),
+            ]),
+        )
+        .unwrap()
+        {
+            Appended::Saved { revision } => revision,
+            other => panic!("{other:?}"),
+        };
+        write(
+            root.path(),
+            USER,
+            "qa-c2",
+            &list("[1]"),
+            &Base::Absent,
+            None,
+        )
+        .unwrap();
+        assert!(remove_if(root.path(), USER, "qa-c2", &list("[1]")).unwrap());
+        assert!(!remove_if(root.path(), USER, "qa-c2", &list("[1]")).unwrap());
+        // A tombstoned chat is never written, so never journalled.
+        std::fs::write(dir.join(TOMBSTONES_FILE), "[\"qa-c3\"]").unwrap();
+        assert_eq!(
+            write(root.path(), USER, "qa-c3", &list("[1]"), &Base::Any, None).unwrap(),
+            Saved::Deleted
+        );
+        assert_eq!(
+            journal(root.path(), USER),
+            vec![
+                (1, "qa-c1".into(), "write".into(), r1),
+                (2, "qa-c1".into(), "append".into(), r2),
+                (3, "qa-c2".into(), "write".into(), rev("[1]")),
+                (4, "qa-c2".into(), "remove".into(), "-".into()),
+            ]
+        );
+        // The journalled revision is the one the history GET answers.
+        assert_eq!(
+            read(root.path(), USER, "qa-c1").unwrap().revision,
+            journal(root.path(), USER)[1].3
+        );
+    }
+
+    #[test]
+    fn each_mutation_journals_the_origin_it_was_given() {
+        let (root, _dir) = setup();
+        let origins = |root: &Path| -> Vec<String> {
+            journal::read(root, USER, 0)
+                .unwrap()
+                .entries
+                .iter()
+                .map(|e| e["origin"].as_str().unwrap().to_string())
+                .collect()
+        };
+        write_as(
+            root.path(),
+            USER,
+            "qa-o",
+            &list("[{\"role\":\"user\",\"content\":\"q\"}]"),
+            &Base::Any,
+            None,
+            Origin::History,
+        )
+        .unwrap();
+        append_if_last_as(
+            root.path(),
+            USER,
+            "qa-o",
+            "q",
+            &JValue::obj([("role", JValue::Str("assistant".into()))]),
+            Origin::Turn,
+        )
+        .unwrap();
+        write_as(
+            root.path(),
+            USER,
+            "qa-i",
+            &list("[1]"),
+            &Base::Absent,
+            None,
+            Origin::Import,
+        )
+        .unwrap();
+        assert!(remove_if_as(root.path(), USER, "qa-i", &list("[1]"), Origin::Remove).unwrap());
+        // The un-suffixed calls name no origin: `other`.
+        write(root.path(), USER, "qa-x", &list("[2]"), &Base::Any, None).unwrap();
+        assert_eq!(
+            origins(root.path()),
+            vec!["history", "turn", "import", "remove", "other"]
+        );
+    }
+
+    #[test]
+    fn concurrent_writes_journal_in_order_with_no_gap_or_repeat() {
+        let (root, _dir) = setup();
+        let saved: usize = std::thread::scope(|s| {
+            let handles: Vec<_> = (0..12)
+                .map(|i| {
+                    let root = root.path();
+                    s.spawn(move || {
+                        let mut n = 0;
+                        for j in 0..5 {
+                            let h = vec![JValue::Num(f64::from(i * 10 + j))];
+                            if let Saved::Saved { .. } =
+                                write(root, USER, &format!("qa-{i}"), &h, &Base::Any, None).unwrap()
+                            {
+                                n += 1;
+                            }
+                        }
+                        n
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).sum()
+        });
+        let seqs: Vec<u64> = journal(root.path(), USER).iter().map(|e| e.0).collect();
+        assert_eq!(saved, 60);
+        assert_eq!(seqs, (1..=60).collect::<Vec<u64>>());
+    }
+
+    #[test]
+    fn one_users_journal_never_holds_another_users_changes() {
+        let (root, _dir) = setup();
+        std::fs::create_dir_all(store::user_dir(root.path(), OTHER).unwrap()).unwrap();
+        write(root.path(), USER, "qa-mine", &list("[1]"), &Base::Any, None).unwrap();
+        write(
+            root.path(),
+            OTHER,
+            "qa-theirs",
+            &list("[2]"),
+            &Base::Any,
+            None,
+        )
+        .unwrap();
+        let mine = journal(root.path(), USER);
+        let theirs = journal(root.path(), OTHER);
+        assert_eq!((mine.len(), mine[0].1.as_str()), (1, "qa-mine"));
+        assert_eq!(
+            (theirs.len(), theirs[0].1.as_str(), theirs[0].0),
+            (1, "qa-theirs", 1)
+        );
     }
 }

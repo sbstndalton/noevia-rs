@@ -413,7 +413,7 @@ const ROUNDS: usize = 60;
 
 /// Node saving the transcript while Rust saves it too. `blind`: Node writes as it did before
 /// slice 4 (read once, then `writeFileSync(<file>.tmp)` + rename, no lock, no revision), the
-/// negative control. Returns the transcript's entries afterwards.
+/// negative control, in which Rust saves only rust-0, strictly before Node's saves. Returns the transcript's entries afterwards.
 fn node_race(blind: bool) -> Option<Vec<String>> {
     if std::process::Command::new("node")
         .arg("--version")
@@ -488,7 +488,13 @@ fn node_race(blind: bool) -> Option<Vec<String>> {
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
     // Rust: the history save route's own path, a CAS from what it reads, retried on conflict.
-    for i in 0..ROUNDS {
+    // The blind control saves only rust-0 and then waits for Node to finish, so the order is
+    // fixed by handshakes, not timing: rust-0 is on disk before Node's first save (Node waits for
+    // it), and nothing of Rust's lands after Node's. Concurrent Rust saves would race Node's
+    // unlocked renames: a Rust CAS that checked its base before a Node rename can rename over
+    // Node's file afterwards, putting rust-0 back (the CI flake this replaced).
+    let rust_rounds = if blind { 1 } else { ROUNDS };
+    for i in 0..rust_rounds {
         let mut done = false;
         for _ in 0..500 {
             let now = transcript::read(root.path(), USER, "c1").unwrap();
@@ -549,6 +555,8 @@ fn without_the_store_nodes_saves_drop_rusts() {
     let Some(entries) = node_race(true) else {
         return;
     };
-    // Node's view never had rust-0 and it saved after rust-0 was written: rust-0 is gone.
-    assert!(!entries.contains(&"rust-0".to_string()), "{entries:?}");
+    // Node's view never had rust-0 and it saved after rust-0 was written: rust-0 is gone and the
+    // transcript is exactly Node's stale view plus its own saves.
+    let expected: Vec<String> = (0..ROUNDS).map(|i| format!("node-{i}")).collect();
+    assert_eq!(entries, expected);
 }
