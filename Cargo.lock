@@ -2707,6 +2707,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "server-dav-adapter"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "rand_core 0.6.4",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "server-auth",
+ "server-dav",
+ "server-store",
+ "sha2",
+ "tempfile",
+ "tenant-assertion",
+ "tokio",
+ "url",
+ "zeroize",
+]
+
+[[package]]
 name = "server-export"
 version = "0.1.0"
 dependencies = [
