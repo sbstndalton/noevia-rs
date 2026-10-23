@@ -27,8 +27,8 @@
 //! - [`context_window`]: a chat's last context meter (core routes/chat-lists.cjs `GET
 //!   /api/chats/{chatId}/context-window`), a read with no switch (sbstndalton/noevia#1071).
 //! - [`history`]: a chat's transcript and its interrupted partial reply (core routes/chat-lists.cjs
-//!   `GET /api/chats/{chatId}/history`), a read with no switch (sbstndalton/noevia#1071 slice 2);
-//!   `POST` stays Node's.
+//!   `GET /api/chats/{chatId}/history`, slice 2) and its save (`POST`, slice 5, through
+//!   [`transcript`]), with no switch (sbstndalton/noevia#1071).
 //! - [`retention`]: Settings → Data → Delete old chats, its read (core routes/account.cjs `GET
 //!   /api/account/retention`), a read with no switch (sbstndalton/noevia#1071); `PUT` stays Node's.
 //! - [`partial`]: a chat's saved partial reply as another process reads it, running or cut off by

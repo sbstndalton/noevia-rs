@@ -250,7 +250,7 @@ methods = ["GET"]
 [[route]]
 path = "/api/chats/{chatId}/history"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/chats/{chatId}/move"

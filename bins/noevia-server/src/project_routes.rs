@@ -42,8 +42,10 @@ pub enum Route {
     Context { chat: String, create: bool },
     /// GET /api/chats/{chatId}/context-window (sbstndalton/noevia#1071, no switch)
     ContextWindow { chat: String },
-    /// GET /api/chats/{chatId}/history (sbstndalton/noevia#1071 slice 2, no switch; `POST` is Node's)
+    /// GET /api/chats/{chatId}/history (sbstndalton/noevia#1071 slice 2, no switch)
     History { chat: String },
+    /// POST /api/chats/{chatId}/history (sbstndalton/noevia#1071 slice 5, no switch)
+    SaveHistory { chat: String },
     /// GET /api/account/retention (sbstndalton/noevia#1071, no switch; `PUT` is Node's)
     Retention,
 }
@@ -74,8 +76,11 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
             ("GET", [chat, "context-window"]) if !chat.is_empty() => Some(Route::ContextWindow {
                 chat: (*chat).to_string(),
             }),
-            // routes/chat-lists.cjs `/^\/api\/chats\/([^/]+)\/history$/` for GET.
+            // routes/chat-lists.cjs `/^\/api\/chats\/([^/]+)\/history$/` for GET and POST.
             ("GET", [chat, "history"]) if !chat.is_empty() => Some(Route::History {
+                chat: (*chat).to_string(),
+            }),
+            ("POST", [chat, "history"]) if !chat.is_empty() => Some(Route::SaveHistory {
                 chat: (*chat).to_string(),
             }),
             _ => None,
@@ -244,6 +249,7 @@ pub async fn serve(
     let limit = match &route {
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
+        Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
         Route::One { .. }
         | Route::Chats { .. }
         | Route::FreeChats
@@ -255,6 +261,10 @@ pub async fn serve(
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
             Ok(b) => Some(b),
+            // routes/chat-lists.cjs answers a history save it could not read so.
+            Err(()) if matches!(route, Route::SaveHistory { .. }) => {
+                return reply::error(StatusCode::BAD_REQUEST, "could not read the chat", true)
+            }
             Err(()) => return reply::error(StatusCode::BAD_REQUEST, "invalid request body", true),
         },
         None => None,
@@ -269,6 +279,7 @@ pub async fn serve(
         Route::Upload { .. }
             | Route::SaveChats { .. }
             | Route::SaveFreeChats
+            | Route::SaveHistory { .. }
             | Route::Context { .. }
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
@@ -303,10 +314,17 @@ pub async fn serve(
             ) => context::get(ctx, &chat),
             (Route::ContextWindow { chat }, _) => context_window::get(ctx, &chat),
             (Route::History { chat }, _) => history::get(ctx, &chat, &start_id),
-            (Route::Retention, _) => retention::get(ctx),
-            (Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats, None) => {
-                Reply::internal()
+            (Route::SaveHistory { chat }, Some(b)) => {
+                history::post(ctx, &chat, &b.bytes, b.over, &start_id)
             }
+            (Route::Retention, _) => retention::get(ctx),
+            (
+                Route::Upload { .. }
+                | Route::SaveChats { .. }
+                | Route::SaveFreeChats
+                | Route::SaveHistory { .. },
+                None,
+            ) => Reply::internal(),
         })
     })
     .await;
@@ -566,8 +584,16 @@ mod tests {
                 chat: "c%201".into()
             })
         );
+        assert_eq!(
+            route("POST", "/api/chats/c%201/history"),
+            Some(Route::SaveHistory {
+                chat: "c%201".into()
+            })
+        );
         for (m, p) in [
-            ("POST", "/api/chats/c1/history"),
+            ("PUT", "/api/chats/c1/history"),
+            ("POST", "/api/chats//history"),
+            ("POST", "/api/chats/c1/history/"),
             ("DELETE", "/api/chats/c1/history"),
             ("GET", "/api/chats//history"),
             ("GET", "/api/chats/c1/history/"),

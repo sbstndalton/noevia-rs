@@ -463,7 +463,7 @@ jobs:
       - name: Node and Rust save a transcript through the store and lose nothing (and the blind-save control does); the transcript sanitiser answers as core's (sbstndalton/noevia#1071)
         run: |
           set -euo pipefail
-          NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p noevia-server --test history_store
+          NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p noevia-server --test history_store --test history_save
           cargo test --locked -p server-projects --test history_sanitize_differential
       - name: Replay against Node directly (reference data dir)
         run: |
