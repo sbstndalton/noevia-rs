@@ -269,16 +269,16 @@ impl Config {
                 "invalid native auth environment (the front owns sign-in, #1071): {e}"
             ));
         }
-        let feature_env =
-            server_routing_mode::feature_env(get("NOEVIA_FEATURE_CHATGPT_OAUTH").as_deref())
-                .map_err(|e| format!("NOEVIA_FEATURE_CHATGPT_OAUTH: {}", e.message))?;
+        let chatgpt = server_features::spec(server_features::Feature::ChatgptOAuth);
+        let feature_env = server_features::parse_env(get(chatgpt.env).as_deref())
+            .map_err(|e| format!("{}: {e}", chatgpt.env))?;
         let rust_chatgpt_status = Some(ChatgptStatus {
             feature_env,
             previous_key_env: RedactedEnv(get("SECRETS_KEY_PREVIOUS")),
         });
         let routing_feature_env = if rust_routing_mode.is_some() {
-            server_routing_mode::feature_env(get("NOEVIA_FEATURE_ROUTING_MODES").as_deref())
-                .map_err(|e| e.message)?
+            let routing = server_features::spec(server_features::Feature::RoutingModes);
+            server_features::parse_env(get(routing.env).as_deref()).map_err(str::to_owned)?
         } else {
             None
         };

@@ -11,6 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+server-features = { path = "../server-features" }
 server-store = { path = "../server-store" }
 secret-envelope = { path = "../secret-envelope" }
 policy-leaves = { path = "../policy-leaves" }

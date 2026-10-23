@@ -1,0 +1,17 @@
+[package]
+name = "server-features"
+version = "0.1.0"
+description = "Pure evaluation of product flags already consumed by native server routes"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+policy-leaves = { path = "../policy-leaves" }
+
+[dev-dependencies]
+serde_json = "1"
