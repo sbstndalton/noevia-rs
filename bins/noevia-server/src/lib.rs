@@ -79,6 +79,7 @@ pub const FEATURES: &[&str] = &[
     "project-store",
     "rust-auth",
     "rust-web-address-read",
+    "rust-web-address-write",
     "rust-projects",
     "start-id",
     #[cfg(feature = "rust-project-chats")]
