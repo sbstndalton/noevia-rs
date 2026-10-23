@@ -31,6 +31,7 @@ use crate::chats::TOMBSTONES_FILE;
 use crate::history::{history_file, revision_of, safe_chat_id};
 use crate::history_sanitize::{sanitize_history, Thrown};
 use crate::journal;
+pub use crate::journal::Origin;
 use crate::lock;
 use crate::partial::{self, State};
 use crate::store::{self, StoreError};
@@ -260,8 +261,8 @@ fn store_text(next: &[JValue]) -> Result<String, StoreError> {
 
 /// The journal entry for a mutation just made (the lock still held). Best effort: the transcript
 /// is saved whatever happens here.
-fn note(dir: &Path, safe: &str, revision: Option<&str>, op: journal::Op) {
-    if let Err(e) = journal::record(dir, safe, revision, op, journal::LIMITS) {
+fn note(dir: &Path, safe: &str, revision: Option<&str>, op: journal::Op, origin: Origin) {
+    if let Err(e) = journal::record(dir, safe, revision, op, origin, journal::LIMITS) {
         eprintln!(
             "noevia-server: chat change journal append failed ({}): {e:?}",
             op.as_str()
@@ -290,7 +291,8 @@ fn supersede_partial(dir: &Path, safe: &str, start_id: &str) {
 
 /// Saves `history` (bounded, see [`bounded`]) if the transcript is at `base` and the chat is not
 /// deleted. `supersede`: the start id when this is the client's own save, whose saved partial
-/// reply it then supersedes ([`supersede_partial`]).
+/// reply it then supersedes ([`supersede_partial`]). Journalled with origin `other`; see
+/// [`write_as`].
 pub fn write(
     data_dir: &Path,
     user: &str,
@@ -298,6 +300,28 @@ pub fn write(
     history: &[JValue],
     base: &Base,
     supersede: Option<&str>,
+) -> Result<Saved, TranscriptError> {
+    write_as(
+        data_dir,
+        user,
+        chat,
+        history,
+        base,
+        supersede,
+        Origin::Other,
+    )
+}
+
+/// [`write`], journalled with `origin` (the user's own save is [`Origin::History`], the only
+/// write Node builds a chat's brain for).
+pub fn write_as(
+    data_dir: &Path,
+    user: &str,
+    chat: &str,
+    history: &[JValue],
+    base: &Base,
+    supersede: Option<&str>,
+    origin: Origin,
 ) -> Result<Saved, TranscriptError> {
     let (dir, safe) = locate(data_dir, user, chat)?;
     let next = bounded(history)?;
@@ -324,7 +348,7 @@ pub fn write(
     if let Some(start_id) = supersede {
         supersede_partial(&dir, &safe, start_id);
     }
-    note(&dir, &safe, Some(&proposed), journal::Op::Write);
+    note(&dir, &safe, Some(&proposed), journal::Op::Write, origin);
     Ok(Saved::Saved { revision: proposed })
 }
 
@@ -338,6 +362,18 @@ pub fn append_if_last(
     chat: &str,
     message: &str,
     entry: &JValue,
+) -> Result<Appended, TranscriptError> {
+    append_if_last_as(data_dir, user, chat, message, entry, Origin::Other)
+}
+
+/// [`append_if_last`], journalled with `origin`.
+pub fn append_if_last_as(
+    data_dir: &Path,
+    user: &str,
+    chat: &str,
+    message: &str,
+    entry: &JValue,
+    origin: Origin,
 ) -> Result<Appended, TranscriptError> {
     let (dir, safe) = locate(data_dir, user, chat)?;
     let file = history_file(&dir, &safe);
@@ -363,7 +399,7 @@ pub fn append_if_last(
     let next = bounded(&all)?;
     let revision = revision_of(&JValue::Arr(next.clone())).ok_or(StoreError::Corrupt)?;
     write_atomic(&file, &store_text(&next)?)?;
-    note(&dir, &safe, Some(&revision), journal::Op::Append);
+    note(&dir, &safe, Some(&revision), journal::Op::Append, origin);
     Ok(Appended::Saved { revision })
 }
 
@@ -375,6 +411,17 @@ pub fn remove_if(
     chat: &str,
     history: &[JValue],
 ) -> Result<bool, TranscriptError> {
+    remove_if_as(data_dir, user, chat, history, Origin::Other)
+}
+
+/// [`remove_if`], journalled with `origin`.
+pub fn remove_if_as(
+    data_dir: &Path,
+    user: &str,
+    chat: &str,
+    history: &[JValue],
+    origin: Origin,
+) -> Result<bool, TranscriptError> {
     let (dir, safe) = locate(data_dir, user, chat)?;
     let ours = revision_of(&JValue::Arr(bounded(history)?)).ok_or(StoreError::Corrupt)?;
     let file = history_file(&dir, &safe);
@@ -385,7 +432,7 @@ pub fn remove_if(
     }
     match std::fs::remove_file(&file) {
         Ok(()) => {
-            note(&dir, &safe, None, journal::Op::Remove);
+            note(&dir, &safe, None, journal::Op::Remove, origin);
             Ok(true)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -888,6 +935,55 @@ mod tests {
         assert_eq!(
             read(root.path(), USER, "qa-c1").unwrap().revision,
             journal(root.path(), USER)[1].3
+        );
+    }
+
+    #[test]
+    fn each_mutation_journals_the_origin_it_was_given() {
+        let (root, _dir) = setup();
+        let origins = |root: &Path| -> Vec<String> {
+            journal::read(root, USER, 0)
+                .unwrap()
+                .entries
+                .iter()
+                .map(|e| e["origin"].as_str().unwrap().to_string())
+                .collect()
+        };
+        write_as(
+            root.path(),
+            USER,
+            "qa-o",
+            &list("[{\"role\":\"user\",\"content\":\"q\"}]"),
+            &Base::Any,
+            None,
+            Origin::History,
+        )
+        .unwrap();
+        append_if_last_as(
+            root.path(),
+            USER,
+            "qa-o",
+            "q",
+            &JValue::obj([("role", JValue::Str("assistant".into()))]),
+            Origin::Turn,
+        )
+        .unwrap();
+        write_as(
+            root.path(),
+            USER,
+            "qa-i",
+            &list("[1]"),
+            &Base::Absent,
+            None,
+            Origin::Import,
+        )
+        .unwrap();
+        assert!(remove_if_as(root.path(), USER, "qa-i", &list("[1]"), Origin::Remove).unwrap());
+        // The un-suffixed calls name no origin: `other`.
+        write(root.path(), USER, "qa-x", &list("[2]"), &Base::Any, None).unwrap();
+        assert_eq!(
+            origins(root.path()),
+            vec!["history", "turn", "import", "remove", "other"]
         );
     }
 
