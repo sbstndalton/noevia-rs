@@ -220,7 +220,75 @@ fn write_atomic(file: &Path, text: &str) -> Result<(), StoreError> {
             StoreError::Io(e)
         });
     }
+    sync_parent(file);
     Ok(())
+}
+
+/// Best effort: the rename is made durable by fsyncing the folder that holds `file`. Some
+/// filesystems refuse a directory fsync (EINVAL, ENOTSUP, EBADF on some network mounts); the
+/// write has already landed, so a failure is logged and never fails the save.
+fn sync_parent(file: &Path) {
+    let Some(parent) = file.parent() else { return };
+    let result = std::fs::File::open(parent).and_then(|d| d.sync_all());
+    if let Err(e) = result {
+        #[allow(clippy::print_stderr)]
+        {
+            eprintln!(
+                "[transcript] could not fsync {} after a save (the save itself landed): {e}",
+                parent.display()
+            );
+        }
+    }
+}
+
+/// How old one of this module's own temp files must be before a write sweeps it.
+const STALE_TEMP: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Whether `name` is exactly a temp name [`write_atomic`] makes for `base`
+/// (`<base>.<pid>.<seq>.<16 hex>.tmp`).
+fn is_own_temp(name: &str, base: &str) -> bool {
+    let Some(rest) = name.strip_prefix(base).and_then(|r| r.strip_prefix('.')) else {
+        return false;
+    };
+    let Some(rest) = rest.strip_suffix(".tmp") else {
+        return false;
+    };
+    let parts: Vec<&str> = rest.split('.').collect();
+    let digits = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit());
+    matches!(parts.as_slice(), [pid, seq, rand]
+        if digits(pid) && digits(seq) && rand.len() == 16 && rand.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+}
+
+/// Removes temp files a crashed write of `file` left behind: only names [`write_atomic`] makes
+/// for this very file, only regular files, only ones older than [`STALE_TEMP`]. Called under the
+/// user's transcript lock, which every write holds, so none of them belongs to a running write.
+/// Best effort: a failure never fails the save.
+fn sweep_stale_temps(file: &Path) {
+    let (Some(dir), Some(base)) = (file.parent(), file.file_name().and_then(|n| n.to_str())) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !is_own_temp(name, base) {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        if !meta.file_type().is_file() {
+            continue;
+        }
+        let old = meta
+            .modified()
+            .ok()
+            .and_then(|m| m.elapsed().ok())
+            .is_some_and(|age| age > STALE_TEMP);
+        if old {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 /// What a save of `history` stores: the newest [`HISTORY_CAP`] entries, sanitised.
@@ -285,6 +353,7 @@ pub fn write(
             proposed,
         });
     }
+    sweep_stale_temps(&file);
     write_atomic(&file, &text)?;
     if let Some(start_id) = supersede {
         supersede_partial(&dir, &safe, start_id);
@@ -326,6 +395,7 @@ pub fn append_if_last(
     all.push(entry.clone());
     let next = bounded(&all)?;
     let revision = revision_of(&JValue::Arr(next.clone())).ok_or(StoreError::Corrupt)?;
+    sweep_stale_temps(&file);
     write_atomic(&file, &store_text(&next)?)?;
     Ok(Appended::Saved { revision })
 }
@@ -383,6 +453,76 @@ mod tests {
 
     fn saved_text(dir: &Path, id: &str) -> String {
         std::fs::read_to_string(history_file(dir, id)).unwrap()
+    }
+
+    #[test]
+    fn write_atomic_lands_and_syncs_its_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("history-c1.json");
+        write_atomic(&file, "{\"history\":[]}").unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "{\"history\":[]}");
+        // A folder that cannot be opened for the fsync never fails a save that landed.
+        sync_parent(Path::new("/nonexistent-qa-dir/history-c1.json"));
+        sync_parent(Path::new("history-c1.json"));
+    }
+
+    #[test]
+    fn only_this_modules_own_temp_names_match() {
+        let base = "history-c1.json";
+        assert!(is_own_temp(
+            "history-c1.json.123.0.00ff00ff00ff00ff.tmp",
+            base
+        ));
+        for other in [
+            "history-c1.json",
+            "history-c1.json.tmp",
+            "history-c1.json.123.tmp",
+            "history-c1.json.123.0.00FF00FF00FF00FF.tmp",
+            "history-c1.json.123.0.00ff.tmp",
+            "history-c1.json.x.0.00ff00ff00ff00ff.tmp",
+            "history-c10.json.123.0.00ff00ff00ff00ff.tmp",
+            "history-c1.json.123.0.00ff00ff00ff00ff.tmp.keep",
+            "notes.json.123.0.00ff00ff00ff00ff.tmp",
+        ] {
+            assert!(!is_own_temp(other, base), "{other}");
+        }
+    }
+
+    #[test]
+    fn a_write_sweeps_only_its_own_stale_temps() {
+        let (root, dir) = setup();
+        let data = root.path().to_path_buf();
+        let old_ts = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 60 * 60);
+        let make = |name: &str, old: bool| {
+            let p = dir.join(name);
+            std::fs::write(&p, "x").unwrap();
+            if old {
+                std::fs::File::options()
+                    .write(true)
+                    .open(&p)
+                    .unwrap()
+                    .set_modified(old_ts)
+                    .unwrap();
+            }
+            p
+        };
+        let stale = make("history-c1.json.9.1.0123456789abcdef.tmp", true);
+        let fresh = make("history-c1.json.9.2.0123456789abcdef.tmp", false);
+        let other_chat = make("history-c2.json.9.3.0123456789abcdef.tmp", true);
+        let unrelated = make("history-c1.json.old.tmp", true);
+        write(
+            &data,
+            USER,
+            "c1",
+            &list(r#"[{"role":"user","content":"qa"}]"#),
+            &Base::Any,
+            None,
+        )
+        .unwrap();
+        assert!(!stale.exists(), "a stale temp of this transcript is swept");
+        assert!(fresh.exists(), "a recent one is left");
+        assert!(other_chat.exists(), "another transcript's temp is left");
+        assert!(unrelated.exists(), "a name this module never makes is left");
     }
 
     #[test]
