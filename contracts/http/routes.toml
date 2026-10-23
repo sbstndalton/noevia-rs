@@ -249,7 +249,8 @@ methods = ["GET"]
 
 [[route]]
 path = "/api/chats/{chatId}/history"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/chats/{chatId}/move"

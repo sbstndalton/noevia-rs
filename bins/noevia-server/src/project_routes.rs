@@ -19,7 +19,9 @@ use crate::App;
 use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
-use server_projects::{assets, chats, context, context_window, free_chats, retention, Ctx, Reply};
+use server_projects::{
+    assets, chats, context, context_window, free_chats, history, retention, Ctx, Reply,
+};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +42,8 @@ pub enum Route {
     Context { chat: String, create: bool },
     /// GET /api/chats/{chatId}/context-window (sbstndalton/noevia#1071, no switch)
     ContextWindow { chat: String },
+    /// GET /api/chats/{chatId}/history (sbstndalton/noevia#1071 slice 2, no switch; `POST` is Node's)
+    History { chat: String },
     /// GET /api/account/retention (sbstndalton/noevia#1071, no switch; `PUT` is Node's)
     Retention,
 }
@@ -68,6 +72,10 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
             }),
             // routes/chat-lists.cjs `/^\/api\/chats\/([^/]+)\/context-window$/` for GET.
             ("GET", [chat, "context-window"]) if !chat.is_empty() => Some(Route::ContextWindow {
+                chat: (*chat).to_string(),
+            }),
+            // routes/chat-lists.cjs `/^\/api\/chats\/([^/]+)\/history$/` for GET.
+            ("GET", [chat, "history"]) if !chat.is_empty() => Some(Route::History {
                 chat: (*chat).to_string(),
             }),
             _ => None,
@@ -136,6 +144,8 @@ pub async fn serve(
             .await;
     };
     let switch = app.config.rust_projects;
+    // The running-reply marker's start (#1071); none without Node beside the front.
+    let start_id = app.config.start_id.clone().unwrap_or_default();
     let Some(data_dir) = app.config.data_dir.clone() else {
         return Rejection::Unavailable.into_response();
     };
@@ -239,6 +249,7 @@ pub async fn serve(
         | Route::FreeChats
         | Route::Context { .. }
         | Route::ContextWindow { .. }
+        | Route::History { .. }
         | Route::Retention => None,
     };
     let upload = match limit {
@@ -291,6 +302,7 @@ pub async fn serve(
                 _,
             ) => context::get(ctx, &chat),
             (Route::ContextWindow { chat }, _) => context_window::get(ctx, &chat),
+            (Route::History { chat }, _) => history::get(ctx, &chat, &start_id),
             (Route::Retention, _) => retention::get(ctx),
             (Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats, None) => {
                 Reply::internal()
@@ -541,6 +553,25 @@ mod tests {
             ("GET", "/api/chats//context-window"),
             ("GET", "/api/chats/c1/context-window/"),
             ("GET", "/api/chats/a/b/context-window"),
+        ] {
+            assert_eq!(route(m, p), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn history_matchers() {
+        assert_eq!(
+            route("GET", "/api/chats/c%201/history"),
+            Some(Route::History {
+                chat: "c%201".into()
+            })
+        );
+        for (m, p) in [
+            ("POST", "/api/chats/c1/history"),
+            ("DELETE", "/api/chats/c1/history"),
+            ("GET", "/api/chats//history"),
+            ("GET", "/api/chats/c1/history/"),
+            ("GET", "/api/chats/a/b/history"),
         ] {
             assert_eq!(route(m, p), None, "{m} {p}");
         }

@@ -152,9 +152,27 @@ chat tombstones, answer for answer, except that a state file holding `null` answ
 its handler is deleted. The rest of the chat-list routes stay Node's for now: `DELETE
 /api/freechats/{id}` removes the chat's attachments project (a whole project delete with its RAG
 index and storage sweep) and brain note; `POST /api/chats/{chatId}/move` revokes the chat's
-"Allow for this chat" grant, which lives in Node's memory (approvals.cjs); and `GET
-/api/chats/{chatId}/history` hides a saved partial while Node's own chat turn streams that chat
-(chat-partial.cjs keeps that set in memory), so each needs a Node-to-front channel first.
+"Allow for this chat" grant, which lives in Node's memory (approvals.cjs), so each needs a
+Node-to-front channel first. The history GET has moved (next section).
+
+## sbstndalton/noevia#1071: a chat's history (GET)
+
+`GET /api/chats/{chatId}/history` (core routes/chat-lists.cjs) is Rust's with no switch
+(crates/server-projects `history`): the user's `history-<safeChatId>.json` as `history`
+(`.history || []`), `revision` = sha256 hex of `JSON.stringify(history)` byte for byte (Node's
+`POST` compares a save's `baseRevision` with it, so the two must agree), and the chat's saved
+partial reply as `partial` when the reply that wrote it is no longer running. Node decided that
+with a set in its own memory; the front reads the `running: { start }` marker core chat-partial.cjs
+writes into every save of a running reply's partial (noevia-core#245): a marker naming this
+container start's `NOEVIA_START_ID` is still running (hidden), any other or none was cut off by a
+crash or restart (offered, without the marker). This fixes sbstndalton/noevia#2144 (Node's set was
+shared by every account and cleared by the first of two concurrent replies to end). A deleted
+(tombstoned) chat answers `{ history: [] }` with no partial, as one that never existed
+(sbstndalton/noevia#2147; Node served whatever was left). A transcript this port cannot hold is a
+500; such a partial is left out. The pinned core must write the marker and replace it when a
+finished reply's partial cannot be removed (sbstndalton/noevia#2146), which noevia's
+assemble-release checks; core refuses the GET (rust-projects.cjs `OWNED_ROUTES`) once its handler is
+deleted. `POST` (the save) stays Node's until the transcript store ops move (slice 5).
 
 ## sbstndalton/noevia#1071: the retention preview
 

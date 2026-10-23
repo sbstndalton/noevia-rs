@@ -99,6 +99,7 @@ const PROJECT_ROUTES: &[&str] = &[
     PROJECT_CHATS,
     FREE_CHATS,
     CHAT_CONTEXT_WINDOW,
+    CHAT_HISTORY,
 ];
 
 /// Settings → Data → Delete old chats, its preview (GET only; routes.toml): a read of the chat
@@ -109,6 +110,10 @@ const ACCOUNT_RETENTION: &str = "/api/account/retention";
 /// A chat's last context meter (GET only; routes.toml): a read, always answered here
 /// (sbstndalton/noevia#1071); Node refuses it.
 const CHAT_CONTEXT_WINDOW: &str = "/api/chats/{chatId}/context-window";
+
+/// A chat's transcript and interrupted partial reply (GET only; routes.toml): a read, always
+/// answered here (sbstndalton/noevia#1071 slice 2); the save (`POST`) is Node's.
+const CHAT_HISTORY: &str = "/api/chats/{chatId}/history";
 
 /// A project's chat list: the second M4 slice, answered here only in a build with the cargo
 /// feature `rust-project-chats` (listed by `--features`). Node no longer answers it
@@ -580,7 +585,7 @@ mod tests {
         for (m, p) in [
             ("PUT", "/api/chats/c1/context"),
             ("DELETE", "/api/chats/c1/context"),
-            ("GET", "/api/chats/c1/history"),
+            ("POST", "/api/chats/c1/history"),
             ("POST", "/api/chats/c1/move"),
             ("GET", "/api/diary/context"),
         ] {
@@ -631,15 +636,32 @@ mod tests {
             dispatch_under("GET", "/api/chats/c1/context-window", off),
             Some(Native::Projects)
         );
-        // Node keeps every other method and the chat routes around it (#1071: history, move, the
-        // free chat's delete are still Node's).
+        // Node keeps every other method and the chat routes around it (#1071: the history save,
+        // move, the free chat's delete are still Node's).
         for (m, p) in [
             ("POST", "/api/chats/c1/context-window"),
             ("DELETE", "/api/chats/c1/context-window"),
-            ("GET", "/api/chats/c1/history"),
             ("POST", "/api/chats/c1/history"),
             ("POST", "/api/chats/c1/move"),
             ("DELETE", "/api/freechats/c1"),
+        ] {
+            assert_eq!(dispatch_under(m, p, off), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn a_chats_history_is_rusts_for_get_only() {
+        let off = Switches::default();
+        assert_eq!(
+            dispatch_under("GET", "/api/chats/c1/history", off),
+            Some(Native::Projects)
+        );
+        // The save (with its revision compare-and-swap) and every other method stay Node's (#1071).
+        for (m, p) in [
+            ("POST", "/api/chats/c1/history"),
+            ("PUT", "/api/chats/c1/history"),
+            ("DELETE", "/api/chats/c1/history"),
+            ("POST", "/api/chats/c1/move"),
         ] {
             assert_eq!(dispatch_under(m, p, off), None, "{m} {p}");
         }

@@ -1,6 +1,6 @@
 //! A chat's saved partial reply (core chat-partial.cjs, #1507) as another process reads it: is the
-//! reply that wrote it still running, or was it cut off? sbstndalton/noevia#1071 slice 1: no route
-//! uses this yet; `GET /api/chats/{chatId}/history` will (slice 2), in place of the in-memory set
+//! reply that wrote it still running, or was it cut off? sbstndalton/noevia#1071:
+//! `GET /api/chats/{chatId}/history` ([`crate::history`]) uses it in place of the in-memory set
 //! Node's chat turn keeps.
 //!
 //! - The file is `chat-partials/<sha256 hex of the chat id>.json` in the user's directory, the id
