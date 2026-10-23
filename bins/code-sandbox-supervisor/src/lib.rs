@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use nix::sys::signal::{killpg, Signal};
+use nix::sys::wait::{waitid, Id, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -31,6 +32,7 @@ pub struct Config {
     pub max_wall: Duration,
     pub grace: Duration,
     pub fallback_home: Option<String>,
+    pub rust_bridge: bool,
 }
 
 impl Config {
@@ -54,8 +56,7 @@ impl Config {
                 .unwrap_or(fallback)
         };
         let connections = positive("CODE_SANDBOX_MAX_CONNECTIONS", MAX_CONNECTIONS as u64);
-        let max_connections = usize::try_from(connections)
-            .map_err(|_| "CODE_SANDBOX_MAX_CONNECTIONS is too large")?;
+        let max_connections = checked_connections(connections)?;
         Ok((
             Self {
                 command: command.into(),
@@ -70,10 +71,20 @@ impl Config {
                 max_wall: Duration::from_millis(positive("CODE_SANDBOX_MAX_WALL_MS", MAX_WALL_MS)),
                 grace: Duration::from_secs(5),
                 fallback_home: std::env::var("HOME").ok().filter(|v| !v.is_empty()),
+                rust_bridge: std::env::var("SANDBOX_BRIDGE_IMPL").ok().as_deref() == Some("rust"),
             },
             port,
         ))
     }
+}
+
+fn checked_connections(value: u64) -> Result<usize, String> {
+    let count = usize::try_from(value)
+        .map_err(|_| "CODE_SANDBOX_MAX_CONNECTIONS is too large".to_owned())?;
+    if count == 0 || count > Semaphore::MAX_PERMITS {
+        return Err("CODE_SANDBOX_MAX_CONNECTIONS is outside the supported range".into());
+    }
+    Ok(count)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -113,8 +124,9 @@ fn parse_start(
             }
         }
     }
-    if !env.contains_key("HOME") {
-        if let Some(home) = fallback_home {
+    if env.get("HOME").is_none_or(String::is_empty) {
+        env.remove("HOME");
+        if let Some(home) = fallback_home.filter(|h| !h.is_empty()) {
             env.insert("HOME".into(), home.to_owned());
         }
     }
@@ -160,17 +172,32 @@ async fn refuse(stream: &mut TcpStream, message: &str) {
     let _ = stream.shutdown().await;
 }
 
-struct GroupGuard(Pid);
+struct GroupGuard {
+    pid: Pid,
+    armed: bool,
+}
 
 impl GroupGuard {
-    fn signal(&self, signal: Signal) {
-        let _ = killpg(self.0, signal);
+    fn new(pid: Pid) -> Self {
+        Self { pid, armed: true }
+    }
+
+    fn signal(&self, signal: Signal) -> nix::Result<()> {
+        killpg(self.pid, signal)
+    }
+
+    // Only call after SIGKILL while the leader is still waitable. Reaping
+    // releases the numeric PGID for reuse; Drop must not signal after that.
+    fn disarm(&mut self) {
+        self.armed = false;
     }
 }
 
 impl Drop for GroupGuard {
     fn drop(&mut self) {
-        self.signal(Signal::SIGKILL);
+        if self.armed {
+            let _ = self.signal(Signal::SIGKILL);
+        }
     }
 }
 
@@ -179,13 +206,37 @@ enum Stop {
     Client,
     Wall,
     Shutdown,
+    LostIdentity,
+}
+
+// WNOWAIT observes exit without reaping. The leader (including a zombie)
+// holds its PID/PGID reservation until group teardown signals are complete.
+fn leader_state(pid: Pid) -> nix::Result<bool> {
+    match waitid(
+        Id::Pid(pid),
+        WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT,
+    )? {
+        WaitStatus::StillAlive => Ok(false),
+        _ => Ok(true),
+    }
+}
+
+async fn observe_leader(pid: Pid) -> Stop {
+    loop {
+        match leader_state(pid) {
+            Ok(true) => return Stop::Child,
+            Ok(false) => tokio::time::sleep(Duration::from_millis(10)).await,
+            Err(nix::errno::Errno::EINTR) => continue,
+            Err(_) => return Stop::LostIdentity,
+        }
+    }
 }
 
 async fn connection(
     mut stream: TcpStream,
     config: Config,
     mut shutdown: watch::Receiver<bool>,
-    _permit: OwnedSemaphorePermit,
+    permit: OwnedSemaphorePermit,
 ) {
     let start = tokio::select! {
         value = read_start(&mut stream) => value,
@@ -215,6 +266,10 @@ async fn connection(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    if config.rust_bridge {
+        // The downstream pi bridge must keep its pinned Rust/WASM framing.
+        command.env("SANDBOX_BRIDGE_IMPL", "rust");
+    }
     command.process_group(0);
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -228,39 +283,79 @@ async fn connection(
         refuse(&mut stream, "the sandbox agent could not start").await;
         return;
     };
-    let guard = GroupGuard(Pid::from_raw(pid));
+    let mut guard = GroupGuard::new(Pid::from_raw(pid));
     let Some(mut stdin) = child.stdin.take() else {
+        guard.signal(Signal::SIGKILL).ok();
+        guard.disarm();
+        let _ = child.wait().await;
         return;
     };
     let Some(mut stdout) = child.stdout.take() else {
+        guard.signal(Signal::SIGKILL).ok();
+        guard.disarm();
+        let _ = child.wait().await;
         return;
     };
     let Some(mut stderr) = child.stderr.take() else {
+        guard.signal(Signal::SIGKILL).ok();
+        guard.disarm();
+        let _ = child.wait().await;
         return;
     };
     let (mut reader, writer) = stream.into_split();
     let writer = Arc::new(Mutex::new(writer));
     let mut input = tokio::spawn(async move {
-        if !rest.is_empty() {
-            stdin.write_all(&rest).await?;
+        let mut stdin_open = rest.is_empty() || stdin.write_all(&rest).await.is_ok();
+        let mut chunk = [0_u8; 8192];
+        loop {
+            let count = reader.read(&mut chunk).await?;
+            if count == 0 {
+                break;
+            }
+            // Node ignores child.stdin errors. Continue draining the socket so
+            // a child that closed stdin can still finish and send its stdout.
+            if stdin_open {
+                let bytes = chunk
+                    .get(..count)
+                    .ok_or_else(|| std::io::Error::other("read count exceeded buffer"))?;
+                if stdin.write_all(bytes).await.is_err() {
+                    stdin_open = false;
+                }
+            }
         }
-        tokio::io::copy(&mut reader, &mut stdin).await?;
-        stdin.shutdown().await
+        let _ = stdin.shutdown().await;
+        Ok::<(), std::io::Error>(())
     });
+    let (output_failure_tx, output_failure_rx) = tokio::sync::oneshot::channel();
     let output_writer = Arc::clone(&writer);
     let mut output = tokio::spawn(async move {
         let mut chunk = [0_u8; 8192];
         loop {
-            let count = stdout.read(&mut chunk).await?;
+            let count = match stdout.read(&mut chunk).await {
+                Ok(count) => count,
+                Err(error) => {
+                    let _ = output_failure_tx.send(());
+                    return Err(error);
+                }
+            };
             if count == 0 {
                 return Ok::<(), std::io::Error>(());
             }
             let bytes = chunk
                 .get(..count)
                 .ok_or_else(|| std::io::Error::other("read count exceeded buffer"))?;
-            output_writer.lock().await.write_all(bytes).await?;
+            if let Err(error) = output_writer.lock().await.write_all(bytes).await {
+                let _ = output_failure_tx.send(());
+                return Err(error);
+            }
         }
     });
+    let output_failed = async {
+        match output_failure_rx.await {
+            Ok(()) => Stop::Client,
+            Err(_) => std::future::pending().await,
+        }
+    };
     let stderr_task = tokio::spawn(async move {
         let mut chunk = [0_u8; 2048];
         while let Ok(count) = stderr.read(&mut chunk).await {
@@ -271,35 +366,64 @@ async fn connection(
         }
     });
     let reason = tokio::select! {
-        _ = child.wait() => Stop::Child,
+        state = observe_leader(guard.pid) => state,
+        state = output_failed => state,
         _ = &mut input => Stop::Client,
         _ = tokio::time::sleep(config.max_wall) => Stop::Wall,
         _ = shutdown.changed() => Stop::Shutdown,
     };
-    guard.signal(Signal::SIGTERM);
+    // No child.wait()/try_wait() has reaped the group leader. WNOWAIT keeps its
+    // PID reserved even after exit, so the following group signals cannot
+    // address a different process group.
+    let identity_ok = !matches!(reason, Stop::LostIdentity) && leader_state(guard.pid).is_ok();
+    let term_sent = if identity_ok {
+        guard.signal(Signal::SIGTERM).is_ok()
+    } else {
+        // If some external reaper stole the child, the numeric PGID is no
+        // longer safe to address. Fail closed on this connection.
+        eprintln!("code-sandbox: child identity was lost before group teardown");
+        guard.disarm();
+        false
+    };
+    input.abort();
+    if matches!(reason, Stop::Child) {
+        // Preserve buffered final output, but never wait for a descendant
+        // holding stdout open through the five-second group grace.
+        let _ = tokio::time::timeout(Duration::from_millis(100), &mut output).await;
+    }
+    output.abort();
+    stderr_task.abort();
     if matches!(reason, Stop::Wall) {
-        output.abort();
         let message = json!({"jsonrpc":"2.0","id":null,"error":{"code":-32000,
             "message":"The agent ran past the sandbox time limit and was stopped."}})
         .to_string()
             + "\n";
-        if let Ok(mut writer) = tokio::time::timeout(Duration::from_secs(1), writer.lock()).await {
-            let _ =
-                tokio::time::timeout(Duration::from_secs(1), writer.write_all(message.as_bytes()))
-                    .await;
+        if let Ok(mut sink) = tokio::time::timeout(Duration::from_millis(200), writer.lock()).await
+        {
+            let _ = tokio::time::timeout(
+                Duration::from_millis(200),
+                sink.write_all(message.as_bytes()),
+            )
+            .await;
         }
     }
-    tokio::time::sleep(config.grace).await;
-    guard.signal(Signal::SIGKILL);
-    let _ = tokio::time::timeout(Duration::from_secs(1), child.wait()).await;
-    if matches!(reason, Stop::Child) {
-        let _ = tokio::time::timeout(Duration::from_millis(200), &mut output).await;
+    if let Ok(mut sink) = tokio::time::timeout(Duration::from_millis(200), writer.lock()).await {
+        let _ = tokio::time::timeout(Duration::from_millis(200), sink.shutdown()).await;
     }
-    input.abort();
-    output.abort();
-    stderr_task.abort();
     drop(writer);
-    // GroupGuard's drop repeats SIGKILL if a descendant survived a race.
+    // Node releases its connection slot on socket close, before SIGKILL's
+    // grace timer. The cleanup task still owns the waitable leader.
+    drop(permit);
+    if term_sent {
+        tokio::time::sleep(config.grace).await;
+    }
+    if identity_ok {
+        let _ = guard.signal(Signal::SIGKILL);
+        guard.disarm();
+    }
+    // Reap only after the last group signal. A failed wait cannot revive the
+    // disarmed numeric PGID.
+    let _ = tokio::time::timeout(Duration::from_secs(1), child.wait()).await;
 }
 
 /// Serve until the watch sender announces shutdown. The caller owns the listener.
@@ -308,6 +432,12 @@ pub async fn serve(
     config: Config,
     mut shutdown: watch::Receiver<bool>,
 ) -> std::io::Result<()> {
+    if config.max_connections == 0 || config.max_connections > Semaphore::MAX_PERMITS {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "CODE_SANDBOX_MAX_CONNECTIONS is outside the supported range",
+        ));
+    }
     let permits = Arc::new(Semaphore::new(config.max_connections));
     let mut tasks = JoinSet::new();
     loop {
@@ -321,6 +451,11 @@ pub async fn serve(
                     Err(_) => {
                         refuse(&mut stream, &format!("The sandbox is already running {} agents; try again when one finishes.", config.max_connections)).await;
                     }
+                }
+            }
+            joined = tasks.join_next(), if !tasks.is_empty() => {
+                if let Some(Err(error)) = joined {
+                    eprintln!("code-sandbox: connection task failed: {error}");
                 }
             }
             _ = shutdown.changed() => break,
@@ -359,5 +494,18 @@ mod tests {
         );
         assert!(parse_start(&bad, &root, None).is_err());
         assert!(parse_start(r#"{"method":"initialize"}"#, &root, None).is_err());
+        let empty_home = format!(
+            r#"{{"noevia":"start","cwd":"{}","env":{{"HOME":""}}}}"#,
+            work.display()
+        );
+        let start = parse_start(&empty_home, &root, Some("/fallback")).unwrap();
+        assert_eq!(start.env.get("HOME").map(String::as_str), Some("/fallback"));
+    }
+
+    #[test]
+    fn connection_cap_rejects_semaphore_overflow() {
+        assert!(checked_connections(u64::MAX).is_err());
+        assert!(checked_connections((Semaphore::MAX_PERMITS as u64) + 1).is_err());
+        assert_eq!(checked_connections(4).unwrap(), 4);
     }
 }

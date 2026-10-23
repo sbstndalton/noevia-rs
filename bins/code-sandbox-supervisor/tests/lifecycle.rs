@@ -17,6 +17,15 @@ struct Harness {
 }
 impl Harness {
     async fn new(script: &str, cap: usize, wall: Duration) -> Self {
+        Self::with_options(script, cap, wall, Duration::from_millis(30), false).await
+    }
+    async fn with_options(
+        script: &str,
+        cap: usize,
+        wall: Duration,
+        grace: Duration,
+        rust_bridge: bool,
+    ) -> Self {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("workspaces");
         let work = root.join("task");
@@ -29,8 +38,9 @@ impl Harness {
             root,
             max_connections: cap,
             max_wall: wall,
-            grace: Duration::from_millis(30),
+            grace,
             fallback_home: Some("/sandbox-home".into()),
+            rust_bridge,
         };
         let (stop, rx) = watch::channel(false);
         let server = tokio::spawn(serve(listener, config, rx));
@@ -209,5 +219,91 @@ async fn disconnect_terminates_its_background_process_group() {
     drop(socket);
     tokio::time::sleep(Duration::from_millis(650)).await;
     assert!(!path.exists(), "descendant survived disconnect");
+    h.close().await;
+}
+
+#[tokio::test]
+async fn empty_home_uses_supervisor_fallback() {
+    let h = Harness::new("printf %s \"$HOME\"", 1, Duration::from_secs(2)).await;
+    let mut socket = h.connect().await;
+    socket
+        .write_all(h.start(r#"{"HOME":""}"#).as_bytes())
+        .await
+        .unwrap();
+    assert_eq!(read_all(socket).await, "/sandbox-home");
+    h.close().await;
+}
+
+#[tokio::test]
+async fn normal_exit_closes_socket_before_group_kill_grace() {
+    let marker = tempfile::tempdir().unwrap();
+    let path = marker.path().join("survived");
+    let script = format!("(sleep 0.8; touch '{}') & printf done", path.display());
+    let h = Harness::with_options(
+        &script,
+        1,
+        Duration::from_secs(3),
+        Duration::from_millis(600),
+        false,
+    )
+    .await;
+    let mut socket = h.connect().await;
+    let start = tokio::time::Instant::now();
+    socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+    assert_eq!(read_all(socket).await, "done");
+    assert!(
+        start.elapsed() < Duration::from_millis(350),
+        "EOF waited for group grace"
+    );
+    tokio::time::sleep(Duration::from_millis(850)).await;
+    assert!(!path.exists(), "descendant survived grace cleanup");
+    h.close().await;
+}
+
+#[tokio::test]
+async fn closed_child_stdin_does_not_cut_off_later_stdout() {
+    let h = Harness::new(
+        "exec 0<&-; printf ready; sleep 0.1; printf done",
+        1,
+        Duration::from_secs(2),
+    )
+    .await;
+    let mut socket = h.connect().await;
+    socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+    let mut first = [0_u8; 5];
+    socket.read_exact(&mut first).await.unwrap();
+    assert_eq!(&first, b"ready");
+    socket.write_all(b"ignored input\n").await.unwrap();
+    assert_eq!(read_all(socket).await, "done");
+    h.close().await;
+}
+
+#[tokio::test]
+async fn rust_bridge_mode_reaches_downstream_agent() {
+    let h = Harness::with_options(
+        "printf %s \"$SANDBOX_BRIDGE_IMPL\"",
+        1,
+        Duration::from_secs(2),
+        Duration::from_millis(30),
+        true,
+    )
+    .await;
+    let mut socket = h.connect().await;
+    socket
+        .write_all(h.start(r#"{"SANDBOX_BRIDGE_IMPL":"fake"}"#).as_bytes())
+        .await
+        .unwrap();
+    assert_eq!(read_all(socket).await, "rust");
+    h.close().await;
+}
+
+#[tokio::test]
+async fn many_short_connections_leave_listener_responsive() {
+    let h = Harness::new("printf ok", 4, Duration::from_secs(2)).await;
+    for _ in 0..120 {
+        let mut socket = h.connect().await;
+        socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+        assert_eq!(read_all(socket).await, "ok");
+    }
     h.close().await;
 }

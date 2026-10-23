@@ -17,7 +17,10 @@ Configuration matches the current Node supervisor: `CODE_HARNESS_COMMAND` and
 `CODE_SANDBOX_MAX_WALL_MS` defaults to 2 hours. `HOME` falls back to the
 supervisor's own HOME when the start message omitted it. The listener defaults
 to 0.0.0.0, as the existing isolated image does. A partial start line times
-out after 15 seconds, tighter than the old unbounded wait.
+out after 15 seconds, tighter than the old unbounded wait. If
+SANDBOX_BRIDGE_IMPL=rust, the child receives that flag so pi-acp-bridge keeps its
+pinned WASM framing path. A later image integration must verify the pinned module
+at startup; this source-only binary does not perform the Node loader preflight.
 
 The listener has no authentication. It must only be considered for a later
 image/Compose integration with the existing internal code network, unpublished
