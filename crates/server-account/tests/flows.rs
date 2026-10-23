@@ -30,6 +30,10 @@ struct World {
 }
 
 fn world(native: bool) -> World {
+    world_with(native, server_account::DavEnv::default())
+}
+
+fn world_with(native: bool, dav: server_account::DavEnv) -> World {
     let dir = tempfile::tempdir().unwrap();
     let node = Connection::open(server_store::db_path(dir.path())).unwrap();
     node.execute_batch(SCHEMA).unwrap();
@@ -60,6 +64,7 @@ fn world(native: bool) -> World {
         trust_proxy: true,
         data_dir: dir.path().to_path_buf(),
         dav_available: false,
+        dav,
     };
     let acct = Account::new(writer, auth, settings, switch, T0);
     World { dir, node, acct }
@@ -1212,4 +1217,179 @@ fn a_cookie_and_a_device_token_together_are_refused() {
             r#"{"error":"Send either a session cookie or a bearer token, not both.","code":"ambiguous_credentials"}"#
         )
     );
+}
+
+/// core dav-settings.cjs's table, as core creates it at boot.
+const DAV_SETTINGS: &str = "CREATE TABLE IF NOT EXISTS dav_settings(user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL CHECK(scope IN ('off','lan','public')), acknowledged_at INTEGER, updated_at INTEGER NOT NULL);";
+
+fn lan_cleartext() -> server_account::DavEnv {
+    server_account::DavEnv {
+        port: 8090.0,
+        ui_port: 8021.0,
+        scope: Some("lan".into()),
+        origin: Some("http://10.0.0.5:8090".into()),
+        proxy_token_ok: false,
+        host: None,
+    }
+}
+
+// #1071: Settings -> Sharing is the front's, answer for answer with dav-settings.cjs.
+#[test]
+fn sharing_reports_and_saves_the_opt_in() {
+    let w = world_with(false, lan_cleartext());
+    w.node.execute_batch(DAV_SETTINGS).unwrap();
+    let mut owner = Browser::new("10.0.0.1");
+    let uid = setup(&w, &mut owner);
+    let (s, _, r) = call(&w, &mut owner, "GET", "/api/profile/sharing", "", T0);
+    assert_eq!(
+        (s, r.body.as_str()),
+        (
+            200,
+            r#"{"available":true,"scope":"off","endpointScope":"lan","cleartext":true,"port":8090,"url":"http://10.0.0.5:8090/dav/Owner/","eligible":true}"#
+        )
+    );
+    for (body, msg) in [
+        (r#"{"scope":"everyone"}"#, "Choose a sharing scope."),
+        (
+            r#"{"scope":"public"}"#,
+            "This sharing scope is not configured by the operator.",
+        ),
+        (
+            r#"{"scope":"lan"}"#,
+            "Acknowledge that plain HTTP sends device credentials unencrypted.",
+        ),
+        (
+            r#"{"scope":"lan","acknowledgeCleartext":"yes"}"#,
+            "Acknowledge that plain HTTP sends device credentials unencrypted.",
+        ),
+        ("[]", "request body must be a JSON object"),
+        ("{", "invalid JSON"),
+    ] {
+        let (s, v, _) = call(&w, &mut owner, "PUT", "/api/profile/sharing", body, T0 + 1);
+        assert_eq!((s, v["error"].as_str()), (400, Some(msg)), "{body}");
+    }
+    assert_eq!(count(&w, "SELECT count(*) FROM dav_settings"), 0);
+    let (s, v, _) = call(
+        &w,
+        &mut owner,
+        "PUT",
+        "/api/profile/sharing",
+        r#"{"scope":"lan","acknowledgeCleartext":true}"#,
+        T0 + 2,
+    );
+    assert_eq!((s, v["scope"].as_str()), (200, Some("lan")));
+    assert_eq!(
+        count(&w, &format!("SELECT count(*) FROM dav_settings WHERE user_id='{uid}' AND scope='lan' AND acknowledged_at={} AND updated_at={}", T0 + 2, T0 + 2)),
+        1
+    );
+    assert_eq!(
+        count(&w, &format!("SELECT count(*) FROM audit_events WHERE action='dav.sharing' AND actor_user_id='{uid}' AND target_user_id='{uid}' AND detail='{{\"scope\":\"lan\"}}'")),
+        1
+    );
+    // Off never needs eligibility or an acknowledgement, and clears it.
+    w.node
+        .execute(
+            "INSERT INTO storage_connections(user_id,kind,updated_at) VALUES(?1,'webdav',1)",
+            [&uid],
+        )
+        .unwrap();
+    let (_, v, _) = call(&w, &mut owner, "GET", "/api/profile/sharing", "", T0 + 3);
+    assert_eq!(
+        (v["scope"].as_str(), v["eligible"].as_bool()),
+        (Some("lan"), Some(false))
+    );
+    let (s, v, _) = call(
+        &w,
+        &mut owner,
+        "PUT",
+        "/api/profile/sharing",
+        r#"{"scope":"lan","acknowledgeCleartext":true}"#,
+        T0 + 4,
+    );
+    assert_eq!(
+        (s, v["error"].as_str()),
+        (
+            400,
+            Some("Sharing requires enabled Diary with server-held local storage.")
+        )
+    );
+    let (s, v, _) = call(
+        &w,
+        &mut owner,
+        "PUT",
+        "/api/profile/sharing",
+        r#"{"scope":"off"}"#,
+        T0 + 5,
+    );
+    assert_eq!((s, v["scope"].as_str()), (200, Some("off")));
+    assert_eq!(
+        count(&w, &format!("SELECT count(*) FROM dav_settings WHERE user_id='{uid}' AND scope='off' AND acknowledged_at IS NULL")),
+        1
+    );
+}
+
+#[test]
+fn sharing_without_an_endpoint_or_a_table() {
+    let w = world(false);
+    let mut owner = Browser::new("10.0.0.1");
+    setup(&w, &mut owner);
+    // Before core created dav_settings: off, and nothing can be saved.
+    let (s, _, r) = call(&w, &mut owner, "GET", "/api/profile/sharing", "", T0);
+    assert_eq!(
+        (s, r.body.as_str()),
+        (
+            200,
+            r#"{"available":false,"reasonId":"not-configured","reason":"The operator has not configured a file-sharing endpoint.","scope":"off","cleartext":false,"url":"","eligible":true}"#
+        )
+    );
+    let (s, _, _) = call(
+        &w,
+        &mut owner,
+        "PUT",
+        "/api/profile/sharing",
+        r#"{"scope":"off"}"#,
+        T0 + 1,
+    );
+    assert_eq!(s, 503);
+    w.node.execute_batch(DAV_SETTINGS).unwrap();
+    let (s, v, _) = call(
+        &w,
+        &mut owner,
+        "PUT",
+        "/api/profile/sharing",
+        r#"{"scope":"lan"}"#,
+        T0 + 2,
+    );
+    assert_eq!(
+        (s, v["error"].as_str()),
+        (
+            400,
+            Some("This sharing scope is not configured by the operator.")
+        )
+    );
+    let (s, v, _) = call(
+        &w,
+        &mut owner,
+        "PUT",
+        "/api/profile/sharing",
+        r#"{"scope":"off"}"#,
+        T0 + 3,
+    );
+    assert_eq!((s, v["available"].as_bool()), (200, Some(false)));
+    // Signed out: the gate's 401.
+    let mut stranger = Browser::new("10.0.0.2");
+    let (s, _, _) = call(&w, &mut stranger, "GET", "/api/profile/sharing", "", T0 + 4);
+    assert_eq!(s, 401);
+}
+
+#[test]
+fn sharing_with_an_invalid_environment_is_an_internal_error() {
+    let mut dav = lan_cleartext();
+    dav.scope = Some("everywhere".into());
+    let w = world_with(false, dav);
+    let mut owner = Browser::new("10.0.0.1");
+    setup(&w, &mut owner);
+    let (s, _, r) = call(&w, &mut owner, "GET", "/api/profile/sharing", "", T0);
+    assert_eq!((s, r.body.as_str()), (500, r#"{"error":"Internal error"}"#));
 }

@@ -1,7 +1,8 @@
 //! routes/auth.cjs `account`: what a signed-in account does to itself (session, sign-out,
 //! appearance, profile, app passwords, the Diary preference, onboarding, passkeys, sessions) and
 //! the administrator's /api/admin/users, /api/admin/invitations, disabling and recovery links.
-//! Account deletion, sharing and secrets rotation stay Node's ([`Outcome::Pass`]).
+//! Account deletion and secrets rotation stay Node's ([`Outcome::Pass`]); Settings -> Sharing is
+//! crate `sharing`.
 
 use crate::users::{self, audit, rows_js};
 use crate::util;
