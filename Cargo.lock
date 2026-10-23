@@ -407,6 +407,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-sandbox-supervisor"
+version = "0.1.0"
+dependencies = [
+ "nix",
+ "sandbox-bridge",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "completeness-report"
 version = "0.1.0"
 dependencies = [
