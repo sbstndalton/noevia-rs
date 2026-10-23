@@ -870,10 +870,14 @@ fn a_session_hold_ends_when_released_and_is_renewed_while_its_generation_runs() 
     queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
     s.finish(100, &t);
     s.hold_session(100, "conv-a", CODE);
-    assert_eq!(s.held_sessions(100), vec!["conv-a".to_owned()]);
+    let held = s.held_sessions(100);
+    assert_eq!(held.len(), 1);
+    let (conv, generation) = held[0].clone();
+    assert_eq!(conv, "conv-a");
+    assert_eq!(s.session_hold_model(100, "conv-a"), Some(CODE));
     assert_eq!(s.status(100).session_holds, 1);
     // Renewed while the router still runs it: held past the first session hold (3 s).
-    assert!(s.extend_session(3_000, "conv-a"));
+    assert!(s.extend_session(3_000, "conv-a", generation));
     assert!(unloads(&s.poll(3_100)).is_empty());
     assert!(unloads(&s.poll(4_499)).is_empty());
     // Released (stopped or ended): the waiting model is served at once.
@@ -890,12 +894,58 @@ fn a_renewed_session_hold_never_outlasts_the_lease_hard_limit() {
     queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
     s.finish(0, &t);
     s.hold_session(0, "conv-b", CODE);
+    let generation = s.held_sessions(0)[0].1;
     for now in (1_000..5_000).step_by(1_000) {
-        assert!(s.extend_session(now, "conv-b"));
+        assert!(s.extend_session(now, "conv-b", generation));
         assert!(unloads(&s.poll(now)).is_empty());
     }
     // The cap is the lease hard limit (5 s) after the hold began.
     assert!(unloads(&s.poll(4_999)).is_empty());
     assert_eq!(unloads(&s.poll(5_000)), vec![CODE.to_owned()]);
-    assert!(!s.extend_session(5_001, "conv-b"));
+    assert!(!s.extend_session(5_001, "conv-b", generation));
+}
+
+#[test]
+fn a_new_generation_of_a_conversation_gets_a_fresh_hold_and_cap() {
+    let mut s = with_loaded(CODE);
+    let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
+    s.finish(0, &t);
+    s.hold_session(0, "conv-c", CODE);
+    let first = s.held_sessions(0)[0].1;
+    assert!(s.extend_session(2_500, "conv-c", first));
+    // A new generation of the same conversation detaches just before the old cap (5 s).
+    s.hold_session(4_900, "conv-c", CODE);
+    let second = s.held_sessions(4_900)[0].1;
+    assert_ne!(first, second);
+    // Held a full session hold from now, past the old cap.
+    assert!(unloads(&s.poll(5_000)).is_empty());
+    assert!(unloads(&s.poll(7_899)).is_empty());
+    // And renewable up to its own cap (9.9 s).
+    assert!(s.extend_session(7_800, "conv-c", second));
+    assert!(unloads(&s.poll(9_899)).is_empty());
+    assert_eq!(unloads(&s.poll(9_900)), vec![CODE.to_owned()]);
+}
+
+#[test]
+fn a_stale_lookup_answer_never_ends_or_renews_a_newer_hold() {
+    let mut s = with_loaded(CODE);
+    let t = admitted(s.arrive(0, CODE, WaitKind::Request, None, 10_000));
+    queued(s.arrive(1, SMART, WaitKind::Request, None, 10_000));
+    s.finish(0, &t);
+    s.hold_session(0, "conv-d", CODE);
+    // A lookup is asked about this hold...
+    let (_, asked) = s.held_sessions(0)[0].clone();
+    // ...meanwhile the session is stopped and a new generation detaches.
+    assert!(s.release_session("conv-d"));
+    s.hold_session(500, "conv-d", CODE);
+    // The late answer (about the old generation) changes nothing.
+    assert!(!s.release_session_generation("conv-d", asked));
+    assert!(!s.extend_session(600, "conv-d", asked));
+    assert_eq!(s.session_hold_model(600, "conv-d"), Some(CODE));
+    assert!(unloads(&s.poll(3_499)).is_empty());
+    // An answer about the current hold applies.
+    let current = s.held_sessions(3_499)[0].1;
+    assert!(s.release_session_generation("conv-d", current));
+    assert_eq!(unloads(&s.poll(3_500)), vec![CODE.to_owned()]);
 }

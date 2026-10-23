@@ -102,6 +102,29 @@ pub struct FakeConfig {
     pub unload_error: bool,
     /// How long a preset reload takes before it restarts every running model and answers.
     pub reload_ms: u64,
+    /// `DELETE /v1/stream` answers at once, before the generation has seen the stop (as a
+    /// router in front of several children does).
+    pub stop_answers_at_once: bool,
+    /// `DELETE /v1/stream` answers with this status and stops nothing.
+    pub stop_status: Option<u16>,
+    /// How the session lookup answers.
+    pub lookup: Lookup,
+    /// A stream resume answers with this status and a complete JSON error body.
+    pub resume_status: Option<u16>,
+}
+
+/// How the fake's session lookup answers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Lookup {
+    /// Every known session, running or done.
+    #[default]
+    Full,
+    /// Leaves out sessions still running (their owner could not be asked); lists done ones.
+    OmitRunning,
+    /// Answers `[]` while any asked session still runs; lists done ones otherwise.
+    EmptyWhileRunning,
+    /// Answers with a server error.
+    Error,
 }
 
 impl Default for FakeConfig {
@@ -116,6 +139,10 @@ impl Default for FakeConfig {
             unload_answer_ms: 0,
             unload_error: false,
             reload_ms: 0,
+            stop_answers_at_once: false,
+            stop_status: None,
+            lookup: Lookup::Full,
+            resume_status: None,
         }
     }
 }
@@ -551,6 +578,23 @@ async fn route(
             let Some((model, instance, _)) = session else {
                 return error(404, "Stream not found or expired");
             };
+            if let Some(status) = state.lock().unwrap().cfg.resume_status {
+                // A complete JSON error body, sent without a length (chunked), so the gate sees
+                // the body reach its end.
+                let body = serde_json::json!({
+                    "error": { "code": status, "message": "synthetic resume failure" }
+                })
+                .to_string();
+                let frames = futures_util::stream::iter([Ok::<_, std::io::Error>(Frame::data(
+                    Bytes::from(body),
+                ))]);
+                let mut response = Response::new(StreamBody::new(frames).boxed());
+                *response.status_mut() = hyper::StatusCode::from_u16(status).unwrap();
+                response
+                    .headers_mut()
+                    .insert("content-type", "application/json".parse().unwrap());
+                return response;
+            }
             state
                 .lock()
                 .unwrap()
@@ -565,19 +609,39 @@ async fn route(
             if conv.is_empty() {
                 return error(400, "Missing conversation id in path");
             }
-            let chunk_ms = {
+            let (chunk_ms, at_once) = {
                 let mut s = state.lock().unwrap();
+                if let Some(status) = s.cfg.stop_status {
+                    return error(status, "synthetic stop failure");
+                }
                 s.sessions.remove(&conv);
-                s.cfg.chunk_ms
+                (s.cfg.chunk_ms, s.cfg.stop_answers_at_once)
             };
-            // Answers once the generation has seen the stop (it checks once per chunk).
-            tokio::time::sleep(Duration::from_millis(chunk_ms * 3)).await;
+            if !at_once {
+                // Answers once the generation has seen the stop (it checks once per chunk).
+                tokio::time::sleep(Duration::from_millis(chunk_ms * 3)).await;
+            }
             full(204, Bytes::new(), "application/json")
         }
         ("POST", "/v1/streams/lookup") => {
             let value: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
             let mut s = state.lock().unwrap();
             s.lookups += 1;
+            let mode = s.cfg.lookup;
+            if mode == Lookup::Error {
+                return error(500, "synthetic lookup failure");
+            }
+            let asked_running = value
+                .get("conversation_ids")
+                .and_then(|v| v.as_array())
+                .is_some_and(|ids| {
+                    ids.iter()
+                        .filter_map(|id| id.as_str())
+                        .any(|id| s.sessions.contains_key(id) && !s.done_sessions.contains(id))
+                });
+            if mode == Lookup::EmptyWhileRunning && asked_running {
+                return json(200, serde_json::json!([]));
+            }
             let rows: Vec<_> = value
                 .get("conversation_ids")
                 .and_then(|v| v.as_array())
@@ -585,6 +649,7 @@ async fn route(
                     ids.iter()
                         .filter_map(|id| id.as_str())
                         .filter(|id| s.sessions.contains_key(*id))
+                        .filter(|id| mode == Lookup::Full || s.done_sessions.contains(*id))
                         .map(|id| {
                             serde_json::json!({
                                 "conversation_id": id,

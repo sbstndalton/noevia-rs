@@ -89,7 +89,8 @@ pub struct GateConfig {
     pub max_connections: usize,
     /// Longest the router may take to answer a preset reload (no new work is admitted meanwhile).
     pub reload_timeout: Duration,
-    /// How often the router is asked whether held detached session generations still run.
+    /// The period of the timer that asks the router whether held detached session generations
+    /// still run (the timer always ticks; a tick does nothing while no hold exists).
     pub session_check_interval: Duration,
 }
 
@@ -383,9 +384,14 @@ impl Gate {
         self.kick.notify_one();
     }
 
-    /// Asks the router which held detached session generations still run: a running one keeps
-    /// its hold renewed, a finished or unknown one releases it. Without a usable answer nothing
-    /// changes (each hold then ends on its own).
+    /// Asks the router which held detached session generations still run. Only an explicit
+    /// answer counts: a generation reported running has its hold renewed, one reported done
+    /// (`is_done: true`, which the router keeps listed for minutes) releases its hold. An id the
+    /// answer leaves out, an empty answer or a failed read change nothing: the router leaves out
+    /// sessions it could not ask about, so absence is not proof of an end, and each such hold
+    /// ends on its own. Answers are applied only to the hold they were asked about (its number),
+    /// never to one made since. Called on every tick of the check timer; it returns at once
+    /// while no hold exists.
     async fn check_sessions(self: &Arc<Self>) {
         let held = {
             let now = self.now();
@@ -394,7 +400,8 @@ impl Gate {
         if held.is_empty() {
             return;
         }
-        let body = serde_json::json!({ "conversation_ids": held }).to_string();
+        let ids: Vec<String> = held.iter().map(|(c, _)| c.clone()).collect();
+        let body = serde_json::json!({ "conversation_ids": ids }).to_string();
         let request = axum::http::Request::builder()
             .method(Method::POST)
             .uri(format!("{}/v1/streams/lookup", self.cfg.upstream))
@@ -418,18 +425,24 @@ impl Gate {
         else {
             return;
         };
-        let Some(running) = running_sessions(&collected.to_bytes(), &held) else {
+        let Some(states) = session_states(&collected.to_bytes(), &ids) else {
             return;
         };
         let mut released = Vec::new();
         self.with(|inner, now| {
-            for (conv_id, still_running) in held.iter().zip(running) {
-                if still_running {
-                    inner.sched.extend_session(now, conv_id);
-                } else if inner.sched.release_session(conv_id) {
-                    if let Some(model) = inner.sessions.model(conv_id) {
-                        released.push(model.to_owned());
+            for ((conv_id, generation), state) in held.iter().zip(states) {
+                match state {
+                    SessionState::Running => {
+                        inner.sched.extend_session(now, conv_id, *generation);
                     }
+                    SessionState::Done => {
+                        if inner.sched.release_session_generation(conv_id, *generation) {
+                            if let Some(model) = inner.sessions.model(conv_id) {
+                                released.push(model.to_owned());
+                            }
+                        }
+                    }
+                    SessionState::Unknown => {}
                 }
             }
         });
@@ -535,10 +548,21 @@ impl Gate {
     }
 }
 
-/// Reads the router's session lookup answer (an array of `{conversation_id, is_done}`): for each
-/// of `asked`, whether a generation for it still runs (the router keys per-model variants as
-/// `<id>::<model>`). `None`: not a usable answer.
-pub(crate) fn running_sessions(answer: &[u8], asked: &[String]) -> Option<Vec<bool>> {
+/// What a session lookup says about one conversation id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SessionState {
+    /// A row for it is not done (a row without `is_done` counts as running).
+    Running,
+    /// Every row for it is done.
+    Done,
+    /// No row for it: the router may not have been able to ask (no change).
+    Unknown,
+}
+
+/// Reads the router's session lookup answer (an array of `{conversation_id, is_done}`) for each
+/// of `asked` (the router keys per-model variants as `<id>::<model>`). `None`: not a usable
+/// answer.
+pub(crate) fn session_states(answer: &[u8], asked: &[String]) -> Option<Vec<SessionState>> {
     let rows = serde_json::from_slice::<serde_json::Value>(answer).ok()?;
     let rows: Vec<(&str, bool)> = rows
         .as_array()?
@@ -556,13 +580,23 @@ pub(crate) fn running_sessions(answer: &[u8], asked: &[String]) -> Option<Vec<bo
         asked
             .iter()
             .map(|id| {
-                rows.iter().any(|(row_id, done)| {
-                    !done
-                        && (*row_id == id.as_str()
+                let mine: Vec<bool> = rows
+                    .iter()
+                    .filter(|(row_id, _)| {
+                        *row_id == id.as_str()
                             || row_id
                                 .strip_prefix(id.as_str())
-                                .is_some_and(|rest| rest.starts_with("::")))
-                })
+                                .is_some_and(|rest| rest.starts_with("::"))
+                    })
+                    .map(|(_, done)| *done)
+                    .collect();
+                if mine.is_empty() {
+                    SessionState::Unknown
+                } else if mine.iter().all(|done| *done) {
+                    SessionState::Done
+                } else {
+                    SessionState::Running
+                }
             })
             .collect(),
     )
@@ -633,6 +667,13 @@ impl InflightGuard {
     /// Marks the request as a resume of session `conv_id`.
     pub(crate) fn set_resume_of(&mut self, conv_id: String) {
         self.resume_of = Some(conv_id);
+    }
+
+    /// The router did not answer the resume with the session's event stream (for example the
+    /// offset was lost, or the owning model is loading): its end says nothing about the
+    /// generation.
+    pub(crate) fn clear_resume_of(&mut self) {
+        self.resume_of = None;
     }
 
     /// The response body reached its end.
@@ -1047,26 +1088,28 @@ mod tests {
     }
 
     #[test]
-    fn session_lookups_report_running_generations() {
-        let asked = vec![
-            "c1".to_owned(),
-            "c2".to_owned(),
-            "c3".to_owned(),
-            "c4".to_owned(),
-        ];
+    fn session_lookups_release_only_on_an_explicit_done() {
+        use SessionState::{Done, Running, Unknown};
+        let asked: Vec<String> = ["c1", "c2", "c3", "c4", "c5", "c6"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
         let answer = br#"[
             {"conversation_id":"c1","is_done":false},
             {"conversation_id":"c2","is_done":true},
             {"conversation_id":"c3::route-code","is_done":false},
-            {"conversation_id":"c40","is_done":false}
+            {"conversation_id":"c40","is_done":true},
+            {"conversation_id":"c5"},
+            {"conversation_id":"c6::a","is_done":true},
+            {"conversation_id":"c6::b","is_done":false}
         ]"#;
         assert_eq!(
-            running_sessions(answer, &asked),
-            Some(vec![true, false, true, false])
+            session_states(answer, &asked),
+            Some(vec![Running, Done, Running, Unknown, Running, Running])
         );
-        assert_eq!(running_sessions(b"[]", &asked), Some(vec![false; 4]));
-        assert_eq!(running_sessions(b"{}", &asked), None);
-        assert_eq!(running_sessions(b"not json", &asked), None);
+        assert_eq!(session_states(b"[]", &asked), Some(vec![Unknown; 6]));
+        assert_eq!(session_states(b"{}", &asked), None);
+        assert_eq!(session_states(b"not json", &asked), None);
     }
 
     #[test]

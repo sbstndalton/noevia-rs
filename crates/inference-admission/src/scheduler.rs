@@ -262,6 +262,8 @@ struct SessionHold {
     until: u64,
     /// The hold is never extended past this.
     cap: u64,
+    /// Numbers holds, so an answer about an older generation never ends a newer hold.
+    generation: u64,
 }
 
 /// Most session holds tracked one by one; past this a hold falls back to a plain residency hold
@@ -652,7 +654,11 @@ impl Scheduler {
     /// - with a live lease it is handled like any request of that lease;
     /// - when the model is resident here (the holder, or an exempt model the router lists as
     ///   resident) it is admitted and counted at once, even while other models wait (it runs on
-    ///   the loaded model and loads nothing), and leaves no residency grace when it ends. It is
+    ///   the loaded model and loads nothing), and leaves no residency grace when it ends.
+    ///   This bypasses the fair hold on purpose: such a request can never cause a switch, so
+    ///   queueing it would only make it wait for, and then trigger, a needless unload. The cost
+    ///   is that overlapping `autoload=false` generations on the holder keep it busy longer;
+    ///   clients use `autoload=false` for cheap reads. It is
     ///   refused while the router is unreachable, a preset reload runs or its model is being
     ///   unloaded;
     /// - otherwise it cannot load or use the slot and is passed to the router, which answers that
@@ -793,9 +799,13 @@ impl Scheduler {
     /// A session generation (conversation `conv_id`) on `model` lost its client before its
     /// answer ended: the router may go on generating it for a later resume, so the model is held
     /// for the session hold (never switched away meanwhile; the fair hold still stops new work
-    /// riding along). The hold is tracked per conversation: [`Scheduler::release_session`] ends it
-    /// early (an explicit stop, or the generation ended) and [`Scheduler::extend_session`] renews
-    /// it while the router still runs the generation, up to the lease hard limit after it began.
+    /// riding along). The hold is tracked per conversation and numbered: a new generation of the
+    /// same conversation replaces it with a fresh hold (new number, hold and cap from now), as
+    /// the router replaces the session. [`Scheduler::release_session`] ends it early (an
+    /// explicit stop, or the generation ended), [`Scheduler::release_session_generation`] ends it
+    /// only if it is still the hold of that number (a lookup answer about it), and
+    /// [`Scheduler::extend_session`] renews it while the router still runs the generation, up to
+    /// the lease hard limit after it began.
     pub fn hold_session(&mut self, now: u64, conv_id: &str, model: &str) {
         let id = self.canon(model);
         if self.exempt(&id) {
@@ -809,24 +819,25 @@ impl Scheduler {
             return;
         }
         let cap = now.saturating_add(self.cfg.session_hold_ms.max(self.cfg.lease_hard_ms));
-        let hold = self
-            .session_holds
-            .entry(conv_id.to_owned())
-            .or_insert(SessionHold {
-                model: id.clone(),
+        let generation = self.next();
+        self.session_holds.insert(
+            conv_id.to_owned(),
+            SessionHold {
+                model: id,
                 until,
                 cap,
-            });
-        hold.model = id;
-        hold.until = hold.until.max(until).min(hold.cap);
+                generation,
+            },
+        );
     }
 
-    /// The router still runs the detached generation of `conv_id`: its hold is renewed for
-    /// another session hold (never past its cap). `false`: no live hold.
-    pub fn extend_session(&mut self, now: u64, conv_id: &str) -> bool {
+    /// The router still runs the detached generation of `conv_id` whose hold has number
+    /// `generation`: the hold is renewed for another session hold (never past its cap).
+    /// `false`: no live hold of that number.
+    pub fn extend_session(&mut self, now: u64, conv_id: &str, generation: u64) -> bool {
         let hold_ms = self.cfg.session_hold_ms;
         match self.session_holds.get_mut(conv_id) {
-            Some(hold) if now < hold.until => {
+            Some(hold) if now < hold.until && hold.generation == generation => {
                 hold.until = hold.until.max(now.saturating_add(hold_ms)).min(hold.cap);
                 true
             }
@@ -834,19 +845,42 @@ impl Scheduler {
         }
     }
 
-    /// The detached generation of `conv_id` ended or was stopped: its hold ends now. `false`: no
+    /// The session `conv_id` was stopped or its generation ended: its hold ends now. `false`: no
     /// such hold.
     pub fn release_session(&mut self, conv_id: &str) -> bool {
         self.session_holds.remove(conv_id).is_some()
     }
 
-    /// The conversation ids whose detached generation still holds its model.
-    pub fn held_sessions(&self, now: u64) -> Vec<String> {
+    /// The router reports the generation whose hold has number `generation` done: that hold
+    /// ends now. A hold made since (a newer generation) is kept. `false`: no hold of that number.
+    pub fn release_session_generation(&mut self, conv_id: &str, generation: u64) -> bool {
+        if self
+            .session_holds
+            .get(conv_id)
+            .is_some_and(|h| h.generation == generation)
+        {
+            self.session_holds.remove(conv_id);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The live session holds: conversation id and hold number.
+    pub fn held_sessions(&self, now: u64) -> Vec<(String, u64)> {
         self.session_holds
             .iter()
             .filter(|(_, h)| now < h.until)
-            .map(|(c, _)| c.clone())
+            .map(|(c, h)| (c.clone(), h.generation))
             .collect()
+    }
+
+    /// The model a live session hold keeps, if any.
+    pub fn session_hold_model(&self, now: u64, conv_id: &str) -> Option<&str> {
+        self.session_holds
+            .get(conv_id)
+            .filter(|h| now < h.until)
+            .map(|h| h.model.as_str())
     }
 
     /// A stream resume (`GET /v1/stream`) of a session on `model` (the holder when the session's

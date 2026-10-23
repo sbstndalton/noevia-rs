@@ -116,8 +116,11 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
             send(&gate, &parts, outgoing, guard, permit).await
         }
         Class::Stop { conv_id } => {
-            // The router cancels the session's generation: once it accepted the stop, the
-            // session no longer holds its model.
+            // The router cancels the session's generation. Its 2xx answer accepts the stop but
+            // does not confirm that the generation has stopped (the cancel is asynchronous, and a
+            // router in front of several children answers before the child has acted), so a
+            // switch right after it may cut the last moments of a generation the user asked to
+            // stop. That is accepted: the session no longer holds its model.
             match forward(&gate, &parts, outgoing, permit, gate.cfg.header_timeout).await {
                 Ok(upstream) => {
                     if upstream.status().is_success() {
@@ -419,6 +422,19 @@ fn respond_with(
     guard: Option<InflightGuard>,
 ) -> Response {
     let (up_parts, up_body) = upstream.into_parts();
+    let event_stream = up_parts
+        .headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.trim_start().starts_with("text/event-stream"));
+    let guard = guard.map(|mut guard| {
+        // Only the session's own event stream reaching its end means the generation ended; an
+        // error answer (offset lost, model loading, not found) is a complete body too.
+        if !(up_parts.status.is_success() && event_stream) {
+            guard.clear_resume_of();
+        }
+        guard
+    });
     let body = match guard {
         Some(guard) => Body::new(GuardedBody {
             inner: up_body,
