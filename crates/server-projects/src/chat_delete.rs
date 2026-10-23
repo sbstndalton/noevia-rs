@@ -52,6 +52,12 @@ use js_json::JValue;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
+/// The release pairing marker (sbstndalton/noevia#2161's explicit markers): this front's internal
+/// store answers `POST /v1/chat/delete`. noevia deploy/tools/assemble-release.sh reads the quoted
+/// literal from this file to pair it with a core that deletes through it
+/// (`'noevia-chat-delete-client/1'` in core server/project-store-client.cjs). Keep the literal.
+pub const CHAT_DELETE_STORE_MARKER: &str = "noevia-chat-delete-store/1";
+
 /// chat-lists.cjs `TOMBSTONE_CAP`.
 pub const TOMBSTONE_CAP: usize = 5000;
 /// chat-brain.cjs `BRAIN_DIR`.
@@ -624,6 +630,12 @@ mod tests {
 
     fn del(root: &Path, id: &str, kind: Kind<'_>) -> Result<Outcome, DeleteError> {
         delete(root, USER, id, kind, Origin::Remove, on())
+    }
+
+    #[test]
+    fn the_release_marker_is_the_literal_assemble_release_reads() {
+        assert_eq!(CHAT_DELETE_STORE_MARKER, "noevia-chat-delete-store/1");
+        assert!(include_str!("chat_delete.rs").contains("\"noevia-chat-delete-store/1\""));
     }
 
     #[test]
