@@ -1686,6 +1686,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "js-json",
+ "reqwest",
  "secret-envelope",
  "serde",
  "serde_json",

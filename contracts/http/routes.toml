@@ -135,7 +135,13 @@ methods = ["POST"]
 [[route]]
 path = "/api/admin/web-address"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "POST"]
+
+[[route]]
+path = "/api/admin/web-address/remove"
+owner = "rust"
+methods = ["POST"]
+client = false
 
 [[route]]
 path = "/api/instance"

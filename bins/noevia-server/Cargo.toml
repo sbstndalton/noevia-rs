@@ -75,6 +75,7 @@ code-net-guard = { path = "../../crates/code-net-guard" }
 server-auth = { path = "../../crates/server-auth" }
 server-account = { path = "../../crates/server-account" }
 url = "2.5"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 server-store = { path = "../../crates/server-store" }
 server-projects = { path = "../../crates/server-projects" }
 js-json = { path = "../../crates/js-json" }
