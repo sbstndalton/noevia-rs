@@ -26,6 +26,8 @@
 //!   permanently native under #1071 (required cargo feature `rust-project-writes`).
 //! - [`context_window`]: a chat's last context meter (core routes/chat-lists.cjs `GET
 //!   /api/chats/{chatId}/context-window`), a read with no switch (sbstndalton/noevia#1071).
+//! - [`retention`]: Settings → Data → Delete old chats, its read (core routes/account.cjs `GET
+//!   /api/account/retention`), a read with no switch (sbstndalton/noevia#1071); `PUT` stays Node's.
 //! - [`js`]: the JavaScript built-ins those handlers rely on.
 //!
 //! The caller (bins/noevia-server) has already run Node's request gate (session, origin, CSRF);
@@ -41,6 +43,7 @@ pub mod free_chats;
 pub mod js;
 pub mod legacy_claim;
 pub mod lock;
+pub mod retention;
 pub mod skills;
 pub mod store;
 pub mod store_api;

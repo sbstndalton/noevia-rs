@@ -458,8 +458,8 @@ jobs:
           cargo build --locked -p replay -p noevia-server --features rust-project-chats,rust-free-chats
           target/debug/noevia-server --features | grep -qx rust-project-chats
           target/debug/noevia-server --features | grep -qx rust-free-chats
-      - name: Node and Rust share the projects.json and free-chats.json locks and lose no write (and the blind-save controls do); generated chat-list saves answer as core's route
-        run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock --test chats_property --test free_chats_property
+      - name: Node and Rust share the projects.json and free-chats.json locks and lose no write (and the blind-save controls do); generated chat-list saves answer as core's route; generated retention cases expire as core's rule
+        run: NOEVIA_CORE_CHECKOUT="$GITHUB_WORKSPACE/core" cargo test --locked -p server-projects --test node_lock --test chats_property --test free_chats_property --test retention_property
       - name: Replay against Node directly (reference data dir)
         run: |
           set -euo pipefail

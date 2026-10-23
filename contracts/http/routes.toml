@@ -37,7 +37,8 @@ owner = "rust"
 
 [[route]]
 path = "/api/account/retention"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/admin/decision-settings"

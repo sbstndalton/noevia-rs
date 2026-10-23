@@ -19,7 +19,7 @@ use crate::App;
 use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
-use server_projects::{assets, chats, context, context_window, free_chats, Ctx, Reply};
+use server_projects::{assets, chats, context, context_window, free_chats, retention, Ctx, Reply};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,12 +40,18 @@ pub enum Route {
     Context { chat: String, create: bool },
     /// GET /api/chats/{chatId}/context-window (sbstndalton/noevia#1071, no switch)
     ContextWindow { chat: String },
+    /// GET /api/account/retention (sbstndalton/noevia#1071, no switch; `PUT` is Node's)
+    Retention,
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
 /// `^\/api\/projects\/([^/]+)\/chats$`, and routes/chat-lists.cjs's `p === '/api/freechats'`,
 /// with the methods its handlers answer; `None` sends the request on to Node.
 pub fn route(method: &str, path: &str) -> Option<Route> {
+    // routes/account.cjs `path === '/api/account/retention'`, its GET only.
+    if path == "/api/account/retention" {
+        return (method == "GET").then_some(Route::Retention);
+    }
     if path == "/api/freechats" {
         return match method {
             "GET" => Some(Route::FreeChats),
@@ -232,7 +238,8 @@ pub async fn serve(
         | Route::Chats { .. }
         | Route::FreeChats
         | Route::Context { .. }
-        | Route::ContextWindow { .. } => None,
+        | Route::ContextWindow { .. }
+        | Route::Retention => None,
     };
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
@@ -284,6 +291,7 @@ pub async fn serve(
                 _,
             ) => context::get(ctx, &chat),
             (Route::ContextWindow { chat }, _) => context_window::get(ctx, &chat),
+            (Route::Retention, _) => retention::get(ctx),
             (Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats, None) => {
                 Reply::internal()
             }
@@ -497,6 +505,23 @@ mod tests {
             ("GET", "/api/chats//context"),
             ("GET", "/api/chats/c1/context/"),
             ("GET", "/api/chats/a/b/context"),
+        ] {
+            assert_eq!(route(m, p), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn retention_matcher_is_get_only() {
+        assert_eq!(
+            route("GET", "/api/account/retention"),
+            Some(Route::Retention)
+        );
+        for (m, p) in [
+            ("PUT", "/api/account/retention"),
+            ("POST", "/api/account/retention"),
+            ("DELETE", "/api/account/retention"),
+            ("GET", "/api/account/retention/"),
+            ("GET", "/api/account/retention/x"),
         ] {
             assert_eq!(route(m, p), None, "{m} {p}");
         }
