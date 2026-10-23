@@ -266,11 +266,27 @@ pub fn render(chat: &JValue, history: &JValue) -> Result<String, Error> {
                 coerce(content, &mut scratch)?;
             }
             let trimmed = scratch.0.trim_matches(is_space);
-            out.push(if trimmed.is_empty() {
-                "_(no text)_"
+            // sbstndalton/noevia#2116: an assistant turn with a non-empty `failure` string is a reply that failed, not an
+            // answer. core's chatMarkdown (chat-export.cjs) says the same words.
+            let failed = role == Some("assistant")
+                && message
+                    .get("failure")
+                    .as_str()
+                    .is_some_and(|f| !f.trim_matches(is_space).is_empty());
+            if failed {
+                if trimmed.is_empty() {
+                    out.push("_(The reply failed; no answer was written.)_")?;
+                } else {
+                    out.push(trimmed)?;
+                    out.push("\n\n_(The reply failed before it finished.)_")?;
+                }
             } else {
-                trimmed
-            })?;
+                out.push(if trimmed.is_empty() {
+                    "_(no text)_"
+                } else {
+                    trimmed
+                })?;
+            }
             out.push("\n")?;
             let tools = message.get("toolCalls");
             if tools.truthy() {

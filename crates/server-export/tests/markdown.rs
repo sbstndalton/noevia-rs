@@ -117,3 +117,54 @@ proptest! {
         }
     }
 }
+
+fn render_history(history: &str) -> String {
+    let chat = js_json::parse(r#"{"title":"Failed"}"#).unwrap();
+    let history = js_json::parse(history).unwrap();
+    render(&chat, &history).unwrap()
+}
+
+/// sbstndalton/noevia#2116: a failed reply is rendered as a failure, never as an answer or as "(no text)".
+#[test]
+fn a_failed_reply_is_rendered_as_a_failure() {
+    let md = render_history(
+        r#"[{"role":"user","content":"Summarise the notes."},
+            {"role":"assistant","content":"","failure":"The model took too long."},
+            {"role":"user","content":"Again."},
+            {"role":"assistant","content":"  The notes say three things:  ","failure":"The model stream failed."}]"#,
+    );
+    assert!(
+        md.contains("\n## Assistant\n\n_(The reply failed; no answer was written.)_\n"),
+        "{md}"
+    );
+    assert!(
+        md.contains("\n## Assistant\n\nThe notes say three things:\n\n_(The reply failed before it finished.)_\n"),
+        "{md}"
+    );
+    assert!(!md.contains("(no text)"), "{md}");
+    assert!(
+        !md.contains("took too long") && !md.contains("stream failed"),
+        "the sentence is not exported: {md}"
+    );
+}
+
+#[test]
+fn only_a_non_empty_string_failure_on_an_assistant_turn_counts() {
+    for failure in ["\"\"", "\"   \"", "5", "null", "true", "{\"x\":1}", "[]"] {
+        let md = render_history(&format!(
+            r#"[{{"role":"assistant","content":"A real answer.","failure":{failure}}}]"#
+        ));
+        assert!(
+            md.contains("\n## Assistant\n\nA real answer.\n"),
+            "{failure}: {md}"
+        );
+        assert!(!md.contains("failed"), "{failure}: {md}");
+    }
+    let md = render_history(r#"[{"role":"user","content":"q","failure":"not on a user turn"}]"#);
+    assert!(
+        md.contains("\n## You\n\nq\n") && !md.contains("failed"),
+        "{md}"
+    );
+    // Unchanged: an empty assistant turn without a failure is still "(no text)".
+    assert!(render_history(r#"[{"role":"assistant","content":""}]"#).contains("_(no text)_"));
+}
