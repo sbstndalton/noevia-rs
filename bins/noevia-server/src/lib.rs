@@ -61,6 +61,10 @@ use std::sync::Arc;
 /// free-chats.json through (src/project_store.rs, #1264; permanent, no switch); the
 /// supervisor confirms it to Node (NOEVIA_RUST_PROJECT_STORE_CONFIRMED) and hands both the secret.
 ///
+/// `start-id`: this build reads NOEVIA_START_ID, the web supervisor's id for this container start,
+/// and refuses to start beside Node without it (sbstndalton/noevia#1071: a running reply's partial
+/// file carries the start that runs it, so a restart's leftovers read as interrupted).
+///
 /// `legacy-root-claim`: this binary exposes the filesystem-only legacy claim helper before server startup.
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
@@ -74,6 +78,7 @@ pub const FEATURES: &[&str] = &[
     "project-store",
     "rust-auth",
     "rust-projects",
+    "start-id",
     #[cfg(feature = "rust-project-chats")]
     "rust-project-chats",
     #[cfg(feature = "rust-free-chats")]
