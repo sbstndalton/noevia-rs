@@ -2332,6 +2332,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "roxmltree"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "rsa"
 version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2679,6 +2688,22 @@ dependencies = [
  "server-store",
  "tempfile",
  "zeroize",
+]
+
+[[package]]
+name = "server-dav"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "httpdate",
+ "hyper",
+ "hyper-util",
+ "percent-encoding",
+ "roxmltree",
+ "subtle",
+ "tokio",
+ "url",
 ]
 
 [[package]]
