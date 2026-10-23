@@ -19,10 +19,16 @@
 //! start of each of its requests. Accepted difference: Node also counted a change of its own that
 //! was still queued for the store (a save in flight); this read sees it once it is written.
 //!
+//! Reads that fail are read as Node reads them: a file that cannot be read at all (missing,
+//! EACCES/EIO, a directory in its place) or is not JSON is "absent" ([`store::read_json`]), so
+//! an unreadable `chat-retention.json` is `days: 0` (Node's `read()` catch-all), and an unreadable
+//! `projects.json` or `free-chats.json` counts no chats.
+//!
 //! Node's 500s are kept: a project that is not an object, an id that is not a string
 //! (`project.id.startsWith` throws), a project whose `chats` is truthy but not a list
-//! (`.filter` throws). Stricter than Node, as a refusal (500): a file this port cannot hold (a
-//! lone surrogate escape, see [`store::read_json`]).
+//! (`.filter` throws). Stricter than Node, as a refusal (500): any of the three files holding what
+//! this port cannot represent (a lone surrogate escape, see [`store::read_json`]); Node would
+//! have read `days` or counted the chats.
 
 use crate::chats::{self, FREE_CHATS_FILE};
 use crate::free_chats;
@@ -284,6 +290,20 @@ mod tests {
         }
         write(&dir, FILE, r#"{"days":365.0}"#);
         assert!(body(&call(root.path())).starts_with(r#"{"days":365,"#));
+    }
+
+    #[test]
+    fn an_unreadable_retention_file_reads_off_not_500() {
+        // Node's `read()` catches everything: a path that cannot be read as a file (here a
+        // directory, as EACCES/EIO would be) is days 0.
+        let (root, dir) = setup();
+        std::fs::create_dir(dir.join(FILE)).unwrap();
+        let r = call(root.path());
+        assert_eq!(r.status, 200);
+        assert_eq!(
+            body(&r),
+            r#"{"days":0,"periods":[30,90,365],"preview":{"30":0,"90":0,"365":0}}"#
+        );
     }
 
     #[test]

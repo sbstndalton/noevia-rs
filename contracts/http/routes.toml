@@ -542,7 +542,8 @@ methods = ["POST"]
 
 [[route]]
 path = "/api/profile/sharing"
-owner = "node"
+owner = "rust"
+methods = ["GET", "PUT"]
 
 [[route]]
 path = "/api/projects"
