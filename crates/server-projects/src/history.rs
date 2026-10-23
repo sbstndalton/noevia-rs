@@ -143,11 +143,8 @@ fn deleted() -> Reply {
 fn store_failure(e: &store::StoreError) -> Reply {
     match e {
         store::StoreError::Gone => Reply::error(410, "account no longer exists"),
-        store::StoreError::Busy => Reply::json(
-            503,
-            r#"{"error":"The project store is busy. Try again shortly.","code":"PROJECTS_BUSY"}"#
-                .to_string(),
-        ),
+        // The same 503 PROJECTS_BUSY with Retry-After: 1 as the other project routes (#1406/#1419).
+        store::StoreError::Busy => crate::chats::save_failure(e, ""),
         _ => Reply::internal(),
     }
 }
@@ -257,6 +254,23 @@ mod tests {
     const BEFORE: &str = "ffffffffffffffffffffffffffffffff";
     /// Node: crypto.createHash('sha256').update(JSON.stringify([])).digest('hex').
     const EMPTY_REVISION: &str = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945";
+
+    /// A busy store answers 503 PROJECTS_BUSY with Retry-After: 1, as chats.rs does (the web
+    /// client's save retry reads it).
+    #[test]
+    #[allow(clippy::panic)]
+    fn a_busy_store_is_a_503_with_retry_after() {
+        let r = store_failure(&store::StoreError::Busy);
+        assert_eq!(r.status, 503);
+        let crate::Body::Bytes { headers, bytes } = &r.body else {
+            panic!("a busy reply carries headers: {r:?}")
+        };
+        assert!(headers.contains(&("retry-after", "1".to_string())));
+        assert_eq!(
+            std::str::from_utf8(bytes).unwrap(),
+            r#"{"error":"The project store is busy. Try again shortly.","code":"PROJECTS_BUSY"}"#
+        );
+    }
 
     fn setup() -> (tempfile::TempDir, PathBuf) {
         let root = tempfile::tempdir().unwrap();
