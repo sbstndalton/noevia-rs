@@ -1,0 +1,22 @@
+# Diary workspace rules (pure source leaf)
+
+This crate ports rules from the shipped Python 3.12 `workspace_ops.py`, `workspace_trash.py`, `workspace_files.py`, and `corpus_store.py`. It reads no database, filesystem, corpus, or runtime state. It is not selected by the service and does not alter the existing Python transaction writer.
+
+## API and compatibility
+
+- `ProtectionConfig::protected` accepts the actual `calendar.month_name[1..12]` strings from the active Python locale. `{year}`, `{month02}`, and `{month}` use ASCII digits; `{month_name}` matches those literal locale names. It uses the configured root, entries prefix, monthly prefix, template, and index path.
+- `folder_version` hashes the sorted `f\t<relative>\t<version>` and `d\t<relative>` lines, including explicit directories. Relative slicing counts Unicode code points, as Python does.
+- `rel_path` and `safe_file_path` keep their different slash and extension rules. `check_tree_bounds` preserves the inclusive 500-entry/50-MiB subtree caps. `trashable` preserves the 512-KiB limit and xid marker rejection after UTF-8 replacement.
+- `normalize_uuid` models `uuid.UUID(value)` string normalization, including braces, lowercase URN prefixes, displaced hyphens, and Python base-16 underscores, then emits the canonical lowercase ID.
+- `encode_writer` emits exact sorted, spaced, UTF-8 `json.dumps(..., sort_keys=True, ensure_ascii=False).encode()` Trash-v1 bytes with canonical CPython float text. Its SHA-256 is the file version of the capsule. `replaced_name` preserves the bounded timestamped restore-as path for a `preserve` operation.
+- `decode_legacy` follows the shipped reader's required fields and strict Base64/digest/path checks while admitting extra fields, missing timestamps, and last-wins duplicate keys. `decode_strict` requires canonical bytes emitted by `encode_writer`. Both return `Result`: a valid empty Markdown file has an empty `raw` vector, while a broken capsule is an error.
+
+The Python decoder can also accept handcrafted JSON extensions such as `NaN` in an unrelated field or lone UTF-16 surrogate escapes that Rust `serde_json` cannot represent in a UTF-8 string. These are explicit reader migration blockers. A service selector must not treat a Rust parse error as an empty capsule or silently discard an existing receipt. No service selector is included here.
+
+`tests/generate_python_fixtures.py` compiles the selected function bodies from the shipped Python service source and runs synthetic inputs under CPython 3.12. The checked-in fixture contains 405 protection results, 180 ETags, 100 exact capsule byte/hash pairs, 11 legacy records, 18 preserved names, and 35 marker controls. Tests compare actual Rust output to those Python results. The generator opens no managed storage or real Diary data.
+
+## Proposed later transaction boundary (requires separate approval)
+
+A future Rust writer would receive one fixed, trusted tenant DB path and an authenticated, bounded operation request from the existing Python HTTP layer. Python would retain auth, tenant state, write/migration exclusion, and pending-journal checks through child reap. Rust would open only the existing active SQLite DB in read-write mode, verify tenant/schema, then `BEGIN IMMEDIATE`. Inside that transaction it would snapshot the source/destination subtree, validate protected paths and ETags, enforce entry/byte/Markdown/capsule rules, and atomically change files and explicit directories, insert Trash capsules, enqueue touched paths, and update generation/due/snapshot metadata. It would commit before reporting success; known validation errors would have stable conflict responses and transport faults would be unavailable/uncertain without Python fallback.
+
+`workspace_trash.change` already receives a caller-supplied operation ID. `workspace_ops.delete`, `move`, `copy`, and `preserve` do not. A lost reply after commit can therefore make replay ambiguous, especially because capsules receive new random IDs. Before a DB writer or service adapter, agree on a stable caller operation ID, request fingerprint, durable receipt schema, and retry contract; do not infer idempotence from the path or ETag alone. Trash listing must retain its corrupt-record sentinel and pagination semantics; restore must remain non-overwriting. The existing outbox remains the only indexing trigger, with no model call inside the transaction.
