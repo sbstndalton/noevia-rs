@@ -145,6 +145,8 @@ async fn server_main() -> ExitCode {
         config.trust_proxy
     );
     let app = App::new(config);
+    // sbstndalton/noevia#2153: every chat change journal entry carries this start.
+    server_projects::journal::set_start_id(app.config.start_id.as_deref().unwrap_or(""));
     app.statics.warm();
     // Rust owns sign-in (#1071): a schema newer than this build stops the front (identity.rs).
     let layer = std::sync::Arc::clone(&app.identity);

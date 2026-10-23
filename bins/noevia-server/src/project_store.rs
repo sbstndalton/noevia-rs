@@ -25,6 +25,16 @@
 //!                                                     `not-last`, `no-user-message`, `deleted`)
 //! `POST /v1/history/remove-if { user, chat, history }` -> 200 `{ removed }` (only that exact transcript)
 //!
+//! A user's chat change journal (sbstndalton/noevia#2153; crates/server-projects `journal`), one
+//! entry per transcript mutation, which Node tails to run the chat mirror and brain:
+//!
+//! `POST /v1/changes/read { user, after? }`         -> 200 `{ entries, oldestSeq, latestSeq, more, start }`
+//!   `entries` those with `seq > after` (default 0), oldest first, at most 1,000 (`more`: read
+//!   again after the last). `oldestSeq`/`latestSeq` the journal's bounds (null: empty): a cursor
+//!   below `oldestSeq - 1` fell behind a rotation, one above `latestSeq` predates a reset; either
+//!   way the reader rescans. `start` is this process's NOEVIA_START_ID: a different one than the
+//!   reader last saw means the store restarted (rescan too).
+//!
 //! Errors use Node's shapes: 503 `{ error, code: "PROJECTS_BUSY" }` (the lock was held past its
 //! wait), 410 `account no longer exists`, 400 a bad request, 413 a body over the limit, 500 else.
 //! The body limit is [`BODY_LIMIT`]; a request's file work runs on the blocking pool.
@@ -36,6 +46,7 @@ use axum::routing::post;
 use axum::Router;
 use js_json::{wtf16, JValue};
 use serde_json::{json, Value};
+use server_projects::journal;
 use server_projects::store::StoreError;
 use server_projects::store_api::{self, StoreFile, WriteError};
 use server_projects::transcript::{self, Appended, Base, Saved, TranscriptError};
@@ -300,6 +311,46 @@ async fn handle_history(store: Store, headers: HeaderMap, raw: Bytes, op: Op) ->
     done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
 }
 
+async fn handle_changes(store: Store, headers: HeaderMap, raw: Bytes) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let Ok(body) = serde_json::from_slice::<Value>(&raw) else {
+        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+    };
+    let Some(user) = body.get("user").and_then(Value::as_str).map(str::to_string) else {
+        return error(StatusCode::BAD_REQUEST, "user required");
+    };
+    let after = match body.get("after") {
+        None | Some(Value::Null) => 0,
+        Some(v) => match v.as_u64() {
+            Some(n) => n,
+            None => {
+                return error(
+                    StatusCode::BAD_REQUEST,
+                    "after must be a non-negative integer",
+                )
+            }
+        },
+    };
+    let done =
+        tokio::task::spawn_blocking(move || match journal::read(&store.data_dir, &user, after) {
+            Ok(c) => reply(
+                StatusCode::OK,
+                &json!({
+                    "entries": c.entries,
+                    "oldestSeq": c.oldest_seq,
+                    "latestSeq": c.latest_seq,
+                    "more": c.more,
+                    "start": &*store.start_id,
+                }),
+            ),
+            Err(e) => store_error(&e),
+        })
+        .await;
+    done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
+}
+
 fn history_route(op: Op) -> axum::routing::MethodRouter<Store> {
     post(move |State(s): State<Store>, h: HeaderMap, b: Bytes| handle_history(s, h, b, op))
 }
@@ -310,6 +361,10 @@ pub fn router(store: Store) -> Router {
         .route("/v1/history/write", history_route(Op::Write))
         .route("/v1/history/append-if-last", history_route(Op::Append))
         .route("/v1/history/remove-if", history_route(Op::RemoveIf))
+        .route(
+            "/v1/changes/read",
+            post(|State(s): State<Store>, h: HeaderMap, b: Bytes| handle_changes(s, h, b)),
+        )
         .route(
             "/v1/read",
             post(|State(s): State<Store>, h: HeaderMap, b: Bytes| handle(s, h, b, false)),
