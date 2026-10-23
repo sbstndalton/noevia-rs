@@ -70,6 +70,7 @@ pub mod js;
 pub mod legacy_claim;
 pub mod lock;
 pub mod partial;
+pub mod research_jobs;
 pub mod retention;
 pub mod skills;
 pub mod source_jobs;
