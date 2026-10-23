@@ -55,6 +55,8 @@ pub enum Native {
     Static,
     /// Sign-in and the account (M3, permanent since #1071): crates/server-account.
     Account,
+    /// Three live, read-only address GETs; Node retains the POST writers.
+    WebAddress,
     /// The project routes ported so far (M4, permanent since #1071): crates/server-projects
     /// `assets` (a project's images), `chats` (its chat list) and `free_chats` (the free-chat list).
     Projects,
@@ -201,6 +203,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/sampling-settings" if auth => return Some(Native::SamplingSettings),
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
+        "/api/instance" | "/.well-known/webauthn" | "/api/admin/web-address" if auth => {
+            return Some(Native::WebAddress)
+        }
         // Under /api/account/ but not the account crate's: it reads the chat lists.
         ACCOUNT_RETENTION if auth => return Some(Native::Projects),
         _ => {}
@@ -349,6 +354,7 @@ mod tests {
                 }
                 // The retention preview reads the chat lists, so the project handler answers it.
                 Some(Native::Projects) if r.path == ACCOUNT_RETENTION => {}
+                Some(Native::WebAddress) if r.path == "/api/admin/web-address" => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),
@@ -473,7 +479,16 @@ mod tests {
         assert_eq!(dispatch("GET", "/privacy"), None);
         assert_eq!(dispatch("GET", "/device"), None);
         assert_eq!(dispatch("GET", "/device/"), None);
-        assert_eq!(dispatch("GET", "/.well-known/webauthn"), None);
+        for path in [
+            "/api/instance",
+            "/.well-known/webauthn",
+            "/api/admin/web-address",
+        ] {
+            assert_eq!(dispatch("GET", path), Some(Native::WebAddress), "{path}");
+            for method in ["HEAD", "POST", "PUT", "DELETE", "OPTIONS"] {
+                assert_eq!(dispatch(method, path), None, "{method} {path}");
+            }
+        }
         assert_eq!(
             dispatch("GET", "/api/projects/p1/chats"),
             cfg!(feature = "rust-project-chats").then_some(Native::Projects)
@@ -524,7 +539,8 @@ mod tests {
         }
         for (m, p) in [
             ("DELETE", "/api/admin/users/u1"),
-            ("GET", "/api/admin/web-address"),
+            ("POST", "/api/admin/web-address"),
+            ("HEAD", "/api/admin/web-address"),
             ("POST", "/api/profile/sharing"),
             ("PUT", "/api/account/retention"),
             ("HEAD", "/api/auth/session"),
