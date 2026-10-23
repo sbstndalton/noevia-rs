@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 use std::collections::HashMap;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -23,10 +24,12 @@ const MAX_START_BYTES: usize = 64 * 1024;
 const START_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_CONNECTIONS: usize = 4;
 const MAX_WALL_MS: u64 = 2 * 60 * 60 * 1000;
+const SESSION_HELPER_NAME: &str = "code-sandbox-session-exec";
 
 #[derive(Clone, Debug)]
 pub struct Config {
     pub command: PathBuf,
+    pub session_helper: PathBuf,
     pub args: Vec<String>,
     pub root: PathBuf,
     pub max_connections: usize,
@@ -45,16 +48,20 @@ impl Config {
         if command.is_empty() || root.is_empty() {
             return Err("CODE_HARNESS_COMMAND and WORKSPACE_ROOT are required".into());
         }
+        validate_harness_command(Path::new(&command))?;
         let port = match std::env::var("PORT") {
             Ok(value) => value.parse::<u16>().map_err(|_| "PORT must be 0..65535")?,
             Err(_) => 8030,
         };
+        let session_helper = session_helper_path()?;
+        validate_session_helper(&session_helper)?;
         let connections =
             positive_integer_env("CODE_SANDBOX_MAX_CONNECTIONS", MAX_CONNECTIONS as u64)?;
         let max_connections = checked_connections(connections)?;
         Ok((
             Self {
                 command: command.into(),
+                session_helper,
                 args: std::env::var("CODE_HARNESS_ARGS")
                     .unwrap_or_default()
                     .split(' ')
@@ -74,6 +81,50 @@ impl Config {
             port,
         ))
     }
+}
+
+fn session_helper_path() -> Result<PathBuf, String> {
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("cannot locate sandbox supervisor executable: {error}"))?;
+    let directory = executable
+        .parent()
+        .ok_or("cannot locate sandbox supervisor directory")?;
+    Ok(directory.join(SESSION_HELPER_NAME))
+}
+
+fn validate_session_helper(path: &Path) -> Result<(), String> {
+    let metadata = path.symlink_metadata().map_err(|error| {
+        format!(
+            "required sandbox session helper {} is unavailable: {error}",
+            path.display()
+        )
+    })?;
+    if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+        return Err(format!(
+            "required sandbox session helper {} is not executable",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn validate_harness_command(path: &Path) -> Result<(), String> {
+    if !path.is_absolute() {
+        return Err("CODE_HARNESS_COMMAND must be an absolute path".into());
+    }
+    let metadata = path.metadata().map_err(|error| {
+        format!(
+            "CODE_HARNESS_COMMAND {} is unavailable: {error}",
+            path.display()
+        )
+    })?;
+    if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+        return Err(format!(
+            "CODE_HARNESS_COMMAND {} is not executable",
+            path.display()
+        ));
+    }
+    Ok(())
 }
 
 fn positive_integer_env(key: &str, fallback: u64) -> Result<u64, String> {
@@ -304,8 +355,9 @@ async fn connection(
             return;
         }
     };
-    let mut command = Command::new(&config.command);
+    let mut command = Command::new(&config.session_helper);
     command
+        .arg(&config.command)
         .args(&config.args)
         .current_dir(&start.cwd)
         .env_clear()
@@ -318,7 +370,6 @@ async fn connection(
         // The downstream pi bridge must keep its pinned Rust/WASM framing.
         command.env("SANDBOX_BRIDGE_IMPL", "rust");
     }
-    command.process_group(0);
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(_) => {
@@ -562,6 +613,8 @@ pub async fn serve(
     config: Config,
     mut shutdown: watch::Receiver<bool>,
 ) -> std::io::Result<()> {
+    validate_session_helper(&config.session_helper).map_err(std::io::Error::other)?;
+    validate_harness_command(&config.command).map_err(std::io::Error::other)?;
     if config.max_connections == 0 || config.max_connections > Semaphore::MAX_PERMITS {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -630,6 +683,31 @@ mod tests {
         );
         let start = parse_start(&empty_home, &root, Some("/fallback")).unwrap();
         assert_eq!(start.env.get("HOME").map(String::as_str), Some("/fallback"));
+    }
+
+    #[test]
+    fn session_helper_must_exist_and_be_executable() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        assert!(validate_session_helper(&missing).is_err());
+        let file = dir.path().join("not-executable");
+        std::fs::write(&file, b"helper").unwrap();
+        assert!(validate_session_helper(&file).is_err());
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(validate_session_helper(&file).is_ok());
+        let symlink = dir.path().join("symlink");
+        std::os::unix::fs::symlink(&file, &symlink).unwrap();
+        assert!(validate_session_helper(&symlink).is_err());
+    }
+
+    #[test]
+    fn harness_command_must_be_absolute_and_executable() {
+        assert!(validate_harness_command(Path::new("opencode")).is_err());
+        assert!(validate_harness_command(Path::new("/bin/sh")).is_ok());
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("not-executable");
+        std::fs::write(&file, b"harness").unwrap();
+        assert!(validate_harness_command(&file).is_err());
     }
 
     #[test]

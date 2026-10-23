@@ -4,7 +4,7 @@ use code_sandbox_supervisor::{serve, Config};
 use std::path::PathBuf;
 use std::time::Duration;
 use tempfile::TempDir;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 
@@ -34,6 +34,7 @@ impl Harness {
         let port = listener.local_addr().unwrap().port();
         let config = Config {
             command: "/bin/sh".into(),
+            session_helper: env!("CARGO_BIN_EXE_code-sandbox-session-exec").into(),
             args: vec!["-c".into(), script.into()],
             root,
             max_connections: cap,
@@ -236,6 +237,85 @@ async fn leader_exit_terminates_its_background_process_group() {
     tokio::time::sleep(Duration::from_millis(650)).await;
     assert!(!path.exists(), "descendant survived leader exit");
     h.close().await;
+}
+
+#[tokio::test]
+async fn harness_exec_is_session_leader_and_cannot_rejoin_supervisor_group() {
+    let files = tempfile::tempdir().unwrap();
+    let script_path = files.path().join("session-probe.py");
+    let pid_file = files.path().join("probe.pid");
+    let marker = files.path().join("descendant-survived");
+    std::fs::write(
+        &script_path,
+        r#"import errno, os, pathlib, sys, time
+pid_file, marker, supervisor_group = sys.argv[1], sys.argv[2], int(sys.argv[3])
+pid, group, session, parent = os.getpid(), os.getpgrp(), os.getsid(0), os.getppid()
+pathlib.Path(pid_file).write_text(str(pid))
+try:
+    os.setpgid(0, supervisor_group)
+    escape = 0
+except OSError as error:
+    escape = error.errno
+if escape != errno.EPERM:
+    print(f'{pid}|{group}|{session}|{parent}|{escape}', flush=True)
+    time.sleep(5)
+    sys.exit(0)
+child = os.fork()
+if child == 0:
+    time.sleep(0.6)
+    pathlib.Path(marker).touch()
+    os._exit(0)
+print(f'{pid}|{group}|{session}|{parent}|{escape}', flush=True)
+time.sleep(5)
+"#,
+    )
+    .unwrap();
+    let cleanup = EscapedChildCleanup {
+        pid_file: pid_file.clone(),
+    };
+    let script = format!(
+        "exec /usr/bin/python3 {} {} {} {}",
+        script_path.display(),
+        pid_file.display(),
+        marker.display(),
+        nix::unistd::getpgrp().as_raw()
+    );
+    let h = Harness::new(&script, 1, Duration::from_secs(2)).await;
+    let mut socket = h.connect().await;
+    socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+    let mut reader = BufReader::new(socket);
+    let mut line = String::new();
+    tokio::time::timeout(Duration::from_secs(2), reader.read_line(&mut line))
+        .await
+        .unwrap()
+        .unwrap();
+    let fields: Vec<i32> = line
+        .trim()
+        .split('|')
+        .map(|part| part.parse().unwrap())
+        .collect();
+    let [pid, group, session, parent, escape] =
+        <[i32; 5]>::try_from(fields).expect("unexpected session probe");
+    assert_eq!(pid, group, "harness must lead its process group");
+    assert_eq!(pid, session, "harness must lead a distinct session");
+    assert_eq!(
+        parent,
+        std::process::id() as i32,
+        "session helper must exec in place"
+    );
+    assert_eq!(
+        escape,
+        nix::errno::Errno::EPERM as i32,
+        "harness rejoined supervisor group"
+    );
+    drop(reader);
+    tokio::time::sleep(Duration::from_millis(750)).await;
+    assert!(
+        !marker.exists(),
+        "ordinary descendant survived group teardown"
+    );
+    h.close().await;
+    drop(cleanup);
 }
 
 #[tokio::test]

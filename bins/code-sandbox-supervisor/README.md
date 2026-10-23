@@ -8,10 +8,18 @@ handshake on the configured TCP listener, then forwards the ACP stream byte for
 byte to one fixed harness command. It uses the shared Rust sandbox-bridge parser
 for JavaScript-compatible start-message and environment filtering, resolves both
 workspace root and requested cwd, and refuses a path outside the root. It spawns
-the harness with a cleared environment and a fresh process group. A connection
-close, child exit, wall timer, or supervisor shutdown terminates that group.
+the harness with a cleared environment in a fresh session and process group.
+The fixed session-exec sibling binary calls setsid() and execs the configured
+harness in place, preserving its tracked PID. The supervisor checks that this
+helper is a regular executable file, not a symlink, before binding. A later
+image must package both binaries in the same directory. A connection close,
+child exit, wall timer, or supervisor shutdown terminates that group.
 
-Configuration matches the current Node supervisor: `CODE_HARNESS_COMMAND` and
+The harness command must be an absolute executable path. The current core
+image uses a relative opencode command, so a later packaging cutover must pin
+an absolute path first. No current image selects this binary.
+
+Configuration otherwise matches the current Node supervisor: `CODE_HARNESS_COMMAND` and
 `WORKSPACE_ROOT` are required; `CODE_HARNESS_ARGS` is split on spaces;
 `PORT` defaults to 8030; `CODE_SANDBOX_MAX_CONNECTIONS` defaults to 4;
 `CODE_SANDBOX_MAX_WALL_MS` defaults to 2 hours. `HOME` falls back to the
