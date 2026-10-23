@@ -24,6 +24,8 @@
 //! - [`context`]: the first project-writes slice of sbstndalton/noevia#1264, a free chat's
 //!   attachments project (core routes/projects.cjs `GET` and `POST /api/chats/{chatId}/context`),
 //!   permanently native under #1071 (required cargo feature `rust-project-writes`).
+//! - [`context_window`]: a chat's last context meter (core routes/chat-lists.cjs `GET
+//!   /api/chats/{chatId}/context-window`), a read with no switch (sbstndalton/noevia#1071).
 //! - [`js`]: the JavaScript built-ins those handlers rely on.
 //!
 //! The caller (bins/noevia-server) has already run Node's request gate (session, origin, CSRF);
@@ -33,6 +35,7 @@
 pub mod assets;
 pub mod chats;
 pub mod context;
+pub mod context_window;
 pub mod frame;
 pub mod free_chats;
 pub mod js;

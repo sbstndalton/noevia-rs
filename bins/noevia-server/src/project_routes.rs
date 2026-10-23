@@ -19,7 +19,7 @@ use crate::App;
 use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
-use server_projects::{assets, chats, context, free_chats, Ctx, Reply};
+use server_projects::{assets, chats, context, context_window, free_chats, Ctx, Reply};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +38,8 @@ pub enum Route {
     SaveFreeChats,
     /// GET (`create: false`) or POST /api/chats/{chatId}/context (#1264, permanently native under #1071)
     Context { chat: String, create: bool },
+    /// GET /api/chats/{chatId}/context-window (sbstndalton/noevia#1071, no switch)
+    ContextWindow { chat: String },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -57,6 +59,10 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
             ("GET" | "POST", [chat, "context"]) if !chat.is_empty() => Some(Route::Context {
                 chat: (*chat).to_string(),
                 create: method == "POST",
+            }),
+            // routes/chat-lists.cjs `/^\/api\/chats\/([^/]+)\/context-window$/` for GET.
+            ("GET", [chat, "context-window"]) if !chat.is_empty() => Some(Route::ContextWindow {
+                chat: (*chat).to_string(),
             }),
             _ => None,
         };
@@ -222,7 +228,11 @@ pub async fn serve(
     let limit = match &route {
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
-        Route::One { .. } | Route::Chats { .. } | Route::FreeChats | Route::Context { .. } => None,
+        Route::One { .. }
+        | Route::Chats { .. }
+        | Route::FreeChats
+        | Route::Context { .. }
+        | Route::ContextWindow { .. } => None,
     };
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
@@ -273,6 +283,7 @@ pub async fn serve(
                 },
                 _,
             ) => context::get(ctx, &chat),
+            (Route::ContextWindow { chat }, _) => context_window::get(ctx, &chat),
             (Route::Upload { .. } | Route::SaveChats { .. } | Route::SaveFreeChats, None) => {
                 Reply::internal()
             }
@@ -486,7 +497,25 @@ mod tests {
             ("GET", "/api/chats//context"),
             ("GET", "/api/chats/c1/context/"),
             ("GET", "/api/chats/a/b/context"),
-            ("GET", "/api/chats/c1/context-window"),
+        ] {
+            assert_eq!(route(m, p), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn context_window_matchers() {
+        assert_eq!(
+            route("GET", "/api/chats/c%201/context-window"),
+            Some(Route::ContextWindow {
+                chat: "c%201".into()
+            })
+        );
+        for (m, p) in [
+            ("POST", "/api/chats/c1/context-window"),
+            ("DELETE", "/api/chats/c1/context-window"),
+            ("GET", "/api/chats//context-window"),
+            ("GET", "/api/chats/c1/context-window/"),
+            ("GET", "/api/chats/a/b/context-window"),
         ] {
             assert_eq!(route(m, p), None, "{m} {p}");
         }

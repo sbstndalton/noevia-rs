@@ -243,7 +243,8 @@ methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/chats/{chatId}/context-window"
-owner = "node"
+owner = "rust"
+methods = ["GET"]
 
 [[route]]
 path = "/api/chats/{chatId}/history"

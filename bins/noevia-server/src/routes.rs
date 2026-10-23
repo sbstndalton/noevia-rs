@@ -98,7 +98,12 @@ const PROJECT_ROUTES: &[&str] = &[
     "/api/projects/{id}/assets/{assetId}",
     PROJECT_CHATS,
     FREE_CHATS,
+    CHAT_CONTEXT_WINDOW,
 ];
+
+/// A chat's last context meter (GET only; routes.toml): a read, always answered here
+/// (sbstndalton/noevia#1071); Node refuses it.
+const CHAT_CONTEXT_WINDOW: &str = "/api/chats/{chatId}/context-window";
 
 /// A project's chat list: the second M4 slice, answered here only in a build with the cargo
 /// feature `rust-project-chats` (listed by `--features`). Node no longer answers it
@@ -564,7 +569,6 @@ mod tests {
         for (m, p) in [
             ("PUT", "/api/chats/c1/context"),
             ("DELETE", "/api/chats/c1/context"),
-            ("GET", "/api/chats/c1/context-window"),
             ("GET", "/api/chats/c1/history"),
             ("POST", "/api/chats/c1/move"),
             ("GET", "/api/diary/context"),
@@ -606,6 +610,27 @@ mod tests {
             ("GET", "/api/workspace"),
         ] {
             assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn a_chats_context_window_is_always_rusts_for_get_only() {
+        let off = Switches::default();
+        assert_eq!(
+            dispatch_under("GET", "/api/chats/c1/context-window", off),
+            Some(Native::Projects)
+        );
+        // Node keeps every other method and the chat routes around it (#1071: history, move, the
+        // free chat's delete are still Node's).
+        for (m, p) in [
+            ("POST", "/api/chats/c1/context-window"),
+            ("DELETE", "/api/chats/c1/context-window"),
+            ("GET", "/api/chats/c1/history"),
+            ("POST", "/api/chats/c1/history"),
+            ("POST", "/api/chats/c1/move"),
+            ("DELETE", "/api/freechats/c1"),
+        ] {
+            assert_eq!(dispatch_under(m, p, off), None, "{m} {p}");
         }
     }
 
