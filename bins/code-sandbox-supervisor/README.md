@@ -9,8 +9,11 @@ byte to one fixed harness command. It uses the shared Rust sandbox-bridge parser
 for JavaScript-compatible start-message and environment filtering, resolves both
 workspace root and requested cwd, and refuses a path outside the root. It spawns
 the harness with a cleared environment in a fresh session and process group.
-The fixed session-exec sibling binary calls setsid() and execs the configured
-harness in place, preserving its tracked PID. The supervisor checks that this
+The fixed session-exec sibling binary calls setsid(), sends a readiness marker,
+waits for a single unbuffered acknowledgement byte, then execs the configured
+harness in place, preserving its tracked PID. The supervisor verifies
+PID=PGID=SID before acknowledging. A failed or timed-out readiness exchange
+kills and reaps the tracked helper PID directly. The supervisor checks that this
 helper is a regular executable file, not a symlink, before binding. A later
 image must package both binaries in the same directory. A connection close,
 child exit, wall timer, or supervisor shutdown terminates that group.

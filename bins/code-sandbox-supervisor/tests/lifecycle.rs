@@ -26,6 +26,24 @@ impl Harness {
         grace: Duration,
         rust_bridge: bool,
     ) -> Self {
+        Self::with_session_helper(
+            script,
+            cap,
+            wall,
+            grace,
+            rust_bridge,
+            env!("CARGO_BIN_EXE_code-sandbox-session-exec").into(),
+        )
+        .await
+    }
+    async fn with_session_helper(
+        script: &str,
+        cap: usize,
+        wall: Duration,
+        grace: Duration,
+        rust_bridge: bool,
+        session_helper: PathBuf,
+    ) -> Self {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("workspaces");
         let work = root.join("task");
@@ -34,7 +52,7 @@ impl Harness {
         let port = listener.local_addr().unwrap().port();
         let config = Config {
             command: "/bin/sh".into(),
-            session_helper: env!("CARGO_BIN_EXE_code-sandbox-session-exec").into(),
+            session_helper,
             args: vec!["-c".into(), script.into()],
             root,
             max_connections: cap,
@@ -236,6 +254,87 @@ async fn leader_exit_terminates_its_background_process_group() {
     assert_eq!(read_all(socket).await, "");
     tokio::time::sleep(Duration::from_millis(650)).await;
     assert!(!path.exists(), "descendant survived leader exit");
+    h.close().await;
+}
+
+#[tokio::test]
+async fn disconnect_before_session_ready_still_tears_down_descendants() {
+    let files = tempfile::tempdir().unwrap();
+    let wrapper = files.path().join("delayed-helper");
+    let entered = files.path().join("helper-entered");
+    let marker = files.path().join("descendant-survived");
+    let real_helper = env!("CARGO_BIN_EXE_code-sandbox-session-exec");
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/usr/bin/python3\nimport os, pathlib, sys, time\npathlib.Path({:?}).touch()\ntime.sleep(0.25)\nos.execv({:?}, [{:?}, *sys.argv[1:]])\n",
+            entered.display().to_string(),
+            real_helper,
+            real_helper
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let script = format!("(sleep 0.6; touch '{}') & cat", marker.display());
+    let h = Harness::with_session_helper(
+        &script,
+        1,
+        Duration::from_secs(3),
+        Duration::from_millis(30),
+        false,
+        wrapper,
+    )
+    .await;
+    let mut socket = h.connect().await;
+    socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while !entered.exists() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("delayed helper did not enter");
+    drop(socket); // During the wrapper delay, the child is not yet a group leader.
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    assert!(!marker.exists(), "descendant survived early disconnect");
+    h.close().await;
+}
+
+#[tokio::test]
+async fn helper_readiness_timeout_reaps_unready_pid_without_group_signal() {
+    let files = tempfile::tempdir().unwrap();
+    let wrapper = files.path().join("unready-helper");
+    let pid_file = files.path().join("unready.pid");
+    std::fs::write(
+        &wrapper,
+        format!(
+            "#!/usr/bin/python3\nimport os, pathlib, time\npathlib.Path({:?}).write_text(str(os.getpid()))\ntime.sleep(5)\n",
+            pid_file.display().to_string()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let h = Harness::with_session_helper(
+        "printf NEVER_STARTED",
+        1,
+        Duration::from_secs(5),
+        Duration::from_millis(30),
+        false,
+        wrapper,
+    )
+    .await;
+    let mut socket = h.connect().await;
+    socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+    let response = read_all(socket).await;
+    assert!(response.contains("could not start"), "{response}");
+    assert!(!response.contains("NEVER_STARTED"));
+    let pid: i32 = std::fs::read_to_string(&pid_file).unwrap().parse().unwrap();
+    assert!(
+        !std::path::Path::new(&format!("/proc/{pid}")).exists(),
+        "unready helper was not reaped"
+    );
     h.close().await;
 }
 

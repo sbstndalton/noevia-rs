@@ -11,11 +11,11 @@ use std::time::Duration;
 
 use nix::sys::signal::{killpg, Signal};
 use nix::sys::wait::{waitid, Id, WaitPidFlag, WaitStatus};
-use nix::unistd::Pid;
+use nix::unistd::{getpgid, getsid, Pid};
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 use tokio::sync::{watch, Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
@@ -25,6 +25,9 @@ const START_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_CONNECTIONS: usize = 4;
 const MAX_WALL_MS: u64 = 2 * 60 * 60 * 1000;
 const SESSION_HELPER_NAME: &str = "code-sandbox-session-exec";
+const SESSION_READY: &[u8] = b"NOEVIA-SESSION-READY\n";
+const SESSION_ACK: u8 = b'R';
+const SESSION_READY_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -331,6 +334,13 @@ async fn observe_leader(pid: Pid) -> Stop {
     }
 }
 
+async fn stop_unready_child(child: &mut Child) {
+    // Before the readiness exchange, this PID may still be in our own
+    // process group. Never address a numeric PGID here.
+    let _ = child.start_kill();
+    let _ = tokio::time::timeout(Duration::from_secs(1), child.wait()).await;
+}
+
 async fn connection(
     mut stream: TcpStream,
     config: Config,
@@ -378,29 +388,49 @@ async fn connection(
         }
     };
     let Some(pid) = child.id().and_then(|id| i32::try_from(id).ok()) else {
-        let _ = child.kill().await;
+        stop_unready_child(&mut child).await;
         refuse(&mut stream, "the sandbox agent could not start").await;
         return;
     };
+    let (Some(mut stdin), Some(mut stdout), Some(mut stderr)) =
+        (child.stdin.take(), child.stdout.take(), child.stderr.take())
+    else {
+        stop_unready_child(&mut child).await;
+        refuse(&mut stream, "the sandbox agent could not start").await;
+        return;
+    };
+    // The helper first calls setsid(), then writes a marker and waits for an
+    // ack before exec. Until this exchange completes, no group cleanup is
+    // safe: a disconnect can arrive while it still belongs to our own SID.
+    let ready = tokio::time::timeout(SESSION_READY_TIMEOUT, async {
+        let mut marker = [0_u8; SESSION_READY.len()];
+        stdout.read_exact(&mut marker).await?;
+        if marker != SESSION_READY {
+            return Err(std::io::Error::other("invalid sandbox session marker"));
+        }
+        let child_pid = Pid::from_raw(pid);
+        let sid = getsid(Some(child_pid)).map_err(std::io::Error::other)?;
+        let pgid = getpgid(Some(child_pid)).map_err(std::io::Error::other)?;
+        if sid != child_pid || pgid != child_pid {
+            return Err(std::io::Error::other("sandbox session identity mismatch"));
+        }
+        Ok::<(), std::io::Error>(())
+    })
+    .await;
+    if !matches!(ready, Ok(Ok(()))) {
+        stop_unready_child(&mut child).await;
+        refuse(&mut stream, "the sandbox agent could not start").await;
+        return;
+    }
+    // The one-byte ack is sent only after the bounded, verified phase. Do not
+    // wrap this write in a cancellable timeout: if it were delivered just as
+    // the timeout fired, the harness could exec before direct-PID cleanup.
+    if stdin.write_all(&[SESSION_ACK]).await.is_err() {
+        stop_unready_child(&mut child).await;
+        refuse(&mut stream, "the sandbox agent could not start").await;
+        return;
+    }
     let mut guard = GroupGuard::new(Pid::from_raw(pid));
-    let Some(mut stdin) = child.stdin.take() else {
-        guard.signal(Signal::SIGKILL).ok();
-        guard.disarm();
-        let _ = child.wait().await;
-        return;
-    };
-    let Some(mut stdout) = child.stdout.take() else {
-        guard.signal(Signal::SIGKILL).ok();
-        guard.disarm();
-        let _ = child.wait().await;
-        return;
-    };
-    let Some(mut stderr) = child.stderr.take() else {
-        guard.signal(Signal::SIGKILL).ok();
-        guard.disarm();
-        let _ = child.wait().await;
-        return;
-    };
     let (mut reader, writer) = stream.into_split();
     let writer = Arc::new(Mutex::new(writer));
     let mut input = tokio::spawn(async move {
