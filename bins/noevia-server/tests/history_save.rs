@@ -372,3 +372,26 @@ async fn a_save_keeps_this_starts_running_partial() {
     assert_eq!(status, 200);
     assert!(!partial.exists());
 }
+
+/// Node builds a chat's brain only for a journalled `write` whose origin is `history`
+/// (sbstndalton/noevia#2153): the Rust-served save must be journalled as exactly that.
+#[tokio::test]
+async fn a_save_is_journalled_as_a_write_from_history() {
+    let f = front().await;
+    let (status, _, body) = call(
+        f.addr,
+        "POST",
+        "/api/chats/c1/history",
+        &headers(&f),
+        r#"{"history":["qa journalled"]}"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let read = server_projects::journal::read(&f.data, &f.user, 0).unwrap();
+    assert_eq!(read.entries.len(), 1);
+    let e = &read.entries[0];
+    assert_eq!(e["chatId"], "c1");
+    assert_eq!(e["op"], "write");
+    assert_eq!(e["origin"], "history");
+    assert_eq!(e["revision"], revision(r#"["qa journalled"]"#).as_str());
+}

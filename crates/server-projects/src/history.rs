@@ -213,13 +213,14 @@ pub fn post(ctx: Ctx<'_>, raw_chat: &str, body: &[u8], over: bool, start_id: &st
         return Reply::error(400, "history must be a list");
     };
     use crate::transcript::{Saved, TranscriptError};
-    match crate::transcript::write(
+    match crate::transcript::write_as(
         ctx.data_dir,
         ctx.user_id,
         &safe,
         history,
         &base,
         Some(start_id),
+        crate::transcript::Origin::History,
     ) {
         Ok(Saved::Saved { revision }) => {
             Reply::json(200, format!("{{\"ok\":true,\"revision\":\"{revision}\"}}"))
