@@ -118,9 +118,9 @@ jobs:
         run: |
           cargo run --locked -p docling-service --example gen-fixtures -- "$NOEVIA_DOCLING_REFERENCE" /tmp/docling-http.json
           cmp /tmp/docling-http.json crates/docling-service/tests/fixtures/python-http.v1.json
-      - name: Native HTTP, frames, cancellation and actual fake-engine worker
+      - name: Native HTTP, frames, cancellation, actual fake-engine worker and the hostile differential against the retired Python server
         run: cargo test --locked -p docling-service
-      - name: Actual binary refuses omitted compiled capability before spawn
+      - name: Actual binary refuses omitted compiled capability before spawn, whatever the retired selector says
         run: cargo test --locked -p noevia-docling --test capability
       - name: Actual feature-enabled binary serves and reaps its warm child
         run: cargo test --locked -p noevia-docling --features native-docling --test capability
