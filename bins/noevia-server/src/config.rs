@@ -66,6 +66,14 @@ pub struct Config {
     /// supervisor hands over a port (it always does, and Node refuses to start without it). Refused
     /// without UI_DATA_DIR or the secret.
     pub project_store: Option<ProjectStoreConfig>,
+    /// NOEVIA_START_ID: the id the web supervisor makes for this container start (32 lowercase
+    /// hex) and hands Node too, which writes it into a running reply's partial file
+    /// (`running: { start }`, core chat-partial.cjs; sbstndalton/noevia#1071). A partial whose
+    /// marker is another start's was cut off by a crash or restart
+    /// (server_projects::partial). Required whenever the front runs beside Node (the project
+    /// store is configured, which the supervisor always does and Node needs): a front that could
+    /// not tell a running reply from an interrupted one never starts there.
+    pub start_id: Option<String>,
     /// GET /api/providers/chatgpt (M6, sbstndalton/noevia#1373). An invalid
     /// NOEVIA_FEATURE_CHATGPT_OAUTH refuses startup (Node does not start with one either).
     pub rust_chatgpt_status: Option<ChatgptStatus>,
@@ -230,6 +238,19 @@ impl Config {
         } else {
             None
         };
+        let start_id = match get("NOEVIA_START_ID").filter(|v| !v.is_empty()) {
+            Some(id) if server_projects::partial::valid_start_id(&id) => Some(id),
+            Some(_) => {
+                return Err(
+                    "NOEVIA_START_ID must be 32 lowercase hex characters (the web supervisor makes it)"
+                        .into(),
+                )
+            }
+            None if project_store.is_some() => {
+                return Err("NOEVIA_START_ID is required beside Node (the web supervisor makes one per container start, sbstndalton/noevia#1071)".into())
+            }
+            None => None,
+        };
         // Checked after the project switches so their own refusals come first.
         let missing: Vec<String> = FRONT_ROUTE_FEATURES
             .iter()
@@ -294,6 +315,7 @@ impl Config {
             rust_stats,
             rust_export,
             project_store,
+            start_id,
             rust_chatgpt_status,
             usage_clock: server_usage::summary::Clock::system(&get),
             retired,
@@ -698,6 +720,35 @@ mod export_tests {
         "NOEVIA_PROJECT_STORE_TOKEN",
         "synthetic-store-token-0123456789abcdef",
     );
+    const START: (&str, &str) = ("NOEVIA_START_ID", "0123456789abcdef0123456789abcdef");
+
+    #[test]
+    fn the_start_id_is_required_beside_node_and_checked_whenever_set() {
+        // Beside Node (the store is configured): refused without one.
+        let err = lookup(&[UP, DATA, STORE_PORT, STORE_TOKEN]).unwrap_err();
+        assert!(err.contains("NOEVIA_START_ID is required"), "{err}");
+        for bad in [
+            "short",
+            "0123456789ABCDEF0123456789ABCDEF",
+            "0123456789abcdef0123456789abcdef0",
+            " 0123456789abcdef0123456789abcdef",
+            "../../0123456789abcdef0123456789ab",
+        ] {
+            for pairs in [
+                vec![UP, DATA, STORE_PORT, STORE_TOKEN, ("NOEVIA_START_ID", bad)],
+                vec![UP, DATA, ("NOEVIA_START_ID", bad)],
+            ] {
+                let err = lookup(&pairs).unwrap_err();
+                assert!(err.contains("32 lowercase hex"), "{bad}: {err}");
+            }
+        }
+        if FRONT_ROUTE_FEATURES.iter().all(|(_, on)| *on) {
+            let c = lookup(&[UP, DATA, STORE_PORT, STORE_TOKEN, START]).unwrap();
+            assert_eq!(c.start_id.as_deref(), Some(START.1));
+            // Without the store (a front run alone, as the replay tools do) it may be absent.
+            assert_eq!(lookup(&[UP, DATA]).unwrap().start_id, None);
+        }
+    }
 
     #[test]
     fn project_store_runs_with_a_port_and_never_reads_the_retired_switch() {
@@ -710,7 +761,7 @@ mod export_tests {
             assert!(lookup(&pairs).unwrap().project_store.is_none(), "{v:?}");
         }
         for extra in [None, Some(("NOEVIA_RUST_PROJECT_STORE", "0"))] {
-            let mut pairs = vec![UP, DATA, STORE_PORT, STORE_TOKEN];
+            let mut pairs = vec![UP, DATA, STORE_PORT, STORE_TOKEN, START];
             pairs.extend(extra);
             let c = lookup(&pairs).unwrap();
             assert_eq!(c.project_store.as_ref().unwrap().port, 19021);
@@ -726,6 +777,7 @@ mod export_tests {
                 DATA,
                 STORE_PORT,
                 STORE_TOKEN,
+                START,
                 ("NOEVIA_RUST_PROJECTS", v),
             ])
             .unwrap();

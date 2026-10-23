@@ -82,6 +82,9 @@ fi
 store_port=$((port + 2000))
 store_token="$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"
 [ "${#store_token}" -eq 64 ] || { echo "replay-front: could not make the project store secret" >&2; exit 2; }
+# Like the web supervisor: one start id for both processes (sbstndalton/noevia#1071).
+start_id="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
+[ "${#start_id}" -eq 32 ] || { echo "replay-front: could not make the start id" >&2; exit 2; }
 store_confirmed=1
 # Context GET/POST are permanently native (#1071). Retired caller values cannot opt out.
 has_feature rust-project-writes || { echo "replay-front: no rust-project-writes" >&2; exit 2; }
@@ -90,10 +93,10 @@ UI_PORT="$legacy" PUBLIC_ORIGIN="$origin" NOEVIA_RUST_AUTH=1 NOEVIA_RUST_AUTH_CO
   NOEVIA_RUST_PROJECTS_CONFIRMED="$projects_confirmed" NOEVIA_RUST_PROJECT_CHATS_CONFIRMED="$project_chats_confirmed" NOEVIA_RUST_FREE_CHATS_CONFIRMED="$free_chats_confirmed" NOEVIA_RUST_USAGE_CONFIRMED="$usage_confirmed" NOEVIA_RUST_SAMPLING_SETTINGS_CONFIRMED="$sampling_confirmed" NOEVIA_RUST_REASONING_SETTINGS_CONFIRMED="$reasoning_confirmed" \
   NOEVIA_RUST_ROUTING_MODE_CONFIRMED="$routing_confirmed" NOEVIA_RUST_STATS_CONFIRMED="$stats_confirmed" NOEVIA_RUST_EXPORT_CONFIRMED="$export_confirmed" \
   NOEVIA_RUST_STORAGE_READS_CONFIRMED="$storage_reads_confirmed" NOEVIA_RUST_STORAGE_BROWSE_CONFIRMED="$storage_browse_confirmed" NOEVIA_RUST_CHATGPT_STATUS_CONFIRMED="$chatgpt_status_confirmed" \
-  NOEVIA_RUST_PROJECT_STORE_CONFIRMED="$store_confirmed" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" \
+  NOEVIA_RUST_PROJECT_STORE_CONFIRMED="$store_confirmed" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" NOEVIA_START_ID="$start_id" \
   "$(dirname "$front")/corpus-launcher" serve "$core" &
 node_pid=$!
-PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" "$front" &
+PUBLIC_ORIGIN="$origin" NOEVIA_LEGACY_UPSTREAM="http://127.0.0.1:$legacy" NOEVIA_PROJECT_STORE_PORT="$store_port" NOEVIA_PROJECT_STORE_TOKEN="$store_token" NOEVIA_START_ID="$start_id" "$front" &
 front_pid=$!
 trap 'kill "$node_pid" "$front_pid" 2>/dev/null || true' INT TERM EXIT
 # Either one exiting ends the run (the replayer then sees the server go away).
