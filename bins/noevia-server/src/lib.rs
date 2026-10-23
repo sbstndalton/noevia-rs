@@ -76,6 +76,7 @@ pub const FEATURES: &[&str] = &[
     "header-read-timeout",
     "legacy-root-claim",
     "project-store",
+    server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER,
     "rust-auth",
     "rust-projects",
     "start-id",
