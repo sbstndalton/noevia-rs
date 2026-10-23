@@ -1392,4 +1392,96 @@ fn sharing_with_an_invalid_environment_is_an_internal_error() {
     setup(&w, &mut owner);
     let (s, _, r) = call(&w, &mut owner, "GET", "/api/profile/sharing", "", T0);
     assert_eq!((s, r.body.as_str()), (500, r#"{"error":"Internal error"}"#));
+    // An invalid scope is the caller's 400 even when the environment is broken.
+    let (s, v, _) = call(
+        &w,
+        &mut owner,
+        "PUT",
+        "/api/profile/sharing",
+        r#"{"scope":"nope"}"#,
+        T0 + 1,
+    );
+    assert_eq!(
+        (s, v["error"].as_str()),
+        (400, Some("Choose a sharing scope."))
+    );
+}
+
+/// A device (bearer) token never reaches account-security routes: Settings -> Sharing is
+/// browser-only, so both verbs get the shared 403 and nothing is written (core#243 drops Node's
+/// copy of this test).
+#[test]
+fn a_device_token_is_refused_on_sharing_and_writes_nothing() {
+    let w = world_with(true, lan_cleartext());
+    w.node.execute_batch(DAV_SETTINGS).unwrap();
+    let mut owner = Browser::new("10.0.0.1");
+    setup(&w, &mut owner);
+    let mut app = Browser::new("10.0.0.20");
+    let (_, v, _) = call(
+        &w,
+        &mut app,
+        "POST",
+        "/api/auth/device/code",
+        r#"{"client_name":"Synthetic Mac"}"#,
+        T0,
+    );
+    let device_code = v["device_code"].as_str().unwrap().to_string();
+    let user_code = v["user_code"].as_str().unwrap().to_string();
+    let (s, _, _) = call(
+        &w,
+        &mut owner,
+        "POST",
+        "/api/auth/device/approve",
+        &format!(r#"{{"user_code":"{user_code}","approve":true}}"#),
+        T0 + 4,
+    );
+    assert_eq!(s, 200);
+    let poll = format!(
+        r#"{{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","device_code":"{device_code}"}}"#
+    );
+    let (s, v, _) = call(
+        &w,
+        &mut app,
+        "POST",
+        "/api/auth/device/token",
+        &poll,
+        T0 + 20_000,
+    );
+    assert_eq!(s, 200);
+    let token = v["access_token"].as_str().unwrap().to_string();
+    let audit = "SELECT count(*) FROM audit_events";
+    let audits_before = count(&w, audit);
+    for (method, body) in [("GET", ""), ("PUT", r#"{"scope":"off"}"#)] {
+        let req = Request {
+            method: method.into(),
+            path: "/api/profile/sharing".into(),
+            creds: Creds {
+                cookie: None,
+                authorization: Some(format!("Bearer {token}")),
+                origin: None,
+                csrf: None,
+                method: method.into(),
+            },
+            user_agent: "synthetic-test".into(),
+            content_type: "application/json".into(),
+            client_ip: "10.0.0.20".into(),
+            body: Body {
+                bytes: body.as_bytes().to_vec(),
+                over: false,
+            },
+        };
+        let Outcome::Reply(r) = w.acct.handle(&req, T0 + 30_000) else {
+            panic!("{method} passed to Node");
+        };
+        assert_eq!(
+            (r.status, r.body.as_str()),
+            (
+                403,
+                r#"{"error":"This needs a signed-in browser session.","code":"browser_session_required"}"#
+            ),
+            "{method}"
+        );
+    }
+    assert_eq!(count(&w, "SELECT count(*) FROM dav_settings"), 0);
+    assert_eq!(count(&w, audit), audits_before);
 }

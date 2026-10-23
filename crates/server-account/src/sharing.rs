@@ -249,11 +249,11 @@ pub fn sharing(
         }
         "PUT" => {
             let value = read_object(req)?;
-            let v = view(acct, authn)?;
             let wanted = match value.get("scope").as_str() {
                 Some(s @ ("off" | "lan" | "public")) => s.to_string(),
                 _ => return reply(Reply::error(400, "Choose a sharing scope.")),
             };
+            let v = view(acct, authn)?;
             let acknowledged = matches!(value.get("acknowledgeCleartext"), JValue::Bool(true));
             if wanted != "off" {
                 let (configured, cleartext) = match &v.config {

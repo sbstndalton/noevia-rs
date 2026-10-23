@@ -56,6 +56,10 @@ fn node_refuses_exactly_what_rust_owns() {
     let awaiting: BTreeSet<String> = AWAITING_CORE.iter().map(|t| (*t).to_string()).collect();
     let before: BTreeSet<String> = rust_tables.difference(&awaiting).cloned().collect();
     assert!(
+        awaiting.is_empty() || !awaiting.is_subset(&node_tables),
+        "AWAITING_CORE {awaiting:?} is already refused by Node's guard at this core.ref: delete the entry from AWAITING_CORE"
+    );
+    assert!(
         node_tables == rust_tables || node_tables == before,
         "tables: Node refuses {node_tables:?}, Rust owns {rust_tables:?} (awaiting core: {awaiting:?})"
     );
