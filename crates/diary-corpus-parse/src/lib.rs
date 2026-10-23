@@ -1,23 +1,24 @@
 //! Pure tolerant Diary parsing and retrieval chunk projection (#1071).
 //! No storage, editing, rendering, model calls, or production consumer.
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 mod unicode;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Exchange {
     pub me: String,
     /// Legacy field name retained: both Assistant and Claude labels populate it.
     pub claude: String,
     pub xid: Option<String>,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SubSection {
     pub header: String,
     pub time: Option<String>,
     pub topic: String,
     pub exchanges: Vec<Exchange>,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DaySection {
     /// Original heading, with Python-compatible trailing whitespace removed.
     pub header: String,
@@ -25,7 +26,7 @@ pub struct DaySection {
     pub date: Option<String>,
     pub subsections: Vec<SubSection>,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Chunk {
     pub day: String,
     pub header: String,
@@ -320,12 +321,18 @@ pub fn parse_diary(text: &str) -> Vec<DaySection> {
 /// Project exactly the Python retrieval chunk strings and UTF-8 SHA256 hashes.
 /// Invalid dates are omitted; duplicate rows remain in source order.
 pub fn parse_chunks(text: Option<&str>) -> Vec<Chunk> {
+    let days = parse_diary(text.unwrap_or_default());
+    chunks_from_days(&days)
+}
+
+/// Project retrieval rows from an already parsed Diary, without parsing a second time.
+pub fn chunks_from_days(days: &[DaySection]) -> Vec<Chunk> {
     let mut chunks = Vec::new();
-    for day in parse_diary(text.unwrap_or_default()) {
-        let Some(date) = day.date else {
+    for day in days {
+        let Some(date) = &day.date else {
             continue;
         };
-        for sub in day.subsections {
+        for sub in &day.subsections {
             let body = sub
                 .exchanges
                 .iter()
@@ -346,7 +353,7 @@ pub fn parse_chunks(text: Option<&str>) -> Vec<Chunk> {
             let content_hash = format!("{:x}", Sha256::digest(text.as_bytes()));
             chunks.push(Chunk {
                 day: date.clone(),
-                header: sub.header,
+                header: sub.header.clone(),
                 text,
                 content_hash,
             });
