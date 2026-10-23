@@ -230,6 +230,7 @@ enum OutputDrain {
     Finished,
     Idle,
     Stalled,
+    Deadline,
     Aborted,
 }
 
@@ -242,9 +243,10 @@ struct OutputProgress {
 // A child may exit while a descendant keeps stdout open. Let already queued
 // bytes drain. A quiet pipe gets a short idle window; an active but blocked
 // socket write gets a separate bounded stall window. Each successful write
-// refreshes progress, so a large final ACP frame is not cut at a fixed time.
+// refreshes progress. An absolute deadline still bounds an escaped writer.
 const OUTPUT_READ_IDLE: Duration = Duration::from_millis(100);
 const OUTPUT_WRITE_STALL: Duration = Duration::from_secs(2);
+const OUTPUT_POST_EXIT_MAX: Duration = Duration::from_secs(10);
 
 enum Stop {
     Child,
@@ -423,11 +425,12 @@ async fn connection(
             // No untrusted stderr is logged: it may contain tokens.
         }
     });
+    let wall_deadline = Instant::now() + config.max_wall;
     let reason = tokio::select! {
         state = observe_leader(guard.pid) => state,
         state = output_failed => state,
         _ = &mut input => Stop::Input,
-        _ = tokio::time::sleep(config.max_wall) => Stop::Wall,
+        _ = tokio::time::sleep_until(wall_deadline) => Stop::Wall,
         _ = shutdown.changed() => Stop::Shutdown,
     };
     // No child.wait()/try_wait() has reaped the group leader. WNOWAIT keeps its
@@ -451,6 +454,7 @@ async fn connection(
     let grace_deadline = Instant::now() + config.grace;
     let output_drain = if matches!(reason, Stop::Child) {
         let drain_started = Instant::now();
+        let drain_deadline = (drain_started + OUTPUT_POST_EXIT_MAX).min(wall_deadline);
         loop {
             let progress = *output_progress_rx.borrow_and_update();
             let wait = match progress.phase {
@@ -461,15 +465,16 @@ async fn connection(
             tokio::select! {
                 biased;
                 _ = &mut output => break OutputDrain::Finished,
-                changed = output_progress_rx.changed() => {
-                    if changed.is_err() {
-                        break OutputDrain::Finished;
-                    }
-                }
+                _ = tokio::time::sleep_until(drain_deadline) => break OutputDrain::Deadline,
                 _ = tokio::time::sleep_until(grace_deadline), if !group_killed && term_sent => {
                     let _ = guard.signal(Signal::SIGKILL);
                     guard.disarm();
                     group_killed = true;
+                }
+                changed = output_progress_rx.changed() => {
+                    if changed.is_err() {
+                        break OutputDrain::Finished;
+                    }
                 }
                 _ = tokio::time::sleep_until(progress_deadline) => {
                     break match progress.phase {
@@ -487,11 +492,15 @@ async fn connection(
         let _ = output.await;
     }
     stderr_task.abort();
-    if matches!(output_drain, OutputDrain::Stalled) {
+    let partial_output = matches!(
+        output_drain,
+        OutputDrain::Idle | OutputDrain::Stalled | OutputDrain::Deadline
+    );
+    if partial_output {
         // A partial ACP frame must surface as a TCP error, not clean EOF.
         // Tokio zero linger sends RST and never blocks this async worker.
         eprintln!(
-            "code-sandbox: output forwarding stalled after child exit; response may be incomplete"
+            "code-sandbox: output forwarding exceeded its post-exit bound; response may be incomplete"
         );
         if let Ok(sink) = tokio::time::timeout(Duration::from_millis(200), writer.lock()).await {
             if sink.as_ref().set_zero_linger().is_err() {
@@ -513,13 +522,25 @@ async fn connection(
             .await;
         }
     }
-    if !matches!(output_drain, OutputDrain::Stalled) {
+    if !partial_output {
         if let Ok(mut sink) = tokio::time::timeout(Duration::from_millis(200), writer.lock()).await
         {
             let _ = tokio::time::timeout(Duration::from_millis(200), sink.shutdown()).await;
         }
     }
-    drop(writer);
+    if partial_output {
+        // OwnedWriteHalf::drop sends FIN even with zero linger. Suppress that
+        // shutdown so closing the underlying socket sends RST instead.
+        match Arc::try_unwrap(writer) {
+            Ok(mutex) => mutex.into_inner().forget(),
+            Err(writer) => {
+                eprintln!("code-sandbox: incomplete output socket still has a writer");
+                drop(writer);
+            }
+        }
+    } else {
+        drop(writer);
+    }
     // Node releases its connection slot on socket close, before SIGKILL's
     // grace timer. The cleanup task still owns the waitable leader.
     drop(permit);

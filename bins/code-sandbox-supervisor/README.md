@@ -33,7 +33,10 @@ the Node supervisor; deployment must retain a single-writer workspace namespace.
 
 After a child exits, queued stdout may still be in the pipe or a slow client's
 TCP path. The supervisor keeps forwarding while writes make progress. It closes
-a quiet inherited stdout pipe after 100 ms. A blocked client write times out
-after 2 seconds and the connection is reset so incomplete ACP output cannot
-look like clean EOF. Group SIGKILL still runs after the configured grace while
+a quiet inherited stdout pipe after 100 ms. An open pipe at that point
+triggers a reset; natural stdout EOF remains clean. A blocked client write
+times out after 2 seconds and resets so incomplete ACP output cannot
+look like clean EOF. An absolute post-exit drain limit of 10 seconds, also
+limited by the original wall deadline, resets even a continuously active
+escaped-group writer. Group SIGKILL still runs after the configured grace while
 the leader remains unreaped, and final child.wait follows that signal.

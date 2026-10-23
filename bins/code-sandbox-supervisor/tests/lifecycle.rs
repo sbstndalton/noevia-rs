@@ -70,6 +70,40 @@ impl Harness {
             .unwrap();
     }
 }
+// Only the synthetic escaped child carries this unique pid-file path in its
+// command line. Kill that test-owned PID even if an assertion unwinds.
+struct EscapedChildCleanup {
+    pid_file: PathBuf,
+}
+impl Drop for EscapedChildCleanup {
+    fn drop(&mut self) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let marker = self.pid_file.to_string_lossy();
+        loop {
+            if let Ok(raw) = std::fs::read_to_string(&self.pid_file) {
+                if let Ok(pid) = raw.trim().parse::<i32>() {
+                    if let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) {
+                        if cmdline
+                            .windows(marker.len())
+                            .any(|part| part == marker.as_bytes())
+                        {
+                            let _ = nix::sys::signal::kill(
+                                nix::unistd::Pid::from_raw(pid),
+                                nix::sys::signal::Signal::SIGKILL,
+                            );
+                        }
+                    }
+                }
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
 async fn read_all(mut socket: TcpStream) -> String {
     let mut bytes = Vec::new();
     tokio::time::timeout(Duration::from_secs(3), socket.read_to_end(&mut bytes))
@@ -378,4 +412,113 @@ async fn stalled_final_output_resets_instead_of_clean_eof() {
         }
     }
     h.close().await;
+}
+
+#[tokio::test]
+async fn escaped_group_writer_cannot_extend_post_exit_drain_forever() {
+    let marker = tempfile::tempdir().unwrap();
+    let pid_file = marker.path().join("escaped-writer.pid");
+    let cleanup = EscapedChildCleanup {
+        pid_file: pid_file.clone(),
+    };
+    let script = format!(
+        r#"setsid /bin/sh -c 'echo $$ > "{}"; exec yes "{}"' & exit 0"#,
+        pid_file.display(),
+        pid_file.display()
+    );
+    let h = Harness::with_options(
+        &script,
+        1,
+        Duration::from_millis(700),
+        Duration::from_millis(50),
+        false,
+    )
+    .await;
+    let mut socket = h.connect().await;
+    socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+
+    let writer_pid = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Ok(raw) = std::fs::read_to_string(&pid_file) {
+                break raw.trim().parse::<i32>().unwrap();
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("escaped writer did not start");
+    let pid = nix::unistd::Pid::from_raw(writer_pid);
+    assert_eq!(nix::unistd::getsid(Some(pid)).unwrap(), pid);
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    let mut chunk = [0_u8; 16 * 1024];
+    let mut bytes = 0_usize;
+    loop {
+        match tokio::time::timeout_at(deadline, socket.read(&mut chunk))
+            .await
+            .expect("continuous escaped writer held the connection indefinitely")
+        {
+            Ok(count) => {
+                assert_ne!(count, 0, "truncated stream ended with clean EOF");
+                bytes += count;
+            }
+            Err(error) => {
+                assert!(
+                    matches!(
+                        error.kind(),
+                        std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
+                    ),
+                    "unexpected read error: {error}"
+                );
+                break;
+            }
+        }
+    }
+    assert!(bytes > 0, "escaped writer produced no output");
+    h.close().await;
+    drop(cleanup);
+}
+
+#[tokio::test]
+async fn quiet_escaped_stdout_pipe_resets_before_grace() {
+    let marker = tempfile::tempdir().unwrap();
+    let pid_file = marker.path().join("quiet-escaped.pid");
+    let cleanup = EscapedChildCleanup {
+        pid_file: pid_file.clone(),
+    };
+    let script = format!(
+        r#"setsid /bin/sh -c 'echo $$ > "{}"; exec tail -f "{}"' & exit 0"#,
+        pid_file.display(),
+        pid_file.display()
+    );
+    let h = Harness::with_options(
+        &script,
+        1,
+        Duration::from_secs(3),
+        Duration::from_millis(600),
+        false,
+    )
+    .await;
+    let mut socket = h.connect().await;
+    let started = tokio::time::Instant::now();
+    socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+    let mut chunk = [0_u8; 1024];
+    loop {
+        match tokio::time::timeout(Duration::from_secs(1), socket.read(&mut chunk))
+            .await
+            .expect("quiet escaped pipe did not close promptly")
+        {
+            Ok(count) => assert_ne!(count, 0, "open stdout pipe ended with clean EOF"),
+            Err(error) => {
+                assert_eq!(error.kind(), std::io::ErrorKind::ConnectionReset);
+                break;
+            }
+        }
+    }
+    assert!(
+        started.elapsed() < Duration::from_millis(500),
+        "quiet escaped pipe waited for group grace"
+    );
+    h.close().await;
+    drop(cleanup);
 }
