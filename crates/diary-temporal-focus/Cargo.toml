@@ -1,0 +1,15 @@
+[package]
+name="diary-temporal-focus"
+version="0.1.0"
+edition.workspace=true
+rust-version.workspace=true
+license.workspace=true
+publish=false
+[lints]
+workspace=true
+[dependencies]
+chrono="0.4"
+regex="1"
+unicode-normalization="0.1"
+[dev-dependencies]
+serde_json="1"
