@@ -584,6 +584,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-backup-format"
+version = "0.1.0"
+dependencies = [
+ "ryu",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
