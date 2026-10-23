@@ -290,11 +290,12 @@ async fn child(probes: Arc<Mutex<Value>>, pushed: Arc<Mutex<Vec<String>>>) -> St
     base
 }
 
-async fn llama(port: u16, status: u64, body: String) -> tokio::task::JoinHandle<()> {
+async fn llama(port: u16, status: u64, body: String) -> (u16, tokio::task::JoinHandle<()>) {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
         .await
         .unwrap();
-    tokio::spawn(async move {
+    let port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(async move {
         while let Ok((mut sock, _)) = listener.accept().await {
             let body = body.clone();
             tokio::spawn(async move {
@@ -308,7 +309,30 @@ async fn llama(port: u16, status: u64, body: String) -> tokio::task::JoinHandle<
                 let _ = sock.write_all(reply.as_bytes()).await;
             });
         }
-    })
+    });
+    (port, server)
+}
+
+/// Cancellation is asynchronous: join before the next fixture step reuses a port.
+async fn stop_llamas(servers: Vec<tokio::task::JoinHandle<()>>) {
+    for server in servers {
+        server.abort();
+        assert!(server.await.unwrap_err().is_cancelled());
+    }
+}
+
+#[tokio::test]
+async fn cancelled_llama_releases_its_listener_before_the_next_step() {
+    let (port, mut server) = llama(0, 200, String::new()).await;
+    // A single-thread runtime makes an abort without a join deterministic: no other worker can
+    // drop the cancelled listener before the immediate bind. Reuse the same selected port.
+    for _ in 0..32 {
+        stop_llamas(vec![server]).await;
+        let (rebound_port, next) = llama(port, 200, String::new()).await;
+        assert_eq!(rebound_port, port);
+        server = next;
+    }
+    stop_llamas(vec![server]).await;
 }
 
 /// The port a recorded container's llama-server is probed on (`_resolve_internal_port`).
@@ -446,14 +470,13 @@ async fn recorded_worlds_through_the_router_and_the_unix_transport() {
                                 a[0].as_u64().unwrap(),
                                 a[1].as_str().unwrap().to_owned(),
                             )
-                            .await,
+                            .await
+                            .1,
                         );
                     }
                 }
                 let (status, body) = call(shared.clone(), "GET", "/api/v1/backends", true).await;
-                for s in servers {
-                    s.abort();
-                }
+                stop_llamas(servers).await;
                 assert_eq!(
                     u64::from(status),
                     step["status"].as_u64().unwrap(),
