@@ -41,7 +41,7 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 /// chat-lists.cjs `safeChatId`: the id reduced to `[A-Za-z0-9_-]`.
-fn safe_chat_id(id: &str) -> String {
+pub(crate) fn safe_chat_id(id: &str) -> String {
     id.chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
         .collect()

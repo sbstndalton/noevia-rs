@@ -34,6 +34,10 @@
 //! - [`partial`]: a chat's saved partial reply as another process reads it, running or cut off by
 //!   a restart (the `running: { start }` marker core chat-partial.cjs writes; sbstndalton/noevia#1071),
 //!   read by [`history`].
+//! - [`transcript`]: a chat's transcript file, which Rust alone writes (sbstndalton/noevia#1071
+//!   slice 4): locked compare-and-swap saves, the interrupted-reply append and the import's
+//!   publish, each re-checking the tombstones under the lock; [`history_sanitize`] bounds what is
+//!   stored as Node's `sanitizeHistory` does.
 //! - [`js`]: the JavaScript built-ins those handlers rely on.
 //!
 //! The caller (bins/noevia-server) has already run Node's request gate (session, origin, CSRF);
@@ -47,6 +51,7 @@ pub mod context_window;
 pub mod frame;
 pub mod free_chats;
 pub mod history;
+pub mod history_sanitize;
 pub mod js;
 pub mod legacy_claim;
 pub mod lock;
@@ -55,6 +60,7 @@ pub mod retention;
 pub mod skills;
 pub mod store;
 pub mod store_api;
+pub mod transcript;
 
 /// A handler's answer: Node's `json(res, status, body)` or a binary body with its headers.
 #[derive(Debug, Clone, PartialEq, Eq)]
