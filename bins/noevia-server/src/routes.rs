@@ -111,8 +111,8 @@ const ACCOUNT_RETENTION: &str = "/api/account/retention";
 /// (sbstndalton/noevia#1071); Node refuses it.
 const CHAT_CONTEXT_WINDOW: &str = "/api/chats/{chatId}/context-window";
 
-/// A chat's transcript and interrupted partial reply (GET only; routes.toml): a read, always
-/// answered here (sbstndalton/noevia#1071 slice 2); the save (`POST`) is Node's.
+/// A chat's transcript and interrupted partial reply (GET, slice 2) and its save (POST, slice 5;
+/// routes.toml), always answered here (sbstndalton/noevia#1071); Node refuses both.
 const CHAT_HISTORY: &str = "/api/chats/{chatId}/history";
 
 /// A project's chat list: the second M4 slice, answered here only in a build with the cargo
@@ -585,7 +585,7 @@ mod tests {
         for (m, p) in [
             ("PUT", "/api/chats/c1/context"),
             ("DELETE", "/api/chats/c1/context"),
-            ("POST", "/api/chats/c1/history"),
+            ("PUT", "/api/chats/c1/history"),
             ("POST", "/api/chats/c1/move"),
             ("GET", "/api/diary/context"),
         ] {
@@ -636,12 +636,11 @@ mod tests {
             dispatch_under("GET", "/api/chats/c1/context-window", off),
             Some(Native::Projects)
         );
-        // Node keeps every other method and the chat routes around it (#1071: the history save,
-        // move, the free chat's delete are still Node's).
+        // Node keeps every other method and the chat routes around it (#1071: a chat's move and
+        // the free chat's delete are still Node's).
         for (m, p) in [
             ("POST", "/api/chats/c1/context-window"),
             ("DELETE", "/api/chats/c1/context-window"),
-            ("POST", "/api/chats/c1/history"),
             ("POST", "/api/chats/c1/move"),
             ("DELETE", "/api/freechats/c1"),
         ] {
@@ -650,15 +649,18 @@ mod tests {
     }
 
     #[test]
-    fn a_chats_history_is_rusts_for_get_only() {
+    fn a_chats_history_is_rusts_for_get_and_post() {
         let off = Switches::default();
-        assert_eq!(
-            dispatch_under("GET", "/api/chats/c1/history", off),
-            Some(Native::Projects)
-        );
-        // The save (with its revision compare-and-swap) and every other method stay Node's (#1071).
+        // The read (slice 2) and the save with its revision compare-and-swap (slice 5, #1071).
+        for m in ["GET", "POST"] {
+            assert_eq!(
+                dispatch_under(m, "/api/chats/c1/history", off),
+                Some(Native::Projects),
+                "{m}"
+            );
+        }
+        // Every other method stays Node's.
         for (m, p) in [
-            ("POST", "/api/chats/c1/history"),
             ("PUT", "/api/chats/c1/history"),
             ("DELETE", "/api/chats/c1/history"),
             ("POST", "/api/chats/c1/move"),

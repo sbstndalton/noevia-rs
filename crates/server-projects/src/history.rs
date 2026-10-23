@@ -1,8 +1,8 @@
-//! A chat's transcript as the client loads it: core routes/chat-lists.cjs `GET
-//! /api/chats/{chatId}/history`, with the store reads it makes (projects.cjs `readHistory`,
+//! A chat's transcript as the client loads and saves it: core routes/chat-lists.cjs `GET` and
+//! `POST /api/chats/{chatId}/history`, with the store reads it makes (projects.cjs `readHistory`,
 //! chat-partial.cjs `partialFor`), answer for answer. Moved from Node for sbstndalton/noevia#1071
-//! (slice 2); a read only, so it takes no lock and writes nothing. `POST` (the save, with its
-//! compare-and-swap on `revision`) stays Node's for now.
+//! (`GET` slice 2, a read that takes no lock; `POST` slice 5, a save through [`crate::transcript`],
+//! the file's only writer). See [`post`] for the save.
 //!
 //! - The chat id from the URL is percent-decoded as `decodeURIComponent` (a malformed escape is
 //!   400 `invalid chat id`, core http.cjs `decodePathPart`, #812), then reduced to `[A-Za-z0-9_-]`
@@ -131,6 +131,118 @@ pub fn get(ctx: Ctx<'_>, raw_chat: &str, start_id: &str) -> Reply {
         Err(_) => return Reply::internal(),
     };
     answer(history, offered_partial(&dir, &safe, start_id))
+}
+
+/// core index.cjs `STORED_HISTORY_BYTES`: the largest save body.
+pub const BODY_LIMIT: usize = 32 * 1024 * 1024;
+
+fn deleted() -> Reply {
+    Reply::error(410, "This chat was deleted.")
+}
+
+fn store_failure(e: &store::StoreError) -> Reply {
+    match e {
+        store::StoreError::Gone => Reply::error(410, "account no longer exists"),
+        store::StoreError::Busy => Reply::json(
+            503,
+            r#"{"error":"The project store is busy. Try again shortly.","code":"PROJECTS_BUSY"}"#
+                .to_string(),
+        ),
+        _ => Reply::internal(),
+    }
+}
+
+/// POST /api/chats/{chatId}/history: `body` was read up to [`BODY_LIMIT`] (`over` when longer);
+/// `start_id` as for [`get`]. Node's answers, in Node's order:
+///
+/// - a malformed or empty id 400 `invalid chat id`; a tombstoned chat 410 `This chat was deleted.`
+///   (checked again under the lock, so a delete landing meanwhile is never undone);
+/// - a body over the limit 413 `This chat is too large to save; start a new chat to keep going.`;
+/// - not JSON 400 `invalid JSON`; not an object 400 `request body must be a JSON object`;
+/// - `baseRevision` (a string) not the transcript's revision: 409 `{ error: "This chat changed on
+///   another device.", history, revision }` with the current copy, to merge;
+/// - else the last 5,000 entries, sanitised, are saved: 200 `{ ok: true, revision }`, and the saved
+///   partial reply is superseded unless its reply still runs in this start (chat-partial.cjs
+///   `supersedePartial`; per account here, see the module).
+///
+/// Fixed against Node (sbstndalton/noevia#1071 slice 5):
+/// - The compare and the write are one hold of the transcript lock: two saves from the same base
+///   cannot both succeed (Node read, compared and wrote with nothing held, so the first save was
+///   lost without a conflict).
+/// - A body whose `history` is not a list is 400 `history must be a list`; Node saved an empty
+///   transcript, erasing the chat.
+/// - A store failure is answered as one (410 for a removed account, 503 busy, 500), not as Node's
+///   400 `invalid JSON`.
+pub fn post(ctx: Ctx<'_>, raw_chat: &str, body: &[u8], over: bool, start_id: &str) -> Reply {
+    let Some(id) = js::decode_uri_component(raw_chat) else {
+        return Reply::error(400, "invalid chat id");
+    };
+    let safe = safe_chat_id(&id);
+    if safe.is_empty() {
+        return Reply::error(400, "invalid chat id");
+    }
+    let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
+        Ok(d) => d,
+        Err(e) => return store_failure(&e),
+    };
+    match crate::transcript::tombstoned(&dir, &safe) {
+        Ok(true) => return deleted(),
+        Ok(false) => {}
+        Err(e) => return store_failure(&e),
+    }
+    if over {
+        return Reply::error(
+            413,
+            "This chat is too large to save; start a new chat to keep going.",
+        );
+    }
+    let parsed = match wtf16::parse(&String::from_utf8_lossy(body)) {
+        Ok(v) => v,
+        Err(wtf16::Refusal::Invalid) => return Reply::error(400, "invalid JSON"),
+        // JSON.parse would take it; this port cannot hold it (see the module).
+        Err(wtf16::Refusal::Unsupported) => return Reply::internal(),
+    };
+    if !matches!(parsed, JValue::Obj(_)) {
+        return Reply::error(400, "request body must be a JSON object");
+    }
+    let base = match parsed.get("baseRevision") {
+        JValue::Str(r) => crate::transcript::Base::Revision(r.clone()),
+        _ => crate::transcript::Base::Any,
+    };
+    let JValue::Arr(history) = parsed.get("history") else {
+        return Reply::error(400, "history must be a list");
+    };
+    use crate::transcript::{Saved, TranscriptError};
+    match crate::transcript::write(
+        ctx.data_dir,
+        ctx.user_id,
+        &safe,
+        history,
+        &base,
+        Some(start_id),
+    ) {
+        Ok(Saved::Saved { revision }) => {
+            Reply::json(200, format!("{{\"ok\":true,\"revision\":\"{revision}\"}}"))
+        }
+        Ok(Saved::Conflict { current, .. }) => {
+            let items = vec![
+                (
+                    "error".to_string(),
+                    JValue::Str("This chat changed on another device.".into()),
+                ),
+                ("history".to_string(), current.history),
+                ("revision".to_string(), JValue::Str(current.revision)),
+            ];
+            match wtf16::stringify(&JValue::Obj(items)) {
+                Some(text) => Reply::json(409, text),
+                None => Reply::internal(),
+            }
+        }
+        Ok(Saved::Deleted) => deleted(),
+        Err(TranscriptError::InvalidChat) => Reply::error(400, "invalid chat id"),
+        Err(TranscriptError::Unsanitisable) => Reply::error(400, "invalid JSON"),
+        Err(TranscriptError::Store(e)) => store_failure(&e),
+    }
 }
 
 #[cfg(test)]
@@ -411,5 +523,192 @@ mod tests {
         assert_eq!(call(root.path(), "c1"), empty());
         std::fs::write(history_file(&dir, "c1"), "{\"history\":[\"\u{10F800}\"]}").unwrap();
         assert_eq!(call(root.path(), "c1"), Reply::internal());
+    }
+
+    fn save(root: &Path, raw: &str, body: &str) -> Reply {
+        save_as(root, raw, body.as_bytes(), false, NOW)
+    }
+
+    fn save_as(root: &Path, raw: &str, body: &[u8], over: bool, start: &str) -> Reply {
+        post(
+            Ctx {
+                data_dir: root,
+                user_id: USER,
+                switch: server_store::RustProjects::owned(),
+                now_ms: 0,
+            },
+            raw,
+            body,
+            over,
+            start,
+        )
+    }
+
+    fn saved(history: &str) -> Reply {
+        let revision = revision_of(&wtf16::parse(history).unwrap()).unwrap();
+        Reply::json(200, format!("{{\"ok\":true,\"revision\":\"{revision}\"}}"))
+    }
+
+    #[test]
+    fn a_save_answers_ok_with_the_revision_the_get_then_serves() {
+        let (root, _dir) = setup();
+        let h = r#"[{"role":"user","content":"qa hello"}]"#;
+        assert_eq!(
+            save(root.path(), "c%201", &format!(r#"{{"history":{h}}}"#)),
+            saved(h)
+        );
+        let revision = revision_of(&wtf16::parse(h).unwrap()).unwrap();
+        assert_eq!(
+            call(root.path(), "c1"),
+            Reply::json(
+                200,
+                format!("{{\"history\":{h},\"revision\":\"{revision}\"}}")
+            )
+        );
+    }
+
+    #[test]
+    fn a_stale_base_revision_gets_the_current_copy_to_merge() {
+        let (root, _dir) = setup();
+        assert_eq!(save(root.path(), "c1", r#"{"history":[1]}"#), saved("[1]"));
+        let got = save(
+            root.path(),
+            "c1",
+            &format!(r#"{{"history":[2],"baseRevision":"{EMPTY_REVISION}"}}"#),
+        );
+        let revision = revision_of(&wtf16::parse("[1]").unwrap()).unwrap();
+        assert_eq!(
+            got,
+            Reply::json(
+                409,
+                format!("{{\"error\":\"This chat changed on another device.\",\"history\":[1],\"revision\":\"{revision}\"}}")
+            )
+        );
+        assert_eq!(
+            save(
+                root.path(),
+                "c1",
+                &format!(r#"{{"history":[2],"baseRevision":"{revision}"}}"#)
+            ),
+            saved("[2]")
+        );
+        // A non-string base revision is a save without one, as in Node.
+        assert_eq!(
+            save(root.path(), "c1", r#"{"history":[3],"baseRevision":5}"#),
+            saved("[3]")
+        );
+    }
+
+    #[test]
+    fn nodes_refusals_in_nodes_order() {
+        let (root, dir) = setup();
+        assert_eq!(
+            save(root.path(), "%E0%A4", "{}"),
+            Reply::error(400, "invalid chat id")
+        );
+        assert_eq!(
+            save(root.path(), "..", "{}"),
+            Reply::error(400, "invalid chat id")
+        );
+        std::fs::write(dir.join(TOMBSTONES_FILE), r#"["c-gone"]"#).unwrap();
+        // The tombstone wins over everything after it, as Node checks it before reading the body.
+        assert_eq!(
+            save_as(root.path(), "c-gone", b"x", true, NOW),
+            Reply::error(410, "This chat was deleted.")
+        );
+        assert_eq!(
+            save_as(root.path(), "c1", b"x", true, NOW),
+            Reply::error(
+                413,
+                "This chat is too large to save; start a new chat to keep going."
+            )
+        );
+        for body in ["", "nope", "{"] {
+            assert_eq!(
+                save(root.path(), "c1", body),
+                Reply::error(400, "invalid JSON"),
+                "{body}"
+            );
+        }
+        for body in ["[]", "null", "5", "\"x\""] {
+            assert_eq!(
+                save(root.path(), "c1", body),
+                Reply::error(400, "request body must be a JSON object"),
+                "{body}"
+            );
+        }
+        // Fixed: Node saved [] here, erasing the chat.
+        std::fs::write(history_file(&dir, "c1"), r#"{"history":[1]}"#).unwrap();
+        for body in ["{}", r#"{"history":null}"#, r#"{"history":{"0":1}}"#] {
+            assert_eq!(
+                save(root.path(), "c1", body),
+                Reply::error(400, "history must be a list"),
+                "{body}"
+            );
+        }
+        assert!(std::fs::read_to_string(history_file(&dir, "c1"))
+            .unwrap()
+            .contains('1'));
+        // Node's sanitiser throws here; Node answered invalid JSON.
+        assert_eq!(
+            save(
+                root.path(),
+                "c1",
+                r#"{"history":[{"role":"assistant","sources":[{"file":"f","snippet":{"toString":1}}]}]}"#
+            ),
+            Reply::error(400, "invalid JSON")
+        );
+    }
+
+    #[test]
+    fn a_save_for_a_removed_account_is_410_and_recreates_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(
+            save(root.path(), "c1", r#"{"history":[]}"#),
+            Reply::error(410, "account no longer exists")
+        );
+        assert!(!store::user_dir(root.path(), USER).unwrap().exists());
+    }
+
+    #[test]
+    fn a_save_supersedes_the_partial_unless_its_reply_still_runs() {
+        let (root, dir) = setup();
+        write_partial(
+            &dir,
+            "c1",
+            &format!(r#"{{"content":"qa","running":{{"start":"{NOW}"}}}}"#),
+        );
+        assert_eq!(save(root.path(), "c1", r#"{"history":[]}"#), saved("[]"));
+        assert!(
+            partial::file_for(&dir, "c1").exists(),
+            "still streaming: kept, as Node did"
+        );
+        write_partial(
+            &dir,
+            "c1",
+            &format!(r#"{{"content":"qa","running":{{"start":"{BEFORE}"}}}}"#),
+        );
+        assert_eq!(save(root.path(), "c1", r#"{"history":[]}"#), saved("[]"));
+        assert!(!partial::file_for(&dir, "c1").exists());
+        // A front with no start id runs no reply: superseded.
+        write_partial(&dir, "c1", &format!(r#"{{"running":{{"start":"{NOW}"}}}}"#));
+        assert_eq!(
+            save_as(root.path(), "c1", br#"{"history":[]}"#, false, ""),
+            saved("[]")
+        );
+        assert!(!partial::file_for(&dir, "c1").exists());
+    }
+
+    #[test]
+    fn the_saved_history_is_capped_and_sanitised() {
+        let (root, dir) = setup();
+        let body = r#"{"history":[{"role":"assistant","content":"a","skill":"skill_x","failure":"  qa failed  "}]}"#;
+        assert_eq!(
+            save(root.path(), "c1", body),
+            saved(r#"[{"role":"assistant","content":"a","failure":"qa failed"}]"#)
+        );
+        assert!(!std::fs::read_to_string(history_file(&dir, "c1"))
+            .unwrap()
+            .contains("skill_x"));
     }
 }
