@@ -433,7 +433,7 @@ fn main() -> Result<(), Error> {
         );
     }
     let bytes = serde_json::to_vec_pretty(
-        &json!({"services":"b2e2fc4997da3c1628da209d7bc1b4fdb379a799","sources":sources,"cases":fixtures,"http":http}),
+        &json!({"services":"0efed4e7cfb1f44aa7d4e5fb02252500ac03137a","sources":sources,"cases":fixtures,"http":http}),
     )?;
     std::fs::write(&output, &bytes)?;
     println!("{} {:x}", output.display(), Sha256::digest(&bytes));
