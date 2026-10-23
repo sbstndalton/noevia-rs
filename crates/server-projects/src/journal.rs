@@ -58,6 +58,8 @@ pub enum Op {
     Write,
     Append,
     Remove,
+    /// A metadata move with a durable event identity (not a transcript save).
+    Move,
 }
 
 impl Op {
@@ -66,6 +68,7 @@ impl Op {
             Op::Write => "write",
             Op::Append => "append",
             Op::Remove => "remove",
+            Op::Move => "move",
         }
     }
 }
@@ -194,10 +197,44 @@ pub(crate) fn record(
     origin: Origin,
     limits: Limits,
 ) -> Result<u64, StoreError> {
+    record_entry(dir, chat, revision, op, origin, limits, None)
+}
+
+pub(crate) fn record_move(
+    dir: &Path,
+    chat: &str,
+    event_id: &str,
+    generation: &str,
+) -> Result<u64, StoreError> {
+    let seq = record_entry(
+        dir,
+        chat,
+        None,
+        Op::Move,
+        Origin::Other,
+        LIMITS,
+        Some((event_id, generation)),
+    )?;
+    // A move's prepared intent is not cleared until both the appended/rotated file and parent
+    // are durable. Legacy transcript notifications keep their existing best-effort behavior.
+    std::fs::File::open(dir.join(FILE))?.sync_all()?;
+    std::fs::File::open(dir)?.sync_all()?;
+    Ok(seq)
+}
+
+fn record_entry(
+    dir: &Path,
+    chat: &str,
+    revision: Option<&str>,
+    op: Op,
+    origin: Origin,
+    limits: Limits,
+    moved: Option<(&str, &str)>,
+) -> Result<u64, StoreError> {
     let file = dir.join(FILE);
     let (last, torn) = last_seq(&file)?;
-    let seq = last + 1;
-    let entry = json!({
+    let seq = last.checked_add(1).ok_or(StoreError::Corrupt)?;
+    let mut entry = json!({
         "seq": seq,
         "chatId": chat,
         "revision": revision,
@@ -206,6 +243,11 @@ pub(crate) fn record(
         "start": start_id(),
         "at": now_ms(),
     });
+    if let Some((event_id, generation)) = moved {
+        let obj = entry.as_object_mut().ok_or(StoreError::Corrupt)?;
+        obj.insert("eventId".into(), Value::String(event_id.into()));
+        obj.insert("generation".into(), Value::String(generation.into()));
+    }
     let mut line = String::new();
     if torn {
         line.push('\n');
@@ -217,7 +259,7 @@ pub(crate) fn record(
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
     }
     let mut f = options.open(&file).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {

@@ -46,6 +46,9 @@
 //!   internal store), the whole cascade in one hold of the transcript lock: tombstone, list save,
 //!   then the transcript, context meter, brain note and partial reply (sbstndalton/noevia#1071
 //!   slice 6, #2147, #2154). The attachments project stays Node's to free.
+//! - [`chat_move`]: slice7 foundation, canonical generations, tagged grant contexts, strict
+//!   prepared metadata moves and pending-intent fences for every participating list writer.
+//!   The public move route and Node grant enforcement are intentionally unchanged in this slice.
 //! - [`js`]: the JavaScript built-ins those handlers rely on.
 //!
 //! The caller (bins/noevia-server) has already run Node's request gate (session, origin, CSRF);
@@ -54,6 +57,7 @@
 
 pub mod assets;
 pub mod chat_delete;
+pub mod chat_move;
 pub mod chats;
 pub mod context;
 pub mod context_window;
