@@ -41,6 +41,11 @@
 //! - [`journal`]: each user's chat change journal (`chat-changes.jsonl`), one entry per transcript
 //!   mutation, written under the transcript lock; Node tails it to run the chat mirror and brain
 //!   (sbstndalton/noevia#2153).
+//! - [`chat_delete`]: a chat's delete (core `DELETE /api/freechats/{id}` and
+//!   `DELETE /api/projects/{id}/chats/{chatId}`, and Node's remaining delete paths through the
+//!   internal store), the whole cascade in one hold of the transcript lock: tombstone, list save,
+//!   then the transcript, context meter, brain note and partial reply (sbstndalton/noevia#1071
+//!   slice 6, #2147, #2154). The attachments project stays Node's to free.
 //! - [`js`]: the JavaScript built-ins those handlers rely on.
 //!
 //! The caller (bins/noevia-server) has already run Node's request gate (session, origin, CSRF);
@@ -48,6 +53,7 @@
 //! the gate returned and nothing from the request picks another user's files.
 
 pub mod assets;
+pub mod chat_delete;
 pub mod chats;
 pub mod context;
 pub mod context_window;

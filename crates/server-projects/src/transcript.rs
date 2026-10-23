@@ -147,7 +147,7 @@ fn locate(data_dir: &Path, user: &str, chat: &str) -> Result<(PathBuf, String), 
     Ok((dir, safe))
 }
 
-fn lock_user(dir: &Path) -> Result<lock::FileLock, StoreError> {
+pub(crate) fn lock_user(dir: &Path) -> Result<lock::FileLock, StoreError> {
     lock::acquire(&dir.join(LOCK_NAME)).map_err(|e| match StoreError::from(e) {
         StoreError::Io(io) if io.kind() == std::io::ErrorKind::NotFound => StoreError::Gone,
         other => other,

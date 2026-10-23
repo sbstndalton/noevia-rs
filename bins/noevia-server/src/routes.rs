@@ -100,6 +100,8 @@ const PROJECT_ROUTES: &[&str] = &[
     FREE_CHATS,
     CHAT_CONTEXT_WINDOW,
     CHAT_HISTORY,
+    FREE_CHAT,
+    PROJECT_CHAT,
 ];
 
 /// Settings → Data → Delete old chats, its preview (GET only; routes.toml): a read of the chat
@@ -115,6 +117,11 @@ const CHAT_CONTEXT_WINDOW: &str = "/api/chats/{chatId}/context-window";
 /// routes.toml), always answered here (sbstndalton/noevia#1071); Node refuses both.
 const CHAT_HISTORY: &str = "/api/chats/{chatId}/history";
 
+/// One chat's delete (DELETE only; routes.toml), the whole cascade one Rust store operation
+/// (crates/server-projects `chat_delete`, sbstndalton/noevia#1071 slice 6); Node refuses both.
+const FREE_CHAT: &str = "/api/freechats/{chatId}";
+const PROJECT_CHAT: &str = "/api/projects/{projectId}/chats/{chatId}";
+
 /// A project's chat list: the second M4 slice, answered here only in a build with the cargo
 /// feature `rust-project-chats` (listed by `--features`). Node no longer answers it
 /// (sbstndalton/noevia#1071), so config.rs refuses to start a build without it.
@@ -122,7 +129,7 @@ const PROJECT_CHATS: &str = "/api/projects/{projectId}/chats";
 
 /// The free-chat list: the third M4 slice, answered here only in a build with the cargo feature
 /// `rust-free-chats` (listed by `--features`; config.rs refuses to start a build without it).
-/// `DELETE /api/freechats/{chatId}` is Node's in every build (routes.toml).
+/// `DELETE /api/freechats/{chatId}` is [`FREE_CHAT`].
 const FREE_CHATS: &str = "/api/freechats";
 
 /// GET/POST chat context, permanently native (#1071), requiring the compiled
@@ -441,7 +448,7 @@ mod tests {
             ("DELETE", "/api/projects/p1/chats"),
             ("HEAD", "/api/projects/p1/chats"),
             ("GET", "/api/projects/p1/chats/c1"),
-            ("DELETE", "/api/projects/p1/chats/c1"),
+            ("PATCH", "/api/projects/p1/chats/c1"),
             ("POST", "/api/projects"),
             ("POST", "/api/projects/p1/config"),
             ("DELETE", "/api/projects/p1"),
@@ -613,10 +620,8 @@ mod tests {
             dispatch_under("GET", "/api/projects/p1/chats", both),
             cfg!(feature = "rust-project-chats").then_some(Native::Projects)
         );
-        // Node keeps a free chat's delete (transcript, attachments project), every other method,
-        // and the paths around it.
+        // Node keeps every other method and the paths around it.
         for (m, p) in [
-            ("DELETE", "/api/freechats/c1"),
             ("GET", "/api/freechats/c1"),
             ("POST", "/api/freechats/c1"),
             ("PUT", "/api/freechats"),
@@ -629,6 +634,22 @@ mod tests {
         }
     }
 
+    /// sbstndalton/noevia#1071 slice 6: one chat's delete is the front's, DELETE only.
+    #[test]
+    fn a_chats_delete_is_rusts_for_delete_only() {
+        let off = Switches::default();
+        for p in ["/api/freechats/c1", "/api/projects/p1/chats/c1"] {
+            assert_eq!(
+                dispatch_under("DELETE", p, off),
+                Some(Native::Projects),
+                "{p}"
+            );
+            for m in ["GET", "POST", "PUT", "PATCH", "HEAD"] {
+                assert_eq!(dispatch_under(m, p, off), None, "{m} {p}");
+            }
+        }
+    }
+
     #[test]
     fn a_chats_context_window_is_always_rusts_for_get_only() {
         let off = Switches::default();
@@ -636,13 +657,12 @@ mod tests {
             dispatch_under("GET", "/api/chats/c1/context-window", off),
             Some(Native::Projects)
         );
-        // Node keeps every other method and the chat routes around it (#1071: a chat's move and
-        // the free chat's delete are still Node's).
+        // Node keeps every other method and the chat routes around it (#1071: a chat's move is
+        // still Node's).
         for (m, p) in [
             ("POST", "/api/chats/c1/context-window"),
             ("DELETE", "/api/chats/c1/context-window"),
             ("POST", "/api/chats/c1/move"),
-            ("DELETE", "/api/freechats/c1"),
         ] {
             assert_eq!(dispatch_under(m, p, off), None, "{m} {p}");
         }

@@ -61,6 +61,12 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
             "*projects.json.lock",
             "--state-ignore",
             "*free-chats.json.lock",
+            // sbstndalton/noevia#1071 slice 6: a chat's delete runs in the front's store, under
+            // the transcript lock, and journals the change; Node's oracle writes neither.
+            "--state-ignore",
+            "*chat-transcripts.lock",
+            "--state-ignore",
+            "*chat-changes.jsonl",
         ])
         .arg("--seed")
         .arg(out.join("seed"))
