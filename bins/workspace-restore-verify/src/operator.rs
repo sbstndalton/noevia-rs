@@ -1,6 +1,7 @@
 //! Isolated operator preview and new-directory restore of one fully verified workspace archive.
 //! The destination is never an application corpus. A failed restore may leave a partial private
 //! directory: this module never unlinks a pathname whose owner could have changed in a race.
+//! The caller must keep the destination namespace free of concurrent writers during restoration.
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -142,8 +143,9 @@ fn directory<'a>(
             ensure_root_at_name(root_parent, root_name, parent_path, &owned[""])?;
             let parent = owned.get(&prefix).ok_or(Fault::Io)?;
             fs::mkdirat(parent, part, Mode::from_raw_mode(0o700)).map_err(io)?;
-            // mkdirat does not return an fd. The immediate no-follow open and mode check reject
-            // swapped names; no cleanup is attempted if another actor changes this namespace.
+            // mkdirat does not return an fd. No-follow rejects symlinks and the mode check
+            // rejects weak permissions, but a directory swap before openat cannot be proven.
+            // The caller must exclude concurrent namespace writers throughout this operation.
             let child = fs::openat(parent, part, DIR_FLAGS, Mode::empty()).map_err(io)?;
             exact_private_dir(&child)?;
             owned.insert(next.clone(), child);
@@ -208,6 +210,7 @@ pub(crate) enum Stage {
 
 /// Any failure after mkdirat of the destination is `restore_partial`. Never recursively remove
 /// the destination: an identity check followed by unlink can race with a foreign replacement.
+/// Requires exclusive control of the destination namespace throughout restoration.
 pub(crate) fn restore_new(
     archive: &VerifiedArchive,
     destination: &str,
