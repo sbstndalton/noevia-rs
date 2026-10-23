@@ -204,3 +204,121 @@ async fn concurrent_saves_are_journalled_in_order_with_no_gap() {
     let seqs: Vec<u64> = chats(&all).iter().map(|e| e.0).collect();
     assert_eq!(seqs, (1..=24).collect::<Vec<u64>>());
 }
+
+fn origins(v: &Value) -> Vec<(String, String)> {
+    v["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["op"].as_str().unwrap().to_string(),
+                e["origin"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn each_op_journals_the_origin_its_caller_named_and_absent_is_other() {
+    let (_root, addr) = start().await;
+    let post = |path: &'static str, body: Value| async move {
+        call(addr, path, Some(TOKEN), &body.to_string()).await
+    };
+    let q = json!([{ "role": "user", "content": "qa question" }]);
+    assert_eq!(
+        post(
+            "/v1/history/write",
+            json!({ "user": USER, "chat": "qa-o", "history": q, "origin": "history" })
+        )
+        .await
+        .0,
+        200
+    );
+    let (s, b) = post(
+        "/v1/history/append-if-last",
+        json!({ "user": USER, "chat": "qa-o", "message": "qa question",
+                "entry": { "role": "assistant", "content": "qa partial" }, "origin": "turn" }),
+    )
+    .await;
+    assert_eq!((s, b["outcome"].as_str()), (200, Some("saved")));
+    assert_eq!(
+        post("/v1/history/write", json!({ "user": USER, "chat": "qa-i", "history": [1], "ifAbsent": true, "origin": "import" })).await.0,
+        200
+    );
+    let (s, b) = post(
+        "/v1/history/remove-if",
+        json!({ "user": USER, "chat": "qa-i", "history": [1], "origin": "remove" }),
+    )
+    .await;
+    assert_eq!((s, b["removed"].as_bool()), (200, Some(true)));
+    // No origin, a null one, and an explicit "other" are all `other`; unknown fields are ignored.
+    assert_eq!(save(addr, USER, "qa-x", json!([2])).await.0, 200);
+    assert_eq!(
+        post("/v1/history/write", json!({ "user": USER, "chat": "qa-x", "history": [3], "origin": null, "futureField": 1 })).await.0,
+        200
+    );
+    assert_eq!(
+        post(
+            "/v1/history/write",
+            json!({ "user": USER, "chat": "qa-x", "history": [4], "origin": "other" })
+        )
+        .await
+        .0,
+        200
+    );
+    let (s, all) = changes(addr, USER, json!(0)).await;
+    assert_eq!(s, 200);
+    let want: Vec<(String, String)> = [
+        ("write", "history"),
+        ("append", "turn"),
+        ("write", "import"),
+        ("remove", "remove"),
+        ("write", "other"),
+        ("write", "other"),
+        ("write", "other"),
+    ]
+    .iter()
+    .map(|(a, b)| (a.to_string(), b.to_string()))
+    .collect();
+    assert_eq!(origins(&all), want);
+}
+
+#[tokio::test]
+async fn an_unknown_origin_is_refused_and_changes_nothing() {
+    let (root, addr) = start().await;
+    let bad = [
+        json!("History"),
+        json!("brain"),
+        json!(""),
+        json!(1),
+        json!(true),
+        json!(["history"]),
+    ];
+    for origin in bad {
+        for (path, body) in [
+            (
+                "/v1/history/write",
+                json!({ "user": USER, "chat": "qa-b", "history": [1], "origin": origin }),
+            ),
+            (
+                "/v1/history/append-if-last",
+                json!({ "user": USER, "chat": "qa-b", "message": "m",
+                "entry": { "role": "assistant" }, "origin": origin }),
+            ),
+            (
+                "/v1/history/remove-if",
+                json!({ "user": USER, "chat": "qa-b", "history": [1], "origin": origin }),
+            ),
+        ] {
+            let (s, b) = call(addr, path, Some(TOKEN), &body.to_string()).await;
+            assert_eq!(s, 400, "{path} {origin}");
+            assert!(b["error"].as_str().unwrap().contains("origin"), "{b}");
+        }
+    }
+    assert!(!user_dir(root.path(), USER)
+        .join("history-qa-b.json")
+        .exists());
+    let (_, all) = changes(addr, USER, json!(0)).await;
+    assert!(all["entries"].as_array().unwrap().is_empty());
+}

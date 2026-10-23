@@ -4,7 +4,12 @@
 //! So that Node learns of a change it did not make, every successful transcript mutation appends
 //! one line here, in the same hold of the user's `chat-transcripts.lock`:
 //!
-//! `{"seq":7,"chatId":"c1","revision":"<sha256 hex>"|null,"op":"write"|"append"|"remove","start":"<NOEVIA_START_ID>","at":<ms>}`
+//! `{"seq":7,"chatId":"c1","revision":"<sha256 hex>"|null,"op":"write"|"append"|"remove","origin":"history"|"import"|"turn"|"remove"|"other","start":"<NOEVIA_START_ID>","at":<ms>}`
+//!
+//! - `origin` is who asked for the change ([`Origin`]): Node builds a chat's brain only for a
+//!   `write` whose origin is `history` (the user's own save), never for an import, an
+//!   interrupted-turn append, a removal or anything unnamed (`other`). Entries written before the
+//!   field existed carry none; readers treat them as mirror-only.
 //!
 //! - `seq` is monotonic per user and survives restarts: the next one is the last line's plus one
 //!   (read under the lock, so two writers never take the same number).
@@ -61,6 +66,45 @@ impl Op {
             Op::Write => "write",
             Op::Append => "append",
             Op::Remove => "remove",
+        }
+    }
+}
+
+/// Who asked for a change: the closed set a store caller may name (anything else is refused).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    /// The user's own save of the chat (the history POST).
+    History,
+    /// The conversation import publishing a transcript.
+    Import,
+    /// An interrupted reply's turn appended after the user's message.
+    Turn,
+    /// The conversation import taking back a transcript it published.
+    Remove,
+    /// Anything else, and a caller that names none.
+    Other,
+}
+
+impl Origin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Origin::History => "history",
+            Origin::Import => "import",
+            Origin::Turn => "turn",
+            Origin::Remove => "remove",
+            Origin::Other => "other",
+        }
+    }
+
+    /// The origin `s` names, or nothing (not one of the closed set).
+    pub fn parse(s: &str) -> Option<Origin> {
+        match s {
+            "history" => Some(Origin::History),
+            "import" => Some(Origin::Import),
+            "turn" => Some(Origin::Turn),
+            "remove" => Some(Origin::Remove),
+            "other" => Some(Origin::Other),
+            _ => None,
         }
     }
 }
@@ -147,6 +191,7 @@ pub(crate) fn record(
     chat: &str,
     revision: Option<&str>,
     op: Op,
+    origin: Origin,
     limits: Limits,
 ) -> Result<u64, StoreError> {
     let file = dir.join(FILE);
@@ -157,6 +202,7 @@ pub(crate) fn record(
         "chatId": chat,
         "revision": revision,
         "op": op.as_str(),
+        "origin": origin.as_str(),
         "start": start_id(),
         "at": now_ms(),
     });
@@ -260,11 +306,19 @@ mod tests {
         set_start_id("0123456789abcdef0123456789abcdef");
         let (root, dir) = setup();
         assert_eq!(
-            record(&dir, "qa-chat", Some("r1"), Op::Write, LIMITS).unwrap(),
+            record(
+                &dir,
+                "qa-chat",
+                Some("r1"),
+                Op::Write,
+                Origin::History,
+                LIMITS
+            )
+            .unwrap(),
             1
         );
         assert_eq!(
-            record(&dir, "qa-chat", None, Op::Remove, LIMITS).unwrap(),
+            record(&dir, "qa-chat", None, Op::Remove, Origin::Other, LIMITS).unwrap(),
             2
         );
         let c = read(root.path(), USER, 0).unwrap();
@@ -273,6 +327,8 @@ mod tests {
         assert_eq!(e["chatId"], "qa-chat");
         assert_eq!(e["revision"], "r1");
         assert_eq!(e["op"], "write");
+        assert_eq!(e["origin"], "history");
+        assert_eq!(c.entries[1]["origin"], "other");
         assert_eq!(e["start"], start_id());
         assert!(e["at"].as_u64().unwrap() > 0);
         assert_eq!(c.entries[1]["revision"], Value::Null);
@@ -280,6 +336,22 @@ mod tests {
             (c.oldest_seq, c.latest_seq, c.more),
             (Some(1), Some(2), false)
         );
+    }
+
+    #[test]
+    fn origin_is_a_closed_set_that_round_trips() {
+        for o in [
+            Origin::History,
+            Origin::Import,
+            Origin::Turn,
+            Origin::Remove,
+            Origin::Other,
+        ] {
+            assert_eq!(Origin::parse(o.as_str()), Some(o));
+        }
+        for bad in ["", "History", "brain", "write", " history"] {
+            assert_eq!(Origin::parse(bad), None, "{bad:?}");
+        }
     }
 
     #[test]
@@ -291,7 +363,15 @@ mod tests {
             (0, None, None)
         );
         for i in 0..5 {
-            record(&dir, &format!("qa-{i}"), Some("r"), Op::Write, LIMITS).unwrap();
+            record(
+                &dir,
+                &format!("qa-{i}"),
+                Some("r"),
+                Op::Write,
+                Origin::Other,
+                LIMITS,
+            )
+            .unwrap();
         }
         assert_eq!(seqs(&read(root.path(), USER, 3).unwrap()), vec![4, 5]);
         assert!(read(root.path(), USER, 5).unwrap().entries.is_empty());
@@ -307,7 +387,15 @@ mod tests {
             keep: 4,
         };
         for i in 0..40 {
-            record(&dir, &format!("qa-{i}"), Some("r"), Op::Append, small).unwrap();
+            record(
+                &dir,
+                &format!("qa-{i}"),
+                Some("r"),
+                Op::Append,
+                Origin::Other,
+                small,
+            )
+            .unwrap();
         }
         let len = std::fs::metadata(dir.join(FILE)).unwrap().len();
         assert!(len <= 2_000 + 400, "bounded: {len}");
@@ -329,7 +417,7 @@ mod tests {
     #[test]
     fn a_torn_last_line_is_skipped_and_the_next_entry_starts_clean() {
         let (root, dir) = setup();
-        record(&dir, "qa-a", Some("r"), Op::Write, LIMITS).unwrap();
+        record(&dir, "qa-a", Some("r"), Op::Write, Origin::Other, LIMITS).unwrap();
         let mut f = std::fs::OpenOptions::new()
             .append(true)
             .open(dir.join(FILE))
@@ -338,7 +426,7 @@ mod tests {
         drop(f);
         assert_eq!(seqs(&read(root.path(), USER, 0).unwrap()), vec![1]);
         assert_eq!(
-            record(&dir, "qa-b", Some("r"), Op::Write, LIMITS).unwrap(),
+            record(&dir, "qa-b", Some("r"), Op::Write, Origin::Other, LIMITS).unwrap(),
             2
         );
         let c = read(root.path(), USER, 0).unwrap();
@@ -354,7 +442,7 @@ mod tests {
             keep: usize::MAX,
         };
         for _ in 0..READ_LIMIT + 3 {
-            record(&dir, "qa", None, Op::Write, big).unwrap();
+            record(&dir, "qa", None, Op::Write, Origin::Other, big).unwrap();
         }
         let c = read(root.path(), USER, 0).unwrap();
         assert_eq!((c.entries.len(), c.more), (READ_LIMIT, true));
