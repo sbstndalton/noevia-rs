@@ -27,8 +27,7 @@
 //! request was in flight) the save answers Node's `assertActive` 410 and writes nothing
 //! (sbstndalton/noevia#1425; since #1419 Node's own POST answers that 410 as well).
 //!
-//! `DELETE /api/freechats/{id}` stays Node's: it also removes the chat's transcript, context meter,
-//! brain note and attachments project, which this crate does not do.
+//! `DELETE /api/freechats/{id}` is [`crate::chat_delete`] (sbstndalton/noevia#1071 slice 6).
 //!
 //! Untrusted input it hardens: the JSON body (at most 1 MiB, Node's readBody limit; 1,000 metas;
 //! lone surrogates kept as Node keeps them), and the stored lists it reads back (free-chats.json,

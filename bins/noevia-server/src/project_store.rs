@@ -42,6 +42,21 @@
 //!   way the reader rescans. `start` is this process's NOEVIA_START_ID: a different one than the
 //!   reader last saw means the store restarted (rescan too).
 //!
+//! A chat's delete, the whole cascade in one hold of the transcript lock (sbstndalton/noevia#1071
+//! slice 6; crates/server-projects `chat_delete`): the tombstone, the list without the chat (written
+//! here, under its file's lock), then the chat's transcript, context meter, brain note and saved
+//! partial reply. `kind` is `free` (free-chats.json), `project` (with `projectId`) or `unlisted`
+//! (a deleted project's chat, in no list any more); `origin` as above, absent or null `remove`:
+//!
+//! `POST /v1/chat/delete { user, chat, kind, projectId?, origin? }`
+//!                                                  -> 200 `{ deleted, swept, leftovers }`
+//!                                                   | 409 `{ error, code: "CHAT_LISTED" }` (`unlisted`
+//!                                                     for a chat a list still holds: nothing changed)
+//!   `deleted`: taken out of its list by this call; `swept`: already deleted and in no list, its
+//!   leftover files removed (a delete a crash cut short); neither: no such chat. A failed list save
+//!   takes back the tombstone and removes nothing (the error below). The attachments project is
+//!   Node's to free (its orphan reaper, once the chat is tombstoned and in no list).
+//!
 //! Errors use Node's shapes: 503 `{ error, code: "PROJECTS_BUSY" }` (the lock was held past its
 //! wait), 410 `account no longer exists`, 400 a bad request, 413 a body over the limit, 500 else.
 //! The body limit is [`BODY_LIMIT`]; a request's file work runs on the blocking pool.
@@ -53,6 +68,7 @@ use axum::routing::post;
 use axum::Router;
 use js_json::{wtf16, JValue};
 use serde_json::{json, Value};
+use server_projects::chat_delete::{self, DeleteError, Kind};
 use server_projects::journal;
 use server_projects::store::StoreError;
 use server_projects::store_api::{self, StoreFile, WriteError};
@@ -340,6 +356,60 @@ async fn handle_history(store: Store, headers: HeaderMap, raw: Bytes, op: Op) ->
     done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
 }
 
+fn chat_delete_op(store: &Store, body: &JValue) -> Response<Body> {
+    let (Some(user), Some(chat)) = (body.get("user").as_str(), body.get("chat").as_str()) else {
+        return error(StatusCode::BAD_REQUEST, "user and chat required");
+    };
+    let kind = match (body.get("kind").as_str(), body.get("projectId")) {
+        (Some("free"), JValue::Undefined | JValue::Null) => Kind::Free,
+        (Some("unlisted"), JValue::Undefined | JValue::Null) => Kind::Unlisted,
+        (Some("project"), JValue::Str(p)) => Kind::Project(p),
+        _ => {
+            return error(
+                StatusCode::BAD_REQUEST,
+                "kind must be free, unlisted, or project with a projectId",
+            )
+        }
+    };
+    let origin = match body.get("origin") {
+        JValue::Undefined | JValue::Null => Origin::Remove,
+        _ => match origin(body) {
+            Ok(o) => o,
+            Err(r) => return *r,
+        },
+    };
+    match chat_delete::delete(&store.data_dir, user, chat, kind, origin, store.switch) {
+        Ok(o) => reply(
+            StatusCode::OK,
+            &json!({ "deleted": o.deleted, "swept": o.swept, "leftovers": o.leftovers }),
+        ),
+        Err(DeleteError::InvalidChat) => error(StatusCode::BAD_REQUEST, "invalid chat id"),
+        Err(DeleteError::Listed) => reply(
+            StatusCode::CONFLICT,
+            &json!({ "error": "a list still holds this chat", "code": "CHAT_LISTED" }),
+        ),
+        Err(DeleteError::Unsupported) => error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
+        Err(DeleteError::Store(e)) => store_error(&e),
+    }
+}
+
+async fn handle_chat_delete(store: Store, headers: HeaderMap, raw: Bytes) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let done = tokio::task::spawn_blocking(move || {
+        let Ok(text) = std::str::from_utf8(&raw) else {
+            return error(StatusCode::BAD_REQUEST, "invalid JSON");
+        };
+        match wtf16::parse(text) {
+            Ok(body @ JValue::Obj(_)) => chat_delete_op(&store, &body),
+            _ => error(StatusCode::BAD_REQUEST, "invalid JSON"),
+        }
+    })
+    .await;
+    done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
+}
+
 async fn handle_changes(store: Store, headers: HeaderMap, raw: Bytes) -> Response<Body> {
     if !authorised(&store, &headers) {
         return error(StatusCode::UNAUTHORIZED, "unauthorised");
@@ -390,6 +460,10 @@ pub fn router(store: Store) -> Router {
         .route("/v1/history/write", history_route(Op::Write))
         .route("/v1/history/append-if-last", history_route(Op::Append))
         .route("/v1/history/remove-if", history_route(Op::RemoveIf))
+        .route(
+            "/v1/chat/delete",
+            post(|State(s): State<Store>, h: HeaderMap, b: Bytes| handle_chat_delete(s, h, b)),
+        )
         .route(
             "/v1/changes/read",
             post(|State(s): State<Store>, h: HeaderMap, b: Bytes| handle_changes(s, h, b)),

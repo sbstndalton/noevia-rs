@@ -346,7 +346,8 @@ methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/freechats/{chatId}"
-owner = "node"
+owner = "rust"
+methods = ["DELETE"]
 
 [[route]]
 path = "/api/health"
@@ -576,7 +577,8 @@ methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/projects/{projectId}/chats/{chatId}"
-owner = "node"
+owner = "rust"
+methods = ["DELETE"]
 
 [[route]]
 path = "/api/projects/{projectId}/code"

@@ -20,7 +20,7 @@ use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Request, Response, StatusCode};
 use axum::response::IntoResponse;
 use server_projects::{
-    assets, chats, context, context_window, free_chats, history, retention, Ctx, Reply,
+    assets, chat_delete, chats, context, context_window, free_chats, history, retention, Ctx, Reply,
 };
 use std::sync::Arc;
 
@@ -48,6 +48,10 @@ pub enum Route {
     SaveHistory { chat: String },
     /// GET /api/account/retention (sbstndalton/noevia#1071, no switch; `PUT` is Node's)
     Retention,
+    /// DELETE /api/freechats/{id} (sbstndalton/noevia#1071 slice 6)
+    DeleteFreeChat { chat: String },
+    /// DELETE /api/projects/{id}/chats/{chatId} (sbstndalton/noevia#1071 slice 6)
+    DeleteChat { project: String, chat: String },
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -57,6 +61,14 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
     // routes/account.cjs `path === '/api/account/retention'`, its GET only.
     if path == "/api/account/retention" {
         return (method == "GET").then_some(Route::Retention);
+    }
+    // routes/chat-lists.cjs `/^\/api\/freechats\/([^/]+)$/` for DELETE.
+    if let Some(chat) = path.strip_prefix("/api/freechats/") {
+        return (method == "DELETE" && !chat.is_empty() && !chat.contains('/')).then(|| {
+            Route::DeleteFreeChat {
+                chat: chat.to_string(),
+            }
+        });
     }
     if path == "/api/freechats" {
         return match method {
@@ -106,6 +118,13 @@ pub fn route(method: &str, path: &str) -> Option<Route> {
         ("POST", [project, "chats"]) if !project.is_empty() => Some(Route::SaveChats {
             project: (*project).to_string(),
         }),
+        // routes/projects.cjs `/^\/api\/projects\/([^/]+)\/chats\/([^/]+)$/` for DELETE.
+        ("DELETE", [project, "chats", chat]) if !project.is_empty() && !chat.is_empty() => {
+            Some(Route::DeleteChat {
+                project: (*project).to_string(),
+                chat: (*chat).to_string(),
+            })
+        }
         _ => None,
     }
 }
@@ -256,7 +275,9 @@ pub async fn serve(
         | Route::Context { .. }
         | Route::ContextWindow { .. }
         | Route::History { .. }
-        | Route::Retention => None,
+        | Route::Retention
+        | Route::DeleteFreeChat { .. }
+        | Route::DeleteChat { .. } => None,
     };
     let upload = match limit {
         Some(limit) => match crate::account_routes::read_body(body, limit).await {
@@ -281,6 +302,8 @@ pub async fn serve(
             | Route::SaveFreeChats
             | Route::SaveHistory { .. }
             | Route::Context { .. }
+            | Route::DeleteFreeChat { .. }
+            | Route::DeleteChat { .. }
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
     let done = tokio::task::spawn_blocking(move || {
         if writes {
@@ -318,6 +341,10 @@ pub async fn serve(
                 history::post(ctx, &chat, &b.bytes, b.over, &start_id)
             }
             (Route::Retention, _) => retention::get(ctx),
+            (Route::DeleteFreeChat { chat }, _) => chat_delete::delete_free_route(ctx, &chat),
+            (Route::DeleteChat { project, chat }, _) => {
+                chat_delete::delete_project_route(ctx, &project, &chat)
+            }
             (
                 Route::Upload { .. }
                 | Route::SaveChats { .. }
@@ -506,11 +533,22 @@ mod tests {
             ("DELETE", "/api/freechats"),
             ("PUT", "/api/freechats"),
             ("GET", "/api/freechats/"),
-            ("DELETE", "/api/freechats/c1"),
+            ("GET", "/api/freechats/c1"),
+            ("POST", "/api/freechats/c1"),
+            ("DELETE", "/api/freechats/"),
+            ("DELETE", "/api/freechats/a/b"),
+            ("DELETE", "/api/freechats/c1/"),
             ("GET", "/api/freechatsx"),
         ] {
             assert_eq!(route(m, p), None, "{m} {p}");
         }
+        // routes/chat-lists.cjs `/^\/api\/freechats\/([^/]+)$/`, DELETE only (#1071 slice 6).
+        assert_eq!(
+            route("DELETE", "/api/freechats/c%201"),
+            Some(Route::DeleteFreeChat {
+                chat: "c%201".into()
+            })
+        );
     }
 
     #[test]
@@ -617,6 +655,22 @@ mod tests {
                 project: "p".into()
             })
         );
+        assert_eq!(
+            route("DELETE", "/api/projects/p%201/chats/c%202"),
+            Some(Route::DeleteChat {
+                project: "p%201".into(),
+                chat: "c%202".into()
+            })
+        );
+        for (m, p) in [
+            ("DELETE", "/api/projects/p/chats"),
+            ("DELETE", "/api/projects/p/chats/"),
+            ("DELETE", "/api/projects//chats/c"),
+            ("DELETE", "/api/projects/p/chats/c/d"),
+            ("PUT", "/api/projects/p/chats/c"),
+        ] {
+            assert_eq!(route(m, p), None, "{m} {p}");
+        }
     }
 
     #[test]
