@@ -200,11 +200,19 @@ pub(crate) fn record(
     record_entry(dir, chat, revision, op, origin, limits, None)
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum MoveDelivery {
+    Live,
+    Recovery,
+}
+
 pub(crate) fn record_move(
     dir: &Path,
     chat: &str,
     event_id: &str,
     generation: &str,
+    raw_chat: &str,
+    delivery: MoveDelivery,
 ) -> Result<u64, StoreError> {
     let seq = record_entry(
         dir,
@@ -213,7 +221,7 @@ pub(crate) fn record_move(
         Op::Move,
         Origin::Other,
         LIMITS,
-        Some((event_id, generation)),
+        Some((event_id, generation, raw_chat, delivery)),
     )?;
     // A move's prepared intent is not cleared until both the appended/rotated file and parent
     // are durable. Legacy transcript notifications keep their existing best-effort behavior.
@@ -229,7 +237,7 @@ fn record_entry(
     op: Op,
     origin: Origin,
     limits: Limits,
-    moved: Option<(&str, &str)>,
+    moved: Option<(&str, &str, &str, MoveDelivery)>,
 ) -> Result<u64, StoreError> {
     let file = dir.join(FILE);
     let (last, torn) = last_seq(&file)?;
@@ -243,10 +251,24 @@ fn record_entry(
         "start": start_id(),
         "at": now_ms(),
     });
-    if let Some((event_id, generation)) = moved {
+    if let Some((event_id, generation, raw_chat, delivery)) = moved {
+        if raw_chat.is_empty() || crate::history::safe_chat_id(raw_chat) != chat {
+            return Err(StoreError::Corrupt);
+        }
         let obj = entry.as_object_mut().ok_or(StoreError::Corrupt)?;
         obj.insert("eventId".into(), Value::String(event_id.into()));
         obj.insert("generation".into(), Value::String(generation.into()));
+        obj.insert("rawChatId".into(), Value::String(raw_chat.into()));
+        obj.insert(
+            "delivery".into(),
+            Value::String(
+                match delivery {
+                    MoveDelivery::Live => "live",
+                    MoveDelivery::Recovery => "recovery",
+                }
+                .into(),
+            ),
+        );
     }
     let mut line = String::new();
     if torn {

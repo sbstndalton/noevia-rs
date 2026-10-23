@@ -295,6 +295,8 @@ fn strict_write(dir: &Path, name: &str, text: &str, fault: Fault<'_>) -> Result<
     transcript::existing_dir(dir)?;
     Ok(())
 }
+#[cfg(test)]
+thread_local! { static SYNC_REFUSAL: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) }; }
 fn sync_state(dir: &Path) -> Result<(), StoreError> {
     use std::os::unix::fs::OpenOptionsExt;
     let result = std::fs::OpenOptions::new()
@@ -304,6 +306,14 @@ fn sync_state(dir: &Path) -> Result<(), StoreError> {
     match result {
         Ok(f) => {
             f.sync_all()?;
+            #[cfg(test)]
+            SYNC_REFUSAL.with(|refusal| {
+                if refusal.borrow().as_deref() == Some(dir) {
+                    Err(StoreError::Corrupt)
+                } else {
+                    Ok(())
+                }
+            })?;
             std::fs::File::open(dir)?.sync_all()?;
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -323,6 +333,14 @@ fn snapshot(dir: &Path, name: &str) -> Result<(String, Option<String>), StoreErr
 }
 const NAMES: [&str; 2] = [store::PROJECTS_FILE, chats::FREE_CHATS_FILE];
 fn recover_held(dir: &Path, s: &mut State, fault: Fault<'_>) -> Result<(), StoreError> {
+    finish_held(dir, s, fault, journal::MoveDelivery::Recovery)
+}
+fn finish_held(
+    dir: &Path,
+    s: &mut State,
+    fault: Fault<'_>,
+    delivery: journal::MoveDelivery,
+) -> Result<(), StoreError> {
     let Some(p) = s.pending.as_ref() else {
         return Ok(());
     };
@@ -355,7 +373,14 @@ fn recover_held(dir: &Path, s: &mut State, fault: Fault<'_>) -> Result<(), Store
             Step::SecondList
         })?;
     }
-    journal::record_move(dir, &p.canonical, &p.event, &p.generation.to_string())?;
+    journal::record_move(
+        dir,
+        &p.canonical,
+        &p.event,
+        &p.generation.to_string(),
+        &p.raw,
+        delivery,
+    )?;
     fault(Step::Journal)?;
     // Retain bounded completion evidence; the active intent above held the full after-images.
     s.completed = Some(
@@ -659,7 +684,7 @@ pub fn move_with(
         });
         strict_write(&dir, FILE, &encoded(s)?, fault)?;
         fault(Step::Prepared)?;
-        recover_held(&dir, s, fault)?;
+        finish_held(&dir, s, fault, journal::MoveDelivery::Live)?;
         Ok(Moved {
             from,
             to,
@@ -885,7 +910,104 @@ mod tests {
         assert_eq!(all.len(), 2);
         assert_eq!(all[1]["eventId"], first);
         assert_eq!(all[1]["generation"], "1");
+        assert!(all.iter().all(|e| e["delivery"] == "recovery"));
+        assert!(all
+            .iter()
+            .all(|e| e["rawChatId"] == "qa c!" && e["chatId"] == "qac"));
         assert!(state(&dir).unwrap().pending.is_none());
+    }
+
+    #[test]
+    fn live_commit_then_same_or_new_start_recovery_preserves_identity_and_provenance() {
+        for next_start in [START, "22222222222222222222222222222222"] {
+            let (root, dir) = setup();
+            assert!(move_with(
+                root.path(),
+                USER,
+                "qa c!",
+                Holder::Project("qa-p".into()),
+                None,
+                START,
+                &|step| if step == Step::Journal {
+                    Err(boom())
+                } else {
+                    Ok(())
+                }
+            )
+            .is_err());
+            let first = journal::read(root.path(), USER, 0).unwrap().entries[0].clone();
+            assert_eq!(first["delivery"], "live");
+            assert_eq!(first["rawChatId"], "qa c!");
+            assert_eq!(first["chatId"], "qac");
+            // The actual metadata id, not the reduced transcript id, finds the current brain meta.
+            let (projects, free) = read_lists(&dir).unwrap();
+            let found = occurrences(&projects, &free, "qac").unwrap();
+            assert_eq!(found[0].1.get("id").as_str(), first["rawChatId"].as_str());
+            let context = grant_context(root.path(), USER, "qac", next_start).unwrap();
+            assert_eq!(context.start, next_start);
+            let entries = journal::read(root.path(), USER, 0).unwrap().entries;
+            assert_eq!(entries.len(), 2);
+            assert_eq!(entries[1]["delivery"], "recovery");
+            for key in ["eventId", "generation", "rawChatId", "chatId"] {
+                assert_eq!(entries[1][key], first[key]);
+            }
+        }
+    }
+
+    #[test]
+    fn completion_rename_uncertainty_resyncs_before_writer_or_grant_without_explicit_recover() {
+        for phase in [Step::Renamed, Step::ParentSynced] {
+            let (root, dir) = setup();
+            let count = Cell::new(0);
+            assert!(move_with(
+                root.path(),
+                USER,
+                "qa c!",
+                Holder::Project("qa-p".into()),
+                None,
+                START,
+                &|step| {
+                    if step == phase {
+                        count.set(count.get() + 1);
+                        if count.get() == 4 {
+                            return Err(boom());
+                        }
+                    }
+                    Ok(())
+                }
+            )
+            .is_err());
+            assert_eq!(
+                count.get(),
+                4,
+                "fault is completion, not preparation/list publication"
+            );
+            assert!(
+                state(&dir).unwrap().pending.is_none(),
+                "completion rename is visible"
+            );
+            let before = texts(&dir);
+            // Persistent resync refusal cannot be promoted to success from the visible clear.
+            SYNC_REFUSAL.with(|v| *v.borrow_mut() = Some(dir.clone()));
+            assert!(store::update(
+                &dir,
+                server_store::RustProjects::owned(),
+                |_| -> ((), bool) { panic!("resync refusal must precede the list writer") }
+            )
+            .is_err());
+            assert!(grant_context(root.path(), USER, "qac", START).is_err());
+            SYNC_REFUSAL.with(|v| *v.borrow_mut() = None);
+            assert_eq!(texts(&dir), before);
+            // Both public entry points establish durability directly, BEFORE explicit recover().
+            store::update(&dir, server_store::RustProjects::owned(), |_| ((), false)).unwrap();
+            assert_eq!(
+                grant_context(root.path(), USER, "qac", START)
+                    .unwrap()
+                    .generation,
+                "1"
+            );
+            assert!(state(&dir).unwrap().pending.is_none());
+        }
     }
 
     #[test]
