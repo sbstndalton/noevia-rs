@@ -1693,6 +1693,7 @@ dependencies = [
  "server-auth",
  "server-chatgpt-status",
  "server-export",
+ "server-features",
  "server-projects",
  "server-reasoning-settings",
  "server-routing-default",
@@ -2660,6 +2661,7 @@ dependencies = [
  "rustix",
  "secret-envelope",
  "serde_json",
+ "server-features",
  "server-store",
  "sha2",
  "subtle",
@@ -2675,6 +2677,7 @@ dependencies = [
  "secret-envelope",
  "serde_json",
  "server-auth",
+ "server-features",
  "server-routing-mode",
  "server-store",
  "tempfile",
@@ -2699,6 +2702,14 @@ dependencies = [
  "sha2",
  "tempfile",
  "unicode-normalization",
+]
+
+[[package]]
+name = "server-features"
+version = "0.1.0"
+dependencies = [
+ "policy-leaves",
+ "serde_json",
 ]
 
 [[package]]
@@ -2744,6 +2755,7 @@ dependencies = [
  "proptest",
  "rustix",
  "serde_json",
+ "server-features",
  "server-store",
  "sha2",
  "tempfile",

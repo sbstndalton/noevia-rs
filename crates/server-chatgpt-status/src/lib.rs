@@ -39,7 +39,7 @@ pub const ROUTE: &str = "/api/providers/chatgpt";
 /// chatgpt-oauth.cjs `PROVIDER_ID`.
 pub const PROVIDER_ID: &str = "chatgpt-oauth";
 /// The settings row core features.cjs `settingsStore` reads for the flag.
-pub const FEATURE_KEY: &str = "feature:chatgptOAuth";
+pub const FEATURE_KEY: &str = server_features::spec(server_features::Feature::ChatgptOAuth).setting;
 /// routes/providers.cjs: the flag-off answer.
 pub const OFF_MESSAGE: &str = "Sign in with ChatGPT is turned off on this server.";
 /// routes/providers.cjs: the answer to an error without a status (the sanitized 502).
@@ -138,15 +138,29 @@ fn schema(r: &Reader<'_>) -> Result<bool, server_store::StoreError> {
 
 /// features.cjs: the env value wins; else a typed `'true'` settings row; else off.
 fn flag_on(r: &Reader<'_>, env: Option<bool>) -> Result<bool, server_store::StoreError> {
-    if let Some(v) = env {
-        return Ok(v);
+    if let Some(value) = env {
+        return Ok(server_features::evaluate(
+            server_features::Feature::ChatgptOAuth,
+            Some(value),
+            None,
+            true,
+        )
+        .enabled);
     }
-    Ok(r.row(
-        "SELECT CASE WHEN typeof(value)='text' AND value='true' THEN 1 ELSE 0 END FROM settings WHERE key=?1",
-        [FEATURE_KEY],
-        |row| row.get::<_, i64>(0),
-    )?
-    .is_some_and(|v| v == 1))
+    let stored = r
+        .row(
+            "SELECT CASE WHEN typeof(value)='text' AND value IN ('true','false') THEN value ELSE NULL END FROM settings WHERE key=?1",
+            [FEATURE_KEY],
+            |row| row.get::<_, Option<String>>(0),
+        )?
+        .flatten();
+    Ok(server_features::evaluate(
+        server_features::Feature::ChatgptOAuth,
+        env,
+        stored.as_deref(),
+        true,
+    )
+    .enabled)
 }
 
 /// Spends `len` from `remaining`, refusing before anything is spent when it does not fit (#1377).
