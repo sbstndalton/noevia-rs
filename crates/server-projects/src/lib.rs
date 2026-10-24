@@ -72,6 +72,7 @@ pub mod lock;
 pub mod partial;
 pub mod retention;
 pub mod skills;
+pub mod source_jobs;
 pub mod store;
 pub mod store_api;
 pub mod transcript;

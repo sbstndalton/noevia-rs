@@ -544,6 +544,12 @@ fn history_route(op: Op) -> axum::routing::MethodRouter<Store> {
 
 pub fn router(store: Store) -> Router {
     Router::new()
+        .route("/v1/source-jobs/recover", source_route(SourceOp::Recover))
+        .route("/v1/source-jobs/start", source_route(SourceOp::Start))
+        .route("/v1/source-jobs/abandon", source_route(SourceOp::Abandon))
+        .route("/v1/source-jobs/progress", source_route(SourceOp::Progress))
+        .route("/v1/source-jobs/finish", source_route(SourceOp::Finish))
+        .route("/v1/source-jobs/read", source_route(SourceOp::Read))
         .route(
             "/v1/chat/grant-context",
             post(|State(s): State<Store>, h: HeaderMap, b: Bytes| handle_chat_move(s, h, b, false)),
@@ -585,4 +591,154 @@ pub async fn serve(
     let _ = axum::serve(listener, router(store))
         .with_graceful_shutdown(shutdown)
         .await;
+}
+
+// noevia-source-jobs-store/1: secret-authenticated internal calls only. Node executes work;
+// Rust alone persists source-kind journals.
+#[derive(Clone, Copy)]
+enum SourceOp {
+    Recover,
+    Start,
+    Abandon,
+    Progress,
+    Finish,
+    Read,
+}
+
+fn source_error(e: server_projects::source_jobs::Error) -> Response<Body> {
+    use server_projects::source_jobs::Error as E;
+    match e {
+        E::BadRequest => error(StatusCode::BAD_REQUEST, "invalid source job request"),
+        E::Gone => error(StatusCode::GONE, "account no longer exists"),
+        E::NotFound => error(StatusCode::NOT_FOUND, "source job or project not found"),
+        E::Busy => reply(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &json!({"error":"The source job store is busy.","code":"PROJECTS_BUSY"}),
+        ),
+        E::Stale => error(StatusCode::CONFLICT, "stale source job owner or run"),
+        E::TooMany => error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Source processing is busy; wait for the current operation and retry.",
+        ),
+        E::Corrupt => reply(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &json!({"error":"Source job state unknown; review required","code":"JOBS_UNKNOWN"}),
+        ),
+        E::Io => error(StatusCode::INTERNAL_SERVER_ERROR, "source job store failed"),
+    }
+}
+
+async fn handle_source_jobs(
+    store: Store,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: SourceOp,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let Ok(body) = server_projects::source_jobs::parse_js(&raw) else {
+        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+    };
+    let Some(user) = body.get("user").and_then(Value::as_str).map(str::to_owned) else {
+        return error(StatusCode::BAD_REQUEST, "user required");
+    };
+    let done = tokio::task::spawn_blocking(move || {
+        use server_projects::source_jobs as jobs;
+        let required = |key: &str| body.get(key).and_then(Value::as_str).map(str::to_owned);
+        let ctx = jobs::Context {
+            data_dir: &store.data_dir,
+            start_id: &store.start_id,
+        };
+        if matches!(op, SourceOp::Read) {
+            let (Some(project), Some(id)) = (required("projectId"), required("id")) else {
+                return error(StatusCode::BAD_REQUEST, "projectId and id required");
+            };
+            return match jobs::read(ctx, &user, &project, &id) {
+                Ok(Some(job)) => match jobs::stringify_js(&job) {
+                    Ok(text) => reply_text(StatusCode::OK, text),
+                    Err(e) => source_error(e),
+                },
+                Ok(None) => error(StatusCode::NOT_FOUND, "source job or project not found"),
+                Err(e) => source_error(e),
+            };
+        }
+        let (Some(start), Some(born), Some(owner)) =
+            (required("start"), required("born"), required("owner"))
+        else {
+            return error(StatusCode::BAD_REQUEST, "start, born and owner required");
+        };
+        let result = match op {
+            SourceOp::Recover => {
+                jobs::recover(ctx, &user, &start, &born, &owner).map(|count| json!({"count":count}))
+            }
+            SourceOp::Start => match (required("projectId"), required("request")) {
+                (Some(project), Some(request)) => {
+                    jobs::start(ctx, &user, &start, &born, &owner, &project, &request)
+                        .map(|(id, run)| json!({"id":id,"run":run}))
+                }
+                _ => Err(jobs::Error::BadRequest),
+            },
+            SourceOp::Abandon => match required("request") {
+                Some(request) => jobs::abandon(ctx, &user, &start, &born, &owner, &request)
+                    .map(|()| json!({"ok":true})),
+                None => Err(jobs::Error::BadRequest),
+            },
+            SourceOp::Progress => match (
+                required("id"),
+                required("run"),
+                required("stage"),
+                body.get("n").and_then(Value::as_u64),
+            ) {
+                (Some(id), Some(run), Some(stage), Some(n)) => jobs::progress(
+                    ctx,
+                    &user,
+                    &start,
+                    &born,
+                    &owner,
+                    jobs::ProgressUpdate {
+                        id: &id,
+                        run: &run,
+                        stage: &stage,
+                        n,
+                    },
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            SourceOp::Finish => match (
+                required("id"),
+                required("run"),
+                body.get("ok").and_then(Value::as_bool),
+            ) {
+                (Some(id), Some(run), Some(ok)) => jobs::finish(
+                    ctx,
+                    &user,
+                    &start,
+                    &born,
+                    &owner,
+                    jobs::CompletionUpdate {
+                        id: &id,
+                        run: &run,
+                        ok,
+                        result: body.get("result").unwrap_or(&Value::Null),
+                        error: required("error").as_deref(),
+                    },
+                )
+                .map(|()| json!({"ok":true})),
+                _ => Err(jobs::Error::BadRequest),
+            },
+            SourceOp::Read => return error(StatusCode::BAD_REQUEST, "invalid source job request"),
+        };
+        match result {
+            Ok(value) => reply(StatusCode::OK, &value),
+            Err(e) => source_error(e),
+        }
+    })
+    .await;
+    done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
+}
+
+fn source_route(op: SourceOp) -> axum::routing::MethodRouter<Store> {
+    post(move |State(s): State<Store>, h: HeaderMap, b: Bytes| handle_source_jobs(s, h, b, op))
 }
