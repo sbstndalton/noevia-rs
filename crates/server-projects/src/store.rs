@@ -272,6 +272,7 @@ pub fn update<T>(
     existing(dir)?;
     let _held = lock::acquire(&dir.join(PROJECTS_FILE))
         .map_err(|e| gone_if_missing(StoreError::from(e)))?;
+    crate::chat_move::fence(dir)?;
     let mut projects = read(dir)?;
     let (out, changed) = change(&mut projects);
     if changed {
@@ -296,6 +297,7 @@ pub fn update_free<T>(
     existing(dir)?;
     let file = dir.join(crate::chats::FREE_CHATS_FILE);
     let _held = lock::acquire(&file).map_err(|e| gone_if_missing(StoreError::from(e)))?;
+    crate::chat_move::fence(dir)?;
     let stored = read_json(&file)?;
     let (out, list) = change(stored);
     if let Some(list) = list {
