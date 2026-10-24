@@ -289,7 +289,10 @@ fn current(p: &Paths, start: &str, born: &str, owner: &str) -> Result<(), Error>
     let Some(v) = read_owner(p)? else {
         return Err(Error::Stale);
     };
-    if v["start"] != start || v["born"] != born || v["owner"] != owner {
+    if v.pointer("/start").unwrap_or(&Value::Null) != start
+        || v.pointer("/born").unwrap_or(&Value::Null) != born
+        || v.pointer("/owner").unwrap_or(&Value::Null) != owner
+    {
         return Err(Error::Stale);
     }
     Ok(())
@@ -323,7 +326,10 @@ fn reconcile_abandoned(
         if terminal(status(rows)) {
             continue;
         }
-        if rows[0]["data"]["request"]
+        if rows
+            .first()
+            .and_then(|row| row.pointer("/data/request"))
+            .unwrap_or(&Value::Null)
             .as_str()
             .is_some_and(|r| requests.iter().any(|a| a == r))
         {
@@ -380,7 +386,9 @@ fn read_rows(p: &Paths, id: &str) -> Result<Option<Vec<Value>>, Error> {
         match parse_js(part) {
             Ok(row) => {
                 let expected = u64::try_from(rows.len()).unwrap_or(u64::MAX) + 1;
-                if row["job"] != id || row["seq"].as_u64() != Some(expected) {
+                if row.pointer("/job").unwrap_or(&Value::Null) != id
+                    || row.pointer("/seq").unwrap_or(&Value::Null).as_u64() != Some(expected)
+                {
                     return Err(Error::Corrupt);
                 }
                 rows.push(row);
@@ -401,10 +409,13 @@ fn source_rows(p: &Paths, id: &str) -> Result<Option<Vec<Value>>, Error> {
     };
     let first = raw.split(|b| *b == b'\n').next().ok_or(Error::Corrupt)?;
     let first = parse_js(first).map_err(|_| Error::Corrupt)?;
-    if first["type"] != "job.created" || first["job"] != id || first["seq"].as_u64() != Some(1) {
+    if first.pointer("/type").unwrap_or(&Value::Null) != "job.created"
+        || first.pointer("/job").unwrap_or(&Value::Null) != id
+        || first.pointer("/seq").unwrap_or(&Value::Null).as_u64() != Some(1)
+    {
         return Err(Error::Corrupt);
     }
-    if first["data"]["kind"] != "source" {
+    if first.pointer("/data/kind").unwrap_or(&Value::Null) != "source" {
         return Ok(None);
     }
     read_rows(p, id)
@@ -436,7 +447,7 @@ fn all_source(p: &Paths) -> Result<Vec<(String, Vec<Value>)>, Error> {
 fn status(rows: &[Value]) -> &'static str {
     let mut state = "queued";
     for row in rows {
-        state = match row["type"].as_str() {
+        state = match row.pointer("/type").unwrap_or(&Value::Null).as_str() {
             Some("job.started" | "approval.decided") => "running",
             Some("approval.requested") => "waiting_approval",
             Some("job.completed") => "completed",
@@ -483,7 +494,11 @@ fn append(p: &Paths, id: &str, rows: &[Value], ty: &str, data: Value) -> Result<
             let keep = whole.iter().rposition(|b| *b == b'\n').map_or(0, |x| x + 1);
             // A complete JSON event lacking only its separator is already in read_rows().
             // Preserve it; only discard an invalid torn fragment.
-            if parse_js(&whole[keep..]).ok().as_ref() == rows.last() {
+            if parse_js(whole.get(keep..).ok_or(Error::Corrupt)?)
+                .ok()
+                .as_ref()
+                == rows.last()
+            {
                 f.write_all(b"\n")?;
             } else {
                 f.set_len(u64::try_from(keep).map_err(|_| Error::Corrupt)?)?;
@@ -504,11 +519,18 @@ fn prune(p: &Paths, all: &[(String, Vec<Value>)]) -> Result<(), Error> {
         .filter(|(_, rows)| terminal(status(rows)))
         .collect();
     done.sort_by_key(|(_, rows)| {
-        std::cmp::Reverse(rows.last().and_then(|r| r["at"].as_u64()).unwrap_or(0))
+        std::cmp::Reverse(
+            rows.last()
+                .and_then(|r| r.pointer("/at").unwrap_or(&Value::Null).as_u64())
+                .unwrap_or(0),
+        )
     });
     let now = now_ms();
     for (i, (id, rows)) in done.iter().enumerate() {
-        let updated = rows.last().and_then(|r| r["at"].as_u64()).unwrap_or(0);
+        let updated = rows
+            .last()
+            .and_then(|r| r.pointer("/at").unwrap_or(&Value::Null).as_u64())
+            .unwrap_or(0);
         if now.saturating_sub(updated) > RETAIN_MS || i >= MAX_JOBS {
             fs::remove_file(job_path(p, id)?)?;
         }
@@ -533,9 +555,22 @@ pub fn recover(
     with_lock(ctx, user, |p| {
         let mut abandoned_requests = Vec::new();
         if let Some(v) = read_owner(p)? {
-            let old_start = v["start"].as_str().ok_or(Error::Corrupt)?;
-            let old_born = born_num(v["born"].as_str().ok_or(Error::Corrupt)?)?;
-            let old_owner = v["owner"].as_str().ok_or(Error::Corrupt)?;
+            let old_start = v
+                .pointer("/start")
+                .unwrap_or(&Value::Null)
+                .as_str()
+                .ok_or(Error::Corrupt)?;
+            let old_born = born_num(
+                v.pointer("/born")
+                    .unwrap_or(&Value::Null)
+                    .as_str()
+                    .ok_or(Error::Corrupt)?,
+            )?;
+            let old_owner = v
+                .pointer("/owner")
+                .unwrap_or(&Value::Null)
+                .as_str()
+                .ok_or(Error::Corrupt)?;
             if old_start == start
                 && (incoming < old_born || (incoming == old_born && old_owner != owner))
             {
@@ -551,7 +586,10 @@ pub fn recover(
             if terminal(status(&rows)) {
                 continue;
             }
-            if rows[0]["data"]["request"]
+            if rows
+                .first()
+                .and_then(|row| row.pointer("/data/request"))
+                .unwrap_or(&Value::Null)
                 .as_str()
                 .is_some_and(|r| abandoned_requests.iter().any(|a| a == r))
             {
@@ -565,7 +603,12 @@ pub fn recover(
                 count += 1;
                 continue;
             }
-            if rows[0]["data"]["owner"] == owner {
+            if rows
+                .first()
+                .and_then(|row| row.pointer("/data/owner"))
+                .unwrap_or(&Value::Null)
+                == owner
+            {
                 continue;
             }
             let reason = if status(&rows) == "waiting_approval" {
@@ -606,11 +649,23 @@ pub fn start(
         let before = all_source(p)?;
         reconcile_abandoned(p, &abandoned_requests, &before)?;
         let all = all_source(p)?;
-        if let Some((id, rows)) = all
-            .iter()
-            .find(|(_, rows)| rows[0]["data"]["request"] == request)
-        {
-            if rows[0]["data"]["owner"] != owner || rows[0]["data"]["projectId"] != project {
+        if let Some((id, rows)) = all.iter().find(|(_, rows)| {
+            rows.first()
+                .and_then(|row| row.pointer("/data/request"))
+                .unwrap_or(&Value::Null)
+                == request
+        }) {
+            if rows
+                .first()
+                .and_then(|row| row.pointer("/data/owner"))
+                .unwrap_or(&Value::Null)
+                != owner
+                || rows
+                    .first()
+                    .and_then(|row| row.pointer("/data/projectId"))
+                    .unwrap_or(&Value::Null)
+                    != project
+            {
                 return Err(Error::Stale);
             }
             if !project_exists(p, project)? {
@@ -625,7 +680,10 @@ pub fn start(
                 }
                 return Err(Error::NotFound);
             }
-            let run = rows[0]["data"]["run"]
+            let run = rows
+                .first()
+                .and_then(|row| row.pointer("/data/run"))
+                .unwrap_or(&Value::Null)
                 .as_str()
                 .ok_or(Error::Corrupt)?
                 .to_string();
@@ -695,10 +753,27 @@ pub fn abandon(
 
 fn owned_rows(p: &Paths, id: &str, owner: &str, run: &str) -> Result<Vec<Value>, Error> {
     let rows = source_rows(p, id)?.ok_or(Error::NotFound)?;
-    if rows[0]["data"]["owner"] != owner || rows[0]["data"]["run"] != run {
+    if rows
+        .first()
+        .and_then(|row| row.pointer("/data/owner"))
+        .unwrap_or(&Value::Null)
+        != owner
+        || rows
+            .first()
+            .and_then(|row| row.pointer("/data/run"))
+            .unwrap_or(&Value::Null)
+            != run
+    {
         return Err(Error::Stale);
     }
     Ok(rows)
+}
+
+pub struct ProgressUpdate<'a> {
+    pub id: &'a str,
+    pub run: &'a str,
+    pub stage: &'a str,
+    pub n: u64,
 }
 
 pub fn progress(
@@ -707,11 +782,9 @@ pub fn progress(
     start: &str,
     born: &str,
     owner: &str,
-    id: &str,
-    run: &str,
-    stage: &str,
-    n: u64,
+    update: ProgressUpdate<'_>,
 ) -> Result<(), Error> {
+    let ProgressUpdate { id, run, stage, n } = update;
     check_start(ctx, start)?;
     if stage.len() > MAX_STAGE_BYTES {
         return Err(Error::BadRequest);
@@ -722,9 +795,16 @@ pub fn progress(
         if terminal(status(&rows)) {
             return Err(Error::Stale);
         }
-        let previous = rows.iter().rev().find(|r| r["type"] == "progress");
-        let last_n = previous.and_then(|r| r["data"]["n"].as_u64()).unwrap_or(0);
-        if n == last_n && previous.is_some_and(|r| r["data"]["stage"] == stage) {
+        let previous = rows
+            .iter()
+            .rev()
+            .find(|r| r.pointer("/type").unwrap_or(&Value::Null) == "progress");
+        let last_n = previous
+            .and_then(|r| r.pointer("/data/n").unwrap_or(&Value::Null).as_u64())
+            .unwrap_or(0);
+        if n == last_n
+            && previous.is_some_and(|r| r.pointer("/data/stage").unwrap_or(&Value::Null) == stage)
+        {
             return Ok(());
         }
         if n != last_n + 1 {
@@ -736,18 +816,29 @@ pub fn progress(
     })
 }
 
+pub struct CompletionUpdate<'a> {
+    pub id: &'a str,
+    pub run: &'a str,
+    pub ok: bool,
+    pub result: &'a Value,
+    pub error: Option<&'a str>,
+}
+
 pub fn finish(
     ctx: Context<'_>,
     user: &str,
     start: &str,
     born: &str,
     owner: &str,
-    id: &str,
-    run: &str,
-    ok: bool,
-    result: &Value,
-    error: Option<&str>,
+    update: CompletionUpdate<'_>,
 ) -> Result<(), Error> {
+    let CompletionUpdate {
+        id,
+        run,
+        ok,
+        result,
+        error,
+    } = update;
     check_start(ctx, start)?;
     if stringify_js(result)?.len() > MAX_RESULT_BYTES {
         return Err(Error::BadRequest);
@@ -763,10 +854,10 @@ pub fn finish(
         };
         let ty = if ok { "job.completed" } else { "job.failed" };
         if terminal(status(&rows)) {
-            return if rows
-                .last()
-                .is_some_and(|row| row["type"] == ty && row["data"] == data)
-            {
+            return if rows.last().is_some_and(|row| {
+                row.pointer("/type").unwrap_or(&Value::Null) == ty
+                    && row.pointer("/data").unwrap_or(&Value::Null) == &data
+            }) {
                 Ok(())
             } else {
                 Err(Error::Stale)
@@ -788,22 +879,33 @@ pub fn read(ctx: Context<'_>, user: &str, project: &str, id: &str) -> Result<Opt
         let Some(rows) = source_rows(p, id)? else {
             return Ok(None);
         };
-        if rows[0]["data"]["projectId"] != project {
+        if rows
+            .first()
+            .and_then(|row| row.pointer("/data/projectId"))
+            .unwrap_or(&Value::Null)
+            != project
+        {
             return Ok(None);
         }
         let mut stage: Option<&str> = None;
         let mut error: Option<&str> = None;
         let mut result = Value::Null;
         for row in &rows {
-            if row["type"] == "progress" {
-                stage = row["data"]["stage"].as_str().or(stage);
+            if row.pointer("/type").unwrap_or(&Value::Null) == "progress" {
+                stage = row
+                    .pointer("/data/stage")
+                    .unwrap_or(&Value::Null)
+                    .as_str()
+                    .or(stage);
             }
-            if row["type"] == "job.failed" {
-                error = row["data"]["error"].as_str();
-                result = row["data"]["result"].clone();
+            if row.pointer("/type").unwrap_or(&Value::Null) == "job.failed" {
+                error = row.pointer("/data/error").unwrap_or(&Value::Null).as_str();
+                result = row.pointer("/data/result").unwrap_or(&Value::Null).clone();
             }
-            if row["type"] == "job.completed" || row["type"] == "job.cancelled" {
-                result = row["data"]["result"].clone();
+            if row.pointer("/type").unwrap_or(&Value::Null) == "job.completed"
+                || row.pointer("/type").unwrap_or(&Value::Null) == "job.cancelled"
+            {
+                result = row.pointer("/data/result").unwrap_or(&Value::Null).clone();
             }
         }
         Ok(Some(
@@ -875,11 +977,13 @@ mod tests {
                 START,
                 "100",
                 OWNER1,
-                &id,
-                &run,
-                true,
-                &json!({"status":200}),
-                None,
+                CompletionUpdate {
+                    id: &id,
+                    run: &run,
+                    ok: true,
+                    result: &json!({"status":200}),
+                    error: None,
+                },
             )
             .unwrap();
         }
@@ -905,18 +1009,33 @@ mod tests {
         let (one, run1) = start(c, USER, START, "100", OWNER1, "a", REQ1).unwrap();
         start(c, USER, START, "100", OWNER1, "a", REQ2).unwrap();
         fs::write(user.join("projects.json"), r#"{"projects":[{"id":"b"}]}"#).unwrap();
-        progress(c, USER, START, "100", OWNER1, &one, &run1, "done", 1).unwrap();
+        progress(
+            c,
+            USER,
+            START,
+            "100",
+            OWNER1,
+            ProgressUpdate {
+                id: &one,
+                run: &run1,
+                stage: "done",
+                n: 1,
+            },
+        )
+        .unwrap();
         finish(
             c,
             USER,
             START,
             "100",
             OWNER1,
-            &one,
-            &run1,
-            true,
-            &json!({"status":200}),
-            None,
+            CompletionUpdate {
+                id: &one,
+                run: &run1,
+                ok: true,
+                result: &json!({"status":200}),
+                error: None,
+            },
         )
         .unwrap();
         assert!(read(c, USER, "a", &one).unwrap().is_none());
@@ -939,11 +1058,27 @@ mod tests {
             Err(Error::Stale)
         ));
         assert!(matches!(
-            progress(c, USER, START, "100", OWNER1, &id, &run, "late", 1),
+            progress(
+                c,
+                USER,
+                START,
+                "100",
+                OWNER1,
+                ProgressUpdate {
+                    id: &id,
+                    run: &run,
+                    stage: "late",
+                    n: 1
+                }
+            ),
             Err(Error::Stale)
         ));
         assert_eq!(
-            read(c, USER, "a", &id).unwrap().unwrap()["status"],
+            read(c, USER, "a", &id)
+                .unwrap()
+                .unwrap()
+                .get("status")
+                .unwrap(),
             "interrupted"
         );
     }
@@ -964,7 +1099,18 @@ mod tests {
         let (id, run) = start(c, USER, START, "100", OWNER1, "a", REQ1).unwrap();
         let result = parse_js(br#"{"status":200,"body":{"text":"\ud800"}}"#).unwrap();
         finish(
-            c, USER, START, "100", OWNER1, &id, &run, true, &result, None,
+            c,
+            USER,
+            START,
+            "100",
+            OWNER1,
+            CompletionUpdate {
+                id: &id,
+                run: &run,
+                ok: true,
+                result: &result,
+                error: None,
+            },
         )
         .unwrap();
         let written = fs::read_to_string(user.join("jobs").join(format!("{id}.jsonl"))).unwrap();
@@ -1003,7 +1149,14 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(status(&journal), "failed");
-        assert_eq!(journal.last().unwrap()["data"]["result"]["status"], 404);
+        assert_eq!(
+            journal
+                .last()
+                .unwrap()
+                .pointer("/data/result/status")
+                .unwrap(),
+            404
+        );
         assert!(matches!(
             start(c, USER, START, "100", OWNER1, "a", REQ2),
             Err(Error::NotFound)
@@ -1053,9 +1206,26 @@ this is not JSON
         let mut bytes = fs::read(&file).unwrap();
         assert_eq!(bytes.pop(), Some(b'\n'));
         fs::write(&file, bytes).unwrap();
-        progress(c, USER, START, "100", OWNER1, &id, &run, "working", 1).unwrap();
+        progress(
+            c,
+            USER,
+            START,
+            "100",
+            OWNER1,
+            ProgressUpdate {
+                id: &id,
+                run: &run,
+                stage: "working",
+                n: 1,
+            },
+        )
+        .unwrap();
         assert_eq!(
-            read(c, USER, "a", &id).unwrap().unwrap()["stage"],
+            read(c, USER, "a", &id)
+                .unwrap()
+                .unwrap()
+                .get("stage")
+                .unwrap(),
             "working"
         );
         assert_eq!(fs::read_to_string(file).unwrap().lines().count(), 3);
@@ -1103,11 +1273,13 @@ process.stdout.write(id);
             START,
             "100",
             OWNER1,
-            &id,
-            &run,
-            true,
-            &result,
-            None,
+            CompletionUpdate {
+                id: &id,
+                run: &run,
+                ok: true,
+                result: &result,
+                error: None,
+            },
         )
         .unwrap();
         let read_script = r#"
@@ -1172,7 +1344,11 @@ if (job?.status !== 'completed' || JSON.stringify(job.result?.body?.text) !== '"
         abandon(c, USER, START, "100", OWNER1, REQ1).unwrap();
         abandon(c, USER, START, "100", OWNER1, REQ1).unwrap();
         assert_eq!(
-            read(c, USER, "a", &id).unwrap().unwrap()["status"],
+            read(c, USER, "a", &id)
+                .unwrap()
+                .unwrap()
+                .get("status")
+                .unwrap(),
             "interrupted"
         );
         recover(c, USER, START, "100", OWNER1).unwrap(); // same owner preserves tombstone
