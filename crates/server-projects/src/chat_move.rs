@@ -1,6 +1,6 @@
 //! Slice7 foundation. Rust owns canonical chat generations and recoverable metadata moves.
-//! No public route is switched here. Node approval enforcement and release pairing must land
-//! before exposing the Rust move route. Lock order: user/transcript -> projects -> free.
+//! The public POST uses the same store transaction; packaging requires matched Node grant
+//! enforcement, journal reader and POST refusal. Lock order: user/transcript -> projects -> free.
 //! File-only writers fence while holding their file lock; they NEVER recover recursively.
 //! Strict durability failures retain the prepared intent and fail closed.
 use crate::store::StoreError;
@@ -18,6 +18,78 @@ use std::path::Path;
 pub const FILE: &str = "chat-move-state.json";
 pub const MOVE_MARKER: &str = "noevia-chat-move-foundation/1";
 const STATE_LIMIT: usize = store_api::TEXT_LIMIT * 4 + 1024 * 1024;
+
+/// Node's readBody default; its move route wraps oversize/read failure as invalid JSON.
+pub const BODY_LIMIT: usize = 1024 * 1024;
+pub fn post(
+    ctx: crate::Ctx<'_>,
+    encoded_chat: &str,
+    body: &[u8],
+    over: bool,
+    start: &str,
+) -> crate::Reply {
+    let Some(chat) = crate::js::decode_uri_component(encoded_chat) else {
+        return crate::Reply::error(400, "invalid chat id");
+    };
+    if over {
+        return crate::Reply::error(400, "invalid JSON");
+    }
+    let parsed = match wtf16::parse(&String::from_utf8_lossy(body)) {
+        Ok(value) => value,
+        Err(wtf16::Refusal::Invalid) => return crate::Reply::error(400, "invalid JSON"),
+        Err(_) => return crate::Reply::internal(),
+    };
+    let destination = match parsed.get("projectId") {
+        JValue::Null if parsed.is_object() => Holder::Free,
+        JValue::Str(id) if parsed.is_object() => Holder::Project(id.clone()),
+        _ => return crate::Reply::error(400, "projectId (or null) required"),
+    };
+    let patch = match parsed.get("frame") {
+        JValue::Undefined => None,
+        value => {
+            if !matches!(value, JValue::Null) && frame::normalize(value).is_none() {
+                return crate::Reply::error(400, "invalid frame");
+            }
+            Some(value)
+        }
+    };
+    match move_chat(ctx.data_dir, ctx.user_id, &chat, destination, patch, start) {
+        Ok(moved) => {
+            let id = |holder: &Holder| match holder {
+                Holder::Project(id) => Value::String(id.clone()),
+                _ => Value::Null,
+            };
+            crate::Reply::json(
+                200,
+                json!({"ok":true,"from":id(&moved.from),"projectId":id(&moved.to)}).to_string(),
+            )
+        }
+        Err(MoveError::Invalid) => crate::Reply::error(400, "invalid chat move or start id"),
+        Err(MoveError::NotFound) => crate::Reply::error(404, "no such chat or project"),
+        Err(MoveError::Ambiguous) => crate::Reply::json(
+            409,
+            json!({"error":"ambiguous canonical chat identity","code":"CHAT_ID_AMBIGUOUS"}).to_string(),
+        ),
+        Err(MoveError::Capacity) => crate::Reply::json(
+            409,
+            json!({"error":"the move would evict chat metadata","code":"CHAT_DESTINATION_FULL"}).to_string(),
+        ),
+        Err(MoveError::Store(StoreError::Gone)) => crate::Reply::error(410, "account no longer exists"),
+        Err(MoveError::Store(StoreError::InvalidUser)) => crate::Reply::error(400, "invalid user"),
+        Err(MoveError::Store(StoreError::Busy)) => crate::Reply {
+            status: 503,
+            body: crate::Body::Bytes {
+                headers: vec![
+                    ("content-type", "application/json; charset=utf-8".into()),
+                    ("retry-after", "1".into()),
+                ],
+                bytes: json!({"error":"The project store is busy. Try again shortly.","code":"PROJECTS_BUSY"})
+                    .to_string().into_bytes(),
+            },
+        },
+        Err(_) => crate::Reply::internal(),
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Holder {
