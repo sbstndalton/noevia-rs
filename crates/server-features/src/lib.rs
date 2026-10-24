@@ -1,28 +1,14 @@
-//! The three product flags already read by native request paths.
-//! Node's synchronous feature service remains the writer and public route owner.
+//! The full static product catalog, generated from contracts/features/catalog.json.
+//! Node remains the synchronous feature writer and public route owner.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Feature {
-    NativeClientAuth,
-    RoutingModes,
-    ChatgptOAuth,
-}
-
-impl Feature {
-    pub const ALL: [Self; 3] = [
-        Self::NativeClientAuth,
-        Self::RoutingModes,
-        Self::ChatgptOAuth,
-    ];
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "nativeClientAuth" => Some(Self::NativeClientAuth),
-            "routingModes" => Some(Self::RoutingModes),
-            "chatgptOAuth" => Some(Self::ChatgptOAuth),
-            _ => None,
-        }
-    }
+pub enum AvailabilityKind {
+    Static,
+    DecisionChoice,
+    SystemOne,
+    Browser,
+    CodeSandbox,
+    TrustProxy,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,30 +17,15 @@ pub struct Spec {
     pub env: &'static str,
     pub setting: &'static str,
     pub default: bool,
+    pub experimental: bool,
+    pub restart: bool,
+    pub legacy: Option<&'static str>,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub availability: AvailabilityKind,
 }
 
-pub const fn spec(feature: Feature) -> Spec {
-    match feature {
-        Feature::NativeClientAuth => Spec {
-            name: "nativeClientAuth",
-            env: "NOEVIA_FEATURE_NATIVE_CLIENT_AUTH",
-            setting: "feature:nativeClientAuth",
-            default: false,
-        },
-        Feature::RoutingModes => Spec {
-            name: "routingModes",
-            env: "NOEVIA_FEATURE_ROUTING_MODES",
-            setting: "feature:routingModes",
-            default: false,
-        },
-        Feature::ChatgptOAuth => Spec {
-            name: "chatgptOAuth",
-            env: "NOEVIA_FEATURE_CHATGPT_OAUTH",
-            setting: "feature:chatgptOAuth",
-            default: false,
-        },
-    }
-}
+include!("catalog_generated.rs");
 
 pub const INVALID_ENV: &str = "Invalid boolean in feature env var: expected true/false";
 
@@ -92,39 +63,87 @@ impl Source {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Availability {
+    /// The owning runtime has not supplied a verdict; dynamic flags fail closed.
+    Unknown,
+    Available,
+    Unavailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Evaluation {
-    /// The selected setting, before runtime availability constrains it.
+    /// Selected admin/env value before availability and restart constraints.
     pub value: bool,
     pub source: Source,
     pub locked: bool,
     pub available: bool,
-    /// The answer to Node's enabled(name), which may differ from value.
+    /// None means a restart-only flag has no known current Node boot value.
+    pub pending_restart: Option<bool>,
+    /// The effective answer to Node's enabled(name).
     pub enabled: bool,
 }
 
-/// Resolve one current native flag from parsed env and an exact TEXT setting
-/// value. Callers must read their existing authoritative setting on each use;
-/// this function intentionally owns no cache, store, audit, or side effect.
+/// Evaluate any catalog flag with explicit runtime availability and the current
+/// Node process's boot value for restart-only flags. Unknown dynamic facts and
+/// unknown boot values cannot enable a flag.
+pub fn evaluate_with_context(
+    feature: Feature,
+    env: Option<bool>,
+    stored_text: Option<&str>,
+    availability: Availability,
+    boot_value: Option<bool>,
+) -> Evaluation {
+    let definition = spec(feature);
+    let (value, source) = match env {
+        Some(value) => (value, Source::Env),
+        None => match stored_text {
+            Some("true") => (true, Source::Admin),
+            Some("false") => (false, Source::Admin),
+            _ => (definition.default, Source::Default),
+        },
+    };
+    let available = definition.availability == AvailabilityKind::Static
+        || availability == Availability::Available;
+    let pending_restart = definition
+        .restart
+        .then(|| boot_value.map(|boot| boot != value))
+        .flatten();
+    let active = if definition.restart {
+        boot_value.unwrap_or(false)
+    } else {
+        value
+    };
+    Evaluation {
+        value,
+        source,
+        locked: source == Source::Env,
+        available,
+        pending_restart: if definition.restart {
+            pending_restart
+        } else {
+            Some(false)
+        },
+        enabled: active && available,
+    }
+}
+
+/// Compatibility API for the three native production consumers. Their current
+/// settings are re-read by their existing callers, and only nativeClientAuth
+/// needs the TRUST_PROXY availability input.
 pub fn evaluate(
     feature: Feature,
     env: Option<bool>,
     stored_text: Option<&str>,
     trust_proxy: bool,
 ) -> Evaluation {
-    let (value, source) = match env {
-        Some(value) => (value, Source::Env),
-        None => match stored_text {
-            Some("true") => (true, Source::Admin),
-            Some("false") => (false, Source::Admin),
-            _ => (spec(feature).default, Source::Default),
-        },
+    let availability = if feature == Feature::NativeClientAuth {
+        if trust_proxy {
+            Availability::Available
+        } else {
+            Availability::Unavailable
+        }
+    } else {
+        Availability::Unknown
     };
-    let available = feature != Feature::NativeClientAuth || trust_proxy;
-    Evaluation {
-        value,
-        source,
-        locked: source == Source::Env,
-        available,
-        enabled: value && available,
-    }
+    evaluate_with_context(feature, env, stored_text, availability, None)
 }
