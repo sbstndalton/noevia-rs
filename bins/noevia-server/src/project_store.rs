@@ -62,6 +62,13 @@
 //! The body limit is [`BODY_LIMIT`]; a request's file work runs on the blocking pool.
 
 use axum::body::{Body, Bytes};
+// Slice7 foundation adds secret-authenticated POST /v1/chat/grant-context {user,chat}
+// and POST /v1/chat/move {user,chat,projectId:null|string,frame?}. Holders are tagged
+// free/project(id)/absent; generations are canonical decimal strings, bound to the start id.
+// A prepared move fences list writers until strict recovery completes. These internal operations
+// do NOT change public route ownership or make older Node grants generation-aware; that paired
+// migration must be reviewed before the public move switch is enabled.
+
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, Response, StatusCode};
 use axum::routing::post;
@@ -69,6 +76,7 @@ use axum::Router;
 use js_json::{wtf16, JValue};
 use serde_json::{json, Value};
 use server_projects::chat_delete::{self, DeleteError, Kind};
+use server_projects::chat_move::{self, Holder, MoveError};
 use server_projects::journal;
 use server_projects::store::StoreError;
 use server_projects::store_api::{self, StoreFile, WriteError};
@@ -410,6 +418,86 @@ async fn handle_chat_delete(store: Store, headers: HeaderMap, raw: Bytes) -> Res
     done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
 }
 
+fn move_error(problem: MoveError) -> Response<Body> {
+    match problem {
+        MoveError::Store(StoreError::Busy) => {
+            let mut response = store_error(&StoreError::Busy);
+            response
+                .headers_mut()
+                .insert("retry-after", axum::http::HeaderValue::from_static("1"));
+            response
+        }
+        MoveError::Store(e) => store_error(&e),
+        MoveError::Invalid => error(StatusCode::BAD_REQUEST, "invalid chat move or start id"),
+        MoveError::NotFound => error(StatusCode::NOT_FOUND, "no such chat or project"),
+        MoveError::Ambiguous => reply(
+            StatusCode::CONFLICT,
+            &json!({"error":"ambiguous canonical chat identity","code":"CHAT_ID_AMBIGUOUS"}),
+        ),
+        MoveError::Capacity => reply(
+            StatusCode::CONFLICT,
+            &json!({"error":"the move would evict chat metadata","code":"CHAT_DESTINATION_FULL"}),
+        ),
+    }
+}
+
+fn chat_move_op(store: &Store, body: &JValue, moving: bool) -> Response<Body> {
+    let (Some(user), Some(chat)) = (body.get("user").as_str(), body.get("chat").as_str()) else {
+        return error(StatusCode::BAD_REQUEST, "user and chat required");
+    };
+    if !moving {
+        return match chat_move::grant_context(&store.data_dir, user, chat, &store.start_id) {
+            Ok(context) => reply(StatusCode::OK, &context.json()),
+            Err(e) => move_error(e),
+        };
+    }
+    let destination = match body.get("projectId") {
+        JValue::Null => Holder::Free,
+        JValue::Str(id) => Holder::Project(id.clone()),
+        _ => return error(StatusCode::BAD_REQUEST, "projectId (or null) required"),
+    };
+    let patch = match body.get("frame") {
+        JValue::Undefined => None,
+        value => Some(value),
+    };
+    match chat_move::move_chat(
+        &store.data_dir,
+        user,
+        chat,
+        destination,
+        patch,
+        &store.start_id,
+    ) {
+        Ok(moved) => reply(
+            StatusCode::OK,
+            &json!({"from":moved.from.json(),"to":moved.to.json(),"generation":moved.generation}),
+        ),
+        Err(e) => move_error(e),
+    }
+}
+
+async fn handle_chat_move(
+    store: Store,
+    headers: HeaderMap,
+    raw: Bytes,
+    moving: bool,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    tokio::task::spawn_blocking(move || {
+        let Ok(text) = std::str::from_utf8(&raw) else {
+            return error(StatusCode::BAD_REQUEST, "invalid JSON");
+        };
+        match wtf16::parse(text) {
+            Ok(body @ JValue::Obj(_)) => chat_move_op(&store, &body, moving),
+            _ => error(StatusCode::BAD_REQUEST, "invalid JSON"),
+        }
+    })
+    .await
+    .unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
+}
+
 async fn handle_changes(store: Store, headers: HeaderMap, raw: Bytes) -> Response<Body> {
     if !authorised(&store, &headers) {
         return error(StatusCode::UNAUTHORIZED, "unauthorised");
@@ -456,6 +544,14 @@ fn history_route(op: Op) -> axum::routing::MethodRouter<Store> {
 
 pub fn router(store: Store) -> Router {
     Router::new()
+        .route(
+            "/v1/chat/grant-context",
+            post(|State(s): State<Store>, h: HeaderMap, b: Bytes| handle_chat_move(s, h, b, false)),
+        )
+        .route(
+            "/v1/chat/move",
+            post(|State(s): State<Store>, h: HeaderMap, b: Bytes| handle_chat_move(s, h, b, true)),
+        )
         .route("/v1/history/read", history_route(Op::Read))
         .route("/v1/history/write", history_route(Op::Write))
         .route("/v1/history/append-if-last", history_route(Op::Append))
