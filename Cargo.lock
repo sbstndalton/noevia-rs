@@ -3734,6 +3734,7 @@ name = "workspace-restore-verify-cli"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "rustix",
  "serde_json",
  "workspace-restore-verify",
 ]

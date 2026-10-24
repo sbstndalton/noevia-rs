@@ -263,6 +263,11 @@ one slice at a time.
   (in a virtualenv with the Diary's requirements); copy
   `crates/workspace-restore-verify/tests/fixtures/workspace-restore.v1.json` into
   noevia-services' `diary/tests/fixtures/` when it changes.
+  The additive `verify_archive` API retains checked content/settings from that same validation
+  path; `workspace-restore-verify decode-v1` emits a bounded, versioned raw-content frame.
+  See [the private IPC contract](crates/workspace-restore-verify/DECODE-V1.md). A future adapter
+  must require complete framing, exact EOF and exit0 before publishing any content; this does
+  not change the currently deployed Python adapter or implement filesystem restore.
 - `crates/dav-parse` + `bins/dav-parse-wasm` (sbstndalton/noevia#967): the storage browser's
   WebDAV PROPFIND (`Depth: 1`) listing parser, a port of noevia-core's `server/dav-listing.cjs`
   `listingRecordsJs` (entity decoding, WHATWG href resolution, `decodeURIComponent`, direct

@@ -10,6 +10,7 @@ pub mod calendar;
 pub mod corpus;
 pub mod diff;
 pub mod http;
+pub mod native_moves;
 pub mod routes;
 pub mod state;
 
@@ -40,6 +41,7 @@ pub struct Options {
     pub data_dir: Option<PathBuf>,
     /// Text the `<ts>` placeholder becomes in a request.
     pub now: String,
+    pub native_move_state: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -54,6 +56,7 @@ pub struct Outcome {
     pub error: Option<String>,
     /// Placeholders this exchange's request had to invent (no recorded or input value).
     pub generated: Vec<String>,
+    pub native_move: Option<native_moves::Move>,
 }
 
 impl Outcome {
@@ -353,6 +356,23 @@ pub fn replay_one(ex: &Exchange, corpus: &Corpus, opts: &Options, b: &mut Bindin
                 ex
             };
             compare(comparison, &res, opts, b, &mut outcome.diffs);
+            if opts.native_move_state
+                && ex.method() == "POST"
+                && built.target.starts_with("/api/chats/")
+                && built.target.ends_with("/move")
+                && res.status == 200
+            {
+                match opts
+                    .data_dir
+                    .as_ref()
+                    .ok_or("native move proof needs data directory".to_string())
+                    .and_then(|dir| {
+                        native_moves::capture(dir, &built.target, &built.headers, &built.body, &res)
+                    }) {
+                    Ok(m) => outcome.native_move = Some(m),
+                    Err(e) => outcome.error = Some(e),
+                }
+            }
             outcome
                 .diffs
                 .retain(|d| !body_ignored(&d.at, &opts.ignore_body));
