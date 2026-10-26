@@ -110,6 +110,7 @@ pub const OWNED_SETTING_KEYS: &[&str] = &[
     "setup_code_hash",
     "public_origin",
     "public_origin_admin",
+    "previous_origins",
     "passkey_decoy_key",
 ];
 

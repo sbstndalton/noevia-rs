@@ -53,6 +53,7 @@ rust-free-chats = []
 rust-project-writes = []
 
 [dependencies]
+server-features = { path = "../../crates/server-features" }
 server-storage-reads = { path = "../../crates/server-storage-reads", optional = true }
 zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"], optional = true }
 server-routing-mode = { path = "../../crates/server-routing-mode" }
@@ -75,6 +76,7 @@ code-net-guard = { path = "../../crates/code-net-guard" }
 server-auth = { path = "../../crates/server-auth" }
 server-account = { path = "../../crates/server-account" }
 url = "2.5"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 server-store = { path = "../../crates/server-store" }
 server-projects = { path = "../../crates/server-projects" }
 js-json = { path = "../../crates/js-json" }
