@@ -7,15 +7,22 @@ actual append function by overriding only canonical_day_header's strftime result
 import argparse
 import importlib.util
 import json
+import hashlib
+import sys
+import unicodedata
 from datetime import date
 from pathlib import Path
 
 p = argparse.ArgumentParser()
 p.add_argument('--source', required=True)
 a = p.parse_args()
-spec = importlib.util.spec_from_file_location('shipped_corpus', a.source)
+if sys.implementation.name != 'cpython' or sys.version_info[:3] != (3, 12, 15) or unicodedata.unidata_version != '15.0.0':
+    raise SystemExit('Oracle generation requires CPython 3.12.15 / Unicode 15.0.0')
+source = Path(a.source)
+if hashlib.sha256(source.read_bytes()).hexdigest() != '4b8809d3b7d4811723404cbc9a40fe4fe0743bc18bbb449a673ec711c48e0a87':
+    raise SystemExit('Oracle generation requires the frozen corpus source hash')
+spec = importlib.util.spec_from_file_location('shipped_corpus', source)
 fmt = importlib.util.module_from_spec(spec)
-import sys
 sys.modules[spec.name] = fmt
 spec.loader.exec_module(fmt)
 

@@ -16,7 +16,9 @@ fn call(input: &[u8]) -> (bool, Vec<u8>, Vec<u8>) {
     (output.status.success(), output.stdout, output.stderr)
 }
 fn frame(v: &Value) -> Vec<u8> {
-    let data = serde_json::to_vec(v).unwrap();
+    raw_frame(&serde_json::to_vec(v).unwrap())
+}
+fn raw_frame(data: &[u8]) -> Vec<u8> {
     let mut out = b"DCW1".to_vec();
     out.extend_from_slice(&(data.len() as u64).to_be_bytes());
     out.extend_from_slice(&data);
@@ -44,6 +46,7 @@ fn framing_and_shape_fail_closed() {
     let good = frame(&request);
     for bad in [
         b"bad".to_vec(),
+        raw_frame(br#"{"version":2,"version":1,"op":"apply_edit","current":null,"xid":"x","new_me":"m","new_assistant":"a"}"#),
         [b"BAD1".as_slice(), &good[4..]].concat(),
         good[..good.len() - 1].to_vec(),
         [good.as_slice(), b"extra"].concat(),
