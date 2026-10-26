@@ -114,8 +114,8 @@ with tempfile.TemporaryDirectory(prefix="synthetic-managed-import-") as director
         assert run(packet(backend,body),2)==b"reject: conflict\n"
         assert state(backend)==before
         count+=1
-    for noncollision in ["Imports/Copycat","Imports/copy","imports/Copy"]:
-        backend=target(root/("case-"+noncollision.replace("/","-")))
+    for case_number, noncollision in enumerate(["Imports/Copycat","Imports/copy","imports/Copy"]):
+        backend=target(root/f"case-{case_number}")
         backend.put(noncollision,b"keep")
         run(packet(backend,body))
         assert backend.get(noncollision)[0]==b"keep"
