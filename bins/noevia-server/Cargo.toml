@@ -53,6 +53,7 @@ rust-free-chats = []
 rust-project-writes = []
 
 [dependencies]
+server-features = { path = "../../crates/server-features" }
 server-storage-reads = { path = "../../crates/server-storage-reads", optional = true }
 zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"], optional = true }
 server-routing-mode = { path = "../../crates/server-routing-mode" }
