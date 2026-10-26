@@ -626,6 +626,7 @@ name = "diary-corpus-write-cli"
 version = "0.1.0"
 dependencies = [
  "diary-corpus-write",
+ "serde",
  "serde_json",
 ]
 

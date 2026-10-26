@@ -315,6 +315,38 @@ fn transform(request: &Value) -> Result<Value, Failure> {
     }
 }
 
+// Version 1 has at most seven fields and only scalar/string/null values.
+// Detect duplicate keys before Value could silently replace an earlier value.
+struct Request(Value);
+
+impl<'de> serde::Deserialize<'de> for Request {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Fields;
+        impl<'de> serde::de::Visitor<'de> for Fields {
+            type Value = Request;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a bounded versioned request object")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<Request, A::Error> {
+                let mut fields = serde_json::Map::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    if fields.len() >= 7 || fields.contains_key(&key) {
+                        return Err(serde::de::Error::custom(
+                            "duplicate or excessive request field",
+                        ));
+                    }
+                    fields.insert(key, map.next_value::<Value>()?);
+                }
+                Ok(Request(Value::Object(fields)))
+            }
+        }
+        deserializer.deserialize_map(Fields)
+    }
+}
+
 fn run<R: Read, W: Write>(
     reader: &mut R,
     writer: &mut W,
@@ -350,8 +382,8 @@ fn run<R: Read, W: Write>(
     if &magic != END || reader.read(&mut magic[..1]).map_err(|_| Failure::Io)? != 0 {
         return Err(Failure::InvalidFrame);
     }
-    let request: Value = serde_json::from_slice(&bytes).map_err(|_| Failure::InvalidRequest)?;
-    let response = transform(&request)?;
+    let request: Request = serde_json::from_slice(&bytes).map_err(|_| Failure::InvalidRequest)?;
+    let response = transform(&request.0)?;
     let mut out = BoundedVec {
         bytes: Vec::new(),
         limit: output_limit.checked_sub(16).ok_or(Failure::Capacity)?,
@@ -394,5 +426,58 @@ fn main() -> std::process::ExitCode {
             eprintln!("{}", error.code());
             std::process::ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn framed(bytes: &[u8]) -> Result<Vec<u8>, Failure> {
+        let mut frame = INPUT_MAGIC.to_vec();
+        frame.extend_from_slice(
+            &u64::try_from(bytes.len())
+                .map_err(|_| Failure::Capacity)?
+                .to_be_bytes(),
+        );
+        frame.extend_from_slice(bytes);
+        frame.extend_from_slice(END);
+        Ok(frame)
+    }
+
+    #[test]
+    fn duplicate_fields_refuse_without_a_response() -> Result<(), Failure> {
+        for bytes in [
+            br#"{"version":2,"version":1,"op":"apply_edit","current":null,"xid":"x","new_me":"m","new_assistant":"a"}"#.as_slice(),
+            br#"{"version":1,"op":"apply_edit","current":null,"xid":"bad","xid":"x","new_me":"m","new_assistant":"a"}"#.as_slice(),
+        ] {
+            let mut output = Vec::new();
+            assert_eq!(run(&mut Cursor::new(framed(bytes)?), &mut output, MAX_INPUT_FRAME, MAX_OUTPUT_FRAME), Err(Failure::InvalidRequest));
+            assert!(output.is_empty());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn capacity_refusals_emit_no_partial_frame() -> Result<(), Failure> {
+        let input = framed(br#"{"version":1,"op":"apply_edit","current":null,"xid":"x","new_me":"m","new_assistant":"a"}"#)?;
+        let mut output = Vec::new();
+        assert_eq!(
+            run(
+                &mut Cursor::new(&input),
+                &mut output,
+                input.len().checked_sub(1).ok_or(Failure::Capacity)?,
+                MAX_OUTPUT_FRAME
+            ),
+            Err(Failure::Capacity)
+        );
+        assert!(output.is_empty());
+        assert_eq!(
+            run(&mut Cursor::new(&input), &mut output, MAX_INPUT_FRAME, 16),
+            Err(Failure::Capacity)
+        );
+        assert!(output.is_empty());
+        Ok(())
     }
 }

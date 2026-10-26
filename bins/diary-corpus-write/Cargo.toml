@@ -12,4 +12,5 @@ workspace = true
 
 [dependencies]
 diary-corpus-write = { path = "../../crates/diary-corpus-write" }
+serde = "1"
 serde_json = "1"
