@@ -876,9 +876,16 @@ async fn handle_research_jobs(
             return error(StatusCode::BAD_REQUEST, "start, born and owner required");
         };
         let answer = match op {
-            ResearchOp::Recover => {
-                jobs::recover(ctx, &user, &start, &born, &owner).map(|count| json!({"count":count}))
-            }
+            ResearchOp::Recover => jobs::recover(
+                ctx,
+                jobs::Owner {
+                    user: &user,
+                    start: &start,
+                    born: &born,
+                    owner: &owner,
+                },
+            )
+            .map(|count| json!({"count":count})),
             ResearchOp::Start => match (
                 required("projectId"),
                 required("request"),
@@ -888,7 +895,17 @@ async fn handle_research_jobs(
             ) {
                 (Some(project), Some(request), Some(question), Some(mode), Some(questions)) => {
                     jobs::start(
-                        ctx, &user, &start, &born, &owner, &project, &request, &question, &mode,
+                        ctx,
+                        jobs::Owner {
+                            user: &user,
+                            start: &start,
+                            born: &born,
+                            owner: &owner,
+                        },
+                        &project,
+                        &request,
+                        &question,
+                        &mode,
                         questions,
                     )
                     .map(|(id, run)| json!({"id":id,"run":run}))
@@ -896,8 +913,17 @@ async fn handle_research_jobs(
                 _ => Err(jobs::Error::BadRequest),
             },
             ResearchOp::Abandon => match required("request") {
-                Some(request) => jobs::abandon(ctx, &user, &start, &born, &owner, &request)
-                    .map(|()| json!({"ok":true})),
+                Some(request) => jobs::abandon(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &request,
+                )
+                .map(|()| json!({"ok":true})),
                 None => Err(jobs::Error::BadRequest),
             },
             ResearchOp::Event => match (
@@ -907,16 +933,36 @@ async fn handle_research_jobs(
                 required("kind"),
                 body.get("data"),
             ) {
-                (Some(id), Some(run), Some(n), Some(kind), Some(data)) => {
-                    jobs::event(ctx, &user, &start, &born, &owner, &id, &run, n, &kind, data)
-                        .map(|()| json!({"ok":true}))
-                }
+                (Some(id), Some(run), Some(n), Some(kind), Some(data)) => jobs::event(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &id,
+                    &run,
+                    n,
+                    &kind,
+                    data,
+                )
+                .map(|()| json!({"ok":true})),
                 _ => Err(jobs::Error::BadRequest),
             },
             ResearchOp::Cancel => match (required("projectId"), required("id"), required("run")) {
-                (Some(project), Some(id), Some(run)) => {
-                    jobs::cancel(ctx, &user, &start, &born, &owner, &project, &id, &run)
-                }
+                (Some(project), Some(id), Some(run)) => jobs::cancel(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &project,
+                    &id,
+                    &run,
+                ),
                 _ => Err(jobs::Error::BadRequest),
             },
             ResearchOp::Finish => match (
@@ -926,10 +972,12 @@ async fn handle_research_jobs(
             ) {
                 (Some(id), Some(run), Some(ok)) => jobs::finish(
                     ctx,
-                    &user,
-                    &start,
-                    &born,
-                    &owner,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
                     &id,
                     &run,
                     ok,
@@ -940,10 +988,19 @@ async fn handle_research_jobs(
                 _ => Err(jobs::Error::BadRequest),
             },
             ResearchOp::Report => match (required("id"), required("run"), body.get("result")) {
-                (Some(id), Some(run), Some(result)) => {
-                    jobs::report(ctx, &user, &start, &born, &owner, &id, &run, result)
-                        .map(|()| json!({"ok":true}))
-                }
+                (Some(id), Some(run), Some(result)) => jobs::report(
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &id,
+                    &run,
+                    result,
+                )
+                .map(|()| json!({"ok":true})),
                 _ => Err(jobs::Error::BadRequest),
             },
             ResearchOp::Prepare | ResearchOp::Artifact => match (
@@ -967,22 +1024,39 @@ async fn handle_research_jobs(
                     let answer = if matches!(op, ResearchOp::Prepare) {
                         jobs::prepare_file(
                             ctx,
-                            &user,
-                            &start,
-                            &born,
-                            &owner,
+                            jobs::Owner {
+                                user: &user,
+                                start: &start,
+                                born: &born,
+                                owner: &owner,
+                            },
                             &project,
                             &id,
                             &run,
-                            &name,
-                            &hash,
-                            bytes,
-                            target.as_deref().unwrap_or(""),
+                            jobs::FileIntent {
+                                name: &name,
+                                hash: &hash,
+                                bytes,
+                                target: target.as_deref().unwrap_or(""),
+                            },
                         )
                     } else {
                         jobs::artifact(
-                            ctx, &user, &start, &born, &owner, &project, &id, &run, &name, &hash,
-                            bytes,
+                            ctx,
+                            jobs::Owner {
+                                user: &user,
+                                start: &start,
+                                born: &born,
+                                owner: &owner,
+                            },
+                            &project,
+                            &id,
+                            &run,
+                            jobs::Artifact {
+                                name: &name,
+                                hash: &hash,
+                                bytes,
+                            },
                         )
                     };
                     answer.map(|()| json!({"ok":true}))
@@ -997,7 +1071,18 @@ async fn handle_research_jobs(
                 required("hash"),
             ) {
                 (Some(project), Some(id), Some(run), Some(name), Some(hash)) => jobs::clear_file(
-                    ctx, &user, &start, &born, &owner, &project, &id, &run, &name, &hash,
+                    ctx,
+                    jobs::Owner {
+                        user: &user,
+                        start: &start,
+                        born: &born,
+                        owner: &owner,
+                    },
+                    &project,
+                    &id,
+                    &run,
+                    &name,
+                    &hash,
                 )
                 .map(|()| json!({"ok":true})),
                 _ => Err(jobs::Error::BadRequest),

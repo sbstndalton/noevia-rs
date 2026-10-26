@@ -9,6 +9,32 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+// Match serde_json read indexing: missing keys or nonobjects read as Null.
+fn at<'a>(value: &'a Value, pointer: &str) -> &'a Value {
+    value.pointer(pointer).unwrap_or(&Value::Null)
+}
+
+#[derive(Clone, Copy)]
+pub struct Owner<'a> {
+    pub user: &'a str,
+    pub start: &'a str,
+    pub born: &'a str,
+    pub owner: &'a str,
+}
+
+pub struct FileIntent<'a> {
+    pub name: &'a str,
+    pub hash: &'a str,
+    pub bytes: u64,
+    pub target: &'a str,
+}
+
+pub struct Artifact<'a> {
+    pub name: &'a str,
+    pub hash: &'a str,
+    pub bytes: u64,
+}
+
 /// Paired release guard: Node research journal clients require this internal store.
 pub const RESEARCH_JOBS_STORE_MARKER: &str = "noevia-research-jobs-store/1";
 
@@ -289,7 +315,7 @@ fn current(p: &Paths, start: &str, born: &str, owner: &str) -> Result<(), Error>
     let Some(v) = read_owner(p)? else {
         return Err(Error::Stale);
     };
-    if v["start"] != start || v["born"] != born || v["owner"] != owner {
+    if at(&v, "/start") != start || at(&v, "/born") != born || at(&v, "/owner") != owner {
         return Err(Error::Stale);
     }
     Ok(())
@@ -323,12 +349,12 @@ fn reconcile_abandoned(
         if terminal(status(rows)) {
             continue;
         }
-        if rows[0]["data"]["request"]
+        if at(rows.first().unwrap_or(&Value::Null), "/data/request")
             .as_str()
             .is_some_and(|r| requests.iter().any(|a| a == r))
         {
             if let Some(report) = rows.iter().rev().find(|r| {
-                r["type"] == "tool.started" && r["data"]["tool"] == "research.report.result"
+                at(r, "/type") == "tool.started" && at(r, "/data/tool") == "research.report.result"
             }) {
                 append(
                     p,
@@ -339,7 +365,7 @@ fn reconcile_abandoned(
                     } else {
                         "job.failed"
                     },
-                    json!({"error":"Research finished but its save could not be confirmed. Review saved files before retrying.","result":report["data"]["result"]}),
+                    json!({"error":"Research finished but its save could not be confirmed. Review saved files before retrying.","result":at(report, "/data/result")}),
                 )?;
             } else {
                 append(
@@ -396,7 +422,7 @@ fn read_rows(p: &Paths, id: &str) -> Result<Option<Vec<Value>>, Error> {
         match parse_js(part) {
             Ok(row) => {
                 let expected = u64::try_from(rows.len()).unwrap_or(u64::MAX) + 1;
-                if row["job"] != id || row["seq"].as_u64() != Some(expected) {
+                if at(&row, "/job") != id || at(&row, "/seq").as_u64() != Some(expected) {
                     return Err(Error::Corrupt);
                 }
                 rows.push(row);
@@ -417,10 +443,13 @@ fn research_rows(p: &Paths, id: &str) -> Result<Option<Vec<Value>>, Error> {
     };
     let first = raw.split(|b| *b == b'\n').next().ok_or(Error::Corrupt)?;
     let first = parse_js(first).map_err(|_| Error::Corrupt)?;
-    if first["type"] != "job.created" || first["job"] != id || first["seq"].as_u64() != Some(1) {
+    if at(&first, "/type") != "job.created"
+        || at(&first, "/job") != id
+        || at(&first, "/seq").as_u64() != Some(1)
+    {
         return Err(Error::Corrupt);
     }
-    if first["data"]["kind"] != "deep_research" {
+    if at(&first, "/data/kind") != "deep_research" {
         return Ok(None);
     }
     read_rows(p, id)
@@ -452,7 +481,7 @@ fn all_research(p: &Paths) -> Result<Vec<(String, Vec<Value>)>, Error> {
 fn status(rows: &[Value]) -> &'static str {
     let mut state = "queued";
     for row in rows {
-        state = match row["type"].as_str() {
+        state = match at(row, "/type").as_str() {
             Some("job.started" | "approval.decided") => "running",
             Some("approval.requested") => "waiting_approval",
             Some("job.completed") => "completed",
@@ -499,7 +528,11 @@ fn append(p: &Paths, id: &str, rows: &[Value], ty: &str, data: Value) -> Result<
             let keep = whole.iter().rposition(|b| *b == b'\n').map_or(0, |x| x + 1);
             // A complete JSON event lacking only its separator is already in read_rows().
             // Preserve it; only discard an invalid torn fragment.
-            if parse_js(&whole[keep..]).ok().as_ref() == rows.last() {
+            if parse_js(whole.get(keep..).ok_or(Error::Corrupt)?)
+                .ok()
+                .as_ref()
+                == rows.last()
+            {
                 f.write_all(b"\n")?;
             } else {
                 f.set_len(u64::try_from(keep).map_err(|_| Error::Corrupt)?)?;
@@ -520,11 +553,11 @@ fn prune(p: &Paths, all: &[(String, Vec<Value>)]) -> Result<(), Error> {
         .filter(|(_, rows)| terminal(status(rows)) && pending_file(rows).is_none())
         .collect();
     done.sort_by_key(|(_, rows)| {
-        std::cmp::Reverse(rows.last().and_then(|r| r["at"].as_u64()).unwrap_or(0))
+        std::cmp::Reverse(rows.last().and_then(|r| at(r, "/at").as_u64()).unwrap_or(0))
     });
     let now = now_ms();
     for (i, (id, rows)) in done.iter().enumerate() {
-        let updated = rows.last().and_then(|r| r["at"].as_u64()).unwrap_or(0);
+        let updated = rows.last().and_then(|r| at(r, "/at").as_u64()).unwrap_or(0);
         if now.saturating_sub(updated) > RETAIN_MS || i >= MAX_JOBS {
             fs::remove_file(job_path(p, id)?)?;
         }
@@ -534,7 +567,9 @@ fn prune(p: &Paths, all: &[(String, Vec<Value>)]) -> Result<(), Error> {
 
 fn owned_rows(p: &Paths, id: &str, owner: &str, run: &str) -> Result<Vec<Value>, Error> {
     let rows = research_rows(p, id)?.ok_or(Error::NotFound)?;
-    if rows[0]["data"]["owner"] != owner || rows[0]["data"]["run"] != run {
+    if at(rows.first().unwrap_or(&Value::Null), "/data/owner") != owner
+        || at(rows.first().unwrap_or(&Value::Null), "/data/run") != run
+    {
         return Err(Error::Stale);
     }
     Ok(rows)
@@ -542,25 +577,26 @@ fn owned_rows(p: &Paths, id: &str, owner: &str, run: &str) -> Result<Vec<Value>,
 
 fn cancelled(rows: &[Value]) -> bool {
     rows.iter()
-        .any(|r| r["type"] == "tool.started" && r["data"]["tool"] == "research.cancel")
+        .any(|r| at(r, "/type") == "tool.started" && at(r, "/data/tool") == "research.cancel")
 }
 
 fn pending_file(rows: &[Value]) -> Option<Value> {
     let mut pending = None;
     for row in rows {
-        if row["type"] == "tool.started" && row["data"]["tool"] == "research.report.write" {
-            pending = Some(row["data"].clone());
-        } else if row["type"] == "tool.completed" && row["data"]["tool"] == "research.report.write"
+        if at(row, "/type") == "tool.started" && at(row, "/data/tool") == "research.report.write" {
+            pending = Some(at(row, "/data").clone());
+        } else if at(row, "/type") == "tool.completed"
+            && at(row, "/data/tool") == "research.report.write"
         {
             if pending.as_ref().is_some_and(|p: &Value| {
-                p["name"] == row["data"]["name"] && p["hash"] == row["data"]["hash"]
+                at(p, "/name") == at(row, "/data/name") && at(p, "/hash") == at(row, "/data/hash")
             }) {
                 pending = None;
             }
-        } else if row["type"] == "artifact.created"
+        } else if at(row, "/type") == "artifact.created"
             && pending
                 .as_ref()
-                .is_some_and(|p: &Value| p["name"] == row["data"]["name"])
+                .is_some_and(|p: &Value| at(p, "/name") == at(row, "/data/name"))
         {
             pending = None;
         }
@@ -572,15 +608,15 @@ fn finished_report(rows: &[Value]) -> bool {
     let Some(last) = rows
         .iter()
         .rev()
-        .find(|r| r["type"] == "job.failed" || r["type"] == "job.cancelled")
+        .find(|r| at(r, "/type") == "job.failed" || at(r, "/type") == "job.cancelled")
     else {
         return false;
     };
-    let result = &last["data"]["result"];
-    if last["type"] == "job.failed" {
-        result["markdown"].is_string() && result["sources"].is_array()
+    let result = at(last, "/data/result");
+    if at(last, "/type") == "job.failed" {
+        at(result, "/markdown").is_string() && at(result, "/sources").is_array()
     } else {
-        result["sections"].as_u64().unwrap_or(0) > 0
+        at(result, "/sections").as_u64().unwrap_or(0) > 0
     }
 }
 
@@ -592,9 +628,9 @@ fn snapshot(id: &str, rows: &[Value]) -> Value {
     let mut error = Value::Null;
     let mut result = Value::Null;
     for row in rows {
-        let data = &row["data"];
-        match row["type"].as_str() {
-            Some("progress") => stage = data["stage"].clone(),
+        let data = at(row, "/data");
+        match at(row, "/type").as_str() {
+            Some("progress") => stage = at(data, "/stage").clone(),
             Some("checkpoint.created") => {
                 checkpoint = data.clone();
                 if let Some(obj) = checkpoint.as_object_mut() {
@@ -602,21 +638,21 @@ fn snapshot(id: &str, rows: &[Value]) -> Value {
                 }
             }
             Some("plan.proposed" | "plan.edited" | "plan.skipped") => {
-                plan = json!({"status":row["type"].as_str().unwrap_or("").trim_start_matches("plan."), "question":data["question"], "subQuestions":data["subQuestions"].as_array().cloned().unwrap_or_default()});
+                plan = json!({"status":at(row, "/type").as_str().unwrap_or("").trim_start_matches("plan."), "question":at(data, "/question"), "subQuestions":at(data, "/subQuestions").as_array().cloned().unwrap_or_default()});
             }
             Some("artifact.created") => artifacts.push(data.clone()),
-            Some("job.completed" | "job.cancelled") => result = data["result"].clone(),
+            Some("job.completed" | "job.cancelled") => result = at(data, "/result").clone(),
             Some("job.failed") => {
-                error = data["error"].clone();
-                result = data["result"].clone();
+                error = at(data, "/error").clone();
+                result = at(data, "/result").clone();
             }
-            Some("job.interrupted") => error = data["reason"].clone(),
+            Some("job.interrupted") => error = at(data, "/reason").clone(),
             _ => {}
         }
     }
-    json!({"id":id,"kind":"deep_research","projectId":rows[0]["data"]["projectId"],
+    json!({"id":id,"kind":"deep_research","projectId":at(rows.first().unwrap_or(&Value::Null), "/data/projectId"),
       "status":status(rows),"stage":stage,"plan":plan,"error":error,"result":result,
-      "createdAt":rows[0]["at"],"updatedAt":rows.last().map(|r| &r["at"]),
+      "createdAt":at(rows.first().unwrap_or(&Value::Null), "/at"),"updatedAt":rows.last().map(|r| at(r, "/at")),
       "checkpoint":checkpoint,"artifacts":artifacts,"pendingFile":pending_file(rows),
       "cancelRequested":cancelled(rows)})
 }
@@ -631,13 +667,13 @@ fn plan_type(mode: &str) -> Result<&'static str, Error> {
 }
 
 /// A Node boot may recover this tenant repeatedly. Only a newer process may interrupt old work.
-pub fn recover(
-    ctx: Context<'_>,
-    user: &str,
-    start: &str,
-    born: &str,
-    owner: &str,
-) -> Result<usize, Error> {
+pub fn recover(ctx: Context<'_>, identity: Owner<'_>) -> Result<usize, Error> {
+    let Owner {
+        user,
+        start,
+        born,
+        owner,
+    } = identity;
     check_start(ctx, start)?;
     if !valid_owner(owner) {
         return Err(Error::BadRequest);
@@ -646,9 +682,9 @@ pub fn recover(
     with_lock(ctx, user, |p| {
         let mut abandoned_requests = Vec::new();
         if let Some(v) = read_owner(p)? {
-            let old_start = v["start"].as_str().ok_or(Error::Corrupt)?;
-            let old_born = born_num(v["born"].as_str().ok_or(Error::Corrupt)?)?;
-            let old_owner = v["owner"].as_str().ok_or(Error::Corrupt)?;
+            let old_start = at(&v, "/start").as_str().ok_or(Error::Corrupt)?;
+            let old_born = born_num(at(&v, "/born").as_str().ok_or(Error::Corrupt)?)?;
+            let old_owner = at(&v, "/owner").as_str().ok_or(Error::Corrupt)?;
             if old_start == start
                 && (incoming < old_born || (incoming == old_born && old_owner != owner))
             {
@@ -664,13 +700,14 @@ pub fn recover(
             if terminal(status(&rows)) {
                 continue;
             }
-            if rows[0]["data"]["request"]
+            if at(rows.first().unwrap_or(&Value::Null), "/data/request")
                 .as_str()
                 .is_some_and(|r| abandoned_requests.iter().any(|a| a == r))
-                || rows[0]["data"]["owner"] != owner
+                || at(rows.first().unwrap_or(&Value::Null), "/data/owner") != owner
             {
                 if let Some(report) = rows.iter().rev().find(|r| {
-                    r["type"] == "tool.started" && r["data"]["tool"] == "research.report.result"
+                    at(r, "/type") == "tool.started"
+                        && at(r, "/data/tool") == "research.report.result"
                 }) {
                     append(
                         p,
@@ -681,7 +718,7 @@ pub fn recover(
                         } else {
                             "job.failed"
                         },
-                        json!({"error":"Research finished but its save could not be confirmed. Review saved files before retrying.","result":report["data"]["result"]}),
+                        json!({"error":"Research finished but its save could not be confirmed. Review saved files before retrying.","result":at(report, "/data/result")}),
                     )?;
                 } else {
                     append(
@@ -702,16 +739,19 @@ pub fn recover(
 /// Atomic one-active-per-project admission; the returned run is required for every mutation.
 pub fn start(
     ctx: Context<'_>,
-    user: &str,
-    start: &str,
-    born: &str,
-    owner: &str,
+    identity: Owner<'_>,
     project: &str,
     request: &str,
     question: &str,
     mode: &str,
     questions: &Value,
 ) -> Result<(String, String), Error> {
+    let Owner {
+        user,
+        start,
+        born,
+        owner,
+    } = identity;
     check_start(ctx, start)?;
     if !valid_id(request)
         || !valid_project(project)
@@ -742,13 +782,13 @@ pub fn start(
         let all = all_research(p)?;
         if let Some((id, rows)) = all
             .iter()
-            .find(|(_, rows)| rows[0]["data"]["request"] == request)
+            .find(|(_, rows)| at(rows.first().unwrap_or(&Value::Null), "/data/request") == request)
         {
-            if rows[0]["data"]["owner"] != owner
-                || rows[0]["data"]["projectId"] != project
-                || rows[0]["data"]["question"] != question
-                || rows[0]["data"]["mode"] != mode
-                || rows[0]["data"]["questions"] != *questions
+            if at(rows.first().unwrap_or(&Value::Null), "/data/owner") != owner
+                || at(rows.first().unwrap_or(&Value::Null), "/data/projectId") != project
+                || at(rows.first().unwrap_or(&Value::Null), "/data/question") != question
+                || at(rows.first().unwrap_or(&Value::Null), "/data/mode") != mode
+                || at(rows.first().unwrap_or(&Value::Null), "/data/questions") != questions
             {
                 return Err(Error::Stale);
             }
@@ -764,13 +804,13 @@ pub fn start(
                 }
                 return Err(Error::NotFound);
             }
-            let run = rows[0]["data"]["run"]
+            let run = at(rows.first().unwrap_or(&Value::Null), "/data/run")
                 .as_str()
                 .ok_or(Error::Corrupt)?
                 .to_owned();
             if status(rows) == "queued" {
                 let mut next = rows.clone();
-                if !next.iter().any(|r| r["type"] == plan_event) {
+                if !next.iter().any(|r| at(r, "/type") == plan_event) {
                     append(
                         p,
                         id,
@@ -799,10 +839,10 @@ pub fn start(
         {
             return Err(Error::Busy);
         }
-        if all
-            .iter()
-            .any(|(_, rows)| rows[0]["data"]["projectId"] == project && !terminal(status(rows)))
-        {
+        if all.iter().any(|(_, rows)| {
+            at(rows.first().unwrap_or(&Value::Null), "/data/projectId") == project
+                && !terminal(status(rows))
+        }) {
             return Err(Error::TooMany);
         }
         prune(p, &all)?;
@@ -834,14 +874,13 @@ pub fn start(
 }
 
 /// Tombstone a request before interrupting any uncertain reservation.
-pub fn abandon(
-    ctx: Context<'_>,
-    user: &str,
-    start: &str,
-    born: &str,
-    owner: &str,
-    request: &str,
-) -> Result<(), Error> {
+pub fn abandon(ctx: Context<'_>, identity: Owner<'_>, request: &str) -> Result<(), Error> {
+    let Owner {
+        user,
+        start,
+        born,
+        owner,
+    } = identity;
     check_start(ctx, start)?;
     if !valid_id(request) {
         return Err(Error::BadRequest);
@@ -865,16 +904,19 @@ pub fn abandon(
 /// Sequence numbers span both progress and checkpoints, so no progress can pass a terminal row.
 pub fn event(
     ctx: Context<'_>,
-    user: &str,
-    start: &str,
-    born: &str,
-    owner: &str,
+    identity: Owner<'_>,
     id: &str,
     run: &str,
     n: u64,
     kind: &str,
     data: &Value,
 ) -> Result<(), Error> {
+    let Owner {
+        user,
+        start,
+        born,
+        owner,
+    } = identity;
     check_start(ctx, start)?;
     if kind != "progress" && kind != "checkpoint.created" {
         return Err(Error::BadRequest);
@@ -883,7 +925,7 @@ pub fn event(
         return Err(Error::BadRequest);
     }
     if kind == "progress"
-        && data["stage"]
+        && at(data, "/stage")
             .as_str()
             .is_none_or(|s| s.len() > MAX_STAGE_BYTES)
     {
@@ -898,14 +940,18 @@ pub fn event(
         let previous = rows
             .iter()
             .rev()
-            .find(|r| r["type"] == "progress" || r["type"] == "checkpoint.created");
-        let last = previous.and_then(|r| r["data"]["n"].as_u64()).unwrap_or(0);
+            .find(|r| at(r, "/type") == "progress" || at(r, "/type") == "checkpoint.created");
+        let last = previous
+            .and_then(|r| at(r, "/data/n").as_u64())
+            .unwrap_or(0);
         let mut stored = data.clone();
         stored
             .as_object_mut()
             .ok_or(Error::BadRequest)?
             .insert("n".to_owned(), json!(n));
-        if n == last && previous.is_some_and(|r| r["type"] == kind && r["data"] == stored) {
+        if n == last
+            && previous.is_some_and(|r| at(r, "/type") == kind && at(r, "/data") == &stored)
+        {
             return Ok(());
         }
         if n != last + 1 {
@@ -920,14 +966,17 @@ pub fn event(
 /// local controller; finish writes the partial result as job.cancelled after the runner settles.
 pub fn cancel(
     ctx: Context<'_>,
-    user: &str,
-    start: &str,
-    born: &str,
-    owner: &str,
+    identity: Owner<'_>,
     project: &str,
     id: &str,
     run: &str,
 ) -> Result<Value, Error> {
+    let Owner {
+        user,
+        start,
+        born,
+        owner,
+    } = identity;
     check_start(ctx, start)?;
     with_lock(ctx, user, |p| {
         current(p, start, born, owner)?;
@@ -935,13 +984,15 @@ pub fn cancel(
             return Err(Error::NotFound);
         }
         let rows = research_rows(p, id)?.ok_or(Error::NotFound)?;
-        if rows[0]["data"]["projectId"] != project {
+        if at(rows.first().unwrap_or(&Value::Null), "/data/projectId") != project {
             return Err(Error::NotFound);
         }
         if terminal(status(&rows)) {
             return Ok(snapshot(id, &rows));
         }
-        if rows[0]["data"]["owner"] != owner || rows[0]["data"]["run"] != run {
+        if at(rows.first().unwrap_or(&Value::Null), "/data/owner") != owner
+            || at(rows.first().unwrap_or(&Value::Null), "/data/run") != run
+        {
             return Err(Error::Stale);
         }
         if cancelled(&rows) {
@@ -962,16 +1013,19 @@ pub fn cancel(
 /// Terminal retry is idempotent. A committed cancellation wins over completion.
 pub fn finish(
     ctx: Context<'_>,
-    user: &str,
-    start: &str,
-    born: &str,
-    owner: &str,
+    identity: Owner<'_>,
     id: &str,
     run: &str,
     ok: bool,
     result: &Value,
     error: Option<&str>,
 ) -> Result<(), Error> {
+    let Owner {
+        user,
+        start,
+        born,
+        owner,
+    } = identity;
     check_start(ctx, start)?;
     if stringify_js(result)?.len() > MAX_RESULT_BYTES {
         return Err(Error::BadRequest);
@@ -1002,11 +1056,11 @@ pub fn finish(
                 .rev()
                 .find(|r| {
                     matches!(
-                        r["type"].as_str(),
+                        at(r, "/type").as_str(),
                         Some("job.completed" | "job.failed" | "job.cancelled" | "job.interrupted")
                     )
                 })
-                .is_some_and(|r| r["type"] == ty && r["data"] == data)
+                .is_some_and(|r| at(r, "/type") == ty && at(r, "/data") == &data)
             {
                 Ok(())
             } else {
@@ -1026,11 +1080,14 @@ fn file_rows(
     project: &str,
 ) -> Result<Vec<Value>, Error> {
     let rows = research_rows(p, id)?.ok_or(Error::NotFound)?;
-    if rows[0]["data"]["projectId"] != project || !project_exists(p, project)? {
+    if at(rows.first().unwrap_or(&Value::Null), "/data/projectId") != project
+        || !project_exists(p, project)?
+    {
         return Err(Error::NotFound);
     }
     if !terminal(status(&rows))
-        && (rows[0]["data"]["owner"] != owner || rows[0]["data"]["run"] != run)
+        && (at(rows.first().unwrap_or(&Value::Null), "/data/owner") != owner
+            || at(rows.first().unwrap_or(&Value::Null), "/data/run") != run)
     {
         return Err(Error::Stale);
     }
@@ -1055,8 +1112,8 @@ fn save_allowed(rows: &[Value]) -> bool {
     // The sidecar is the final file of a report. Once recorded, no further report writes
     // may be prepared, even when a failed/cancelled terminal result remains retryable.
     if rows.iter().any(|r| {
-        r["type"] == "artifact.created"
-            && r["data"]["name"]
+        at(r, "/type") == "artifact.created"
+            && at(r, "/data/name")
                 .as_str()
                 .is_some_and(|n| n.ends_with(".sources.json"))
     }) {
@@ -1069,18 +1126,21 @@ fn save_allowed(rows: &[Value]) -> bool {
 /// final terminal response is lost, recovery can still retain the result for safe reconciliation.
 pub fn report(
     ctx: Context<'_>,
-    user: &str,
-    start: &str,
-    born: &str,
-    owner: &str,
+    identity: Owner<'_>,
     id: &str,
     run: &str,
     result: &Value,
 ) -> Result<(), Error> {
+    let Owner {
+        user,
+        start,
+        born,
+        owner,
+    } = identity;
     check_start(ctx, start)?;
     if stringify_js(result)?.len() > 24 * 1024 * 1024
-        || !result["markdown"].is_string()
-        || !result["sources"].is_array()
+        || !at(result, "/markdown").is_string()
+        || !at(result, "/sources").is_array()
     {
         return Err(Error::BadRequest);
     }
@@ -1090,11 +1150,10 @@ pub fn report(
         if terminal(status(&rows)) {
             return Err(Error::Stale);
         }
-        if let Some(prior) = rows
-            .iter()
-            .find(|r| r["type"] == "tool.started" && r["data"]["tool"] == "research.report.result")
-        {
-            return if prior["data"]["result"] == *result {
+        if let Some(prior) = rows.iter().find(|r| {
+            at(r, "/type") == "tool.started" && at(r, "/data/tool") == "research.report.result"
+        }) {
+            return if at(prior, "/data/result") == result {
                 Ok(())
             } else {
                 Err(Error::Stale)
@@ -1114,18 +1173,24 @@ pub fn report(
 /// Durable intent BEFORE Node calls a potentially ambiguous external file writer.
 pub fn prepare_file(
     ctx: Context<'_>,
-    user: &str,
-    start: &str,
-    born: &str,
-    owner: &str,
+    identity: Owner<'_>,
     project: &str,
     id: &str,
     run: &str,
-    name: &str,
-    hash: &str,
-    bytes: u64,
-    target: &str,
+    file: FileIntent<'_>,
 ) -> Result<(), Error> {
+    let FileIntent {
+        name,
+        hash,
+        bytes,
+        target,
+    } = file;
+    let Owner {
+        user,
+        start,
+        born,
+        owner,
+    } = identity;
     check_start(ctx, start)?;
     if !valid_file(name) || !valid_hash(hash) || !valid_hash(target) || bytes > 25 * 1024 * 1024 {
         return Err(Error::BadRequest);
@@ -1138,7 +1203,7 @@ pub fn prepare_file(
         }
         if rows
             .iter()
-            .any(|r| r["type"] == "artifact.created" && r["data"]["name"] == name)
+            .any(|r| at(r, "/type") == "artifact.created" && at(r, "/data/name") == name)
         {
             return Err(Error::Stale);
         }
@@ -1159,26 +1224,28 @@ pub fn prepare_file(
 /// complete a cancelled/failed report's explicit partial save; never invents file existence.
 pub fn artifact(
     ctx: Context<'_>,
-    user: &str,
-    start: &str,
-    born: &str,
-    owner: &str,
+    identity: Owner<'_>,
     project: &str,
     id: &str,
     run: &str,
-    name: &str,
-    hash: &str,
-    bytes: u64,
+    file: Artifact<'_>,
 ) -> Result<(), Error> {
+    let Artifact { name, hash, bytes } = file;
+    let Owner {
+        user,
+        start,
+        born,
+        owner,
+    } = identity;
     check_start(ctx, start)?;
     with_lock(ctx, user, |p| {
         current(p, start, born, owner)?;
         let rows = file_rows(p, id, owner, run, project)?;
         if rows.iter().any(|r| {
-            r["type"] == "artifact.created"
-                && r["data"]["name"] == name
-                && r["data"]["bytes"] == bytes
-                && r["data"]["hash"] == hash
+            at(r, "/type") == "artifact.created"
+                && at(r, "/data/name") == name
+                && at(r, "/data/bytes") == bytes
+                && at(r, "/data/hash") == hash
         }) {
             return Ok(());
         }
@@ -1188,7 +1255,10 @@ pub fn artifact(
         let Some(intent) = pending_file(&rows) else {
             return Err(Error::Stale);
         };
-        if intent["name"] != name || intent["hash"] != hash || intent["bytes"] != bytes {
+        if at(&intent, "/name") != name
+            || at(&intent, "/hash") != hash
+            || at(&intent, "/bytes") != bytes
+        {
             return Err(Error::Stale);
         }
         append(
@@ -1205,16 +1275,19 @@ pub fn artifact(
 /// Only a caller that has proved NO external write happened may clear an intent for retry.
 pub fn clear_file(
     ctx: Context<'_>,
-    user: &str,
-    start: &str,
-    born: &str,
-    owner: &str,
+    identity: Owner<'_>,
     project: &str,
     id: &str,
     run: &str,
     name: &str,
     hash: &str,
 ) -> Result<(), Error> {
+    let Owner {
+        user,
+        start,
+        born,
+        owner,
+    } = identity;
     check_start(ctx, start)?;
     with_lock(ctx, user, |p| {
         current(p, start, born, owner)?;
@@ -1222,7 +1295,7 @@ pub fn clear_file(
         let Some(intent) = pending_file(&rows) else {
             return Ok(());
         };
-        if intent["name"] != name || intent["hash"] != hash {
+        if at(&intent, "/name") != name || at(&intent, "/hash") != hash {
             return Err(Error::Stale);
         }
         append(
@@ -1247,7 +1320,7 @@ pub fn read(ctx: Context<'_>, user: &str, project: &str, id: &str) -> Result<Opt
         let Some(rows) = research_rows(p, id)? else {
             return Ok(None);
         };
-        if rows[0]["data"]["projectId"] != project {
+        if at(rows.first().unwrap_or(&Value::Null), "/data/projectId") != project {
             return Ok(None);
         }
         Ok(Some(snapshot(id, &rows)))
@@ -1263,8 +1336,16 @@ pub fn list(ctx: Context<'_>, user: &str, project: &str) -> Result<Vec<Value>, E
             return Ok(Vec::new());
         }
         let mut all = all_research(p)?;
-        all.retain(|(_, rows)| rows[0]["data"]["projectId"] == project);
-        all.sort_by_key(|(_, rows)| std::cmp::Reverse(rows[0]["at"].as_u64().unwrap_or(0)));
+        all.retain(|(_, rows)| {
+            at(rows.first().unwrap_or(&Value::Null), "/data/projectId") == project
+        });
+        all.sort_by_key(|(_, rows)| {
+            std::cmp::Reverse(
+                at(rows.first().unwrap_or(&Value::Null), "/at")
+                    .as_u64()
+                    .unwrap_or(0),
+            )
+        });
         Ok(all
             .into_iter()
             .take(20)
@@ -1307,10 +1388,12 @@ mod tests {
     fn begin(c: Context<'_>, project: &str, request: &str) -> (String, String) {
         start(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             project,
             request,
             "Question?",
@@ -1323,16 +1406,27 @@ mod tests {
     fn atomic_project_admission_idempotent_start_and_abandon_recovery() {
         let (dir, user) = fixture();
         let c = ctx(dir.path());
-        recover(c, USER, START, "100", OWNER1).unwrap();
+        recover(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+        )
+        .unwrap();
         let first = begin(c, "a", REQ1);
         assert_eq!(first, begin(c, "a", REQ1));
         assert!(matches!(
             start(
                 c,
-                USER,
-                START,
-                "100",
-                OWNER1,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "100",
+                    owner: OWNER1
+                },
                 "a",
                 REQ2,
                 "Question?",
@@ -1342,18 +1436,35 @@ mod tests {
             Err(Error::TooMany)
         ));
         assert!(begin(c, "b", REQ3).0 != first.0);
-        abandon(c, USER, START, "100", OWNER1, REQ1).unwrap();
+        abandon(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+            REQ1,
+        )
+        .unwrap();
         assert_eq!(
-            read(c, USER, "a", &first.0).unwrap().unwrap()["status"],
+            read(c, USER, "a", &first.0)
+                .unwrap()
+                .unwrap()
+                .pointer("/status")
+                .unwrap()
+                .clone(),
             "interrupted"
         );
         assert!(matches!(
             start(
                 c,
-                USER,
-                START,
-                "100",
-                OWNER1,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "100",
+                    owner: OWNER1
+                },
                 "a",
                 REQ1,
                 "Question?",
@@ -1369,14 +1480,25 @@ mod tests {
     fn ordered_events_cancel_intent_partial_result_and_new_owner_fence() {
         let (dir, _) = fixture();
         let c = ctx(dir.path());
-        recover(c, USER, START, "100", OWNER1).unwrap();
+        recover(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+        )
+        .unwrap();
         let (id, run) = begin(c, "a", REQ1);
         event(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             &id,
             &run,
             1,
@@ -1386,10 +1508,12 @@ mod tests {
         .unwrap();
         event(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             &id,
             &run,
             2,
@@ -1399,10 +1523,12 @@ mod tests {
         .unwrap();
         event(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             &id,
             &run,
             2,
@@ -1413,10 +1539,12 @@ mod tests {
         assert!(matches!(
             event(
                 c,
-                USER,
-                START,
-                "100",
-                OWNER1,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "100",
+                    owner: OWNER1
+                },
                 &id,
                 &run,
                 4,
@@ -1425,26 +1553,60 @@ mod tests {
             ),
             Err(Error::Stale)
         ));
-        let after = cancel(c, USER, START, "100", OWNER1, "a", &id, &run).unwrap();
-        assert_eq!(after["status"], "running");
-        assert_eq!(after["cancelRequested"], true);
+        let after = cancel(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+            "a",
+            &id,
+            &run,
+        )
+        .unwrap();
+        assert_eq!(after.pointer("/status").unwrap().clone(), "running");
+        assert_eq!(after.pointer("/cancelRequested").unwrap().clone(), true);
         let partial = json!({"markdown":"# Q","sources":[],"sections":1,"question":"Q"});
         finish(
-            c, USER, START, "100", OWNER1, &id, &run, true, &partial, None,
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+            &id,
+            &run,
+            true,
+            &partial,
+            None,
         )
         .unwrap();
         let job = read(c, USER, "a", &id).unwrap().unwrap();
-        assert_eq!(job["status"], "cancelled");
-        assert_eq!(job["result"], partial);
-        assert_eq!(job["checkpoint"]["step"], 1);
-        recover(c, USER, START, "101", OWNER2).unwrap();
+        assert_eq!(job.pointer("/status").unwrap().clone(), "cancelled");
+        assert_eq!(job.pointer("/result").unwrap().clone(), partial);
+        assert_eq!(job.pointer("/checkpoint/step").unwrap().clone(), 1);
+        recover(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "101",
+                owner: OWNER2,
+            },
+        )
+        .unwrap();
         assert!(matches!(
             event(
                 c,
-                USER,
-                START,
-                "100",
-                OWNER1,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "100",
+                    owner: OWNER1
+                },
                 &id,
                 &run,
                 3,
@@ -1454,7 +1616,22 @@ mod tests {
             Err(Error::Stale)
         ));
         assert_eq!(
-            cancel(c, USER, START, "101", OWNER2, "a", &id, "").unwrap()["status"],
+            cancel(
+                c,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "101",
+                    owner: OWNER2
+                },
+                "a",
+                &id,
+                ""
+            )
+            .unwrap()
+            .pointer("/status")
+            .unwrap()
+            .clone(),
             "cancelled"
         );
     }
@@ -1462,38 +1639,55 @@ mod tests {
     fn prepared_file_is_not_pruned_or_overwritten_and_hash_binds_artifact() {
         let (dir, user) = fixture();
         let c = ctx(dir.path());
-        recover(c, USER, START, "100", OWNER1).unwrap();
+        recover(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+        )
+        .unwrap();
         let (id, run) = begin(c, "a", REQ1);
         prepare_file(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             "a",
             &id,
             &run,
-            "Research a.md",
-            HASH1,
-            5,
-            TARGET1,
+            FileIntent {
+                name: "Research a.md",
+                hash: HASH1,
+                bytes: 5,
+                target: TARGET1,
+            },
         )
         .unwrap();
         assert!(
             matches!(
                 prepare_file(
                     c,
-                    USER,
-                    START,
-                    "100",
-                    OWNER1,
+                    Owner {
+                        user: USER,
+                        start: START,
+                        born: "100",
+                        owner: OWNER1
+                    },
                     "a",
                     &id,
                     &run,
-                    "Research a.md",
-                    HASH1,
-                    5,
-                    HASH2
+                    FileIntent {
+                        name: "Research a.md",
+                        hash: HASH1,
+                        bytes: 5,
+                        target: HASH2
+                    }
                 ),
                 Err(Error::Stale)
             ),
@@ -1502,10 +1696,12 @@ mod tests {
         let result = json!({"markdown":"# Q","sources":[],"sections":1});
         finish(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             &id,
             &run,
             false,
@@ -1513,21 +1709,31 @@ mod tests {
             Some("file outcome unknown"),
         )
         .unwrap();
-        assert!(read(c, USER, "a", &id).unwrap().unwrap()["pendingFile"].is_object());
+        assert!(read(c, USER, "a", &id)
+            .unwrap()
+            .unwrap()
+            .pointer("/pendingFile")
+            .unwrap()
+            .clone()
+            .is_object());
         assert!(matches!(
             prepare_file(
                 c,
-                USER,
-                START,
-                "100",
-                OWNER1,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "100",
+                    owner: OWNER1
+                },
                 "a",
                 &id,
                 &run,
-                "Research a.sources.json",
-                HASH2,
-                5,
-                TARGET1
+                FileIntent {
+                    name: "Research a.sources.json",
+                    hash: HASH2,
+                    bytes: 5,
+                    target: TARGET1
+                }
             ),
             Err(Error::Stale)
         ));
@@ -1536,10 +1742,12 @@ mod tests {
             let (other, token) = begin(c, "b", &request);
             finish(
                 c,
-                USER,
-                START,
-                "100",
-                OWNER1,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "100",
+                    owner: OWNER1,
+                },
                 &other,
                 &token,
                 true,
@@ -1552,144 +1760,295 @@ mod tests {
         assert!(user.join("jobs").join(format!("{id}.jsonl")).exists());
         artifact(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             "a",
             &id,
             &run,
-            "Research a.md",
-            HASH1,
-            5,
+            Artifact {
+                name: "Research a.md",
+                hash: HASH1,
+                bytes: 5,
+            },
         )
         .unwrap();
         assert!(matches!(
             artifact(
                 c,
-                USER,
-                START,
-                "100",
-                OWNER1,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "100",
+                    owner: OWNER1
+                },
                 "a",
                 &id,
                 &run,
-                "Research a.md",
-                HASH2,
-                5
+                Artifact {
+                    name: "Research a.md",
+                    hash: HASH2,
+                    bytes: 5
+                }
             ),
             Err(Error::Stale)
         ));
-        assert!(read(c, USER, "a", &id).unwrap().unwrap()["pendingFile"].is_null());
+        assert!(read(c, USER, "a", &id)
+            .unwrap()
+            .unwrap()
+            .pointer("/pendingFile")
+            .unwrap()
+            .clone()
+            .is_null());
     }
     #[test]
     fn cancelled_report_survives_lost_terminal_and_new_owner_recovery() {
         let (dir, _) = fixture();
         let c = ctx(dir.path());
-        recover(c, USER, START, "100", OWNER1).unwrap();
+        recover(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+        )
+        .unwrap();
         let (id, run) = begin(c, "a", REQ1);
-        cancel(c, USER, START, "100", OWNER1, "a", &id, &run).unwrap();
+        cancel(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+            "a",
+            &id,
+            &run,
+        )
+        .unwrap();
         let result = json!({"question":"Q?","markdown":"# partial","sources":[],"sections":1});
-        report(c, USER, START, "100", OWNER1, &id, &run, &result).unwrap();
+        report(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+            &id,
+            &run,
+            &result,
+        )
+        .unwrap();
         // No terminal answer was committed; a newer owner must retain the user's cancel.
-        assert_eq!(recover(c, USER, START, "101", OWNER2).unwrap(), 1);
+        assert_eq!(
+            recover(
+                c,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "101",
+                    owner: OWNER2
+                }
+            )
+            .unwrap(),
+            1
+        );
         let saved = read(c, USER, "a", &id).unwrap().unwrap();
-        assert_eq!(saved["status"], "cancelled");
-        assert_eq!(saved["result"], result);
-        assert!(saved["artifacts"].as_array().unwrap().is_empty());
+        assert_eq!(saved.pointer("/status").unwrap().clone(), "cancelled");
+        assert_eq!(saved.pointer("/result").unwrap().clone(), result);
+        assert!(saved
+            .pointer("/artifacts")
+            .unwrap()
+            .clone()
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
     #[test]
     fn report_survives_two_file_save_outage_and_recovery_without_blind_rewrite() {
         let (dir, _) = fixture();
         let c = ctx(dir.path());
-        recover(c, USER, START, "100", OWNER1).unwrap();
+        recover(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+        )
+        .unwrap();
         let (id, run) = begin(c, "a", REQ1);
         let result = json!({"question":"Q?","markdown":"# Q","sources":[],"sections":1});
-        report(c, USER, START, "100", OWNER1, &id, &run, &result).unwrap();
-        report(c, USER, START, "100", OWNER1, &id, &run, &result).unwrap();
+        report(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+            &id,
+            &run,
+            &result,
+        )
+        .unwrap();
+        report(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+            &id,
+            &run,
+            &result,
+        )
+        .unwrap();
         prepare_file(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             "a",
             &id,
             &run,
-            "Research a.md",
-            HASH1,
-            5,
-            TARGET1,
+            FileIntent {
+                name: "Research a.md",
+                hash: HASH1,
+                bytes: 5,
+                target: TARGET1,
+            },
         )
         .unwrap();
         artifact(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             "a",
             &id,
             &run,
-            "Research a.md",
-            HASH1,
-            5,
+            Artifact {
+                name: "Research a.md",
+                hash: HASH1,
+                bytes: 5,
+            },
         )
         .unwrap();
         prepare_file(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             "a",
             &id,
             &run,
-            "Research a.sources.json",
-            HASH2,
-            5,
-            TARGET1,
+            FileIntent {
+                name: "Research a.sources.json",
+                hash: HASH2,
+                bytes: 5,
+                target: TARGET1,
+            },
         )
         .unwrap();
         // Rust becomes unavailable before file outcome or terminal response can be recorded.
-        assert_eq!(recover(c, USER, START, "101", OWNER2).unwrap(), 1);
+        assert_eq!(
+            recover(
+                c,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "101",
+                    owner: OWNER2
+                }
+            )
+            .unwrap(),
+            1
+        );
         let failed = read(c, USER, "a", &id).unwrap().unwrap();
-        assert_eq!(failed["status"], "failed");
-        assert_eq!(failed["result"], result);
-        assert_eq!(failed["artifacts"].as_array().unwrap().len(), 1);
-        assert_eq!(failed["pendingFile"]["name"], "Research a.sources.json");
+        assert_eq!(failed.pointer("/status").unwrap().clone(), "failed");
+        assert_eq!(failed.pointer("/result").unwrap().clone(), result);
+        assert_eq!(
+            failed
+                .pointer("/artifacts")
+                .unwrap()
+                .clone()
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            failed.pointer("/pendingFile/name").unwrap().clone(),
+            "Research a.sources.json"
+        );
         // The next process may acknowledge only the proven exact file, never issue another PUT.
         artifact(
             c,
-            USER,
-            START,
-            "101",
-            OWNER2,
+            Owner {
+                user: USER,
+                start: START,
+                born: "101",
+                owner: OWNER2,
+            },
             "a",
             &id,
             "",
-            "Research a.sources.json",
-            HASH2,
-            5,
+            Artifact {
+                name: "Research a.sources.json",
+                hash: HASH2,
+                bytes: 5,
+            },
         )
         .unwrap();
         let saved = read(c, USER, "a", &id).unwrap().unwrap();
-        assert!(saved["pendingFile"].is_null());
-        assert_eq!(saved["artifacts"].as_array().unwrap().len(), 2);
+        assert!(saved.pointer("/pendingFile").unwrap().clone().is_null());
+        assert_eq!(
+            saved
+                .pointer("/artifacts")
+                .unwrap()
+                .clone()
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
         assert!(matches!(
             prepare_file(
                 c,
-                USER,
-                START,
-                "101",
-                OWNER2,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "101",
+                    owner: OWNER2
+                },
                 "a",
                 &id,
                 "",
-                "Other.sources.json",
-                HASH2,
-                5,
-                TARGET1
+                FileIntent {
+                    name: "Other.sources.json",
+                    hash: HASH2,
+                    bytes: 5,
+                    target: TARGET1
+                }
             ),
             Err(Error::Stale)
         ));
@@ -1698,15 +2057,26 @@ mod tests {
     fn late_artifact_does_not_break_exact_terminal_retry_or_cross_boot_save() {
         let (dir, _) = fixture();
         let c = ctx(dir.path());
-        recover(c, USER, START, "100", OWNER1).unwrap();
+        recover(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+        )
+        .unwrap();
         let (id, run) = begin(c, "a", REQ1);
         let result = json!({"markdown":"# Q","sources":[],"sections":1});
         finish(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             &id,
             &run,
             false,
@@ -1714,47 +2084,71 @@ mod tests {
             Some("save failed"),
         )
         .unwrap();
-        recover(c, USER, START, "101", OWNER2).unwrap();
+        recover(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "101",
+                owner: OWNER2,
+            },
+        )
+        .unwrap();
         prepare_file(
             c,
-            USER,
-            START,
-            "101",
-            OWNER2,
+            Owner {
+                user: USER,
+                start: START,
+                born: "101",
+                owner: OWNER2,
+            },
             "a",
             &id,
             "",
-            "Research a.md",
-            HASH1,
-            5,
-            TARGET1,
+            FileIntent {
+                name: "Research a.md",
+                hash: HASH1,
+                bytes: 5,
+                target: TARGET1,
+            },
         )
         .unwrap();
         artifact(
             c,
-            USER,
-            START,
-            "101",
-            OWNER2,
+            Owner {
+                user: USER,
+                start: START,
+                born: "101",
+                owner: OWNER2,
+            },
             "a",
             &id,
             "",
-            "Research a.md",
-            HASH1,
-            5,
+            Artifact {
+                name: "Research a.md",
+                hash: HASH1,
+                bytes: 5,
+            },
         )
         .unwrap();
         assert_eq!(
-            read(c, USER, "a", &id).unwrap().unwrap()["artifacts"][0]["hash"],
+            read(c, USER, "a", &id)
+                .unwrap()
+                .unwrap()
+                .pointer("/artifacts/0/hash")
+                .unwrap()
+                .clone(),
             HASH1
         );
         assert!(matches!(
             finish(
                 c,
-                USER,
-                START,
-                "100",
-                OWNER1,
+                Owner {
+                    user: USER,
+                    start: START,
+                    born: "100",
+                    owner: OWNER1
+                },
                 &id,
                 &run,
                 false,
@@ -1766,10 +2160,12 @@ mod tests {
         // Same owner exact delayed reply after late artifact is accepted.
         let (second, run2) = start(
             c,
-            USER,
-            START,
-            "101",
-            OWNER2,
+            Owner {
+                user: USER,
+                start: START,
+                born: "101",
+                owner: OWNER2,
+            },
             "b",
             REQ2,
             "Q?",
@@ -1780,10 +2176,12 @@ mod tests {
         let report = json!({"markdown":"# Q","sources":[],"sections":1});
         finish(
             c,
-            USER,
-            START,
-            "101",
-            OWNER2,
+            Owner {
+                user: USER,
+                start: START,
+                born: "101",
+                owner: OWNER2,
+            },
             &second,
             &run2,
             false,
@@ -1793,39 +2191,49 @@ mod tests {
         .unwrap();
         prepare_file(
             c,
-            USER,
-            START,
-            "101",
-            OWNER2,
+            Owner {
+                user: USER,
+                start: START,
+                born: "101",
+                owner: OWNER2,
+            },
             "b",
             &second,
             &run2,
-            "Research b.md",
-            HASH1,
-            5,
-            TARGET1,
+            FileIntent {
+                name: "Research b.md",
+                hash: HASH1,
+                bytes: 5,
+                target: TARGET1,
+            },
         )
         .unwrap();
         artifact(
             c,
-            USER,
-            START,
-            "101",
-            OWNER2,
+            Owner {
+                user: USER,
+                start: START,
+                born: "101",
+                owner: OWNER2,
+            },
             "b",
             &second,
             &run2,
-            "Research b.md",
-            HASH1,
-            5,
+            Artifact {
+                name: "Research b.md",
+                hash: HASH1,
+                bytes: 5,
+            },
         )
         .unwrap();
         finish(
             c,
-            USER,
-            START,
-            "101",
-            OWNER2,
+            Owner {
+                user: USER,
+                start: START,
+                born: "101",
+                owner: OWNER2,
+            },
             &second,
             &run2,
             false,
@@ -1864,14 +2272,25 @@ mod tests {
                 .contains(r"\ud800")
         );
         let c = ctx(dir.path());
-        recover(c, USER, START, "100", OWNER1).unwrap();
+        recover(
+            c,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
+        )
+        .unwrap();
         let (id, run) = begin(c, "a", REQ1);
         finish(
             c,
-            USER,
-            START,
-            "100",
-            OWNER1,
+            Owner {
+                user: USER,
+                start: START,
+                born: "100",
+                owner: OWNER1,
+            },
             &id,
             &run,
             true,
