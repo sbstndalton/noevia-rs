@@ -16,12 +16,28 @@ limiting. No real storage server or clock is consulted.
 
 The production HTTP `Retry-After` field is bounded to 8192 UTF-8 bytes here.
 Longer headers return the supplied default; Python has no such cap. Date
-parsing covers common RFC 2822/850/asctime forms under UTC. Python's more
-permissive `email.utils.parsedate_to_datetime`, local timezone interpretation
-of naive dates, and unusual syntactically valid email dates are a documented
-adapter gate: an explicit Rust selector should refuse unsupported forms or
-add those cases before replacing the Python transport. Finite clock samples
-within ±1e12 seconds are required; Python assumes real finite clocks.
+parsing follows the shipped CPython email-date token grammar, including
+weekday-independent dates, full month names, reordered asctime fields,
+two-digit years, dot-separated times, named/numeric offsets and Unicode
+integer syntax. Gregorian date and offset validity match Python datetime.
+The adapted grammar and Python license are retained in this package.
+
+`parse_retry_after` and `StorageGate::record` are UTC conveniences for naive
+or unknown-zone dates. For a non-UTC caller, use
+`parse_retry_after_with_local_date` and `record_with_local_date`: the supplied
+resolver receives the parsed `chrono::NaiveDateTime` and must reproduce the
+host Python timezone, DST/fold and timestamp-refusal behavior. Explicit zone
+or offset dates never invoke it. Resolution failure retains the supplied
+retry default. This pure kernel reads no timezone or clock; service adoption
+must supply and qualify the same host-time contract rather than silently
+assume UTC. Finite clock samples within ±1e12 seconds are required.
+
+Additional source-derived edge cases live in `tests/oracles/parser-edges.json`.
+They cover permissive date syntax, invalid dates/offsets, Unicode numeric and
+zone forms, expiry equality and neighboring floating-point samples, negative
+and large clocks, reset equality and in-flight completion. The new generators
+require CPython 3.12.15 / Unicode 15.0.0 and the pinned shipped-source hash;
+the original frozen fixture/generator remain unchanged.
 
 Regenerate on the development host:
 

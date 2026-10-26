@@ -3,8 +3,9 @@
 //! No HTTP transport, credentials, registry, mutex, filesystem, database, or
 //! wall/monotonic clock is owned here. The caller supplies clock samples and
 //! serializes access to a gate shared by one credential fingerprint.
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 
+mod email_date;
 mod unicode;
 
 pub const LOGIN_COOLDOWN_S: f64 = 300.0;
@@ -119,44 +120,30 @@ fn numeric_seconds(s: &str) -> Option<f64> {
     normalized.parse::<f64>().ok()
 }
 
-fn http_date_seconds(s: &str) -> Option<f64> {
-    if let Ok(datetime) = DateTime::parse_from_rfc2822(s) {
-        return Some(datetime.timestamp() as f64 + datetime.timestamp_subsec_nanos() as f64 / 1e9);
-    }
-    // Python email.utils accepts RFC 850 and asctime forms as well as IMF-fixdate.
-    for pattern in [
-        "%A, %d-%b-%y %H:%M:%S GMT",
-        "%a, %d-%b-%y %H:%M:%S GMT",
-        "%a %b %e %H:%M:%S %Y",
-        "%a %b %d %H:%M:%S %Y",
-    ] {
-        if let Ok(naive) = NaiveDateTime::parse_from_str(s, pattern) {
-            let datetime = naive.and_utc();
-            return Some(
-                datetime.timestamp() as f64 + datetime.timestamp_subsec_nanos() as f64 / 1e9,
-            );
-        }
-    }
-    // Some server implementations send IMF-fixdate with a timezone word that
-    // chrono's RFC2822 parser refuses. Match only explicit UTC aliases here.
-    for pattern in ["%a, %d %b %Y %H:%M:%S GMT", "%a, %d %b %Y %H:%M:%S UTC"] {
-        if let Ok(naive) = NaiveDateTime::parse_from_str(s, pattern) {
-            let datetime: DateTime<Utc> = naive.and_utc();
-            return Some(
-                datetime.timestamp() as f64 + datetime.timestamp_subsec_nanos() as f64 / 1e9,
-            );
-        }
-    }
-    None
-}
-
 /// Parse a Retry-After delta or HTTP date against an explicit Unix wall-clock
 /// sample. Numeric values use Python's Unicode-decimal/underscore `float`
 /// syntax. The default is returned unchanged for absent or invalid headers.
-/// Date parsing covers RFC 2822/850/asctime UTC forms; exotic email date
-/// permissiveness and local-zone naive dates are excluded pending an adapter
-/// contract. A header over `MAX_HEADER_BYTES` returns the default.
+/// Date grammar follows shipped Python email.utils; this convenience entry
+/// interprets naive/unknown-zone dates under UTC. A non-UTC caller must use
+/// `parse_retry_after_with_local_date` with its actual local-date resolver.
+/// A header over `MAX_HEADER_BYTES` returns the default.
 pub fn parse_retry_after(value: Option<&str>, default: f64, wall_now: f64) -> RetryAfter {
+    parse_retry_after_with_local_date(value, default, wall_now, |date| {
+        Some(date.and_utc().timestamp() as f64)
+    })
+}
+
+/// Full shipped email-date grammar with host-supplied naive-date resolution.
+/// The resolver must reproduce the caller's Python local timezone, including
+/// DST/fold and timestamp refusal. It is never called for explicit offsets.
+/// Returning None treats an unresolvable local date as invalid, retaining the
+/// supplied default; this function performs no timezone/clock/transport IO.
+pub fn parse_retry_after_with_local_date(
+    value: Option<&str>,
+    default: f64,
+    wall_now: f64,
+    mut resolve_local: impl FnMut(NaiveDateTime) -> Option<f64>,
+) -> RetryAfter {
     let Some(value) = value.filter(|v| !v.is_empty()) else {
         return RetryAfter {
             seconds: default,
@@ -174,7 +161,7 @@ pub fn parse_retry_after(value: Option<&str>, default: f64, wall_now: f64) -> Re
     let (seconds, source) = if let Some(seconds) = numeric {
         (seconds, RetryAfterSource::Numeric)
     } else if valid_clock(wall_now) {
-        if let Some(timestamp) = http_date_seconds(text) {
+        if let Some(timestamp) = email_date::timestamp(text, &mut resolve_local) {
             (timestamp - wall_now, RetryAfterSource::HttpDate)
         } else {
             (default, RetryAfterSource::Invalid)
@@ -289,6 +276,22 @@ impl StorageGate {
         retry_after: Option<&str>,
         root: bool,
     ) -> Result<RecordEffect, ClockError> {
+        self.record_with_local_date(now_mono, wall_now, status, retry_after, root, |date| {
+            Some(date.and_utc().timestamp() as f64)
+        })
+    }
+
+    /// Same transitions with caller-supplied local-date resolution, for hosts
+    /// whose Python naive timestamps are not UTC. See the parser counterpart.
+    pub fn record_with_local_date(
+        &mut self,
+        now_mono: f64,
+        wall_now: f64,
+        status: u16,
+        retry_after: Option<&str>,
+        root: bool,
+        resolve_local: impl FnMut(NaiveDateTime) -> Option<f64>,
+    ) -> Result<RecordEffect, ClockError> {
         if !valid_clock(now_mono) || !valid_clock(wall_now) {
             return Err(ClockError::NonFiniteOrOutOfRange);
         }
@@ -298,8 +301,14 @@ impl StorageGate {
             return Ok(RecordEffect::LoginCooldown);
         }
         if status == 429 {
-            let until =
-                now_mono + parse_retry_after(retry_after, DEFAULT_RETRY_AFTER_S, wall_now).seconds;
+            let until = now_mono
+                + parse_retry_after_with_local_date(
+                    retry_after,
+                    DEFAULT_RETRY_AFTER_S,
+                    wall_now,
+                    resolve_local,
+                )
+                .seconds;
             if self.kind == Some(GateKind::Login) && self.until > now_mono {
                 return Ok(RecordEffect::KeptActiveLogin);
             }
