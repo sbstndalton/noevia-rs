@@ -1,0 +1,8158 @@
+{
+  "oracle": "shipped noevia-services diary.agent.storage_backoff CPython 3.12; stubbed httpx import; UTC/C locale",
+  "parse": [
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": null,
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": null,
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": " ",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": " ",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "0",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "0",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.1,
+      "value": "1.1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.1,
+      "value": "1.1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 2.001,
+      "value": "2.001",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 2.001,
+      "value": "2.001",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 2.999,
+      "value": "2.999",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 2.999,
+      "value": "2.999",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 59.5,
+      "value": "59.5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 59.5,
+      "value": "59.5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "3600",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "3600",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "3601",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "3601",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 2.0,
+      "value": "+2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 2.0,
+      "value": "+2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "1.",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "1.",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": ".5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": ".5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "1e-2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "1e-2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "1e5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "1e5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "1e999",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "1e999",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-1e999",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-1e999",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "inf",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "inf",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "Infinity",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "Infinity",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-inf",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-inf",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "NaN",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "NaN",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "nan",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "nan",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 12.0,
+      "value": "1_2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 12.0,
+      "value": "1_2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.23,
+      "value": "1.2_3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.23,
+      "value": "1.2_3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "1e1_0",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "1e1_0",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "1_.2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "1_.2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "_12",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "_12",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "12_",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "12_",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "1__2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "1__2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "1,2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "1,2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 5.0,
+      "value": "  5  ",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 5.0,
+      "value": "  5  ",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3.5,
+      "value": " ٣.٥ ",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3.5,
+      "value": " ٣.٥ ",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 12.0,
+      "value": "１２",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 12.0,
+      "value": "１２",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 7.0,
+      "value": "\u001f7\u001f",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.0,
+      "value": "\u001f7\u001f",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "−2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "−2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "bad",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "bad",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "Wed, 21 Oct 2015 07:28:00 GMT",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 60.0,
+      "value": "Wed, 21 Oct 2015 07:28:00 GMT",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "Wed, 21 Oct 2015 07:25:00 GMT",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "Wed, 21 Oct 2015 07:25:00 GMT",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "Sun, 06 Nov 1994 08:49:37 GMT",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "Sun, 06 Nov 1994 08:49:37 GMT",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "Sunday, 06-Nov-94 08:49:37 GMT",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "Sunday, 06-Nov-94 08:49:37 GMT",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "Sun Nov  6 08:49:37 1994",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "Sun Nov  6 08:49:37 1994",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "Wed, 21 Oct 2015 08:28:00 +0100",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 60.0,
+      "value": "Wed, 21 Oct 2015 08:28:00 +0100",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "Mon, 00 Jan 2000 00:00:00 GMT",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "Mon, 00 Jan 2000 00:00:00 GMT",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "Wed, 21 Oct 2015 07:28:00 UTC",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 60.0,
+      "value": "Wed, 21 Oct 2015 07:28:00 UTC",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 60.0,
+      "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.25,
+      "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-6025",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-6025",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "5439.7648",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "5439.7648",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+4097",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+4097",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-9412.6304e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-9412.6304e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 495.0,
+      "value": "495",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 495.0,
+      "value": "495",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-8103",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-8103",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+5348.4975",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+5348.4975",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+8875",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+8875",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "3700.5408",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "3700.5408",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-8659",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-8659",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 597.3,
+      "value": "+5973e-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 597.3,
+      "value": "+5973e-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "7362.6762e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "7362.6762e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "+5979e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "+5979e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "+9547e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "+9547e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-8443.1336",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-8443.1336",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+2621e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+2621e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 431.3839,
+      "value": "+431.3839",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 431.3839,
+      "value": "+431.3839",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "+6215.6048e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "+6215.6048e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 159.3386,
+      "value": "+159.3386",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 159.3386,
+      "value": "+159.3386",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-5814.39e-2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-5814.39e-2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1881.6105,
+      "value": "1881.6105",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1881.6105,
+      "value": "1881.6105",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 9.934,
+      "value": "+9934e-3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 9.934,
+      "value": "+9934e-3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-6296e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-6296e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1548.0,
+      "value": "1548",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1548.0,
+      "value": "1548",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+8536.6682",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+8536.6682",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "9900.9391e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "9900.9391e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+9478",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+9478",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "8100",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "8100",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-3447.3384e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-3447.3384e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "1422.3784e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "1422.3784e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "9211.9467e5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "9211.9467e5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "7954e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "7954e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-1951",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-1951",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 6.5671142,
+      "value": "6567.1142e-3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 6.5671142,
+      "value": "6567.1142e-3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+1835.105e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+1835.105e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+6625",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+6625",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-3425e-3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-3425e-3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 412.7,
+      "value": "4127e-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 412.7,
+      "value": "4127e-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 2376.1332,
+      "value": "+2376.1332",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 2376.1332,
+      "value": "+2376.1332",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "9689e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "9689e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1591.2614,
+      "value": "+1591.2614",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1591.2614,
+      "value": "+1591.2614",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+722e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+722e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-6624.7911e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-6624.7911e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+6144",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+6144",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 97.3355,
+      "value": "+97.3355",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 97.3355,
+      "value": "+97.3355",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3117.0,
+      "value": "+3117",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3117.0,
+      "value": "+3117",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+4105e4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+4105e4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-7716",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-7716",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-1310e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-1310e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 2544.1691,
+      "value": "+2544.1691",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 2544.1691,
+      "value": "+2544.1691",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+6706e4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+6706e4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 173.68495,
+      "value": "+1736.8495e-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 173.68495,
+      "value": "+1736.8495e-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "2481.3258e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "2481.3258e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-5607",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-5607",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "245.9832e-3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "245.9832e-3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-4966.92e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-4966.92e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-8756e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-8756e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "9442.6771e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "9442.6771e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 7.599034,
+      "value": "+759.9034e-2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 7.599034,
+      "value": "+759.9034e-2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "4875.1934",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "4875.1934",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "1185.4483e5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "1185.4483e5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-9891",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-9891",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1782.0,
+      "value": "+1782e0",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1782.0,
+      "value": "+1782e0",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "2051.8644e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "2051.8644e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 839.197,
+      "value": "+839.1970",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 839.197,
+      "value": "+839.1970",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-582",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-582",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-1945.4608",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-1945.4608",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 2314.0,
+      "value": "+2314e0",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 2314.0,
+      "value": "+2314e0",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "912e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "912e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "6235.2790e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "6235.2790e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3420.21,
+      "value": "3420.2100",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3420.21,
+      "value": "3420.2100",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-8996e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-8996e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+5988.6577",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+5988.6577",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "8048e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "8048e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+7680e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+7680e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+8140.9924",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+8140.9924",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-2825e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-2825e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+4764.4578e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+4764.4578e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "9443",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "9443",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "1819e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "1819e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-1383.3570",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-1383.3570",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+9140",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+9140",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "6773e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "6773e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+3800.148",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+3800.148",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "754e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "754e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "9405e0",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "9405e0",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-7272e4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-7272e4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-4697.2002e-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-4697.2002e-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "+395.222e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "+395.222e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 715.0,
+      "value": "715",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 715.0,
+      "value": "715",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+6678.372",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+6678.372",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 2112.9708,
+      "value": "2112.9708",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 2112.9708,
+      "value": "2112.9708",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-3433.3094",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-3433.3094",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "7154.6920",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "7154.6920",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1137.0,
+      "value": "1137",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1137.0,
+      "value": "1137",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+3910.4359",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+3910.4359",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+7012",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+7012",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-1051.6228e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-1051.6228e-5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+3195.5535e4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+3195.5535e4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3390.3137,
+      "value": "3390.3137",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3390.3137,
+      "value": "3390.3137",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "3821.2796",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "3821.2796",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "7172.8541e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "7172.8541e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 455.56613,
+      "value": "4555.6613e-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 455.56613,
+      "value": "4555.6613e-1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-3649e5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-3649e5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-5150.5437",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-5150.5437",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-4242e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-4242e3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+4980e4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+4980e4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+5367",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+5367",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "+4861.8490e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "+4861.8490e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 5.6505677,
+      "value": "+5650.5677e-3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 5.6505677,
+      "value": "+5650.5677e-3",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-1066e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-1066e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3313.0,
+      "value": "3313",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3313.0,
+      "value": "3313",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "886.55e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "886.55e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 1.0,
+      "value": "-5367e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 1.0,
+      "value": "-5367e-4",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "4580.5699e5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "4580.5699e5",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 2916.0,
+      "value": "2916",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 2916.0,
+      "value": "2916",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "7387.8950e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "7387.8950e1",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "+8642",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "+8642",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 3600.0,
+      "value": "897e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 3600.0,
+      "value": "897e2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 60.0,
+      "expected": 46.95,
+      "value": "+4695e-2",
+      "wall": 1445412420.0
+    },
+    {
+      "default": 7.25,
+      "expected": 46.95,
+      "value": "+4695e-2",
+      "wall": 1445412420.0
+    }
+  ],
+  "python": "3.12.15",
+  "sequences": [
+    {
+      "name": "login reset and rate limit",
+      "steps": [
+        {
+          "action": {
+            "mono": 1000.0,
+            "op": "record",
+            "root": false,
+            "status": 401,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1000.1,
+            "op": "sample",
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.9
+          ]
+        },
+        {
+          "action": {
+            "mono": 1001.0,
+            "op": "reset",
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": true,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1002.0,
+            "op": "record",
+            "status": 401,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1002.0,
+            "op": "reset",
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": false,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1030.0,
+            "op": "sample",
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 272
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            272.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1031.0,
+            "op": "reset",
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": true,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1032.0,
+            "op": "record",
+            "status": 401,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3600",
+            "mono": 1033.0,
+            "op": "record",
+            "status": 429,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 299
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1034.0,
+            "op": "record",
+            "status": 200,
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1400.0,
+            "op": "sample",
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "root versus path forbidden",
+      "steps": [
+        {
+          "action": {
+            "mono": 1.0,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2.0,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 3.0,
+            "op": "record",
+            "status": 404,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 299
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 4.0,
+            "op": "record",
+            "status": 204,
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 5.0,
+            "op": "sample",
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "throttle extension and preemption",
+      "steps": [
+        {
+          "action": {
+            "header": "120",
+            "mono": 20.0,
+            "op": "record",
+            "status": 429,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 120
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            120.0
+          ]
+        },
+        {
+          "action": {
+            "header": "10",
+            "mono": 30.0,
+            "op": "record",
+            "status": 429,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 110
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            110.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 40.0,
+            "op": "record",
+            "status": 429,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3600
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3600.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 41.0,
+            "op": "reset",
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3599
+          },
+          "reset_result": false,
+          "state": [
+            "throttle",
+            3599.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 42.0,
+            "op": "record",
+            "status": 401,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3600",
+            "mono": 43.0,
+            "op": "record",
+            "status": 429,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 299
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 342.0,
+            "op": "sample",
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.5",
+            "mono": 343.0,
+            "op": "record",
+            "status": 429,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2.5
+          ]
+        },
+        {
+          "action": {
+            "mono": 344.0,
+            "op": "record",
+            "status": 500,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            1.5
+          ]
+        },
+        {
+          "action": {
+            "mono": 346.0,
+            "op": "sample",
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "negative fake clock and expiry",
+      "steps": [
+        {
+          "action": {
+            "mono": -100.0,
+            "op": "record",
+            "status": 401,
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": -99.0,
+            "op": "reset",
+            "wall": 1445412420.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 299
+          },
+          "reset_result": false,
+          "state": [
+            "login",
+            299.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 200.0,
+            "op": "sample",
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 200.0,
+            "op": "reset",
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 201.0,
+            "op": "record",
+            "status": 200,
+            "wall": 1445412420.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 0",
+      "steps": [
+        {
+          "action": {
+            "header": "0",
+            "mono": 1029.0,
+            "op": "record",
+            "root": true,
+            "status": 503,
+            "wall": 1445413449.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1029.0,
+            "op": "record",
+            "root": false,
+            "status": 429,
+            "wall": 1445413449.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2.0009999999999764
+          ]
+        },
+        {
+          "action": {
+            "mono": 1029.0,
+            "op": "sample",
+            "wall": 1445413449.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2.0009999999999764
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1029.0,
+            "op": "record",
+            "root": false,
+            "status": 503,
+            "wall": 1445413449.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2.0009999999999764
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1058.0,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445413478.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1087.0,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445413507.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1092.0,
+            "op": "sample",
+            "wall": 1445413512.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1093.0,
+            "op": "sample",
+            "wall": 1445413513.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1123.0,
+            "op": "record",
+            "root": false,
+            "status": 400,
+            "wall": 1445413543.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1152.0,
+            "op": "record",
+            "root": true,
+            "status": 503,
+            "wall": 1445413572.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1181.0,
+            "op": "record",
+            "root": false,
+            "status": 500,
+            "wall": 1445413601.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1210.0,
+            "op": "record",
+            "root": false,
+            "status": 401,
+            "wall": 1445413630.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1215.0,
+            "op": "reset",
+            "wall": 1445413635.0
+          },
+          "blocked": null,
+          "reset_result": true,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1215.1,
+            "op": "record",
+            "root": false,
+            "status": 401,
+            "wall": 1445413635.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1516.1,
+            "op": "sample",
+            "wall": 1445413936.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1545.1,
+            "op": "record",
+            "root": false,
+            "status": 200,
+            "wall": 1445413965.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1575.1,
+            "op": "sample",
+            "wall": 1445413995.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1876.1,
+            "op": "reset",
+            "wall": 1445414296.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1881.1,
+            "op": "record",
+            "root": false,
+            "status": 401,
+            "wall": 1445414301.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1910.1,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445414330.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 271
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            271.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1939.1,
+            "op": "sample",
+            "wall": 1445414359.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 242
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            242.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1968.1,
+            "op": "record",
+            "root": false,
+            "status": 301,
+            "wall": 1445414388.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1997.1,
+            "op": "record",
+            "root": true,
+            "status": 201,
+            "wall": 1445414417.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1998.1,
+            "op": "sample",
+            "wall": 1445414418.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 2027.1,
+            "op": "record",
+            "root": false,
+            "status": 503,
+            "wall": 1445414447.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 2056.1,
+            "op": "record",
+            "root": false,
+            "status": 500,
+            "wall": 1445414476.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 2357.1,
+            "op": "record",
+            "root": false,
+            "status": 503,
+            "wall": 1445414777.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 2362.1,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445414782.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2362.1,
+            "op": "reset",
+            "wall": 1445414782.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2663.1,
+            "op": "sample",
+            "wall": 1445415083.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 1",
+      "steps": [
+        {
+          "action": {
+            "mono": 1000.1,
+            "op": "sample",
+            "wall": 1445413420.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1301.1,
+            "op": "record",
+            "root": true,
+            "status": 201,
+            "wall": 1445413721.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1301.2,
+            "op": "sample",
+            "wall": 1445413721.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1602.2,
+            "op": "record",
+            "root": true,
+            "status": 204,
+            "wall": 1445414022.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1602.2,
+            "op": "record",
+            "root": true,
+            "status": 200,
+            "wall": 1445414022.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1602.3,
+            "op": "record",
+            "root": true,
+            "status": 204,
+            "wall": 1445414022.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1603.3,
+            "op": "sample",
+            "wall": 1445414023.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1633.3,
+            "op": "sample",
+            "wall": 1445414053.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1662.3,
+            "op": "sample",
+            "wall": 1445414082.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1667.3,
+            "op": "sample",
+            "wall": 1445414087.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1968.3,
+            "op": "record",
+            "root": false,
+            "status": 404,
+            "wall": 1445414388.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1969.3,
+            "op": "record",
+            "root": false,
+            "status": 204,
+            "wall": 1445414389.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1999.3,
+            "op": "record",
+            "root": true,
+            "status": 201,
+            "wall": 1445414419.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 2028.3,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445414448.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0000000000002
+          ]
+        },
+        {
+          "action": {
+            "mono": 2029.3,
+            "op": "sample",
+            "wall": 1445414449.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 299
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.0000000000002
+          ]
+        },
+        {
+          "action": {
+            "mono": 2330.3,
+            "op": "sample",
+            "wall": 1445414750.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2359.3,
+            "op": "reset",
+            "wall": 1445414779.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 2389.3,
+            "op": "record",
+            "root": false,
+            "status": 404,
+            "wall": 1445414809.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2389.3,
+            "op": "sample",
+            "wall": 1445414809.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 2389.3,
+            "op": "record",
+            "root": true,
+            "status": 429,
+            "wall": 1445414809.3
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 60
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            60.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2690.3,
+            "op": "reset",
+            "wall": 1445415110.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2695.3,
+            "op": "sample",
+            "wall": 1445415115.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2700.3,
+            "op": "reset",
+            "wall": 1445415120.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 2730.3,
+            "op": "record",
+            "root": true,
+            "status": 401,
+            "wall": 1445415150.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 2730.3,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445415150.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 2735.3,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445415155.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 295
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            295.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2764.3,
+            "op": "sample",
+            "wall": 1445415184.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 266
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            266.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 2765.3,
+            "op": "record",
+            "root": false,
+            "status": 429,
+            "wall": 1445415185.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 265
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            265.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 3066.3,
+            "op": "record",
+            "root": true,
+            "status": 201,
+            "wall": 1445415486.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 3096.3,
+            "op": "sample",
+            "wall": 1445415516.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 2",
+      "steps": [
+        {
+          "action": {
+            "mono": 1001.0,
+            "op": "sample",
+            "wall": 1445413421.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1001.1,
+            "op": "reset",
+            "wall": 1445413421.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1002.1,
+            "op": "sample",
+            "wall": 1445413422.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1003.1,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445413423.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1003.2,
+            "op": "record",
+            "root": true,
+            "status": 200,
+            "wall": 1445413423.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1032.2,
+            "op": "record",
+            "root": false,
+            "status": 201,
+            "wall": 1445413452.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1033.2,
+            "op": "reset",
+            "wall": 1445413453.2
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1033.3,
+            "op": "record",
+            "root": false,
+            "status": 401,
+            "wall": 1445413453.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1038.3,
+            "op": "sample",
+            "wall": 1445413458.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 295
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            295.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1067.3,
+            "op": "record",
+            "root": true,
+            "status": 429,
+            "wall": 1445413487.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 266
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            266.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1096.3,
+            "op": "record",
+            "root": false,
+            "status": 204,
+            "wall": 1445413516.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1126.3,
+            "op": "record",
+            "root": false,
+            "status": 400,
+            "wall": 1445413546.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1155.3,
+            "op": "record",
+            "root": false,
+            "status": 400,
+            "wall": 1445413575.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1155.3,
+            "op": "record",
+            "root": true,
+            "status": 503,
+            "wall": 1445413575.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1155.4,
+            "op": "record",
+            "root": false,
+            "status": 400,
+            "wall": 1445413575.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1160.4,
+            "op": "reset",
+            "wall": 1445413580.4
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1160.5,
+            "op": "sample",
+            "wall": 1445413580.5
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1160.6,
+            "op": "sample",
+            "wall": 1445413580.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1189.6,
+            "op": "reset",
+            "wall": 1445413609.6
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1190.6,
+            "op": "sample",
+            "wall": 1445413610.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1195.6,
+            "op": "reset",
+            "wall": 1445413615.6
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1196.6,
+            "op": "sample",
+            "wall": 1445413616.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1497.6,
+            "op": "sample",
+            "wall": 1445413917.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1798.6,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445414218.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1798.6,
+            "op": "reset",
+            "wall": 1445414218.6
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1827.6,
+            "op": "sample",
+            "wall": 1445414247.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1856.6,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445414276.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1861.6,
+            "op": "record",
+            "root": true,
+            "status": 429,
+            "wall": 1445414281.6
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2.0009999999999764
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1862.6,
+            "op": "record",
+            "root": true,
+            "status": 201,
+            "wall": 1445414282.6
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 1
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            1.0009999999999764
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1862.7,
+            "op": "record",
+            "root": false,
+            "status": 401,
+            "wall": 1445414282.7
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.9999999999998
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 3",
+      "steps": [
+        {
+          "action": {
+            "mono": 1301.0,
+            "op": "reset",
+            "wall": 1445413721.0
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1602.0,
+            "op": "record",
+            "root": false,
+            "status": 301,
+            "wall": 1445414022.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1607.0,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445414027.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1908.0,
+            "op": "record",
+            "root": true,
+            "status": 404,
+            "wall": 1445414328.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1938.0,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445414358.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1939.0,
+            "op": "record",
+            "root": false,
+            "status": 401,
+            "wall": 1445414359.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1968.0,
+            "op": "sample",
+            "wall": 1445414388.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 271
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            271.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1997.0,
+            "op": "reset",
+            "wall": 1445414417.0
+          },
+          "blocked": null,
+          "reset_result": true,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2027.0,
+            "op": "sample",
+            "wall": 1445414447.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2328.0,
+            "op": "sample",
+            "wall": 1445414748.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 2358.0,
+            "op": "record",
+            "root": false,
+            "status": 500,
+            "wall": 1445414778.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 2358.1,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445414778.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 2358.1,
+            "op": "record",
+            "root": false,
+            "status": 201,
+            "wall": 1445414778.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2358.2,
+            "op": "reset",
+            "wall": 1445414778.2
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 2359.2,
+            "op": "record",
+            "root": true,
+            "status": 401,
+            "wall": 1445414779.2
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 2360.2,
+            "op": "record",
+            "root": false,
+            "status": 404,
+            "wall": 1445414780.2
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 299
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 2390.2,
+            "op": "record",
+            "root": false,
+            "status": 404,
+            "wall": 1445414810.2
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 269
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            269.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2691.2,
+            "op": "reset",
+            "wall": 1445415111.2
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2720.2,
+            "op": "sample",
+            "wall": 1445415140.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 3021.2,
+            "op": "sample",
+            "wall": 1445415441.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 3050.2,
+            "op": "record",
+            "root": true,
+            "status": 204,
+            "wall": 1445415470.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 3050.3,
+            "op": "record",
+            "root": false,
+            "status": 500,
+            "wall": 1445415470.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 3080.3,
+            "op": "reset",
+            "wall": 1445415500.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 3080.3,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445415500.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 3080.4,
+            "op": "sample",
+            "wall": 1445415500.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 3081.4,
+            "op": "record",
+            "root": true,
+            "status": 204,
+            "wall": 1445415501.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 3081.4,
+            "op": "sample",
+            "wall": 1445415501.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 3382.4,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445415802.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 3683.4,
+            "op": "sample",
+            "wall": 1445416103.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 3688.4,
+            "op": "record",
+            "root": true,
+            "status": 429,
+            "wall": 1445416108.4
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 60
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            60.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 4",
+      "steps": [
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1005.0,
+            "op": "record",
+            "root": false,
+            "status": 429,
+            "wall": 1445413425.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2.0009999999999764
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1005.1,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445413425.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.9999999999999
+          ]
+        },
+        {
+          "action": {
+            "mono": 1010.1,
+            "op": "sample",
+            "wall": 1445413430.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 295
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            294.9999999999999
+          ]
+        },
+        {
+          "action": {
+            "mono": 1040.1,
+            "op": "sample",
+            "wall": 1445413460.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 265
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            265.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1069.1,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445413489.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1070.1,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445413490.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1071.1,
+            "op": "record",
+            "root": true,
+            "status": 404,
+            "wall": 1445413491.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 299
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1372.1,
+            "op": "record",
+            "root": false,
+            "status": 301,
+            "wall": 1445413792.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1373.1,
+            "op": "record",
+            "root": false,
+            "status": 400,
+            "wall": 1445413793.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1402.1,
+            "op": "record",
+            "root": false,
+            "status": 201,
+            "wall": 1445413822.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1407.1,
+            "op": "record",
+            "root": true,
+            "status": 201,
+            "wall": 1445413827.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1408.1,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445413828.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1438.1,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445413858.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1467.1,
+            "op": "record",
+            "root": false,
+            "status": 404,
+            "wall": 1445413887.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 271
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            271.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1467.2,
+            "op": "reset",
+            "wall": 1445413887.2
+          },
+          "blocked": null,
+          "reset_result": true,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1468.2,
+            "op": "record",
+            "root": true,
+            "status": 404,
+            "wall": 1445413888.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1498.2,
+            "op": "record",
+            "root": false,
+            "status": 204,
+            "wall": 1445413918.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1799.2,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445414219.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 2100.2,
+            "op": "record",
+            "root": false,
+            "status": 404,
+            "wall": 1445414520.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2105.2,
+            "op": "sample",
+            "wall": 1445414525.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2135.2,
+            "op": "sample",
+            "wall": 1445414555.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 2140.2,
+            "op": "record",
+            "root": false,
+            "status": 301,
+            "wall": 1445414560.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2441.2,
+            "op": "reset",
+            "wall": 1445414861.2
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 2742.2,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445415162.2
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 2742.3,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445415162.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 2742.4,
+            "op": "record",
+            "root": true,
+            "status": 200,
+            "wall": 1445415162.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 2771.4,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445415191.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 2800.4,
+            "op": "record",
+            "root": false,
+            "status": 503,
+            "wall": 1445415220.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 2800.5,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445415220.5
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 2800.5,
+            "op": "record",
+            "root": true,
+            "status": 201,
+            "wall": 1445415220.5
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 5",
+      "steps": [
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1030.0,
+            "op": "record",
+            "root": false,
+            "status": 429,
+            "wall": 1445413450.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3600
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3600.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1031.0,
+            "op": "record",
+            "root": true,
+            "status": 404,
+            "wall": 1445413451.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3599
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3599.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1332.0,
+            "op": "record",
+            "root": true,
+            "status": 503,
+            "wall": 1445413752.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3298
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3298.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1333.0,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445413753.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3297
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3297.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1333.0,
+            "op": "sample",
+            "wall": 1445413753.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3297
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3297.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1362.0,
+            "op": "record",
+            "root": false,
+            "status": 200,
+            "wall": 1445413782.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3268
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3268.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1663.0,
+            "op": "record",
+            "root": false,
+            "status": 204,
+            "wall": 1445414083.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2967
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2967.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1664.0,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445414084.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2966
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2966.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1664.1,
+            "op": "record",
+            "root": false,
+            "status": 201,
+            "wall": 1445414084.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2966
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2965.9
+          ]
+        },
+        {
+          "action": {
+            "mono": 1665.1,
+            "op": "sample",
+            "wall": 1445414085.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2965
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2964.9
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1665.1,
+            "op": "record",
+            "root": false,
+            "status": 204,
+            "wall": 1445414085.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2965
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2964.9
+          ]
+        },
+        {
+          "action": {
+            "mono": 1695.1,
+            "op": "reset",
+            "wall": 1445414115.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2935
+          },
+          "reset_result": false,
+          "state": [
+            "throttle",
+            2934.9
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1724.1,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445414144.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2906
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2905.9
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1753.1,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445414173.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2877
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2876.9
+          ]
+        },
+        {
+          "action": {
+            "mono": 1753.1,
+            "op": "sample",
+            "wall": 1445414173.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2877
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2876.9
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1783.1,
+            "op": "record",
+            "root": true,
+            "status": 204,
+            "wall": 1445414203.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 2847
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            2846.9
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 2084.1,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445414504.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2113.1,
+            "op": "sample",
+            "wall": 1445414533.1
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 271
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            271.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2113.2,
+            "op": "reset",
+            "wall": 1445414533.2
+          },
+          "blocked": null,
+          "reset_result": true,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 2414.2,
+            "op": "record",
+            "root": false,
+            "status": 204,
+            "wall": 1445414834.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2443.2,
+            "op": "sample",
+            "wall": 1445414863.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 2472.2,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445414892.2
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2473.2,
+            "op": "reset",
+            "wall": 1445414893.2
+          },
+          "blocked": null,
+          "reset_result": true,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 2502.2,
+            "op": "record",
+            "root": false,
+            "status": 500,
+            "wall": 1445414922.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 2502.2,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445414922.2
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2503.2,
+            "op": "reset",
+            "wall": 1445414923.2
+          },
+          "blocked": null,
+          "reset_result": true,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 2533.2,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445414953.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2533.3,
+            "op": "reset",
+            "wall": 1445414953.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 2834.3,
+            "op": "record",
+            "root": true,
+            "status": 200,
+            "wall": 1445415254.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2835.3,
+            "op": "reset",
+            "wall": 1445415255.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 6",
+      "steps": [
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1001.0,
+            "op": "record",
+            "root": false,
+            "status": 400,
+            "wall": 1445413421.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1001.1,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445413421.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1031.1,
+            "op": "record",
+            "root": true,
+            "status": 404,
+            "wall": 1445413451.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1031.1,
+            "op": "record",
+            "root": false,
+            "status": 404,
+            "wall": 1445413451.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1031.1,
+            "op": "reset",
+            "wall": 1445413451.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1031.1,
+            "op": "reset",
+            "wall": 1445413451.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1031.2,
+            "op": "sample",
+            "wall": 1445413451.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1036.2,
+            "op": "sample",
+            "wall": 1445413456.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1036.3,
+            "op": "record",
+            "root": true,
+            "status": 204,
+            "wall": 1445413456.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1066.3,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445413486.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1095.3,
+            "op": "sample",
+            "wall": 1445413515.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1096.3,
+            "op": "record",
+            "root": false,
+            "status": 201,
+            "wall": 1445413516.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1126.3,
+            "op": "sample",
+            "wall": 1445413546.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1131.3,
+            "op": "reset",
+            "wall": 1445413551.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1432.3,
+            "op": "sample",
+            "wall": 1445413852.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1462.3,
+            "op": "reset",
+            "wall": 1445413882.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1462.4,
+            "op": "reset",
+            "wall": 1445413882.4
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1462.5,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445413882.5
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1492.5,
+            "op": "record",
+            "root": true,
+            "status": 503,
+            "wall": 1445413912.5
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1493.5,
+            "op": "sample",
+            "wall": 1445413913.5
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1522.5,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445413942.5
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1551.5,
+            "op": "sample",
+            "wall": 1445413971.5
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 271
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            271.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1581.5,
+            "op": "record",
+            "root": false,
+            "status": 204,
+            "wall": 1445414001.5
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1581.6,
+            "op": "sample",
+            "wall": 1445414001.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1582.6,
+            "op": "reset",
+            "wall": 1445414002.6
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1582.7,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445414002.7
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1582.7,
+            "op": "sample",
+            "wall": 1445414002.7
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1582.8,
+            "op": "record",
+            "root": true,
+            "status": 429,
+            "wall": 1445414002.8
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.9000000000001
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1587.8,
+            "op": "record",
+            "root": false,
+            "status": 301,
+            "wall": 1445414007.8
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1587.8,
+            "op": "sample",
+            "wall": 1445414007.8
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 7",
+      "steps": [
+        {
+          "action": {
+            "mono": 1000.1,
+            "op": "sample",
+            "wall": 1445413420.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1000.1,
+            "op": "reset",
+            "wall": 1445413420.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1000.2,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445413420.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1000.2,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445413420.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1005.2,
+            "op": "sample",
+            "wall": 1445413425.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1306.2,
+            "op": "record",
+            "root": false,
+            "status": 503,
+            "wall": 1445413726.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1311.2,
+            "op": "record",
+            "root": false,
+            "status": 301,
+            "wall": 1445413731.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1341.2,
+            "op": "sample",
+            "wall": 1445413761.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1346.2,
+            "op": "record",
+            "root": false,
+            "status": 404,
+            "wall": 1445413766.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1376.2,
+            "op": "record",
+            "root": false,
+            "status": 400,
+            "wall": 1445413796.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1376.2,
+            "op": "reset",
+            "wall": 1445413796.2
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1405.2,
+            "op": "record",
+            "root": false,
+            "status": 200,
+            "wall": 1445413825.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1405.3,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445413825.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1706.3,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445414126.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1711.3,
+            "op": "sample",
+            "wall": 1445414131.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1711.3,
+            "op": "sample",
+            "wall": 1445414131.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1716.3,
+            "op": "reset",
+            "wall": 1445414136.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1717.3,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445414137.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1747.3,
+            "op": "sample",
+            "wall": 1445414167.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1752.3,
+            "op": "record",
+            "root": true,
+            "status": 400,
+            "wall": 1445414172.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1752.3,
+            "op": "sample",
+            "wall": 1445414172.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 2053.3,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445414473.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2058.3,
+            "op": "reset",
+            "wall": 1445414478.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2059.3,
+            "op": "reset",
+            "wall": 1445414479.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 2360.3,
+            "op": "record",
+            "root": false,
+            "status": 301,
+            "wall": 1445414780.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2390.3,
+            "op": "sample",
+            "wall": 1445414810.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 2395.3,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445414815.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 2696.3,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445415116.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2997.3,
+            "op": "reset",
+            "wall": 1445415417.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 2998.3,
+            "op": "record",
+            "root": false,
+            "status": 429,
+            "wall": 1445415418.3
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 1
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            1.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 8",
+      "steps": [
+        {
+          "action": {
+            "header": "",
+            "mono": 1001.0,
+            "op": "record",
+            "root": true,
+            "status": 201,
+            "wall": 1445413421.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1001.1,
+            "op": "record",
+            "root": false,
+            "status": 204,
+            "wall": 1445413421.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1001.2,
+            "op": "record",
+            "root": true,
+            "status": 200,
+            "wall": 1445413421.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1001.3,
+            "op": "record",
+            "root": false,
+            "status": 201,
+            "wall": 1445413421.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1006.3,
+            "op": "record",
+            "root": true,
+            "status": 204,
+            "wall": 1445413426.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1035.3,
+            "op": "record",
+            "root": false,
+            "status": 200,
+            "wall": 1445413455.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1065.3,
+            "op": "sample",
+            "wall": 1445413485.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1095.3,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445413515.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1095.3,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445413515.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1124.3,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445413544.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1124.4,
+            "op": "record",
+            "root": true,
+            "status": 503,
+            "wall": 1445413544.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1124.5,
+            "op": "reset",
+            "wall": 1445413544.5
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1125.5,
+            "op": "record",
+            "root": true,
+            "status": 401,
+            "wall": 1445413545.5
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1126.5,
+            "op": "record",
+            "root": true,
+            "status": 404,
+            "wall": 1445413546.5
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 299
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1131.5,
+            "op": "reset",
+            "wall": 1445413551.5
+          },
+          "blocked": null,
+          "reset_result": true,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1432.5,
+            "op": "reset",
+            "wall": 1445413852.5
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1432.6,
+            "op": "sample",
+            "wall": 1445413852.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1462.6,
+            "op": "record",
+            "root": false,
+            "status": 200,
+            "wall": 1445413882.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1462.6,
+            "op": "reset",
+            "wall": 1445413882.6
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1463.6,
+            "op": "sample",
+            "wall": 1445413883.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1463.6,
+            "op": "record",
+            "root": false,
+            "status": 400,
+            "wall": 1445413883.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1764.6,
+            "op": "record",
+            "root": false,
+            "status": 204,
+            "wall": 1445414184.6
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2065.6,
+            "op": "reset",
+            "wall": 1445414485.6
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2065.7,
+            "op": "reset",
+            "wall": 1445414485.7
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 2070.7,
+            "op": "record",
+            "root": false,
+            "status": 500,
+            "wall": 1445414490.7
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2099.7,
+            "op": "reset",
+            "wall": 1445414519.7
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2128.7,
+            "op": "sample",
+            "wall": 1445414548.7
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2129.7,
+            "op": "sample",
+            "wall": 1445414549.7
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 2129.7,
+            "op": "record",
+            "root": false,
+            "status": 404,
+            "wall": 1445414549.7
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 2134.7,
+            "op": "record",
+            "root": true,
+            "status": 200,
+            "wall": 1445414554.7
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 9",
+      "steps": [
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1001.0,
+            "op": "record",
+            "root": true,
+            "status": 403,
+            "wall": 1445413421.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1030.0,
+            "op": "sample",
+            "wall": 1445413450.0
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 271
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            271.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1030.1,
+            "op": "reset",
+            "wall": 1445413450.1
+          },
+          "blocked": null,
+          "reset_result": true,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1030.1,
+            "op": "sample",
+            "wall": 1445413450.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1031.1,
+            "op": "reset",
+            "wall": 1445413451.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1031.2,
+            "op": "record",
+            "root": true,
+            "status": 204,
+            "wall": 1445413451.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1061.2,
+            "op": "record",
+            "root": false,
+            "status": 429,
+            "wall": 1445413481.2
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 1
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            1.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1062.2,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445413482.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1062.3,
+            "op": "reset",
+            "wall": 1445413482.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1067.3,
+            "op": "record",
+            "root": true,
+            "status": 200,
+            "wall": 1445413487.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1096.3,
+            "op": "record",
+            "root": false,
+            "status": 301,
+            "wall": 1445413516.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1125.3,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445413545.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1155.3,
+            "op": "reset",
+            "wall": 1445413575.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1156.3,
+            "op": "record",
+            "root": false,
+            "status": 503,
+            "wall": 1445413576.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1186.3,
+            "op": "reset",
+            "wall": 1445413606.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1216.3,
+            "op": "sample",
+            "wall": 1445413636.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1245.3,
+            "op": "sample",
+            "wall": 1445413665.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1274.3,
+            "op": "record",
+            "root": false,
+            "status": 503,
+            "wall": 1445413694.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1575.3,
+            "op": "sample",
+            "wall": 1445413995.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1575.3,
+            "op": "reset",
+            "wall": 1445413995.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1576.3,
+            "op": "record",
+            "root": false,
+            "status": 404,
+            "wall": 1445413996.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1877.3,
+            "op": "reset",
+            "wall": 1445414297.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1878.3,
+            "op": "record",
+            "root": false,
+            "status": 301,
+            "wall": 1445414298.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1878.3,
+            "op": "sample",
+            "wall": 1445414298.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1907.3,
+            "op": "sample",
+            "wall": 1445414327.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1907.4,
+            "op": "reset",
+            "wall": 1445414327.4
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 1907.4,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445414327.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 2208.4,
+            "op": "record",
+            "root": false,
+            "status": 400,
+            "wall": 1445414628.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2237.4,
+            "op": "sample",
+            "wall": 1445414657.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 2238.4,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445414658.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 10",
+      "steps": [
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1001.0,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445413421.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1006.0,
+            "op": "sample",
+            "wall": 1445413426.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1307.0,
+            "op": "record",
+            "root": false,
+            "status": 503,
+            "wall": 1445413727.0
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1307.1,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445413727.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1608.1,
+            "op": "reset",
+            "wall": 1445414028.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1613.1,
+            "op": "reset",
+            "wall": 1445414033.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1614.1,
+            "op": "reset",
+            "wall": 1445414034.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1614.1,
+            "op": "reset",
+            "wall": 1445414034.1
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1915.1,
+            "op": "sample",
+            "wall": 1445414335.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1916.1,
+            "op": "record",
+            "root": false,
+            "status": 204,
+            "wall": 1445414336.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1921.1,
+            "op": "record",
+            "root": false,
+            "status": 200,
+            "wall": 1445414341.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 2222.1,
+            "op": "record",
+            "root": false,
+            "status": 400,
+            "wall": 1445414642.1
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2222.2,
+            "op": "reset",
+            "wall": 1445414642.2
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 2252.2,
+            "op": "record",
+            "root": true,
+            "status": 201,
+            "wall": 1445414672.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 2282.2,
+            "op": "record",
+            "root": false,
+            "status": 301,
+            "wall": 1445414702.2
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2282.3,
+            "op": "sample",
+            "wall": 1445414702.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2283.3,
+            "op": "sample",
+            "wall": 1445414703.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "2.001",
+            "mono": 2312.3,
+            "op": "record",
+            "root": true,
+            "status": 404,
+            "wall": 1445414732.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2313.3,
+            "op": "reset",
+            "wall": 1445414733.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2342.3,
+            "op": "reset",
+            "wall": 1445414762.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2342.3,
+            "op": "reset",
+            "wall": 1445414762.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2347.3,
+            "op": "reset",
+            "wall": 1445414767.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 2648.3,
+            "op": "record",
+            "root": true,
+            "status": 401,
+            "wall": 1445415068.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2649.3,
+            "op": "sample",
+            "wall": 1445415069.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 299
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2649.3,
+            "op": "sample",
+            "wall": 1445415069.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 299
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            299.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2950.3,
+            "op": "sample",
+            "wall": 1445415370.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 2955.3,
+            "op": "record",
+            "root": true,
+            "status": 500,
+            "wall": 1445415375.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2985.3,
+            "op": "sample",
+            "wall": 1445415405.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 3286.3,
+            "op": "record",
+            "root": true,
+            "status": 204,
+            "wall": 1445415706.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 3291.3,
+            "op": "record",
+            "root": true,
+            "status": 429,
+            "wall": 1445415711.3
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3600
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3600.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "seeded sequence 11",
+      "steps": [
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1030.0,
+            "op": "record",
+            "root": false,
+            "status": 429,
+            "wall": 1445413450.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3600
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3600.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1030.0,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445413450.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3600
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3600.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1031.0,
+            "op": "record",
+            "root": false,
+            "status": 429,
+            "wall": 1445413451.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3599
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3599.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1036.0,
+            "op": "reset",
+            "wall": 1445413456.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3594
+          },
+          "reset_result": false,
+          "state": [
+            "throttle",
+            3594.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 1036.0,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445413456.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3594
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3594.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1041.0,
+            "op": "reset",
+            "wall": 1445413461.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3589
+          },
+          "reset_result": false,
+          "state": [
+            "throttle",
+            3589.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1046.0,
+            "op": "sample",
+            "wall": 1445413466.0
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3584
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3584.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1046.1,
+            "op": "record",
+            "root": false,
+            "status": 429,
+            "wall": 1445413466.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3600
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3600.0000000000005
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1347.1,
+            "op": "record",
+            "root": true,
+            "status": 503,
+            "wall": 1445413767.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3299
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3299.0000000000005
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1377.1,
+            "op": "record",
+            "root": false,
+            "status": 500,
+            "wall": 1445413797.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3269
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3269.0000000000005
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 1377.1,
+            "op": "record",
+            "root": true,
+            "status": 404,
+            "wall": 1445413797.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3269
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3269.0000000000005
+          ]
+        },
+        {
+          "action": {
+            "mono": 1378.1,
+            "op": "reset",
+            "wall": 1445413798.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3268
+          },
+          "reset_result": false,
+          "state": [
+            "throttle",
+            3268.0000000000005
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 1383.1,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445413803.1
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3263
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3263.0000000000005
+          ]
+        },
+        {
+          "action": {
+            "mono": 1383.2,
+            "op": "reset",
+            "wall": 1445413803.2
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3263
+          },
+          "reset_result": false,
+          "state": [
+            "throttle",
+            3262.9000000000005
+          ]
+        },
+        {
+          "action": {
+            "mono": 1384.2,
+            "op": "sample",
+            "wall": 1445413804.2
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3262
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3261.9000000000005
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1389.2,
+            "op": "record",
+            "root": true,
+            "status": 429,
+            "wall": 1445413809.2
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3600
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3600.0
+          ]
+        },
+        {
+          "action": {
+            "header": null,
+            "mono": 1394.2,
+            "op": "record",
+            "root": false,
+            "status": 403,
+            "wall": 1445413814.2
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3595
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3595.0
+          ]
+        },
+        {
+          "action": {
+            "header": "120",
+            "mono": 1399.2,
+            "op": "record",
+            "root": true,
+            "status": 200,
+            "wall": 1445413819.2
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3590
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3590.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1399.3,
+            "op": "sample",
+            "wall": 1445413819.3
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3590
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3589.8999999999996
+          ]
+        },
+        {
+          "action": {
+            "mono": 1428.3,
+            "op": "reset",
+            "wall": 1445413848.3
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3561
+          },
+          "reset_result": false,
+          "state": [
+            "throttle",
+            3560.8999999999996
+          ]
+        },
+        {
+          "action": {
+            "mono": 1458.3,
+            "op": "sample",
+            "wall": 1445413878.3
+          },
+          "blocked": {
+            "kind": "throttle",
+            "retry_after": 3531
+          },
+          "reset_result": null,
+          "state": [
+            "throttle",
+            3530.8999999999996
+          ]
+        },
+        {
+          "action": {
+            "header": "3601",
+            "mono": 1458.3,
+            "op": "record",
+            "root": true,
+            "status": 401,
+            "wall": 1445413878.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 300
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            300.0
+          ]
+        },
+        {
+          "action": {
+            "header": "inf",
+            "mono": 1487.3,
+            "op": "record",
+            "root": false,
+            "status": 503,
+            "wall": 1445413907.3
+          },
+          "blocked": {
+            "kind": "login",
+            "retry_after": 271
+          },
+          "reset_result": null,
+          "state": [
+            "login",
+            271.0
+          ]
+        },
+        {
+          "action": {
+            "header": "bad",
+            "mono": 1788.3,
+            "op": "record",
+            "root": true,
+            "status": 204,
+            "wall": 1445414208.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 1789.3,
+            "op": "reset",
+            "wall": 1445414209.3
+          },
+          "blocked": null,
+          "reset_result": false,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2090.3,
+            "op": "sample",
+            "wall": 1445414510.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "mono": 2095.3,
+            "op": "record",
+            "root": false,
+            "status": 201,
+            "wall": 1445414515.3
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "",
+            "mono": 2095.4,
+            "op": "record",
+            "root": true,
+            "status": 301,
+            "wall": 1445414515.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "mono": 2124.4,
+            "op": "sample",
+            "wall": 1445414544.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        },
+        {
+          "action": {
+            "header": "0",
+            "mono": 2425.4,
+            "op": "record",
+            "root": true,
+            "status": 201,
+            "wall": 1445414845.4
+          },
+          "blocked": null,
+          "reset_result": null,
+          "state": [
+            "",
+            0.0
+          ]
+        }
+      ]
+    }
+  ],
+  "source_sha256": "d2ba1b187d611be7766e523d4638f7a3b9a4f223e49c4847d8f960897f04f2af",
+  "unicode": "15.0.0"
+}

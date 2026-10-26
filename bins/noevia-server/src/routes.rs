@@ -55,6 +55,8 @@ pub enum Native {
     Static,
     /// Sign-in and the account (M3, permanent since #1071): crates/server-account.
     Account,
+    /// Three live, read-only address GETs; Node retains the POST writers.
+    WebAddress,
     /// The project routes ported so far (M4, permanent since #1071): crates/server-projects
     /// `assets` (a project's images), `chats` (its chat list) and `free_chats` (the free-chat list).
     Projects,
@@ -100,6 +102,7 @@ const PROJECT_ROUTES: &[&str] = &[
     FREE_CHATS,
     CHAT_CONTEXT_WINDOW,
     CHAT_HISTORY,
+    CHAT_MOVE,
     FREE_CHAT,
     PROJECT_CHAT,
 ];
@@ -116,6 +119,7 @@ const CHAT_CONTEXT_WINDOW: &str = "/api/chats/{chatId}/context-window";
 /// A chat's transcript and interrupted partial reply (GET, slice 2) and its save (POST, slice 5;
 /// routes.toml), always answered here (sbstndalton/noevia#1071); Node refuses both.
 const CHAT_HISTORY: &str = "/api/chats/{chatId}/history";
+const CHAT_MOVE: &str = "/api/chats/{chatId}/move";
 
 /// One chat's delete (DELETE only; routes.toml), the whole cascade one Rust store operation
 /// (crates/server-projects `chat_delete`, sbstndalton/noevia#1071 slice 6); Node refuses both.
@@ -201,6 +205,14 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/sampling-settings" if auth => return Some(Native::SamplingSettings),
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
+        "/api/instance"
+        | "/.well-known/webauthn"
+        | "/api/admin/web-address"
+        | "/api/admin/web-address/remove"
+            if auth =>
+        {
+            return Some(Native::WebAddress)
+        }
         // Under /api/account/ but not the account crate's: it reads the chat lists.
         ACCOUNT_RETENTION if auth => return Some(Native::Projects),
         _ => {}
@@ -349,6 +361,9 @@ mod tests {
                 }
                 // The retention preview reads the chat lists, so the project handler answers it.
                 Some(Native::Projects) if r.path == ACCOUNT_RETENTION => {}
+                Some(Native::WebAddress)
+                    if r.path == "/api/admin/web-address"
+                        || r.path == "/api/admin/web-address/remove" => {}
                 Some(_) => assert!(!is_account_path(r.path), "{} is an account path", r.path),
                 other @ None => assert!(
                     other.is_some(),
@@ -473,7 +488,26 @@ mod tests {
         assert_eq!(dispatch("GET", "/privacy"), None);
         assert_eq!(dispatch("GET", "/device"), None);
         assert_eq!(dispatch("GET", "/device/"), None);
-        assert_eq!(dispatch("GET", "/.well-known/webauthn"), None);
+        for path in [
+            "/api/instance",
+            "/.well-known/webauthn",
+            "/api/admin/web-address",
+        ] {
+            assert_eq!(dispatch("GET", path), Some(Native::WebAddress), "{path}");
+            for method in ["HEAD", "PUT", "DELETE", "OPTIONS"] {
+                assert_eq!(dispatch(method, path), None, "{method} {path}");
+            }
+        }
+        assert_eq!(dispatch("POST", "/api/instance"), None);
+        assert_eq!(dispatch("POST", "/.well-known/webauthn"), None);
+        for path in ["/api/admin/web-address", "/api/admin/web-address/remove"] {
+            assert_eq!(dispatch("POST", path), Some(Native::WebAddress), "{path}");
+            assert_eq!(dispatch("HEAD", path), None);
+            assert_eq!(
+                dispatch("GET", path),
+                (path == "/api/admin/web-address").then_some(Native::WebAddress)
+            );
+        }
         assert_eq!(
             dispatch("GET", "/api/projects/p1/chats"),
             cfg!(feature = "rust-project-chats").then_some(Native::Projects)
@@ -524,7 +558,7 @@ mod tests {
         }
         for (m, p) in [
             ("DELETE", "/api/admin/users/u1"),
-            ("GET", "/api/admin/web-address"),
+            ("HEAD", "/api/admin/web-address"),
             ("POST", "/api/profile/sharing"),
             ("PUT", "/api/account/retention"),
             ("HEAD", "/api/auth/session"),
@@ -593,7 +627,7 @@ mod tests {
             ("PUT", "/api/chats/c1/context"),
             ("DELETE", "/api/chats/c1/context"),
             ("PUT", "/api/chats/c1/history"),
-            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/chats/c1/move"),
             ("GET", "/api/diary/context"),
         ] {
             assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
@@ -627,10 +661,21 @@ mod tests {
             ("PUT", "/api/freechats"),
             ("DELETE", "/api/freechats"),
             ("HEAD", "/api/freechats"),
-            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/chats/c1/move"),
             ("GET", "/api/workspace"),
         ] {
             assert_eq!(dispatch_under(m, p, both), None, "{m} {p}");
+        }
+    }
+
+    #[test]
+    fn chat_move_is_rusts_for_post_only() {
+        assert_eq!(
+            dispatch("POST", "/api/chats/c1/move"),
+            Some(Native::Projects)
+        );
+        for method in ["GET", "HEAD", "PUT", "PATCH", "DELETE"] {
+            assert_eq!(dispatch(method, "/api/chats/c1/move"), None);
         }
     }
 
@@ -662,7 +707,7 @@ mod tests {
         for (m, p) in [
             ("POST", "/api/chats/c1/context-window"),
             ("DELETE", "/api/chats/c1/context-window"),
-            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/chats/c1/move"),
         ] {
             assert_eq!(dispatch_under(m, p, off), None, "{m} {p}");
         }
@@ -683,7 +728,7 @@ mod tests {
         for (m, p) in [
             ("PUT", "/api/chats/c1/history"),
             ("DELETE", "/api/chats/c1/history"),
-            ("POST", "/api/chats/c1/move"),
+            ("GET", "/api/chats/c1/move"),
         ] {
             assert_eq!(dispatch_under(m, p, off), None, "{m} {p}");
         }
