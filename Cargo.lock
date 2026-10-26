@@ -584,6 +584,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-corpus-parse"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "diary-score-gap"
 version = "0.1.0"
 
