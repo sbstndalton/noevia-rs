@@ -21,6 +21,7 @@ use tokio::task::JoinSet;
 use tokio::time::Instant;
 
 mod limits;
+mod reactor;
 
 const MAX_START_BYTES: usize = 64 * 1024;
 const START_TIMEOUT: Duration = Duration::from_secs(15);
@@ -693,26 +694,30 @@ pub async fn serve(
     let permits = Arc::new(Semaphore::new(config.max_connections));
     let mut tasks = JoinSet::new();
     let result = loop {
-        tokio::select! {
-            biased;
-            _ = shutdown.changed() => break Ok(()),
-            accepted = listener.accept() => {
+        match reactor::next_event(&listener, &mut tasks, &mut shutdown).await {
+            reactor::Event::Stop => break Ok(()),
+            reactor::Event::Joined(joined) => {
+                if let Some(Err(error)) = joined {
+                    eprintln!("code-sandbox: connection task failed: {error}");
+                }
+            }
+            reactor::Event::Accepted(accepted) => {
                 let (mut stream, _) = match accepted {
                     Ok(accepted) => accepted,
                     Err(error) => break Err(error),
                 };
                 match Arc::clone(&permits).try_acquire_owned() {
                     Ok(permit) => {
-                        tasks.spawn(connection(stream, config.clone(), connection_shutdown.clone(), permit));
+                        tasks.spawn(connection(
+                            stream,
+                            config.clone(),
+                            connection_shutdown.clone(),
+                            permit,
+                        ));
                     }
                     Err(_) => {
                         refuse(&mut stream, &format!("The sandbox is already running {} agents; try again when one finishes.", config.max_connections)).await;
                     }
-                }
-            }
-            joined = tasks.join_next(), if !tasks.is_empty() => {
-                if let Some(Err(error)) = joined {
-                    eprintln!("code-sandbox: connection task failed: {error}");
                 }
             }
         }
