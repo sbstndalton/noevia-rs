@@ -3,7 +3,7 @@
 # recorded with) on loopback UI_PORT+1000, noevia-server on UI_PORT in front of it, the way the
 # web image runs them with NOEVIA_FRONT=rust. Used as tools/replay's --server-cmd:
 #
-#   replay run ... --base http://127.0.0.1:18021 \
+#   replay run ... --base http://127.0.0.1:18021 --native-move-state --state-out native-state.json \
 #     --server-cmd "exec sh tools/front/replay-front.sh <noevia-core> target/debug/noevia-server"
 #
 # replay sets UI_DATA_DIR / UI_PORT / UI_HOST and stops the whole process group afterwards.
@@ -83,8 +83,8 @@ store_port=$((port + 2000))
 store_token="$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"
 [ "${#store_token}" -eq 64 ] || { echo "replay-front: could not make the project store secret" >&2; exit 2; }
 # Like the web supervisor: one start id for both processes (sbstndalton/noevia#1071).
-start_id="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
-[ "${#start_id}" -eq 32 ] || { echo "replay-front: could not make the start id" >&2; exit 2; }
+start_id="${NOEVIA_REPLAY_NATIVE_MOVE_START:?replay-front requires replay --native-move-state}"
+[ "${#start_id}" -eq 32 ] && ! printf '%s' "$start_id" | grep -q '[^0-9a-f]' || { echo "replay-front: could not make the start id" >&2; exit 2; }
 store_confirmed=1
 # Context GET/POST are permanently native (#1071). Retired caller values cannot opt out.
 has_feature rust-project-writes || { echo "replay-front: no rust-project-writes" >&2; exit 2; }

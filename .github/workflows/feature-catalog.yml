@@ -1,0 +1,32 @@
+name: Full native feature catalog
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  feature-catalog:
+    name: Selected-core full catalog and native consumers
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: 21c65f2039632a77a3827533429ff87c4a936f7b
+          path: selected-core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - run: python3 tools/features/generate_catalog.py --check
+      - run: node tools/features/check_core_catalog.cjs "$PWD/selected-core"
+      - name: Actual selected-core feature service reproduces committed oracle
+        run: node crates/server-features/tests/oracle.cjs "$PWD/selected-core" | cmp -s - crates/server-features/tests/fixtures/core-feature-eval-v2.json
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked -p server-features -p server-auth -p server-routing-mode -p server-chatgpt-status --all-targets -- -D warnings
+      - run: cargo test --locked -p server-features -p server-auth -p server-routing-mode -p server-chatgpt-status

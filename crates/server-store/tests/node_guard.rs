@@ -1,7 +1,8 @@
 //! M3: noevia-core's single-writer guard (server/rust-auth.cjs) and this crate must name the
 //! same tables and settings keys, or a table would have two writers (or none) under
-//! NOEVIA_RUST_AUTH. Runs when NOEVIA_CORE_CHECKOUT points at a core checkout (CI); skipped
-//! otherwise.
+//! the paired release. CI sets NOEVIA_CORE_CHECKOUT to the exact counterpart in
+//! contracts/http/store-guard-core.ref; the frozen behavior oracle core.ref is separate.
+//! Runs when that checkout is supplied; skipped otherwise.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -26,9 +27,6 @@ fn js_set(src: &str, name: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// Owned tables Node's guard at the pinned core.ref may not refuse yet (see below).
-const AWAITING_CORE: &[&str] = &["dav_settings"];
-
 #[test]
 fn node_refuses_exactly_what_rust_owns() {
     let Ok(core) = std::env::var("NOEVIA_CORE_CHECKOUT") else {
@@ -50,19 +48,7 @@ fn node_refuses_exactly_what_rust_owns() {
         .iter()
         .map(|k| (*k).to_string())
         .collect();
-    // A table Rust took over whose Node refusal is in a core change core.ref does not reach yet
-    // (Settings -> Sharing, #1071: noevia-core#243). Either core is accepted, so bumping core.ref
-    // never breaks this; drop the entry once core.ref includes it.
-    let awaiting: BTreeSet<String> = AWAITING_CORE.iter().map(|t| (*t).to_string()).collect();
-    let before: BTreeSet<String> = rust_tables.difference(&awaiting).cloned().collect();
-    assert!(
-        awaiting.is_empty() || !awaiting.is_subset(&node_tables),
-        "AWAITING_CORE {awaiting:?} is already refused by Node's guard at this core.ref: delete the entry from AWAITING_CORE"
-    );
-    assert!(
-        node_tables == rust_tables || node_tables == before,
-        "tables: Node refuses {node_tables:?}, Rust owns {rust_tables:?} (awaiting core: {awaiting:?})"
-    );
+    assert_eq!(node_tables, rust_tables, "tables");
     assert_eq!(node_keys, rust_keys, "settings keys");
 }
 

@@ -360,3 +360,107 @@ fn malformed_decoded_records_are_not_a_successful_receipt() {
     bad_length[body_start..body_start + 8].copy_from_slice(&u64::MAX.to_le_bytes());
     assert!(read_decode(Some(0), &bad_length).is_err());
 }
+
+#[test]
+fn operator_preview_and_restore_new_are_bounded_cli_commands() {
+    use base64::Engine;
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../crates/workspace-restore-verify/tests/fixtures/workspace-restore.v1.json"
+    ))
+    .unwrap();
+    let case = corpus["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "accept/export")
+        .unwrap();
+    let body = base64::engine::general_purpose::STANDARD
+        .decode(case["archive_b64"].as_str().unwrap())
+        .unwrap();
+    let (code, out) = run(&["preview"], &body);
+    assert_eq!(code, Some(0));
+    let preview: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        preview["fingerprint"],
+        workspace_restore_verify::sha256_hex(&body)
+    );
+    assert_eq!(preview["mode"], "new-directory-only");
+    assert_eq!(
+        preview["fileCount"],
+        preview["files"].as_array().unwrap().len()
+    );
+
+    let sandbox = std::env::temp_dir().join(format!(
+        "workspace-operator-cli-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&sandbox).unwrap();
+    let dest = sandbox.join("new");
+    let dest_str = dest.to_str().unwrap();
+    let fingerprint = preview["fingerprint"].as_str().unwrap();
+    let (code, out) = run(
+        &[
+            "restore-new",
+            "--destination",
+            dest_str,
+            "--fingerprint",
+            &"0".repeat(64),
+        ],
+        &body,
+    );
+    assert_eq!((code, out.as_str()), (Some(1), ""));
+    assert!(!dest.exists());
+    let (code, out) = run(
+        &[
+            "restore-new",
+            "--destination",
+            dest_str,
+            "--fingerprint",
+            fingerprint,
+        ],
+        &body,
+    );
+    assert_eq!(code, Some(0));
+    let restored: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(restored["fileCount"], preview["fileCount"]);
+    assert_eq!(restored["bytes"], preview["bytes"]);
+    assert_eq!(restored["settings"], preview["settings"]);
+    let verified = workspace_restore_verify::verify_archive(&body).unwrap();
+    for (record, bytes) in verified.files() {
+        assert_eq!(std::fs::read(dest.join(&record.path)).unwrap(), bytes);
+    }
+    assert_eq!(
+        run(
+            &[
+                "restore-new",
+                "--destination",
+                dest_str,
+                "--fingerprint",
+                fingerprint
+            ],
+            &body
+        ),
+        (Some(1), String::new())
+    );
+    let refused = sandbox.join("refused");
+    let refused_str = refused.to_str().unwrap();
+    assert_eq!(
+        run(
+            &[
+                "restore-new",
+                "--destination",
+                refused_str,
+                "--fingerprint",
+                fingerprint
+            ],
+            b"not a zip"
+        ),
+        (Some(1), "reject: invalid\n".into())
+    );
+    assert!(!refused.exists());
+    std::fs::remove_dir_all(sandbox).unwrap();
+}

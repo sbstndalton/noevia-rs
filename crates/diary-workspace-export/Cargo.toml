@@ -1,0 +1,23 @@
+[package]
+name = "diary-workspace-export"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "diary-workspace-export"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+sha2 = "=0.10.9"
+crc32fast = "1"
+
+[dev-dependencies]
+workspace-restore-verify = { path = "../workspace-restore-verify" }
