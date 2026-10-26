@@ -650,6 +650,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-workspace-rules"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "regex",
+ "ryu",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

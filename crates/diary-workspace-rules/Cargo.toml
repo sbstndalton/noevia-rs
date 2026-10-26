@@ -1,0 +1,18 @@
+[package]
+name = "diary-workspace-rules"
+version = "0.1.0"
+description = "Pure Diary managed-workspace path, ETag, and Trash-v1 rules"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "=0.22.1"
+regex = "1"
+ryu = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "=0.10.9"
