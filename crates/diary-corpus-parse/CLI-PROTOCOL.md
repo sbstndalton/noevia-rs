@@ -1,0 +1,13 @@
+# Diary corpus parse transport v1
+
+This source-only CLI has one command: `diary-corpus-parse parse-v1`. It accepts exactly one request and exits. Python remains the default production parser until the paired services adapter, image and release gates are reviewed.
+
+Input bytes: ASCII `DCP1`, unsigned 64-bit big-endian UTF-8 byte length, exactly that many raw corpus bytes, ASCII `END1`, then EOF. The raw text length may be 0 through 256 MiB inclusive. Extra bytes, truncation, invalid UTF-8 and wrong markers are failures.
+
+Successful output bytes: ASCII `DCR1`, unsigned 64-bit big-endian JSON payload length, exactly that many UTF-8 JSON bytes, ASCII `END1`, then EOF and exit status 0. The **whole output frame**, including its 16 framing bytes, may be at most 512 MiB. The JSON object has exact keys `version: 1`, `days` and `chunks`. Days have `header`, `date` (ISO string or null), and `subsections`. Subsections have `header`, `time` (string or null), `topic` and `exchanges`. Exchanges have `me`, `claude` (the legacy field name for Assistant or Claude content), and `xid` (string or null). Chunks have `day`, `header`, `text` and `content_hash`. Chunks retain source order and duplicates.
+
+Before parsing, the CLI rejects input with more than 1,000,000 potential lines or 200,000 potential day/subsection/exchange marker occurrences. These extra structural limits prevent the parser's line table and node tree from growing without bound within the byte cap. They may refuse a legacy-valid corpus; selection must surface a typed capacity failure, never truncate or treat it as an empty parse. Serialization uses a bounded buffer; neither partial success output nor a failure code is a valid parse. The caller must verify the exact frame, schema, UTF-8, EOF and child exit, and use an overall deadline with concurrent bounded input/output handling and a reaped child. The fixed binary must come from a reviewed image. No secret or corpus byte is printed on failure.
+
+The full in-memory parse, chunk projection and JSON response can temporarily coexist. The byte and structural caps are an explicit source-only capacity boundary, not a guarantee of an arbitrarily small peak RSS or a claim that all legacy corpus sizes are supported. The production activation review must measure realistic and adversarial synthetic cases under the service memory budget.
+
+A complete successful response with empty `days` and `chunks` represents a legitimately empty parse. All transport, capacity, process and decoder failures represent unavailable parsing. A failed reindex must not create or apply an empty plan.
