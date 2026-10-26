@@ -240,6 +240,123 @@ struct Answer {
     headers: HashMap<String, String>,
     body: Vec<u8>,
 }
+// Read the HTTP message, not connection EOF. A refused request may leave an
+// unread upload behind; closing that connection can reset after the complete
+// response has already arrived. Never accept a partial response on reset/EOF.
+async fn read_response<R: tokio::io::AsyncRead + Unpin>(
+    stream: &mut R,
+    head: bool,
+) -> io::Result<Vec<u8>> {
+    let mut reader = tokio::io::BufReader::new(stream);
+    let mut bytes = Vec::new();
+    while !bytes.ends_with(b"\r\n\r\n") {
+        if bytes.len() >= 32 * 1024 {
+            return Err(io::Error::other("response headers too large"));
+        }
+        bytes.push(reader.read_u8().await?);
+    }
+    let headers = std::str::from_utf8(&bytes).map_err(io::Error::other)?;
+    let mut status_line = headers.lines().next().unwrap_or("").splitn(3, ' ');
+    if !matches!(status_line.next(), Some("HTTP/1.0" | "HTTP/1.1")) {
+        return Err(io::Error::other("invalid response protocol"));
+    }
+    let status_text = status_line.next().unwrap_or("");
+    if status_text.len() != 3 || !status_text.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(io::Error::other("invalid response status"));
+    }
+    let status = status_text.parse::<u16>().map_err(io::Error::other)?;
+    if !(200..=599).contains(&status) {
+        return Err(io::Error::other("expected a final response"));
+    }
+    let mut length = None;
+    for line in headers.lines().skip(1).filter(|line| !line.is_empty()) {
+        if let Some((name, value)) = line.split_once(':') {
+            if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+                return Err(io::Error::other("invalid response header name"));
+            }
+            if name.eq_ignore_ascii_case("transfer-encoding") {
+                return Err(io::Error::other("unexpected transfer encoding"));
+            }
+            if name.eq_ignore_ascii_case("content-length") {
+                if length.is_some() || !value.trim().bytes().all(|b| b.is_ascii_digit()) {
+                    return Err(io::Error::other("invalid response content length"));
+                }
+                length = Some(value.trim().parse::<usize>().map_err(io::Error::other)?);
+            }
+        } else {
+            return Err(io::Error::other("invalid response header"));
+        }
+    }
+    if head || status == 204 || status == 304 {
+        // These responses have no wire body even if HEAD reports the GET
+        // length. Tests request Connection: close, so check the actual wire
+        // rather than silently discard any prefetched forbidden body bytes.
+        let mut trailing = [0u8; 1];
+        if reader.read(&mut trailing).await? != 0 {
+            return Err(io::Error::other("body on a bodyless response"));
+        }
+        return Ok(bytes);
+    }
+    let body_len = length.ok_or_else(|| io::Error::other("missing response content length"))?;
+    if body_len > 2 * 1024 * 1024 {
+        return Err(io::Error::other("response body too large"));
+    }
+    let mut body = vec![0; body_len];
+    reader.read_exact(&mut body).await?;
+    if !reader.buffer().is_empty() {
+        return Err(io::Error::other("bytes beyond the response frame"));
+    }
+    bytes.extend_from_slice(&body);
+    Ok(bytes)
+}
+
+#[tokio::test]
+async fn response_framing_does_not_require_eof_or_accept_truncation() -> TestResult {
+    let full = b"HTTP/1.1 415 Unsupported Media Type\r\nContent-Length: 3\r\n\r\nno!";
+    let (mut client, mut server) = tokio::io::duplex(1024);
+    server.write_all(full).await?;
+    // Keep the writer alive: a correct response reader must not wait for EOF.
+    let received =
+        tokio::time::timeout(Duration::from_secs(1), read_response(&mut client, false)).await??;
+    assert_eq!(received, full);
+    let mut bad_head = &b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nno!"[..];
+    assert!(read_response(&mut bad_head, true).await.is_err());
+    let mut valid_head = &b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n"[..];
+    assert!(read_response(&mut valid_head, true).await.is_ok());
+    for malformed in [
+        "HTTP/1.1 200 OK\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nContent-Length: 0\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Length: x\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Length: 2097153\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 0\r\n\r\n",
+        "HTTP/1.1 100 Continue\r\nContent-Length: 0\r\n\r\n",
+        "garbage 200 OK\r\nContent-Length: 0\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nbad header\r\nContent-Length: 0\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\nxextra",
+    ] {
+        let mut source = malformed.as_bytes();
+        assert!(
+            read_response(&mut source, false).await.is_err(),
+            "{malformed}"
+        );
+    }
+    for partial in [
+        &b"HTTP/1.1 415 Unsupported Media Type\r\nContent-Length: 3\r\n"[..],
+        full.get(..full.len() - 1)
+            .ok_or("truncated fixture slice")?,
+    ] {
+        let mut source = partial;
+        assert_eq!(
+            read_response(&mut source, false)
+                .await
+                .err()
+                .map(|e| e.kind()),
+            Some(io::ErrorKind::UnexpectedEof)
+        );
+    }
+    Ok(())
+}
+
 async fn request(
     addr: SocketAddr,
     method: &str,
@@ -263,12 +380,20 @@ async fn request(
         }
     }
     wire.push_str("\r\n");
-    stream.write_all(wire.as_bytes()).await?;
-    stream.write_all(body).await?;
-    let mut bytes = Vec::new();
-    tokio::time::timeout(Duration::from_secs(3), stream.read_to_end(&mut bytes))
+    stream.write_all(wire.as_bytes()).await.map_err(|error| {
+        io::Error::new(error.kind(), format!("{method} {path} headers: {error}"))
+    })?;
+    stream
+        .write_all(body)
         .await
-        .map_err(|_| io::Error::other("read timeout"))??;
+        .map_err(|error| io::Error::new(error.kind(), format!("{method} {path} body: {error}")))?;
+    let bytes = tokio::time::timeout(
+        Duration::from_secs(3),
+        read_response(&mut stream, method == "HEAD"),
+    )
+    .await
+    .map_err(|_| io::Error::other(format!("{method} {path}: read timeout")))?
+    .map_err(|error| io::Error::new(error.kind(), format!("{method} {path} response: {error}")))?;
     let split = bytes
         .windows(4)
         .position(|w| w == b"\r\n\r\n")
@@ -306,10 +431,12 @@ async fn request(
 async fn raw_status(addr: SocketAddr, wire: &str) -> io::Result<u16> {
     let mut stream = TcpStream::connect(addr).await?;
     stream.write_all(wire.as_bytes()).await?;
-    let mut bytes = Vec::new();
-    tokio::time::timeout(Duration::from_secs(3), stream.read_to_end(&mut bytes))
-        .await
-        .map_err(|_| io::Error::other("read timeout"))??;
+    let bytes = tokio::time::timeout(
+        Duration::from_secs(3),
+        read_response(&mut stream, wire.starts_with("HEAD ")),
+    )
+    .await
+    .map_err(|_| io::Error::other("read timeout"))??;
     let text = std::str::from_utf8(&bytes).map_err(io::Error::other)?;
     text.lines()
         .next()

@@ -88,6 +88,16 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 async fn serve_once(listener: TcpListener, status: &str, payload: Vec<u8>) -> (String, Vec<u8>) {
+    let length = payload.len();
+    serve_once_with_length(listener, status, payload, length).await
+}
+
+async fn serve_once_with_length(
+    listener: TcpListener,
+    status: &str,
+    payload: Vec<u8>,
+    declared_length: usize,
+) -> (String, Vec<u8>) {
     let (mut stream, _) = listener.accept().await.unwrap();
     let mut bytes = Vec::new();
     let head_end = loop {
@@ -115,7 +125,7 @@ async fn serve_once(listener: TcpListener, status: &str, payload: Vec<u8>) -> (S
         bytes.extend_from_slice(&block[..count]);
     }
     let body = bytes[head_end..head_end + len].to_vec();
-    let response = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", payload.len());
+    let response = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", declared_length);
     stream.write_all(response.as_bytes()).await.unwrap();
     stream.write_all(&payload).await.unwrap();
     (head, body)
@@ -245,7 +255,16 @@ async fn redirect_status_oversize_and_malformed_replies_fail_closed() {
     ] {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let server = tokio::spawn(serve_once(listener, status, payload));
+        // Header-based refusals must happen without consuming the response
+        // body. Advertise the original length but send no bytes; this also
+        // avoids a fixture BrokenPipe when the bounded client closes early.
+        let header_refusal = matches!(
+            expected,
+            ReadError::Redirect | ReadError::Refused(_) | ReadError::TooLarge
+        );
+        let length = payload.len();
+        let body = if header_refusal { Vec::new() } else { payload };
+        let server = tokio::spawn(serve_once_with_length(listener, status, body, length));
         let result = client(address).list(&identity, "").await;
         assert_eq!(result.err(), Some(expected));
         let _ = server.await.unwrap();
