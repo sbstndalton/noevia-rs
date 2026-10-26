@@ -21,7 +21,7 @@ fn frame(v: &Value) -> Vec<u8> {
 fn raw_frame(data: &[u8]) -> Vec<u8> {
     let mut out = b"DCW1".to_vec();
     out.extend_from_slice(&(data.len() as u64).to_be_bytes());
-    out.extend_from_slice(&data);
+    out.extend_from_slice(data);
     out.extend_from_slice(b"END1");
     out
 }
