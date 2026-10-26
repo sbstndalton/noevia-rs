@@ -18,6 +18,14 @@
 - `core.ref`: the noevia-core commit the CI job `corpus-replay-node` boots to prove the corpus
   replays clean against Node.
 
+- `store-guard-core.ref`: the exact reviewed noevia-core ownership counterpart used only by
+  `server-store`'s `node_guard` tests. It includes the new address-setting ownership contract,
+  so the tests require exact table and settings equality without pending-owner allowances.
+  This is separate from the frozen behavior oracle above: replay still boots `core.ref`.
+  The counterpart is a published, reviewed source commit; it is not a selected release pin,
+  assembled-release qualification, or deployment approval. The paired Core integration and
+  release capability guards still have to pass before activation.
+
 Replay against Node booted the way the corpus was recorded (noevia-core
 `tools/contract-corpus/serve.cjs`: the same mock model and Diary, outbound connections refused,
 `UI_DATA_DIR` = a fresh copy of the seed):

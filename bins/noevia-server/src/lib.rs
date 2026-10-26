@@ -30,6 +30,7 @@ pub mod storage_metadata_worker;
 pub mod storage_read_routes;
 pub mod upkeep;
 pub mod usage_routes;
+pub mod web_address_routes;
 
 use axum::body::Body;
 use axum::extract::{ConnectInfo, State};
@@ -76,7 +77,11 @@ pub const FEATURES: &[&str] = &[
     "header-read-timeout",
     "legacy-root-claim",
     "project-store",
+    server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER,
+    server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
     "rust-auth",
+    "rust-web-address-read",
+    "rust-web-address-write",
     "rust-projects",
     "start-id",
     #[cfg(feature = "rust-project-chats")]
@@ -221,6 +226,7 @@ async fn handle(
             Some(
                 routes::Native::Account
                     | routes::Native::Projects
+                    | routes::Native::WebAddress
                     | routes::Native::Usage
                     | routes::Native::SamplingSettings
                     | routes::Native::ReasoningSettings
@@ -242,6 +248,7 @@ async fn handle(
         Some(
             routes::Native::Account
             | routes::Native::Projects
+            | routes::Native::WebAddress
             | routes::Native::Usage
             | routes::Native::SamplingSettings
             | routes::Native::ReasoningSettings
@@ -308,6 +315,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             routing_mode_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::WebAddress) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            web_address_routes::serve(&app, req, p).await
         }
         Some(routes::Native::Account) => {
             let Some(p) = whatwg else {

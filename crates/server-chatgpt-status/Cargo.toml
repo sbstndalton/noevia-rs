@@ -11,6 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+server-features = { path = "../server-features" }
 server-store = { path = "../server-store" }
 server-auth = { path = "../server-auth" }
 js-json = { path = "../js-json" }

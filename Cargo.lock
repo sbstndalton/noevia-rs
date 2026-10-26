@@ -595,6 +595,99 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-backup-format"
+version = "0.1.0"
+dependencies = [
+ "ryu",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "diary-corpus-parse"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "diary-corpus-write"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "diary-index-transform"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "diary-score-gap"
+version = "0.1.0"
+
+[[package]]
+name = "diary-storage-backoff"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+]
+
+[[package]]
+name = "diary-temporal-focus"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "regex",
+ "serde",
+ "serde_json",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "diary-workspace-export"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "serde",
+ "serde_json",
+ "sha2",
+ "workspace-restore-verify",
+]
+
+[[package]]
+name = "diary-workspace-import-apply"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "ryu",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "workspace-restore-verify",
+]
+
+[[package]]
+name = "diary-workspace-rules"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "regex",
+ "ryu",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1697,6 +1790,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "js-json",
+ "reqwest",
  "secret-envelope",
  "serde",
  "serde_json",
@@ -1704,6 +1798,7 @@ dependencies = [
  "server-auth",
  "server-chatgpt-status",
  "server-export",
+ "server-features",
  "server-projects",
  "server-reasoning-settings",
  "server-routing-default",
@@ -2671,6 +2766,7 @@ dependencies = [
  "rustix",
  "secret-envelope",
  "serde_json",
+ "server-features",
  "server-store",
  "sha2",
  "subtle",
@@ -2686,6 +2782,7 @@ dependencies = [
  "secret-envelope",
  "serde_json",
  "server-auth",
+ "server-features",
  "server-routing-mode",
  "server-store",
  "tempfile",
@@ -2710,6 +2807,14 @@ dependencies = [
  "sha2",
  "tempfile",
  "unicode-normalization",
+]
+
+[[package]]
+name = "server-features"
+version = "0.1.0"
+dependencies = [
+ "policy-leaves",
+ "serde_json",
 ]
 
 [[package]]
@@ -2755,6 +2860,7 @@ dependencies = [
  "proptest",
  "rustix",
  "serde_json",
+ "server-features",
  "server-store",
  "sha2",
  "tempfile",
@@ -3733,6 +3839,7 @@ name = "workspace-restore-verify-cli"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "rustix",
  "serde_json",
  "workspace-restore-verify",
 ]
