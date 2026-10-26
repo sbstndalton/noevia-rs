@@ -602,6 +602,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-corpus-write"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "diary-score-gap"
 version = "0.1.0"
 
