@@ -284,3 +284,36 @@ fn missing_question_replacement_uses_trimmed_search_text() -> Result<(), Box<dyn
     }
     Ok(())
 }
+
+#[test]
+fn embedded_line_breaks_cannot_bypass_render_capacity() -> Result<(), Box<dyn std::error::Error>> {
+    for separator in ["\n", "\r\n", "\u{2028}"] {
+        // Fits a field (64 KiB) and output (2 MiB), but exceeds rendered lines.
+        let replacement = format!("x{separator}").repeat(16_000);
+        let mut idx = parse_index(Some("## Open Questions\n- [ ] Plan A\n- [ ] Plan B\n"))?;
+        let before = idx.clone();
+        let ops = [
+            EditOp {
+                action: "edit".to_owned(),
+                text: "Plan A".to_owned(),
+                replacement: Some(Some(replacement.clone())),
+                date: None,
+            },
+            EditOp {
+                action: "edit".to_owned(),
+                text: "Plan B".to_owned(),
+                replacement: Some(Some(replacement)),
+                date: None,
+            },
+        ];
+        assert_eq!(
+            apply_index_edits(&mut idx, &ops, &[], "2026-09-01"),
+            Err(Error::Capacity)
+        );
+        assert_eq!(idx, before);
+    }
+    let mut direct = IndexFile::default();
+    direct.preamble.push("x\n".repeat(24_000));
+    assert_eq!(direct.render(), Err(Error::Capacity));
+    Ok(())
+}

@@ -161,6 +161,29 @@ fn py_splitlines(s: &str) -> Vec<&str> {
     out
 }
 
+// Count Python splitlines boundaries without allocating a vector per line.
+// Rendered text can contain embedded separators in public fields or edits.
+fn render_lines_exceeded(s: &str) -> bool {
+    let mut chars = s.chars().peekable();
+    let mut count = 0usize;
+    let mut has_tail = false;
+    while let Some(c) = chars.next() {
+        if line_break(c) {
+            count += 1;
+            has_tail = false;
+            if c == '\r' && chars.peek() == Some(&'\n') {
+                chars.next();
+            }
+            if count > MAX_RENDER_LINES {
+                return true;
+            }
+        } else {
+            has_tail = true;
+        }
+    }
+    count + usize::from(has_tail) > MAX_RENDER_LINES
+}
+
 fn check_field(s: &str) -> Result<(), Error> {
     if s.len() > MAX_FIELD_BYTES {
         Err(Error::Capacity)
@@ -280,7 +303,7 @@ impl IndexFile {
         }
         let mut rendered = py_strip(&out.join("\n")).to_owned();
         rendered.push('\n');
-        if rendered.len() > MAX_OUTPUT_BYTES {
+        if rendered.len() > MAX_OUTPUT_BYTES || render_lines_exceeded(&rendered) {
             Err(Error::Capacity)
         } else {
             Ok(rendered)
