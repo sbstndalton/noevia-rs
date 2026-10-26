@@ -606,6 +606,17 @@ name = "diary-score-gap"
 version = "0.1.0"
 
 [[package]]
+name = "diary-temporal-focus"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "regex",
+ "serde",
+ "serde_json",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "diary-workspace-export"
 version = "0.1.0"
 dependencies = [
