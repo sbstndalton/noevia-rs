@@ -701,3 +701,119 @@ async fn quiet_escaped_stdout_pipe_resets_before_grace() {
     h.close().await;
     drop(cleanup);
 }
+
+fn quiet_config(root: PathBuf) -> Config {
+    Config {
+        command: "/bin/sh".into(),
+        session_helper: env!("CARGO_BIN_EXE_code-sandbox-session-exec").into(),
+        args: Vec::new(),
+        root,
+        max_connections: 1,
+        max_wall: Duration::from_secs(5),
+        grace: Duration::ZERO,
+        fallback_home: None,
+        rust_bridge: false,
+    }
+}
+
+#[tokio::test]
+async fn already_stopped_server_does_not_start_accepting() {
+    let root = tempfile::tempdir().unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let (_stop, rx) = watch::channel(true);
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        serve(listener, quiet_config(root.path().into()), rx),
+    )
+    .await
+    .expect("already-stopped server ignored shutdown")
+    .unwrap();
+}
+
+#[tokio::test]
+async fn direct_invalid_deadlines_fail_before_accepting() {
+    let root = tempfile::tempdir().unwrap();
+    for (wall, grace) in [
+        (Duration::ZERO, Duration::ZERO),
+        (Duration::MAX, Duration::ZERO),
+        (Duration::from_secs(1), Duration::MAX),
+    ] {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (_stop, rx) = watch::channel(false);
+        let mut config = quiet_config(root.path().into());
+        config.max_wall = wall;
+        config.grace = grace;
+        let error = tokio::time::timeout(Duration::from_secs(1), serve(listener, config, rx))
+            .await
+            .expect("invalid direct configuration entered accept loop")
+            .expect_err("invalid deadline accepted");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+}
+
+#[tokio::test]
+async fn aborting_server_closes_io_held_by_an_escaped_writer() {
+    let files = tempfile::tempdir().unwrap();
+    let pid_file = files.path().join("cancel-escaped.pid");
+    let _cleanup = EscapedChildCleanup {
+        pid_file: pid_file.clone(),
+    };
+    let script_path = files.path().join("cancel-escaped.py");
+    std::fs::write(
+        &script_path,
+        r#"import os, pathlib, sys, time
+if os.fork() == 0:
+    os.setsid()
+    pathlib.Path(sys.argv[1]).write_text(str(os.getpid()))
+    time.sleep(5)
+    os._exit(0)
+print('ready', flush=True)
+time.sleep(5)
+"#,
+    )
+    .unwrap();
+    let script = format!(
+        "exec /usr/bin/python3 '{}' '{}'",
+        script_path.display(),
+        pid_file.display()
+    );
+    let mut h = Harness::new(&script, 1, Duration::from_secs(10)).await;
+    let mut socket = h.connect().await;
+    socket.write_all(h.start("{}").as_bytes()).await.unwrap();
+    let mut ready = [0u8; 6];
+    tokio::time::timeout(Duration::from_secs(2), socket.read_exact(&mut ready))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(&ready, b"ready\n");
+    let pid = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if let Ok(text) = std::fs::read_to_string(&pid_file) {
+                if let Ok(pid) = text.trim().parse::<i32>() {
+                    break pid;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("escaped writer did not publish its test-owned PID");
+    let pid = nix::unistd::Pid::from_raw(pid);
+    assert_eq!(nix::unistd::getsid(Some(pid)).unwrap(), pid);
+    h.server.abort();
+    assert!((&mut h.server).await.unwrap_err().is_cancelled());
+    let mut rest = Vec::new();
+    let closed =
+        match tokio::time::timeout(Duration::from_secs(1), socket.read_to_end(&mut rest)).await {
+            Ok(Ok(_)) => true,
+            Ok(Err(error)) => matches!(
+                error.kind(),
+                std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
+            ),
+            Err(_) => false,
+        };
+    assert!(
+        closed,
+        "cancelled connection retained its socket/escaped stdout"
+    );
+}

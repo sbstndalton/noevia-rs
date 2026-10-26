@@ -51,3 +51,25 @@ look like clean EOF. An absolute post-exit drain limit of 10 seconds, also
 limited by the original wall deadline, resets even a continuously active
 escaped-group writer. Group SIGKILL still runs after the configured grace while
 the leader remains unreaped, and final child.wait follows that signal.
+
+Environment and direct `Config` values share startup validation. The session
+helper must be absolute as well as a nonsymlink executable. Zero wall time and
+unrepresentable wall/grace deadlines are refused before serving; zero grace
+is supported. Runtime deadline overflow triggers immediate teardown instead
+of a panic after a child has started.
+
+Unexpected connection cancellation aborts all owned input/output/stderr tasks.
+The verified group guard is armed before acknowledgement and disarmed before
+any reap. The standalone supervisor is the exclusive waiter for its children;
+callers must not install an external reaper for those PIDs. Accept errors and
+external shutdown both signal and join the existing graceful connection
+teardown path. Main observes server completion/errors while waiting for
+signals, and awaits cleanup before returning signal errors. These ownership
+changes do not add containment for descendants that deliberately escape the
+process group; container isolation and the image qualification remain required.
+
+The lifecycle suite uses Linux `/proc` and waitid semantics. Linux cross-target
+checking on a Mac validates compilation/lints, not process behavior. Run the
+full suite in the existing isolated Linux CI boundary before source merge;
+image, ACP/pi permissions, namespaces, pins, rollback and activation remain
+separate qualification gates.

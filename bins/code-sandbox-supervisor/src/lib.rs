@@ -20,6 +20,8 @@ use tokio::sync::{watch, Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 
+mod limits;
+
 const MAX_START_BYTES: usize = 64 * 1024;
 const START_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_CONNECTIONS: usize = 4;
@@ -61,28 +63,41 @@ impl Config {
         let connections =
             positive_integer_env("CODE_SANDBOX_MAX_CONNECTIONS", MAX_CONNECTIONS as u64)?;
         let max_connections = checked_connections(connections)?;
-        Ok((
-            Self {
-                command: command.into(),
-                session_helper,
-                args: std::env::var("CODE_HARNESS_ARGS")
-                    .unwrap_or_default()
-                    .split(' ')
-                    .filter(|part| !part.is_empty())
-                    .map(str::to_owned)
-                    .collect(),
-                root: root.into(),
-                max_connections,
-                max_wall: Duration::from_millis(positive_integer_env(
-                    "CODE_SANDBOX_MAX_WALL_MS",
-                    MAX_WALL_MS,
-                )?),
-                grace: Duration::from_secs(5),
-                fallback_home: std::env::var("HOME").ok().filter(|v| !v.is_empty()),
-                rust_bridge: std::env::var("SANDBOX_BRIDGE_IMPL").ok().as_deref() == Some("rust"),
-            },
-            port,
-        ))
+        let config = Self {
+            command: command.into(),
+            session_helper,
+            args: std::env::var("CODE_HARNESS_ARGS")
+                .unwrap_or_default()
+                .split(' ')
+                .filter(|part| !part.is_empty())
+                .map(str::to_owned)
+                .collect(),
+            root: root.into(),
+            max_connections,
+            max_wall: Duration::from_millis(positive_integer_env(
+                "CODE_SANDBOX_MAX_WALL_MS",
+                MAX_WALL_MS,
+            )?),
+            grace: Duration::from_secs(5),
+            fallback_home: std::env::var("HOME").ok().filter(|v| !v.is_empty()),
+            rust_bridge: std::env::var("SANDBOX_BRIDGE_IMPL").ok().as_deref() == Some("rust"),
+        };
+        config.validate().map_err(|error| error.to_string())?;
+        Ok((config, port))
+    }
+
+    /// Enforce the same startup contract for direct library callers.
+    pub fn validate(&self) -> std::io::Result<()> {
+        validate_session_helper(&self.session_helper).map_err(std::io::Error::other)?;
+        validate_harness_command(&self.command).map_err(std::io::Error::other)?;
+        if self.max_connections == 0 || self.max_connections > Semaphore::MAX_PERMITS {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "CODE_SANDBOX_MAX_CONNECTIONS is outside the supported range",
+            ));
+        }
+        limits::validate(Instant::now().into_std(), self.max_wall, self.grace)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))
     }
 }
 
@@ -96,6 +111,9 @@ fn session_helper_path() -> Result<PathBuf, String> {
 }
 
 fn validate_session_helper(path: &Path) -> Result<(), String> {
+    if !path.is_absolute() {
+        return Err("sandbox session helper must be an absolute path".into());
+    }
     let metadata = path.symlink_metadata().map_err(|error| {
         format!(
             "required sandbox session helper {} is unavailable: {error}",
@@ -274,6 +292,16 @@ impl Drop for GroupGuard {
     }
 }
 
+// A dropped JoinHandle detaches its task. Connection ownership must instead
+// cancel every pipe/socket task even when its normal teardown is bypassed.
+struct AbortOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 #[derive(Clone, Copy)]
 enum OutputPhase {
     Reading,
@@ -422,15 +450,19 @@ async fn connection(
         refuse(&mut stream, "the sandbox agent could not start").await;
         return;
     }
+    // Arm while the helper still owns the verified, waitable session leader,
+    // before the acknowledgement can allow the harness to execute.
+    let mut guard = GroupGuard::new(Pid::from_raw(pid));
     // The one-byte ack is sent only after the bounded, verified phase. Do not
     // wrap this write in a cancellable timeout: if it were delivered just as
     // the timeout fired, the harness could exec before direct-PID cleanup.
     if stdin.write_all(&[SESSION_ACK]).await.is_err() {
+        let _ = guard.signal(Signal::SIGKILL);
+        guard.disarm();
         stop_unready_child(&mut child).await;
         refuse(&mut stream, "the sandbox agent could not start").await;
         return;
     }
-    let mut guard = GroupGuard::new(Pid::from_raw(pid));
     let (mut reader, writer) = stream.into_split();
     let writer = Arc::new(Mutex::new(writer));
     let mut input = tokio::spawn(async move {
@@ -455,6 +487,7 @@ async fn connection(
         let _ = stdin.shutdown().await;
         Ok::<(), std::io::Error>(())
     });
+    let _input_abort = AbortOnDrop(input.abort_handle());
     let (output_failure_tx, output_failure_rx) = tokio::sync::oneshot::channel();
     let (output_progress_tx, mut output_progress_rx) = watch::channel(OutputProgress {
         phase: OutputPhase::Reading,
@@ -491,6 +524,7 @@ async fn connection(
             }
         }
     });
+    let _output_abort = AbortOnDrop(output.abort_handle());
     let output_failed = async {
         match output_failure_rx.await {
             Ok(()) => Stop::Client,
@@ -506,7 +540,11 @@ async fn connection(
             // No untrusted stderr is logged: it may contain tokens.
         }
     });
-    let wall_deadline = Instant::now() + config.max_wall;
+    let _stderr_abort = AbortOnDrop(stderr_task.abort_handle());
+    let wall_deadline = Instant::from_std(limits::deadline_or_now(
+        Instant::now().into_std(),
+        config.max_wall,
+    ));
     let reason = tokio::select! {
         state = observe_leader(guard.pid) => state,
         state = output_failed => state,
@@ -532,7 +570,10 @@ async fn connection(
         let _ = input.await;
     }
     let mut group_killed = false;
-    let grace_deadline = Instant::now() + config.grace;
+    let grace_deadline = Instant::from_std(limits::deadline_or_now(
+        Instant::now().into_std(),
+        config.grace,
+    ));
     let output_drain = if matches!(reason, Stop::Child) {
         let drain_started = Instant::now();
         let drain_deadline = (drain_started + OUTPUT_POST_EXIT_MAX).min(wall_deadline);
@@ -573,6 +614,7 @@ async fn connection(
         let _ = output.await;
     }
     stderr_task.abort();
+    let _ = stderr_task.await;
     let partial_output = matches!(
         output_drain,
         OutputDrain::Idle | OutputDrain::Stalled | OutputDrain::Deadline
@@ -643,23 +685,25 @@ pub async fn serve(
     config: Config,
     mut shutdown: watch::Receiver<bool>,
 ) -> std::io::Result<()> {
-    validate_session_helper(&config.session_helper).map_err(std::io::Error::other)?;
-    validate_harness_command(&config.command).map_err(std::io::Error::other)?;
-    if config.max_connections == 0 || config.max_connections > Semaphore::MAX_PERMITS {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "CODE_SANDBOX_MAX_CONNECTIONS is outside the supported range",
-        ));
+    config.validate()?;
+    if *shutdown.borrow() {
+        return Ok(());
     }
+    let (stop_connections, connection_shutdown) = watch::channel(false);
     let permits = Arc::new(Semaphore::new(config.max_connections));
     let mut tasks = JoinSet::new();
-    loop {
+    let result = loop {
         tokio::select! {
+            biased;
+            _ = shutdown.changed() => break Ok(()),
             accepted = listener.accept() => {
-                let (mut stream, _) = accepted?;
+                let (mut stream, _) = match accepted {
+                    Ok(accepted) => accepted,
+                    Err(error) => break Err(error),
+                };
                 match Arc::clone(&permits).try_acquire_owned() {
                     Ok(permit) => {
-                        tasks.spawn(connection(stream, config.clone(), shutdown.clone(), permit));
+                        tasks.spawn(connection(stream, config.clone(), connection_shutdown.clone(), permit));
                     }
                     Err(_) => {
                         refuse(&mut stream, &format!("The sandbox is already running {} agents; try again when one finishes.", config.max_connections)).await;
@@ -671,11 +715,13 @@ pub async fn serve(
                     eprintln!("code-sandbox: connection task failed: {error}");
                 }
             }
-            _ = shutdown.changed() => break,
         }
-    }
+    };
+    // Accept failures and external stop use the same owned graceful cleanup.
+    // Do not return an error while JoinSet would merely abort live connections.
+    let _ = stop_connections.send(true);
     while tasks.join_next().await.is_some() {}
-    Ok(())
+    result
 }
 
 #[cfg(test)]
@@ -728,6 +774,19 @@ mod tests {
         let symlink = dir.path().join("symlink");
         std::os::unix::fs::symlink(&file, &symlink).unwrap();
         assert!(validate_session_helper(&symlink).is_err());
+    }
+
+    #[test]
+    fn relative_executable_helper_is_refused() {
+        let cwd = std::env::current_dir().unwrap();
+        let dir = tempfile::tempdir_in(&cwd).unwrap();
+        let helper = dir.path().join("helper");
+        std::fs::write(&helper, b"helper").unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(validate_session_helper(&helper).is_ok());
+        let relative = helper.strip_prefix(&cwd).unwrap();
+        assert!(!relative.is_absolute());
+        assert!(validate_session_helper(relative).is_err());
     }
 
     #[test]
